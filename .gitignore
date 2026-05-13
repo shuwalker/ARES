@@ -13,6 +13,13 @@ venv/
 dist/
 build/
 
+# Test & coverage artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
 # Swift/SPM artifacts
 .build/
 Package.resolved

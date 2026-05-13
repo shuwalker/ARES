@@ -67,6 +67,13 @@ def _require(reachable: bool, name: str, port: int) -> None:
         pytest.skip(f"{name} ({ARES_HOST}:{port}) unreachable")
 
 
+def pytest_collection_modifyitems(config, items):
+    """Auto-mark every test under tests/integration/ with the `integration` marker."""
+    for item in items:
+        if "tests/integration/" in str(item.fspath).replace("\\", "/"):
+            item.add_marker(pytest.mark.integration)
+
+
 def _mcp_initialize(port: int, host: str = ARES_HOST) -> tuple[str | None, dict | None]:
     """Initialize an MCP SSE session and return (session_id, server_info).
 
