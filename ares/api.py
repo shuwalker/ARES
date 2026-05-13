@@ -52,7 +52,9 @@ from ares.core.cognitive import CognitiveLoop, create_loop
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
 from ares.core.identity import Identity, DEFAULT_IDENTITY
 from ares.core.personality import CharacterProfile, DEFAULT_PROFILE, load_personality, save_personality
-from ares.models.cognitive import CognitiveSnapshot, LoopBlock
+from ares.memory_store import MemoryStore, default_memory_store
+from ares.models.cognitive import CognitiveSnapshot, LoopBlock, MemoryHitBlock
+from ares.runtime.session_store import SessionStore
 
 logger = logging.getLogger("ares.api")
 
@@ -268,12 +270,25 @@ class MemorySearchRequest(BaseModel):
 # App factory
 # ---------------------------------------------------------------------------
 
-def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> FastAPI:
-    """Create the ARES FastAPI application with managed service lifecycle."""
+def create_app(
+    bus: ARESBus = None,
+    personality: CharacterProfile = None,
+    memory: MemoryStore = None,
+    sessions: SessionStore = None,
+) -> FastAPI:
+    """Create the ARES FastAPI application with managed service lifecycle.
+
+    `memory` and `sessions` are injectable so tests can bypass disk I/O.
+    """
 
     bus = bus or get_bus()
     personality = personality or load_personality()
+    memory = memory if memory is not None else default_memory_store()
+    sessions = sessions if sessions is not None else SessionStore(capacity=12)
     websocket_clients: set = set()
+    # Tracks the last snapshot delivered to clients — used by /api/chat to
+    # include memory hits in the next push without re-querying twice.
+    _last_recall: list[MemoryHitBlock] = []
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -488,6 +503,21 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         """Send a message to ARES and get a response via Hermes cognition bridge."""
         personality_prompt = personality.to_system_prompt()
 
+        # Pull relevant episodic memory before dispatch. The Hermes wiring
+        # work will eventually consume this to inject context into the LLM
+        # prompt; for now we surface it to the UI snapshot so users can
+        # see what ARES is recalling.
+        hits = memory.recall(req.message, k=5)
+        recall_blocks = [
+            MemoryHitBlock(id=h.id, score=h.score, text=h.text, kind=h.kind)
+            for h in hits
+        ]
+        _last_recall.clear()
+        _last_recall.extend(recall_blocks)
+
+        if req.session_id:
+            sessions.record(req.session_id, "user", req.message, time.time())
+
         bus.dispatch(BusMessage(
             type="chat_message",
             source="api",
@@ -508,6 +538,29 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             logger.error("Hermes bridge unreachable: %s", e)
             hermes_response = f"[ARES bridge error — {e}]"
             face_state = "thinking"
+
+        # Persist the exchange. Episodic captures both turns as a single
+        # entry so recall can pull the full context; session store tracks
+        # turn-by-turn for the volatile tier.
+        try:
+            memory.record_episodic(
+                f"USER: {req.message}\nARES: {hermes_response}",
+                metadata={"session_id": req.session_id, "kind": "exchange"},
+            )
+        except Exception as e:
+            logger.warning("Episodic write failed: %s", e)
+        if req.session_id:
+            sessions.record(req.session_id, "assistant", hermes_response, time.time())
+
+        # Push a snapshot with the fresh memory_recall so the heartbeat
+        # panel updates without waiting for a phase transition.
+        await _broadcast(
+            websocket_clients,
+            {
+                "type": "cognitive_snapshot",
+                **_build_snapshot(_cognitive_loop, recall_blocks).model_dump(),
+            },
+        )
 
         return ChatResponse(
             response=hermes_response,
@@ -548,6 +601,32 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             ]
         }
 
+    # ------------------------------------------------------------------
+    # Memory inspector endpoints
+    # ------------------------------------------------------------------
+
+    @app.get("/api/memory/episodics")
+    async def list_episodics(limit: int = 50):
+        """Return recent episodics for the Memory Inspector."""
+        return {"items": memory.list_episodics(limit=limit), "count": memory.vectors.count()}
+
+    @app.get("/api/memory/facts")
+    async def list_facts(limit: int = 100):
+        return {"items": [f.to_dict() for f in memory.list_facts(limit=limit)]}
+
+    @app.post("/api/memory/recall")
+    async def recall_memory(body: dict):
+        """Run an ad-hoc similarity search."""
+        query = (body or {}).get("query", "")
+        k = int((body or {}).get("k", 5))
+        hits = memory.recall(query, k=k)
+        return {"hits": [h.to_dict() for h in hits]}
+
+    @app.delete("/api/memory/episodics/{episodic_id}")
+    async def delete_episodic(episodic_id: str):
+        memory.delete_episodic(episodic_id)
+        return {"deleted": episodic_id}
+
     @app.post("/api/cognitive/start")
     async def start_cognitive_loop(goal: str = "Observe and respond"):
         global _cognitive_loop
@@ -570,7 +649,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         def _on_phase_change(_state):
             if main_event_loop is None:
                 return
-            snapshot = _build_snapshot(loop)
+            snapshot = _build_snapshot(loop, list(_last_recall))
             payload = {"type": "cognitive_snapshot", **snapshot.model_dump()}
             asyncio.run_coroutine_threadsafe(
                 _broadcast(websocket_clients, payload),
@@ -608,7 +687,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         The same shape is pushed over the WebSocket as
         `{"type": "cognitive_snapshot", ...}` on every phase transition.
         """
-        return _build_snapshot(_cognitive_loop)
+        return _build_snapshot(_cognitive_loop, list(_last_recall))
 
     # ------------------------------------------------------------------
     # WebSocket
@@ -696,7 +775,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                     await websocket.send_json({"type": "pong", "timestamp": time.time()})
 
                 elif action == "get_cognitive_snapshot":
-                    snapshot = _build_snapshot(_cognitive_loop)
+                    snapshot = _build_snapshot(_cognitive_loop, list(_last_recall))
                     await websocket.send_json({
                         "type": "cognitive_snapshot", **snapshot.model_dump(),
                     })
@@ -759,15 +838,22 @@ async def _broadcast(clients: set, data: dict) -> None:
     clients -= disconnected
 
 
-def _build_snapshot(loop: Optional[CognitiveLoop]) -> CognitiveSnapshot:
+def _build_snapshot(
+    loop: Optional[CognitiveLoop],
+    memory_recall: Optional[list[MemoryHitBlock]] = None,
+) -> CognitiveSnapshot:
     """Compose a CognitiveSnapshot from a loop instance.
 
     Accepts None — returns an idle snapshot suitable for the UI heartbeat
     when no loop has been started yet. Lives in the API layer (not in
     `core/cognitive.py`) so the loop has no Pydantic dependency.
+
+    `memory_recall` is passed through to the snapshot when the caller has
+    already computed hits (e.g. `/api/chat` recalls before LLM dispatch).
     """
+    recall = list(memory_recall) if memory_recall else []
     if loop is None:
-        return CognitiveSnapshot(running=False)
+        return CognitiveSnapshot(running=False, memory_recall=recall)
     state = loop.state
     elapsed_ms = int(max(0, (time.time() - state.started_at) * 1000))
     return CognitiveSnapshot(
@@ -780,6 +866,7 @@ def _build_snapshot(loop: Optional[CognitiveLoop]) -> CognitiveSnapshot:
             tokens_used=state.tokens_used,
             elapsed_ms=elapsed_ms,
         ),
+        memory_recall=recall,
         errors=list(state.errors),
     )
 

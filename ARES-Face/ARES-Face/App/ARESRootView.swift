@@ -32,10 +32,21 @@ struct ARESRootView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
-                    AvatarSceneView(style: $currentStyle)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    ChatStream()
-                    CommandBar()
+                    ZStack {
+                        VStack(spacing: 0) {
+                            AvatarSceneView(style: $currentStyle)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            ChatStream()
+                            CommandBar()
+                        }
+                        // Sidebar-selected operator pages overlay on top of
+                        // the chat surface. Avatar still renders behind so
+                        // ARES never feels gone.
+                        if selectedPage != .chat && brain.immersionLevel != .full {
+                            operatorPage
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
                 }
             }
             .opacity(showLaunchAnimation ? 0 : 1)
@@ -57,6 +68,27 @@ struct ARESRootView: View {
         }
     }
     
+    @ViewBuilder
+    private var operatorPage: some View {
+        switch selectedPage {
+        case .sessions:
+            MemoryInspectorView()
+        default:
+            VStack {
+                Spacer()
+                Text("\(selectedPage.label)")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text("coming soon")
+                    .font(.caption)
+                    .foregroundStyle(.secondary.opacity(0.6))
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.ultraThinMaterial)
+        }
+    }
+
     @ViewBuilder
     var backgroundLayer: some View {
         if brain.immersionLevel == .full {

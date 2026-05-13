@@ -43,6 +43,15 @@ class ThoughtBlock(BaseModel):
     sentiment: Optional[float] = None
 
 
+class MemoryHitBlock(BaseModel):
+    """A single memory hit surfaced to the UI."""
+
+    id: str
+    score: float
+    text: str
+    kind: str = "episodic"
+
+
 class CognitiveSnapshot(BaseModel):
     """Versioned snapshot of ARES's cognitive state.
 
@@ -56,4 +65,5 @@ class CognitiveSnapshot(BaseModel):
     running: bool = False
     loop: LoopBlock = Field(default_factory=LoopBlock)
     thought: Optional[ThoughtBlock] = None
+    memory_recall: list[MemoryHitBlock] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)

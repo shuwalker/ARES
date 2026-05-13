@@ -10,11 +10,42 @@ struct CognitiveSnapshot: Codable, Equatable {
     let running: Bool
     let loop: LoopBlock
     let thought: ThoughtBlock?
+    let memoryRecall: [MemoryHitBlock]
     let errors: [String]
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
+        case memoryRecall = "memory_recall"
         case timestamp, running, loop, thought, errors
+    }
+
+    init(
+        schemaVersion: Int,
+        timestamp: Double,
+        running: Bool,
+        loop: LoopBlock,
+        thought: ThoughtBlock?,
+        memoryRecall: [MemoryHitBlock] = [],
+        errors: [String]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.timestamp = timestamp
+        self.running = running
+        self.loop = loop
+        self.thought = thought
+        self.memoryRecall = memoryRecall
+        self.errors = errors
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        timestamp = try c.decode(Double.self, forKey: .timestamp)
+        running = try c.decode(Bool.self, forKey: .running)
+        loop = try c.decode(LoopBlock.self, forKey: .loop)
+        thought = try c.decodeIfPresent(ThoughtBlock.self, forKey: .thought)
+        memoryRecall = (try? c.decode([MemoryHitBlock].self, forKey: .memoryRecall)) ?? []
+        errors = try c.decode([String].self, forKey: .errors)
     }
 
     static let expectedSchemaVersion = 1
@@ -25,8 +56,16 @@ struct CognitiveSnapshot: Codable, Equatable {
         running: false,
         loop: LoopBlock.idle,
         thought: nil,
+        memoryRecall: [],
         errors: []
     )
+}
+
+struct MemoryHitBlock: Codable, Equatable, Identifiable {
+    let id: String
+    let score: Double
+    let text: String
+    let kind: String
 }
 
 struct LoopBlock: Codable, Equatable {
