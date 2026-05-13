@@ -180,6 +180,31 @@ class StopHook:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class ThoughtNodeRecord:
+    """A single reasoning step recorded for the cycle's DAG.
+
+    Kept dependency-free (plain dict / dataclass) so core/ doesn't import
+    Pydantic. The API layer maps these to `models.cognitive.ThoughtNode`.
+    """
+    id: str
+    parent_ids: List[str]
+    label: str
+    status: str  # "pending" | "running" | "done" | "failed"
+    duration_ms: int = 0
+    evidence: List[dict] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "parent_ids": list(self.parent_ids),
+            "label": self.label,
+            "status": self.status,
+            "duration_ms": self.duration_ms,
+            "evidence": list(self.evidence),
+        }
+
+
+@dataclass
 class CognitiveState:
     """Mutable state tracked across loop iterations."""
     cycle: int = 0                      # Current cycle number
@@ -193,6 +218,9 @@ class CognitiveState:
     face_state: FaceState = FaceState.IDLE  # Current face state
     started_at: float = field(default_factory=time.time)
     errors: List[str] = field(default_factory=list)
+    # Reasoning DAG for the current cycle. Reset at the top of each cycle.
+    # API layer reads this into `CognitiveSnapshot.thought.branches`.
+    branches: List[ThoughtNodeRecord] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -204,6 +232,7 @@ class CognitiveState:
             "face_state": self.face_state.value,
             "started_at": self.started_at,
             "errors": self.errors,
+            "branches": [b.to_dict() for b in self.branches],
         }
 
 
@@ -415,15 +444,61 @@ class CognitiveLoop:
         return reflection
 
     def _notify_phase_change(self) -> None:
-        """Fire the on_phase_change observer with the current state.
+        """Append a DAG node for this phase, then fire the observer.
 
         Observer exceptions are swallowed — the loop must not crash because a
         UI subscriber misbehaved.
         """
+        self._record_phase_node()
         try:
             self.on_phase_change(self.state)
         except Exception as e:
             logger.warning("on_phase_change observer error: %s", e)
+
+    def _record_phase_node(self) -> None:
+        """Append a ThoughtNodeRecord for the current phase to the cycle DAG.
+
+        Chains as a child of the previous node so the default DAG is a
+        linear perceive→think→act→reflect path. Handlers that emit
+        additional nodes (via `emit_thought_node`) attach as siblings.
+        """
+        import uuid
+
+        prev_id = self.state.branches[-1].id if self.state.branches else None
+        node = ThoughtNodeRecord(
+            id=uuid.uuid4().hex[:8],
+            parent_ids=[prev_id] if prev_id else [],
+            label=self.state.phase.value,
+            status="done",
+        )
+        self.state.branches.append(node)
+
+    def emit_thought_node(
+        self,
+        label: str,
+        status: str = "done",
+        parent_ids: Optional[List[str]] = None,
+        evidence: Optional[List[dict]] = None,
+        duration_ms: int = 0,
+    ) -> str:
+        """Public hook for phase handlers to record extra reasoning steps.
+
+        Returns the generated node id so callers can chain children.
+        """
+        import uuid
+
+        node = ThoughtNodeRecord(
+            id=uuid.uuid4().hex[:8],
+            parent_ids=list(parent_ids) if parent_ids else (
+                [self.state.branches[-1].id] if self.state.branches else []
+            ),
+            label=label,
+            status=status,
+            duration_ms=duration_ms,
+            evidence=list(evidence or []),
+        )
+        self.state.branches.append(node)
+        return node.id
 
     def _update_face(self, state: FaceState) -> None:
         """Publish face state update to the bus."""
@@ -476,6 +551,10 @@ class CognitiveLoop:
 
         while self._running:
             self.state.cycle += 1
+            # Reset the reasoning DAG for this cycle. Prior cycle's branches
+            # have already been observed by the UI and (will be) persisted
+            # by the API layer via the snapshot stream.
+            self.state.branches = []
 
             # Check stop hooks
             stop_reason = self._check_stop_hooks()

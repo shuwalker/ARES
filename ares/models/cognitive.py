@@ -28,19 +28,34 @@ class LoopBlock(BaseModel):
     elapsed_ms: int = 0
 
 
+class ThoughtNode(BaseModel):
+    """A single node in the reasoning DAG.
+
+    Nodes form a DAG (not a tree) — `parent_ids` may have multiple entries
+    when a step has multiple inputs (e.g. tool output + retrieved memory).
+    """
+
+    id: str
+    parent_ids: list[str] = Field(default_factory=list)
+    label: str
+    status: str = "pending"  # "pending" | "running" | "done" | "failed"
+    duration_ms: int = 0
+    evidence: list[dict] = Field(default_factory=list)
+
+
 class ThoughtBlock(BaseModel):
     """Snapshot of the current reasoning step.
 
     Nullable in `CognitiveSnapshot.thought` while the loop is idle. Fields
     here are populated incrementally as ARES gains the ability to measure
-    them — for v1 only `summary` is wired; the rest stay None until the
-    loop emits real metrics.
+    them — for v1 `summary` and `branches` are wired.
     """
 
     summary: Optional[str] = None
     depth: int = 0
     confidence: Optional[float] = None
     sentiment: Optional[float] = None
+    branches: list[ThoughtNode] = Field(default_factory=list)
 
 
 class MemoryHitBlock(BaseModel):

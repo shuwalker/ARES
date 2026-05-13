@@ -98,4 +98,41 @@ struct ThoughtBlock: Codable, Equatable {
     let depth: Int
     let confidence: Double?
     let sentiment: Double?
+    let branches: [ThoughtNode]
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try c.decodeIfPresent(String.self, forKey: .summary)
+        depth = try c.decodeIfPresent(Int.self, forKey: .depth) ?? 0
+        confidence = try c.decodeIfPresent(Double.self, forKey: .confidence)
+        sentiment = try c.decodeIfPresent(Double.self, forKey: .sentiment)
+        branches = (try? c.decode([ThoughtNode].self, forKey: .branches)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case summary, depth, confidence, sentiment, branches
+    }
+}
+
+struct ThoughtNode: Codable, Equatable, Identifiable {
+    let id: String
+    let parentIds: [String]
+    let label: String
+    let status: String
+    let durationMs: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, status
+        case parentIds = "parent_ids"
+        case durationMs = "duration_ms"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        parentIds = (try? c.decode([String].self, forKey: .parentIds)) ?? []
+        label = try c.decode(String.self, forKey: .label)
+        status = (try? c.decode(String.self, forKey: .status)) ?? "done"
+        durationMs = (try? c.decode(Int.self, forKey: .durationMs)) ?? 0
+    }
 }

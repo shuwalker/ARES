@@ -53,7 +53,13 @@ from ares.core.face_state import FaceState, get_face_config, emotion_to_face_sta
 from ares.core.identity import Identity, DEFAULT_IDENTITY
 from ares.core.personality import CharacterProfile, DEFAULT_PROFILE, load_personality, save_personality
 from ares.memory_store import MemoryStore, default_memory_store
-from ares.models.cognitive import CognitiveSnapshot, LoopBlock, MemoryHitBlock
+from ares.models.cognitive import (
+    CognitiveSnapshot,
+    LoopBlock,
+    MemoryHitBlock,
+    ThoughtBlock,
+    ThoughtNode,
+)
 from ares.runtime.session_store import SessionStore
 
 logger = logging.getLogger("ares.api")
@@ -646,7 +652,23 @@ def create_app(
         except RuntimeError:
             main_event_loop = None
 
-        def _on_phase_change(_state):
+        def _on_phase_change(state):
+            # Persist the cycle's reasoning DAG once it's complete (reflect
+            # is the last phase per cycle). Stored as episodic metadata so
+            # replay can reconstruct the trace.
+            if state.phase.name == "REFLECT" and state.branches:
+                try:
+                    memory.record_episodic(
+                        f"[cycle {state.cycle}] " + " → ".join(b.label for b in state.branches),
+                        metadata={
+                            "kind": "reasoning_trace",
+                            "cycle": state.cycle,
+                            "dag": [b.to_dict() for b in state.branches],
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("DAG persistence failed: %s", e)
+
             if main_event_loop is None:
                 return
             snapshot = _build_snapshot(loop, list(_last_recall))
@@ -856,6 +878,21 @@ def _build_snapshot(
         return CognitiveSnapshot(running=False, memory_recall=recall)
     state = loop.state
     elapsed_ms = int(max(0, (time.time() - state.started_at) * 1000))
+    branches = [
+        ThoughtNode(
+            id=b.id,
+            parent_ids=list(b.parent_ids),
+            label=b.label,
+            status=b.status,
+            duration_ms=b.duration_ms,
+            evidence=list(b.evidence),
+        )
+        for b in state.branches
+    ]
+    thought = None
+    if branches:
+        summary = branches[-1].label if branches[-1].label else None
+        thought = ThoughtBlock(summary=summary, depth=len(branches), branches=branches)
     return CognitiveSnapshot(
         running=loop._running,
         loop=LoopBlock(
@@ -866,6 +903,7 @@ def _build_snapshot(
             tokens_used=state.tokens_used,
             elapsed_ms=elapsed_ms,
         ),
+        thought=thought,
         memory_recall=recall,
         errors=list(state.errors),
     )

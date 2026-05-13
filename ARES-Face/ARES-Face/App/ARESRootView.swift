@@ -73,6 +73,8 @@ struct ARESRootView: View {
         switch selectedPage {
         case .sessions:
             MemoryInspectorView()
+        case .logs:
+            MissionControlPanel()
         default:
             VStack {
                 Spacer()
