@@ -2,7 +2,8 @@ import SwiftUI
 
 struct ImmersionBar: View {
     @EnvironmentObject var brain: BrainConnection
-    
+    @Binding var cognitiveExpanded: Bool
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(ImmersionLevel.allCases, id: \.self) { level in
@@ -21,19 +22,21 @@ struct ImmersionBar: View {
                 }
                 .buttonStyle(.plain)
             }
-            
+
             Spacer()
-            
+
+            CognitiveHeartbeatPill(isExpanded: $cognitiveExpanded)
+
             Text(brain.agentState.rawValue.capitalized)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.trailing, 4)
-            
+
             Text(brain.avatarExpression.rawValue.capitalized)
                 .font(.caption2)
                 .foregroundColor(.secondary.opacity(0.8))
                 .padding(.trailing, 4)
-            
+
             Circle()
                 .fill(stateColor)
                 .frame(width: 7, height: 7)

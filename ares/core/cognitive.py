@@ -249,6 +249,12 @@ class CognitiveLoop:
         self._act_handlers: List[Callable] = []
         self._reflect_handlers: List[Callable] = []
 
+        # Phase-change observer — called as on_phase_change(state) after every
+        # phase transition. Used by the API server to broadcast cognitive
+        # snapshots over the WebSocket. Set to a no-op by default so the loop
+        # works headless.
+        self.on_phase_change: Callable[["CognitiveState"], None] = lambda _state: None
+
         # Register default stop hooks
         self.add_stop_hook(StopHook(
             "budget_exhausted",
@@ -313,6 +319,7 @@ class CognitiveLoop:
 
         self.state.phase = Phase.PERCEIVE
         self.state.last_input = input_data
+        self._notify_phase_change()
         return input_data
 
     def _think(self, input_data: dict) -> dict:
@@ -344,6 +351,7 @@ class CognitiveLoop:
                 self.state.errors.append(str(e))
 
         self.state.phase = Phase.THINK
+        self._notify_phase_change()
         return plan
 
     def _act(self, plan: dict) -> dict:
@@ -368,6 +376,7 @@ class CognitiveLoop:
 
         self.state.phase = Phase.ACT
         self.state.last_action = actions_taken
+        self._notify_phase_change()
         return actions_taken
 
     def _reflect(self, actions_taken: dict) -> str:
@@ -395,6 +404,7 @@ class CognitiveLoop:
 
         self.state.phase = Phase.REFLECT
         self.state.last_reflection = reflection
+        self._notify_phase_change()
 
         # Update face based on result
         if self.state.errors:
@@ -403,6 +413,17 @@ class CognitiveLoop:
             self._update_face(FaceState.IDLE)  # Relaxed
 
         return reflection
+
+    def _notify_phase_change(self) -> None:
+        """Fire the on_phase_change observer with the current state.
+
+        Observer exceptions are swallowed — the loop must not crash because a
+        UI subscriber misbehaved.
+        """
+        try:
+            self.on_phase_change(self.state)
+        except Exception as e:
+            logger.warning("on_phase_change observer error: %s", e)
 
     def _update_face(self, state: FaceState) -> None:
         """Publish face state update to the bus."""

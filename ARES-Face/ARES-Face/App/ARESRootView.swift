@@ -6,23 +6,37 @@ struct ARESRootView: View {
     @EnvironmentObject var voice: VoiceManager
     @State private var showLaunchAnimation = true
     @State private var currentStyle: AvatarStyle = .blackFire
-    
+    @State private var cognitiveExpanded = false
+    @State private var selectedPage: DashboardPage = .chat
+
     var body: some View {
         ZStack {
             backgroundLayer
-            
+
             if showLaunchAnimation {
                 LaunchRipple()
                     .transition(.opacity)
                     .zIndex(1000)
             }
-            
-            VStack(spacing: 0) {
-                ImmersionBar()
-                AvatarSceneView(style: $currentStyle)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                ChatStream()
-                CommandBar()
+
+            HStack(spacing: 0) {
+                if brain.immersionLevel != .full {
+                    SidebarView(selectedPage: $selectedPage)
+                }
+
+                VStack(spacing: 0) {
+                    ImmersionBar(cognitiveExpanded: $cognitiveExpanded)
+
+                    if cognitiveExpanded {
+                        CognitiveActivityPanel()
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    AvatarSceneView(style: $currentStyle)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ChatStream()
+                    CommandBar()
+                }
             }
             .opacity(showLaunchAnimation ? 0 : 1)
             .animation(.easeIn(duration: 1.0).delay(1.8), value: showLaunchAnimation)

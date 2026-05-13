@@ -52,6 +52,7 @@ from ares.core.cognitive import CognitiveLoop, create_loop
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
 from ares.core.identity import Identity, DEFAULT_IDENTITY
 from ares.core.personality import CharacterProfile, DEFAULT_PROFILE, load_personality, save_personality
+from ares.models.cognitive import CognitiveSnapshot, LoopBlock
 
 logger = logging.getLogger("ares.api")
 
@@ -556,6 +557,27 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             return {"status": "already_running", "goal": goal}
 
         loop = create_loop(personality=personality, max_cycles=50)
+
+        # Bridge synchronous phase-change events from the loop thread into
+        # the async WebSocket broadcast. The loop runs in a thread; we
+        # capture the running event loop here so the observer can schedule
+        # the coroutine onto it from the worker thread.
+        try:
+            main_event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            main_event_loop = None
+
+        def _on_phase_change(_state):
+            if main_event_loop is None:
+                return
+            snapshot = _build_snapshot(loop)
+            payload = {"type": "cognitive_snapshot", **snapshot.model_dump()}
+            asyncio.run_coroutine_threadsafe(
+                _broadcast(websocket_clients, payload),
+                main_event_loop,
+            )
+
+        loop.on_phase_change = _on_phase_change
         _cognitive_loop = loop
 
         def _run_loop():
@@ -579,20 +601,14 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         _cognitive_loop.stop()
         return {"status": "stopping"}
 
-    @app.get("/api/cognitive/status")
-    async def cognitive_status():
-        global _cognitive_loop
-        if _cognitive_loop is None:
-            return {"running": False, "status": "not_started"}
-        return {
-            "running": _cognitive_loop._running,
-            "cycle": _cognitive_loop.state.cycle,
-            "phase": _cognitive_loop.state.phase.value,
-            "urgency": _cognitive_loop.state.urgency.value,
-            "budget_remaining": _cognitive_loop.state.budget_remaining,
-            "face_state": _cognitive_loop.state.face_state.value,
-            "errors": _cognitive_loop.state.errors,
-        }
+    @app.get("/api/cognitive/status", response_model=CognitiveSnapshot)
+    async def cognitive_status() -> CognitiveSnapshot:
+        """Return a CognitiveSnapshot for the current loop (or idle if none).
+
+        The same shape is pushed over the WebSocket as
+        `{"type": "cognitive_snapshot", ...}` on every phase transition.
+        """
+        return _build_snapshot(_cognitive_loop)
 
     # ------------------------------------------------------------------
     # WebSocket
@@ -679,10 +695,16 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                 elif action == "ping":
                     await websocket.send_json({"type": "pong", "timestamp": time.time()})
 
+                elif action == "get_cognitive_snapshot":
+                    snapshot = _build_snapshot(_cognitive_loop)
+                    await websocket.send_json({
+                        "type": "cognitive_snapshot", **snapshot.model_dump(),
+                    })
+
                 else:
                     await websocket.send_json({
                         "type": "error", "message": f"Unknown action: {action}",
-                        "valid_actions": ["set_face_state", "set_personality", "chat", "ping"],
+                        "valid_actions": ["set_face_state", "set_personality", "chat", "ping", "get_cognitive_snapshot"],
                     })
 
         except WebSocketDisconnect:
@@ -735,6 +757,31 @@ async def _broadcast(clients: set, data: dict) -> None:
         except Exception:
             disconnected.add(ws)
     clients -= disconnected
+
+
+def _build_snapshot(loop: Optional[CognitiveLoop]) -> CognitiveSnapshot:
+    """Compose a CognitiveSnapshot from a loop instance.
+
+    Accepts None — returns an idle snapshot suitable for the UI heartbeat
+    when no loop has been started yet. Lives in the API layer (not in
+    `core/cognitive.py`) so the loop has no Pydantic dependency.
+    """
+    if loop is None:
+        return CognitiveSnapshot(running=False)
+    state = loop.state
+    elapsed_ms = int(max(0, (time.time() - state.started_at) * 1000))
+    return CognitiveSnapshot(
+        running=loop._running,
+        loop=LoopBlock(
+            cycle=state.cycle,
+            phase=state.phase.value,
+            urgency=state.urgency.value,
+            budget_remaining=state.budget_remaining,
+            tokens_used=state.tokens_used,
+            elapsed_ms=elapsed_ms,
+        ),
+        errors=list(state.errors),
+    )
 
 
 # ---------------------------------------------------------------------------
