@@ -55,19 +55,25 @@ struct AvatarSceneView: View {
     
     private func updateAvatarUniforms() {
         guard var material = currentMaterial else { return }
-        
+
         let stateConfig = FaceConfig.config(for: brain.agentState)
         let intensity = stateConfig.intensity
         let expression = brain.avatarExpression.floatValue
         let isSpeaking: Float = brain.agentState == .speaking ? 1.0 : 0.0
         let time = renderer?.elapsedTime ?? 0
-        
+
+        // Bind cognition metrics to the cognitive uniform slots. Pure
+        // function — change the binding rules in CognitiveBindings.swift
+        // without touching this site.
+        let cognition = CognitiveBindings.evaluate(brain.cognitive, time: time)
+
         renderer?.updateSurfaceUniforms(
             material: &material,
             intensity: intensity,
             expression: expression,
             isSpeaking: isSpeaking,
-            time: time
+            time: time,
+            cognition: cognition
         )
         
         if let geoParams = renderer?.geometryParams(for: brain.agentState) {
