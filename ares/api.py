@@ -49,6 +49,7 @@ from pydantic import BaseModel, Field
 
 from ares.core.bus import ARESBus, BusMessage, get_bus
 from ares.core.cognitive import CognitiveLoop, create_loop
+from ares.core.idle import IdleReport, run_idle_pass
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
 from ares.core.identity import Identity, DEFAULT_IDENTITY
 from ares.core.personality import CharacterProfile, DEFAULT_PROFILE, load_personality, save_personality
@@ -295,6 +296,9 @@ def create_app(
     # Tracks the last snapshot delivered to clients — used by /api/chat to
     # include memory hits in the next push without re-querying twice.
     _last_recall: list[MemoryHitBlock] = []
+    # Last idle reflexion report, served by /api/idle/last_report so the
+    # UI can surface "open questions" and "summary facts written".
+    _last_idle_report: dict = {}
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -632,6 +636,27 @@ def create_app(
     async def delete_episodic(episodic_id: str):
         memory.delete_episodic(episodic_id)
         return {"deleted": episodic_id}
+
+    # ------------------------------------------------------------------
+    # Idle reflexion
+    # ------------------------------------------------------------------
+
+    @app.post("/api/idle/run")
+    async def run_idle():
+        """Trigger a one-shot reflexion pass (consolidate + dedupe + surface)."""
+        report = run_idle_pass(memory)
+        _last_idle_report.clear()
+        _last_idle_report.update(report.to_dict())
+        return _last_idle_report
+
+    @app.get("/api/idle/last_report")
+    async def last_idle_report():
+        return _last_idle_report or {
+            "consolidated_sessions": 0,
+            "summary_fact_ids": [],
+            "duplicates_merged": 0,
+            "open_questions": [],
+        }
 
     @app.post("/api/cognitive/start")
     async def start_cognitive_loop(goal: str = "Observe and respond"):
