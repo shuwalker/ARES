@@ -1,16 +1,24 @@
+.DS_Store
+*.xcworkspace
+*.xcodeproj
+xcuserdata
+
+# Python artifacts
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
+.venv/
+venv/
 *.egg-info/
 dist/
 build/
-.eggs/
-*.egg
-.env
-.venv
-venv/
-ENV/
 
-# ARES runtime (not source)
-# These live in ~/.ares/ not in the repo
+# Swift/SPM artifacts
+.build/
+Package.resolved
+*.iconset/
+.swiftpm/
+
+# ARES runtime state
+~/.ares/
+ares/__pycache__/

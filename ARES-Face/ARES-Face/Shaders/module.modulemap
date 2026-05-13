@@ -1,0 +1,4 @@
+module ARESShaders {
+    header "SharedHeader.h"
+    export *
+}

@@ -530,22 +530,105 @@ def setup() -> None:
 # ---------------------------------------------------------------------------
 
 @main.command(name="init")
-def init_cmd() -> None:
-    """Initialize ARES directories and default config."""
+@click.option("--force-brain-transport", is_flag=True, default=False,
+              help="Re-run brain transport even if already migrated")
+@click.option("--skip-hermes", is_flag=True, default=False,
+              help="Skip Hermes installation (use existing)")
+def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
+    """Initialize ARES — install Hermes, transport brain data, set up directories.
+
+    This command:
+    1. Creates ~/.ares/ directory structure
+    2. Installs Hermes Agent if not found (or uses existing)
+    3. Transfers brain data from ~/.hermes/ to ~/.ares/.hermes/
+    4. Writes default config
+    5. Registers built-in tools
+    """
+    from .runtime.launcher import ARES_HOME, HERMES_HOME, find_hermes, install_hermes, hermes_status
+    from .runtime.brain_transport import transport_brain, is_migrated, get_transport_status
+
+    console.print(Panel.fit("[bold]ARES — Autonomous Reasoning & Execution System[/bold]", border_style="bright_blue"))
+
+    # ── Step 1: Create directory structure ──
+    console.print("\n[bold][1/5] Creating ~/.ares/ directory structure...[/bold]")
     paths = ares_paths()
     write_default_config()
+
+    # Ensure ARES_HOME directories exist
+    for subdir in ["memory", "profiles", "workspace", "trajectories", "logs"]:
+        (ARES_HOME / subdir).mkdir(parents=True, exist_ok=True)
+        console.print(f"  ✓ {ARES_HOME / subdir}")
+
+    # ── Step 2: Install Hermes ──
+    if skip_hermes:
+        console.print("\n[dim][2/5] Skipping Hermes installation (--skip-hermes)[/dim]")
+        hermes_dir = find_hermes()
+        if hermes_dir:
+            console.print(f"  Using existing: {hermes_dir}")
+        else:
+            console.print("  [yellow]Warning: No Hermes found. Run 'ares init' without --skip-hermes later.[/yellow]")
+    else:
+        console.print("\n[bold][2/5] Checking Hermes Agent installation...[/bold]")
+        hermes_dir = find_hermes()
+        if hermes_dir:
+            console.print(f"  [green]✓[/green] Hermes found at {hermes_dir}")
+        else:
+            console.print("  Hermes not found. Installing...")
+            hermes_dir = install_hermes()
+            console.print(f"  [green]✓[/green] Hermes installed at {hermes_dir}")
+
+    # ── Step 3: Brain transport ──
+    console.print("\n[bold][3/5] Brain transport — importing Hermes data...[/bold]")
+    if is_migrated() and not force_brain_transport:
+        console.print("  [green]✓[/green] Brain already transported to ~/.ares/.hermes/")
+        transport_status = get_transport_status()
+        if transport_status["legacy_exists"]:
+            console.print(f"  [dim]Legacy data at {transport_status['legacy_dir']} still exists (unchanged)[/dim]")
+    else:
+        transport_status = get_transport_status()
+        if transport_status["legacy_exists"]:
+            console.print("  Copying from ~/.hermes/ → ~/.ares/.hermes/...")
+            result = transport_brain()
+            for item in result["copied"]:
+                console.print(f"  [green]✓[/green] Copied: {item}")
+            for item in result["skipped"]:
+                console.print(f"  [dim]• Skipped: {item}[/dim]")
+            if result["errors"]:
+                console.print(f"  [red]Errors:[/red]")
+                for err in result["errors"]:
+                    console.print(f"    [red]✗ {err}[/red]")
+            console.print("  [green]✓[/green] Brain transport complete.")
+        else:
+            console.print("  [dim]No legacy ~/.hermes/ found — skipping transport.[/dim]")
+            console.print("  [dim]Fresh install. Hermes will create config on first run.[/dim]")
+
+    # ── Step 4: Register tools ──
+    console.print("\n[bold][4/5] Registering built-in tools...[/bold]")
     from .tools.registry import ensure_builtin_tools
     ensure_builtin_tools()
+    console.print("  [green]✓[/green] Tools registered.")
 
-    console.print("[bold green]ARES initialized.[/bold green]")
-    console.print(f"Home: {paths['home']}")
+    # ── Step 5: Status ──
+    console.print("\n[bold][5/5] Installation status:[/bold]")
+    status = hermes_status()
+    console.print(f"  Hermes installed: {'[green]✓[/green]' if status['installed'] else '[red]✗[/red]'}")
+    if status['installed']:
+        console.print(f"  Hermes location: {status['hermes_dir']}")
+        console.print(f"  ARES-managed: {'[green]✓[/green]' if status['ares_managed'] else '[yellow]legacy install[/yellow]'}")
+    console.print(f"  HERMES_HOME: {status['hermes_home']}")
+    console.print(f"  Config: {status['hermes_home_has_config'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
+    console.print(f"  Skills: {status['hermes_home_has_skills'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
+    console.print(f"  State: {status['hermes_home_has_state'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
+
+    console.print(f"\n[bold green]ARES initialized.[/bold green]")
+    console.print(f"Home: {ARES_HOME}")
     console.print(f"Config: {paths['config'] / 'ares.toml'}")
     console.print(f"Memory: {paths['memory']}")
-    console.print(f"Logs: {paths['logs']}")
+    console.print(f"HERMES_HOME: {HERMES_HOME}")
     console.print("\nNext steps:")
-    console.print("  1. Set ANTHROPIC_API_KEY in your environment")
-    console.print("  2. Run 'ares setup' for first-time domain discovery")
-    console.print("  3. Run 'ares start' to launch the daemon")
+    console.print("  1. Run [bold]ares start[/bold] to launch ARES daemon")
+    console.print("  2. Run [bold]ares shell[/bold] to open Hermes CLI")
+    console.print("  3. Run [bold]ares goal \"...\"[/bold] to give ARES a task")
 
 
 # ---------------------------------------------------------------------------
@@ -557,3 +640,137 @@ def version() -> None:
     """Show ARES version."""
     from . import __version__
     console.print(f"ARES v{__version__}")
+
+
+# ---------------------------------------------------------------------------
+# ares shell
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.option("--model", default=None, help="Override default model (e.g. deepseek-v4-pro:cloud)")
+def shell(model: str | None) -> None:
+    """Open an interactive Hermes shell with ARES's HERMES_HOME.
+
+    This launches the Hermes CLI pointed at ~/.ares/.hermes/ so it uses
+    ARES's brain (config, skills, sessions, API keys).
+    """
+    from .runtime.launcher import HERMES_HOME, start_hermes
+
+    env_hermes_home = os.environ.get("HERMES_HOME")
+    if env_hermes_home and env_hermes_home != str(HERMES_HOME):
+        console.print(f"[yellow]Warning: HERMES_HOME is set to {env_hermes_home}[/yellow]")
+        console.print(f"[yellow]ARES will use {HERMES_HOME} instead.[/yellow]")
+
+    args = []
+    if model:
+        args.extend(["--model", model])
+
+    console.print(f"[bold]ARES Shell[/bold] — HERMES_HOME={HERMES_HOME}")
+    console.print(f"[dim]Launching Hermes CLI...[/dim]\n")
+
+    try:
+        proc = start_hermes(extra_args=args)
+        proc.wait()
+    except KeyboardInterrupt:
+        console.print("\n[dim]Shell exited.[/dim]")
+    except RuntimeError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        console.print("Run [bold]ares init[/bold] first to install Hermes.")
+
+
+# ---------------------------------------------------------------------------
+# ares serve
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.option("--host", default="0.0.0.0", help="Host to bind to")
+@click.option("--port", default=7860, type=int, help="Port to bind to")
+@click.option("--reload", is_flag=True, default=False, help="Auto-reload on code changes (dev mode)")
+def serve(host: str, port: int, reload: bool) -> None:
+    """Start the ARES API server (REST + WebSocket).
+
+    The server exposes endpoints for the SwiftUI face to connect to:
+      GET  /api/status          — system status
+      GET  /api/identity        — who ARES is
+      GET  /api/personality     — 4-layer personality profile
+      POST /api/personality     — set a personality trait
+      GET  /api/face            — current face state
+      POST /api/face            — set face state or emotion
+      POST /api/chat            — send a message
+      WS   /ws                  — real-time streaming
+    """
+    import uvicorn
+    from .api import create_app
+
+    console.print(Panel.fit(
+        f"[bold]ARES API Server[/bold]\n"
+        f"URL: http://{host}:{port}\n"
+        f"Docs: http://{host}:{port}/docs\n"
+        f"Reload: {'on' if reload else 'off'}",
+        border_style="bright_blue",
+    ))
+
+    app = create_app()
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+# ---------------------------------------------------------------------------
+# ares mcp
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging")
+def mcp(verbose: bool) -> None:
+    """Start the ARES MCP server (stdio transport).
+
+    Exposes ARES tools to MCP clients like Claude Code, Cursor, etc.
+    Add to your claude_desktop_config.json:
+        {"mcpServers": {"ares": {"command": "ares", "args": ["mcp"]}}}
+    """
+    from .mcp_serve import run_mcp_server
+    run_mcp_server(verbose=verbose)
+
+
+# ---------------------------------------------------------------------------
+# ares doctor
+# ---------------------------------------------------------------------------
+
+@main.command()
+def doctor() -> None:
+    """Check health of all ARES components."""
+    from .runtime.launcher import hermes_status, HERMES_HOME
+    from .runtime.brain_transport import get_transport_status
+
+    console.print(Panel.fit("[bold]ARES Health Check[/bold]", border_style="bright_blue"))
+
+    # Hermes
+    h_status = hermes_status()
+    console.print(f"\n[bold]Hermes Agent[/bold]")
+    console.print(f"  Installed: {'[green]✓[/green]' if h_status['installed'] else '[red]✗[/red]'}")
+    if h_status['installed']:
+        console.print(f"  Location: {h_status['hermes_dir']}")
+        console.print(f"  ARES-managed: {'[green]✓[/green]' if h_status['ares_managed'] else '[yellow]legacy[/yellow]'}")
+        console.print(f"  Venv: {'[green]✓[/green]' if h_status.get('venv_exists') else '[red]✗[/red]'}")
+
+    # HERMES_HOME
+    console.print(f"\n[bold]HERMES_HOME ({HERMES_HOME})[/bold]")
+    console.print(f"  Config: {'[green]✓[/green]' if h_status['hermes_home_has_config'] else '[red]✗[/red]'}")
+    console.print(f"  Skills: {'[green]✓[/green]' if h_status['hermes_home_has_skills'] else '[red]✗[/red]'}")
+    console.print(f"  State: {'[green]✓[/green]' if h_status['hermes_home_has_state'] else '[red]✗[/red]'}")
+
+    # Brain transport
+    t_status = get_transport_status()
+    console.print(f"\n[bold]Brain Transport[/bold]")
+    console.print(f"  Migrated: {'[green]✓[/green]' if t_status['is_migrated'] else '[yellow]pending[/yellow]'}")
+    console.print(f"  Legacy ~/.hermes/ exists: {'[green]✓[/green]' if t_status['legacy_exists'] else '[dim]no[/dim]'}")
+    if t_status['legacy_items']:
+        for item in t_status['legacy_items']:
+            console.print(f"    {item}")
+
+    # ARES directories
+    from .runtime.launcher import ARES_HOME
+    console.print(f"\n[bold]ARES Home ({ARES_HOME})[/bold]")
+    for subdir in ["memory", "profiles", "workspace", "logs", "config"]:
+        path = ARES_HOME / subdir
+        exists = path.exists()
+        console.print(f"  {subdir}: {'[green]✓[/green]' if exists else '[yellow]missing[/yellow]'}")
