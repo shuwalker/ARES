@@ -5,7 +5,7 @@ Runs as a macOS launchd service. Core loop:
     2. Get next ready task from queue
     3. Reason (decompose into plan)
     4. Propose to user if new installs required
-    5. Execute with checkpoints
+    5. Execute with approval gates
     6. Write retrospective to memory
     7. Flush state to iCloud
     8. Sleep 1s, repeat
@@ -15,21 +15,30 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import signal
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from .audit import log, log_sync
 from .config import get_config, ares_paths, write_default_config
+from .core.bus import ARESBus, BusMessage, get_bus
+from .core.face_state import FaceState, get_face_config
 from .memory import write_retrospective
 from .reasoning import reason, format_proposal, Plan
+from .runtime.hermes_bridge import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
 from .sync import flush
 from .tasks.queue import Inbox, Task, get_next_ready, update_task, archive_task
 from .tasks.executor import PlanExecutor
 from .tools.registry import ensure_builtin_tools, probe_all_tools
+
+logger = logging.getLogger("ares.daemon")
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +123,10 @@ class IPCServer:
 # ---------------------------------------------------------------------------
 
 class Daemon:
+    # Bridge health-check constants
+    BRIDGE_HEALTH_RETRIES = 3
+    BRIDGE_HEALTH_DELAY = 2.0  # seconds between retries
+
     def __init__(self) -> None:
         self.running = False
         self.paused = False
@@ -126,6 +139,33 @@ class Daemon:
         )
         self.ipc = IPCServer(self)
         self._current_task: Task | None = None
+        self._bus: ARESBus = get_bus()
+        self._bridge_thread: threading.Thread | None = None
+        self.bridge_available = False
+
+    # -- Face state publishing ------------------------------------------------
+
+    def _publish_face(self, state: FaceState, task_id: str | None = None) -> None:
+        """Publish a face state update to the bus.
+
+        The bus delivers to both ZMQ subscribers (Face app, voice, etc.)
+        and in-process listeners (cognitive loop, etc.) without changing
+        any external interface.
+        """
+        config = get_face_config(state)
+        msg = BusMessage(
+            type="face_state",
+            source="daemon",
+            payload={
+                "state": state.value,
+                "task_id": task_id,
+                "color": list(config.color),
+                "opacity": config.opacity,
+                "pulse_speed": config.pulse_speed,
+                "pulse_amount": config.pulse_amount,
+            },
+        )
+        self._bus.dispatch(msg)
 
     async def _approval_cb(self, message: str) -> bool:
         """Interactive approval — prints to terminal, reads from IPC or stdin."""
@@ -144,11 +184,77 @@ class Daemon:
         return {
             "running": self.running,
             "paused": self.paused,
+            "bridge_available": self.bridge_available,
             "active_tasks": len(active),
             "current_task": self._current_task.id if self._current_task else None,
             "current_goal": self._current_task.goal[:80] if self._current_task else None,
             "queue": [{"id": t.id, "goal": t.goal[:60], "status": t.status} for t in active],
         }
+
+    # -- Hermes bridge lifecycle -----------------------------------------------
+
+    def _start_bridge(self) -> None:
+        """Start the Hermes bridge server in a background daemon thread.
+
+        The bridge is a ThreadingHTTPServer — it blocks on serve_forever(), so
+        we run it in a daemon thread that dies with the process.  Callers should
+        invoke _check_bridge_health() after this to confirm it's serving.
+        """
+        from .runtime.hermes_bridge import serve as bridge_serve
+
+        def _run() -> None:
+            try:
+                bridge_serve()
+            except Exception:
+                # serve_forever() only exits on shutdown() or KeyboardInterrupt;
+                # any other exception means the server crashed.
+                logger.exception("Hermes bridge server crashed")
+
+        self._bridge_thread = threading.Thread(
+            target=_run,
+            name="ares-hermes-bridge",
+            daemon=True,
+        )
+        self._bridge_thread.start()
+        logger.info("Hermes bridge thread started on %s:%s", BRIDGE_HOST, BRIDGE_PORT)
+
+    async def _check_bridge_health(self) -> bool:
+        """Probe the bridge /health endpoint.
+
+        Retries up to BRIDGE_HEALTH_RETRIES times with BRIDGE_HEALTH_DELAY
+        seconds between attempts.  Returns True if the bridge responds 200,
+        False if all retries are exhausted.  On failure, logs a clear warning
+        and sets bridge_available=False but does NOT crash the daemon.
+        """
+        url = f"http://{BRIDGE_HOST}:{BRIDGE_PORT}/health"
+        for attempt in range(1, self.BRIDGE_HEALTH_RETRIES + 1):
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    resp = await client.get(url)
+                    if resp.status_code == 200:
+                        self.bridge_available = True
+                        logger.info(
+                            "Hermes bridge health check passed (attempt %d/%d)",
+                            attempt, self.BRIDGE_HEALTH_RETRIES,
+                        )
+                        return True
+            except (httpx.ConnectError, httpx.TimeoutException):
+                pass  # expected during startup — server not yet accepting
+
+            logger.debug(
+                "Bridge health check attempt %d/%d failed — retrying in %.1fs",
+                attempt, self.BRIDGE_HEALTH_RETRIES, self.BRIDGE_HEALTH_DELAY,
+            )
+            await asyncio.sleep(self.BRIDGE_HEALTH_DELAY)
+
+        self.bridge_available = False
+        logger.warning(
+            "Hermes bridge on %s:%s is UNAVAILABLE after %d retries. "
+            "/api/chat will return degraded responses. "
+            "Other daemon functions continue normally.",
+            BRIDGE_HOST, BRIDGE_PORT, self.BRIDGE_HEALTH_RETRIES,
+        )
+        return False
 
     async def start(self) -> None:
         """Start the daemon."""
@@ -165,6 +271,12 @@ class Daemon:
 
         # Start IPC server
         await self.ipc.start()
+
+        # Start Hermes bridge and probe it before the main loop begins.
+        # The /api/chat endpoint on :7860 proxies to :9876/think, so the
+        # bridge MUST be accepting connections before we handle traffic.
+        self._start_bridge()
+        await self._check_bridge_health()
 
         # Main loop
         await self._main_loop()
@@ -203,10 +315,16 @@ class Daemon:
         task.status = "planning"
         update_task(task)
 
+        # Face: awaken when starting a task
+        self._publish_face(FaceState.AWAKENED, task_id=task.id)
+
         await log(task_id=task.id, action="task_start", goal=task.goal[:80])
 
         try:
             # Step 1: Reason — decompose goal into plan
+            # Face: thinking while planning
+            self._publish_face(FaceState.THINKING, task_id=task.id)
+
             plan = await reason(
                 task.goal,
                 task_id=task.id,
@@ -224,6 +342,9 @@ class Daemon:
                 )
 
             # Step 3: Execute the plan
+            # Face: still thinking/acting during execution
+            self._publish_face(FaceState.THINKING, task_id=task.id)
+
             result = await self.executor.execute(task, plan)
 
             # Step 4: Write retrospective
@@ -238,11 +359,17 @@ class Daemon:
 
             await log(task_id=task.id, action="task_done", result=result[:100])
 
+            # Face: idle after successful completion
+            self._publish_face(FaceState.IDLE, task_id=task.id)
+
         except Exception as exc:
             await log(task_id=task.id, action="task_error", error=str(exc)[:200])
             task.status = "failed"
             task.error = str(exc)[:500]
             update_task(task)
+
+            # Face: sleeping on failure (signals error state visually)
+            self._publish_face(FaceState.SLEEPING, task_id=task.id)
 
         finally:
             archive_task(task)

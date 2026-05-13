@@ -1,10 +1,19 @@
 """ARES API Server — FastAPI bridge between Python brain and Swift face.
 
 This is the web layer that lets the SwiftUI app talk to ARES's Python core.
-It exposes:
+It manages the lifecycle of all MCP servers (perception, voice, avatar) and
+the cognition bridge, exposing a unified /api/services health endpoint.
+
+Managed services (all started/stopped with the FastAPI app):
+    :7860  — FastAPI (this process)
+    :9512  — Perception MCP (YOLOv8n + Florence-2)
+    :9513  — Voice MCP (STT + TTS)
+    :9514  — Avatar MCP (VTube Studio)
+    :9876  — Hermes cognition bridge
 
 REST endpoints:
     GET  /api/status           — system status
+    GET  /api/services         — health of all 6 services
     GET  /api/identity         — who ARES is
     GET  /api/personality       — 4-layer personality profile
     POST /api/personality       — set a personality trait
@@ -15,14 +24,7 @@ REST endpoints:
     GET  /api/memory            — search memory
 
 WebSocket:
-    WS   /ws                    — real-time stream of:
-                                   - chat messages
-                                   - face state updates
-                                   - brain output
-                                   - personality changes
-
-The server connects to the ZMQ bus for face state events and dispatches
-them to connected WebSocket clients in real time.
+    WS   /ws                    — real-time stream
 """
 
 from __future__ import annotations
@@ -31,7 +33,11 @@ import asyncio
 import json
 import logging
 import os
+import signal
+import subprocess
+import sys
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -41,7 +47,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from ares.core.bus import ARESBus, BusMessage, PortMap, get_bus
+from ares.core.bus import ARESBus, BusMessage, get_bus
 from ares.core.cognitive import CognitiveLoop, create_loop
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
 from ares.core.identity import Identity, DEFAULT_IDENTITY
@@ -49,11 +55,171 @@ from ares.core.personality import CharacterProfile, DEFAULT_PROFILE, load_person
 
 logger = logging.getLogger("ares.api")
 
-# Global cognitive loop reference (started on app startup)
+# Global cognitive loop reference
 _cognitive_loop: Optional[CognitiveLoop] = None
 
 # ---------------------------------------------------------------------------
-# Pydantic request/response models
+# Service Manager — subprocess lifecycle for all background servers
+# ---------------------------------------------------------------------------
+
+VENV_PYTHON = "/Users/matthewjenkins/.hermes/hermes-agent/venv/bin/python"
+REPO_ROOT = Path(__file__).resolve().parent.parent  # ARES-Autonomous-Reasoning-Execution-System/
+
+
+class ManagedService:
+    """A subprocess-managed service that starts/stops with the FastAPI app."""
+
+    def __init__(self, name: str, port: int, module: str, kind: str = "mcp"):
+        self.name = name
+        self.port = port
+        self.module = module  # Python dotted path (e.g. ares.skills.cognitive.perception_server)
+        self.kind = kind  # "mcp", "bridge"
+        self.process: Optional[subprocess.Popen] = None
+        self.start_time: Optional[float] = None
+
+    def _kill_port_owner(self):
+        """Kill any process already listening on our port."""
+        import signal as _signal
+        try:
+            result = subprocess.run(
+                ["lsof", "-ti", f":{self.port}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for pid_str in result.stdout.strip().split("\n"):
+                pid = pid_str.strip()
+                if pid and pid.isdigit():
+                    try:
+                        os.kill(int(pid), _signal.SIGTERM)
+                        logger.info("%s: killed stale PID %s on :%d", self.name, pid, self.port)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+
+    def start(self):
+        """Start the service as a subprocess."""
+        if self.process is not None and self.process.poll() is None:
+            logger.info("%s already running (PID %d)", self.name, self.process.pid)
+            return
+
+        # Kill anything already on our port
+        self._kill_port_owner()
+
+        # Use python -m for package modules
+        cmd = [VENV_PYTHON, "-m", self.module]
+
+        logger.info("Starting %s on :%d — %s", self.name, self.port, " ".join(cmd))
+        self.process = subprocess.Popen(
+            cmd,
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # merge stderr to stdout for capture
+            stdin=subprocess.DEVNULL,
+        )
+        self.start_time = time.time()
+
+        # Brief wait to check for immediate crash
+        time.sleep(1.5)
+        if self.process.poll() is not None:
+            out = self.process.stdout.read().decode(errors="replace") if self.process.stdout else ""
+            logger.error("%s crashed on start: %s", self.name, out[:500])
+        else:
+            logger.info("%s started (PID %d)", self.name, self.process.pid)
+
+    def stop(self):
+        """Gracefully stop the service."""
+        if self.process is None or self.process.poll() is not None:
+            return
+
+        logger.info("Stopping %s (PID %d)", self.name, self.process.pid)
+        try:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+        except Exception as e:
+            logger.warning("Error stopping %s: %s", self.name, e)
+        self.process = None
+        self.start_time = None
+
+    def is_running(self) -> bool:
+        """Check if the process is alive."""
+        if self.process is None:
+            return False
+        return self.process.poll() is None
+
+    async def health_check(self) -> dict:
+        """Check service health by attempting a connection."""
+        import socket
+
+        result = {
+            "name": self.name,
+            "port": self.port,
+            "kind": self.kind,
+            "running": self.is_running(),
+            "pid": self.process.pid if self.is_running() else None,
+            "uptime": int(time.time() - self.start_time) if self.start_time else 0,
+            "reachable": False,
+        }
+
+        # TCP check
+        if self.is_running():
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                if sock.connect_ex(("127.0.0.1", self.port)) == 0:
+                    result["reachable"] = True
+                sock.close()
+            except Exception:
+                pass
+
+        # HTTP health check for bridge
+        if self.kind == "bridge" and result["reachable"]:
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"http://127.0.0.1:{self.port}/health")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        result["health_response"] = data
+            except Exception:
+                result["health_response_error"] = "unreachable"
+
+        return result
+
+
+# Define all managed services
+SERVICES = [
+    ManagedService(
+        name="perception",
+        port=9512,
+        module="ares.skills.cognitive.perception_server",
+        kind="mcp",
+    ),
+    ManagedService(
+        name="voice",
+        port=9513,
+        module="ares.skills.cognitive.voice_server",
+        kind="mcp",
+    ),
+    ManagedService(
+        name="avatar",
+        port=9514,
+        module="ares.skills.cognitive.avatar_server",
+        kind="mcp",
+    ),
+    ManagedService(
+        name="cognition_bridge",
+        port=9876,
+        module="ares.runtime.hermes_bridge",
+        kind="bridge",
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models
 # ---------------------------------------------------------------------------
 
 class PersonalityUpdateRequest(BaseModel):
@@ -102,14 +268,53 @@ class MemorySearchRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> FastAPI:
-    """Create the ARES FastAPI application."""
+    """Create the ARES FastAPI application with managed service lifecycle."""
+
+    bus = bus or get_bus()
+    personality = personality or load_personality()
+    websocket_clients: set = set()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Start all managed services on startup, stop them on shutdown."""
+        global _cognitive_loop
+
+        # ── Startup ──────────────────────────────────────────────────
+        logger.info("ARES API starting — initializing all services")
+        bus.start_heartbeat(interval_sec=5.0, source="ares_api")
+
+        # Start all MCP servers + bridge
+        for svc in SERVICES:
+            svc.start()
+
+        # Initialize face state
+        _save_face_state({"current_state": "idle", "state": "idle"})
+
+        # Connect to cognition bus
+        bus.on("face_state", _on_face_state)
+
+        logger.info("ARES API ready — all services launched")
+        yield
+
+        # ── Shutdown ─────────────────────────────────────────────────
+        logger.info("ARES API shutting down — stopping all services")
+        if _cognitive_loop is not None:
+            _cognitive_loop.stop()
+
+        for svc in SERVICES:
+            svc.stop()
+
+        bus.stop()
+        logger.info("ARES API shutdown complete")
+
     app = FastAPI(
         title="ARES API",
         version="0.1.0",
         description="Autonomous Reasoning & Execution System — brain API",
+        lifespan=lifespan,
     )
 
-    # CORS — allow SwiftUI app to connect from anywhere on the same machine
+    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:*", "http://127.0.0.1:*"],
@@ -118,40 +323,9 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         allow_headers=["*"],
     )
 
-    # State
-    bus = bus or get_bus()
-    personality = personality or load_personality()
-    websocket_clients: set = set()
-
-    # -----------------------------------------------------------------------
-    # Lifespan: start/stop cognitive loop
-    # -----------------------------------------------------------------------
-    @app.on_event("startup")
-    async def startup():
-        global _cognitive_loop
-        logger.info("ARES API starting up — initializing cognitive loop")
-        # Start bus heartbeat so modules know we're alive
-        bus.start_heartbeat(interval_sec=5.0, source="ares_api")
-        logger.info("Bus heartbeat started (5s interval)")
-        # Initialize face state to idle on startup
-        _save_face_state({
-            "current_state": "idle",
-            "state": "idle",
-        })
-        logger.info("Face state initialized to idle")
-
-    @app.on_event("shutdown")
-    async def shutdown():
-        global _cognitive_loop
-        logger.info("ARES API shutting down — stopping cognitive loop")
-        if _cognitive_loop is not None:
-            _cognitive_loop.stop()
-        bus.stop()
-        logger.info("Bus stopped")
-
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # REST endpoints
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
     @app.get("/api/status")
     async def get_status():
@@ -166,6 +340,62 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             "bus": bus_status,
             "websocket_clients": len(websocket_clients),
             "uptime": time.time(),
+        }
+
+    @app.get("/api/services")
+    async def get_services():
+        """Get health status of all ARES services.
+
+        Returns a combined report for all 6 services:
+          - FastAPI (this process)
+          - Perception MCP :9512
+          - Voice MCP :9513
+          - Avatar MCP :9514
+          - Cognition bridge :9876
+          - Mac MCP :9501 (external, check-only)
+        """
+        # Check external Mac MCP first
+        import socket
+        mac_mcp = {
+            "name": "mac_mcp",
+            "port": 9501,
+            "kind": "mcp_external",
+            "running": True,  # managed independently
+            "pid": None,
+            "uptime": 0,
+            "reachable": False,
+        }
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            if sock.connect_ex(("127.0.0.1", 9501)) == 0:
+                mac_mcp["reachable"] = True
+            sock.close()
+        except Exception:
+            pass
+
+        # Check all managed services
+        managed_checks = [await svc.health_check() for svc in SERVICES]
+
+        # FastAPI self-check
+        fastapi_status = {
+            "name": "fastapi",
+            "port": 7860,
+            "kind": "api",
+            "running": True,
+            "pid": os.getpid(),
+            "uptime": int(time.time() - getattr(app.state, "start_time", time.time())),
+            "reachable": True,
+        }
+
+        all_services = [fastapi_status] + managed_checks + [mac_mcp]
+
+        return {
+            "status": "ok",
+            "timestamp": time.time(),
+            "total": len(all_services),
+            "healthy": sum(1 for s in all_services if s.get("reachable")),
+            "services": all_services,
         }
 
     @app.get("/api/identity")
@@ -196,7 +426,6 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         setattr(getattr(personality, req.layer), req.trait, round(req.value, 2))
         save_personality(personality)
 
-        # Notify websocket clients
         await _broadcast(websocket_clients, {
             "type": "personality_change",
             "layer": req.layer,
@@ -204,9 +433,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             "value": req.value,
         })
 
-        return PersonalityUpdateResponse(
-            updated=True, layer=req.layer, trait=req.trait, value=req.value,
-        )
+        return PersonalityUpdateResponse(updated=True, layer=req.layer, trait=req.trait, value=req.value)
 
     @app.get("/api/face")
     async def get_face_state():
@@ -215,7 +442,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
 
     @app.post("/api/face")
     async def set_face_state(req: FaceStateRequest):
-        """Set face state or emotion. Triggers face update on all connected clients."""
+        """Set face state or emotion."""
         if req.state:
             try:
                 new_state = FaceState(req.state)
@@ -250,22 +477,9 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         else:
             return _load_face_state()
 
-        # Save state
         _save_face_state(result)
-
-        # Dispatch to bus (in-process)
-        bus.dispatch(BusMessage(
-            type="face_state",
-            source="api",
-            payload=result,
-        ))
-
-        # Broadcast to websocket clients
-        await _broadcast(websocket_clients, {
-            "type": "face_state",
-            **result,
-        })
-
+        bus.dispatch(BusMessage(type="face_state", source="api", payload=result))
+        await _broadcast(websocket_clients, {"type": "face_state", **result})
         return result
 
     @app.post("/api/chat", response_model=ChatResponse)
@@ -273,14 +487,12 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         """Send a message to ARES and get a response via Hermes cognition bridge."""
         personality_prompt = personality.to_system_prompt()
 
-        # Dispatch to bus
         bus.dispatch(BusMessage(
             type="chat_message",
             source="api",
             payload={"message": req.message, "session_id": req.session_id},
         ))
 
-        # Forward to Hermes cognition bridge (:9876)
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 resp = await client.post(
@@ -304,26 +516,21 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
 
     @app.post("/api/memory")
     async def store_memory(req: MemoryStoreRequest):
-        """Store a fact in ARES's memory."""
         from ares.mcp_serve import _store_memory
-        result = _store_memory(req.content, req.tags, req.source)
-        return result
+        return _store_memory(req.content, req.tags, req.source)
 
     @app.get("/api/memory")
     async def search_memory(query: str, tag: Optional[str] = None, limit: int = 10):
-        """Search ARES's memory for facts."""
         from ares.mcp_serve import _query_memory
         results = _query_memory(query, tag, limit)
         return {"count": len(results), "results": results}
 
     @app.get("/api/personality/prompt")
     async def get_personality_prompt():
-        """Get the system prompt generated from the current personality profile."""
         return {"prompt": personality.to_system_prompt()}
 
     @app.get("/api/face/states")
     async def get_face_states():
-        """List all valid face states and their configurations."""
         return {
             "states": [
                 {
@@ -342,11 +549,6 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
 
     @app.post("/api/cognitive/start")
     async def start_cognitive_loop(goal: str = "Observe and respond"):
-        """Start the cognitive loop in a background thread.
-
-        The loop runs PERCEIVE→THINK→ACT→REFLECT cycles until it reaches
-        a stop condition (budget exhausted, goal completed, or user interrupt).
-        """
         global _cognitive_loop
         import threading
 
@@ -356,17 +558,6 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         loop = create_loop(personality=personality, max_cycles=50)
         _cognitive_loop = loop
 
-        # Register a bus listener that saves face state changes
-        def _on_face_state(msg: BusMessage):
-            if msg.type == "face_state" and isinstance(msg.payload, dict):
-                _save_face_state({
-                    "current_state": msg.payload.get("state", "idle"),
-                    **msg.payload,
-                })
-
-        bus.on("face_state", _on_face_state)
-
-        # Run the cognitive loop in a background thread
         def _run_loop():
             try:
                 logger.info("Cognitive loop thread starting. Goal: %s", goal)
@@ -378,29 +569,21 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         thread = threading.Thread(target=_run_loop, daemon=True, name="ares-cognitive-loop")
         thread.start()
 
-        return {
-            "status": "started",
-            "goal": goal,
-            "max_cycles": loop.max_cycles,
-        }
+        return {"status": "started", "goal": goal, "max_cycles": loop.max_cycles}
 
     @app.post("/api/cognitive/stop")
     async def stop_cognitive_loop():
-        """Stop the running cognitive loop."""
         global _cognitive_loop
         if _cognitive_loop is None:
             return {"status": "not_running"}
-
         _cognitive_loop.stop()
         return {"status": "stopping"}
 
     @app.get("/api/cognitive/status")
     async def cognitive_status():
-        """Get the current cognitive loop status."""
         global _cognitive_loop
         if _cognitive_loop is None:
             return {"running": False, "status": "not_started"}
-
         return {
             "running": _cognitive_loop._running,
             "cycle": _cognitive_loop.state.cycle,
@@ -411,29 +594,15 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             "errors": _cognitive_loop.state.errors,
         }
 
-    # -----------------------------------------------------------------------
-    # WebSocket — real-time streaming
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # WebSocket
+    # ------------------------------------------------------------------
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
-        """WebSocket endpoint for real-time streaming.
-        
-        Sends JSON events:
-            {"type": "face_state", "state": "thinking", "config": {...}}
-            {"type": "personality_change", "layer": "expression", "trait": "directness", "value": 0.9}
-            {"type": "chat_message", "message": "...", "role": "assistant"}
-            {"type": "bus_event", ...}
-        
-        Receives JSON commands:
-            {"action": "set_face_state", "state": "thinking"}
-            {"action": "set_personality", "layer": "expression", "trait": "directness", "value": 0.9}
-            {"action": "chat", "message": "hello"}
-        """
         await websocket.accept()
         websocket_clients.add(websocket)
         logger.info("WebSocket client connected. Total: %d", len(websocket_clients))
-
         try:
             while True:
                 data = await websocket.receive_text()
@@ -444,7 +613,6 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                     continue
 
                 action = cmd.get("action", "")
-
                 if action == "set_face_state":
                     state_name = cmd.get("state", "idle")
                     try:
@@ -477,10 +645,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                         setattr(getattr(personality, layer), trait, round(float(value), 2))
                         save_personality(personality)
                         await _broadcast(websocket_clients, {
-                            "type": "personality_change",
-                            "layer": layer,
-                            "trait": trait,
-                            "value": value,
+                            "type": "personality_change", "layer": layer, "trait": trait, "value": value,
                         })
                     else:
                         await websocket.send_json({"type": "error", "message": f"Unknown: {layer}.{trait}"})
@@ -488,11 +653,9 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                 elif action == "chat":
                     message = cmd.get("message") or cmd.get("text", "")
                     bus.dispatch(BusMessage(
-                        type="chat_message",
-                        source="websocket",
+                        type="chat_message", source="websocket",
                         payload={"message": message, "session_id": cmd.get("session_id")},
                     ))
-                    # Forward to Hermes bridge (:9876)
                     try:
                         async with httpx.AsyncClient(timeout=120.0) as client:
                             resp = await client.post(
@@ -509,10 +672,8 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                         face_state = "thinking"
 
                     await websocket.send_json({
-                        "type": "chat_response",
-                        "role": "assistant",
-                        "text": hermes_response,
-                        "face_state": face_state,
+                        "type": "chat_response", "role": "assistant",
+                        "text": hermes_response, "face_state": face_state,
                     })
 
                 elif action == "ping":
@@ -520,8 +681,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
 
                 else:
                     await websocket.send_json({
-                        "type": "error",
-                        "message": f"Unknown action: {action}",
+                        "type": "error", "message": f"Unknown action: {action}",
                         "valid_actions": ["set_face_state", "set_personality", "chat", "ping"],
                     })
 
@@ -533,8 +693,12 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
 
     @app.websocket("/ws/chat")
     async def websocket_alias_endpoint(websocket: WebSocket):
-        """Alias endpoint for BrainConnection.swift and any docs referencing /ws/chat."""
+        """Alias endpoint for BrainConnection.swift compatibility."""
         await websocket_endpoint(websocket)
+
+    # Store app state
+    app.state.start_time = time.time()
+    app.state.websocket_clients = websocket_clients
 
     return app
 
@@ -543,14 +707,21 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _on_face_state(msg: BusMessage):
+    """Bus listener that persists face state changes."""
+    if msg.type == "face_state" and isinstance(msg.payload, dict):
+        _save_face_state({
+            "current_state": msg.payload.get("state", "idle"),
+            **msg.payload,
+        })
+
+
 def _load_face_state() -> dict:
-    """Load current face state."""
     from ares.mcp_serve import _load_face_state as _mcp_load
     return _mcp_load()
 
 
 def _save_face_state(data: dict) -> None:
-    """Save face state."""
     from ares.mcp_serve import _save_face_state as _mcp_save
     _mcp_save(data)
 

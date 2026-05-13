@@ -63,9 +63,12 @@ Output ONLY valid JSON in this exact structure:
       "install_command": "<command>"
     }
   ],
-  "estimated_api_cost": "<e.g. ~$0.05 or 'none'>",
-  "checkpoints": [<stage ids where ARES pauses for human review>]
-}"""
+  "estimated_api_cost": "<e.g. ~$0.05 or 'none'>"
+}
+
+Note: approval gates are set per-stage via "requires_approval": true. There
+is no separate checkpoints list — each stage that needs human review must
+have requires_approval set to true.."""
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +103,6 @@ class Plan:
     stages: list[PlanStage] = field(default_factory=list)
     new_installs: list[NewInstall] = field(default_factory=list)
     estimated_api_cost: str = "unknown"
-    checkpoints: list[int] = field(default_factory=list)
     raw_json: dict[str, Any] = field(default_factory=dict)
 
 
@@ -113,14 +115,31 @@ async def reason(
     *,
     task_id: str | None = None,
     context: str = "",
-    backend: LLMBackend = LLMBackend.CLOUD,
+    backend: LLMBackend | None = None,
+    sensitive: bool = False,
+    requires_vision: bool = False,
+    bulk: bool = False,
 ) -> Plan:
-    """Call LLM to decompose a goal into a concrete execution plan."""
+    """Call LLM to decompose a goal into a concrete execution plan.
+
+    Backend routing: if ``backend`` is explicitly provided, it is used directly.
+    Otherwise the router decides based on task characteristics (sensitivity,
+    vision, bulk). Planning tasks always default to CLOUD for quality.
+    """
+    # Route through the router unless caller forced a backend
+    if backend is None:
+        backend = route(
+            task_type="planning",
+            sensitive=sensitive,
+            requires_vision=requires_vision,
+            bulk=bulk,
+        )
+
     user_content = f"Goal: {goal}"
     if context:
         user_content += f"\n\nAdditional context:\n{context}"
 
-    await log(task_id=task_id, action="reason_start", goal=goal[:80])
+    await log(task_id=task_id, action="reason_start", goal=goal[:80], backend=backend.value)
 
     messages = [{"role": "user", "content": user_content}]
 
@@ -203,7 +222,6 @@ def _parse_plan(goal: str, raw_text: str) -> Plan:
         stages=stages,
         new_installs=new_installs,
         estimated_api_cost=data.get("estimated_api_cost", "unknown"),
-        checkpoints=data.get("checkpoints", []),
         raw_json=data,
     )
 

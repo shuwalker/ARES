@@ -60,8 +60,15 @@ async def _execute_shell(stage: PlanStage, task: Task) -> str:
 async def _execute_llm_stage(stage: PlanStage, task: Task) -> str:
     """Stage that calls the LLM to produce content."""
     from ..llm import cloud
+    from ..core.personality import load_personality
+
+    personality = load_personality()
+    system_prompt = (
+        "You are ARES — Autonomous Reasoning & Execution System.\n\n"
+        + personality.to_system_prompt()
+    )
     text = await cloud.complete(
-        system="You are ARES, producing professional output for a contractor workflow.",
+        system=system_prompt,
         messages=[{"role": "user", "content": f"Execute stage: {stage.action}"}],
         task_id=task.id,
     )
@@ -131,8 +138,9 @@ class PlanExecutor:
                 tool=stage.tool,
             )
 
-            # Checkpoint gate
-            if stage.requires_approval or stage.id in plan.checkpoints:
+            # Approval gate — requires_approval on the stage is the single source
+            # of truth. No duplicate checkpoints list.
+            if stage.requires_approval:
                 task.status = "paused"
                 update_task(task)
 
