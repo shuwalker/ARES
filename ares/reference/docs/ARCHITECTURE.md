@@ -3,10 +3,16 @@
 ## What ARES Is
 
 ARES is an autonomous reasoning and execution system for Jenkins Robotics.
-It has a Python **brain** (cognitive loop, personality, MCP tools) and a Swift **face**
-(native macOS app with cinematic avatar + engineering visualization).
+It has a Python **brain** (cognitive loop, personality, memory, MCP tools)
+and a Swift **face** (native macOS app with cinematic avatar + cognitive
+instrumentation). They talk over WebSocket.
 
-The brain thinks. The face renders. They talk over WebSocket.
+The brain thinks. The face renders **and shows what the brain is doing**.
+
+> Looking for the cognition / memory / DAG / shader-bindings layer? See
+> [`COGNITIVE_OS.md`](./COGNITIVE_OS.md). This document covers the
+> larger system; COGNITIVE_OS is the single-source reference for the
+> Phase 0 → 4 work that landed in PR #2.
 
 ## System Overview
 
@@ -66,7 +72,7 @@ The brain thinks. The face renders. They talk over WebSocket.
 | File | Lines | Purpose |
 |------|-------|---------|
 | `cli.py` | 776 | CLI: `ares serve`, `ares mcp`, `ares doctor` |
-| `api.py` | 444 | FastAPI server: 8 REST endpoints + WebSocket |
+| `api.py` | ~900 | FastAPI server: REST + WebSocket; cognitive / memory / idle endpoints |
 | `mcp_serve.py` | 514 | MCP server: 8 tools for external AI clients |
 | `__main__.py` | — | `python -m ares` entry |
 
@@ -75,27 +81,40 @@ The brain thinks. The face renders. They talk over WebSocket.
 | File | Lines | Purpose |
 |------|-------|---------|
 | `bus.py` | 474 | ZMQ pub/sub bus — 9 channels (brain_output, face_state, audio_raw, audio_processed, system, mcp_bridge, robot_command, robot_sensor, memory) |
-| `cognitive.py` | 523 | 4-phase cognitive loop: PERCEIVE → THINK → ACT → REFLECT with guidance matrix and stop hooks |
+| `cognitive.py` | ~600 | 4-phase cognitive loop: PERCEIVE → THINK → ACT → REFLECT with guidance matrix, stop hooks, `on_phase_change` observer, and per-cycle reasoning DAG via `ThoughtNodeRecord` + `emit_thought_node()` |
 | `personality.py` | 325 | 4-layer personality: HEXACO traits → SPECIAL traits → Expression style → Domain weights. Generates system prompts |
 | `identity.py` | — | Who ARES is — values, name, backstory |
 | `face_state.py` | — | FaceState enum (idle, thinking, speaking, happy, angry, neutral) + intensity mapping |
-| `memory.py` | 197 | Persistent memory layer |
+| `idle.py` | ~250 | Idle reflexion: consolidate episodics, dedupe semantic facts, surface unresolved questions. See [`COGNITIVE_OS.md`](./COGNITIVE_OS.md#phase-3--idle-reflexion). |
+| `memory.py` | 197 | Legacy persistent memory layer (kept as audit log; primary store is `ares/memory_store.py`) |
 
 ### Runtime (ares/runtime/)
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `hermes_bridge.py` | 195 | HTTP client to Hermes agent (stub — needs v2 with ZMQ+IPC) |
+| `hermes_bridge.py` | 195 | HTTP server on :9876 — bridges Swift `/api/chat` to Hermes (current `cognition_query()` is a stub; real wiring is owned by a sibling PR) |
+| `ares_bridge_minimal.py` | 49 | Reference: shells out to `hermes -z <text>`. The pattern the bridge will adopt once wired |
 | `brain_transport.py` | — | Transport abstraction for LLM calls |
-| `launcher.py` | — | Process launcher for brain + face |
+| `session_store.py` | ~50 | Volatile per-session turn deque (capacity 12). Used by `/api/chat`. |
+| `launcher.py` | 147 | Process launcher; resolves Hermes binary (`find_hermes()`) and reports status (`hermes_status()`) |
 | `bootstrap.py` | — | First-run setup |
 | `env_detector.py` | — | Environment detection (GPU, display, platform) |
+
+### Memory (ares/memory_store.py)
+
+Tiered memory store added in Phase 1. SQLite source-of-truth at
+`~/.ares/memory.db` with two tables (`episodics`, `facts`) and a
+swappable `VectorStore` / `Embedder` protocol pair. Ships with
+`InMemoryVectorStore` + `DeterministicEmbedder` defaults (no external
+deps) and an opt-in `OllamaEmbedder`. See
+[`COGNITIVE_OS.md`](./COGNITIVE_OS.md#phase-1--tiered-memory).
 
 ### Models (ares/models/)
 
 | File | Lines | Purpose |
 |------|-------|---------|
 | `system.py` | — | System models (config, state) |
+| `cognitive.py` | ~80 | `CognitiveSnapshot` transport contract — `LoopBlock`, `ThoughtBlock`, `ThoughtNode`, `MemoryHitBlock`. Versioned via `SCHEMA_VERSION`; forward-compatible decode. |
 | `engineering.py` | 177 | Engineering models (CAD, simulations, robot joints) |
 | `project.py` | — | Project tracking models |
 
@@ -133,65 +152,49 @@ The brain thinks. The face renders. They talk over WebSocket.
 
 **Total Python LOC (non-reference): ~8,293**
 
-## Swift Face (ares/reference/swift-ui/)
+## Swift Face (`ARES-Face/`)
 
-### Current State: POC (2D Canvas)
+### Current state: shipped (RealityKit + Metal)
 
-The current Swift code is a **proof of concept** using SwiftUI Canvas for rendering.
-It works but is not CGI quality. It will be replaced with RealityKit + Metal shaders.
+The Canvas POC described in earlier revisions of this doc has been
+replaced. The active app is `ARES-Face/` — SwiftUI + RealityKit +
+`CustomMaterial` Metal shaders. Six switchable avatar styles, all
+working. The old POC code lives under `ares/reference/swift-ui/` for
+historical reference only.
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `ARESApp.swift` | 810 | Main app: black fire avatar, chat, immersion levels, menu bar |
-| `BlackFireSystem.swift` | 67 | Canvas rendering for fire entity |
-| `VoiceManager.swift` | 48 | AVFoundation mic input |
-| `Package.swift` | 11 | SPM config |
+For the full build spec see
+[`BUILD_SPEC_FACE_APP.md`](./BUILD_SPEC_FACE_APP.md); for the
+rendering pipeline see
+[`RENDERING_ARCHITECTURE.md`](./RENDERING_ARCHITECTURE.md).
 
-### macOS App (reference/swift-ui/mac_sources/ARES-Mac/)
+| Directory | Contents |
+|---|---|
+| `App/` | `ARESApp.swift` (`@main`), `ARESRootView.swift` (root layout, sidebar mount, operator-page routing) |
+| `Models/` | `AgentState`, `AvatarExpression`, `AvatarStyle` (6 styles), `ImmersionLevel`, `ARESMessage`, `FaceConfig`, `CognitiveSnapshot` (Codable mirror of the Pydantic contract) |
+| `Networking/` | `BrainConnection.swift` — WebSocket client to `:7860/ws`, REST fallback, decodes `cognitive_snapshot` events into `@Published cognitive` |
+| `Rendering/` | `AvatarRenderer.swift` (CustomMaterial creation, uniform updates), `AvatarEntity.swift`, `SceneSetup.swift`, `CognitiveBindings.swift` (pure-function snapshot→uniform table — Phase 4) |
+| `Shaders/` | `SharedHeader.h` (uniform structs, Swift↔Metal bridge), six paired surface + geometry shaders (`BlackFire`, `Anime`, `Hologram`, `Blob`, `PixelVolume`, `Constellation`) |
+| `Views/` | `AvatarSceneView`, `ChatStream`, `CommandBar`, `ImmersionBar` (with heartbeat pill), `SidebarView` (8 tabs, routed), `CognitiveActivityPanel`, `MemoryInspectorView`, `MissionControlPanel`, `MenuBarView`, `DashboardPage` (enum) |
+| `Voice/` | `VoiceManager.swift` — AVFoundation mic + NSSpeechRecognizer |
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `ARESApp.swift` | 27 | macOS app entry |
-| `FaceRenderer.swift` | 114 | Face rendering in macOS window |
-| `FaceState.swift` | 70 | FaceState enum for macOS |
-| `FaceWindowView.swift` | 16 | Face window container |
-| `HermesBridge.swift` | 37 | HTTP bridge to brain |
-| `PythonBackend.swift` | 73 | Python process management |
-| `VoiceManager.swift` (shared) | 48 | Mic input |
-| `MenuBarView.swift` | 62 | Menu bar presence |
-| `CheckpointManager.swift` | 65 | State checkpointing |
-| `ConsciousnessDaemon.swift` | 118 | Background consciousness loop |
-| `CalendarBridge.swift` | 44 | Calendar integration |
-| `SettingsView.swift` | 70 | Settings UI |
-| `Logger.swift` | 47 | Logging |
+### Cognitive instrumentation in the UI
 
-**Total Swift LOC: ~1,891**
+- **Heartbeat pill** in `ImmersionBar` → tap → `CognitiveActivityPanel`
+  full panel. Subscribes to `cognitive_snapshot` over WebSocket.
+- **Sidebar** `.sessions` → `MemoryInspectorView` (list + recall +
+  delete).
+- **Sidebar** `.logs` → `MissionControlPanel` (force-directed reasoning
+  DAG, SwiftUI `Canvas` + Verlet integrator, ~60 fps).
+- **Avatar shaders** consume cognition uniforms (`emissivePulse`,
+  `glitchAmplitude`, `noiseScale`, `vertexJitter`) bound from the
+  snapshot via `CognitiveBindings.evaluate`.
 
-### What's Being Replaced
+### Reference / legacy
 
-The POC Canvas renderer (`drawAnimeFire()`) is being replaced by a **RealityKit + Metal 
-shader pipeline**. See [RENDERING_ARCHITECTURE.md](./RENDERING_ARCHITECTURE.md) for the 
-full plan. Key changes:
-
-- `Canvas { ctx in drawAnimeFire() }` → `MTKView` / `RealityView` with Metal shaders
-- `TimelineView(.animation)` → Metal frame loop via `MTKViewDelegate`
-- `Path` bezier curves → SDF raymarching in fragment shaders
-- `FireParticle` CPU struct → GPU compute buffer (10K particles)
-- Expression tint colors → Shader uniforms (float3 diffuseColor, float bloomIntensity)
-- Single avatar style → 6 switchable styles (blackFire, anime, hologram, blob, pixelVolume, constellation)
-- Engineering visualization (USDZ, glTF, STL) → RealityKit built-in
-
-### What's Being Kept
-
-- FaceState enum and state transition logic
-- AvatarExpression → tint mapping (generalized to shader uniforms)
-- AgentState intensity levels (generalized to shader parameters)
-- ImmersionLevel concept (Desktop/Window/Room)
-- ARESWorld state management pattern
-- MenuBarExtra structure
-- ChatStream + CommandBar UI pattern
-- VoiceManager mic integration
-- ARESMessage model
+The old POC and Swift backend lives under `ares/reference/swift-ui/`
+(810-line monolithic `ARESApp.swift` with Canvas rendering, plus a
+`mac_sources/ARES-Mac/` macOS-specific build). Historical reference
+only — do not extend; `ARES-Face/` is the active app.
 
 ## Communication Protocols
 
@@ -201,16 +204,28 @@ The primary channel. Brain at `ws://localhost:7860/ws`, Face connects as client.
 
 ```json
 // Face → Brain
-{"type": "chat", "text": "status of JP01 build"}
-{"type": "personality_update", "traits": {"honesty": 0.8}}
-{"type": "voice_input", "audio_base64": "..."}
+{"action": "chat", "text": "status of JP01 build", "session_id": "..."}
+{"action": "set_personality", "layer": "hexaco", "trait": "openness", "value": 0.7}
+{"action": "set_face_state", "state": "thinking"}
+{"action": "get_cognitive_snapshot"}
+{"action": "ping"}
 
 // Brain → Face
-{"type": "face_state", "state": "thinking", "intensity": 0.85, "expression": "curious"}
+{"type": "face_state", "state": "thinking", "config": {...}}
 {"type": "chat_response", "text": "JP01 is at phase 3..."}
-{"type": "avatar_style", "style": "blackFire"}
-{"type": "robot_joint", "joints": {"base": 15.2, "shoulder": 30.0}}
+{"type": "personality_change", "layer": "hexaco", "trait": "openness", "value": 0.7}
+{"type": "cognitive_snapshot", "schema_version": 1, "running": true,
+ "loop": {"cycle": 4, "phase": "think", "urgency": "medium", ...},
+ "thought": {"summary": "reflect", "depth": 4, "branches": [...]},
+ "memory_recall": [{"id": "...", "score": 0.81, "text": "...", "kind": "episodic"}],
+ "errors": []}
+{"type": "pong", "timestamp": 1715632800.123}
 ```
+
+The `cognitive_snapshot` message is pushed on every loop phase
+transition plus after each `/api/chat` exchange. See
+[`COGNITIVE_OS.md`](./COGNITIVE_OS.md#data-model-cognitivesnapshot)
+for the full schema.
 
 ### ZMQ Bus (Internal Brain)
 
@@ -320,11 +335,51 @@ ARES-Autonomous-Reasoning-Execution-System/
 └── pyproject.toml                 # Project config
 ```
 
+## REST endpoints (current)
+
+System
+- `GET /api/status`, `GET /api/services`, `GET /api/identity`
+
+Personality + face
+- `GET /api/personality`, `POST /api/personality`, `GET /api/personality/prompt`
+- `GET /api/face`, `POST /api/face`, `GET /api/face/states`
+
+Chat
+- `POST /api/chat` — writes episodic + session, pushes a fresh
+  `cognitive_snapshot` over the WS
+
+Cognitive loop
+- `POST /api/cognitive/start`, `POST /api/cognitive/stop`
+- `GET /api/cognitive/status` → `CognitiveSnapshot`
+
+Memory inspector
+- `GET /api/memory/episodics?limit=`
+- `GET /api/memory/facts?limit=`
+- `POST /api/memory/recall` `{query, k}`
+- `DELETE /api/memory/episodics/{id}`
+
+Idle reflexion
+- `POST /api/idle/run` → `IdleReport`
+- `GET /api/idle/last_report`
+
 ## Build Priority (What's Next)
 
-1. **Swift Face v2** — RealityKit + Metal shader app (replaces Canvas POC)
-2. **Hermes Bridge v2** — ZMQ+IPC connection to real Hermes agent
+**Shipped recently** ✅
+- Phase 0–4 Cognitive OS (see [`COGNITIVE_OS.md`](./COGNITIVE_OS.md))
+- ARES-Face SwiftUI app with 6 RealityKit + Metal shader styles
+- Unit-test scaffold + GitHub Actions CI (Py 3.11 + 3.12, ruff + black)
+- 46 unit tests passing
+
+**Next** 🔨
+1. **Hermes bridge v2** — replace `hermes_bridge.cognition_query()` stub
+   with a real call. Owned by a sibling agent PR. Snapshot's
+   `memory_recall` is the contract they'll consume.
+2. **Concrete `VectorStore` implementations** — `SqliteVssStore`,
+   `LanceDbStore`, `ChromaDbStore`. Protocol is shipped; pick one.
 3. **Voice pipeline** — STT mic → brain → TTS speaker
-4. **Robot control** — JP01 servo commands over bus to serial/USB
-5. **Tests** — pytest suite for core, bus, cognitive loop, MCP, API
-6. **Install** — pip installable, `ares init`, `ares doctor`, launchd plist
+4. **Operator-tab build-out** — `.models`, `.skills`, `.cron`,
+   `.analytics` dashboard pages (sidebar mounted, pages stubbed)
+5. **DAG replay scrubber** — persistence layer shipped; UI to scrub
+   a stored cycle's reasoning trace forward/back
+6. **Robot control** — JP01 servo commands over bus
+7. **Install** — pip installable, `ares init`, `ares doctor`, launchd plist

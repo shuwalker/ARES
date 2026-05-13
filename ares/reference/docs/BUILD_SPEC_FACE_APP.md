@@ -1,5 +1,17 @@
 # ARES Face App — Build Specification
 
+> **Status: SHIPPED** — the scaffold described in Phase 1 below is in
+> `ARES-Face/`. The 6 styles described in Phase 2 are built. Cognitive
+> instrumentation (Phase 0 → 4 of the Cognitive OS roadmap, see
+> [`COGNITIVE_OS.md`](./COGNITIVE_OS.md)) has been layered on top —
+> heartbeat pill, Memory Inspector, Mission Control DAG panel, and
+> cognition-driven shader uniforms. Engineering visualization (Phase 3)
+> is the next chunk.
+>
+> This document is kept as the canonical build spec for anyone redoing
+> the scaffold. Sections marked **As built** describe the additions
+> that landed after the original spec.
+
 ## What We're Building
 
 A native macOS app (SwiftUI + RealityKit + Metal) that renders the ARES companion
@@ -381,11 +393,72 @@ Phase 3 — ENGINEERING VIZ (future):
 7. REST API base: `http://localhost:7860/api`
 8. The app must work WITHOUT the brain running (show idle state, graceful fallback)
 
+## As Built — Cognitive Instrumentation (Phase 0 → 4)
+
+The scaffold above is the foundation; the layers below were added on top
+to satisfy the "cognitive operating system with embodied state
+visualization" framing. See [`COGNITIVE_OS.md`](./COGNITIVE_OS.md) for
+the single-source reference.
+
+### New models
+
+| File | Purpose |
+|---|---|
+| `Models/CognitiveSnapshot.swift` | Codable mirror of `ares/models/cognitive.py`. Snake-case `CodingKeys`. Forward-compatible decode (`memoryRecall` / `branches` default to empty on older payloads). |
+
+### New views
+
+| File | Purpose |
+|---|---|
+| `Views/CognitiveActivityPanel.swift` | Collapsed heartbeat pill (mounted in `ImmersionBar`) + expanded panel: cycle, urgency, elapsed, budget bar, error count. Subscribes to `BrainConnection.cognitive`. |
+| `Views/MemoryInspectorView.swift` | Lists episodics, runs recall search via `POST /api/memory/recall`, deletes via `DELETE /api/memory/episodics/{id}`. Routed via sidebar `.sessions` tab. |
+| `Views/MissionControlPanel.swift` | Force-directed reasoning DAG. `TimelineView` + `Canvas` + custom Verlet integrator (~60 fps). Tap-to-select, color-coded phase nodes. Routed via sidebar `.logs` tab. |
+| `Views/SidebarView.swift` | Now **mounted** in `ARESRootView` — was orphaned dead code. Hides in full immersion. |
+
+### Networking additions
+
+`BrainConnection.swift`:
+- New `@Published var cognitive: CognitiveSnapshot` (defaults to `.idle`).
+- Parses incoming `{"type": "cognitive_snapshot", ...}` events.
+- Sends `{"action": "get_cognitive_snapshot"}` on connect so the
+  heartbeat panel populates immediately.
+
+### Shader / rendering additions
+
+| File | Purpose |
+|---|---|
+| `Shaders/SharedHeader.h` | `SurfaceCustomUniforms` extended with `noiseScale`, `emissivePulse`, `vertexJitter`, `glitchAmplitude`. Trailing fields → non-breaking for the five shaders that don't read them yet. |
+| `Rendering/CognitiveBindings.swift` | `CognitiveBindings.evaluate(snapshot, time)` — pure function mapping snapshot fields to uniform values. Single point of change for adding new metric→shader bindings. |
+| `Shaders/BlackFireSurface.metal` | Consumes `emissivePulse` (confidence brightens core) and `glitchAmplitude` (errors add pixel-jump). Visual proof of the binding wiring. |
+| `Views/AvatarSceneView.swift::updateAvatarUniforms()` | Calls `CognitiveBindings.evaluate` each frame, forwards to `AvatarRenderer.updateSurfaceUniforms(..., cognition:)`. |
+
+### Routing in `ARESRootView`
+
+```swift
+@ViewBuilder
+private var operatorPage: some View {
+    switch selectedPage {
+    case .sessions: MemoryInspectorView()
+    case .logs:     MissionControlPanel()
+    default:        comingSoonPlaceholder    // .models / .skills / .cron / .analytics
+    }
+}
+```
+
+The sidebar overlays operator pages **on top of** the avatar scene so
+ARES never feels gone. Avatar still renders behind; chat + command bar
+stay reachable below.
+
 ## Testing
 
 - Manual: launch `ares serve` on port 7860, then launch ARES-Face.app
-- Automated: unit tests for BrainConnection, AvatarRenderer material creation, FaceConfig mapping
-- Visual: each style should render distinctly in the RealityView
+- Automated:
+  - Python: `pytest tests/unit -m unit` (46 tests, all passing)
+  - Swift: unit tests for `BrainConnection`, `AvatarRenderer` material
+    creation, `FaceConfig` mapping (target the existing
+    `ARES-FaceTests`)
+- Visual: each style should render distinctly; confidence and error
+  count visibly affect Black Fire core brightness and glitch level
 
 ## What NOT To Do
 
