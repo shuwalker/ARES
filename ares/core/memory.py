@@ -8,6 +8,7 @@ Three-tier persistence:
 Layer 1 (Cognition) — portable. No NAS path assumptions baked in.
 Paths are injected at runtime from the embodiment layer.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -15,7 +16,6 @@ import threading
 import json
 import time
 from pathlib import Path
-
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -87,9 +87,7 @@ class Memory:
 
     def _get_schema_version(self) -> int:
         try:
-            row = self._conn.execute(
-                "SELECT MAX(version) FROM schema_version"
-            ).fetchone()
+            row = self._conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
             return row[0] if row[0] is not None else 0
         except sqlite3.OperationalError:
             return 0
@@ -105,8 +103,9 @@ class Memory:
             self._conn.commit()
             return str(self._conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-    def recall(self, tag: str | None = None, query: str | None = None, limit: int = 10,
-               source: str | None = None) -> list[dict]:
+    def recall(
+        self, tag: str | None = None, query: str | None = None, limit: int = 10, source: str | None = None
+    ) -> list[dict]:
         """Recall facts. Filter by tag, query (substring), and/or source."""
         conditions = []
         params = []
@@ -151,13 +150,12 @@ class Memory:
             self._conn.commit()
 
     def get_profile(self, key: str) -> str | None:
-        row = self._conn.execute(
-            "SELECT value FROM user_profile WHERE key = ?", (key,)
-        ).fetchone()
+        row = self._conn.execute("SELECT value FROM user_profile WHERE key = ?", (key,)).fetchone()
         return row[0] if row else None
 
-    def log_skill_outcome(self, skill_name: str, tool_name: str, args: dict, result: dict,
-                          ok: bool, source: str = "main"):
+    def log_skill_outcome(
+        self, skill_name: str, tool_name: str, args: dict, result: dict, ok: bool, source: str = "main"
+    ):
         with self._lock:
             self._conn.execute(
                 "INSERT INTO skill_outcomes (skill_name, tool_name, args, result, ok, source, executed_at) "

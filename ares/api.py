@@ -33,9 +33,7 @@ import asyncio
 import json
 import logging
 import os
-import signal
 import subprocess
-import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -49,9 +47,19 @@ from pydantic import BaseModel, Field
 
 from ares.core.bus import ARESBus, BusMessage, get_bus
 from ares.core.cognitive import CognitiveLoop, create_loop
+from ares.core.idle import run_idle_pass
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
-from ares.core.identity import Identity, DEFAULT_IDENTITY
-from ares.core.personality import CharacterProfile, DEFAULT_PROFILE, load_personality, save_personality
+from ares.core.identity import DEFAULT_IDENTITY
+from ares.core.personality import CharacterProfile, load_personality, save_personality
+from ares.memory_store import MemoryStore, default_memory_store
+from ares.models.cognitive import (
+    CognitiveSnapshot,
+    LoopBlock,
+    MemoryHitBlock,
+    ThoughtBlock,
+    ThoughtNode,
+)
+from ares.runtime.session_store import SessionStore
 
 logger = logging.getLogger("ares.api")
 
@@ -80,10 +88,13 @@ class ManagedService:
     def _kill_port_owner(self):
         """Kill any process already listening on our port."""
         import signal as _signal
+
         try:
             result = subprocess.run(
                 ["lsof", "-ti", f":{self.port}"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             for pid_str in result.stdout.strip().split("\n"):
                 pid = pid_str.strip()
@@ -222,6 +233,7 @@ SERVICES = [
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+
 class PersonalityUpdateRequest(BaseModel):
     layer: str = Field(..., description="hexaco, special, expression, or domains")
     trait: str = Field(..., description="Trait name within the layer")
@@ -236,7 +248,9 @@ class PersonalityUpdateResponse(BaseModel):
 
 
 class FaceStateRequest(BaseModel):
-    state: Optional[str] = Field(None, description="Face state: idle, awakened, listening, thinking, speaking, sleeping")
+    state: Optional[str] = Field(
+        None, description="Face state: idle, awakened, listening, thinking, speaking, sleeping"
+    )
     emotion: Optional[str] = Field(None, description="Emotion: happy, sad, curious, surprised, angry, neutral")
 
 
@@ -267,12 +281,29 @@ class MemorySearchRequest(BaseModel):
 # App factory
 # ---------------------------------------------------------------------------
 
-def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> FastAPI:
-    """Create the ARES FastAPI application with managed service lifecycle."""
+
+def create_app(
+    bus: ARESBus = None,
+    personality: CharacterProfile = None,
+    memory: MemoryStore = None,
+    sessions: SessionStore = None,
+) -> FastAPI:
+    """Create the ARES FastAPI application with managed service lifecycle.
+
+    `memory` and `sessions` are injectable so tests can bypass disk I/O.
+    """
 
     bus = bus or get_bus()
     personality = personality or load_personality()
+    memory = memory if memory is not None else default_memory_store()
+    sessions = sessions if sessions is not None else SessionStore(capacity=12)
     websocket_clients: set = set()
+    # Tracks the last snapshot delivered to clients — used by /api/chat to
+    # include memory hits in the next push without re-querying twice.
+    _last_recall: list[MemoryHitBlock] = []
+    # Last idle reflexion report, served by /api/idle/last_report so the
+    # UI can surface "open questions" and "summary facts written".
+    _last_idle_report: dict = {}
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -356,6 +387,7 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         """
         # Check external Mac MCP first
         import socket
+
         mac_mcp = {
             "name": "mac_mcp",
             "port": 9501,
@@ -421,17 +453,22 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         if req.layer not in pdata:
             raise HTTPException(400, f"Unknown layer: {req.layer}. Must be one of: {list(pdata.keys())}")
         if req.trait not in pdata[req.layer]:
-            raise HTTPException(400, f"Unknown trait: {req.trait} in {req.layer}. Available: {list(pdata[req.layer].keys())}")
+            raise HTTPException(
+                400, f"Unknown trait: {req.trait} in {req.layer}. Available: {list(pdata[req.layer].keys())}"
+            )
 
         setattr(getattr(personality, req.layer), req.trait, round(req.value, 2))
         save_personality(personality)
 
-        await _broadcast(websocket_clients, {
-            "type": "personality_change",
-            "layer": req.layer,
-            "trait": req.trait,
-            "value": req.value,
-        })
+        await _broadcast(
+            websocket_clients,
+            {
+                "type": "personality_change",
+                "layer": req.layer,
+                "trait": req.trait,
+                "value": req.value,
+            },
+        )
 
         return PersonalityUpdateResponse(updated=True, layer=req.layer, trait=req.trait, value=req.value)
 
@@ -487,11 +524,25 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         """Send a message to ARES and get a response via Hermes cognition bridge."""
         personality_prompt = personality.to_system_prompt()
 
-        bus.dispatch(BusMessage(
-            type="chat_message",
-            source="api",
-            payload={"message": req.message, "session_id": req.session_id},
-        ))
+        # Pull relevant episodic memory before dispatch. The Hermes wiring
+        # work will eventually consume this to inject context into the LLM
+        # prompt; for now we surface it to the UI snapshot so users can
+        # see what ARES is recalling.
+        hits = memory.recall(req.message, k=5)
+        recall_blocks = [MemoryHitBlock(id=h.id, score=h.score, text=h.text, kind=h.kind) for h in hits]
+        _last_recall.clear()
+        _last_recall.extend(recall_blocks)
+
+        if req.session_id:
+            sessions.record(req.session_id, "user", req.message, time.time())
+
+        bus.dispatch(
+            BusMessage(
+                type="chat_message",
+                source="api",
+                payload={"message": req.message, "session_id": req.session_id},
+            )
+        )
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -508,6 +559,29 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             hermes_response = f"[ARES bridge error — {e}]"
             face_state = "thinking"
 
+        # Persist the exchange. Episodic captures both turns as a single
+        # entry so recall can pull the full context; session store tracks
+        # turn-by-turn for the volatile tier.
+        try:
+            memory.record_episodic(
+                f"USER: {req.message}\nARES: {hermes_response}",
+                metadata={"session_id": req.session_id, "kind": "exchange"},
+            )
+        except Exception as e:
+            logger.warning("Episodic write failed: %s", e)
+        if req.session_id:
+            sessions.record(req.session_id, "assistant", hermes_response, time.time())
+
+        # Push a snapshot with the fresh memory_recall so the heartbeat
+        # panel updates without waiting for a phase transition.
+        await _broadcast(
+            websocket_clients,
+            {
+                "type": "cognitive_snapshot",
+                **_build_snapshot(_cognitive_loop, recall_blocks).model_dump(),
+            },
+        )
+
         return ChatResponse(
             response=hermes_response,
             face_state=face_state,
@@ -517,11 +591,13 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
     @app.post("/api/memory")
     async def store_memory(req: MemoryStoreRequest):
         from ares.mcp_serve import _store_memory
+
         return _store_memory(req.content, req.tags, req.source)
 
     @app.get("/api/memory")
     async def search_memory(query: str, tag: Optional[str] = None, limit: int = 10):
         from ares.mcp_serve import _query_memory
+
         results = _query_memory(query, tag, limit)
         return {"count": len(results), "results": results}
 
@@ -547,6 +623,53 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             ]
         }
 
+    # ------------------------------------------------------------------
+    # Memory inspector endpoints
+    # ------------------------------------------------------------------
+
+    @app.get("/api/memory/episodics")
+    async def list_episodics(limit: int = 50):
+        """Return recent episodics for the Memory Inspector."""
+        return {"items": memory.list_episodics(limit=limit), "count": memory.vectors.count()}
+
+    @app.get("/api/memory/facts")
+    async def list_facts(limit: int = 100):
+        return {"items": [f.to_dict() for f in memory.list_facts(limit=limit)]}
+
+    @app.post("/api/memory/recall")
+    async def recall_memory(body: dict):
+        """Run an ad-hoc similarity search."""
+        query = (body or {}).get("query", "")
+        k = int((body or {}).get("k", 5))
+        hits = memory.recall(query, k=k)
+        return {"hits": [h.to_dict() for h in hits]}
+
+    @app.delete("/api/memory/episodics/{episodic_id}")
+    async def delete_episodic(episodic_id: str):
+        memory.delete_episodic(episodic_id)
+        return {"deleted": episodic_id}
+
+    # ------------------------------------------------------------------
+    # Idle reflexion
+    # ------------------------------------------------------------------
+
+    @app.post("/api/idle/run")
+    async def run_idle():
+        """Trigger a one-shot reflexion pass (consolidate + dedupe + surface)."""
+        report = run_idle_pass(memory)
+        _last_idle_report.clear()
+        _last_idle_report.update(report.to_dict())
+        return _last_idle_report
+
+    @app.get("/api/idle/last_report")
+    async def last_idle_report():
+        return _last_idle_report or {
+            "consolidated_sessions": 0,
+            "summary_fact_ids": [],
+            "duplicates_merged": 0,
+            "open_questions": [],
+        }
+
     @app.post("/api/cognitive/start")
     async def start_cognitive_loop(goal: str = "Observe and respond"):
         global _cognitive_loop
@@ -556,6 +679,43 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
             return {"status": "already_running", "goal": goal}
 
         loop = create_loop(personality=personality, max_cycles=50)
+
+        # Bridge synchronous phase-change events from the loop thread into
+        # the async WebSocket broadcast. The loop runs in a thread; we
+        # capture the running event loop here so the observer can schedule
+        # the coroutine onto it from the worker thread.
+        try:
+            main_event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            main_event_loop = None
+
+        def _on_phase_change(state):
+            # Persist the cycle's reasoning DAG once it's complete (reflect
+            # is the last phase per cycle). Stored as episodic metadata so
+            # replay can reconstruct the trace.
+            if state.phase.name == "REFLECT" and state.branches:
+                try:
+                    memory.record_episodic(
+                        f"[cycle {state.cycle}] " + " → ".join(b.label for b in state.branches),
+                        metadata={
+                            "kind": "reasoning_trace",
+                            "cycle": state.cycle,
+                            "dag": [b.to_dict() for b in state.branches],
+                        },
+                    )
+                except Exception as e:
+                    logger.warning("DAG persistence failed: %s", e)
+
+            if main_event_loop is None:
+                return
+            snapshot = _build_snapshot(loop, list(_last_recall))
+            payload = {"type": "cognitive_snapshot", **snapshot.model_dump()}
+            asyncio.run_coroutine_threadsafe(
+                _broadcast(websocket_clients, payload),
+                main_event_loop,
+            )
+
+        loop.on_phase_change = _on_phase_change
         _cognitive_loop = loop
 
         def _run_loop():
@@ -579,20 +739,14 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
         _cognitive_loop.stop()
         return {"status": "stopping"}
 
-    @app.get("/api/cognitive/status")
-    async def cognitive_status():
-        global _cognitive_loop
-        if _cognitive_loop is None:
-            return {"running": False, "status": "not_started"}
-        return {
-            "running": _cognitive_loop._running,
-            "cycle": _cognitive_loop.state.cycle,
-            "phase": _cognitive_loop.state.phase.value,
-            "urgency": _cognitive_loop.state.urgency.value,
-            "budget_remaining": _cognitive_loop.state.budget_remaining,
-            "face_state": _cognitive_loop.state.face_state.value,
-            "errors": _cognitive_loop.state.errors,
-        }
+    @app.get("/api/cognitive/status", response_model=CognitiveSnapshot)
+    async def cognitive_status() -> CognitiveSnapshot:
+        """Return a CognitiveSnapshot for the current loop (or idle if none).
+
+        The same shape is pushed over the WebSocket as
+        `{"type": "cognitive_snapshot", ...}` on every phase transition.
+        """
+        return _build_snapshot(_cognitive_loop, list(_last_recall))
 
     # ------------------------------------------------------------------
     # WebSocket
@@ -631,10 +785,12 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                         bus.dispatch(BusMessage(type="face_state", source="websocket", payload=result))
                         await _broadcast(websocket_clients, {"type": "face_state", **result})
                     except ValueError:
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": f"Invalid state: {state_name}. Valid: {[s.value for s in FaceState]}",
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "message": f"Invalid state: {state_name}. Valid: {[s.value for s in FaceState]}",
+                            }
+                        )
 
                 elif action == "set_personality":
                     layer = cmd.get("layer", "")
@@ -644,18 +800,27 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                     if layer in pdata and trait in pdata[layer]:
                         setattr(getattr(personality, layer), trait, round(float(value), 2))
                         save_personality(personality)
-                        await _broadcast(websocket_clients, {
-                            "type": "personality_change", "layer": layer, "trait": trait, "value": value,
-                        })
+                        await _broadcast(
+                            websocket_clients,
+                            {
+                                "type": "personality_change",
+                                "layer": layer,
+                                "trait": trait,
+                                "value": value,
+                            },
+                        )
                     else:
                         await websocket.send_json({"type": "error", "message": f"Unknown: {layer}.{trait}"})
 
                 elif action == "chat":
                     message = cmd.get("message") or cmd.get("text", "")
-                    bus.dispatch(BusMessage(
-                        type="chat_message", source="websocket",
-                        payload={"message": message, "session_id": cmd.get("session_id")},
-                    ))
+                    bus.dispatch(
+                        BusMessage(
+                            type="chat_message",
+                            source="websocket",
+                            payload={"message": message, "session_id": cmd.get("session_id")},
+                        )
+                    )
                     try:
                         async with httpx.AsyncClient(timeout=120.0) as client:
                             resp = await client.post(
@@ -671,19 +836,41 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
                         hermes_response = f"[Bridge error — {e}]"
                         face_state = "thinking"
 
-                    await websocket.send_json({
-                        "type": "chat_response", "role": "assistant",
-                        "text": hermes_response, "face_state": face_state,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "chat_response",
+                            "role": "assistant",
+                            "text": hermes_response,
+                            "face_state": face_state,
+                        }
+                    )
 
                 elif action == "ping":
                     await websocket.send_json({"type": "pong", "timestamp": time.time()})
 
+                elif action == "get_cognitive_snapshot":
+                    snapshot = _build_snapshot(_cognitive_loop, list(_last_recall))
+                    await websocket.send_json(
+                        {
+                            "type": "cognitive_snapshot",
+                            **snapshot.model_dump(),
+                        }
+                    )
+
                 else:
-                    await websocket.send_json({
-                        "type": "error", "message": f"Unknown action: {action}",
-                        "valid_actions": ["set_face_state", "set_personality", "chat", "ping"],
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "message": f"Unknown action: {action}",
+                            "valid_actions": [
+                                "set_face_state",
+                                "set_personality",
+                                "chat",
+                                "ping",
+                                "get_cognitive_snapshot",
+                            ],
+                        }
+                    )
 
         except WebSocketDisconnect:
             pass
@@ -707,22 +894,27 @@ def create_app(bus: ARESBus = None, personality: CharacterProfile = None) -> Fas
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _on_face_state(msg: BusMessage):
     """Bus listener that persists face state changes."""
     if msg.type == "face_state" and isinstance(msg.payload, dict):
-        _save_face_state({
-            "current_state": msg.payload.get("state", "idle"),
-            **msg.payload,
-        })
+        _save_face_state(
+            {
+                "current_state": msg.payload.get("state", "idle"),
+                **msg.payload,
+            }
+        )
 
 
 def _load_face_state() -> dict:
     from ares.mcp_serve import _load_face_state as _mcp_load
+
     return _mcp_load()
 
 
 def _save_face_state(data: dict) -> None:
     from ares.mcp_serve import _save_face_state as _mcp_save
+
     _mcp_save(data)
 
 
@@ -737,6 +929,55 @@ async def _broadcast(clients: set, data: dict) -> None:
     clients -= disconnected
 
 
+def _build_snapshot(
+    loop: Optional[CognitiveLoop],
+    memory_recall: Optional[list[MemoryHitBlock]] = None,
+) -> CognitiveSnapshot:
+    """Compose a CognitiveSnapshot from a loop instance.
+
+    Accepts None — returns an idle snapshot suitable for the UI heartbeat
+    when no loop has been started yet. Lives in the API layer (not in
+    `core/cognitive.py`) so the loop has no Pydantic dependency.
+
+    `memory_recall` is passed through to the snapshot when the caller has
+    already computed hits (e.g. `/api/chat` recalls before LLM dispatch).
+    """
+    recall = list(memory_recall) if memory_recall else []
+    if loop is None:
+        return CognitiveSnapshot(running=False, memory_recall=recall)
+    state = loop.state
+    elapsed_ms = int(max(0, (time.time() - state.started_at) * 1000))
+    branches = [
+        ThoughtNode(
+            id=b.id,
+            parent_ids=list(b.parent_ids),
+            label=b.label,
+            status=b.status,
+            duration_ms=b.duration_ms,
+            evidence=list(b.evidence),
+        )
+        for b in state.branches
+    ]
+    thought = None
+    if branches:
+        summary = branches[-1].label if branches[-1].label else None
+        thought = ThoughtBlock(summary=summary, depth=len(branches), branches=branches)
+    return CognitiveSnapshot(
+        running=loop._running,
+        loop=LoopBlock(
+            cycle=state.cycle,
+            phase=state.phase.value,
+            urgency=state.urgency.value,
+            budget_remaining=state.budget_remaining,
+            tokens_used=state.tokens_used,
+            elapsed_ms=elapsed_ms,
+        ),
+        thought=thought,
+        memory_recall=recall,
+        errors=list(state.errors),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -745,6 +986,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     logging.basicConfig(level=logging.INFO)
     logger.info("Starting ARES API server on http://0.0.0.0:7860")
     uvicorn.run(app, host="0.0.0.0", port=7860)

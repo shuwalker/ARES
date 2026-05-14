@@ -17,20 +17,20 @@ from typing import Any
 from ..config import ares_paths
 from ..audit import log
 
-
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Task:
     id: str
     goal: str
-    status: str = "queued"          # queued | planning | executing | paused | done | failed
+    status: str = "queued"  # queued | planning | executing | paused | done | failed
     created_at: str = ""
     started_at: str | None = None
     completed_at: str | None = None
-    priority: int = 5               # 1 (highest) — 10 (lowest)
+    priority: int = 5  # 1 (highest) — 10 (lowest)
     current_stage: int = 0
     plan_json: dict[str, Any] = field(default_factory=dict)
     result: str = ""
@@ -54,6 +54,7 @@ def new_task(goal: str, priority: int = 5, context: dict[str, Any] | None = None
 # ---------------------------------------------------------------------------
 # Queue I/O
 # ---------------------------------------------------------------------------
+
 
 def _queue_path() -> Path:
     return ares_paths()["tasks"] / "queue.jsonl"
@@ -133,6 +134,7 @@ def get_task(task_id: str) -> Task | None:
 # ---------------------------------------------------------------------------
 # Inbox — accept goals from CLI / MacBook
 # ---------------------------------------------------------------------------
+
 
 class Inbox:
     """Simple async inbox for new goals."""

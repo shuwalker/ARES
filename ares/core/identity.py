@@ -3,6 +3,7 @@
 Layer 1 (Cognition) — must never assume keyboard/screen/mic/human-at-desk.
 No Hermes/MCP/Atropos leakage in user-facing prompt.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,9 +34,7 @@ class Identity:
     def to_system_prompt_block(self) -> str:
         """Render identity as a system prompt injection block."""
         return (
-            f"You are {self.name}. {self.role}.\n\n"
-            f"## Voice\n{self.voice}\n\n"
-            f"## Self-Model\n{self.self_model}"
+            f"You are {self.name}. {self.role}.\n\n" f"## Voice\n{self.voice}\n\n" f"## Self-Model\n{self.self_model}"
         )
 
 

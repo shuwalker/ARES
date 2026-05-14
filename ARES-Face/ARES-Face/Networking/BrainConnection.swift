@@ -11,6 +11,7 @@ class BrainConnection: ObservableObject {
     @Published var immersionLevel: ImmersionLevel = .light
     @Published var intensity: Float = 0.2
     @Published var isSpeaking: Bool = false
+    @Published var cognitive: CognitiveSnapshot = .idle
     
     private var webSocketTask: URLSessionWebSocketTask?
     private let sessionID = UUID().uuidString
@@ -41,9 +42,13 @@ class BrainConnection: ObservableObject {
         
         webSocketTask = session.webSocketTask(with: request)
         webSocketTask?.resume()
-        
+
         // Start receiving messages
         receiveMessage()
+
+        // Request an initial cognitive snapshot so the heartbeat panel
+        // populates immediately, before the first phase transition fires.
+        sendWSMessage(["action": "get_cognitive_snapshot"])
     }
     
     private func receiveMessage() {
@@ -111,7 +116,12 @@ class BrainConnection: ObservableObject {
             
         case "pong":
             break
-            
+
+        case "cognitive_snapshot":
+            if let snapshot = try? JSONDecoder().decode(CognitiveSnapshot.self, from: data) {
+                cognitive = snapshot
+            }
+
         default:
             break
         }

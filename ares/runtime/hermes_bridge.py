@@ -4,6 +4,7 @@ Local HTTP boundary between the SwiftUI shell and Python cognition services.
 The bridge returns a user-facing response plus state/expression hints for the
 avatar. Implementation details stay behind this boundary.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,14 @@ start_time = time.time()
 
 VALID_STATES = {"idle", "awakened", "listening", "thinking", "speaking", "sleeping", "error"}
 VALID_EXPRESSIONS = {
-    "neutral", "happy", "curious", "thinking",
-    "surprised", "concerned", "excited", "sleepy",
+    "neutral",
+    "happy",
+    "curious",
+    "thinking",
+    "surprised",
+    "concerned",
+    "excited",
+    "sleepy",
 }
 
 
@@ -32,9 +39,14 @@ def call_mcp(server: int, tool: str, **kwargs) -> dict:
             args.append(f"{k}={json.dumps(v)}")
 
     cmd = [
-        "npx", "-y", "mcporter", "call",
+        "npx",
+        "-y",
+        "mcporter",
+        "call",
         f"http://localhost:{server}/mcp.{tool}",
-        "--allow-http", "--output", "json"
+        "--allow-http",
+        "--output",
+        "json",
     ] + args
 
     try:
@@ -82,9 +94,13 @@ def cognition_query(text: str, session_id: str) -> tuple[str, str, str]:
 
     if any(g in text_lower for g in ["avatar", "face", "expression", "live2d"]):
         return (
-            "My expression path is online. If the rendered avatar is unavailable, "
-            "the black fire form carries the same emotional state."
-        ), "speaking", "excited"
+            (
+                "My expression path is online. If the rendered avatar is unavailable, "
+                "the black fire form carries the same emotional state."
+            ),
+            "speaking",
+            "excited",
+        )
 
     if any(g in text_lower for g in ["status", "health", "check"]):
         perception = call_mcp(9512, "perception_health")
@@ -106,9 +122,13 @@ def cognition_query(text: str, session_id: str) -> tuple[str, str, str]:
 
     if len(text) > 30:
         return (
-            f"I'm tracking it: '{text[:80]}...'. "
-            "I need the full reasoning loop wired before I can give this the depth it deserves."
-        ), "thinking", "thinking"
+            (
+                f"I'm tracking it: '{text[:80]}...'. "
+                "I need the full reasoning loop wired before I can give this the depth it deserves."
+            ),
+            "thinking",
+            "thinking",
+        )
 
     return f"I heard: '{text}'. I'm listening.", "listening", "curious"
 
@@ -133,12 +153,14 @@ class HermesHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self._send_json({
-                "status": "ok",
-                "uptime": int(time.time() - start_time),
-                "version": "bridge-v2",
-                "servers": {"perception": 9512, "voice": 9513, "avatar": 9514},
-            })
+            self._send_json(
+                {
+                    "status": "ok",
+                    "uptime": int(time.time() - start_time),
+                    "version": "bridge-v2",
+                    "servers": {"perception": 9512, "voice": 9513, "avatar": 9514},
+                }
+            )
         elif self.path == "/avatar":
             self._send_json(call_mcp(9514, "avatar_state"))
         else:
@@ -152,11 +174,21 @@ class HermesHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             if length > 64_000:
-                self._send_json({"error": "request too large", "response": "Request too large.", "state": "error", "expression": "concerned"}, 413)
+                self._send_json(
+                    {
+                        "error": "request too large",
+                        "response": "Request too large.",
+                        "state": "error",
+                        "expression": "concerned",
+                    },
+                    413,
+                )
                 return
             body = json.loads(self.rfile.read(length)) if length else {}
         except (json.JSONDecodeError, ValueError):
-            self._send_json({"error": "invalid json", "response": "Bad request.", "state": "error", "expression": "concerned"}, 400)
+            self._send_json(
+                {"error": "invalid json", "response": "Bad request.", "state": "error", "expression": "concerned"}, 400
+            )
             return
 
         text = body.get("text", "")
@@ -171,11 +203,13 @@ class HermesHandler(BaseHTTPRequestHandler):
             state = "idle"
         if expression not in VALID_EXPRESSIONS:
             expression = "neutral"
-        self._send_json({
-            "response": response,
-            "state": state,
-            "expression": expression,
-        })
+        self._send_json(
+            {
+                "response": response,
+                "state": state,
+                "expression": expression,
+            }
+        )
 
 
 def serve():

@@ -10,10 +10,15 @@ import Foundation
 // must be identical to what the vertex/fragment shaders expect.
 
 struct SurfaceCustomUniforms {
-    var intensity: Float       // 0.0 - 1.0
-    var expression: Float      // 0=neutral, 1=happy, 2=curious... 
-    var isSpeaking: Float      // 0.0 or 1.0
-    var time: Float            // elapsed seconds
+    var intensity: Float        // 0.0 - 1.0
+    var expression: Float       // 0=neutral, 1=happy, 2=curious...
+    var isSpeaking: Float       // 0.0 or 1.0
+    var time: Float             // elapsed seconds
+    // Cognition uniforms — must match SharedHeader.h ordering.
+    var noiseScale: Float
+    var emissivePulse: Float
+    var vertexJitter: Float
+    var glitchAmplitude: Float
 }
 
 struct GeometryCustomUniforms {
@@ -129,12 +134,23 @@ class AvatarRenderer {
     }
     
     /// Update surface shader uniforms per frame
-    func updateSurfaceUniforms(material: inout CustomMaterial, intensity: Float, expression: Float, isSpeaking: Float, time: Float) {
+    func updateSurfaceUniforms(
+        material: inout CustomMaterial,
+        intensity: Float,
+        expression: Float,
+        isSpeaking: Float,
+        time: Float,
+        cognition: CognitiveUniformValues = .neutral
+    ) {
         material.withMutableUniforms(ofType: SurfaceCustomUniforms.self, stage: .surfaceShader) { params, _ in
             params.intensity = intensity
             params.expression = expression
             params.isSpeaking = isSpeaking
             params.time = time
+            params.noiseScale = cognition.noiseScale
+            params.emissivePulse = cognition.emissivePulse
+            params.vertexJitter = cognition.vertexJitter
+            params.glitchAmplitude = cognition.glitchAmplitude
         }
     }
     

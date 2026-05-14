@@ -32,9 +32,7 @@ try:
     SOUNDDEVICE_AVAILABLE = True
 except ImportError:
     SOUNDDEVICE_AVAILABLE = False
-    print(
-        "Warning: sounddevice package not available. Audio playback will be disabled."
-    )
+    print("Warning: sounddevice package not available. Audio playback will be disabled.")
 
 
 class KokoroTTSRunner:

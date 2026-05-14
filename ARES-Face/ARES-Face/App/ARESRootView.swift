@@ -6,23 +6,48 @@ struct ARESRootView: View {
     @EnvironmentObject var voice: VoiceManager
     @State private var showLaunchAnimation = true
     @State private var currentStyle: AvatarStyle = .blackFire
-    
+    @State private var cognitiveExpanded = false
+    @State private var selectedPage: DashboardPage = .chat
+
     var body: some View {
         ZStack {
             backgroundLayer
-            
+
             if showLaunchAnimation {
                 LaunchRipple()
                     .transition(.opacity)
                     .zIndex(1000)
             }
-            
-            VStack(spacing: 0) {
-                ImmersionBar()
-                AvatarSceneView(style: $currentStyle)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                ChatStream()
-                CommandBar()
+
+            HStack(spacing: 0) {
+                if brain.immersionLevel != .full {
+                    SidebarView(selectedPage: $selectedPage)
+                }
+
+                VStack(spacing: 0) {
+                    ImmersionBar(cognitiveExpanded: $cognitiveExpanded)
+
+                    if cognitiveExpanded {
+                        CognitiveActivityPanel()
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    ZStack {
+                        VStack(spacing: 0) {
+                            AvatarSceneView(style: $currentStyle)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            ChatStream()
+                            CommandBar()
+                        }
+                        // Sidebar-selected operator pages overlay on top of
+                        // the chat surface. Avatar still renders behind so
+                        // ARES never feels gone.
+                        if selectedPage != .chat && brain.immersionLevel != .full {
+                            operatorPage
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
+                }
             }
             .opacity(showLaunchAnimation ? 0 : 1)
             .animation(.easeIn(duration: 1.0).delay(1.8), value: showLaunchAnimation)
@@ -43,6 +68,29 @@ struct ARESRootView: View {
         }
     }
     
+    @ViewBuilder
+    private var operatorPage: some View {
+        switch selectedPage {
+        case .sessions:
+            MemoryInspectorView()
+        case .logs:
+            MissionControlPanel()
+        default:
+            VStack {
+                Spacer()
+                Text("\(selectedPage.label)")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text("coming soon")
+                    .font(.caption)
+                    .foregroundStyle(.secondary.opacity(0.6))
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.ultraThinMaterial)
+        }
+    }
+
     @ViewBuilder
     var backgroundLayer: some View {
         if brain.immersionLevel == .full {

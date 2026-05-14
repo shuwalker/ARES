@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # ARES configuration
 # ---------------------------------------------------------------------------
+
 
 class HermesConnection(BaseModel):
     """How ARES connects to the Hermes agent subsystem."""
@@ -52,12 +51,16 @@ class AresConfig(BaseModel):
     hermes: HermesConnection = Field(default_factory=HermesConnection)
 
     # MCP servers
-    mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=lambda: {
-        "perception": MCPServerConfig(name="perception", port=9512, module="ares.skills.cognitive.perception_server"),
-        "voice": MCPServerConfig(name="voice", port=9513, module="ares.skills.cognitive.voice_server"),
-        "avatar": MCPServerConfig(name="avatar", port=9514, module="ares.skills.cognitive.avatar_server"),
-        "mac_tools": MCPServerConfig(name="mac_tools", port=9515, module="ares.skills.cognitive.mac_tools_server"),
-    })
+    mcp_servers: dict[str, MCPServerConfig] = Field(
+        default_factory=lambda: {
+            "perception": MCPServerConfig(
+                name="perception", port=9512, module="ares.skills.cognitive.perception_server"
+            ),
+            "voice": MCPServerConfig(name="voice", port=9513, module="ares.skills.cognitive.voice_server"),
+            "avatar": MCPServerConfig(name="avatar", port=9514, module="ares.skills.cognitive.avatar_server"),
+            "mac_tools": MCPServerConfig(name="mac_tools", port=9515, module="ares.skills.cognitive.mac_tools_server"),
+        }
+    )
 
     # Memory
     memory_db: str = Field("~/.ares/memory.db", description="SQLite database path")
@@ -72,6 +75,7 @@ class AresConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Runtime state models (used by hermes_bridge and the app)
 # ---------------------------------------------------------------------------
+
 
 class EmotionState(str, Enum):
     idle = "idle"

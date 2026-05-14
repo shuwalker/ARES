@@ -3,6 +3,7 @@
 Uses AVFoundation for camera, CoreAudio for mic/speakers,
 AppKit for screen resolution. All through Python wrappers.
 """
+
 from __future__ import annotations
 
 from ..interface import Embodiment
@@ -31,9 +32,9 @@ class DesktopEmbodiment(Embodiment):
         """Return Mac Studio display resolution."""
         try:
             import subprocess
+
             result = subprocess.run(
-                ["system_profiler", "SPDisplaysDataType"],
-                capture_output=True, text=True, timeout=5
+                ["system_profiler", "SPDisplaysDataType"], capture_output=True, text=True, timeout=5
             )
             for line in result.stdout.split("\n"):
                 if "Resolution:" in line:

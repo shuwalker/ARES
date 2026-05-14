@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -24,9 +23,9 @@ class ProjectStatus(str, Enum):
 
 class ProjectPriority(str, Enum):
     critical = "critical"  # Revenue or deadline-driven
-    high = "high"          # Core business
-    medium = "medium"      # Important but no urgency
-    low = "low"            # Side projects, learning
+    high = "high"  # Core business
+    medium = "medium"  # Important but no urgency
+    low = "low"  # Side projects, learning
 
 
 class Project(BaseModel):

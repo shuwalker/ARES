@@ -27,13 +27,11 @@ import click
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich import print as rprint
 
 from .config import ares_paths, get_config, write_default_config
 from .audit import tail_log, log_sync
 from .memory import list_episodic, read_preferences, list_knowledge, list_projects
 from .tools.registry import load_registry, probe_all_tools, register_tool, ToolEntry
-
 
 console = Console()
 
@@ -41,6 +39,7 @@ console = Console()
 # ---------------------------------------------------------------------------
 # IPC helpers
 # ---------------------------------------------------------------------------
+
 
 def _send_ipc(cmd: dict[str, Any]) -> dict[str, Any]:
     """Send a command to the running daemon via Unix socket."""
@@ -105,6 +104,7 @@ LAUNCHD_PLIST_TEMPLATE = """\
 # CLI root
 # ---------------------------------------------------------------------------
 
+
 @click.group()
 def main() -> None:
     """ARES — Autonomous Reasoning & Execution System."""
@@ -114,6 +114,7 @@ def main() -> None:
 # ---------------------------------------------------------------------------
 # ares start
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 @click.option("--daemon", is_flag=True, default=False, help="Run as background daemon (used by launchd)")
@@ -129,6 +130,7 @@ def start(daemon: bool, register_launchd: bool) -> None:
     if daemon:
         # Actually run the daemon loop
         from .daemon import start_daemon
+
         console.print("[bold green]ARES starting...[/bold green]")
         start_daemon()
         return
@@ -178,7 +180,7 @@ def _register_launchd() -> None:
         text=True,
     )
     if result.returncode == 0:
-        console.print(f"[green]Registered as launchd service.[/green]")
+        console.print("[green]Registered as launchd service.[/green]")
         console.print(f"Plist: {plist_path}")
     else:
         console.print(f"[red]launchctl error:[/red] {result.stderr}")
@@ -187,6 +189,7 @@ def _register_launchd() -> None:
 # ---------------------------------------------------------------------------
 # ares stop
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 def stop() -> None:
@@ -202,6 +205,7 @@ def stop() -> None:
 # ares goal
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 @click.argument("goal_text", nargs=-1, required=True)
 def goal(goal_text: tuple[str, ...]) -> None:
@@ -210,8 +214,9 @@ def goal(goal_text: tuple[str, ...]) -> None:
     response = _send_ipc({"cmd": "goal", "goal": full_goal})
     if "error" in response:
         # Daemon not running — queue the goal directly
-        console.print(f"[yellow]Daemon not running. Queuing goal for next start.[/yellow]")
+        console.print("[yellow]Daemon not running. Queuing goal for next start.[/yellow]")
         from .tasks.queue import new_task, enqueue
+
         task = new_task(full_goal)
         enqueue(task)
         console.print(f"Goal queued as [bold]{task.id}[/bold]: {full_goal[:80]}")
@@ -223,6 +228,7 @@ def goal(goal_text: tuple[str, ...]) -> None:
 # ares status
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 def status() -> None:
     """Show what ARES is currently doing."""
@@ -232,6 +238,7 @@ def status() -> None:
 
         # Show queued tasks from disk
         from .tasks.queue import list_active
+
         active = list_active()
         if active:
             console.print(f"\n[yellow]{len(active)} tasks queued on disk:[/yellow]")
@@ -268,6 +275,7 @@ def _print_status(data: dict[str, Any]) -> None:
 # ares pause / resume
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 def pause() -> None:
     """Pause ARES — I'm taking over."""
@@ -293,6 +301,7 @@ def resume() -> None:
 # ares log
 # ---------------------------------------------------------------------------
 
+
 @main.command(name="log")
 @click.option("-n", "--lines", default=50, help="Number of lines to show")
 @click.option("-f", "--follow", is_flag=True, default=False, help="Follow the log")
@@ -307,6 +316,7 @@ def log_cmd(lines: int, follow: bool) -> None:
 
     if follow:
         import time
+
         console.print(f"[dim]Tailing {log_path}...[/dim]")
         with open(log_path) as fh:
             fh.seek(0, 2)  # Seek to end
@@ -325,6 +335,7 @@ def log_cmd(lines: int, follow: bool) -> None:
 # ---------------------------------------------------------------------------
 # ares tools
 # ---------------------------------------------------------------------------
+
 
 @main.group()
 def tools() -> None:
@@ -364,6 +375,7 @@ def tools_list(probe: bool) -> None:
 def tools_init() -> None:
     """Populate registry with built-in tool definitions."""
     from .tools.registry import ensure_builtin_tools
+
     ensure_builtin_tools()
     console.print("[green]Built-in tools registered.[/green]")
     tools_list.invoke(click.Context(tools_list, info_name="list"))
@@ -393,14 +405,16 @@ def tools_install(tool_key: str) -> None:
             console.print(f"URL: {entry.url}")
         return
 
-    console.print(Panel(
-        f"[bold]Propose: install {entry.name}[/bold]\n\n"
-        f"Reason: {entry.description}\n"
-        f"Method: {entry.install_method}\n"
-        f"Command: [code]{entry.install_command}[/code]\n\n"
-        f"[dim]{entry.notes}[/dim]",
-        title="ARES Tool Install Proposal",
-    ))
+    console.print(
+        Panel(
+            f"[bold]Propose: install {entry.name}[/bold]\n\n"
+            f"Reason: {entry.description}\n"
+            f"Method: {entry.install_method}\n"
+            f"Command: [code]{entry.install_command}[/code]\n\n"
+            f"[dim]{entry.notes}[/dim]",
+            title="ARES Tool Install Proposal",
+        )
+    )
 
     if not click.confirm("Approve installation?"):
         console.print("[yellow]Cancelled.[/yellow]")
@@ -454,6 +468,7 @@ def tools_add(
 # ares memory
 # ---------------------------------------------------------------------------
 
+
 @main.group()
 def memory() -> None:
     """Browse ARES memory."""
@@ -465,12 +480,12 @@ def memory_show() -> None:
     """Show memory summary."""
     paths = ares_paths()
 
-    console.print(Panel(
-        f"[bold]ARES Memory[/bold]\n"
-        f"Home: {paths['home']}\n"
-        f"Memory: {paths['memory']}",
-        title="Memory System",
-    ))
+    console.print(
+        Panel(
+            f"[bold]ARES Memory[/bold]\n" f"Home: {paths['home']}\n" f"Memory: {paths['memory']}",
+            title="Memory System",
+        )
+    )
 
     # Episodic
     episodes = list_episodic(10)
@@ -518,10 +533,12 @@ def memory_path() -> None:
 # ares setup
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 def setup() -> None:
     """First-time setup — discovery conversation + config."""
     from .discovery import run_discovery
+
     asyncio.run(run_discovery())
 
 
@@ -529,11 +546,12 @@ def setup() -> None:
 # ares init
 # ---------------------------------------------------------------------------
 
+
 @main.command(name="init")
-@click.option("--force-brain-transport", is_flag=True, default=False,
-              help="Re-run brain transport even if already migrated")
-@click.option("--skip-hermes", is_flag=True, default=False,
-              help="Skip Hermes installation (use existing)")
+@click.option(
+    "--force-brain-transport", is_flag=True, default=False, help="Re-run brain transport even if already migrated"
+)
+@click.option("--skip-hermes", is_flag=True, default=False, help="Skip Hermes installation (use existing)")
 def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
     """Initialize ARES — install Hermes, transport brain data, set up directories.
 
@@ -594,7 +612,7 @@ def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
             for item in result["skipped"]:
                 console.print(f"  [dim]• Skipped: {item}[/dim]")
             if result["errors"]:
-                console.print(f"  [red]Errors:[/red]")
+                console.print("  [red]Errors:[/red]")
                 for err in result["errors"]:
                     console.print(f"    [red]✗ {err}[/red]")
             console.print("  [green]✓[/green] Brain transport complete.")
@@ -605,6 +623,7 @@ def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
     # ── Step 4: Register tools ──
     console.print("\n[bold][4/5] Registering built-in tools...[/bold]")
     from .tools.registry import ensure_builtin_tools
+
     ensure_builtin_tools()
     console.print("  [green]✓[/green] Tools registered.")
 
@@ -612,15 +631,17 @@ def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
     console.print("\n[bold][5/5] Installation status:[/bold]")
     status = hermes_status()
     console.print(f"  Hermes installed: {'[green]✓[/green]' if status['installed'] else '[red]✗[/red]'}")
-    if status['installed']:
+    if status["installed"]:
         console.print(f"  Hermes location: {status['hermes_dir']}")
-        console.print(f"  ARES-managed: {'[green]✓[/green]' if status['ares_managed'] else '[yellow]legacy install[/yellow]'}")
+        console.print(
+            f"  ARES-managed: {'[green]✓[/green]' if status['ares_managed'] else '[yellow]legacy install[/yellow]'}"
+        )
     console.print(f"  HERMES_HOME: {status['hermes_home']}")
     console.print(f"  Config: {status['hermes_home_has_config'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
     console.print(f"  Skills: {status['hermes_home_has_skills'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
     console.print(f"  State: {status['hermes_home_has_state'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
 
-    console.print(f"\n[bold green]ARES initialized.[/bold green]")
+    console.print("\n[bold green]ARES initialized.[/bold green]")
     console.print(f"Home: {ARES_HOME}")
     console.print(f"Config: {paths['config'] / 'ares.toml'}")
     console.print(f"Memory: {paths['memory']}")
@@ -628,23 +649,26 @@ def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
     console.print("\nNext steps:")
     console.print("  1. Run [bold]ares start[/bold] to launch ARES daemon")
     console.print("  2. Run [bold]ares shell[/bold] to open Hermes CLI")
-    console.print("  3. Run [bold]ares goal \"...\"[/bold] to give ARES a task")
+    console.print('  3. Run [bold]ares goal "..."[/bold] to give ARES a task')
 
 
 # ---------------------------------------------------------------------------
 # ares version
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 def version() -> None:
     """Show ARES version."""
     from . import __version__
+
     console.print(f"ARES v{__version__}")
 
 
 # ---------------------------------------------------------------------------
 # ares shell
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 @click.option("--model", default=None, help="Override default model (e.g. deepseek-v4-pro:cloud)")
@@ -666,7 +690,7 @@ def shell(model: str | None) -> None:
         args.extend(["--model", model])
 
     console.print(f"[bold]ARES Shell[/bold] — HERMES_HOME={HERMES_HOME}")
-    console.print(f"[dim]Launching Hermes CLI...[/dim]\n")
+    console.print("[dim]Launching Hermes CLI...[/dim]\n")
 
     try:
         proc = start_hermes(extra_args=args)
@@ -681,6 +705,7 @@ def shell(model: str | None) -> None:
 # ---------------------------------------------------------------------------
 # ares serve
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 @click.option("--host", default="0.0.0.0", help="Host to bind to")
@@ -702,13 +727,15 @@ def serve(host: str, port: int, reload: bool) -> None:
     import uvicorn
     from .api import create_app
 
-    console.print(Panel.fit(
-        f"[bold]ARES API Server[/bold]\n"
-        f"URL: http://{host}:{port}\n"
-        f"Docs: http://{host}:{port}/docs\n"
-        f"Reload: {'on' if reload else 'off'}",
-        border_style="bright_blue",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold]ARES API Server[/bold]\n"
+            f"URL: http://{host}:{port}\n"
+            f"Docs: http://{host}:{port}/docs\n"
+            f"Reload: {'on' if reload else 'off'}",
+            border_style="bright_blue",
+        )
+    )
 
     app = create_app()
     uvicorn.run(app, host=host, port=port, log_level="info")
@@ -717,6 +744,7 @@ def serve(host: str, port: int, reload: bool) -> None:
 # ---------------------------------------------------------------------------
 # ares mcp
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Verbose logging")
@@ -728,12 +756,14 @@ def mcp(verbose: bool) -> None:
         {"mcpServers": {"ares": {"command": "ares", "args": ["mcp"]}}}
     """
     from .mcp_serve import run_mcp_server
+
     run_mcp_server(verbose=verbose)
 
 
 # ---------------------------------------------------------------------------
 # ares doctor
 # ---------------------------------------------------------------------------
+
 
 @main.command()
 def doctor() -> None:
@@ -745,11 +775,13 @@ def doctor() -> None:
 
     # Hermes
     h_status = hermes_status()
-    console.print(f"\n[bold]Hermes Agent[/bold]")
+    console.print("\n[bold]Hermes Agent[/bold]")
     console.print(f"  Installed: {'[green]✓[/green]' if h_status['installed'] else '[red]✗[/red]'}")
-    if h_status['installed']:
+    if h_status["installed"]:
         console.print(f"  Location: {h_status['hermes_dir']}")
-        console.print(f"  ARES-managed: {'[green]✓[/green]' if h_status['ares_managed'] else '[yellow]legacy[/yellow]'}")
+        console.print(
+            f"  ARES-managed: {'[green]✓[/green]' if h_status['ares_managed'] else '[yellow]legacy[/yellow]'}"
+        )
         console.print(f"  Venv: {'[green]✓[/green]' if h_status.get('venv_exists') else '[red]✗[/red]'}")
 
     # HERMES_HOME
@@ -760,15 +792,16 @@ def doctor() -> None:
 
     # Brain transport
     t_status = get_transport_status()
-    console.print(f"\n[bold]Brain Transport[/bold]")
+    console.print("\n[bold]Brain Transport[/bold]")
     console.print(f"  Migrated: {'[green]✓[/green]' if t_status['is_migrated'] else '[yellow]pending[/yellow]'}")
     console.print(f"  Legacy ~/.hermes/ exists: {'[green]✓[/green]' if t_status['legacy_exists'] else '[dim]no[/dim]'}")
-    if t_status['legacy_items']:
-        for item in t_status['legacy_items']:
+    if t_status["legacy_items"]:
+        for item in t_status["legacy_items"]:
             console.print(f"    {item}")
 
     # ARES directories
     from .runtime.launcher import ARES_HOME
+
     console.print(f"\n[bold]ARES Home ({ARES_HOME})[/bold]")
     for subdir in ["memory", "profiles", "workspace", "logs", "config"]:
         path = ARES_HOME / subdir

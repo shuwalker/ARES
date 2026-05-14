@@ -10,46 +10,64 @@ from __future__ import annotations
 
 import asyncio
 import tomli_w
-from pathlib import Path
 from typing import Any
 
-from .config import ares_paths, get_config, write_default_config
+from .config import ares_paths, write_default_config
 from .memory import write_preference, append_preference_note
-from .tools.registry import ensure_builtin_tools, load_registry, mark_installed
-
+from .tools.registry import ensure_builtin_tools
 
 # ---------------------------------------------------------------------------
 # Domain discovery questions
 # ---------------------------------------------------------------------------
 
 YOUTUBE_QUESTIONS = [
-    ("video_editor", "What do you currently use for video editing?",
-     ["DaVinci Resolve", "Final Cut Pro", "Premiere Pro", "None yet"]),
-    ("audio_tool", "How do you handle voiceover / narration?",
-     ["ElevenLabs (AI)", "I record it myself", "Hired voice talent", "No voiceover yet"]),
-    ("project_storage", "Where do you store video project files?",
-     ["~/Documents/YouTube", "iCloud Drive", "External drive", "Dropbox / Google Drive"]),
-    ("thumbnail_tool", "What do you use for thumbnails?",
-     ["Canva", "Figma", "Photoshop", "Nothing consistent yet"]),
-    ("involvement", "How involved do you want to be in the production process?",
-     ["Review every stage", "Review script + final video only", "Mostly hands-off, flag issues"]),
-    ("channel_status", "What's your YouTube channel status?",
-     ["Active channel, regular uploads", "Starting fresh", "Dormant, want to restart"]),
+    (
+        "video_editor",
+        "What do you currently use for video editing?",
+        ["DaVinci Resolve", "Final Cut Pro", "Premiere Pro", "None yet"],
+    ),
+    (
+        "audio_tool",
+        "How do you handle voiceover / narration?",
+        ["ElevenLabs (AI)", "I record it myself", "Hired voice talent", "No voiceover yet"],
+    ),
+    (
+        "project_storage",
+        "Where do you store video project files?",
+        ["~/Documents/YouTube", "iCloud Drive", "External drive", "Dropbox / Google Drive"],
+    ),
+    ("thumbnail_tool", "What do you use for thumbnails?", ["Canva", "Figma", "Photoshop", "Nothing consistent yet"]),
+    (
+        "involvement",
+        "How involved do you want to be in the production process?",
+        ["Review every stage", "Review script + final video only", "Mostly hands-off, flag issues"],
+    ),
+    (
+        "channel_status",
+        "What's your YouTube channel status?",
+        ["Active channel, regular uploads", "Starting fresh", "Dormant, want to restart"],
+    ),
 ]
 
 GENERAL_QUESTIONS = [
-    ("google_account", "Do you have a Google account for Drive / Docs?",
-     ["Yes, using it", "Yes but rarely", "No"]),
-    ("notion_user", "Do you use Notion for notes / planning?",
-     ["Yes, actively", "Have an account, don't use it much", "No"]),
-    ("n8n_status", "Is n8n installed or have you used it before?",
-     ["Running locally", "Used before, not running", "New to n8n"]),
+    ("google_account", "Do you have a Google account for Drive / Docs?", ["Yes, using it", "Yes but rarely", "No"]),
+    (
+        "notion_user",
+        "Do you use Notion for notes / planning?",
+        ["Yes, actively", "Have an account, don't use it much", "No"],
+    ),
+    (
+        "n8n_status",
+        "Is n8n installed or have you used it before?",
+        ["Running locally", "Used before, not running", "New to n8n"],
+    ),
 ]
 
 
 # ---------------------------------------------------------------------------
 # Interactive conversation
 # ---------------------------------------------------------------------------
+
 
 async def _ask(question: str, options: list[str], allow_free: bool = True) -> str:
     """Ask the user a question with numbered options."""
@@ -84,6 +102,7 @@ async def _input_async(prompt: str = "") -> str:
 # ---------------------------------------------------------------------------
 # Discovery flows
 # ---------------------------------------------------------------------------
+
 
 async def run_discovery() -> None:
     """Run the full first-time discovery conversation."""
@@ -133,17 +152,11 @@ This takes about 2 minutes.
 
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not anthropic_key:
-        anthropic_key = (await _input_async(
-            "Anthropic API key (for cloud reasoning, leave blank to skip): "
-        )).strip()
+        anthropic_key = (await _input_async("Anthropic API key (for cloud reasoning, leave blank to skip): ")).strip()
 
-    elevenlabs_key = (await _input_async(
-        "ElevenLabs API key (for voice synthesis, leave blank to skip): "
-    )).strip()
+    elevenlabs_key = (await _input_async("ElevenLabs API key (for voice synthesis, leave blank to skip): ")).strip()
 
-    n8n_key = (await _input_async(
-        "n8n API key (if running locally with auth, leave blank to skip): "
-    )).strip()
+    n8n_key = (await _input_async("n8n API key (if running locally with auth, leave blank to skip): ")).strip()
 
     # Write config
     cfg_data.setdefault("llm", {})["cloud_api_key"] = anthropic_key
@@ -156,8 +169,8 @@ This takes about 2 minutes.
     # Check what tools are already installed
     print("\n── Checking installed tools ────────────────────────────────")
     from .tools.registry import probe_all_tools
+
     tool_status = probe_all_tools()
-    registry = load_registry()
 
     installed = [k for k, v in tool_status.items() if v]
     missing = [k for k, v in tool_status.items() if not v]
@@ -207,10 +220,16 @@ async def run_domain_discovery(domain: str) -> None:
     domain_questions: dict[str, list[tuple[str, str, list[str]]]] = {
         "youtube": [(k, q, o) for k, q, o in YOUTUBE_QUESTIONS],
         "podcast": [
-            ("podcast_daw", "What DAW do you use for audio?",
-             ["GarageBand", "Logic Pro", "Audacity", "Adobe Audition", "None yet"]),
-            ("podcast_host", "Where do you host your podcast?",
-             ["Spotify for Podcasters", "Buzzsprout", "Podbean", "Not set up yet"]),
+            (
+                "podcast_daw",
+                "What DAW do you use for audio?",
+                ["GarageBand", "Logic Pro", "Audacity", "Adobe Audition", "None yet"],
+            ),
+            (
+                "podcast_host",
+                "Where do you host your podcast?",
+                ["Spotify for Podcasters", "Buzzsprout", "Podbean", "Not set up yet"],
+            ),
         ],
     }
 

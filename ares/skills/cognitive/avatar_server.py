@@ -6,6 +6,7 @@ can express emotions, speak, and follow gaze naturally.
 
 MCP server :9514, StreamableHTTP.
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,7 +16,7 @@ from pathlib import Path
 APP_SRC = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(APP_SRC))
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP  # noqa: E402 — must follow sys.path.insert above
 
 server = FastMCP(
     name="ARES Avatar",
@@ -26,19 +27,26 @@ server = FastMCP(
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
+
 def _get_vts():
     try:
         from ares.skills.cognitive.vts_controller import (
-            get_controller, connect_avatar, set_expression as vts_set_expr,
-            speak_animation as vts_speak, look_at as vts_look,
-            avatar_connected, AvatarExpression,
+            get_controller,
+            connect_avatar,
+            set_expression as vts_set_expr,
+            speak_animation as vts_speak,
+            look_at as vts_look,
+            avatar_connected,
+            AvatarExpression,
         )
+
         return get_controller, connect_avatar, vts_set_expr, vts_speak, vts_look, avatar_connected, AvatarExpression
     except ImportError:
         return None, None, None, None, None, None, None
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────
+
 
 @server.tool()
 def avatar_connect() -> dict:
@@ -85,8 +93,14 @@ def avatar_expression(emotion: str = "neutral") -> dict:
         return {"status": "error", "error": "VTS not available"}
 
     valid = {
-        "neutral", "happy", "curious", "thinking",
-        "surprised", "concerned", "excited", "sleepy",
+        "neutral",
+        "happy",
+        "curious",
+        "thinking",
+        "surprised",
+        "concerned",
+        "excited",
+        "sleepy",
     }
     emotion = emotion.lower()
     if emotion not in valid:

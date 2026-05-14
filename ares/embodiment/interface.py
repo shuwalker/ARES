@@ -3,6 +3,7 @@
 Skills never import platform APIs directly. They call this interface.
 The embodiment layer resolves the call differently on desktop vs robot.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

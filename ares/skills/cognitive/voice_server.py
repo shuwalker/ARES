@@ -69,6 +69,7 @@ def _get_vad():
             return _vad_model
         try:
             import torch
+
             model, utils = torch.hub.load(
                 repo_or_dir="snakers4/silero-vad",
                 model="silero_vad",
@@ -90,6 +91,7 @@ def _detect_speech(audio_chunk: np.ndarray) -> bool:
         return True
 
     import torch
+
     audio_tensor = torch.from_numpy(audio_chunk.astype(np.float32))
     if audio_tensor.max() > 0:
         audio_tensor = audio_tensor / audio_tensor.max()
@@ -156,8 +158,8 @@ def _transcribe_nsspeech(wav_path: str) -> Optional[str]:
     try:
         # Convert WAV to temporary file NSSpeechRecognizer can read
         # NSSpeechRecognizer uses the system speech recognition
-        import objc
-        from Foundation import NSURL
+        import objc  # noqa: F401 — pyobjc bootstrap
+        from Foundation import NSURL  # noqa: F401
         from AppKit import NSSpeechRecognizer
 
         recognizer = NSSpeechRecognizer.alloc().init()
@@ -184,7 +186,7 @@ def _transcribe_sfspeech(wav_path: str) -> Optional[str]:
         from Speech import (
             SFSpeechRecognizer,
             SFSpeechURLRecognitionRequest,
-            SFSpeechRecognizerAuthorizationStatus,
+            SFSpeechRecognizerAuthorizationStatus,  # noqa: F401 — re-exported by reflection
         )
 
         # Check authorization
@@ -229,13 +231,15 @@ def _transcribe_whisper_cpp(wav_bytes: bytes, tmp_path: str) -> str:
     """Transcribe using whisper-cpp CLI."""
     result = subprocess.run(
         [WHISPER_CLI, "-m", WHISPER_MODEL_PATH, "-f", tmp_path, "-nt"],
-        capture_output=True, text=True, timeout=30, env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={"PATH": os.environ["PATH"]},
     )
     output = result.stdout
     lines = output.split("\n")
     text_lines = [
-        l for l in lines
-        if l.strip() and not l.startswith("[") and not l.startswith("whisper_")
+        line for line in lines if line.strip() and not line.startswith("[") and not line.startswith("whisper_")
     ]
     return " ".join(text_lines).strip()
 
@@ -305,7 +309,10 @@ def _speak_piper(text: str) -> bool:
     try:
         result = subprocess.run(
             [f"{VENV}/piper", "-m", PIPER_MODEL_PATH, "-f", wav_path],
-            input=text, capture_output=True, text=True, timeout=30,
+            input=text,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode == 0 and os.path.exists(wav_path):
             subprocess.run(["afplay", wav_path], timeout=30)
@@ -455,6 +462,7 @@ def voice_health() -> dict:
     # Check SFSpeechRecognizer
     try:
         from Speech import SFSpeechRecognizer
+
         auth = SFSpeechRecognizer.authorizationStatus()
         if auth == 3:
             stt_backends.append("sfspeech")
@@ -466,6 +474,7 @@ def voice_health() -> dict:
 
     try:
         import faster_whisper  # noqa: F401
+
         stt_backends.append("faster-whisper")
     except ImportError:
         pass

@@ -74,19 +74,13 @@ class PyWhisperCPPSTTRunner:
                     try:
                         if self.vad.is_speech(data, sample_rate=self.sample_rate):
                             self.buffer.extend(data)
-                        elif self.buffer and len(self.buffer) > int(
-                            self.sample_rate * 0.5
-                        ):  # 0.5s of audio
+                        elif self.buffer and len(self.buffer) > int(self.sample_rate * 0.5):  # 0.5s of audio
                             audio = np.frombuffer(self.buffer, dtype=np.int16)
                             self.buffer.clear()
                             try:
-                                self.model.transcribe(
-                                    audio, new_segment_callback=self._on_segment
-                                )
+                                self.model.transcribe(audio, new_segment_callback=self._on_segment)
                             except Exception as transcribe_error:
-                                self.logger.error(
-                                    f"❌ Transcription error: {transcribe_error}"
-                                )
+                                self.logger.error(f"❌ Transcription error: {transcribe_error}")
                                 self.buffer.clear()
                     except Exception as vad_error:
                         self.logger.error(f"❌ VAD error: {vad_error}")

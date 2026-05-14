@@ -15,7 +15,6 @@ from .llm import cloud, local
 from .llm.router import route, LLMBackend
 from .audit import log
 
-
 # ---------------------------------------------------------------------------
 # The Contractor Test system prompt
 # ---------------------------------------------------------------------------
@@ -75,6 +74,7 @@ have requires_approval set to true.."""
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PlanStage:
     id: int
@@ -109,6 +109,7 @@ class Plan:
 # ---------------------------------------------------------------------------
 # Reasoning call
 # ---------------------------------------------------------------------------
+
 
 async def reason(
     goal: str,
@@ -195,27 +196,31 @@ def _parse_plan(goal: str, raw_text: str) -> Plan:
 
     stages = []
     for s in data.get("stages", []):
-        stages.append(PlanStage(
-            id=s.get("id", 0),
-            name=s.get("name", ""),
-            tool=s.get("tool", ""),
-            action=s.get("action", ""),
-            output_file=s.get("output_file", ""),
-            output_format=s.get("output_format", ""),
-            requires_approval=s.get("requires_approval", False),
-            on_failure=s.get("on_failure", "flag to user"),
-            new_install_required=s.get("new_install_required", False),
-            install_reason=s.get("install_reason", ""),
-        ))
+        stages.append(
+            PlanStage(
+                id=s.get("id", 0),
+                name=s.get("name", ""),
+                tool=s.get("tool", ""),
+                action=s.get("action", ""),
+                output_file=s.get("output_file", ""),
+                output_format=s.get("output_format", ""),
+                requires_approval=s.get("requires_approval", False),
+                on_failure=s.get("on_failure", "flag to user"),
+                new_install_required=s.get("new_install_required", False),
+                install_reason=s.get("install_reason", ""),
+            )
+        )
 
     new_installs = []
     for ni in data.get("new_installs", []):
-        new_installs.append(NewInstall(
-            tool=ni.get("tool", ""),
-            reason=ni.get("reason", ""),
-            install_method=ni.get("install_method", "brew"),
-            install_command=ni.get("install_command", ""),
-        ))
+        new_installs.append(
+            NewInstall(
+                tool=ni.get("tool", ""),
+                reason=ni.get("reason", ""),
+                install_method=ni.get("install_method", "brew"),
+                install_command=ni.get("install_command", ""),
+            )
+        )
 
     return Plan(
         goal=data.get("goal", goal),
@@ -230,6 +235,7 @@ def _parse_plan(goal: str, raw_text: str) -> Plan:
 # Proposal formatter
 # ---------------------------------------------------------------------------
 
+
 def format_proposal(plan: Plan) -> str:
     """Format a plan as a human-readable proposal."""
     lines = [
@@ -238,15 +244,11 @@ def format_proposal(plan: Plan) -> str:
         "Proposed toolchain:",
     ]
 
-    max_stage_len = max((len(s.name) for s in plan.stages), default=10)
     max_tool_len = max((len(s.tool) for s in plan.stages), default=10)
 
     for s in plan.stages:
         approval_tag = " [CHECKPOINT]" if s.requires_approval else ""
-        line = (
-            f"  Stage {s.id}  →  {s.tool:<{max_tool_len}}  "
-            f"→  {s.output_file}  ({s.output_format}){approval_tag}"
-        )
+        line = f"  Stage {s.id}  →  {s.tool:<{max_tool_len}}  " f"→  {s.output_file}  ({s.output_format}){approval_tag}"
         lines.append(line)
 
     if plan.new_installs:

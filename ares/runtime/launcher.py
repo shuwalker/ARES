@@ -97,9 +97,7 @@ def start_hermes(
     """
     hermes_dir = find_hermes()
     if not hermes_dir:
-        raise RuntimeError(
-            "Hermes not found. Run 'ares init' first to install it."
-        )
+        raise RuntimeError("Hermes not found. Run 'ares init' first to install it.")
 
     hermes_bin = hermes_dir / "venv" / "bin" / "hermes"
     if not hermes_bin.exists():

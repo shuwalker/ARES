@@ -1,304 +1,122 @@
 # AI Agent Handoff Guide
 
-The ARES core architecture is **complete and verified**. This guide tells AI agents where to pick up for feature development.
+For agents picking up work on ARES. Optimized for someone who has not
+been in the previous session.
 
-## Status
+## Read these first (in order)
 
-✅ **READY FOR AGENT IMPLEMENTATION**
+1. **[`ARCHITECTURE.md`](./ARCHITECTURE.md)** — system overview, file
+   map, communication protocols, REST + WS endpoints.
+2. **[`COGNITIVE_OS.md`](./COGNITIVE_OS.md)** — the cognition / memory
+   / DAG / idle / shader-bindings layer that landed in PR #2.
+3. **[`RENDERING_ARCHITECTURE.md`](./RENDERING_ARCHITECTURE.md)** —
+   RealityKit + Metal pipeline and the cognition-driven shader uniform
+   contract.
+4. **[`FILES_INDEX.md`](./FILES_INDEX.md)** — repo file map.
+5. The skill/project's `VISION.md` and `PLAN.md` (under
+   `ares/reference/swift-ui/`) for the longer-arc product narrative.
 
-- All core files have scaffolding with detailed docstrings explaining what to build
-- All imports verify
-- All interfaces are defined
-- The codebase is clean and modular
+## State of the world (current branch)
 
-## How to Hand Off Tasks to AI Agents
+✅ **Built**
+- Python brain: cognitive loop with DAG + observer, tiered memory
+  (SQLite + swappable `VectorStore`), idle reflexion, personality,
+  identity, ZMQ bus.
+- FastAPI server (`ares/api.py`): REST + WebSocket; pushes
+  `cognitive_snapshot` events on every phase transition.
+- ARES-Face SwiftUI app: 6 RealityKit/Metal styles, heartbeat pill,
+  Memory Inspector, force-directed Mission Control DAG, cognition-driven
+  shader uniforms.
+- Tests: 46 unit tests under `tests/unit/`, GitHub Actions CI for
+  Python 3.11 + 3.12 with `ruff` + `black`.
 
-### Pattern 1: Implement a Single File
+🔨 **Open / next**
+1. **Hermes bridge wiring** — `ares/runtime/hermes_bridge.py`
+   `cognition_query()` is a stub. The agent owning this PR replaces it
+   with a real Hermes invocation. `ares_bridge_minimal.py` shows the
+   `hermes -z <text>` subprocess pattern. The snapshot's `memory_recall`
+   field is the contract for context injection.
+2. **Concrete `VectorStore`** — protocol is in `ares/memory_store.py`;
+   ship one of `SqliteVssStore`, `LanceDbStore`, or `ChromaDbStore`
+   behind it. Default stays `InMemoryVectorStore` for tests.
+3. **Voice pipeline** — STT mic → brain → TTS speaker.
+4. **Operator tab build-out** — `.models`, `.skills`, `.cron`,
+   `.analytics` in `ARES-Face/Views/`. Sidebar is mounted; pages stubbed.
+5. **DAG replay UI** — DAGs are persisted into episodic metadata
+   already; build a scrubber that pulls one and replays it through
+   `MissionControlPanel`.
+6. **Robot control** — JP01 servo commands over bus.
 
-**Example:** Implement `ares/memory/context.py`
+## Tests
 
-```
-Prompt:
-  "Implement ares/memory/context.py according to the spec in its docstring.
-   It should retrieve memory context and inject it into LLM prompts.
-   Reference: docs/file-structure.md for the architecture.
-   Use the existing memory/vector_store.py and memory/fact_store.py as examples."
-```
-
-The file already has a detailed docstring that explains:
-- What the module does
-- Key functions to implement
-- Expected behavior
-- Constraints and notes
-
-### Pattern 2: Complete a Provider
-
-**Example:** Finish the Anthropic provider
-
-```
-Prompt:
-  "Implement ares/llm/providers/anthropic.py using the anthropic SDK.
-   Follow the interface defined in ares/llm/base.py.
-   The docstring explains what to do. Reference the existing
-   ares/llm/router.py to understand how providers are called."
-```
-
-Each provider file has:
-- Import instructions
-- Interface requirements
-- Configuration expectations
-- Error handling patterns
-
-### Pattern 3: Integrate an External System
-
-**Example:** Wire OpenClaw to the computer tool
+The test layout was added in PR #2. Use it.
 
 ```
-Prompt:
-  "Update ares/tools/computer.py to integrate with the external OpenClaw
-   gateway. The file has a WebSocket connection stub. Complete it.
-   Reference docs/file-structure.md and QUICKSTART.md for context."
+tests/
+├── integration/test_services.py    # 27 tests, auto-skip when services aren't running
+└── unit/                            # 46 passing — fast, in-process
+    ├── conftest.py                  # auto-marks `unit`
+    ├── README.md                    # priority list
+    ├── models/
+    ├── runtime/
+    └── *.py
 ```
 
-The tool files have:
-- Current implementation (can be enhanced)
-- Documented interfaces
-- Configuration hooks
-- Example request/response patterns
-
-## Priority Implementation Order
-
-### 🔴 Critical Path (Blocking Other Features)
-
-1. **ares/memory/context.py** — Dependency for task execution
-   ```
-   Spec: docs/file-structure.md → memory → context.py
-   Docstring: Read the file for full details
-   Time: ~2-3 hours
-   ```
-
-2. **ares/llm/providers/anthropic.py** — Main LLM integration
-   ```
-   Spec: Use llm/base.py as interface
-   Docstring: File explains all steps
-   Time: ~3-4 hours
-   ```
-
-3. **ares/llm/providers/local.py** — Local LLM fallback
-   ```
-   Spec: LM Studio OpenAI-compatible API
-   Docstring: File explains configuration
-   Time: ~2 hours
-   ```
-
-4. **ares/daemon/server.py** — Daemon network layer
-   ```
-   Spec: FastAPI-based HTTP/WebSocket server
-   Docstring: File has detailed structure
-   Time: ~4-5 hours
-   ```
-
-### 🟡 High Priority (Enable Features)
-
-5. **ares/memory/vector_store.py** — Semantic search backend
-   ```
-   Status: Exists, may need ChromaDB integration updates
-   Time: ~1-2 hours
-   ```
-
-6. **ares/scheduler/service.py** — Job scheduler
-   ```
-   Status: Partial code exists
-   Time: ~2-3 hours
-   ```
-
-7. **ares/events/triggers.py** — Event system
-   ```
-   Status: Partial implementation
-   Time: ~2-3 hours
-   ```
-
-8. **ares/mcp/server.py** — Claude Desktop integration
-   ```
-   Spec: Expose ARES tools as MCP tools
-   Time: ~4-5 hours
-   ```
-
-### 🟢 Testing & Polish
-
-9. **tests/unit/*.py** — Unit test suite
-   ```
-   Files: config, task, router, approver
-   Time: ~4-5 hours
-   ```
-
-10. **tests/integration/*.py** — End-to-end tests
-    ```
-    Files: daemon socket, MCP bridge
-    Time: ~4-5 hours
-    ```
-
-## How to Recognize a Properly Structured File
-
-Each file has this pattern:
-
-```python
-"""Module docstring — high-level purpose.
-
-Description of what this module does.
-"""
-
-from __future__ import annotations
-
-import logging
-from typing import Any, Optional
-
-logger = logging.getLogger(__name__)
-
-# Detailed docstrings in class/function definitions
-class MyClass:
-    """High-level explanation."""
-
-    def __init__(self):
-        """Initialize with full docstring."""
-        # Implementation
-```
-
-**Signs a file is ready for agent implementation:**
-- ✅ Has a detailed module docstring
-- ✅ Has class/function docstring templates
-- ✅ Shows imports needed
-- ✅ Explains responsibilities
-- ✅ References other modules
-- ✅ Has TODO comments for what to implement
-
-## Testing Your Implementation
+Run:
 
 ```bash
-# Test imports
-python -c "from ares.module import Class; print('✓ imports work')"
-
-# Run a quick smoke test
-python -m pytest tests/unit/test_module.py -v
-
-# Test the full system
-python -m ares.cli init
-python -m ares.cli start
-python -m ares.cli execute "test task"
-python -m ares.cli status
+pytest tests/unit -m unit                   # fast, deterministic
+pytest tests/unit --cov=ares --cov-report=term-missing
+pytest -m "not integration"                  # skip integration suite
 ```
 
-## Code Quality Standards
+Adding tests:
+- Tests under `tests/unit/` are auto-marked `unit` by `conftest.py`.
+- Use `tmp_path` for SQLite tests (see `test_memory_store.py`).
+- For API tests, use `TestClient` with `monkeypatch.setattr("ares.api.SERVICES", [])`
+  to prevent lifespan from spawning subprocesses (see
+  `test_api_cognitive_status.py`).
 
-All implementations should:
+## Conventions
 
-✅ **Type Hints** — Full type hints for all functions
-✅ **Docstrings** — Module, class, and function docstrings
-✅ **Error Handling** — Try/except with specific exceptions
-✅ **Logging** — Use `logger.info()`, `.debug()`, `.error()`
-✅ **Async** — Use `async def` and `await` where appropriate
-✅ **Testing** — At least basic unit tests
-✅ **Imports** — No circular dependencies, clean structure
+- **No new files outside the established layout.** New Pydantic models
+  go in `ares/models/`; new SwiftUI views in `ARES-Face/Views/`; new
+  shaders in `ARES-Face/Shaders/`.
+- **Forward-compatible contracts.** When extending `CognitiveSnapshot`
+  or any other shared model, add fields with defaults. Bump
+  `SCHEMA_VERSION` only on breaking change.
+- **Protocols before implementations.** When introducing a new
+  swappable backend (vector store, embedder, cognition backend, etc.),
+  define the `Protocol` first, ship a zero-dep default, then add
+  concretes.
+- **Layering.** `core/` must not import Pydantic models from
+  `ares/models/` — keeps the loop free of transport dependencies. The
+  API layer maps `core/` dataclasses to `models/` Pydantic shapes (see
+  `_build_snapshot` in `api.py`).
+- **Tests for new features.** No new untested code paths in `core/`,
+  `memory_store.py`, or `api.py`. Swift code isn't testable from
+  Linux CI; rely on the Xcode test target for UI/shader changes.
 
-## Common Patterns in ARES
+## What to send for code review
 
-### Async Context Managers
-```python
-async with DaemonClient() as client:
-    result = await client.execute_task(task)
-```
+When a feature is done:
+1. `pytest tests/unit -m unit` passes locally.
+2. `pytest tests/integration` doesn't fail (auto-skip is fine).
+3. Commit on the designated feature branch with a descriptive message.
+4. Open a draft PR; mark ready for review when you're done iterating.
+5. Mention which doc(s) you updated. If the architecture changes,
+   update `ARCHITECTURE.md` and/or `COGNITIVE_OS.md`.
 
-### Pydantic Validation
-```python
-class MyConfig(BaseModel):
-    name: str
-    timeout: int = Field(default=300)
+## Common pitfalls
 
-    @validator('timeout')
-    def validate_timeout(cls, v):
-        if v <= 0:
-            raise ValueError("timeout must be positive")
-        return v
-```
-
-### Tool Implementation
-```python
-class MyTool(BaseTool):
-    @property
-    def name(self) -> str:
-        return "my_tool"
-
-    async def execute(self, action: str, **kwargs) -> ToolResult:
-        # Implementation returns ToolResult(success=True/False, data=..., error=...)
-```
-
-### LLM Provider
-```python
-class MyProvider(LLMProvider):
-    async def complete(self, messages: list[dict], **kwargs) -> LLMResponse:
-        # Call your API
-        # Return LLMResponse(content="...", tool_calls=[...], usage=TokenUsage(...))
-```
-
-## Useful References
-
-**For Understanding ARES:**
-- `docs/ARCHITECTURE.md` — Design decisions
-- `docs/file-structure.md` — Where everything lives
-- `QUICKSTART.md` — How to use it
-
-**For Implementation Details:**
-- Check existing implementations in the same module
-- Read the docstrings in the target file
-- Look at the interface definitions (base.py files)
-- Check config/default.yaml for expected settings
-
-**For Integration:**
-- Each feature integrates via the daemon/server.py HTTP layer
-- Tools are registered in tools/registry.py
-- Memory is accessed via a unified interface
-- LLM calls go through the router
-
-## Version Control Notes
-
-All implementations should:
-- Create new commits (one per file/feature)
-- Include co-author tag: `Co-Authored-By: Claude <noreply@anthropic.com>`
-- Write clear commit messages explaining the "why"
-- Reference related files in commit body
-
-## Success Criteria
-
-An implementation is done when:
-
-✅ All imports work
-✅ Unit tests pass
-✅ Module integrates with daemon/server.py
-✅ User can interact with it via CLI or API
-✅ Error handling is comprehensive
-✅ Docstrings explain the behavior
-✅ Configuration is validated
-✅ Logging is helpful for debugging
-
-## Questions?
-
-Refer to:
-1. **File docstring** — Each file explains what it does
-2. **docs/file-structure.md** — Where things fit
-3. **Existing implementations** — Use them as templates
-4. **QUICKSTART.md** — How to test
-
----
-
-## Quick Start for Agents
-
-1. Pick a file from the Priority list above
-2. Read its docstring carefully
-3. Read the related base.py or interface definitions
-4. Look at similar implementations in the codebase
-5. Implement following the documented spec
-6. Run `python -c "from module import Class"` to verify imports
-7. Run basic tests
-8. Commit with clear message
-
-**You have a complete, working scaffold. Go build! 🚀**
+- **Don't access `_cognitive_loop._running` from a test** without
+  setting it manually first — it's the default sentinel for "loop
+  started" in `api.py`.
+- **`max_cycles=1` runs zero phase transitions** — the stop hook fires
+  before phases execute. Use `max_cycles=2` to get one full cycle of
+  perceive/think/act/reflect.
+- **Lifespan in `TestClient`** will try to spawn MCP subprocesses unless
+  `SERVICES` is patched to `[]`.
+- **Metal `SurfaceCustomUniforms` field order** must match
+  `SharedHeader.h` and the Swift mirror in `AvatarRenderer.swift`.
+  Appending fields is non-breaking; reordering breaks rendering.

@@ -22,10 +22,10 @@ from typing import Any
 
 from .config import ares_paths
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _paths() -> dict[str, Path]:
     return ares_paths()
@@ -38,6 +38,7 @@ def _now_iso() -> str:
 # ---------------------------------------------------------------------------
 # Episodic memory — JSONL task logs
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class EpisodicEntry:
@@ -85,18 +86,21 @@ def list_episodic(limit: int = 20) -> list[dict[str, Any]]:
         lines = f.read_text().splitlines()
         if lines:
             last = json.loads(lines[-1])
-            summaries.append({
-                "task_id": last.get("task_id"),
-                "goal": last.get("goal"),
-                "outcome": last.get("outcome"),
-                "completed_at": last.get("completed_at"),
-            })
+            summaries.append(
+                {
+                    "task_id": last.get("task_id"),
+                    "goal": last.get("goal"),
+                    "outcome": last.get("outcome"),
+                    "completed_at": last.get("completed_at"),
+                }
+            )
     return summaries
 
 
 # ---------------------------------------------------------------------------
 # Preferences — Markdown + TOML
 # ---------------------------------------------------------------------------
+
 
 def preferences_path() -> Path:
     return _paths()["memory_preferences"]
@@ -136,6 +140,7 @@ def append_preference_note(note: str) -> Path:
 # Knowledge — Markdown research notes
 # ---------------------------------------------------------------------------
 
+
 def knowledge_path() -> Path:
     return _paths()["memory_knowledge"]
 
@@ -167,6 +172,7 @@ def list_knowledge() -> list[str]:
 # ---------------------------------------------------------------------------
 # Projects — Per-project TOML state
 # ---------------------------------------------------------------------------
+
 
 def projects_path() -> Path:
     return _paths()["memory_projects"]
@@ -200,6 +206,7 @@ def list_projects() -> list[str]:
 # ---------------------------------------------------------------------------
 # Retrospective writer
 # ---------------------------------------------------------------------------
+
 
 async def write_retrospective(
     task_id: str,

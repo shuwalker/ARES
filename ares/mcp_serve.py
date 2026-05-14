@@ -40,6 +40,7 @@ logger = logging.getLogger("ares.mcp_serve")
 _MCP_SERVER_AVAILABLE = False
 try:
     from mcp.server.fastmcp import FastMCP
+
     _MCP_SERVER_AVAILABLE = True
 except ImportError:
     FastMCP = None
@@ -48,6 +49,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
+
 
 def _get_ares_home() -> Path:
     return Path(os.environ.get("ARES_HOME", Path.home() / ".ares"))
@@ -61,6 +63,7 @@ def _get_hermes_home() -> Path:
 # Data loaders
 # ---------------------------------------------------------------------------
 
+
 def _load_identity() -> dict:
     """Load ARES identity from JSON or defaults."""
     identity_path = _get_ares_home() / "identity.json"
@@ -71,6 +74,7 @@ def _load_identity() -> dict:
             pass
     try:
         from ares.core.identity import DEFAULT_IDENTITY
+
         return {
             "name": DEFAULT_IDENTITY.name,
             "role": DEFAULT_IDENTITY.role,
@@ -96,18 +100,47 @@ def _load_personality() -> dict:
             pass
     try:
         from ares.core.personality import DEFAULT_PROFILE
+
         return DEFAULT_PROFILE.to_dict()
     except ImportError:
         return {
-            "hexaco": {"openness": 0.85, "conscientiousness": 0.78, "extraversion": 0.55,
-                        "agreeableness": 0.62, "neuroticism": 0.30, "honesty_humility": 0.82},
-            "special": {"strength": 0.65, "perception": 0.90, "endurance": 0.70,
-                         "charisma": 0.55, "intelligence": 0.92, "agility": 0.75, "luck": 0.60},
-            "expression": {"sarcasm": 0.40, "warmth": 0.55, "verbosity": 0.35,
-                            "formality": 0.45, "directness": 0.90, "humor": 0.30,
-                            "empathy": 0.65, "aggression": 0.25},
-            "domains": {"science": 0.85, "philosophy": 0.50, "combat": 0.15, "art": 0.30,
-                        "politics": 0.10, "technology": 0.95, "nature": 0.25, "psychology": 0.60},
+            "hexaco": {
+                "openness": 0.85,
+                "conscientiousness": 0.78,
+                "extraversion": 0.55,
+                "agreeableness": 0.62,
+                "neuroticism": 0.30,
+                "honesty_humility": 0.82,
+            },
+            "special": {
+                "strength": 0.65,
+                "perception": 0.90,
+                "endurance": 0.70,
+                "charisma": 0.55,
+                "intelligence": 0.92,
+                "agility": 0.75,
+                "luck": 0.60,
+            },
+            "expression": {
+                "sarcasm": 0.40,
+                "warmth": 0.55,
+                "verbosity": 0.35,
+                "formality": 0.45,
+                "directness": 0.90,
+                "humor": 0.30,
+                "empathy": 0.65,
+                "aggression": 0.25,
+            },
+            "domains": {
+                "science": 0.85,
+                "philosophy": 0.50,
+                "combat": 0.15,
+                "art": 0.30,
+                "politics": 0.10,
+                "technology": 0.95,
+                "nature": 0.25,
+                "psychology": 0.60,
+            },
         }
 
 
@@ -120,7 +153,8 @@ def _load_face_state() -> dict:
         except Exception:
             pass
     try:
-        from ares.core.face_state import FaceState, STATE_CONFIGS, get_face_config
+        from ares.core.face_state import FaceState, STATE_CONFIGS
+
         return {
             "current_state": "idle",
             "states": [s.value for s in FaceState],
@@ -150,6 +184,7 @@ def _publish_face_state(state_value: str, config: dict) -> None:
     """Try to publish face state update to ZMQ bus (non-blocking, best-effort)."""
     try:
         import zmq
+
         ctx = zmq.Context.instance()
         sock = ctx.socket(zmq.PUB)
         sock.connect("tcp://localhost:5572")
@@ -167,9 +202,7 @@ def _query_memory(query: str, tag: Optional[str] = None, limit: int = 10) -> lis
     try:
         conn = sqlite3.connect(str(ares_db))
         conn.row_factory = sqlite3.Row
-        tables = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()]
+        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         if "facts" not in tables:
             conn.close()
             return []
@@ -201,6 +234,7 @@ def _store_memory(content: str, tags: Optional[str] = None, source: str = "mcp")
     ares_db.parent.mkdir(parents=True, exist_ok=True)
     try:
         from ares.core.memory import Memory
+
         mem = Memory(ares_db)
         mem.open()
         fact_id = mem.remember(content, tag_list, source)
@@ -228,12 +262,12 @@ def _store_memory(content: str, tags: Optional[str] = None, source: str = "mcp")
 # Create MCP Server
 # ---------------------------------------------------------------------------
 
+
 def create_mcp_server() -> "FastMCP":
     """Create and return the ARES MCP server with all tools registered."""
     if not _MCP_SERVER_AVAILABLE:
         raise ImportError(
-            "MCP server requires the 'mcp' package. "
-            f"Install with: {sys.executable} -m pip install 'mcp'"
+            "MCP server requires the 'mcp' package. " f"Install with: {sys.executable} -m pip install 'mcp'"
         )
 
     mcp = FastMCP(
@@ -279,23 +313,27 @@ def create_mcp_server() -> "FastMCP":
         """
         personality = _load_personality()
         if layer not in personality:
-            return json.dumps({
-                "error": f"Unknown layer: {layer}. "
-                         f"Must be one of: {', '.join(personality.keys())}"
-            })
+            return json.dumps({"error": f"Unknown layer: {layer}. " f"Must be one of: {', '.join(personality.keys())}"})
         if trait not in personality[layer]:
-            return json.dumps({
-                "error": f"Unknown trait: {trait} in layer {layer}. "
-                         f"Available: {', '.join(personality[layer].keys())}"
-            })
+            return json.dumps(
+                {
+                    "error": f"Unknown trait: {trait} in layer {layer}. "
+                    f"Available: {', '.join(personality[layer].keys())}"
+                }
+            )
         personality[layer][trait] = round(max(0.0, min(1.0, value)), 2)
         personality_path = _get_ares_home() / "personality.json"
         personality_path.parent.mkdir(parents=True, exist_ok=True)
         personality_path.write_text(json.dumps(personality, indent=2))
-        return json.dumps({
-            "updated": True, "layer": layer, "trait": trait,
-            "value": personality[layer][trait],
-        }, indent=2)
+        return json.dumps(
+            {
+                "updated": True,
+                "layer": layer,
+                "trait": trait,
+                "value": personality[layer][trait],
+            },
+            indent=2,
+        )
 
     # -- ares_set_face_state -----------------------------------------------
 
@@ -319,10 +357,7 @@ def create_mcp_server() -> "FastMCP":
             try:
                 new_state = FaceState(state)
             except ValueError:
-                return json.dumps({
-                    "error": f"Invalid state: {state}. "
-                             f"Valid: {[s.value for s in FaceState]}"
-                })
+                return json.dumps({"error": f"Invalid state: {state}. " f"Valid: {[s.value for s in FaceState]}"})
             config = get_face_config(new_state)
             result = {
                 "state": new_state.value,
@@ -386,10 +421,14 @@ def create_mcp_server() -> "FastMCP":
         limit = max(1, min(100, int(limit)))
         results = _query_memory(query, tag, limit)
         if not results:
-            return json.dumps({
-                "count": 0, "results": [],
-                "note": "No matching facts. Memory may be empty or query too specific.",
-            }, indent=2)
+            return json.dumps(
+                {
+                    "count": 0,
+                    "results": [],
+                    "note": "No matching facts. Memory may be empty or query too specific.",
+                },
+                indent=2,
+            )
         return json.dumps({"count": len(results), "results": results}, indent=2)
 
     # -- ares_memory_remember -----------------------------------------------
@@ -422,6 +461,7 @@ def create_mcp_server() -> "FastMCP":
         hermes_status = "unknown"
         try:
             from ares.runtime.launcher import hermes_status as check_hermes
+
             status_info = check_hermes()
             hermes_status = status_info.get("status", "unknown")
         except Exception:
@@ -445,32 +485,54 @@ def create_mcp_server() -> "FastMCP":
             "legacy_exists": legacy_hermes.exists(),
         }
 
-        return json.dumps({
-            "name": identity.get("name", "ARES"),
-            "brain_transport": transport,
-            "hermes": hermes_status,
-            "face_state": face.get("current_state", "unknown"),
-            "ares_home": str(_get_ares_home()),
-            "hermes_home": str(_get_hermes_home()),
-        }, indent=2)
+        return json.dumps(
+            {
+                "name": identity.get("name", "ARES"),
+                "brain_transport": transport,
+                "hermes": hermes_status,
+                "face_state": face.get("current_state", "unknown"),
+                "ares_home": str(_get_ares_home()),
+                "hermes_home": str(_get_hermes_home()),
+            },
+            indent=2,
+        )
 
     # -- ares_tools --------------------------------------------------------
 
     @mcp.tool()
     def ares_tools() -> str:
         """List all ARES MCP tools with descriptions."""
-        return json.dumps({
-            "tools": [
-                {"name": "ares_identity", "description": "Get identity — name, role, voice, self-model"},
-                {"name": "ares_personality", "description": "Get 4-layer personality profile"},
-                {"name": "ares_set_personality", "description": "Set a personality trait value", "params": ["layer", "trait", "value"]},
-                {"name": "ares_set_face_state", "description": "Set face state or emotion", "params": ["state", "emotion"]},
-                {"name": "ares_get_face_state", "description": "Get current face state and all configs"},
-                {"name": "ares_memory_query", "description": "Search persistent memory for facts", "params": ["query", "tag?", "limit?"]},
-                {"name": "ares_memory_remember", "description": "Store a fact in persistent memory", "params": ["content", "tags?", "source?"]},
-                {"name": "ares_status", "description": "Get system status"},
-            ],
-        }, indent=2)
+        return json.dumps(
+            {
+                "tools": [
+                    {"name": "ares_identity", "description": "Get identity — name, role, voice, self-model"},
+                    {"name": "ares_personality", "description": "Get 4-layer personality profile"},
+                    {
+                        "name": "ares_set_personality",
+                        "description": "Set a personality trait value",
+                        "params": ["layer", "trait", "value"],
+                    },
+                    {
+                        "name": "ares_set_face_state",
+                        "description": "Set face state or emotion",
+                        "params": ["state", "emotion"],
+                    },
+                    {"name": "ares_get_face_state", "description": "Get current face state and all configs"},
+                    {
+                        "name": "ares_memory_query",
+                        "description": "Search persistent memory for facts",
+                        "params": ["query", "tag?", "limit?"],
+                    },
+                    {
+                        "name": "ares_memory_remember",
+                        "description": "Store a fact in persistent memory",
+                        "params": ["content", "tags?", "source?"],
+                    },
+                    {"name": "ares_status", "description": "Get system status"},
+                ],
+            },
+            indent=2,
+        )
 
     return mcp
 
@@ -479,12 +541,12 @@ def create_mcp_server() -> "FastMCP":
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def run_mcp_server(verbose: bool = False) -> None:
     """Start the ARES MCP server on stdio."""
     if not _MCP_SERVER_AVAILABLE:
         print(
-            "Error: MCP server requires the 'mcp' package.\n"
-            f"Install with: {sys.executable} -m pip install 'mcp'",
+            "Error: MCP server requires the 'mcp' package.\n" f"Install with: {sys.executable} -m pip install 'mcp'",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -509,6 +571,7 @@ def run_mcp_server(verbose: bool = False) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser(description="ARES MCP Server")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     args = parser.parse_args()

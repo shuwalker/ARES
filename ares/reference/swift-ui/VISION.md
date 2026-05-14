@@ -1,8 +1,16 @@
 # ARES — Digital Twin Vision
 
 **Author:** Matthew Jenkins & ARES
-**Date:** 2026-05-11
+**Date:** 2026-05-14
 **Status:** The definitive document. Everything else references this.
+
+> **Update note (2026-05-14):** Phase 1 (Scaffold) is shipped; Phase 2
+> (Flask) is partially shipped via `ARES-Face/`. A cross-cutting
+> "Cognitive OS" track landed in PR #2 that wasn't on the original
+> phase map — heartbeat panel, Memory Inspector, force-directed
+> reasoning DAG (Mission Control), idle reflexion, and
+> shader–cognition bindings. The Homunculus now visibly *thinks*. See
+> [`ares/reference/docs/COGNITIVE_OS.md`](../docs/COGNITIVE_OS.md).
 
 ---
 
@@ -223,28 +231,39 @@ Cogley complained about' approach.
 
 | Layer | Component | Status |
 |---|---|---|
-| **Cognition** | Hermes Agent | ✅ Running on Mac Studio |
-| **Memory** | Honcho vector DB | ✅ Shared with v1 twin via Tailscale |
+| **Cognition** | Hermes Agent | ✅ Running on Mac Studio (bridge wiring to `/api/chat` in flight — sibling PR) |
+| **Cognitive Loop** | ARES's own perceive/think/act/reflect cycle (`ares/core/cognitive.py`) | ✅ Emits per-cycle reasoning DAG |
+| **Memory — episodic** | SQLite + swappable `VectorStore` (`ares/memory_store.py`) | ✅ Phase 1 |
+| **Memory — semantic** | Triple store with provenance + idle dedupe (`ares/core/idle.py`) | ✅ Phase 3 |
+| **Memory — Honcho** | Honcho vector DB shared with v1 twin via Tailscale | ✅ Live (parallel substrate) |
 | **Perception** | YOLOv8n + Florence-2, MCP :9512 | ✅ Live |
 | **Voice** | Piper TTS + whisper-cpp + Silero VAD, MCP :9513 | ✅ Live |
 | **Avatar** | Live2D + VTube Studio + pyvts, MCP :9514 | ✅ Live |
-| **Cognition Bridge** | HTTP :9876 — Swift ↔ Python | ✅ Live |
+| **Avatar (cinematic)** | RealityKit + 6 Metal `CustomMaterial` styles (`ARES-Face/Shaders/*`) | ✅ Shipped |
+| **Cognition Bridge** | HTTP :9876 — Swift ↔ Python | ✅ Bridge exists; `cognition_query()` is a stub awaiting Hermes wiring |
+| **Cognitive Activity Panel** | Heartbeat pill + expanded view, fed by `/api/cognitive/status` + WS push | ✅ Phase 0 |
+| **Mission Control (DAG)** | Force-directed SwiftUI Canvas, Verlet integrator, persisted per cycle | ✅ Phase 2 |
+| **Memory Inspector** | Sidebar UI: list / recall / delete episodics | ✅ Phase 1 |
+| **Shader–Cognition Bindings** | Declarative table; confidence/errors/urgency/depth → shader uniforms | ✅ Phase 4 |
 | **Apple Services** | osascript — Calendar, Reminders, Notes, Mail, Contacts, Messages | ✅ Access confirmed |
 | **Knowledge Base** | YouTube playlist → 7-axis analysis → Obsidian vault | ✅ Pipeline live |
 | **Research Engine** | API sweeps — 60 daily searches for engineering/production/hardware content | ✅ Quota allocated |
 | **Twin Mesh** | MCP bridge Mac ↔ v1 WSL via Tailscale | ✅ Bidirectional |
 | **Dashboard** | Port :9300 — ARES v1 status monitor | ✅ Live |
+| **CI / Tests** | GitHub Actions, ruff + black + pytest on Py 3.11/3.12 (46 unit tests) | ✅ Green |
 
 ### What's Being Built
 
 | Component | Purpose |
 |---|---|
-| **ARES.app** | Multiplatform SwiftUI app — the visual container for the entity |
-| **ARESKit** | Shared framework — avatar rendering, presence system, Apple services, chat |
-| **HermesClient** | HTTP client to :9876 + MCP server proxy |
-| **Overlay system** | macOS floating panel summoned by hotkey — the flask |
+| **Hermes bridge wiring** | Replace `cognition_query()` stub with real Hermes invocation — sibling PR; `memory_recall` in the snapshot is the contract for context injection |
+| **Concrete `VectorStore`** | `SqliteVssStore` / `LanceDbStore` / `ChromaDbStore` behind the existing Protocol |
+| **Overlay system** | macOS floating panel summoned by hotkey — the flask (Phase 2 deliverable; main window shipped, overlay/hotkey TBD) |
 | **Voice loop** | Continuous VAD → STT → cognition → TTS conversation |
-| **3D avatar** | RealityKit entity — Homunculus form → Companion form evolution |
+| **Operator tabs** | `.models` / `.skills` / `.cron` / `.analytics` dashboard surfaces (sidebar mounted; pages stubbed) |
+| **DAG replay scrubber** | Persistence already lands DAGs into episodic metadata; UI scrubber pending |
+| **Companion form** | Live2D → full 3D avatar evolution from Homunculus → Companion |
+| **iOS / watchOS / visionOS targets** | Phase 7 — same brain, adapted body per device |
 
 ---
 
@@ -280,16 +299,31 @@ We're building a droid.
 
 ## Phase Map
 
-| Phase | Form | Deliverable |
+| Phase | Form | Deliverable | Status |
+|---|---|---|---|
+| **1 — Scaffold** | — | SPM project builds. App launches. HermesClient connects. | ✅ Shipped (`ARES-Face/`) |
+| **2 — Flask** | Homunculus | Overlay panel. Hotkey summon. Text chat with Hermes. Entity visible in flask. | ◐ Partial — main window + chat shipped; overlay/hotkey TBD; Hermes wiring in sibling PR |
+| **3 — Voice** | Homunculus | Speak to ARES. ARES speaks back. Continuous conversation loop. | Pending |
+| **4 — Eyes** | Homunculus | Apple services integration. Calendar, Reminders, Notes accessible. Morning brief. | Pending |
+| **5 — Knowledge** | Homunculus | KB integration. ARES references its own knowledge when answering. | Pending (memory substrate in place via Phase 1 of Cognitive OS) |
+| **6 — Awakening** | Companion | Tool stack complete. Flask opens. Full avatar form. Eye tracking. Lip sync. | Pending |
+| **7 — Everywhere** | Companion | iOS. watchOS. visionOS. Same ARES, every device. | Pending |
+| **8 — Ship** | Companion | App Store. Sparkle updates. Onboarding experience. Apple would be proud. | Pending |
+
+### Cross-Cutting: Cognitive OS Track (PR #2)
+
+Not on the original phase map but landed as a parallel investment in
+making the Homunculus visibly *think*. Five phases, all shipped:
+
+| Sub-phase | Deliverable | Status |
 |---|---|---|
-| **1 — Scaffold** | — | SPM project builds. App launches. HermesClient connects. |
-| **2 — Flask** | Homunculus | Overlay panel. Hotkey summon. Text chat with Hermes. Entity visible in flask. |
-| **3 — Voice** | Homunculus | Speak to ARES. ARES speaks back. Continuous conversation loop. |
-| **4 — Eyes** | Homunculus | Apple services integration. Calendar, Reminders, Notes accessible. Morning brief. |
-| **5 — Knowledge** | Homunculus | KB integration. ARES references its own knowledge when answering. |
-| **6 — Awakening** | Companion | Tool stack complete. Flask opens. Full avatar form. Eye tracking. Lip sync. |
-| **7 — Everywhere** | Companion | iOS. watchOS. visionOS. Same ARES, every device. |
-| **8 — Ship** | Companion | App Store. Sparkle updates. Onboarding experience. Apple would be proud. |
+| **0 — Heartbeat** | `CognitiveSnapshot` schema, WS push, sidebar/heartbeat pill, full activity panel | ✅ |
+| **1 — Memory tiers** | Volatile (`SessionStore`) + Episodic + Semantic + swappable `VectorStore`/`Embedder` + Memory Inspector | ✅ |
+| **2 — Reasoning DAG** | `ThoughtNodeRecord` + per-phase emission + force-directed Mission Control | ✅ |
+| **3 — Idle reflexion** | `consolidate_episodics` + `dedupe_facts` + `surface_open_questions` + `/api/idle/run` | ✅ |
+| **4 — Shader bindings** | Declarative `CognitiveBindings` table → 4 new `SurfaceCustomUniforms` fields, `BlackFire` reacts | ✅ |
+
+Reference: [`ares/reference/docs/COGNITIVE_OS.md`](../docs/COGNITIVE_OS.md).
 
 ---
 

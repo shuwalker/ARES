@@ -7,8 +7,8 @@ Based on Lilith's ZMQ bus architecture, adapted for ARES with:
 - Thread-safe message dispatch
 - Graceful shutdown
 
-The bus is the single nervous system of ARES. Every module (face, voice, 
-vision, robot, MCP bridge) connects to the bus as either a publisher or 
+The bus is the single nervous system of ARES. Every module (face, voice,
+vision, robot, MCP bridge) connects to the bus as either a publisher or
 subscriber. The brain (Hermes) publishes responses; face modules subscribe
 and render.
 
@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -56,22 +55,24 @@ logger = logging.getLogger("ares.bus")
 # Port map — named channels with default ports
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class PortMap:
     """ZMQ port assignments for ARES bus channels.
-    
+
     Each channel is a TCP port on localhost. PUB sockets bind;
     SUB/PUSH/PULL sockets connect.
     """
-    AUDIO_RAW: int = 5570       # Mic audio chunks → STT
-    STT_TEXT: int = 5571        # Transcribed text → brain
-    BRAIN_OUTPUT: int = 5572    # Brain responses → all consumers (PUB/SUB)
-    FACE_STATE: int = 5573      # Face state updates → face renderer
-    ROBOT_CMD: int = 5574      # Robot motor/behavior commands
-    TTS_CONTROL: int = 5575    # TTS commands → speech synthesis
-    HEALTH: int = 5576         # Heartbeat / status monitoring
-    VISION: int = 5577         # Vision module events
-    MCP_BRIDGE: int = 5578    # MCP ↔ bus bridge events
+
+    AUDIO_RAW: int = 5570  # Mic audio chunks → STT
+    STT_TEXT: int = 5571  # Transcribed text → brain
+    BRAIN_OUTPUT: int = 5572  # Brain responses → all consumers (PUB/SUB)
+    FACE_STATE: int = 5573  # Face state updates → face renderer
+    ROBOT_CMD: int = 5574  # Robot motor/behavior commands
+    TTS_CONTROL: int = 5575  # TTS commands → speech synthesis
+    HEALTH: int = 5576  # Heartbeat / status monitoring
+    VISION: int = 5577  # Vision module events
+    MCP_BRIDGE: int = 5578  # MCP ↔ bus bridge events
 
 
 DEFAULT_PORTS = PortMap()
@@ -86,15 +87,17 @@ def get_address(port: int, host: str = "127.0.0.1") -> str:
 # Message types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class BusMessage:
     """A typed message on the ARES bus.
-    
+
     Every message has a type (for topic filtering), a source (which module
     sent it), a timestamp, and a payload dict.
     """
-    type: str                          # e.g. "face_state", "stt_text", "brain_response"
-    source: str                        # e.g. "hermes", "whisper", "face_renderer"
+
+    type: str  # e.g. "face_state", "stt_text", "brain_response"
+    source: str  # e.g. "hermes", "whisper", "face_renderer"
     payload: Dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
     msg_id: str = ""
@@ -130,9 +133,10 @@ class BusMessage:
 # Channel — a bind/connect wrapper around a ZMQ socket
 # ---------------------------------------------------------------------------
 
+
 class Channel:
     """A named communication channel on the bus.
-    
+
     Wraps a ZMQ socket with send/receive and automatic serialization.
     Thread-safe for sends (ZMQ sockets are NOT thread-safe for concurrent
     send+receive — use separate sockets for that pattern).
@@ -156,6 +160,7 @@ class Channel:
         """Non-blocking receive with timeout. Returns dict or None."""
         try:
             import zmq
+
             poller = zmq.Poller()
             poller.register(self._socket, zmq.POLLIN)
             events = dict(poller.poll(timeout_ms))
@@ -186,26 +191,27 @@ class Channel:
 # ARESBus — the main bus class
 # ---------------------------------------------------------------------------
 
+
 class ARESBus:
     """ZMQ pub/sub backbone for ARES modules.
-    
+
     The bus is a singleton. Get it with get_bus().
-    
+
     Publishers bind to TCP ports. Subscribers connect to them.
     All messages are JSON with a "type" field used for topic filtering.
-    
+
     Architecture:
-    
+
         [Hermes Brain] --PUB--> :5572 (BRAIN_OUTPUT)
                                     |
                             +-------+-------+-------+
                             |       |       |       |
                         [Face]  [Voice] [Robot] [MCP]
-        
+
         [Whisper STT] --PUSH--> :5571 (STT_TEXT)
-        
+
         [Face Renderer] --SUB--> :5573 (FACE_STATE)
-        
+
         [Mic] --PUSH--> :5570 (AUDIO_RAW)
     """
 
@@ -222,7 +228,8 @@ class ARESBus:
         self._zmq_available = False
 
         try:
-            import zmq
+            import zmq  # noqa: F401 — availability probe
+
             self._zmq_available = True
         except ImportError:
             logger.warning("zmq not installed — bus will use in-process dispatch only")
@@ -231,6 +238,7 @@ class ARESBus:
         """Lazily create ZMQ context."""
         if self._context is None and self._zmq_available:
             import zmq
+
             self._context = zmq.Context()
             self._owns_context = True
 
@@ -238,7 +246,7 @@ class ARESBus:
 
     def publisher(self, channel_name: str) -> Channel:
         """Create a PUB socket that binds to the channel's port.
-        
+
         Only one publisher should bind per channel. Call this from the
         module that OWNS the channel (e.g., the brain for BRAIN_OUTPUT).
         """
@@ -246,12 +254,14 @@ class ARESBus:
             return Channel(channel_name, _StubSocket())
 
         import zmq
+
         self._ensure_context()
 
         port = getattr(self.ports, channel_name.upper(), None)
         if port is None:
-            raise ValueError(f"Unknown channel: {channel_name}. "
-                           f"Valid: {[f.lower() for f in self.ports.__dataclass_fields__]}")
+            raise ValueError(
+                f"Unknown channel: {channel_name}. " f"Valid: {[f.lower() for f in self.ports.__dataclass_fields__]}"
+            )
 
         sock = self._context.socket(zmq.PUB)
         sock.bind(get_address(port, self.host))
@@ -263,7 +273,7 @@ class ARESBus:
 
     def subscribe(self, channel_name: str, topic: str = "") -> Channel:
         """Create a SUB socket that connects to the channel's port.
-        
+
         Optionally filter by topic prefix (e.g., "face_state" to only
         receive face state updates from the BRAIN_OUTPUT channel).
         """
@@ -271,12 +281,14 @@ class ARESBus:
             return Channel(channel_name, _StubSocket())
 
         import zmq
+
         self._ensure_context()
 
         port = getattr(self.ports, channel_name.upper(), None)
         if port is None:
-            raise ValueError(f"Unknown channel: {channel_name}. "
-                           f"Valid: {[f.lower() for f in self.ports.__dataclass_fields__]}")
+            raise ValueError(
+                f"Unknown channel: {channel_name}. " f"Valid: {[f.lower() for f in self.ports.__dataclass_fields__]}"
+            )
 
         sock = self._context.socket(zmq.SUB)
         sock.connect(get_address(port, self.host))
@@ -289,13 +301,14 @@ class ARESBus:
 
     def push(self, channel_name: str) -> Channel:
         """Create a PUSH socket that connects to the channel's port.
-        
+
         Use for point-to-point communication (e.g., mic audio to STT).
         """
         if not self._zmq_available:
             return Channel(channel_name, _StubSocket())
 
         import zmq
+
         self._ensure_context()
 
         port = getattr(self.ports, channel_name.upper(), None)
@@ -310,13 +323,14 @@ class ARESBus:
 
     def pull(self, channel_name: str) -> Channel:
         """Create a PULL socket that binds to the channel's port.
-        
+
         Use for point-to-point communication (e.g., STT receiving audio).
         """
         if not self._zmq_available:
             return Channel(channel_name, _StubSocket())
 
         import zmq
+
         self._ensure_context()
 
         port = getattr(self.ports, channel_name.upper(), None)
@@ -333,7 +347,7 @@ class ARESBus:
 
     def on(self, event_type: str, callback: Callable[[BusMessage], None]) -> None:
         """Register a callback for in-process event dispatch.
-        
+
         Works without ZMQ — just calls the callback directly when
         a matching event is dispatched.
         """
@@ -346,13 +360,11 @@ class ARESBus:
         """Remove a callback."""
         with self._lock:
             if event_type in self._listeners:
-                self._listeners[event_type] = [
-                    cb for cb in self._listeners[event_type] if cb != callback
-                ]
+                self._listeners[event_type] = [cb for cb in self._listeners[event_type] if cb != callback]
 
     def dispatch(self, msg: BusMessage) -> None:
         """Dispatch a message to in-process listeners (no ZMQ).
-        
+
         This is the in-process alternative to ZMQ publishing —
         useful for single-process mode or testing.
         """
@@ -413,13 +425,8 @@ class ARESBus:
             "zmq_available": self._zmq_available,
             "channels": list(self._channels.keys()),
             "host": self.host,
-            "ports": {
-                f.lower(): getattr(self.ports, f.lower(), None)
-                for f in self.ports.__dataclass_fields__
-            },
-            "listeners": {
-                k: len(v) for k, v in self._listeners.items()
-            },
+            "ports": {f.lower(): getattr(self.ports, f.lower(), None) for f in self.ports.__dataclass_fields__},
+            "listeners": {k: len(v) for k, v in self._listeners.items()},
         }
 
 
@@ -427,12 +434,14 @@ class ARESBus:
 # Stub socket for when ZMQ is not installed
 # ---------------------------------------------------------------------------
 
+
 class _StubSocket:
     """No-op socket replacement when zmq is not installed.
-    
+
     Allows the bus to work in in-process dispatch mode without ZMQ.
     All send/receive calls become no-ops; only dispatch() works.
     """
+
     def send_json(self, data):
         pass
 
@@ -456,7 +465,7 @@ _BUS_LOCK = threading.Lock()
 
 def get_bus(ports: PortMap = None, host: str = "127.0.0.1") -> ARESBus:
     """Get the singleton ARES bus instance.
-    
+
     Creates the bus on first call. Subsequent calls return the same instance.
     """
     global _BUS_INSTANCE

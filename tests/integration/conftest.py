@@ -10,7 +10,6 @@ import json
 import os
 import socket
 import urllib.request
-import uuid
 
 import pytest
 
@@ -28,12 +27,13 @@ AVATAR_PORT = int(os.environ.get("ARES_AVATAR_PORT", "9514"))
 BRIDGE_PORT = int(os.environ.get("ARES_BRIDGE_PORT", "9876"))
 
 REQUEST_TIMEOUT = 3  # seconds for TCP probes
-HTTP_TIMEOUT = 5     # seconds for HTTP requests
+HTTP_TIMEOUT = 5  # seconds for HTTP requests
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def _tcp_probe(port: int, host: str = ARES_HOST) -> bool:
     """True if the port is accepting connections."""
@@ -67,21 +67,30 @@ def _require(reachable: bool, name: str, port: int) -> None:
         pytest.skip(f"{name} ({ARES_HOST}:{port}) unreachable")
 
 
+def pytest_collection_modifyitems(config, items):
+    """Auto-mark every test under tests/integration/ with the `integration` marker."""
+    for item in items:
+        if "tests/integration/" in str(item.fspath).replace("\\", "/"):
+            item.add_marker(pytest.mark.integration)
+
+
 def _mcp_initialize(port: int, host: str = ARES_HOST) -> tuple[str | None, dict | None]:
     """Initialize an MCP SSE session and return (session_id, server_info).
 
     Returns (None, None) if the MCP server is unreachable or rejects the init.
     """
-    init_payload = json.dumps({
-        "jsonrpc": "2.0",
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "ares-integration-test", "version": "1.0"},
-        },
-        "id": 1,
-    }).encode()
+    init_payload = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "ares-integration-test", "version": "1.0"},
+            },
+            "id": 1,
+        }
+    ).encode()
 
     try:
         req = urllib.request.Request(
@@ -111,11 +120,13 @@ def _mcp_initialize(port: int, host: str = ARES_HOST) -> tuple[str | None, dict 
 
 def _mcp_list_tools(port: int, session_id: str, host: str = ARES_HOST) -> list[dict]:
     """List tools available on an MCP server given a session ID."""
-    payload = json.dumps({
-        "jsonrpc": "2.0",
-        "method": "tools/list",
-        "id": 2,
-    }).encode()
+    payload = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/list",
+            "id": 2,
+        }
+    ).encode()
 
     try:
         req = urllib.request.Request(
@@ -143,6 +154,7 @@ def _mcp_list_tools(port: int, session_id: str, host: str = ARES_HOST) -> list[d
 # Fixtures
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 @pytest.fixture(scope="session")
 def host():
     return ARES_HOST
@@ -154,6 +166,7 @@ def fastapi_port():
 
 
 # ── Per-service availability ──────────────────────────────────────────────
+
 
 @pytest.fixture(scope="session")
 def fastapi_alive(host, fastapi_port):
@@ -198,6 +211,7 @@ def bridge_alive(host):
 
 
 # ── MCP session fixtures ──────────────────────────────────────────────────
+
 
 @pytest.fixture(scope="session")
 def mac_mcp_session(host, mac_mcp_alive):

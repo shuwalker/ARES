@@ -333,3 +333,95 @@ ARES-App/
 - All in one scene, one app, one renderer
 
 Trademark feature: **The Ares Face.** No other AI has this.
+
+---
+
+## Cognition-Driven Shader Uniforms (Phase 4)
+
+The renderer now reacts to ARES's cognitive state, not just face-state.
+The avatar's body language reflects what the brain is doing: confidence
+brightens the core, errors trigger pixel-glitch, reasoning depth jitters
+vertices, urgency modulates noise scale.
+
+This is wired declaratively so adding a new metric is a **one-line
+change** in `Rendering/CognitiveBindings.swift`. Shaders that don't
+reference new uniforms keep working unchanged.
+
+### Schema
+
+`Shaders/SharedHeader.h` — `SurfaceCustomUniforms` grew four trailing
+fields. Field order matches `AvatarRenderer.swift`'s Swift mirror
+(struct memory layout is the contract; ordering must stay aligned).
+
+```objc
+typedef struct {
+    float intensity;        // 0..1 — existing
+    float expression;       // 0..7 — existing
+    float isSpeaking;       // 0|1 — existing
+    float time;             // seconds — existing
+    // Cognition uniforms (Phase 4) — bound from CognitiveSnapshot:
+    float noiseScale;       // 0..1, driven by urgency
+    float emissivePulse;    // 0..1, confidence + urgency wobble
+    float vertexJitter;     // 0..1, reasoning depth / 10
+    float glitchAmplitude;  // 0..1, error count / 5 (capped)
+} SurfaceCustomUniforms;
+```
+
+### Binding table
+
+`Rendering/CognitiveBindings.swift` — pure function from snapshot to
+uniform values:
+
+```swift
+enum CognitiveBindings {
+    static func evaluate(_ snapshot: CognitiveSnapshot, time: Float)
+        -> CognitiveUniformValues
+}
+```
+
+Current bindings:
+
+| Snapshot field | Uniform | Mapping |
+|---|---|---|
+| `loop.urgency` | `noiseScale` | low=0.32, medium=0.6, high=1.0 |
+| `thought.confidence` + urgency wobble | `emissivePulse` | base + `urgency * sin(time*4)` |
+| `thought.depth` | `vertexJitter` | min(depth, 10) / 10 |
+| `errors.count` | `glitchAmplitude` | min(count / 5, 1) |
+
+All values clamped to `[0..1]` in the binding layer so shaders never
+have to guard.
+
+### Per-frame application
+
+`AvatarSceneView.swift::updateAvatarUniforms()` calls
+`CognitiveBindings.evaluate(brain.cognitive, time:)` each frame and
+forwards the result alongside the existing `intensity / expression /
+isSpeaking / time` block to `AvatarRenderer.updateSurfaceUniforms(...)`.
+
+### Adding a new binding
+
+1. Add a field to `CognitiveUniformValues` (Swift).
+2. Implement it in `CognitiveBindings.evaluate` — one line each.
+3. Add a matching field in `SharedHeader.h` and the
+   `SurfaceCustomUniforms` mirror in `AvatarRenderer.swift` (same
+   order in both).
+4. Reference the new uniform in any `.metal` shader that needs it.
+
+Done. Five steps, no shader rewrites for unrelated metrics.
+
+### Reference: shader usage in `BlackFireSurface.metal`
+
+```metal
+// Confidence brightens the core; clamped on the Swift side so no
+// per-shader guarding is needed.
+color *= (0.85 + 0.3 * customParams.emissivePulse);
+
+// Glitch — pixel-jump that scales with the error count.
+if (customParams.glitchAmplitude > 0.0) {
+    float glitch = hash21(uv * 80.0 + float2(time * 17.0)) - 0.5;
+    color += float3(glitch) * customParams.glitchAmplitude * 0.4;
+}
+```
+
+The other five styles ignore the new fields until similarly updated.
+See [`COGNITIVE_OS.md`](./COGNITIVE_OS.md#phase-4--shader–cognition-bindings).

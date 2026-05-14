@@ -1,7 +1,11 @@
 # ARES App — Architecture & Implementation Plan
 
-**Status:** Awaiting Matthew approval before execution
-**Date:** 2026-05-11
+**Status:** Phase 1 shipped; Phase 2 partially shipped. A cross-cutting
+"Cognitive OS" track (Phase 0–4) landed in PR #2 — see
+[`ares/reference/docs/COGNITIVE_OS.md`](../docs/COGNITIVE_OS.md) for
+the architecture-of-record. This document is the long-arc plan; phase
+status is now tracked inline below.
+**Date:** 2026-05-14
 
 ---
 
@@ -62,19 +66,29 @@ One multiplatform Apple app. iOS, macOS, watchOS, visionOS. ARES exists as a **l
 
 ---
 
-## Phase 1 — Scaffold & Build
+## Phase 1 — Scaffold & Build  ✅ SHIPPED
 
 **Goal:** A multiplatform app that compiles and launches on macOS. SwiftUI shell with basic architecture in place.
 
-### Deliverables
-- [ ] `Package.swift` — SPM manifest, 4 targets, iOS/macOS/watchOS/visionOS
-- [ ] `Sources/ARES/main.swift` + `App.swift` — multiplatform app entry
-- [ ] `Sources/HermesClient/HermesClient.swift` — HTTP client, health check endpoint
-- [ ] `Sources/HermesClient/MCPProxy.swift` — proxy calls to MCP servers
-- [ ] `Sources/ARESKit/ARESKit.swift` — library surface
-- [ ] `Makefile` — `build`, `run`, `test`, `clean`
-- [ ] `Resources/Info.plist` — bundle metadata
-- [ ] `swift build` succeeds. `.build/debug/ARES` launches.
+### As Shipped
+
+Ended up as a single SPM target under `ARES-Face/` rather than the
+4-target `ARES / ARESKit / HermesClient / ARESTests` split below. The
+practical reasons: the Hermes-client surface is small (one
+`BrainConnection.swift` file talking WebSocket + REST to `:7860`), and
+splitting tiny modules into separate targets added build complexity
+with no payoff yet. The 4-target split is still the right idea once
+multi-device targets land (Phase 7).
+
+### Deliverables (original)
+- [x] `Package.swift` — SPM manifest (single target; macOS 15+, multi-device TBD)
+- [x] `App/ARESApp.swift` + `App/ARESRootView.swift` — entry + root layout
+- [x] `Networking/BrainConnection.swift` — WebSocket `:7860/ws` + REST `/api/*` (replaces the planned `HermesClient` separate target)
+- [ ] `Sources/HermesClient/MCPProxy.swift` — deferred; not needed yet
+- [x] Library surface — folded into `ARES-Face` target
+- [ ] `Makefile` — not present (Xcode build via `build_app.sh`)
+- [x] Bundle metadata via `Info.plist.template` + `build_app.sh`
+- [x] `swift build` succeeds; app launches
 
 ### HermesClient API Contract
 
@@ -106,19 +120,29 @@ public enum MCPServer: String, Sendable {
 
 ---
 
-## Phase 2 — Overlay Presence (macOS)
+## Phase 2 — Overlay Presence (macOS)  ◐ PARTIAL
 
 **Goal:** ARES summoned via hotkey/menu bar. Compact overlay panel appears. Type or speak. Response delivered. Dismisses.
+
+### Status
+
+Main-window text chat shipped (`Views/ChatStream.swift` +
+`Views/CommandBar.swift` + `Views/MenuBarView.swift`). Hotkey-summoned
+floating overlay is **not yet built** — the app currently runs as a
+standard `WindowGroup` window plus `MenuBarExtra`.
+
+The Hermes-side text→think() pipe also still needs the bridge wiring
+(stub `cognition_query()` in `ares/runtime/hermes_bridge.py`).
 
 ### Deliverables
 - [ ] `ARESKit/Overlay/OverlayWindow.swift` — borderless, floating, non-activating panel
 - [ ] `ARESKit/Overlay/HotkeyManager.swift` — global hotkey registration
-- [ ] `ARESKit/Overlay/StatusBarController.swift` — menu bar icon + summon
-- [ ] `ARESKit/Chat/ChatView.swift` — text input/output in overlay
-- [ ] `ARESKit/Chat/ConversationManager.swift` — message state, streaming
-- [ ] HermesClient integration — text → think() → display response
+- [x] `ARESKit/Overlay/StatusBarController.swift` — `MenuBarView.swift` provides menu bar presence
+- [x] `ARESKit/Chat/ChatView.swift` — `Views/ChatStream.swift` + `Views/CommandBar.swift`
+- [x] `ARESKit/Chat/ConversationManager.swift` — `BrainConnection.messages` + `sendMessage`
+- [◐] HermesClient integration — REST `POST /api/chat` is wired; Hermes-side `/think` is a stub awaiting sibling PR
 
-### Behavior
+### Behavior (target)
 ```
 Press Ctrl+Space → overlay slides in from top-right
 Type question → sent to Hermes :9876 → response appears
@@ -128,6 +152,25 @@ Menu bar icon always present — click to summon
 ```
 
 ---
+
+## Phase 2.5 — Cognitive OS  ✅ SHIPPED (out-of-band, PR #2)
+
+Not on the original phase map but ended up landing between Phase 2 and
+Phase 3. Made the Homunculus visibly *think* before the voice loop was
+ready, which felt more important than another I/O modality on top of an
+opaque brain.
+
+Five sub-phases, all shipped:
+
+| # | Deliverable |
+|---|---|
+| 0 | Versioned `CognitiveSnapshot` schema, WebSocket push on phase transitions, heartbeat pill in `ImmersionBar`, expanded `CognitiveActivityPanel`, sidebar mounted in root |
+| 1 | Tiered memory: volatile `SessionStore`, episodic SQLite + swappable `VectorStore`/`Embedder` protocols (in-memory + Ollama variants), semantic triple store, Memory Inspector sidebar tab |
+| 2 | Per-cycle reasoning DAG with `ThoughtNodeRecord` + `emit_thought_node()`; force-directed Mission Control panel (SwiftUI Canvas + Verlet integrator, ~60 fps); per-cycle DAG persisted into episodic metadata |
+| 3 | Idle reflexion: `consolidate_episodics` + `dedupe_facts` + `surface_open_questions` + `/api/idle/run` orchestrator |
+| 4 | Declarative `CognitiveBindings.evaluate(snapshot, time)` table → 4 new `SurfaceCustomUniforms` fields (`noiseScale`, `emissivePulse`, `vertexJitter`, `glitchAmplitude`); `BlackFireSurface.metal` reacts |
+
+Reference: [`ares/reference/docs/COGNITIVE_OS.md`](../docs/COGNITIVE_OS.md).
 
 ## Phase 3 — Voice
 
@@ -258,4 +301,22 @@ ARES-App/
 
 ## Next Action
 
-Matthew reviews this plan. Approves or modifies. Then Phase 1 begins.
+Two parallel tracks open:
+
+1. **Sibling PR — Hermes wiring.** Replace
+   `ares/runtime/hermes_bridge.py::cognition_query()` stub with a real
+   Hermes invocation. The `memory_recall` field already pushed in the
+   `cognitive_snapshot` payload is the contract for context injection;
+   the persona prompt is already returned in `ChatResponse`. This
+   unblocks the rest of Phase 2 (and gives the chat path a real brain).
+2. **Phase 2 polish — overlay + hotkey.** Add `OverlayWindow` +
+   `HotkeyManager` so ARES can be summoned without alt-tabbing.
+
+After that:
+- Phase 3 (voice loop) — VAD + STT + TTS on top of the working text
+  pipeline.
+- Phase 4 (Apple services) — Calendar/Reminders/Notes via osascript.
+- Concrete `VectorStore` substrate (sqlite-vss / lancedb / chromadb).
+
+The original "Matthew reviews this plan" gate is closed. Execution is
+underway and visible on PR #2.

@@ -11,10 +11,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
+
 
 def ares_home() -> Path:
     """Return ~/.ares, creating it if needed."""
@@ -49,6 +49,7 @@ def ares_paths() -> dict[str, Path]:
 # ---------------------------------------------------------------------------
 # Config dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class LLMConfig:

@@ -134,6 +134,16 @@ void blackFireSurface(realitykit::surface_parameters params,
         float speakPulse = 0.85 + 0.15 * sin(time * 8.0);
         color *= speakPulse;
     }
+
+    // Cognition-driven uniforms (Phase 4 bindings).
+    // emissivePulse brightens the core when ARES is confident; glitchAmplitude
+    // adds a brief pixel-jump when error count climbs. Both clamped via the
+    // CognitiveBindings table on the Swift side so no per-shader guarding.
+    color *= (0.85 + 0.3 * customParams.emissivePulse);
+    if (customParams.glitchAmplitude > 0.0) {
+        float glitch = hash21(uv * 80.0 + float2(time * 17.0)) - 0.5;
+        color += float3(glitch) * customParams.glitchAmplitude * 0.4;
+    }
     
     // Final opacity — fade out edges smoothly
     float opacity = intensity * smoothstep(0.55, 0.1, dist) * flicker;

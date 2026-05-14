@@ -3,6 +3,7 @@
 6 states, each with visual parameters for color, opacity, pulse speed, pupil offset.
 Directly usable by both Python cognition layer and SwiftUI FaceRenderer.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,24 +13,24 @@ from typing import Tuple
 
 class FaceState(Enum):
     """Emotional/operational states for the companion face."""
-    
-    IDLE = "idle"              # Waiting, ambient awareness
-    AWAKENED = "awakened"      # Wake word detected, attention focused
-    LISTENING = "listening"    # Processing speech input
-    THINKING = "thinking"      # LLM inference in progress
-    SPEAKING = "speaking"      # TTS output, mouth animation
-    SLEEPING = "sleeping"      # Dormant / low-power
+
+    IDLE = "idle"  # Waiting, ambient awareness
+    AWAKENED = "awakened"  # Wake word detected, attention focused
+    LISTENING = "listening"  # Processing speech input
+    THINKING = "thinking"  # LLM inference in progress
+    SPEAKING = "speaking"  # TTS output, mouth animation
+    SLEEPING = "sleeping"  # Dormant / low-power
 
 
 @dataclass(frozen=True)
 class FaceConfig:
     """Visual parameters for a face state."""
-    
+
     color: Tuple[float, float, float]  # RGB 0-1
-    opacity: float                      # 0-1
-    pulse_speed: float                  # animation cycles/sec
-    pulse_amount: float                 # 0-1 intensity
-    pupil_offset: Tuple[float, float]   # x,y offset from center (-1 to 1)
+    opacity: float  # 0-1
+    pulse_speed: float  # animation cycles/sec
+    pulse_amount: float  # 0-1 intensity
+    pupil_offset: Tuple[float, float]  # x,y offset from center (-1 to 1)
 
 
 STATE_CONFIGS: dict[FaceState, FaceConfig] = {
@@ -61,7 +62,7 @@ def get_face_config(state: FaceState) -> FaceConfig:
 
 def emotion_to_face_state(emotion: str, is_processing: bool = False) -> FaceState:
     """Map a high-level emotion string to a face state.
-    
+
     Called by the cognition layer when ARES determines what to express.
     """
     if emotion in ("happy", "excited", "enthusiastic"):
@@ -74,5 +75,5 @@ def emotion_to_face_state(emotion: str, is_processing: bool = False) -> FaceStat
         return FaceState.LISTENING
     elif emotion in ("neutral", "calm", "focused"):
         return FaceState.IDLE
-    
+
     return FaceState.THINKING if is_processing else FaceState.IDLE
