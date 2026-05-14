@@ -383,6 +383,7 @@ class Daemon:
                         content=f"Task {task.id}: '{task.goal[:120]}' — {len(plan.stages)} stages completed.",
                         tags=["task_outcome", task.id],
                         source="daemon",
+                        importance=0.7,  # successful task outcomes outrank generic facts
                     )
                 except Exception:
                     pass
