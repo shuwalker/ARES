@@ -298,6 +298,58 @@ def resume() -> None:
 
 
 # ---------------------------------------------------------------------------
+# ares approve / reject / approvals
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.argument("task_id")
+def approve(task_id: str) -> None:
+    """Approve a pending checkpoint."""
+    response = _send_ipc({"cmd": "approve", "task_id": task_id, "responder": "cli"})
+    if "error" in response or not response.get("ok"):
+        console.print(f"[red]{response.get('error') or response.get('message')}[/red]")
+    else:
+        console.print(f"[green]{response.get('message', 'Approved.')}[/green]")
+
+
+@main.command()
+@click.argument("task_id")
+def reject(task_id: str) -> None:
+    """Reject a pending checkpoint."""
+    response = _send_ipc({"cmd": "reject", "task_id": task_id, "responder": "cli"})
+    if "error" in response or not response.get("ok"):
+        console.print(f"[red]{response.get('error') or response.get('message')}[/red]")
+    else:
+        console.print(f"[yellow]{response.get('message', 'Rejected.')}[/yellow]")
+
+
+@main.command()
+def approvals() -> None:
+    """List pending approval checkpoints."""
+    response = _send_ipc({"cmd": "approvals"})
+    if "error" in response:
+        console.print(f"[red]{response['error']}[/red]")
+        return
+    pending = response.get("pending", [])
+    if not pending:
+        console.print("No pending approvals.")
+        return
+    table = Table(title="Pending Approvals", show_header=True)
+    table.add_column("Task ID")
+    table.add_column("Stage")
+    table.add_column("Created")
+    table.add_column("Expires")
+    for p in pending:
+        table.add_row(
+            p.get("task_id", ""),
+            f'{p.get("stage_id")}: {p.get("stage_name", "")}',
+            (p.get("created_at") or "")[:19],
+            (p.get("expires_at") or "")[:19],
+        )
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
 # ares log
 # ---------------------------------------------------------------------------
 

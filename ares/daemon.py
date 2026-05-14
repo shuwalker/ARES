@@ -29,9 +29,10 @@ from .core.bus import ARESBus, BusMessage, get_bus
 from .core.face_state import FaceState, get_face_config
 from .core.memory import open_default as _open_memory_db
 from .memory import write_retrospective
-from .reasoning import reason, format_proposal
+from .reasoning import reason, format_proposal, Plan, PlanStage
 from .runtime.ares_bridge_minimal import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
 from .sync import flush
+from .tasks import approvals
 from .tasks.queue import Inbox, Task, get_next_ready, update_task, archive_task
 from .tasks.executor import PlanExecutor
 from .tools.registry import ensure_builtin_tools
@@ -43,7 +44,10 @@ logger = logging.getLogger("ares.daemon")
 # IPC socket server
 # ---------------------------------------------------------------------------
 
-SOCKET_COMMANDS = {"goal", "status", "pause", "resume", "stop"}
+SOCKET_COMMANDS = {
+    "goal", "status", "pause", "resume", "stop",
+    "approve", "reject", "approvals",
+}
 
 
 class IPCServer:
@@ -108,7 +112,24 @@ class IPCServer:
             self.daemon.running = False
             return {"ok": True, "message": "Stopping ARES…"}
 
+        elif cmd == "approve":
+            return self._respond(msg.get("task_id"), "approved", msg.get("responder", "cli"))
+
+        elif cmd == "reject":
+            return self._respond(msg.get("task_id"), "rejected", msg.get("responder", "cli"))
+
+        elif cmd == "approvals":
+            return {"ok": True, "pending": approvals.list_pending()}
+
         return {"ok": False, "message": f"Unknown command: {cmd}"}
+
+    def _respond(self, task_id: str | None, decision: str, responder: str) -> dict[str, Any]:
+        if not task_id:
+            return {"ok": False, "message": "task_id required"}
+        record = approvals.respond(task_id, decision, responder)
+        if record is None:
+            return {"ok": False, "message": f"No pending approval for {task_id}"}
+        return {"ok": True, "message": f"{decision}: {task_id}", "record": record}
 
     async def stop(self) -> None:
         if self._server:
@@ -138,6 +159,7 @@ class Daemon:
         )
         self.ipc = IPCServer(self)
         self._current_task: Task | None = None
+        self._phase: str = "idle"  # idle | thinking | executing | awaiting_approval | done | failed
         self._bus: ARESBus = get_bus()
         self._bridge_thread: threading.Thread | None = None
         self.bridge_available = False
@@ -166,16 +188,92 @@ class Daemon:
         )
         self._bus.dispatch(msg)
 
-    async def _approval_cb(self, message: str) -> bool:
-        """Interactive approval — prints to terminal, reads from IPC or stdin."""
-        log_sync(action="checkpoint", message=message[:200])
-        # In daemon mode, notify via audit log and wait for resume signal.
-        # In interactive/CLI mode the executor will prompt directly.
-        print(f"\n[ARES CHECKPOINT]\n{message}\n")
-        print("Type 'ares resume' to continue, 'ares pause' to take over.\n")
-        # Auto-approve after a brief wait in non-interactive environments
-        await asyncio.sleep(0.1)
-        return True
+    async def _log_phase(
+        self,
+        to_phase: str,
+        task_id: str | None = None,
+        *,
+        blocked: bool = False,
+        reason: str | None = None,
+    ) -> None:
+        """Lightweight guardrail at every cognitive phase boundary.
+
+        Logs the transition with a snapshot of currently-pending approvals.
+        When blocked=True, records that the daemon is *not* advancing —
+        callers should still hold; this never auto-resolves.
+        """
+        from_phase = self._phase
+        pending = approvals.list_pending()
+        await log(
+            action="phase_transition",
+            task_id=task_id,
+            from_phase=from_phase,
+            to_phase=to_phase,
+            blocked=blocked,
+            reason=reason,
+            pending_approvals=len(pending),
+            pending_task_ids=[p.get("task_id") for p in pending][:5],
+        )
+        if not blocked:
+            self._phase = to_phase
+
+    async def _approval_cb(self, task: Task, stage: PlanStage, message: str) -> bool:
+        """Daemon-mode approval gate.
+
+        Writes a pending_approval record to disk and polls until the IPC
+        server sets it to approved/rejected, or until the configured timeout
+        elapses (then applies cfg.approval.default_action).
+        """
+        cfg = get_config().approval
+        approvals.create_pending(task.id, stage.id, stage.name, message, cfg.timeout_seconds)
+        log_sync(action="approval_pending", task_id=task.id, stage=stage.id)
+        # Phase: executing → awaiting_approval (blocked — daemon does NOT
+        # auto-advance; the loop below holds until an external response or
+        # the configured timeout). This is the observability point for the
+        # old auto-approve bug — every gate is now visible in the log.
+        await self._log_phase(
+            "awaiting_approval",
+            task_id=task.id,
+            blocked=True,
+            reason=f"stage {stage.id}: {stage.name}",
+        )
+        print(
+            f"\n[ARES CHECKPOINT — task {task.id}, stage {stage.id}]\n{message}\n"
+            f"Run 'ares approve {task.id}' or 'ares reject {task.id}' "
+            f"(timeout {cfg.timeout_seconds}s, default={cfg.default_action}).\n"
+        )
+
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + cfg.timeout_seconds
+        while loop.time() < deadline:
+            await asyncio.sleep(cfg.poll_interval_seconds)
+            current = approvals.read_pending(task.id)
+            if current is None:
+                # Record vanished — treat as default action.
+                break
+            status = current.get("status")
+            if status == "approved":
+                await log(action="approval_granted", task_id=task.id,
+                          stage=stage.id, responder=current.get("responder"))
+                approvals.clear(task.id)
+                await self._log_phase("executing", task_id=task.id,
+                                      reason="approval_granted")
+                return True
+            if status == "rejected":
+                await log(action="approval_denied", task_id=task.id,
+                          stage=stage.id, responder=current.get("responder"))
+                approvals.clear(task.id)
+                await self._log_phase("executing", task_id=task.id,
+                                      reason="approval_denied")
+                return False
+
+        approvals.mark_expired(task.id)
+        await log(action="approval_timeout", task_id=task.id,
+                  stage=stage.id, default_action=cfg.default_action)
+        approvals.clear(task.id)
+        await self._log_phase("executing", task_id=task.id,
+                              reason=f"approval_timeout:{cfg.default_action}")
+        return cfg.default_action == "approve"
 
     def get_status(self) -> dict[str, Any]:
         from .tasks.queue import list_active
@@ -320,6 +418,11 @@ class Daemon:
         task.status = "planning"
         update_task(task)
 
+        # Phase: idle → thinking. If approvals are still pending from a prior
+        # task, _log_phase records that fact but does not block — the gates
+        # live inside the executor and resolve there.
+        await self._log_phase("thinking", task_id=task.id)
+
         # Face: awaken when starting a task
         self._publish_face(FaceState.AWAKENED, task_id=task.id)
 
@@ -365,6 +468,9 @@ class Daemon:
                 )
 
             # Step 3: Execute the plan
+            # Phase: thinking → executing
+            await self._log_phase("executing", task_id=task.id)
+
             # Face: still thinking/acting during execution
             self._publish_face(FaceState.THINKING, task_id=task.id)
 
@@ -394,6 +500,9 @@ class Daemon:
 
             await log(task_id=task.id, action="task_done", result=result[:100])
 
+            # Phase: executing → done
+            await self._log_phase("done", task_id=task.id)
+
             # Face: idle after successful completion
             self._publish_face(FaceState.IDLE, task_id=task.id)
 
@@ -402,6 +511,9 @@ class Daemon:
             task.status = "failed"
             task.error = str(exc)[:500]
             update_task(task)
+
+            # Phase: executing → failed
+            await self._log_phase("failed", task_id=task.id, reason=str(exc)[:120])
 
             # Face: sleeping on failure (signals error state visually)
             self._publish_face(FaceState.SLEEPING, task_id=task.id)
@@ -412,6 +524,8 @@ class Daemon:
                     mem.close()
                 except Exception:
                     pass
+            # Phase: anything → idle (ready for the next task)
+            await self._log_phase("idle", task_id=task.id)
             archive_task(task)
             self._current_task = None
 

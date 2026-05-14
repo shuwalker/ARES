@@ -41,6 +41,7 @@ def ares_paths() -> dict[str, Path]:
         "memory_knowledge": home / "memory" / "knowledge",
         "memory_projects": home / "memory" / "projects",
         "tasks": home / "tasks",
+        "approvals": home / "approvals",
         "n8n_workflows": home / "n8n-workflows",
         "logs": home / "logs",
         "cache": home / "cache",
@@ -84,6 +85,13 @@ class DecisionConfig(BaseModel):
     )
 
 
+class ApprovalConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+    timeout_seconds: int = Field(default=300, description="Max seconds to wait for an approval decision before falling back to default_action")
+    poll_interval_seconds: float = Field(default=1.0, description="How often to poll the approvals dir for a response")
+    default_action: str = Field(default="reject", description='"reject" | "approve" — fallback when the timeout expires')
+
+
 class AresConfig(BaseSettings):
     """Root config. TOML provides sections; env-vars provide secrets."""
 
@@ -98,6 +106,7 @@ class AresConfig(BaseSettings):
     n8n: N8NConfig = Field(default_factory=N8NConfig, description="n8n workflow integration")
     sync: SyncConfig = Field(default_factory=SyncConfig, description="iCloud sync settings")
     decision: DecisionConfig = Field(default_factory=DecisionConfig, description="Autonomous decision policy")
+    approval: ApprovalConfig = Field(default_factory=ApprovalConfig, description="Disk-backed approval checkpoint policy")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY", description="Env-var override for cloud LLM key")
     n8n_api_key: str = Field(default="", alias="N8N_API_KEY", description="Env-var override for n8n API key")
     extra_toml: dict[str, Any] = Field(
@@ -136,9 +145,10 @@ def load_config() -> AresConfig:
             "n8n": raw.get("n8n", {}),
             "sync": raw.get("sync", {}),
             "decision": raw.get("decision", {}),
+            "approval": raw.get("approval", {}),
             "extra_toml": {
                 k: v for k, v in raw.items()
-                if k not in ("llm", "n8n", "sync", "decision")
+                if k not in ("llm", "n8n", "sync", "decision", "approval")
             },
         }
     )
@@ -185,6 +195,11 @@ def write_default_config() -> Path:
         },
         "decision": {
             "cli_install_silence_minutes": 5,
+        },
+        "approval": {
+            "timeout_seconds": 300,
+            "poll_interval_seconds": 1.0,
+            "default_action": "reject",
         },
     }
 
