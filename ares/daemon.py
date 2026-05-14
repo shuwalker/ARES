@@ -29,7 +29,7 @@ from .core.bus import ARESBus, BusMessage, get_bus
 from .core.face_state import FaceState, get_face_config
 from .memory import write_retrospective
 from .reasoning import reason, format_proposal
-from .runtime.hermes_bridge import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
+from .runtime.ares_bridge_minimal import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
 from .sync import flush
 from .tasks.queue import Inbox, Task, get_next_ready, update_task, archive_task
 from .tasks.executor import PlanExecutor
@@ -199,7 +199,7 @@ class Daemon:
         we run it in a daemon thread that dies with the process.  Callers should
         invoke _check_bridge_health() after this to confirm it's serving.
         """
-        from .runtime.hermes_bridge import serve as bridge_serve
+        from .runtime.ares_bridge_minimal import serve as bridge_serve
 
         def _run() -> None:
             try:

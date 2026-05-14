@@ -8,6 +8,14 @@ import subprocess
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+HOST = "127.0.0.1"
+PORT = 9876
+
+
+def serve() -> None:
+    """Run the minimal Hermes bridge HTTP server on HOST:PORT."""
+    HTTPServer((HOST, PORT), Handler).serve_forever()
+
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -51,4 +59,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    HTTPServer(("127.0.0.1", 9876), Handler).serve_forever()
+    serve()
