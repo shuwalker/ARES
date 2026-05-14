@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .llm import cloud, local
 from .llm.router import route, LLMBackend
 from .audit import log
+from .thought_dag import ThoughtCheckpoint, get_dag, new_thought_id
 
 
 # ---------------------------------------------------------------------------
@@ -159,13 +160,55 @@ async def reason(
     sensitive: bool = False,
     requires_vision: bool = False,
     bulk: bool = False,
+    resume: bool = True,
 ) -> Plan:
     """Call LLM to decompose a goal into a concrete execution plan.
 
     Backend routing: if ``backend`` is explicitly provided, it is used directly.
     Otherwise the router decides based on task characteristics (sensitivity,
     vision, bulk). Planning tasks always default to CLOUD for quality.
+
+    Every major step writes a ``ThoughtCheckpoint`` to the SQLite-backed
+    ``ThoughtDAG`` (``~/.ares/thoughts.db``). When ``resume`` is true (the
+    default) and ``task_id`` is provided, a previously-parsed plan for the
+    same task is returned without re-calling the LLM — this is how the
+    daemon recovers after a crash mid-reasoning.
     """
+    dag = get_dag()
+    parent_id: str | None = None
+
+    # Resume short-circuit: if a previous run already produced a parsed plan
+    # for this task, re-use it and record a 'resumed' checkpoint for the trail.
+    if resume and task_id:
+        cached = dag.find_completed_plan(task_id)
+        if cached is not None:
+            try:
+                plan = Plan.model_validate(cached)
+            except ValidationError:
+                plan = None
+            if plan is not None:
+                resume_cp = ThoughtCheckpoint(
+                    parent_id=None,
+                    task_id=task_id,
+                    stage="resumed",
+                    inputs={"goal": goal, "context": context},
+                    outputs={"stages": len(plan.stages)},
+                )
+                dag.record(resume_cp)
+                await log(task_id=task_id, action="reason_resumed", stages=len(plan.stages))
+                return plan
+
+    # ── started ─────────────────────────────────────────────────────────
+    started_cp = ThoughtCheckpoint(
+        thought_id=new_thought_id(),
+        parent_id=parent_id,
+        task_id=task_id,
+        stage="started",
+        inputs={"goal": goal, "context": context},
+    )
+    dag.record(started_cp)
+    parent_id = started_cp.thought_id
+
     if backend is None:
         backend = route(
             task_type="planning",
@@ -173,6 +216,18 @@ async def reason(
             requires_vision=requires_vision,
             bulk=bulk,
         )
+
+    # ── routed ──────────────────────────────────────────────────────────
+    routed_cp = ThoughtCheckpoint(
+        thought_id=new_thought_id(),
+        parent_id=parent_id,
+        task_id=task_id,
+        stage="routed",
+        inputs={"sensitive": sensitive, "requires_vision": requires_vision, "bulk": bulk},
+        outputs={"backend": backend.value},
+    )
+    dag.record(routed_cp)
+    parent_id = routed_cp.thought_id
 
     user_content = f"Goal: {goal}"
     if context:
@@ -182,20 +237,77 @@ async def reason(
 
     messages = [{"role": "user", "content": user_content}]
 
-    if backend == LLMBackend.LOCAL:
-        raw_text = await local.complete(
-            system=CONTRACTOR_TEST_SYSTEM,
-            messages=messages,
-            task_id=task_id,
-        )
-    else:
-        raw_text = await cloud.complete(
-            system=CONTRACTOR_TEST_SYSTEM,
-            messages=messages,
-            task_id=task_id,
-        )
+    # ── llm_request ─────────────────────────────────────────────────────
+    request_cp = ThoughtCheckpoint(
+        thought_id=new_thought_id(),
+        parent_id=parent_id,
+        task_id=task_id,
+        stage="llm_request",
+        status="running",
+        inputs={"backend": backend.value, "system_chars": len(CONTRACTOR_TEST_SYSTEM), "user_chars": len(user_content)},
+    )
+    dag.record(request_cp)
+    parent_id = request_cp.thought_id
 
+    try:
+        if backend == LLMBackend.LOCAL:
+            raw_text = await local.complete(
+                system=CONTRACTOR_TEST_SYSTEM,
+                messages=messages,
+                task_id=task_id,
+            )
+        else:
+            raw_text = await cloud.complete(
+                system=CONTRACTOR_TEST_SYSTEM,
+                messages=messages,
+                task_id=task_id,
+            )
+    except Exception as exc:
+        failure_cp = ThoughtCheckpoint(
+            thought_id=new_thought_id(),
+            parent_id=parent_id,
+            task_id=task_id,
+            stage="llm_response",
+            status="failed",
+            error=str(exc)[:500],
+        )
+        dag.record(failure_cp)
+        raise
+
+    # ── llm_response ────────────────────────────────────────────────────
+    response_cp = ThoughtCheckpoint(
+        thought_id=new_thought_id(),
+        parent_id=parent_id,
+        task_id=task_id,
+        stage="llm_response",
+        inputs={"request_id": request_cp.thought_id},
+        outputs={"raw_text_chars": len(raw_text), "raw_text_preview": raw_text[:500]},
+    )
+    dag.record(response_cp)
+    parent_id = response_cp.thought_id
+
+    # ── parsed ──────────────────────────────────────────────────────────
     plan = _parse_plan(goal, raw_text)
+    parsed_cp = ThoughtCheckpoint(
+        thought_id=new_thought_id(),
+        parent_id=parent_id,
+        task_id=task_id,
+        stage="parsed",
+        outputs={"plan": plan.model_dump(mode="json"), "stage_count": len(plan.stages)},
+    )
+    dag.record(parsed_cp)
+    parent_id = parsed_cp.thought_id
+
+    # ── done ────────────────────────────────────────────────────────────
+    done_cp = ThoughtCheckpoint(
+        thought_id=new_thought_id(),
+        parent_id=parent_id,
+        task_id=task_id,
+        stage="done",
+        outputs={"stage_count": len(plan.stages), "new_installs": len(plan.new_installs)},
+    )
+    dag.record(done_cp)
+
     await log(task_id=task_id, action="reason_done", stages=len(plan.stages))
     return plan
 
