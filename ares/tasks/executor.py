@@ -1,17 +1,19 @@
 """Task executor for ARES.
 
-Executes plan stages using real tools. Each stage type has a handler.
-Handles checkpoints, approvals, and failures.
+Executes plan stages via the tool registry. Each stage names a tool;
+the registry resolves it to an invoker and runs it. Pre-flight validates
+that every tool in the plan is known and installed before any stage runs.
 """
 
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, Callable, Awaitable
+from typing import Awaitable, Callable
 
 from ..audit import log
 from ..reasoning import Plan, PlanStage
+from ..tools import registry
 from .queue import Task, update_task
 
 
@@ -29,74 +31,6 @@ async def _default_approval(message: str) -> bool:
     loop = asyncio.get_event_loop()
     answer = await loop.run_in_executor(None, input)
     return answer.strip().lower() in ("y", "yes", "")
-
-
-# ---------------------------------------------------------------------------
-# Stage handlers
-# ---------------------------------------------------------------------------
-
-async def _execute_shell(stage: PlanStage, task: Task) -> str:
-    """Execute a shell command stage."""
-    import subprocess
-    cmd = stage.action
-    if not cmd:
-        return f"Stage {stage.id} has no action command."
-
-    await log(task_id=task.id, stage=stage.name, action="shell_exec", cmd=cmd[:80])
-
-    proc = await asyncio.create_subprocess_shell(
-        cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"Stage {stage.id} failed (exit {proc.returncode}):\n{stderr.decode()}"
-        )
-    return stdout.decode()
-
-
-async def _execute_llm_stage(stage: PlanStage, task: Task) -> str:
-    """Stage that calls the LLM to produce content."""
-    from ..llm import cloud
-    from ..core.personality import load_personality
-
-    personality = load_personality()
-    system_prompt = (
-        "You are ARES — Autonomous Reasoning & Execution System.\n\n"
-        + personality.to_system_prompt()
-    )
-    text = await cloud.complete(
-        system=system_prompt,
-        messages=[{"role": "user", "content": f"Execute stage: {stage.action}"}],
-        task_id=task.id,
-    )
-    if stage.output_file:
-        from pathlib import Path
-        import os
-        output_dir = Path.home() / "Documents" / "ARES" / task.id
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / stage.output_file
-        output_path.write_text(text)
-        await log(
-            task_id=task.id,
-            stage=stage.name,
-            action="file_write",
-            path=str(output_path),
-        )
-    return text
-
-
-async def _execute_checkpoint(stage: PlanStage, task: Task) -> str:
-    """Stage that waits for human approval."""
-    await log(
-        task_id=task.id,
-        stage=stage.name,
-        action="checkpoint",
-        message=f"Waiting for approval at stage {stage.id}: {stage.name}",
-    )
-    return "checkpoint_reached"
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +55,21 @@ class PlanExecutor:
         update_task(task)
 
         await log(task_id=task.id, action="execute_start", stages=len(plan.stages))
+
+        # Pre-flight: every stage's tool must be resolvable + installed before
+        # we start running anything. Fails fast with all gaps in one message.
+        try:
+            registry.validate_plan(plan)
+        except (registry.ToolNotFoundError, registry.ToolNotInstalledError) as exc:
+            await log(
+                task_id=task.id,
+                action="preflight_failed",
+                error=str(exc)[:500],
+            )
+            task.error = str(exc)[:500]
+            task.status = "failed"
+            update_task(task)
+            return f"Pre-flight failed: {exc}"
 
         results = []
 
@@ -188,28 +137,8 @@ class PlanExecutor:
         return task.result
 
     async def _run_stage(self, stage: PlanStage, task: Task) -> str:
-        """Route stage to appropriate handler based on tool/action."""
-        tool_lower = stage.tool.lower()
-        action_lower = stage.action.lower()
-
-        # LLM-based content creation stages
-        if any(kw in tool_lower for kw in ("claude", "gpt", "llm", "ai")):
-            return await _execute_llm_stage(stage, task)
-
-        # Shell command stages
-        if action_lower.startswith("run:") or action_lower.startswith("exec:"):
-            stage_copy = PlanStage(**{
-                **stage.__dict__,
-                "action": stage.action.split(":", 1)[1].strip(),
-            })
-            return await _execute_shell(stage_copy, task)
-
-        # Human stage — just log it
-        if any(kw in tool_lower for kw in ("human", "manual", "user")):
-            return f"Manual stage — awaiting human: {stage.action}"
-
-        # Default: treat as LLM content generation
-        return await _execute_llm_stage(stage, task)
+        """Dispatch a stage to its registered tool invoker."""
+        return await registry.invoke(stage, task)
 
     def pause(self) -> None:
         """Pause execution (user is taking over)."""
