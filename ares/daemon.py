@@ -30,6 +30,7 @@ from .audit import log, log_sync
 from .config import get_config, ares_paths, write_default_config
 from .core.bus import ARESBus, BusMessage, get_bus
 from .core.face_state import FaceState, get_face_config
+from .core.memory import open_default as _open_memory_db
 from .memory import write_retrospective
 from .reasoning import reason, format_proposal, Plan
 from .runtime.hermes_bridge import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
@@ -320,7 +321,25 @@ class Daemon:
 
         await log(task_id=task.id, action="task_start", goal=task.goal[:80])
 
+        mem = None
         try:
+            # Open the SQLite memory store for this task. Failures are non-fatal —
+            # the loop runs exactly as before if memory is unavailable.
+            try:
+                mem = _open_memory_db()
+                past = mem.recall(query=task.goal[:60], limit=3)
+            except Exception:
+                past = []
+
+            memory_context = ""
+            if past:
+                memory_context = "Similar past tasks:\n" + "\n".join(
+                    f"- {p['content']}" for p in past
+                )
+
+            base_context = json.dumps(task.context) if task.context else ""
+            combined_context = "\n\n".join(x for x in (memory_context, base_context) if x)
+
             # Step 1: Reason — decompose goal into plan
             # Face: thinking while planning
             self._publish_face(FaceState.THINKING, task_id=task.id)
@@ -328,7 +347,7 @@ class Daemon:
             plan = await reason(
                 task.goal,
                 task_id=task.id,
-                context=json.dumps(task.context) if task.context else "",
+                context=combined_context,
             )
 
             # Step 2: Propose if new installs needed
@@ -357,6 +376,17 @@ class Daemon:
                 do_differently="",
             )
 
+            # Step 4b: Persist outcome to SQLite memory so future tasks can recall it.
+            if mem is not None:
+                try:
+                    mem.remember(
+                        content=f"Task {task.id}: '{task.goal[:120]}' — {len(plan.stages)} stages completed.",
+                        tags=["task_outcome", task.id],
+                        source="daemon",
+                    )
+                except Exception:
+                    pass
+
             await log(task_id=task.id, action="task_done", result=result[:100])
 
             # Face: idle after successful completion
@@ -372,6 +402,11 @@ class Daemon:
             self._publish_face(FaceState.SLEEPING, task_id=task.id)
 
         finally:
+            if mem is not None:
+                try:
+                    mem.close()
+                except Exception:
+                    pass
             archive_task(task)
             self._current_task = None
 

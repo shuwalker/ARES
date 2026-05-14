@@ -61,15 +61,36 @@ async def _execute_llm_stage(stage: PlanStage, task: Task) -> str:
     """Stage that calls the LLM to produce content."""
     from ..llm import cloud
     from ..core.personality import load_personality
+    from ..core.memory import open_default as _open_memory_db
 
     personality = load_personality()
     system_prompt = (
         "You are ARES — Autonomous Reasoning & Execution System.\n\n"
         + personality.to_system_prompt()
     )
+
+    # Pull relevant prior facts from SQLite memory. Memory failures are non-fatal.
+    memory_block = ""
+    mem = None
+    try:
+        mem = _open_memory_db()
+        facts = mem.recall(query=task.goal[:60], limit=5)
+        if facts:
+            memory_block = "\n\nRelevant prior facts:\n" + "\n".join(
+                f"- {f['content']}" for f in facts
+            )
+    except Exception:
+        pass
+    finally:
+        if mem is not None:
+            try:
+                mem.close()
+            except Exception:
+                pass
+
     text = await cloud.complete(
         system=system_prompt,
-        messages=[{"role": "user", "content": f"Execute stage: {stage.action}"}],
+        messages=[{"role": "user", "content": f"Execute stage: {stage.action}{memory_block}"}],
         task_id=task.id,
     )
     if stage.output_file:

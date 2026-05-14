@@ -195,3 +195,9 @@ def set_nas_paths(obsidian: Path | None = None, brain: Path | None = None):
 
 def get_nas_paths() -> dict:
     return {"obsidian": _nas_obsidian_path, "brain": _nas_brain_path}
+
+
+def open_default() -> Memory:
+    """Open the default ARES memory store at ~/.ares/memory.db (opened, caller closes)."""
+    from ..config import ares_home
+    return Memory(ares_home() / "memory.db").open()
