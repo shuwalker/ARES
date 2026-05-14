@@ -15,10 +15,11 @@ from __future__ import annotations
 import json
 import tomllib
 import tomli_w
-from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import ares_paths
 
@@ -39,18 +40,31 @@ def _now_iso() -> str:
 # Episodic memory — JSONL task logs
 # ---------------------------------------------------------------------------
 
+class EpisodicEntry(BaseModel):
+    """A single retrospective entry written per task to JSONL."""
 
-@dataclass
-class EpisodicEntry:
-    task_id: str
-    goal: str
-    started_at: str
+    model_config = ConfigDict(validate_assignment=False)
+
+    task_id: str = Field(description="Task identifier this entry belongs to")
+    goal: str = Field(description="Original goal text")
+    started_at: str = Field(description="ISO-8601 UTC start timestamp")
+    completed_at: str | None = Field(default=None, description="ISO-8601 UTC completion timestamp")
+    outcome: str = Field(default="in_progress", description="in_progress | success | failed | cancelled")
+    stages: list[dict[str, Any]] = Field(default_factory=list, description="Per-stage execution records")
+    retrospective: str = Field(default="", description="Free-form retrospective notes")
+    preferences_noticed: list[str] = Field(default_factory=list, description="User preferences inferred during this task")
+    api_cost_usd: float = Field(default=0.0, description="Total API cost in USD")
+
+
+class EpisodicSummary(BaseModel):
+    """Lightweight view returned by list_episodic — last-line fields only."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    task_id: str | None = None
+    goal: str | None = None
+    outcome: str | None = None
     completed_at: str | None = None
-    outcome: str = "in_progress"  # in_progress | success | failed | cancelled
-    stages: list[dict[str, Any]] = field(default_factory=list)
-    retrospective: str = ""
-    preferences_noticed: list[str] = field(default_factory=list)
-    api_cost_usd: float = 0.0
 
 
 def episodic_path() -> Path:
@@ -61,7 +75,7 @@ def write_episodic(entry: EpisodicEntry) -> Path:
     """Append or update an episodic entry in its JSONL file."""
     path = episodic_path() / f"{entry.task_id}.jsonl"
     with open(path, "a") as fh:
-        fh.write(json.dumps(asdict(entry)) + "\n")
+        fh.write(entry.model_dump_json() + "\n")
     return path
 
 
@@ -73,27 +87,21 @@ def read_episodic(task_id: str) -> list[EpisodicEntry]:
     for line in path.read_text().splitlines():
         line = line.strip()
         if line:
-            entries.append(EpisodicEntry(**json.loads(line)))
+            entries.append(EpisodicEntry.model_validate_json(line))
     return entries
 
 
 def list_episodic(limit: int = 20) -> list[dict[str, Any]]:
-    """Return summary of recent episodic entries."""
+    """Return summary of recent episodic entries (dict shape preserved for CLI consumers)."""
     p = episodic_path()
     files = sorted(p.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)
-    summaries = []
+    summaries: list[dict[str, Any]] = []
     for f in files[:limit]:
         lines = f.read_text().splitlines()
         if lines:
             last = json.loads(lines[-1])
-            summaries.append(
-                {
-                    "task_id": last.get("task_id"),
-                    "goal": last.get("goal"),
-                    "outcome": last.get("outcome"),
-                    "completed_at": last.get("completed_at"),
-                }
-            )
+            summary = EpisodicSummary.model_validate(last)
+            summaries.append(summary.model_dump())
     return summaries
 
 

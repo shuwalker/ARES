@@ -37,13 +37,13 @@ import subprocess
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ares.core.bus import ARESBus, BusMessage, get_bus
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
@@ -270,6 +270,106 @@ class MemorySearchRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Response models
+# ---------------------------------------------------------------------------
+
+class StatusResponse(BaseModel):
+    name: str
+    version: str
+    face_state: str
+    bus: dict[str, Any] = Field(default_factory=dict, description="Open-shape bus status snapshot")
+    websocket_clients: int
+    uptime: float
+
+
+class ServiceHealth(BaseModel):
+    model_config = ConfigDict(extra="allow")  # health_response and similar passthrough fields
+    name: str
+    port: int
+    kind: str
+    running: bool
+    pid: int | None = None
+    uptime: int = 0
+    reachable: bool = False
+
+
+class ServicesResponse(BaseModel):
+    status: str
+    timestamp: float
+    total: int
+    healthy: int
+    services: list[ServiceHealth]
+
+
+class IdentityResponse(BaseModel):
+    name: str
+    role: str
+    voice: str
+    self_model: str
+
+
+class FaceConfigBlock(BaseModel):
+    color: list[float]
+    opacity: float
+    pulse_speed: float
+    pulse_amount: float
+    pupil_offset: list[float]
+
+
+class FaceStateResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    state: Optional[str] = None
+    emotion: Optional[str] = None
+    current_state: Optional[str] = None
+    config: Optional[dict[str, Any]] = None
+
+
+class FaceStateEntry(BaseModel):
+    name: str
+    config: FaceConfigBlock
+
+
+class FaceStatesResponse(BaseModel):
+    states: list[FaceStateEntry]
+
+
+class MemoryStoreResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    stored: bool | None = None
+    id: int | str | None = None
+
+
+class MemorySearchResponse(BaseModel):
+    count: int
+    results: list[dict[str, Any]]
+
+
+class CognitiveStartResponse(BaseModel):
+    status: str
+    goal: Optional[str] = None
+    max_cycles: Optional[int] = None
+
+
+class CognitiveStopResponse(BaseModel):
+    status: str
+
+
+class CognitiveStatusResponse(BaseModel):
+    running: bool
+    status: Optional[str] = None
+    cycle: Optional[int] = None
+    phase: Optional[str] = None
+    urgency: Optional[str] = None
+    budget_remaining: Optional[float] = None
+    face_state: Optional[str] = None
+    errors: Optional[list[Any]] = None
+
+
+class PersonalityPromptResponse(BaseModel):
+    prompt: str
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 
@@ -346,20 +446,20 @@ def create_app(
     # REST endpoints
     # ------------------------------------------------------------------
 
-    @app.get("/api/status")
-    async def get_status():
+    @app.get("/api/status", response_model=StatusResponse)
+    async def get_status() -> StatusResponse:
         """Get ARES system status."""
         identity = DEFAULT_IDENTITY
         face_data = _load_face_state()
         bus_status = bus.status()
-        return {
-            "name": identity.name,
-            "version": "0.1.0",
-            "face_state": face_data.get("current_state", "unknown"),
-            "bus": bus_status,
-            "websocket_clients": len(websocket_clients),
-            "uptime": time.time(),
-        }
+        return StatusResponse(
+            name=identity.name,
+            version="0.1.0",
+            face_state=face_data.get("current_state", "unknown"),
+            bus=bus_status,
+            websocket_clients=len(websocket_clients),
+            uptime=time.time(),
+        )
 
     @app.get("/api/stack")
     async def get_stack():
@@ -368,8 +468,8 @@ def create_app(
 
         return stack_status()
 
-    @app.get("/api/services")
-    async def get_services():
+    @app.get("/api/services", response_model=ServicesResponse)
+    async def get_services() -> ServicesResponse:
         """Get health status of all ARES services.
 
         Returns a combined report for all 6 services:
@@ -417,28 +517,29 @@ def create_app(
 
         all_services = [fastapi_status] + managed_checks + [mac_mcp]
 
-        return {
-            "status": "ok",
-            "timestamp": time.time(),
-            "total": len(all_services),
-            "healthy": sum(1 for s in all_services if s.get("reachable")),
-            "services": all_services,
-        }
+        return ServicesResponse(
+            status="ok",
+            timestamp=time.time(),
+            total=len(all_services),
+            healthy=sum(1 for s in all_services if s.get("reachable")),
+            services=[ServiceHealth.model_validate(s) for s in all_services],
+        )
 
-    @app.get("/api/identity")
-    async def get_identity():
+    @app.get("/api/identity", response_model=IdentityResponse)
+    async def get_identity() -> IdentityResponse:
         """Get ARES's identity — name, role, voice, self-model."""
         identity = DEFAULT_IDENTITY
-        return {
-            "name": identity.name,
-            "role": identity.role,
-            "voice": identity.voice,
-            "self_model": identity.self_model,
-        }
+        return IdentityResponse(
+            name=identity.name,
+            role=identity.role,
+            voice=identity.voice,
+            self_model=identity.self_model,
+        )
 
     @app.get("/api/personality")
-    async def get_personality():
-        """Get the full 4-layer personality profile."""
+    async def get_personality() -> dict[str, Any]:
+        # Free-form trait dict — see CharacterProfile.to_dict(). Strict response model
+        # would lock the trait keys; leave open until CharacterProfile becomes Pydantic.
         return personality.to_dict()
 
     @app.post("/api/personality", response_model=PersonalityUpdateResponse)
@@ -467,13 +568,13 @@ def create_app(
 
         return PersonalityUpdateResponse(updated=True, layer=req.layer, trait=req.trait, value=req.value)
 
-    @app.get("/api/face")
-    async def get_face_state():
+    @app.get("/api/face", response_model=FaceStateResponse)
+    async def get_face_state() -> FaceStateResponse:
         """Get current face state and all state configurations."""
-        return _load_face_state()
+        return FaceStateResponse.model_validate(_load_face_state())
 
-    @app.post("/api/face")
-    async def set_face_state(req: FaceStateRequest):
+    @app.post("/api/face", response_model=FaceStateResponse)
+    async def set_face_state(req: FaceStateRequest) -> FaceStateResponse:
         """Set face state or emotion."""
         if req.state:
             try:
@@ -507,12 +608,12 @@ def create_app(
                 },
             }
         else:
-            return _load_face_state()
+            return FaceStateResponse.model_validate(_load_face_state())
 
         _save_face_state(result)
         bus.dispatch(BusMessage(type="face_state", source="api", payload=result))
         await _broadcast(websocket_clients, {"type": "face_state", **result})
-        return result
+        return FaceStateResponse.model_validate(result)
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(req: ChatRequest):
@@ -583,40 +684,40 @@ def create_app(
             personality_prompt=personality_prompt.split("\n")[0] if personality_prompt else None,
         )
 
-    @app.post("/api/memory")
-    async def store_memory(req: MemoryStoreRequest):
+    @app.post("/api/memory", response_model=MemoryStoreResponse)
+    async def store_memory(req: MemoryStoreRequest) -> MemoryStoreResponse:
         from ares.mcp_serve import _store_memory
 
-        return _store_memory(req.content, req.tags, req.source)
+        return MemoryStoreResponse.model_validate(_store_memory(req.content, req.tags, req.source))
 
-    @app.get("/api/memory")
-    async def search_memory(query: str, tag: Optional[str] = None, limit: int = 10):
+    @app.get("/api/memory", response_model=MemorySearchResponse)
+    async def search_memory(query: str, tag: Optional[str] = None, limit: int = 10) -> MemorySearchResponse:
         from ares.mcp_serve import _query_memory
 
         results = _query_memory(query, tag, limit)
-        return {"count": len(results), "results": results}
+        return MemorySearchResponse(count=len(results), results=results)
 
-    @app.get("/api/personality/prompt")
-    async def get_personality_prompt():
-        return {"prompt": personality.to_system_prompt()}
+    @app.get("/api/personality/prompt", response_model=PersonalityPromptResponse)
+    async def get_personality_prompt() -> PersonalityPromptResponse:
+        return PersonalityPromptResponse(prompt=personality.to_system_prompt())
 
-    @app.get("/api/face/states")
-    async def get_face_states():
-        return {
-            "states": [
-                {
-                    "name": s.value,
-                    "config": {
-                        "color": list(get_face_config(s).color),
-                        "opacity": get_face_config(s).opacity,
-                        "pulse_speed": get_face_config(s).pulse_speed,
-                        "pulse_amount": get_face_config(s).pulse_amount,
-                        "pupil_offset": list(get_face_config(s).pupil_offset),
-                    },
-                }
+    @app.get("/api/face/states", response_model=FaceStatesResponse)
+    async def get_face_states() -> FaceStatesResponse:
+        return FaceStatesResponse(
+            states=[
+                FaceStateEntry(
+                    name=s.value,
+                    config=FaceConfigBlock(
+                        color=list(get_face_config(s).color),
+                        opacity=get_face_config(s).opacity,
+                        pulse_speed=get_face_config(s).pulse_speed,
+                        pulse_amount=get_face_config(s).pulse_amount,
+                        pupil_offset=list(get_face_config(s).pupil_offset),
+                    ),
+                )
                 for s in FaceState
             ]
-        }
+        )
 
     # ------------------------------------------------------------------
     # Memory inspector endpoints

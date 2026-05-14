@@ -7,39 +7,45 @@ This allows the MacBook to enqueue tasks by appending to the file via iCloud syn
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
-from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import ares_paths
 from ..audit import log
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
 
+class Task(BaseModel):
+    """A single ARES task — flows through queued → planning → executing → done/failed."""
 
-@dataclass
-class Task:
-    id: str
-    goal: str
-    status: str = "queued"  # queued | planning | executing | paused | done | failed
-    created_at: str = ""
-    started_at: str | None = None
-    completed_at: str | None = None
-    priority: int = 5  # 1 (highest) — 10 (lowest)
-    current_stage: int = 0
-    plan_json: dict[str, Any] = field(default_factory=dict)
-    result: str = ""
-    error: str = ""
-    context: dict[str, Any] = field(default_factory=dict)
+    model_config = ConfigDict(validate_assignment=False)
 
-    def __post_init__(self) -> None:
-        if not self.created_at:
-            self.created_at = datetime.now(timezone.utc).isoformat()
+    id: str = Field(description="Unique task identifier")
+    goal: str = Field(description="Goal as user-provided natural language")
+    status: str = Field(default="queued", description="queued | planning | executing | paused | done | failed")
+    created_at: str = Field(default_factory=_now_iso, description="ISO-8601 UTC creation timestamp")
+    started_at: str | None = Field(default=None, description="ISO-8601 UTC execution-start timestamp")
+    completed_at: str | None = Field(default=None, description="ISO-8601 UTC completion timestamp")
+    priority: int = Field(default=5, description="1 (highest) — 10 (lowest)")
+    current_stage: int = Field(default=0, description="Index of the stage currently executing")
+    plan_json: dict[str, Any] = Field(default_factory=dict, description="Raw LLM plan JSON")
+    result: str = Field(default="", description="Final result text")
+    error: str = Field(default="", description="Last error message (truncated)")
+    context: dict[str, Any] = Field(default_factory=dict, description="Caller-provided context passed to the planner")
 
 
 def new_task(goal: str, priority: int = 5, context: dict[str, Any] | None = None) -> Task:
@@ -68,7 +74,7 @@ def enqueue(task: Task) -> None:
     """Add a task to the queue."""
     path = _queue_path()
     with open(path, "a") as fh:
-        fh.write(json.dumps(asdict(task)) + "\n")
+        fh.write(task.model_dump_json() + "\n")
 
 
 def _read_all() -> list[Task]:
@@ -79,7 +85,7 @@ def _read_all() -> list[Task]:
     for line in path.read_text().splitlines():
         line = line.strip()
         if line:
-            tasks.append(Task(**json.loads(line)))
+            tasks.append(Task.model_validate_json(line))
     return tasks
 
 
@@ -87,7 +93,7 @@ def _write_all(tasks: list[Task]) -> None:
     path = _queue_path()
     with open(path, "w") as fh:
         for task in tasks:
-            fh.write(json.dumps(asdict(task)) + "\n")
+            fh.write(task.model_dump_json() + "\n")
 
 
 def get_next_ready() -> Task | None:
@@ -117,7 +123,7 @@ def archive_task(task: Task) -> None:
 
     path = _archive_path()
     with open(path, "a") as fh:
-        fh.write(json.dumps(asdict(task)) + "\n")
+        fh.write(task.model_dump_json() + "\n")
 
 
 def list_active() -> list[Task]:
