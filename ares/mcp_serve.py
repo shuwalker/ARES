@@ -460,11 +460,6 @@ def create_mcp_server() -> "FastMCP":
         # Check Hermes availability
         hermes_status = "unknown"
         try:
-            from ares.runtime.launcher import hermes_status as check_hermes
-
-            status_info = check_hermes()
-            hermes_status = status_info.get("status", "unknown")
-        except Exception:
             hermes_bin = Path.home() / ".hermes" / "hermes-agent" / "venv" / "bin" / "hermes"
             ares_hermes = _get_ares_home() / "hermes-agent" / "venv" / "bin" / "hermes"
             if ares_hermes.exists():
@@ -473,6 +468,8 @@ def create_mcp_server() -> "FastMCP":
                 hermes_status = "available (legacy)"
             else:
                 hermes_status = "not found"
+        except Exception:
+            hermes_status = "check_failed"
 
         # Brain transport status
         ares_hermes = _get_hermes_home()

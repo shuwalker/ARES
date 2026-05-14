@@ -1,5 +1,10 @@
 # ARES — Autonomous Reasoning & Execution System
 
+> Rebuild note: ARES is being reshaped into a persistent embodied agent system:
+> an always-on AI avatar companion with memory, perception, reasoning backends,
+> tools, approvals, and content workflows. See
+> [docs/ARES_2_REBUILD.md](docs/ARES_2_REBUILD.md) for the current direction.
+
 ARES is a local AI assistant and persistent background operator. It runs as a macOS daemon on a Mac Studio (primary) and syncs state to a MacBook (secondary) via iCloud Drive.
 
 **ARES is not a chatbot, not a pipeline framework, and not a code generator.** It is an autonomous operator that uses real tools the same way a skilled human contractor would — producing files you can open, edit, and hand to another person without any special instructions.

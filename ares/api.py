@@ -46,25 +46,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from ares.core.bus import ARESBus, BusMessage, get_bus
-from ares.core.cognitive import CognitiveLoop, create_loop
-from ares.core.idle import run_idle_pass
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
 from ares.core.identity import DEFAULT_IDENTITY
 from ares.core.personality import CharacterProfile, load_personality, save_personality
 from ares.memory_store import MemoryStore, default_memory_store
 from ares.models.cognitive import (
     CognitiveSnapshot,
-    LoopBlock,
     MemoryHitBlock,
-    ThoughtBlock,
-    ThoughtNode,
 )
 from ares.runtime.session_store import SessionStore
 
 logger = logging.getLogger("ares.api")
-
-# Global cognitive loop reference
-_cognitive_loop: Optional[CognitiveLoop] = None
 
 # ---------------------------------------------------------------------------
 # Service Manager — subprocess lifecycle for all background servers
@@ -223,7 +215,7 @@ SERVICES = [
     ManagedService(
         name="cognition_bridge",
         port=9876,
-        module="ares.runtime.hermes_bridge",
+        module="ares.runtime.hermes_backend",
         kind="bridge",
     ),
 ]
@@ -307,8 +299,6 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        """Start all managed services on startup, stop them on shutdown."""
-        global _cognitive_loop
 
         # ── Startup ──────────────────────────────────────────────────
         logger.info("ARES API starting — initializing all services")
@@ -329,8 +319,6 @@ def create_app(
 
         # ── Shutdown ─────────────────────────────────────────────────
         logger.info("ARES API shutting down — stopping all services")
-        if _cognitive_loop is not None:
-            _cognitive_loop.stop()
 
         for svc in SERVICES:
             svc.stop()
@@ -372,6 +360,13 @@ def create_app(
             "websocket_clients": len(websocket_clients),
             "uptime": time.time(),
         }
+
+    @app.get("/api/stack")
+    async def get_stack():
+        """Get the ARES 2 agent-stack rebuild manifest."""
+        from ares.runtime.agent_stack import stack_status
+
+        return stack_status()
 
     @app.get("/api/services")
     async def get_services():
@@ -578,7 +573,7 @@ def create_app(
             websocket_clients,
             {
                 "type": "cognitive_snapshot",
-                **_build_snapshot(_cognitive_loop, recall_blocks).model_dump(),
+                **_build_snapshot(recall_blocks).model_dump(),
             },
         )
 
@@ -650,16 +645,14 @@ def create_app(
         return {"deleted": episodic_id}
 
     # ------------------------------------------------------------------
-    # Idle reflexion
+    # Idle reflexion — stubs (cognitive loop and idle pass removed;
+    # will be reimplemented via AgentInterface backends)
     # ------------------------------------------------------------------
 
     @app.post("/api/idle/run")
     async def run_idle():
-        """Trigger a one-shot reflexion pass (consolidate + dedupe + surface)."""
-        report = run_idle_pass(memory)
-        _last_idle_report.clear()
-        _last_idle_report.update(report.to_dict())
-        return _last_idle_report
+        """Trigger a one-shot reflexion pass. Stub — not yet reimplemented."""
+        return {"status": "disabled", "message": "Idle reflexion not yet reimplemented after architecture cleanup."}
 
     @app.get("/api/idle/last_report")
     async def last_idle_report():
@@ -672,81 +665,17 @@ def create_app(
 
     @app.post("/api/cognitive/start")
     async def start_cognitive_loop(goal: str = "Observe and respond"):
-        global _cognitive_loop
-        import threading
-
-        if _cognitive_loop is not None and _cognitive_loop._running:
-            return {"status": "already_running", "goal": goal}
-
-        loop = create_loop(personality=personality, max_cycles=50)
-
-        # Bridge synchronous phase-change events from the loop thread into
-        # the async WebSocket broadcast. The loop runs in a thread; we
-        # capture the running event loop here so the observer can schedule
-        # the coroutine onto it from the worker thread.
-        try:
-            main_event_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            main_event_loop = None
-
-        def _on_phase_change(state):
-            # Persist the cycle's reasoning DAG once it's complete (reflect
-            # is the last phase per cycle). Stored as episodic metadata so
-            # replay can reconstruct the trace.
-            if state.phase.name == "REFLECT" and state.branches:
-                try:
-                    memory.record_episodic(
-                        f"[cycle {state.cycle}] " + " → ".join(b.label for b in state.branches),
-                        metadata={
-                            "kind": "reasoning_trace",
-                            "cycle": state.cycle,
-                            "dag": [b.to_dict() for b in state.branches],
-                        },
-                    )
-                except Exception as e:
-                    logger.warning("DAG persistence failed: %s", e)
-
-            if main_event_loop is None:
-                return
-            snapshot = _build_snapshot(loop, list(_last_recall))
-            payload = {"type": "cognitive_snapshot", **snapshot.model_dump()}
-            asyncio.run_coroutine_threadsafe(
-                _broadcast(websocket_clients, payload),
-                main_event_loop,
-            )
-
-        loop.on_phase_change = _on_phase_change
-        _cognitive_loop = loop
-
-        def _run_loop():
-            try:
-                logger.info("Cognitive loop thread starting. Goal: %s", goal)
-                result = loop.run(goal=goal)
-                logger.info("Cognitive loop complete: %s", result.get("stop_reason", "unknown"))
-            except Exception as e:
-                logger.error("Cognitive loop error: %s", e)
-
-        thread = threading.Thread(target=_run_loop, daemon=True, name="ares-cognitive-loop")
-        thread.start()
-
-        return {"status": "started", "goal": goal, "max_cycles": loop.max_cycles}
+        """Start the cognitive loop. Stub — will delegate to AgentInterface."""
+        return {"status": "disabled", "message": "Cognitive loop not yet reimplemented. Use /api/chat for direct Hermes queries."}
 
     @app.post("/api/cognitive/stop")
     async def stop_cognitive_loop():
-        global _cognitive_loop
-        if _cognitive_loop is None:
-            return {"status": "not_running"}
-        _cognitive_loop.stop()
-        return {"status": "stopping"}
+        return {"status": "not_running"}
 
     @app.get("/api/cognitive/status", response_model=CognitiveSnapshot)
     async def cognitive_status() -> CognitiveSnapshot:
-        """Return a CognitiveSnapshot for the current loop (or idle if none).
-
-        The same shape is pushed over the WebSocket as
-        `{"type": "cognitive_snapshot", ...}` on every phase transition.
-        """
-        return _build_snapshot(_cognitive_loop, list(_last_recall))
+        """Return idle cognitive snapshot."""
+        return CognitiveSnapshot(running=False, memory_recall=list(_last_recall))
 
     # ------------------------------------------------------------------
     # WebSocket
@@ -849,7 +778,7 @@ def create_app(
                     await websocket.send_json({"type": "pong", "timestamp": time.time()})
 
                 elif action == "get_cognitive_snapshot":
-                    snapshot = _build_snapshot(_cognitive_loop, list(_last_recall))
+                    snapshot = _build_snapshot(list(_last_recall))
                     await websocket.send_json(
                         {
                             "type": "cognitive_snapshot",
@@ -930,52 +859,16 @@ async def _broadcast(clients: set, data: dict) -> None:
 
 
 def _build_snapshot(
-    loop: Optional[CognitiveLoop],
     memory_recall: Optional[list[MemoryHitBlock]] = None,
 ) -> CognitiveSnapshot:
-    """Compose a CognitiveSnapshot from a loop instance.
+    """Compose an idle CognitiveSnapshot.
 
-    Accepts None — returns an idle snapshot suitable for the UI heartbeat
-    when no loop has been started yet. Lives in the API layer (not in
-    `core/cognitive.py`) so the loop has no Pydantic dependency.
-
-    `memory_recall` is passed through to the snapshot when the caller has
-    already computed hits (e.g. `/api/chat` recalls before LLM dispatch).
+    The cognitive loop (CognitiveLoop) has been removed. This helper now
+    always returns an idle snapshot with any memory recall hits attached.
+    Will be extended when AgentInterface backends are wired in.
     """
     recall = list(memory_recall) if memory_recall else []
-    if loop is None:
-        return CognitiveSnapshot(running=False, memory_recall=recall)
-    state = loop.state
-    elapsed_ms = int(max(0, (time.time() - state.started_at) * 1000))
-    branches = [
-        ThoughtNode(
-            id=b.id,
-            parent_ids=list(b.parent_ids),
-            label=b.label,
-            status=b.status,
-            duration_ms=b.duration_ms,
-            evidence=list(b.evidence),
-        )
-        for b in state.branches
-    ]
-    thought = None
-    if branches:
-        summary = branches[-1].label if branches[-1].label else None
-        thought = ThoughtBlock(summary=summary, depth=len(branches), branches=branches)
-    return CognitiveSnapshot(
-        running=loop._running,
-        loop=LoopBlock(
-            cycle=state.cycle,
-            phase=state.phase.value,
-            urgency=state.urgency.value,
-            budget_remaining=state.budget_remaining,
-            tokens_used=state.tokens_used,
-            elapsed_ms=elapsed_ms,
-        ),
-        thought=thought,
-        memory_recall=recall,
-        errors=list(state.errors),
-    )
+    return CognitiveSnapshot(running=False, memory_recall=recall)
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,8 @@
 """Unit test for GET /api/cognitive/status.
 
-Runs FastAPI's TestClient against the real app with SERVICES patched to []
-so lifespan doesn't try to spawn the MCP / bridge subprocesses.
+Now returns an idle snapshot since the CognitiveLoop has been replaced by
+the AgentInterface backend system. The endpoint still works but always
+returns running=False until a backend-driven loop is wired in.
 """
 
 import pytest
@@ -15,7 +16,6 @@ def api_client(monkeypatch):
     # Prevent lifespan from spawning subprocesses.
     monkeypatch.setattr("ares.api.SERVICES", [])
 
-    # Build a fresh app so the lifespan reads the patched SERVICES list.
     from ares.api import create_app
     from fastapi.testclient import TestClient
 
@@ -24,38 +24,12 @@ def api_client(monkeypatch):
         yield client
 
 
-def test_status_returns_idle_snapshot_when_loop_not_started(api_client, monkeypatch):
-    # No loop instance — endpoint should still return a well-formed snapshot.
-    monkeypatch.setattr("ares.api._cognitive_loop", None)
-
+def test_status_returns_idle_snapshot(api_client):
+    """The cognitive status endpoint always returns idle since CognitiveLoop was removed."""
     resp = api_client.get("/api/cognitive/status")
     assert resp.status_code == 200
     body = resp.json()
 
-    assert body["schema_version"] == 1
     assert body["running"] is False
-    assert body["loop"]["cycle"] == 0
-    assert body["loop"]["phase"] == "idle"
-    assert body["loop"]["budget_remaining"] == 1.0
-    assert body["errors"] == []
-    assert body["thought"] is None
-    assert "timestamp" in body
-
-
-def test_status_reflects_running_loop(api_client, monkeypatch):
-    from ares.core.cognitive import CognitiveLoop, Phase
-    from ares.core.personality import DEFAULT_PROFILE
-
-    loop = CognitiveLoop(personality=DEFAULT_PROFILE, max_cycles=10)
-    loop.state.cycle = 7
-    loop.state.phase = Phase.THINK
-    loop.state.budget_remaining = 0.42
-    loop._running = True
-
-    monkeypatch.setattr("ares.api._cognitive_loop", loop)
-
-    body = api_client.get("/api/cognitive/status").json()
-    assert body["running"] is True
-    assert body["loop"]["cycle"] == 7
-    assert body["loop"]["phase"] == "think"
-    assert body["loop"]["budget_remaining"] == 0.42
+    # memory_recall may be empty, that's fine
+    assert isinstance(body.get("memory_recall", []), list)

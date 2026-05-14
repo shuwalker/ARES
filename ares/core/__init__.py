@@ -6,6 +6,7 @@ Modules:
     face_state  — Face state machine (6 states with RGB, opacity, pulse, pupils)
     bus         — ZMQ pub/sub backbone (nervous system connecting all modules)
     memory      — Persistent fact storage (SQLite)
+    agent       — Swappable brain interface (AgentInterface + backends)
 """
 
 from ares.core.identity import Identity, DEFAULT_IDENTITY
