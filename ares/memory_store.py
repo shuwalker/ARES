@@ -25,8 +25,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional, Protocol
-
+from typing import Optional, Protocol
 
 # ---------------------------------------------------------------------------
 # Public dataclasses
@@ -171,10 +170,7 @@ class InMemoryVectorStore:
         if not self._items:
             return []
         q = embedding
-        hits = [
-            VectorHit(id=mid, score=_cosine(q, vec), metadata=meta)
-            for mid, (vec, meta) in self._items.items()
-        ]
+        hits = [VectorHit(id=mid, score=_cosine(q, vec), metadata=meta) for mid, (vec, meta) in self._items.items()]
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits[:k]
 
@@ -238,9 +234,7 @@ class MemoryStore:
     def _rehydrate_vectors(self) -> None:
         if self.vectors.count() > 0:
             return  # caller wired up an already-populated store
-        rows = self._conn.execute(
-            "SELECT id, text, metadata FROM episodics"
-        ).fetchall()
+        rows = self._conn.execute("SELECT id, text, metadata FROM episodics").fetchall()
         for ep_id, text, metadata_json in rows:
             try:
                 meta = json.loads(metadata_json or "{}")
@@ -270,9 +264,7 @@ class MemoryStore:
         raw_hits = self.vectors.query(q_vec, k)
         hits: list[MemoryHit] = []
         for h in raw_hits:
-            row = self._conn.execute(
-                "SELECT text FROM episodics WHERE id = ?", (h.id,)
-            ).fetchone()
+            row = self._conn.execute("SELECT text FROM episodics WHERE id = ?", (h.id,)).fetchone()
             if row is None:
                 continue
             hits.append(
@@ -288,8 +280,7 @@ class MemoryStore:
 
     def list_episodics(self, limit: int = 50) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT id, text, metadata, created_at FROM episodics "
-            "ORDER BY created_at DESC LIMIT ?",
+            "SELECT id, text, metadata, created_at FROM episodics " "ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
         return [

@@ -27,16 +27,16 @@ from typing import Any
 from ..config import ares_paths
 from ..audit import log_sync
 
-
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ToolEntry:
     name: str
     description: str = ""
-    install_method: str = ""      # brew | npm | pip | manual | none
+    install_method: str = ""  # brew | npm | pip | manual | none
     install_command: str = ""
     check_command: str = ""
     url: str = ""
@@ -50,6 +50,7 @@ class ToolEntry:
 # Registry paths
 # ---------------------------------------------------------------------------
 
+
 def registry_path() -> Path:
     return ares_paths()["memory_tools"] / "registry.toml"
 
@@ -57,6 +58,7 @@ def registry_path() -> Path:
 # ---------------------------------------------------------------------------
 # Read / write
 # ---------------------------------------------------------------------------
+
 
 def load_registry() -> dict[str, ToolEntry]:
     path = registry_path()
@@ -115,6 +117,7 @@ def mark_installed(key: str, version: str = "") -> None:
 # ---------------------------------------------------------------------------
 # Install / check helpers
 # ---------------------------------------------------------------------------
+
 
 def check_tool_installed(entry: ToolEntry) -> tuple[bool, str]:
     """Run check_command and return (installed, version_string)."""

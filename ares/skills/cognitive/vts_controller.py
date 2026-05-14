@@ -6,22 +6,22 @@ Maps ARES's 6-state face machine to Live2D parameters in real-time.
 
 Dependencies: pyvts, websocket-client
 """
+
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Callable
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class AvatarExpression(Enum):
     """High-level expressions the AI can request."""
+
     NEUTRAL = "neutral"
     HAPPY = "happy"
     CURIOUS = "curious"
@@ -35,40 +35,38 @@ class AvatarExpression(Enum):
 @dataclass
 class Live2DParams:
     """Live2D parameter state. These are the universal VTS parameter names."""
+
     # Eye params
     EyeOpenLeft: float = 1.0
     EyeOpenRight: float = 1.0
-    EyeX: float = 0.0          # -1 left, 0 center, 1 right
-    EyeY: float = 0.0          # -1 down, 0 center, 1 up
-    BrowY: float = 0.0         # -1 lowered, 0 neutral, 1 raised
-    EyeSmile: float = 0.0      # 0 neutral, 1 happy squint
+    EyeX: float = 0.0  # -1 left, 0 center, 1 right
+    EyeY: float = 0.0  # -1 down, 0 center, 1 up
+    BrowY: float = 0.0  # -1 lowered, 0 neutral, 1 raised
+    EyeSmile: float = 0.0  # 0 neutral, 1 happy squint
 
     # Mouth params
-    MouthOpen: float = 0.0     # 0 closed, 1 full open
-    MouthSmile: float = 0.0    # -1 frown, 0 neutral, 1 smile
-    MouthX: float = 0.0        # -1 left, 0 center, 1 right
+    MouthOpen: float = 0.0  # 0 closed, 1 full open
+    MouthSmile: float = 0.0  # -1 frown, 0 neutral, 1 smile
+    MouthX: float = 0.0  # -1 left, 0 center, 1 right
 
     # Head/body
-    FaceAngleX: float = 0.0    # head tilt left/right
-    FaceAngleY: float = 0.0    # head tilt up/down
-    FaceAngleZ: float = 0.0    # head rotation
+    FaceAngleX: float = 0.0  # head tilt left/right
+    FaceAngleY: float = 0.0  # head tilt up/down
+    FaceAngleZ: float = 0.0  # head rotation
     BodyAngleX: float = 0.0
     BodyAngleY: float = 0.0
     BodyAngleZ: float = 0.0
 
     # Breathing / idle
-    Breath: float = 0.0        # animated by VTS, we just set amplitude
-    Cheek: float = 0.0         # blush 0-1
+    Breath: float = 0.0  # animated by VTS, we just set amplitude
+    Cheek: float = 0.0  # blush 0-1
 
     # Hand/arm (model-dependent)
     ArmLeft: float = 0.0
     ArmRight: float = 0.0
 
     def to_dict(self) -> dict:
-        return {
-            k: v for k, v in self.__dict__.items()
-            if not k.startswith("_")
-        }
+        return {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
 
     def lerp(self, target: "Live2DParams", t: float) -> "Live2DParams":
         """Linear interpolation between current and target."""
@@ -88,43 +86,66 @@ class Live2DParams:
 
 EXPRESSION_MAP: dict[AvatarExpression, Live2DParams] = {
     AvatarExpression.NEUTRAL: Live2DParams(
-        EyeOpenLeft=0.85, EyeOpenRight=0.85,
-        MouthSmile=0.0, BrowY=0.0, EyeSmile=0.0,
+        EyeOpenLeft=0.85,
+        EyeOpenRight=0.85,
+        MouthSmile=0.0,
+        BrowY=0.0,
+        EyeSmile=0.0,
         Cheek=0.0,
     ),
     AvatarExpression.HAPPY: Live2DParams(
-        EyeOpenLeft=1.0, EyeOpenRight=1.0,
-        MouthSmile=0.8, BrowY=0.3, EyeSmile=0.6,
+        EyeOpenLeft=1.0,
+        EyeOpenRight=1.0,
+        MouthSmile=0.8,
+        BrowY=0.3,
+        EyeSmile=0.6,
         Cheek=0.3,
     ),
     AvatarExpression.CURIOUS: Live2DParams(
-        EyeOpenLeft=1.0, EyeOpenRight=1.0,
-        MouthSmile=0.2, BrowY=0.6, EyeX=0.05,
+        EyeOpenLeft=1.0,
+        EyeOpenRight=1.0,
+        MouthSmile=0.2,
+        BrowY=0.6,
+        EyeX=0.05,
         Cheek=0.1,
     ),
     AvatarExpression.THINKING: Live2DParams(
-        EyeOpenLeft=0.6, EyeOpenRight=0.6,
-        MouthSmile=-0.1, BrowY=-0.2, EyeY=0.15,
+        EyeOpenLeft=0.6,
+        EyeOpenRight=0.6,
+        MouthSmile=-0.1,
+        BrowY=-0.2,
+        EyeY=0.15,
         Cheek=0.0,
     ),
     AvatarExpression.SURPRISED: Live2DParams(
-        EyeOpenLeft=1.0, EyeOpenRight=1.0,
-        MouthOpen=0.3, MouthSmile=0.1, BrowY=0.8,
+        EyeOpenLeft=1.0,
+        EyeOpenRight=1.0,
+        MouthOpen=0.3,
+        MouthSmile=0.1,
+        BrowY=0.8,
         Cheek=0.2,
     ),
     AvatarExpression.CONCERNED: Live2DParams(
-        EyeOpenLeft=0.8, EyeOpenRight=0.8,
-        MouthSmile=-0.4, BrowY=-0.5,
+        EyeOpenLeft=0.8,
+        EyeOpenRight=0.8,
+        MouthSmile=-0.4,
+        BrowY=-0.5,
         Cheek=0.0,
     ),
     AvatarExpression.EXCITED: Live2DParams(
-        EyeOpenLeft=1.0, EyeOpenRight=1.0,
-        MouthOpen=0.2, MouthSmile=1.0, BrowY=0.5, EyeSmile=0.8,
+        EyeOpenLeft=1.0,
+        EyeOpenRight=1.0,
+        MouthOpen=0.2,
+        MouthSmile=1.0,
+        BrowY=0.5,
+        EyeSmile=0.8,
         Cheek=0.5,
     ),
     AvatarExpression.SLEEPY: Live2DParams(
-        EyeOpenLeft=0.15, EyeOpenRight=0.15,
-        MouthSmile=0.0, BrowY=-0.1,
+        EyeOpenLeft=0.15,
+        EyeOpenRight=0.15,
+        MouthSmile=0.0,
+        BrowY=-0.1,
         Cheek=0.0,
     ),
 }
@@ -133,6 +154,7 @@ EXPRESSION_MAP: dict[AvatarExpression, Live2DParams] = {
 # ═══════════════════════════════════════════════════════════════════════════
 # VTube Studio Controller
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class VTSController:
     """Manages connection to VTube Studio and drives avatar parameters."""
@@ -169,6 +191,7 @@ class VTSController:
         """Connect to VTube Studio WebSocket API."""
         try:
             import pyvts
+
             self._client = pyvts.vts(
                 plugin_info={
                     "plugin_name": "ARES Companion",
@@ -267,16 +290,12 @@ class VTSController:
             # Send to VTS
             try:
                 param_dict = params.to_dict()
-                self._client.request(
-                    self._client.vts_request.requestInjectParameterDataRequest(param_dict)
-                )
+                self._client.request(self._client.vts_request.requestInjectParameterDataRequest(param_dict))
             except Exception as e:
                 logger.debug(f"VTS param inject failed: {e}")
                 # Try to reconnect
                 try:
-                    self._client.request(
-                        self._client.vts_request.requestInjectParameterDataRequest(params.to_dict())
-                    )
+                    self._client.request(self._client.vts_request.requestInjectParameterDataRequest(params.to_dict()))
                 except Exception:
                     logger.warning("VTS reconnection failed — avatar may be frozen")
 

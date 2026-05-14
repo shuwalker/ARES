@@ -12,9 +12,7 @@ from ares.memory_store import (
     DeterministicEmbedder,
     InMemoryVectorStore,
     MemoryStore,
-    VectorHit,
 )
-
 
 # ---------------------------------------------------------------------------
 # InMemoryVectorStore + DeterministicEmbedder

@@ -47,9 +47,7 @@ def test_dag_edges_form_linear_chain_by_default():
     def observer(state):
         # Snapshot final branches after reflect (when len == 4).
         if len(state.branches) == 4:
-            seen_branches.append([
-                (b.id, list(b.parent_ids)) for b in state.branches
-            ])
+            seen_branches.append([(b.id, list(b.parent_ids)) for b in state.branches])
 
     loop.on_phase_change = observer
     loop.run(goal="chain check")

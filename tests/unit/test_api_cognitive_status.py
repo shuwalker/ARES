@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture
 def api_client(monkeypatch):
-    fastapi = pytest.importorskip("fastapi")
+    pytest.importorskip("fastapi")
     pytest.importorskip("fastapi.testclient")
 
     # Prevent lifespan from spawning subprocesses.

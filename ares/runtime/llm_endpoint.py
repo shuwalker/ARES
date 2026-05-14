@@ -14,6 +14,7 @@ LLMBackend = Literal["mlx", "llama_cpp"]
 @dataclass
 class EndpointSpec:
     """Pure data — what backend and how to reach it."""
+
     backend: LLMBackend
     base_url: str
     model: str
@@ -29,14 +30,14 @@ def detect_local_endpoint() -> EndpointSpec:
 
     MLX on Apple Silicon (1.5-2× faster than llama.cpp on M-series).
     llama.cpp everywhere else.
-    
+
     Override with env vars:
     - LILITH_LLM_BACKEND: 'mlx' | 'llama_cpp'
     - LILITH_LLM_BASE_URL: override the default port
     - LILITH_LLM_MODEL: override the default model
     """
     backend_str = os.environ.get("LILITH_LLM_BACKEND")
-    
+
     if backend_str == "mlx":
         backend: LLMBackend = "mlx"
     elif backend_str == "llama_cpp":
@@ -45,8 +46,10 @@ def detect_local_endpoint() -> EndpointSpec:
         backend = "mlx"
     else:
         backend = "llama_cpp"
-    
+
     base_url = os.environ.get("LILITH_LLM_BASE_URL", "http://127.0.0.1:8080/v1")
-    model = os.environ.get("LILITH_LLM_MODEL", "mlx-community/gemma-3-12b-it-4bit" if backend == "mlx" else "gemma-3-12b-it")
-    
+    model = os.environ.get(
+        "LILITH_LLM_MODEL", "mlx-community/gemma-3-12b-it-4bit" if backend == "mlx" else "gemma-3-12b-it"
+    )
+
     return EndpointSpec(backend=backend, base_url=base_url, model=model)

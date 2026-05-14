@@ -18,26 +18,24 @@ Checkpoints (ARES pauses and waits):
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 import httpx
 
-from ..config import get_config, ares_paths
+from ..config import get_config
 from ..audit import log
 from ..llm import cloud
 from ..memory import write_project, read_project
 from ..tools.n8n import N8NClient, youtube_publish_workflow, save_workflow_draft
 
-
 # ---------------------------------------------------------------------------
 # Project state
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class YouTubeProject:
@@ -68,26 +66,29 @@ class YouTubeProject:
 
     def save(self) -> None:
         self.updated_at = datetime.now(timezone.utc).isoformat()
-        write_project(f"yt-{self.id}", {
-            "type": "youtube",
-            "id": self.id,
-            "topic": self.topic,
-            "channel": self.channel,
-            "target_length_minutes": self.target_length_minutes,
-            "brief_path": self.brief_path,
-            "research_path": self.research_path,
-            "script_path": self.script_path,
-            "script_google_doc_url": self.script_google_doc_url,
-            "voice_path": self.voice_path,
-            "video_project_path": self.video_project_path,
-            "video_export_path": self.video_export_path,
-            "thumbnail_path": self.thumbnail_path,
-            "youtube_url": self.youtube_url,
-            "current_stage": self.current_stage,
-            "status": self.status,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-        })
+        write_project(
+            f"yt-{self.id}",
+            {
+                "type": "youtube",
+                "id": self.id,
+                "topic": self.topic,
+                "channel": self.channel,
+                "target_length_minutes": self.target_length_minutes,
+                "brief_path": self.brief_path,
+                "research_path": self.research_path,
+                "script_path": self.script_path,
+                "script_google_doc_url": self.script_google_doc_url,
+                "voice_path": self.voice_path,
+                "video_project_path": self.video_project_path,
+                "video_export_path": self.video_export_path,
+                "thumbnail_path": self.thumbnail_path,
+                "youtube_url": self.youtube_url,
+                "current_stage": self.current_stage,
+                "status": self.status,
+                "created_at": self.created_at,
+                "updated_at": self.updated_at,
+            },
+        )
 
 
 def load_yt_project(project_id: str) -> YouTubeProject | None:
@@ -118,6 +119,7 @@ def load_yt_project(project_id: str) -> YouTubeProject | None:
 # ---------------------------------------------------------------------------
 # Stage 0: Brief
 # ---------------------------------------------------------------------------
+
 
 async def stage_brief(project: YouTubeProject, *, task_id: str | None = None) -> Path:
     """Generate a project brief from the topic."""
@@ -176,6 +178,7 @@ Keep it tight. This brief is the contract for the whole production."""
 # ---------------------------------------------------------------------------
 # Stage 1: Research
 # ---------------------------------------------------------------------------
+
 
 async def stage_research(
     project: YouTubeProject,
@@ -242,6 +245,7 @@ Flag anything you're uncertain about with [VERIFY]."""
 # ---------------------------------------------------------------------------
 # Stage 2: Script
 # ---------------------------------------------------------------------------
+
 
 async def stage_script(
     project: YouTubeProject,
@@ -337,6 +341,7 @@ async def stage_voice(
 
     # Strip stage directions for voice synthesis
     import re
+
     clean_text = re.sub(r"\[.*?\]", "", script_text)
     clean_text = re.sub(r"\(.*?\)", "", clean_text)
     clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
@@ -363,8 +368,7 @@ async def stage_voice(
 
     if not voice_id:
         raise ValueError(
-            "voice_id required for ElevenLabs synthesis. "
-            "Get your voice ID from elevenlabs.io/app/voice-lab"
+            "voice_id required for ElevenLabs synthesis. " "Get your voice ID from elevenlabs.io/app/voice-lab"
         )
 
     output_dir = project.output_dir()
@@ -407,6 +411,7 @@ async def stage_voice(
 # ---------------------------------------------------------------------------
 # Stage 4: Video — DaVinci Resolve project stub
 # ---------------------------------------------------------------------------
+
 
 def stage_video_project(project: YouTubeProject, *, task_id: str | None = None) -> Path:
     """Create a DaVinci Resolve project stub with notes."""
@@ -462,14 +467,13 @@ File: export.mp4
     project.current_stage = 4
     project.status = "video"
     project.save()
-
-    log_sync = lambda **kw: None  # Use sync log for non-async context
     return notes_path
 
 
 # ---------------------------------------------------------------------------
 # Stage 5: Thumbnail
 # ---------------------------------------------------------------------------
+
 
 async def stage_thumbnail_brief(
     project: YouTubeProject,
@@ -515,10 +519,7 @@ Keep it punchy. Thumbnails compete at 200px wide on mobile."""
 
     brief = await cloud.complete(
         system=system,
-        messages=[{
-            "role": "user",
-            "content": f"Topic: {project.topic}\n\nVideo brief:\n{brief_text[:1000]}"
-        }],
+        messages=[{"role": "user", "content": f"Topic: {project.topic}\n\nVideo brief:\n{brief_text[:1000]}"}],
         task_id=task_id,
     )
 
@@ -548,6 +549,7 @@ Keep it punchy. Thumbnails compete at 200px wide on mobile."""
 # ---------------------------------------------------------------------------
 # Stage 6: Publish via n8n
 # ---------------------------------------------------------------------------
+
 
 async def stage_publish(
     project: YouTubeProject,
@@ -614,6 +616,7 @@ async def stage_publish(
 # Full pipeline runner
 # ---------------------------------------------------------------------------
 
+
 async def run_pipeline(
     topic: str,
     *,
@@ -639,9 +642,7 @@ async def run_pipeline(
         msg = (
             f"\n{'='*60}\n"
             f"[CHECKPOINT] After: {stage_name}\n"
-            f"Files ready:\n" +
-            "\n".join(f"  → {f}" for f in files) +
-            f"\n{'='*60}\n"
+            f"Files ready:\n" + "\n".join(f"  → {f}" for f in files) + f"\n{'='*60}\n"
             f"Continue to next stage? [y/n]: "
         )
         print(msg, end="", flush=True)
@@ -650,6 +651,7 @@ async def run_pipeline(
             return await approval_cb(stage_name)
 
         import asyncio
+
         loop = asyncio.get_event_loop()
         answer = await loop.run_in_executor(None, input)
         return answer.strip().lower() in ("y", "yes", "")
@@ -662,12 +664,12 @@ async def run_pipeline(
         return project
 
     # Stage 1: Research
-    print(f"\n[Stage 1] Compiling research...")
+    print("\n[Stage 1] Compiling research...")
     research_path = await stage_research(project, task_id=task_id)
     print(f"Research: {research_path}")
 
     # Stage 2: Script
-    print(f"\n[Stage 2] Drafting script...")
+    print("\n[Stage 2] Drafting script...")
     script_path = await stage_script(project, task_id=task_id)
     word_count = len(Path(str(script_path)).read_text().split())
     minutes = round(word_count / 150, 1)
@@ -677,7 +679,7 @@ async def run_pipeline(
         return project
 
     # Stage 3: Voice
-    print(f"\n[Stage 3] Voice synthesis (ElevenLabs)...")
+    print("\n[Stage 3] Voice synthesis (ElevenLabs)...")
     print("  [Run 'ares setup' to configure ElevenLabs voice_id]")
     voice_path = await stage_voice(project, task_id=task_id)
     print(f"Voice: {voice_path}")
@@ -685,24 +687,25 @@ async def run_pipeline(
         return project
 
     # Stage 4: Video notes
-    print(f"\n[Stage 4] Creating DaVinci Resolve production notes...")
+    print("\n[Stage 4] Creating DaVinci Resolve production notes...")
     video_notes = stage_video_project(project, task_id=task_id)
     print(f"Video notes: {video_notes}")
     if not await checkpoint("Video export", [str(video_notes)]):
         return project
 
     # Stage 5: Thumbnail brief
-    print(f"\n[Stage 5] Writing thumbnail brief (Canva/Figma)...")
+    print("\n[Stage 5] Writing thumbnail brief (Canva/Figma)...")
     thumb_path = await stage_thumbnail_brief(project, task_id=task_id)
     print(f"Thumbnail brief: {thumb_path}")
     if not await checkpoint("Thumbnail", [str(thumb_path)]):
         return project
 
     # Stage 6: Publish
-    print(f"\n[Stage 6] Preparing publish workflow (n8n)...")
+    print("\n[Stage 6] Preparing publish workflow (n8n)...")
     print("  [Hard gate — requires explicit approval before anything goes public]")
     print("  Ready to prepare publish workflow? [y/n]: ", end="", flush=True)
     import asyncio
+
     loop = asyncio.get_event_loop()
     answer = await loop.run_in_executor(None, input)
     if answer.strip().lower() not in ("y", "yes"):

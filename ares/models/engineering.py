@@ -15,12 +15,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
-
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Thruster specifications (TACFI, JP01, etc.)
 # ---------------------------------------------------------------------------
+
 
 class ThrusterType(str, Enum):
     cold_gas = "cold_gas"
@@ -64,6 +64,7 @@ class ThrusterSpec(BaseModel):
 # Catalyst parameters
 # ---------------------------------------------------------------------------
 
+
 class CatalystType(str, Enum):
     silver = "silver"
     iridium = "iridium"
@@ -104,6 +105,7 @@ class CatalystParams(BaseModel):
 # ---------------------------------------------------------------------------
 # Test results
 # ---------------------------------------------------------------------------
+
 
 class TestType(str, Enum):
     hot_fire = "hot_fire"
@@ -151,8 +153,10 @@ class TestResult(BaseModel):
 # Generic component & material specs
 # ---------------------------------------------------------------------------
 
+
 class ComponentSpec(BaseModel):
     """A mechanical or electrical component in a project."""
+
     id: str
     name: str
     project: str
@@ -168,6 +172,7 @@ class ComponentSpec(BaseModel):
 
 class MaterialSpec(BaseModel):
     """A material used in project hardware."""
+
     id: str
     name: str
     material_type: str = Field("", description="metal | polymer | ceramic | composite | catalyst | propellant")

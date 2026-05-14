@@ -8,8 +8,6 @@ This is the first cognitive skill. Tier 0 (READ_ONLY) — perception only.
 
 from __future__ import annotations
 
-import io
-import json
 import logging
 import threading
 import time
@@ -55,6 +53,7 @@ def _get_yolo():
             return _yolo_model
         try:
             from ultralytics import YOLO
+
             _yolo_model = YOLO("yolov8n.pt")
             logger.info("YOLOv8n loaded (first use)")
         except Exception as e:
@@ -117,6 +116,7 @@ def _load_image(image_path: str) -> Optional[np.ndarray]:
 
 # ═══ Tools ══════════════════════════════════════════════════════════════════
 
+
 @server.tool()
 def perception_health() -> dict:
     """Report perception service health without starting an expensive capture."""
@@ -125,12 +125,14 @@ def perception_health() -> dict:
 
     try:
         import ultralytics  # noqa: F401
+
         yolo_available = True
     except ImportError:
         pass
 
     try:
         import transformers  # noqa: F401
+
         florence_available = True
     except ImportError:
         pass
@@ -209,11 +211,13 @@ def detect_objects(image_path: str = "", use_webcam: bool = True) -> dict:
                 conf = float(boxes.conf[i].item())
                 label = r.names.get(cls_id, f"class_{cls_id}")
                 xyxy = boxes.xyxy[i].tolist()
-                objects.append({
-                    "label": label,
-                    "confidence": round(conf, 3),
-                    "bbox": [round(v, 1) for v in xyxy],
-                })
+                objects.append(
+                    {
+                        "label": label,
+                        "confidence": round(conf, 3),
+                        "bbox": [round(v, 1) for v in xyxy],
+                    }
+                )
 
     return {
         "status": "ok",
@@ -276,6 +280,7 @@ def describe_scene(image_path: str = "", use_webcam: bool = True) -> dict:
         pil_image = None
         try:
             from PIL import Image
+
             pil_image = Image.fromarray(rgb)
         except ImportError:
             pass

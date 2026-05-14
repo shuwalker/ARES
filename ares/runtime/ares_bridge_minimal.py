@@ -3,27 +3,32 @@
 
 Copied from ~/.hermes/scripts/ares_bridge_minimal.py and runs the cognition bridge.
 """
-import subprocess, json, sys
+
+import subprocess
+import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/health':
+        if self.path == "/health":
             self._json({"status": "ok", "backend": "hermes-cli"})
         else:
             self._json({"error": "not found"}, 404)
 
     def do_POST(self):
-        if self.path == '/think':
-            length = int(self.headers.get('Content-Length', 0))
+        if self.path == "/think":
+            length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}
-            text = body.get('text', '')
+            text = body.get("text", "")
 
             try:
                 result = subprocess.run(
-                    ['hermes', '-z', text],
-                    capture_output=True, text=True, timeout=120,
-                    env={**__import__('os').environ, 'HERMES_QUIET': '1'}
+                    ["hermes", "-z", text],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    env={**__import__("os").environ, "HERMES_QUIET": "1"},
                 )
                 response = result.stdout.strip() or result.stderr.strip()
                 if not response:
@@ -37,12 +42,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, data, code=200):
         self.send_response(code)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
     def log_message(self, *args):
         pass  # silent
 
-if __name__ == '__main__':
-    HTTPServer(('127.0.0.1', 9876), Handler).serve_forever()
+
+if __name__ == "__main__":
+    HTTPServer(("127.0.0.1", 9876), Handler).serve_forever()

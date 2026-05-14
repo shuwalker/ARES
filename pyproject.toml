@@ -77,3 +77,20 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "if __name__ == .__main__.:",
 ]
+
+[tool.ruff]
+extend-exclude = [
+    "ares/reference",
+]
+line-length = 120
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__.py files re-export public API; F401 is intentional.
+"__init__.py" = ["F401"]
+# Test conftest helpers are imported by tests; ruff can't see the linkage
+# across modules.
+"tests/integration/test_services.py" = ["F401"]
+
+[tool.black]
+extend-exclude = "ares/reference"
+line-length = 120

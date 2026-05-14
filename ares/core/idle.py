@@ -29,7 +29,6 @@ from typing import Optional
 
 from ares.memory_store import Embedder, MemoryStore, _cosine
 
-
 # ---------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------

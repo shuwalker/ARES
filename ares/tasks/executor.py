@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, Callable, Awaitable
+from typing import Callable, Awaitable
 
 from ..audit import log
 from ..reasoning import Plan, PlanStage
 from .queue import Task, update_task
-
 
 # ---------------------------------------------------------------------------
 # Checkpoint / approval protocol
@@ -35,9 +34,9 @@ async def _default_approval(message: str) -> bool:
 # Stage handlers
 # ---------------------------------------------------------------------------
 
+
 async def _execute_shell(stage: PlanStage, task: Task) -> str:
     """Execute a shell command stage."""
-    import subprocess
     cmd = stage.action
     if not cmd:
         return f"Stage {stage.id} has no action command."
@@ -51,9 +50,7 @@ async def _execute_shell(stage: PlanStage, task: Task) -> str:
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"Stage {stage.id} failed (exit {proc.returncode}):\n{stderr.decode()}"
-        )
+        raise RuntimeError(f"Stage {stage.id} failed (exit {proc.returncode}):\n{stderr.decode()}")
     return stdout.decode()
 
 
@@ -63,10 +60,7 @@ async def _execute_llm_stage(stage: PlanStage, task: Task) -> str:
     from ..core.personality import load_personality
 
     personality = load_personality()
-    system_prompt = (
-        "You are ARES — Autonomous Reasoning & Execution System.\n\n"
-        + personality.to_system_prompt()
-    )
+    system_prompt = "You are ARES — Autonomous Reasoning & Execution System.\n\n" + personality.to_system_prompt()
     text = await cloud.complete(
         system=system_prompt,
         messages=[{"role": "user", "content": f"Execute stage: {stage.action}"}],
@@ -74,7 +68,7 @@ async def _execute_llm_stage(stage: PlanStage, task: Task) -> str:
     )
     if stage.output_file:
         from pathlib import Path
-        import os
+
         output_dir = Path.home() / "Documents" / "ARES" / task.id
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / stage.output_file
@@ -102,6 +96,7 @@ async def _execute_checkpoint(stage: PlanStage, task: Task) -> str:
 # ---------------------------------------------------------------------------
 # Main executor
 # ---------------------------------------------------------------------------
+
 
 class PlanExecutor:
     def __init__(
@@ -198,10 +193,12 @@ class PlanExecutor:
 
         # Shell command stages
         if action_lower.startswith("run:") or action_lower.startswith("exec:"):
-            stage_copy = PlanStage(**{
-                **stage.__dict__,
-                "action": stage.action.split(":", 1)[1].strip(),
-            })
+            stage_copy = PlanStage(
+                **{
+                    **stage.__dict__,
+                    "action": stage.action.split(":", 1)[1].strip(),
+                }
+            )
             return await _execute_shell(stage_copy, task)
 
         # Human stage — just log it

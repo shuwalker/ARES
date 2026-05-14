@@ -7,7 +7,6 @@ iCloud path.
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 
@@ -76,7 +75,5 @@ def setup_icloud_link() -> str:
 
     home = ares_home()
     return (
-        f"ARES home: {home}\n"
-        f"Sync target: {target}\n"
-        f"Sync is active — memory and tasks will be copied on flush."
+        f"ARES home: {home}\n" f"Sync target: {target}\n" f"Sync is active — memory and tasks will be copied on flush."
     )

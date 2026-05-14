@@ -18,25 +18,22 @@ import json
 import logging
 import os
 import signal
-import sys
 import threading
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import httpx
 
 from .audit import log, log_sync
-from .config import get_config, ares_paths, write_default_config
+from .config import ares_paths, write_default_config
 from .core.bus import ARESBus, BusMessage, get_bus
 from .core.face_state import FaceState, get_face_config
 from .memory import write_retrospective
-from .reasoning import reason, format_proposal, Plan
+from .reasoning import reason, format_proposal
 from .runtime.hermes_bridge import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
 from .sync import flush
 from .tasks.queue import Inbox, Task, get_next_ready, update_task, archive_task
 from .tasks.executor import PlanExecutor
-from .tools.registry import ensure_builtin_tools, probe_all_tools
+from .tools.registry import ensure_builtin_tools
 
 logger = logging.getLogger("ares.daemon")
 
@@ -122,6 +119,7 @@ class IPCServer:
 # Daemon
 # ---------------------------------------------------------------------------
 
+
 class Daemon:
     # Bridge health-check constants
     BRIDGE_HEALTH_RETRIES = 3
@@ -180,6 +178,7 @@ class Daemon:
 
     def get_status(self) -> dict[str, Any]:
         from .tasks.queue import list_active
+
         active = list_active()
         return {
             "running": self.running,
@@ -235,7 +234,8 @@ class Daemon:
                         self.bridge_available = True
                         logger.info(
                             "Hermes bridge health check passed (attempt %d/%d)",
-                            attempt, self.BRIDGE_HEALTH_RETRIES,
+                            attempt,
+                            self.BRIDGE_HEALTH_RETRIES,
                         )
                         return True
             except (httpx.ConnectError, httpx.TimeoutException):
@@ -243,7 +243,9 @@ class Daemon:
 
             logger.debug(
                 "Bridge health check attempt %d/%d failed — retrying in %.1fs",
-                attempt, self.BRIDGE_HEALTH_RETRIES, self.BRIDGE_HEALTH_DELAY,
+                attempt,
+                self.BRIDGE_HEALTH_RETRIES,
+                self.BRIDGE_HEALTH_DELAY,
             )
             await asyncio.sleep(self.BRIDGE_HEALTH_DELAY)
 
@@ -252,7 +254,9 @@ class Daemon:
             "Hermes bridge on %s:%s is UNAVAILABLE after %d retries. "
             "/api/chat will return degraded responses. "
             "Other daemon functions continue normally.",
-            BRIDGE_HOST, BRIDGE_PORT, self.BRIDGE_HEALTH_RETRIES,
+            BRIDGE_HOST,
+            BRIDGE_PORT,
+            self.BRIDGE_HEALTH_RETRIES,
         )
         return False
 
@@ -384,6 +388,7 @@ class Daemon:
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 async def run_daemon() -> None:
     daemon = Daemon()

@@ -33,9 +33,7 @@ import asyncio
 import json
 import logging
 import os
-import signal
 import subprocess
-import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -49,10 +47,10 @@ from pydantic import BaseModel, Field
 
 from ares.core.bus import ARESBus, BusMessage, get_bus
 from ares.core.cognitive import CognitiveLoop, create_loop
-from ares.core.idle import IdleReport, run_idle_pass
+from ares.core.idle import run_idle_pass
 from ares.core.face_state import FaceState, get_face_config, emotion_to_face_state
-from ares.core.identity import Identity, DEFAULT_IDENTITY
-from ares.core.personality import CharacterProfile, DEFAULT_PROFILE, load_personality, save_personality
+from ares.core.identity import DEFAULT_IDENTITY
+from ares.core.personality import CharacterProfile, load_personality, save_personality
 from ares.memory_store import MemoryStore, default_memory_store
 from ares.models.cognitive import (
     CognitiveSnapshot,
@@ -90,10 +88,13 @@ class ManagedService:
     def _kill_port_owner(self):
         """Kill any process already listening on our port."""
         import signal as _signal
+
         try:
             result = subprocess.run(
                 ["lsof", "-ti", f":{self.port}"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             for pid_str in result.stdout.strip().split("\n"):
                 pid = pid_str.strip()
@@ -232,6 +233,7 @@ SERVICES = [
 # Pydantic models
 # ---------------------------------------------------------------------------
 
+
 class PersonalityUpdateRequest(BaseModel):
     layer: str = Field(..., description="hexaco, special, expression, or domains")
     trait: str = Field(..., description="Trait name within the layer")
@@ -246,7 +248,9 @@ class PersonalityUpdateResponse(BaseModel):
 
 
 class FaceStateRequest(BaseModel):
-    state: Optional[str] = Field(None, description="Face state: idle, awakened, listening, thinking, speaking, sleeping")
+    state: Optional[str] = Field(
+        None, description="Face state: idle, awakened, listening, thinking, speaking, sleeping"
+    )
     emotion: Optional[str] = Field(None, description="Emotion: happy, sad, curious, surprised, angry, neutral")
 
 
@@ -276,6 +280,7 @@ class MemorySearchRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
+
 
 def create_app(
     bus: ARESBus = None,
@@ -382,6 +387,7 @@ def create_app(
         """
         # Check external Mac MCP first
         import socket
+
         mac_mcp = {
             "name": "mac_mcp",
             "port": 9501,
@@ -447,17 +453,22 @@ def create_app(
         if req.layer not in pdata:
             raise HTTPException(400, f"Unknown layer: {req.layer}. Must be one of: {list(pdata.keys())}")
         if req.trait not in pdata[req.layer]:
-            raise HTTPException(400, f"Unknown trait: {req.trait} in {req.layer}. Available: {list(pdata[req.layer].keys())}")
+            raise HTTPException(
+                400, f"Unknown trait: {req.trait} in {req.layer}. Available: {list(pdata[req.layer].keys())}"
+            )
 
         setattr(getattr(personality, req.layer), req.trait, round(req.value, 2))
         save_personality(personality)
 
-        await _broadcast(websocket_clients, {
-            "type": "personality_change",
-            "layer": req.layer,
-            "trait": req.trait,
-            "value": req.value,
-        })
+        await _broadcast(
+            websocket_clients,
+            {
+                "type": "personality_change",
+                "layer": req.layer,
+                "trait": req.trait,
+                "value": req.value,
+            },
+        )
 
         return PersonalityUpdateResponse(updated=True, layer=req.layer, trait=req.trait, value=req.value)
 
@@ -518,21 +529,20 @@ def create_app(
         # prompt; for now we surface it to the UI snapshot so users can
         # see what ARES is recalling.
         hits = memory.recall(req.message, k=5)
-        recall_blocks = [
-            MemoryHitBlock(id=h.id, score=h.score, text=h.text, kind=h.kind)
-            for h in hits
-        ]
+        recall_blocks = [MemoryHitBlock(id=h.id, score=h.score, text=h.text, kind=h.kind) for h in hits]
         _last_recall.clear()
         _last_recall.extend(recall_blocks)
 
         if req.session_id:
             sessions.record(req.session_id, "user", req.message, time.time())
 
-        bus.dispatch(BusMessage(
-            type="chat_message",
-            source="api",
-            payload={"message": req.message, "session_id": req.session_id},
-        ))
+        bus.dispatch(
+            BusMessage(
+                type="chat_message",
+                source="api",
+                payload={"message": req.message, "session_id": req.session_id},
+            )
+        )
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -581,11 +591,13 @@ def create_app(
     @app.post("/api/memory")
     async def store_memory(req: MemoryStoreRequest):
         from ares.mcp_serve import _store_memory
+
         return _store_memory(req.content, req.tags, req.source)
 
     @app.get("/api/memory")
     async def search_memory(query: str, tag: Optional[str] = None, limit: int = 10):
         from ares.mcp_serve import _query_memory
+
         results = _query_memory(query, tag, limit)
         return {"count": len(results), "results": results}
 
@@ -773,10 +785,12 @@ def create_app(
                         bus.dispatch(BusMessage(type="face_state", source="websocket", payload=result))
                         await _broadcast(websocket_clients, {"type": "face_state", **result})
                     except ValueError:
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": f"Invalid state: {state_name}. Valid: {[s.value for s in FaceState]}",
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "message": f"Invalid state: {state_name}. Valid: {[s.value for s in FaceState]}",
+                            }
+                        )
 
                 elif action == "set_personality":
                     layer = cmd.get("layer", "")
@@ -786,18 +800,27 @@ def create_app(
                     if layer in pdata and trait in pdata[layer]:
                         setattr(getattr(personality, layer), trait, round(float(value), 2))
                         save_personality(personality)
-                        await _broadcast(websocket_clients, {
-                            "type": "personality_change", "layer": layer, "trait": trait, "value": value,
-                        })
+                        await _broadcast(
+                            websocket_clients,
+                            {
+                                "type": "personality_change",
+                                "layer": layer,
+                                "trait": trait,
+                                "value": value,
+                            },
+                        )
                     else:
                         await websocket.send_json({"type": "error", "message": f"Unknown: {layer}.{trait}"})
 
                 elif action == "chat":
                     message = cmd.get("message") or cmd.get("text", "")
-                    bus.dispatch(BusMessage(
-                        type="chat_message", source="websocket",
-                        payload={"message": message, "session_id": cmd.get("session_id")},
-                    ))
+                    bus.dispatch(
+                        BusMessage(
+                            type="chat_message",
+                            source="websocket",
+                            payload={"message": message, "session_id": cmd.get("session_id")},
+                        )
+                    )
                     try:
                         async with httpx.AsyncClient(timeout=120.0) as client:
                             resp = await client.post(
@@ -813,25 +836,41 @@ def create_app(
                         hermes_response = f"[Bridge error — {e}]"
                         face_state = "thinking"
 
-                    await websocket.send_json({
-                        "type": "chat_response", "role": "assistant",
-                        "text": hermes_response, "face_state": face_state,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "chat_response",
+                            "role": "assistant",
+                            "text": hermes_response,
+                            "face_state": face_state,
+                        }
+                    )
 
                 elif action == "ping":
                     await websocket.send_json({"type": "pong", "timestamp": time.time()})
 
                 elif action == "get_cognitive_snapshot":
                     snapshot = _build_snapshot(_cognitive_loop, list(_last_recall))
-                    await websocket.send_json({
-                        "type": "cognitive_snapshot", **snapshot.model_dump(),
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "cognitive_snapshot",
+                            **snapshot.model_dump(),
+                        }
+                    )
 
                 else:
-                    await websocket.send_json({
-                        "type": "error", "message": f"Unknown action: {action}",
-                        "valid_actions": ["set_face_state", "set_personality", "chat", "ping", "get_cognitive_snapshot"],
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "message": f"Unknown action: {action}",
+                            "valid_actions": [
+                                "set_face_state",
+                                "set_personality",
+                                "chat",
+                                "ping",
+                                "get_cognitive_snapshot",
+                            ],
+                        }
+                    )
 
         except WebSocketDisconnect:
             pass
@@ -855,22 +894,27 @@ def create_app(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _on_face_state(msg: BusMessage):
     """Bus listener that persists face state changes."""
     if msg.type == "face_state" and isinstance(msg.payload, dict):
-        _save_face_state({
-            "current_state": msg.payload.get("state", "idle"),
-            **msg.payload,
-        })
+        _save_face_state(
+            {
+                "current_state": msg.payload.get("state", "idle"),
+                **msg.payload,
+            }
+        )
 
 
 def _load_face_state() -> dict:
     from ares.mcp_serve import _load_face_state as _mcp_load
+
     return _mcp_load()
 
 
 def _save_face_state(data: dict) -> None:
     from ares.mcp_serve import _save_face_state as _mcp_save
+
     _mcp_save(data)
 
 
@@ -942,6 +986,7 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     logging.basicConfig(level=logging.INFO)
     logger.info("Starting ARES API server on http://0.0.0.0:7860")
     uvicorn.run(app, host="0.0.0.0", port=7860)

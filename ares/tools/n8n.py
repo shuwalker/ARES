@@ -19,10 +19,10 @@ import httpx
 from ..config import get_config, ares_paths
 from ..audit import log
 
-
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
+
 
 class N8NClient:
     def __init__(self) -> None:
@@ -119,6 +119,7 @@ class N8NClient:
 # ---------------------------------------------------------------------------
 # Workflow templates
 # ---------------------------------------------------------------------------
+
 
 def youtube_publish_workflow(
     *,
@@ -245,6 +246,7 @@ def notification_workflow(
 # Workflow file management
 # ---------------------------------------------------------------------------
 
+
 def save_workflow_draft(name: str, workflow: dict[str, Any]) -> Path:
     """Save a workflow JSON draft to ~/.ares/n8n-workflows/."""
     paths = ares_paths()
@@ -274,6 +276,7 @@ def list_workflow_drafts() -> list[str]:
 # High-level helpers
 # ---------------------------------------------------------------------------
 
+
 async def ensure_n8n_workflow(
     name: str,
     workflow: dict[str, Any],
@@ -291,10 +294,7 @@ async def ensure_n8n_workflow(
 
     client = N8NClient()
     if not await client.is_running():
-        raise RuntimeError(
-            f"n8n is not running at {client.base_url}. "
-            "Start it with: n8n start"
-        )
+        raise RuntimeError(f"n8n is not running at {client.base_url}. " "Start it with: n8n start")
 
     # Check if workflow already exists
     existing = await client.list_workflows()

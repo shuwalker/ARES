@@ -7,8 +7,8 @@ memory lives in `memory_store.MemoryStore`.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass, field
-from typing import Deque, Iterable
+from dataclasses import dataclass
+from typing import Deque
 
 
 @dataclass
@@ -26,16 +26,12 @@ class SessionStore:
 
     def __init__(self, capacity: int = 12):
         self.capacity = capacity
-        self._sessions: dict[str, Deque[Turn]] = defaultdict(
-            lambda: deque(maxlen=capacity)
-        )
+        self._sessions: dict[str, Deque[Turn]] = defaultdict(lambda: deque(maxlen=capacity))
 
     def record(self, session_id: str, role: str, text: str, timestamp: float) -> None:
         if not session_id:
             return
-        self._sessions[session_id].append(
-            Turn(role=role, text=text, timestamp=timestamp)
-        )
+        self._sessions[session_id].append(Turn(role=role, text=text, timestamp=timestamp))
 
     def history(self, session_id: str) -> list[Turn]:
         return list(self._sessions.get(session_id, ()))

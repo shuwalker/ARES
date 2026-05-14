@@ -10,7 +10,6 @@ Routing rules:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
 
 
 class LLMBackend(str, Enum):
@@ -19,11 +18,11 @@ class LLMBackend(str, Enum):
 
 
 class TaskSensitivity(str, Enum):
-    PERSONAL = "personal"       # → local only
-    GENERAL = "general"         # → cloud preferred
-    BULK = "bulk"               # → local (cost)
-    VISION = "vision"           # → cloud (vision support)
-    REASONING = "reasoning"     # → cloud (complex reasoning)
+    PERSONAL = "personal"  # → local only
+    GENERAL = "general"  # → cloud preferred
+    BULK = "bulk"  # → local (cost)
+    VISION = "vision"  # → cloud (vision support)
+    REASONING = "reasoning"  # → cloud (complex reasoning)
 
 
 def route(

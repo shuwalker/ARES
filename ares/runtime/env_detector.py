@@ -10,8 +10,8 @@ Environment = Literal["desktop", "robot"]
 
 
 def detect_environment() -> Environment:
-    """Detect runtime environment. 
-    
+    """Detect runtime environment.
+
     Returns 'desktop' by default. Set LILITH_ENVIRONMENT=robot to flip.
     Invalid values raise ValueError — being in a body is a deliberate decision.
     """

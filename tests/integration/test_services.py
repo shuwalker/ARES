@@ -143,21 +143,34 @@ class TestMacMCP:
         assert len(tools) > 0, "Mac MCP should expose at least one tool"
         tool_names = {t["name"] for t in tools}
         # Known tools from ares_mcp_server.py
-        expected = {"ping", "get_status", "read_nas", "write_nas", "list_nas",
-                    "exec_local", "relay_message", "write_handoff",
-                    "twin_state_update", "get_skills_list", "get_memory", "get_config_snapshot"}
+        expected = {
+            "ping",
+            "get_status",
+            "read_nas",
+            "write_nas",
+            "list_nas",
+            "exec_local",
+            "relay_message",
+            "write_handoff",
+            "twin_state_update",
+            "get_skills_list",
+            "get_memory",
+            "get_config_snapshot",
+        }
         found = expected & tool_names
         assert found, f"No known tools found in: {tool_names}"
 
     def test_ping_tool(self, mac_mcp_session):
         """ping tool responds with 'pong' and server timestamp."""
         sid = mac_mcp_session["session_id"]
-        payload = json.dumps({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": "ping", "arguments": {}},
-            "id": 99,
-        }).encode()
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "ping", "arguments": {}},
+                "id": 99,
+            }
+        ).encode()
         req = urllib.request.Request(
             f"http://{ARES_HOST}:{MAC_MCP_PORT}/mcp",
             data=payload,
@@ -192,12 +205,14 @@ class TestMacMCP:
     def test_get_status_tool(self, mac_mcp_session):
         """get_status returns ARES version, uptime, MCP port, and connection state."""
         sid = mac_mcp_session["session_id"]
-        payload = json.dumps({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": "get_status", "arguments": {}},
-            "id": 100,
-        }).encode()
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "get_status", "arguments": {}},
+                "id": 100,
+            }
+        ).encode()
         req = urllib.request.Request(
             f"http://{ARES_HOST}:{MAC_MCP_PORT}/mcp",
             data=payload,
@@ -252,12 +267,14 @@ class TestPerceptionMCP:
     def test_perception_health(self, perception_session):
         """perception_health reports model loading status."""
         sid = perception_session["session_id"]
-        payload = json.dumps({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": "perception_health", "arguments": {}},
-            "id": 10,
-        }).encode()
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "perception_health", "arguments": {}},
+                "id": 10,
+            }
+        ).encode()
         req = urllib.request.Request(
             f"http://{ARES_HOST}:{PERCEPTION_PORT}/mcp",
             data=payload,
@@ -304,12 +321,14 @@ class TestVoiceMCP:
     def test_voice_health(self, voice_session):
         """voice_health reports audio device and model availability."""
         sid = voice_session["session_id"]
-        payload = json.dumps({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": "voice_health", "arguments": {}},
-            "id": 20,
-        }).encode()
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "voice_health", "arguments": {}},
+                "id": 20,
+            }
+        ).encode()
         req = urllib.request.Request(
             f"http://{ARES_HOST}:{VOICE_PORT}/mcp",
             data=payload,
@@ -347,19 +366,28 @@ class TestAvatarMCP:
         tools = avatar_session["tools"]
         tool_names = {t["name"] for t in tools}
         assert len(tools) >= 3, f"Expected >= 3 tools, got {len(tools)}: {tool_names}"
-        avatar_tools = {"avatar_connect", "avatar_state", "avatar_expression", "avatar_look_at", "avatar_speak", "avatar_expression_random"}
+        avatar_tools = {
+            "avatar_connect",
+            "avatar_state",
+            "avatar_expression",
+            "avatar_look_at",
+            "avatar_speak",
+            "avatar_expression_random",
+        }
         found = avatar_tools & tool_names
         assert found, f"No avatar tools found in: {tool_names}"
 
     def test_avatar_state(self, avatar_session):
         """avatar_state reports connection and expression status."""
         sid = avatar_session["session_id"]
-        payload = json.dumps({
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": "avatar_state", "arguments": {}},
-            "id": 30,
-        }).encode()
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "avatar_state", "arguments": {}},
+                "id": 30,
+            }
+        ).encode()
         req = urllib.request.Request(
             f"http://{ARES_HOST}:{AVATAR_PORT}/mcp",
             data=payload,
@@ -519,7 +547,7 @@ class TestARESBus:
         assert b"101" in response.split(b"\r\n")[0], "Handshake failed"
 
         # Send a ping frame (opcode 0x9)
-        ping_frame = bytes([0x89, 0x80, 0x1a, 0x5a, 0x44, 0xee])  # masked, 0-length payload
+        ping_frame = bytes([0x89, 0x80, 0x1A, 0x5A, 0x44, 0xEE])  # masked, 0-length payload
         s.send(ping_frame)
         # Read pong (opcode 0xA)
         raw = s.recv(256)
