@@ -1,15 +1,19 @@
 """Config loading and watching for ARES.
 
 Config lives at ~/.ares/config/ares.toml — plain TOML, human-editable.
+Env-var overrides (ANTHROPIC_API_KEY, N8N_API_KEY, ARES_HOME) are pulled in
+automatically via pydantic-settings BaseSettings.
 """
 
 from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 # ---------------------------------------------------------------------------
@@ -47,43 +51,57 @@ def ares_paths() -> dict[str, Path]:
 
 
 # ---------------------------------------------------------------------------
-# Config dataclass
+# Config models
 # ---------------------------------------------------------------------------
 
-@dataclass
-class LLMConfig:
-    local_url: str = "http://localhost:1234/v1"
-    local_model: str = "local-model"
-    cloud_model: str = "claude-sonnet-4-6"
-    cloud_api_key: str = ""
+class LLMConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+    local_url: str = Field(default="http://localhost:1234/v1", description="Local OpenAI-compatible LLM endpoint URL")
+    local_model: str = Field(default="local-model", description="Local model identifier")
+    cloud_model: str = Field(default="claude-sonnet-4-6", description="Cloud model identifier (Anthropic)")
+    cloud_api_key: str = Field(default="", description="Anthropic API key — falls back to ANTHROPIC_API_KEY env var")
 
 
-@dataclass
-class N8NConfig:
-    url: str = "http://localhost:5678"
-    api_key: str = ""
+class N8NConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+    url: str = Field(default="http://localhost:5678", description="n8n base URL")
+    api_key: str = Field(default="", description="n8n API key — falls back to N8N_API_KEY env var")
 
 
-@dataclass
-class SyncConfig:
-    enabled: bool = True
-    icloud_path: str = ""  # Auto-detected if empty
+class SyncConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+    enabled: bool = Field(default=True, description="Whether iCloud sync is enabled")
+    icloud_path: str = Field(default="", description="Override iCloud path (auto-detected if empty)")
 
 
-@dataclass
-class DecisionConfig:
-    # Minutes of silence after proposing a Homebrew install before auto-proceeding
-    cli_install_silence_minutes: int = 5
+class DecisionConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+    cli_install_silence_minutes: int = Field(
+        default=5,
+        description="Minutes of silence after proposing a Homebrew install before auto-proceeding",
+    )
 
 
-@dataclass
-class AresConfig:
-    llm: LLMConfig = field(default_factory=LLMConfig)
-    n8n: N8NConfig = field(default_factory=N8NConfig)
-    sync: SyncConfig = field(default_factory=SyncConfig)
-    decision: DecisionConfig = field(default_factory=DecisionConfig)
-    # Raw extra values from TOML for forward-compatibility
-    extra: dict[str, Any] = field(default_factory=dict)
+class AresConfig(BaseSettings):
+    """Root config. TOML provides sections; env-vars provide secrets."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="",
+        extra="ignore",
+        case_sensitive=False,
+        populate_by_name=True,
+    )
+
+    llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM backend configuration")
+    n8n: N8NConfig = Field(default_factory=N8NConfig, description="n8n workflow integration")
+    sync: SyncConfig = Field(default_factory=SyncConfig, description="iCloud sync settings")
+    decision: DecisionConfig = Field(default_factory=DecisionConfig, description="Autonomous decision policy")
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY", description="Env-var override for cloud LLM key")
+    n8n_api_key: str = Field(default="", alias="N8N_API_KEY", description="Env-var override for n8n API key")
+    extra_toml: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw extra TOML sections preserved for forward-compatibility",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -110,28 +128,25 @@ def load_config() -> AresConfig:
         with open(path, "rb") as fh:
             raw = tomllib.load(fh)
 
-    cfg = AresConfig()
-
-    llm_raw = raw.get("llm", {})
-    cfg.llm.local_url = llm_raw.get("local_url", cfg.llm.local_url)
-    cfg.llm.local_model = llm_raw.get("local_model", cfg.llm.local_model)
-    cfg.llm.cloud_model = llm_raw.get("cloud_model", cfg.llm.cloud_model)
-    cfg.llm.cloud_api_key = llm_raw.get("cloud_api_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-
-    n8n_raw = raw.get("n8n", {})
-    cfg.n8n.url = n8n_raw.get("url", cfg.n8n.url)
-    cfg.n8n.api_key = n8n_raw.get("api_key", "") or os.environ.get("N8N_API_KEY", "")
-
-    sync_raw = raw.get("sync", {})
-    cfg.sync.enabled = sync_raw.get("enabled", cfg.sync.enabled)
-    cfg.sync.icloud_path = sync_raw.get("icloud_path", cfg.sync.icloud_path)
-
-    decision_raw = raw.get("decision", {})
-    cfg.decision.cli_install_silence_minutes = decision_raw.get(
-        "cli_install_silence_minutes", cfg.decision.cli_install_silence_minutes
+    cfg = AresConfig.model_validate(
+        {
+            "llm": raw.get("llm", {}),
+            "n8n": raw.get("n8n", {}),
+            "sync": raw.get("sync", {}),
+            "decision": raw.get("decision", {}),
+            "extra_toml": {
+                k: v for k, v in raw.items()
+                if k not in ("llm", "n8n", "sync", "decision")
+            },
+        }
     )
 
-    cfg.extra = {k: v for k, v in raw.items() if k not in ("llm", "n8n", "sync", "decision")}
+    # Preserve old precedence: TOML value wins if non-empty, else env-var fallback.
+    if not cfg.llm.cloud_api_key and cfg.anthropic_api_key:
+        cfg.llm.cloud_api_key = cfg.anthropic_api_key
+    if not cfg.n8n.api_key and cfg.n8n_api_key:
+        cfg.n8n.api_key = cfg.n8n_api_key
+
     _CONFIG = cfg
     return cfg
 

@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .llm import cloud, local
 from .llm.router import route, LLMBackend
@@ -72,38 +73,77 @@ have requires_approval set to true.."""
 
 
 # ---------------------------------------------------------------------------
-# Data model
+# Plan data models (BaseModel — Pydantic v2)
 # ---------------------------------------------------------------------------
 
-@dataclass
-class PlanStage:
-    id: int
-    name: str
-    tool: str
-    action: str
-    output_file: str
-    output_format: str
+class PlanStage(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+
+    id: int = Field(description="Sequential stage identifier (1-indexed)")
+    name: str = Field(description="Human-readable stage name")
+    tool: str = Field(description="Real-world tool/application used for this stage")
+    action: str = Field(description="What ARES does in this stage (free-form description or 'run:<cmd>')")
+    output_file: str = Field(description="Filename produced by this stage")
+    output_format: str = Field(description="Format of the produced file (e.g. Markdown, JSON)")
+    requires_approval: bool = Field(default=False, description="Whether this stage gates on human approval")
+    on_failure: str = Field(default="flag to user", description="What ARES should do if this stage fails")
+    new_install_required: bool = Field(default=False, description="True if this stage needs a tool not yet installed")
+    install_reason: str = Field(default="", description="One-line reason an install is needed")
+
+
+class NewInstall(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+
+    tool: str = Field(description="Tool to install")
+    reason: str = Field(description="One-line reason it's the right choice")
+    install_method: str = Field(default="brew", description="brew | npm | pip | manual")
+    install_command: str = Field(default="", description="Concrete install command, if applicable")
+
+
+class Plan(BaseModel):
+    model_config = ConfigDict(validate_assignment=False)
+
+    goal: str = Field(description="Goal that this plan addresses")
+    stages: list[PlanStage] = Field(default_factory=list, description="Ordered execution stages")
+    new_installs: list[NewInstall] = Field(default_factory=list, description="Tools that must be installed first")
+    estimated_api_cost: str = Field(default="unknown", description="Best-effort API cost estimate")
+    raw_json: dict[str, Any] = Field(default_factory=dict, description="Raw LLM JSON response (preserved unmodified)")
+
+
+# ---------------------------------------------------------------------------
+# LLM response schema (lenient — defaults everywhere, extras ignored)
+# ---------------------------------------------------------------------------
+
+class _LLMStage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: int = 0
+    name: str = ""
+    tool: str = ""
+    action: str = ""
+    output_file: str = ""
+    output_format: str = ""
     requires_approval: bool = False
     on_failure: str = "flag to user"
     new_install_required: bool = False
     install_reason: str = ""
 
 
-@dataclass
-class NewInstall:
-    tool: str
-    reason: str
+class _LLMInstall(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    tool: str = ""
+    reason: str = ""
     install_method: str = "brew"
     install_command: str = ""
 
 
-@dataclass
-class Plan:
-    goal: str
-    stages: list[PlanStage] = field(default_factory=list)
-    new_installs: list[NewInstall] = field(default_factory=list)
+class LLMPlanResponse(BaseModel):
+    """Schema for the JSON the LLM is asked to emit in CONTRACTOR_TEST_SYSTEM."""
+
+    model_config = ConfigDict(extra="ignore")
+    goal: str = ""
+    stages: list[_LLMStage] = Field(default_factory=list)
+    new_installs: list[_LLMInstall] = Field(default_factory=list)
     estimated_api_cost: str = "unknown"
-    raw_json: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +166,6 @@ async def reason(
     Otherwise the router decides based on task characteristics (sensitivity,
     vision, bulk). Planning tasks always default to CLOUD for quality.
     """
-    # Route through the router unless caller forced a backend
     if backend is None:
         backend = route(
             task_type="planning",
@@ -162,20 +201,18 @@ async def reason(
 
 
 def _parse_plan(goal: str, raw_text: str) -> Plan:
-    """Parse the LLM response into a Plan object."""
-    # Extract JSON from response (may be wrapped in markdown fences)
+    """Parse the LLM response into a Plan object via Pydantic validation."""
     json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
     if json_match:
         json_str = json_match.group(1)
     else:
-        # Try to find raw JSON object
         brace_match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         json_str = brace_match.group(0) if brace_match else "{}"
 
     try:
         data = json.loads(json_str)
-    except json.JSONDecodeError:
-        # Fallback: return a minimal plan
+        resp = LLMPlanResponse.model_validate(data)
+    except (json.JSONDecodeError, ValidationError):
         return Plan(
             goal=goal,
             stages=[
@@ -193,35 +230,11 @@ def _parse_plan(goal: str, raw_text: str) -> Plan:
             raw_json={"raw_text": raw_text[:500]},
         )
 
-    stages = []
-    for s in data.get("stages", []):
-        stages.append(PlanStage(
-            id=s.get("id", 0),
-            name=s.get("name", ""),
-            tool=s.get("tool", ""),
-            action=s.get("action", ""),
-            output_file=s.get("output_file", ""),
-            output_format=s.get("output_format", ""),
-            requires_approval=s.get("requires_approval", False),
-            on_failure=s.get("on_failure", "flag to user"),
-            new_install_required=s.get("new_install_required", False),
-            install_reason=s.get("install_reason", ""),
-        ))
-
-    new_installs = []
-    for ni in data.get("new_installs", []):
-        new_installs.append(NewInstall(
-            tool=ni.get("tool", ""),
-            reason=ni.get("reason", ""),
-            install_method=ni.get("install_method", "brew"),
-            install_command=ni.get("install_command", ""),
-        ))
-
     return Plan(
-        goal=data.get("goal", goal),
-        stages=stages,
-        new_installs=new_installs,
-        estimated_api_cost=data.get("estimated_api_cost", "unknown"),
+        goal=resp.goal or goal,
+        stages=[PlanStage(**s.model_dump()) for s in resp.stages],
+        new_installs=[NewInstall(**ni.model_dump()) for ni in resp.new_installs],
+        estimated_api_cost=resp.estimated_api_cost,
         raw_json=data,
     )
 

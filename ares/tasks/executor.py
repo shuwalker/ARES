@@ -198,10 +198,9 @@ class PlanExecutor:
 
         # Shell command stages
         if action_lower.startswith("run:") or action_lower.startswith("exec:"):
-            stage_copy = PlanStage(**{
-                **stage.__dict__,
-                "action": stage.action.split(":", 1)[1].strip(),
-            })
+            stage_copy = stage.model_copy(
+                update={"action": stage.action.split(":", 1)[1].strip()}
+            )
             return await _execute_shell(stage_copy, task)
 
         # Human stage — just log it
