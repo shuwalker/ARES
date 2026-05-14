@@ -31,9 +31,10 @@ from .config import get_config, ares_paths, write_default_config
 from .core.bus import ARESBus, BusMessage, get_bus
 from .core.face_state import FaceState, get_face_config
 from .memory import write_retrospective
-from .reasoning import reason, format_proposal, Plan
+from .reasoning import reason, format_proposal, Plan, PlanStage
 from .runtime.hermes_bridge import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
 from .sync import flush
+from .tasks import approvals
 from .tasks.queue import Inbox, Task, get_next_ready, update_task, archive_task
 from .tasks.executor import PlanExecutor
 from .tools.registry import ensure_builtin_tools, probe_all_tools
@@ -45,7 +46,10 @@ logger = logging.getLogger("ares.daemon")
 # IPC socket server
 # ---------------------------------------------------------------------------
 
-SOCKET_COMMANDS = {"goal", "status", "pause", "resume", "stop"}
+SOCKET_COMMANDS = {
+    "goal", "status", "pause", "resume", "stop",
+    "approve", "reject", "approvals",
+}
 
 
 class IPCServer:
@@ -110,7 +114,24 @@ class IPCServer:
             self.daemon.running = False
             return {"ok": True, "message": "Stopping ARES…"}
 
+        elif cmd == "approve":
+            return self._respond(msg.get("task_id"), "approved", msg.get("responder", "cli"))
+
+        elif cmd == "reject":
+            return self._respond(msg.get("task_id"), "rejected", msg.get("responder", "cli"))
+
+        elif cmd == "approvals":
+            return {"ok": True, "pending": approvals.list_pending()}
+
         return {"ok": False, "message": f"Unknown command: {cmd}"}
+
+    def _respond(self, task_id: str | None, decision: str, responder: str) -> dict[str, Any]:
+        if not task_id:
+            return {"ok": False, "message": "task_id required"}
+        record = approvals.respond(task_id, decision, responder)
+        if record is None:
+            return {"ok": False, "message": f"No pending approval for {task_id}"}
+        return {"ok": True, "message": f"{decision}: {task_id}", "record": record}
 
     async def stop(self) -> None:
         if self._server:
@@ -167,16 +188,47 @@ class Daemon:
         )
         self._bus.dispatch(msg)
 
-    async def _approval_cb(self, message: str) -> bool:
-        """Interactive approval — prints to terminal, reads from IPC or stdin."""
-        log_sync(action="checkpoint", message=message[:200])
-        # In daemon mode, notify via audit log and wait for resume signal.
-        # In interactive/CLI mode the executor will prompt directly.
-        print(f"\n[ARES CHECKPOINT]\n{message}\n")
-        print("Type 'ares resume' to continue, 'ares pause' to take over.\n")
-        # Auto-approve after a brief wait in non-interactive environments
-        await asyncio.sleep(0.1)
-        return True
+    async def _approval_cb(self, task: Task, stage: PlanStage, message: str) -> bool:
+        """Daemon-mode approval gate.
+
+        Writes a pending_approval record to disk and polls until the IPC
+        server sets it to approved/rejected, or until the configured timeout
+        elapses (then applies cfg.approval.default_action).
+        """
+        cfg = get_config().approval
+        approvals.create_pending(task.id, stage.id, stage.name, message, cfg.timeout_seconds)
+        log_sync(action="approval_pending", task_id=task.id, stage=stage.id)
+        print(
+            f"\n[ARES CHECKPOINT — task {task.id}, stage {stage.id}]\n{message}\n"
+            f"Run 'ares approve {task.id}' or 'ares reject {task.id}' "
+            f"(timeout {cfg.timeout_seconds}s, default={cfg.default_action}).\n"
+        )
+
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + cfg.timeout_seconds
+        while loop.time() < deadline:
+            await asyncio.sleep(cfg.poll_interval_seconds)
+            current = approvals.read_pending(task.id)
+            if current is None:
+                # Record vanished — treat as default action.
+                break
+            status = current.get("status")
+            if status == "approved":
+                await log(action="approval_granted", task_id=task.id,
+                          stage=stage.id, responder=current.get("responder"))
+                approvals.clear(task.id)
+                return True
+            if status == "rejected":
+                await log(action="approval_denied", task_id=task.id,
+                          stage=stage.id, responder=current.get("responder"))
+                approvals.clear(task.id)
+                return False
+
+        approvals.mark_expired(task.id)
+        await log(action="approval_timeout", task_id=task.id,
+                  stage=stage.id, default_action=cfg.default_action)
+        approvals.clear(task.id)
+        return cfg.default_action == "approve"
 
     def get_status(self) -> dict[str, Any]:
         from .tasks.queue import list_active

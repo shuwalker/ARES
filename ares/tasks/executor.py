@@ -19,10 +19,10 @@ from .queue import Task, update_task
 # Checkpoint / approval protocol
 # ---------------------------------------------------------------------------
 
-ApprovalCallback = Callable[[str], Awaitable[bool]]
+ApprovalCallback = Callable[[Task, PlanStage, str], Awaitable[bool]]
 
 
-async def _default_approval(message: str) -> bool:
+async def _default_approval(task: Task, stage: PlanStage, message: str) -> bool:
     """Default: print message and wait for input (blocks — for interactive use)."""
     print(f"\n[CHECKPOINT] {message}")
     print("Continue? [y/n]: ", end="", flush=True)
@@ -144,12 +144,13 @@ class PlanExecutor:
                 task.status = "paused"
                 update_task(task)
 
-                approved = await self.approval_cb(
+                summary = (
                     f"Stage {stage.id}: {stage.name}\n"
                     f"  Tool: {stage.tool}\n"
                     f"  Action: {stage.action}\n"
                     f"  Output: {stage.output_file} ({stage.output_format})"
                 )
+                approved = await self.approval_cb(task, stage, summary)
                 if not approved:
                     task.status = "paused"
                     update_task(task)

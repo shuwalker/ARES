@@ -35,6 +35,7 @@ def ares_paths() -> dict[str, Path]:
         "memory_knowledge": home / "memory" / "knowledge",
         "memory_projects": home / "memory" / "projects",
         "tasks": home / "tasks",
+        "approvals": home / "approvals",
         "n8n_workflows": home / "n8n-workflows",
         "logs": home / "logs",
         "cache": home / "cache",
@@ -77,11 +78,19 @@ class DecisionConfig:
 
 
 @dataclass
+class ApprovalConfig:
+    timeout_seconds: int = 300
+    poll_interval_seconds: float = 1.0
+    default_action: str = "reject"  # "reject" | "approve"
+
+
+@dataclass
 class AresConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     n8n: N8NConfig = field(default_factory=N8NConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
     decision: DecisionConfig = field(default_factory=DecisionConfig)
+    approval: ApprovalConfig = field(default_factory=ApprovalConfig)
     # Raw extra values from TOML for forward-compatibility
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -131,7 +140,21 @@ def load_config() -> AresConfig:
         "cli_install_silence_minutes", cfg.decision.cli_install_silence_minutes
     )
 
-    cfg.extra = {k: v for k, v in raw.items() if k not in ("llm", "n8n", "sync", "decision")}
+    approval_raw = raw.get("approval", {})
+    cfg.approval.timeout_seconds = approval_raw.get(
+        "timeout_seconds", cfg.approval.timeout_seconds
+    )
+    cfg.approval.poll_interval_seconds = approval_raw.get(
+        "poll_interval_seconds", cfg.approval.poll_interval_seconds
+    )
+    cfg.approval.default_action = approval_raw.get(
+        "default_action", cfg.approval.default_action
+    )
+
+    cfg.extra = {
+        k: v for k, v in raw.items()
+        if k not in ("llm", "n8n", "sync", "decision", "approval")
+    }
     _CONFIG = cfg
     return cfg
 
@@ -168,6 +191,11 @@ def write_default_config() -> Path:
         },
         "decision": {
             "cli_install_silence_minutes": 5,
+        },
+        "approval": {
+            "timeout_seconds": 300,
+            "poll_interval_seconds": 1.0,
+            "default_action": "reject",
         },
     }
 
