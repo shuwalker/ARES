@@ -11,7 +11,7 @@ def api_client(monkeypatch, tmp_path):
     monkeypatch.setattr("ares.api.SERVICES", [])
 
     from ares.api import create_app
-    from ares.memory_store import DeterministicEmbedder, InMemoryVectorStore, MemoryStore
+    from ares.core.memory_store import DeterministicEmbedder, InMemoryVectorStore, MemoryStore
     from ares.runtime.session_store import SessionStore
     from fastapi.testclient import TestClient
 

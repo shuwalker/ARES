@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .config import ares_paths
+from ares.runtime.config import ares_paths
 
 # ---------------------------------------------------------------------------
 # Helpers

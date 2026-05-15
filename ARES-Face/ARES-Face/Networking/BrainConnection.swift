@@ -1,166 +1,80 @@
 import Foundation
 import Combine
 
+/// The app's connection to an AI brain, abstracted through BrainAdapter.
+///
+/// This is a thin state manager. It doesn't know about WebSocket or REST.
+/// It talks to the adapter, publishes state updates, and the views react.
+/// Swap HermesAdapter for ClaudeCodeAdapter — nothing else changes.
 @MainActor
-class BrainConnection: ObservableObject {
+final class BrainConnection: ObservableObject {
+    // ── Published state ──
     @Published var agentState: AgentState = .idle
     @Published var avatarExpression: AvatarExpression = .neutral
     @Published var messages: [ARESMessage] = []
     @Published var inputText = ""
     @Published var backendConnected = false
-    @Published var immersionLevel: ImmersionLevel = .light
+    @Published var immersionLevel: ImmersionLevel = .avatarTwin
     @Published var intensity: Float = 0.2
     @Published var isSpeaking: Bool = false
     @Published var cognitive: CognitiveSnapshot = .idle
-    
-    private var webSocketTask: URLSessionWebSocketTask?
-    private let sessionID = UUID().uuidString
-    private var reconnectTimer: Timer?
-    private let wsURL = URL(string: "ws://localhost:7860/ws")!
-    private let baseURL = "http://localhost:7860/api"
-    
+    @Published var identity: BrainIdentity?
+    @Published var personality: BrainPersonality?
+    @Published var faceState: BrainFaceState?
+    /// Caption text shown in CaptionOverlay — updated by chat events
+    @Published var captionText: String = ""
+    /// Scheduled task to clear captionText after idle timeout
+    private var captionClearTask: Task<Void, Never>?
+    /// Incremented on each streaming token so ChatStream can drive auto-scroll
+    @Published var streamTokenCount: Int = 0
+    /// Available models from the backend config
+    @Published var availableModels: [String] = []
+    /// Currently active model
+    @Published var currentModel: String = ""
+
+    // ── The brain adapter ──
+    private let adapter: BrainAdapter
+
+    init(adapter: BrainAdapter) {
+        self.adapter = adapter
+        setupEventHandling()
+    }
+
+    convenience init() {
+        self.init(adapter: HermesAdapter())
+    }
+
     // MARK: - Connection
-    
+
     func connect() {
-        connectWebSocket()
-        checkHealth()
+        Task {
+            await adapter.connect()
+            backendConnected = adapter.isConnected
+
+            // Fetch initial state
+            if let identity = try? await adapter.getIdentity() {
+                self.identity = identity
+            }
+            if let personality = try? await adapter.getPersonality() {
+                self.personality = personality
+            }
+            if let state = try? await adapter.getFaceState() {
+                self.faceState = state
+                self.agentState = AgentState(rawValue: state.state) ?? .idle
+            }
+            if (try? await adapter.getStatus()) != nil {
+                self.backendConnected = true
+            }
+        }
     }
-    
+
     func disconnect() {
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
-        webSocketTask = nil
-        reconnectTimer?.invalidate()
-        reconnectTimer = nil
+        adapter.disconnect()
+        backendConnected = false
     }
-    
-    // MARK: - WebSocket
-    
-    private func connectWebSocket() {
-        let session = URLSession(configuration: .default)
-        var request = URLRequest(url: wsURL)
-        request.timeoutInterval = 5
-        
-        webSocketTask = session.webSocketTask(with: request)
-        webSocketTask?.resume()
 
-        // Start receiving messages
-        receiveMessage()
+    // MARK: - Conversation
 
-        // Request an initial cognitive snapshot so the heartbeat panel
-        // populates immediately, before the first phase transition fires.
-        sendWSMessage(["action": "get_cognitive_snapshot"])
-    }
-    
-    private func receiveMessage() {
-        webSocketTask?.receive { [weak self] result in
-            Task { @MainActor in
-                guard let self else { return }
-                
-                switch result {
-                case .success(let message):
-                    self.handleMessage(message)
-                    self.receiveMessage()  // Continue receiving
-                case .failure(let error):
-                    print("WebSocket receive error: \(error.localizedDescription)")
-                    self.backendConnected = false
-                    self.scheduleReconnect()
-                }
-            }
-        }
-    }
-    
-    private func handleMessage(_ message: URLSessionWebSocketTask.Message) {
-        switch message {
-        case .string(let text):
-            parseMessage(text)
-        case .data(let data):
-            if let text = String(data: data, encoding: .utf8) {
-                parseMessage(text)
-            }
-        @unknown default:
-            break
-        }
-    }
-    
-    private func parseMessage(_ text: String) {
-        guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String else {
-            return
-        }
-        
-        switch type {
-        case "face_state":
-            if let state = json["state"] as? String {
-                agentState = AgentState(rawValue: state) ?? .idle
-            }
-            if let emotion = json["emotion"] as? String {
-                avatarExpression = AvatarExpression(rawValue: emotion) ?? .neutral
-            }
-            if let newIntensity = json["intensity"] as? Double {
-                intensity = Float(newIntensity)
-            }
-            // Update config-based intensity
-            let config = FaceConfig.config(for: agentState)
-            if intensity == 0 { intensity = config.intensity }
-            isSpeaking = agentState == .speaking
-            
-        case "chat_response":
-            if let responseText = json["text"] as? String {
-                messages.append(ARESMessage(text: responseText, isUser: false))
-            }
-            
-        case "personality_update":
-            // Handle personality updates if needed
-            break
-            
-        case "pong":
-            break
-
-        case "cognitive_snapshot":
-            if let snapshot = try? JSONDecoder().decode(CognitiveSnapshot.self, from: data) {
-                cognitive = snapshot
-            }
-
-        default:
-            break
-        }
-    }
-    
-    private func sendWSMessage(_ dict: [String: Any]) {
-        guard let json = try? JSONSerialization.data(withJSONObject: dict),
-              let text = String(data: json, encoding: .utf8) else { return }
-        webSocketTask?.send(.string(text)) { error in
-            if let error = error {
-                print("WebSocket send error: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    // MARK: - Reconnection
-    
-    private func scheduleReconnect() {
-        reconnectTimer?.invalidate()
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.connectWebSocket()
-            }
-        }
-    }
-    
-    // MARK: - REST API
-    
-    func checkHealth() {
-        guard let url = URL(string: "\(baseURL)/status") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] _, response, _ in
-            Task { @MainActor in
-                self?.backendConnected = (response as? HTTPURLResponse)?.statusCode == 200
-            }
-        }.resume()
-    }
-    
-    // MARK: - Public Methods
-    
     func sendMessage(_ text: String) {
         guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         let clean = text.trimmingCharacters(in: .whitespaces)
@@ -168,67 +82,162 @@ class BrainConnection: ObservableObject {
         inputText = ""
         agentState = .thinking
         avatarExpression = .thinking
-        intensity = FaceConfig.config(for: .thinking).intensity
-        
-        // Try WebSocket first
-        if webSocketTask != nil {
-            sendWSMessage([
-                "type": "chat",
-                "text": clean,
-                "session_id": sessionID
-            ])
-        } else {
-            // Fallback to REST
-            sendRESTChat(clean)
+        intensity = 0.6
+
+        Task {
+            let stream = try await adapter.send(message: clean)
+            for await event in stream {
+                handleBrainEvent(event)
+            }
         }
     }
-    
-    private func sendRESTChat(_ text: String) {
-        guard let url = URL(string: "\(baseURL)/chat") else { return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["text": text, "session_id": sessionID]
-        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
-        request.httpBody = data
-        
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            Task { @MainActor in
-                guard let self else { return }
-                if let error = error {
-                    print("REST chat error: \(error.localizedDescription)")
-                    // Provide graceful fallback
-                    self.messages.append(ARESMessage(
-                        text: "I'm currently offline. My deeper reasoning loop is still coming online.",
-                        isUser: false
-                    ))
-                    self.agentState = .idle
-                    return
-                }
-                
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    return
-                }
-                
-                if let responseText = json["response"] as? String {
-                    self.messages.append(ARESMessage(text: responseText, isUser: false))
-                }
-                if let state = json["state"] as? String {
-                    self.agentState = AgentState(rawValue: state) ?? .idle
-                }
-                if let expression = json["expression"] as? String {
-                    self.avatarExpression = AvatarExpression(rawValue: expression) ?? .neutral
-                }
-                self.intensity = FaceConfig.config(for: self.agentState).intensity
-                self.backendConnected = true
-            }
-        }.resume()
+
+    // MARK: - Personality
+
+    func refreshPersonality() async {
+        if let p = try? await adapter.getPersonality() {
+            self.personality = p
+        }
     }
-    
+
+    func setPersonality(layer: String, trait: String, value: Double) {
+        Task {
+            try await adapter.setPersonality(layer: layer, trait: trait, value: value)
+            if let updated = try? await adapter.getPersonality() {
+                self.personality = updated
+            }
+        }
+    }
+
+    // MARK: - Face
+
+    func setEmotion(_ emotion: String) {
+        Task {
+            try await adapter.setEmotion(emotion: emotion)
+            if let updated = try? await adapter.getFaceState() {
+                self.faceState = updated
+            }
+        }
+    }
+
+    func setFaceState(_ state: String) {
+        Task {
+            try await adapter.setFaceState(state: state)
+            if let updated = try? await adapter.getFaceState() {
+                self.faceState = updated
+            }
+        }
+    }
+
+    // MARK: - Mode
+
     func cycleImmersion() {
-        let all = ImmersionLevel.allCases
-        let idx = all.firstIndex(of: immersionLevel)!
-        immersionLevel = all[(idx + 1) % all.count]
+        immersionLevel = immersionLevel == .manual ? .avatarTwin : .manual
+    }
+
+    var isManualMode: Bool { immersionLevel == .manual }
+    var isAvatarTwinMode: Bool { immersionLevel == .avatarTwin }
+    var shouldAutoScroll: Bool { isAvatarTwinMode }
+
+    // MARK: - Event Handling
+
+    private func setupEventHandling() {
+        adapter.onEvent = { [weak self] event in
+            Task { @MainActor in
+                self?.handleBrainEvent(event)
+            }
+        }
+    }
+
+    /// Cancel any pending clear, then clear captionText after `seconds`
+    private func scheduleCaptionClear(after seconds: TimeInterval = 5) {
+        captionClearTask?.cancel()
+        captionClearTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.captionText = ""
+        }
+    }
+
+    private func handleBrainEvent(_ event: BrainEvent) {
+        switch event {
+        case .faceState(let state, let emotion, let newIntensity, let speaking):
+            agentState = AgentState(rawValue: state) ?? .idle
+            avatarExpression = AvatarExpression(rawValue: emotion) ?? .neutral
+            intensity = newIntensity
+            isSpeaking = speaking
+
+            // Show status caption based on state
+            switch agentState {
+            case .listening:
+                captionText = "Listening..."
+            case .thinking:
+                captionText = "Thinking..."
+            case .speaking:
+                // Don't overwrite caption text if we already have content
+                if captionText.isEmpty || captionText == "Listening..." || captionText == "Thinking..." {
+                    captionText = "Speaking..."
+                }
+            case .idle, .awakened, .sleeping:
+                // Clear status captions after 3s of idle
+                if captionText == "Listening..." || captionText == "Thinking..." || captionText == "Speaking..." {
+                    scheduleCaptionClear(after: 3)
+                }
+            }
+
+        case .chatResponse(let text):
+            // Streaming is complete — the text was already accumulated
+            // token-by-token via .chatStream events. Just set final caption
+            // and schedule auto-clear.
+            captionText = text
+            agentState = .idle
+            avatarExpression = .neutral
+            intensity = 0.2
+            scheduleCaptionClear(after: 5)
+
+        case .chatStream(let token):
+            // Append token to the last assistant message (or create one)
+            if messages.last?.isUser == false, var last = messages.last {
+                last.text += token
+                messages[messages.count - 1] = last
+            } else {
+                messages.append(ARESMessage(text: token, isUser: false))
+            }
+            streamTokenCount += 1
+
+            // Accumulate caption text token by token for real-time display
+            captionText += token
+            // Cancel any pending clear — we're still streaming
+            captionClearTask?.cancel()
+
+        case .personalityChange(let layer, let trait, let value):
+            // Update local personality dict without refetching
+            if var p = personality {
+                switch layer {
+                case "hexaco": p.hexaco[trait] = value
+                case "special": p.special[trait] = value
+                case "expression": p.expression[trait] = value
+                case "domains": p.domains[trait] = value
+                default: break
+                }
+                personality = p
+            }
+
+        case .cognitiveSnapshot(let snapshot):
+            cognitive = snapshot
+
+        case .connected:
+            backendConnected = true
+            // Auto-refresh personality state on (re)connect
+            Task { [weak self] in
+                await self?.refreshPersonality()
+            }
+
+        case .disconnected:
+            backendConnected = false
+
+        case .error(let message):
+            print("[BrainConnection] Error: \(message)")
+        }
     }
 }

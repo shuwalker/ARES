@@ -28,6 +28,8 @@ import numpy as np
 import pyaudio
 from mcp.server.fastmcp import FastMCP
 
+import sys
+
 logger = logging.getLogger("ares.voice")
 
 server = FastMCP(
@@ -39,7 +41,7 @@ server = FastMCP(
 
 # ═══ Paths ══════════════════════════════════════════════════════════════════
 
-VENV = "/Users/matthewjenkins/.hermes/hermes-agent/venv/bin"
+VENV = Path(sys.executable).parent
 WHISPER_CLI = "/opt/homebrew/bin/whisper-cli"
 WHISPER_MODEL_PATH = os.path.expanduser("~/whisper-models/ggml-base.bin")
 PIPER_MODEL_PATH = os.path.expanduser("~/piper-voices/en_US-lessac-medium.onnx")

@@ -36,10 +36,10 @@ struct FaceConfig: Codable {
     static let configs: [AgentState: FaceConfig] = [
         .idle: FaceConfig(
             state: .idle,
-            color: ColorRGB(r: 0.10, g: 0.05, b: 0.25),
-            opacity: 0.20,
-            pulseSpeed: 0.5,
-            pulseAmount: 0.05,
+            color: ColorRGB(r: 0.15, g: 0.05, b: 0.35),
+            opacity: 0.35,
+            pulseSpeed: 0.8,
+            pulseAmount: 0.08,
             pupilOffset: Offset2D(x: 0, y: 0)
         ),
         .awakened: FaceConfig(

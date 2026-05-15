@@ -26,8 +26,21 @@ from pathlib import Path
 
 import httpx
 
-from ..config import get_config
-from ..audit import log
+# ---------------------------------------------------------------------------
+# Shared ElevenLabs client (avoids per-request client creation)
+# ---------------------------------------------------------------------------
+_elevenlabs_client: httpx.AsyncClient | None = None
+
+
+def _get_elevenlabs_client() -> httpx.AsyncClient:
+    global _elevenlabs_client
+    if _elevenlabs_client is None:
+        _elevenlabs_client = httpx.AsyncClient(timeout=120.0)
+    return _elevenlabs_client
+
+
+from ares.runtime.config import get_config
+from ares.runtime.audit import log
 from ..llm import cloud
 from ..memory import write_project, read_project
 from ..tools.n8n import N8NClient, youtube_publish_workflow, save_workflow_draft
@@ -383,14 +396,14 @@ async def stage_voice(
         "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            f"{ELEVENLABS_API_URL}/text-to-speech/{voice_id}",
-            json=payload,
-            headers=headers,
-        )
-        response.raise_for_status()
-        voice_path.write_bytes(response.content)
+    client = _get_elevenlabs_client()
+    response = await client.post(
+        f"{ELEVENLABS_API_URL}/text-to-speech/{voice_id}",
+        json=payload,
+        headers=headers,
+    )
+    response.raise_for_status()
+    voice_path.write_bytes(response.content)
 
     project.voice_path = str(voice_path)
     project.current_stage = 3

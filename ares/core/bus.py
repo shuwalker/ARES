@@ -183,8 +183,8 @@ class Channel:
         """Close the underlying socket."""
         try:
             self._socket.close(linger=0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Bus socket close error: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -398,8 +398,8 @@ class ARESBus:
                 if self._zmq_available:
                     try:
                         pub.send_message(msg)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Heartbeat publish error: %s", e)
                 self.dispatch(msg)
                 time.sleep(interval_sec)
 

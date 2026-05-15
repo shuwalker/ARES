@@ -26,6 +26,11 @@ struct GeometryCustomUniforms {
     var vertexAnimationAmplitude: Float
     var displacementScale: Float
     var normalInfluence: Float
+    // Extended uniforms for new styles
+    var cheekStripes: Float       // 0=off, 1=3-line pattern (synthMuse)
+    var rimHue: Float              // 0=cyan, 0.5=magenta, 1=gold
+    var eyeMode: Float             // 0=round, 1=slit, 2=glow, 3=hidden
+    var companionState: Float      // 0=ball, 1=revealed, 2=transformed
 }
 
 /// Creates and manages CustomMaterial for the avatar, including uniform updates and style switching.
@@ -155,12 +160,16 @@ class AvatarRenderer {
     }
     
     /// Update geometry modifier uniforms per frame
-    func updateGeometryUniforms(material: inout CustomMaterial, speed: Float, amplitude: Float, displacementScale: Float, normalInfluence: Float, time: Float) {
+    func updateGeometryUniforms(material: inout CustomMaterial, speed: Float, amplitude: Float, displacementScale: Float, normalInfluence: Float, time: Float, cheekStripes: Float = 0.0, rimHue: Float = 0.0, eyeMode: Float = 0.0, companionState: Float = 0.0) {
         material.withMutableUniforms(ofType: GeometryCustomUniforms.self, stage: .geometryModifier) { params, _ in
             params.vertexAnimationSpeed = speed
             params.vertexAnimationAmplitude = amplitude
             params.displacementScale = displacementScale
             params.normalInfluence = normalInfluence
+            params.cheekStripes = cheekStripes
+            params.rimHue = rimHue
+            params.eyeMode = eyeMode
+            params.companionState = companionState
         }
     }
     
@@ -178,6 +187,22 @@ class AvatarRenderer {
         case .thinking:  return (2.0, 0.02, 1.5, 1.0)
         case .speaking:  return (3.0, 0.025, 1.3, 0.9)
         case .sleeping:  return (0.3, 0.002, 0.8, 0.5)
+        }
+    }
+    
+    /// Compute extended geometry uniforms based on style-specific parameters
+    func extendedGeometryParams(for style: AvatarStyle, expression: Float) -> (cheekStripes: Float, rimHue: Float, eyeMode: Float, companionState: Float) {
+        switch style {
+        case .synthMuse:
+            return (cheekStripes: 1.0, rimHue: 0.0, eyeMode: 1.0, companionState: 0.0)  // slit eyes, cyan rim, stripes on
+        case .warriorSage:
+            return (cheekStripes: 0.0, rimHue: 1.0, eyeMode: 0.0, companionState: 0.0)  // round golden eyes, gold rim
+        case .companion:
+            return (cheekStripes: 0.0, rimHue: 0.0, eyeMode: 2.0, companionState: 0.0)   // glowing eye, ball state
+        case .mysticVoid:
+            return (cheekStripes: 0.0, rimHue: 0.25, eyeMode: 3.0, companionState: 0.0)   // hidden eyes, magenta rim
+        default:
+            return (cheekStripes: 0.0, rimHue: 0.0, eyeMode: 0.0, companionState: 0.0)    // default: round eyes, no stripes
         }
     }
 }

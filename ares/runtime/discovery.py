@@ -13,8 +13,8 @@ import tomli_w
 from typing import Any
 
 from .config import ares_paths, write_default_config
-from .memory import write_preference, append_preference_note
-from .tools.registry import ensure_builtin_tools
+from ares.memory import write_preference, append_preference_note
+from ares.tools.registry import ensure_builtin_tools
 
 # ---------------------------------------------------------------------------
 # Domain discovery questions
@@ -168,7 +168,7 @@ This takes about 2 minutes.
 
     # Check what tools are already installed
     print("\n── Checking installed tools ────────────────────────────────")
-    from .tools.registry import probe_all_tools
+    from ares.tools.registry import probe_all_tools
 
     tool_status = probe_all_tools()
 

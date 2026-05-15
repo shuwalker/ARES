@@ -16,8 +16,8 @@ from typing import Any
 
 import httpx
 
-from ..config import get_config, ares_paths
-from ..audit import log
+from ares.runtime.config import get_config, ares_paths
+from ares.runtime.audit import log
 
 # ---------------------------------------------------------------------------
 # Client
@@ -32,88 +32,129 @@ class N8NClient:
         self._headers = {}
         if self.api_key:
             self._headers["X-N8N-API-KEY"] = self.api_key
+        self._client: httpx.AsyncClient | None = None
+
+    async def start(self) -> None:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=30.0)
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def __aenter__(self) -> N8NClient:
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
 
     async def is_running(self) -> bool:
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/api/v1/workflows",
-                    headers=self._headers,
-                )
-                return response.status_code in (200, 401)  # 401 = running but needs key
+            response = await self._client.get(
+                f"{self.base_url}/api/v1/workflows",
+                headers=self._headers,
+                timeout=5.0,
+            )
+            return response.status_code in (200, 401)  # 401 = running but needs key
         except Exception:
             return False
 
     async def list_workflows(self) -> list[dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{self.base_url}/api/v1/workflows",
-                headers=self._headers,
-            )
-            response.raise_for_status()
-            return response.json().get("data", [])
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        response = await self._client.get(
+            f"{self.base_url}/api/v1/workflows",
+            headers=self._headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        return response.json().get("data", [])
 
     async def get_workflow(self, workflow_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{self.base_url}/api/v1/workflows/{workflow_id}",
-                headers=self._headers,
-            )
-            response.raise_for_status()
-            return response.json()
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        response = await self._client.get(
+            f"{self.base_url}/api/v1/workflows/{workflow_id}",
+            headers=self._headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def create_workflow(self, workflow: dict[str, Any]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{self.base_url}/api/v1/workflows",
-                json=workflow,
-                headers={**self._headers, "Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            result = response.json()
-            await log(action="n8n_workflow_created", id=result.get("id"), name=result.get("name"))
-            return result
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        response = await self._client.post(
+            f"{self.base_url}/api/v1/workflows",
+            json=workflow,
+            headers={**self._headers, "Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        result = response.json()
+        await log(action="n8n_workflow_created", id=result.get("id"), name=result.get("name"))
+        return result
 
     async def activate_workflow(self, workflow_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.patch(
-                f"{self.base_url}/api/v1/workflows/{workflow_id}",
-                json={"active": True},
-                headers={**self._headers, "Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            await log(action="n8n_workflow_activated", id=workflow_id)
-            return response.json()
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        response = await self._client.patch(
+            f"{self.base_url}/api/v1/workflows/{workflow_id}",
+            json={"active": True},
+            headers={**self._headers, "Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        await log(action="n8n_workflow_activated", id=workflow_id)
+        return response.json()
 
     async def deactivate_workflow(self, workflow_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.patch(
-                f"{self.base_url}/api/v1/workflows/{workflow_id}",
-                json={"active": False},
-                headers={**self._headers, "Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            return response.json()
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        response = await self._client.patch(
+            f"{self.base_url}/api/v1/workflows/{workflow_id}",
+            json={"active": False},
+            headers={**self._headers, "Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def execute_workflow(self, workflow_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         """Trigger a workflow via webhook or manual execution."""
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.base_url}/api/v1/workflows/{workflow_id}/run",
-                json={"workflowData": data or {}},
-                headers={**self._headers, "Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            await log(action="n8n_workflow_executed", id=workflow_id)
-            return response.json()
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        response = await self._client.post(
+            f"{self.base_url}/api/v1/workflows/{workflow_id}/run",
+            json={"workflowData": data or {}},
+            headers={**self._headers, "Content-Type": "application/json"},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        await log(action="n8n_workflow_executed", id=workflow_id)
+        return response.json()
 
     async def delete_workflow(self, workflow_id: str) -> None:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.delete(
-                f"{self.base_url}/api/v1/workflows/{workflow_id}",
-                headers=self._headers,
-            )
-            response.raise_for_status()
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        response = await self._client.delete(
+            f"{self.base_url}/api/v1/workflows/{workflow_id}",
+            headers=self._headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +335,7 @@ async def ensure_n8n_workflow(
 
     client = N8NClient()
     if not await client.is_running():
-        raise RuntimeError(f"n8n is not running at {client.base_url}. " "Start it with: n8n start")
+        raise RuntimeError(f"n8n is not running at {client.base_url}. Start it with: n8n start")
 
     # Check if workflow already exists
     existing = await client.list_workflows()

@@ -8,8 +8,18 @@ from __future__ import annotations
 import httpx
 from typing import Any
 
-from ..config import get_config
-from ..audit import log
+from ares.runtime.config import get_config
+from ares.runtime.audit import log
+
+# Shared async client — avoids per-request TCP overhead
+_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient()
+    return _client
 
 
 async def complete(
@@ -41,22 +51,23 @@ async def complete(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{base_url}/chat/completions",
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            text = data["choices"][0]["message"]["content"]
+        client = _get_client()
+        response = await client.post(
+            f"{base_url}/chat/completions",
+            json=payload,
+            timeout=120.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        text = data["choices"][0]["message"]["content"]
 
-            await log(
-                task_id=task_id,
-                action="llm_response",
-                backend="local",
-                tokens=data.get("usage", {}).get("completion_tokens", 0),
-            )
-            return text
+        await log(
+            task_id=task_id,
+            action="llm_response",
+            backend="local",
+            tokens=data.get("usage", {}).get("completion_tokens", 0),
+        )
+        return text
 
     except (httpx.ConnectError, httpx.TimeoutException) as e:
         await log(
@@ -66,7 +77,7 @@ async def complete(
             error=str(e),
         )
         raise RuntimeError(
-            f"LM Studio not reachable at {base_url}. " "Is LM Studio running with a model loaded?"
+            f"LM Studio not reachable at {base_url}. Is LM Studio running with a model loaded?"
         ) from e
 
 
@@ -75,8 +86,8 @@ async def is_available() -> bool:
     cfg = get_config()
     base_url = cfg.llm.local_url
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{base_url}/models")
-            return response.status_code == 200
+        client = _get_client()
+        response = await client.get(f"{base_url}/models", timeout=5.0)
+        return response.status_code == 200
     except Exception:
         return False

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ares.memory_store import (
+from ares.core.memory_store import (
     DeterministicEmbedder,
     InMemoryVectorStore,
     MemoryStore,

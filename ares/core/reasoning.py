@@ -12,10 +12,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .llm import cloud, local
-from .llm.router import route, LLMBackend
-from .audit import log
-from .thought_dag import ThoughtCheckpoint, get_dag, new_thought_id
+from ares.llm import cloud, local
+from ares.llm.router import route, LLMBackend
+from ares.runtime.audit import log
+from ares.core.thought_dag import ThoughtCheckpoint, get_dag, new_thought_id
 
 # ---------------------------------------------------------------------------
 # The Contractor Test system prompt

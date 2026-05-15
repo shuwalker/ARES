@@ -8,8 +8,8 @@ from __future__ import annotations
 import anthropic
 from typing import Any
 
-from ..config import get_config
-from ..audit import log
+from ares.runtime.config import get_config
+from ares.runtime.audit import log
 
 # ---------------------------------------------------------------------------
 # Client singleton

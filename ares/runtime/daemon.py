@@ -25,19 +25,32 @@ import httpx
 
 from .audit import log, log_sync
 from .config import ares_paths, write_default_config
-from .core.bus import ARESBus, BusMessage, get_bus
-from .core.face_state import FaceState, get_face_config
-from .core.memory import open_default as _open_memory_db
-from .memory import write_retrospective
-from .reasoning import reason, format_proposal, Plan, PlanStage
-from .runtime.ares_bridge_minimal import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
+from ares.core.bus import ARESBus, BusMessage, get_bus
+from ares.core.face_state import FaceState, get_face_config
+from ares.core.memory import open_default as _open_memory_db
+from ares.memory import write_retrospective
+from ares.core.reasoning import reason, format_proposal, Plan, PlanStage
+from ares.runtime.ares_bridge_minimal import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
 from .sync import flush
-from .tasks import approvals
-from .tasks.queue import Inbox, Task, get_next_ready, update_task, archive_task
-from .tasks.executor import PlanExecutor
-from .tools.registry import ensure_builtin_tools
+from ares.tasks import approvals
+from ares.tasks.queue import Inbox, Task, get_next_ready, update_task, archive_task
+from ares.tasks.executor import PlanExecutor
+from ares.tools.registry import ensure_builtin_tools
 
 logger = logging.getLogger("ares.daemon")
+
+
+# ---------------------------------------------------------------------------
+# Shared httpx client for bridge health checks
+# ---------------------------------------------------------------------------
+_bridge_client: httpx.AsyncClient | None = None
+
+
+def _get_bridge_client() -> httpx.AsyncClient:
+    global _bridge_client
+    if _bridge_client is None:
+        _bridge_client = httpx.AsyncClient(timeout=3.0)
+    return _bridge_client
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +289,7 @@ class Daemon:
         return cfg.default_action == "approve"
 
     def get_status(self) -> dict[str, Any]:
-        from .tasks.queue import list_active
+        from ares.tasks.queue import list_active
 
         active = list_active()
         return {
@@ -298,7 +311,7 @@ class Daemon:
         we run it in a daemon thread that dies with the process.  Callers should
         invoke _check_bridge_health() after this to confirm it's serving.
         """
-        from .runtime.ares_bridge_minimal import serve as bridge_serve
+        from ares.runtime.ares_bridge_minimal import serve as bridge_serve
 
         def _run() -> None:
             try:
@@ -327,18 +340,22 @@ class Daemon:
         url = f"http://{BRIDGE_HOST}:{BRIDGE_PORT}/health"
         for attempt in range(1, self.BRIDGE_HEALTH_RETRIES + 1):
             try:
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    resp = await client.get(url)
-                    if resp.status_code == 200:
-                        self.bridge_available = True
-                        logger.info(
-                            "Hermes bridge health check passed (attempt %d/%d)",
-                            attempt,
-                            self.BRIDGE_HEALTH_RETRIES,
-                        )
-                        return True
+                client = _get_bridge_client()
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    self.bridge_available = True
+                    logger.info(
+                        "Hermes bridge health check passed (attempt %d/%d)",
+                        attempt,
+                        self.BRIDGE_HEALTH_RETRIES,
+                    )
+                    return True
             except (httpx.ConnectError, httpx.TimeoutException):
-                pass  # expected during startup — server not yet accepting
+                logger.debug(
+                    "Bridge health check attempt %d/%d connection error — server not yet accepting",
+                    attempt,
+                    self.BRIDGE_HEALTH_RETRIES,
+                )
 
             logger.debug(
                 "Bridge health check attempt %d/%d failed — retrying in %.1fs",
@@ -495,8 +512,8 @@ class Daemon:
                         source="daemon",
                         importance=0.7,  # successful task outcomes outrank generic facts
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("Memory write failed during task outcome persistence: %s", str(exc)[:200])
 
             await log(task_id=task.id, action="task_done", result=result[:100])
 
@@ -522,8 +539,8 @@ class Daemon:
             if mem is not None:
                 try:
                     mem.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Memory close error: %s", exc)
             # Phase: anything → idle (ready for the next task)
             await self._log_phase("idle", task_id=task.id)
             archive_task(task)

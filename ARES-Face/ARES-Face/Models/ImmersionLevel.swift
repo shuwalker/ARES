@@ -1,31 +1,47 @@
 import Foundation
 
+/// Two-position immersion slider controlling how the human relates to ARES.
+///
+/// **Manual** — ARES is a tool. The human drives; ARES responds.
+///   Traditional software/CLI/framework pattern. Sidebar, terminal, sessions,
+///   skill inspector — full operator dashboard.
+///
+/// **Avatar Twin** — ARES is a person. Autonomous, persistent, socially present.
+///   The face fills the screen. Voice-first interaction. Minimal UI chrome.
+///   The human talks; ARES acts.
 enum ImmersionLevel: String, CaseIterable, Codable {
-    case light
-    case medium
-    case full
-    
+    case manual
+    case avatarTwin
+
     var label: String {
         switch self {
-        case .light:  return "Desktop"
-        case .medium: return "Window"
-        case .full:   return "Room"
+        case .manual:     return "Manual"
+        case .avatarTwin:  return "Avatar Twin"
         }
     }
-    
+
     var icon: String {
         switch self {
-        case .light:  return "square.stack.3d.up"
-        case .medium: return "rectangle.center.inset.filled"
-        case .full:   return "cube.transparent"
+        case .manual:     return "terminal"
+        case .avatarTwin:  return "person.crop.circle"
         }
     }
-    
+
     var description: String {
         switch self {
-        case .light:  return "Sits on top of desktop"
-        case .medium: return "Focused agent window"
-        case .full:   return "Enter the agent's room"
+        case .manual:     return "AI as tool — you drive, ARES responds"
+        case .avatarTwin:  return "AI as person — autonomous, persistent, socially present"
         }
+    }
+
+    /// In manual mode, the operator dashboard (sidebar, tools) is visible.
+    /// In avatar twin mode, only the face and voice remain.
+    var showsOperatorDashboard: Bool {
+        self == .manual
+    }
+
+    /// Avatar twin mode uses the full-screen face and prioritizes voice.
+    var isFullScreen: Bool {
+        self == .avatarTwin
     }
 }

@@ -27,4 +27,18 @@ enum AvatarExpression: String, CaseIterable, Codable {
     var displayName: String {
         rawValue.capitalized
     }
+
+    /// SF Symbol for the configurator expression pills
+    var icon: String {
+        switch self {
+        case .neutral:   return "face.dashed"
+        case .happy:     return "face.smiling"
+        case .curious:   return "eye"
+        case .thinking:  return "brain"
+        case .surprised: return "exclamationmark.face"
+        case .concerned: return "face.cloudish"
+        case .excited:   return "star"
+        case .sleepy:    return "moon.zzz"
+        }
+    }
 }

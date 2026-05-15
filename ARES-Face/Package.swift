@@ -15,7 +15,11 @@ let package = Package(
         .executable(
             name: "ARES-Face",
             targets: ["ARES-Face"]
-        )
+        ),
+        .executable(
+            name: "metal-diagnostics",
+            targets: ["metal-diagnostics"]
+        ),
     ],
     targets: [
         .executableTarget(
@@ -24,6 +28,14 @@ let package = Package(
             resources: [
                 .process("Shaders")
             ]
-        )
+        ),
+        .executableTarget(
+            name: "metal-diagnostics",
+            dependencies: [],
+            path: "Diagnostics",
+            resources: [
+                .process("Shaders")
+            ]
+        ),
     ]
 )

@@ -121,8 +121,8 @@ def cleanup_previous_instance(home: Optional[Path] = None) -> dict:
                 try:
                     os.kill(old_pid, 0)  # Check if alive
                     os.kill(old_pid, signal.SIGKILL)
-                except OSError:
-                    pass
+                except OSError as e:
+                    logger.debug("SIGKILL failed for PID %d: %s", old_pid, e)
                 logger.info("Killed stale ARES process: PID %d", old_pid)
             pid_file.unlink(missing_ok=True)
         except (ValueError, OSError) as e:
@@ -140,8 +140,8 @@ def cleanup_previous_instance(home: Optional[Path] = None) -> dict:
                 if _is_ares_process(pid):
                     os.kill(pid, signal.SIGTERM)
                     results["pgrep"].append(pid)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("pgrep sweep failed: %s", e)
 
     # Layer 3: Port sweep (for ARES ports only)
     for port in [7860, 9876]:  # API and cognition bridge
@@ -156,8 +156,8 @@ def cleanup_previous_instance(home: Optional[Path] = None) -> dict:
                     if _is_ares_process(pid):
                         os.kill(pid, signal.SIGTERM)
                         results["ports"].append((port, pid))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Port sweep failed for :%d: %s", port, e)
 
     return results
 
@@ -174,7 +174,8 @@ def _is_ares_process(pid: int) -> bool:
                 capture_output=True, text=True, timeout=3,
             )
             cmdline = result.stdout.strip()
-        except Exception:
+        except Exception as exc:
+            logger.debug("_is_ares_process check failed for PID %d: %s", pid, exc)
             return False
 
     return "ares" in cmdline.lower() or "python" in cmdline.lower()

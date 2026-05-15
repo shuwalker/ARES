@@ -147,14 +147,14 @@ struct MissionControlPanel: View {
 
 // MARK: - Verlet force-directed simulation
 
-private struct GraphBody: Identifiable {
+struct GraphBody: Identifiable {
     let id: String
     let label: String
     var position: CGPoint
     var previous: CGPoint
 }
 
-private struct GraphEdge {
+struct GraphEdge {
     let from: String
     let to: String
 }

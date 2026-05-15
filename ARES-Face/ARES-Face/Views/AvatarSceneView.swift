@@ -5,7 +5,7 @@ import Metal
 struct AvatarSceneView: View {
     @EnvironmentObject var brain: BrainConnection
     @Binding var style: AvatarStyle
-    @State private var avatarEntity: ModelEntity?
+    @State private var avatarEntity: Entity?
     @State private var renderer: AvatarRenderer?
     @State private var currentMaterial: CustomMaterial?
     
@@ -14,11 +14,11 @@ struct AvatarSceneView: View {
             let renderer = AvatarRenderer()
             self.renderer = renderer
             
-            let entity: ModelEntity
+            let entity: Entity
             if let avatar = AvatarEntity.create(style: style, renderer: renderer) {
                 entity = avatar
                 self.avatarEntity = entity
-                self.currentMaterial = entity.model?.materials.first as? CustomMaterial
+                self.currentMaterial = (entity as? ModelEntity)?.model?.materials.first as? CustomMaterial
                 content.add(entity)
             } else {
                 print("WARNING: CustomMaterial creation failed for \(style.displayName). Using fallback SimpleMaterial.")
@@ -42,8 +42,8 @@ struct AvatarSceneView: View {
         )
     }
     
-    private func createFallbackEntity() -> ModelEntity {
-        let mesh = MeshResource.generateSphere(radius: 0.15)
+    private func createFallbackEntity() -> Entity {
+        let mesh = MeshResource.generateSphere(radius: 0.5)
         let material = SimpleMaterial(
             color: .systemPurple,
             isMetallic: false
@@ -55,18 +55,18 @@ struct AvatarSceneView: View {
     
     private func updateAvatarUniforms() {
         guard var material = currentMaterial else { return }
-
+        
         let stateConfig = FaceConfig.config(for: brain.agentState)
         let intensity = stateConfig.intensity
         let expression = brain.avatarExpression.floatValue
         let isSpeaking: Float = brain.agentState == .speaking ? 1.0 : 0.0
         let time = renderer?.elapsedTime ?? 0
-
+        
         // Bind cognition metrics to the cognitive uniform slots. Pure
         // function — change the binding rules in CognitiveBindings.swift
         // without touching this site.
         let cognition = CognitiveBindings.evaluate(brain.cognitive, time: time)
-
+        
         renderer?.updateSurfaceUniforms(
             material: &material,
             intensity: intensity,
@@ -88,7 +88,7 @@ struct AvatarSceneView: View {
         }
         
         // Apply updated material back to entity
-        avatarEntity?.model?.materials = [material]
+        (avatarEntity as? ModelEntity)?.model?.materials = [material]
         currentMaterial = material
     }
     
@@ -108,7 +108,7 @@ struct AvatarSceneView: View {
                     avatarEntity = newEntity
                 }
             }
-            avatarEntity?.model?.materials = [material]
+            (avatarEntity as? ModelEntity)?.model?.materials = [material]
         } else {
             print("WARNING: Could not create material for \(style.displayName) during style switch. Entity unchanged.")
         }

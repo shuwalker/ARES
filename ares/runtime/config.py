@@ -13,7 +13,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("ares.runtime.config")
 
@@ -21,6 +21,59 @@ logger = logging.getLogger("ares.runtime.config")
 def _get_ares_home() -> Path:
     """Resolve ARES_HOME from env or default."""
     return Path(os.environ.get("ARES_HOME", Path.home() / ".ares"))
+
+
+def ares_home() -> Path:
+    """Return ~/.ares, creating it if needed."""
+    base = _get_ares_home()
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def ares_paths() -> dict[str, Path]:
+    """Return a dict of standard ARES directory paths."""
+    home = ares_home()
+    paths = {
+        "home": home,
+        "config": home / "config",
+        "memory": home / "memory",
+        "memory_episodic": home / "memory" / "episodic",
+        "memory_preferences": home / "memory" / "preferences",
+        "memory_tools": home / "memory" / "tools",
+        "memory_knowledge": home / "memory" / "knowledge",
+        "memory_projects": home / "memory" / "projects",
+        "tasks": home / "tasks",
+        "approvals": home / "approvals",
+        "n8n_workflows": home / "n8n-workflows",
+        "logs": home / "logs",
+        "cache": home / "cache",
+        "socket": home / "ares.sock",
+    }
+    for key, path in paths.items():
+        if key != "socket":
+            path.mkdir(parents=True, exist_ok=True)
+    return paths
+
+
+_CONFIG_PATH: Optional[Path] = None
+_CONFIG: Optional["AresConfig"] = None
+
+
+def config_path() -> Path:
+    """Return the path to ares.toml."""
+    global _CONFIG_PATH
+    if _CONFIG_PATH is None:
+        paths = ares_paths()
+        _CONFIG_PATH = paths["config"] / "ares.toml"
+    return _CONFIG_PATH
+
+
+def get_config() -> "AresConfig":
+    """Return the cached AresConfig, loading it on first call."""
+    global _CONFIG
+    if _CONFIG is None:
+        _CONFIG = load_config()
+    return _CONFIG
 
 
 def _env_bool(key: str, default: bool = False) -> bool:
@@ -193,3 +246,32 @@ def _apply_toml(config: AresConfig, path: Path) -> None:
         config.gateway_host = gateway["host"]
     if "port" in gateway:
         config.gateway_port = int(gateway["port"])
+
+
+def write_default_config() -> Path:
+    """Write a default config file if none exists."""
+    try:
+        import tomli_w
+    except ImportError:
+        logger.warning("tomli_w not installed — skipping default config write")
+        return config_path()
+
+    path = config_path()
+    if path.exists():
+        return path
+
+    data = {
+        "agent": {
+            "backend": "hermes",
+            "hermes": {"api_url": "http://localhost:8321", "api_key": ""},
+            "lilith": {"zmq_host": "127.0.0.1", "input_port": 5571, "output_port": 5572},
+            "local": {"model": "gemma3:12b", "ollama_url": "http://localhost:11434"},
+        },
+        "face": {"default_style": "blackfire", "intensity": 0.60},
+        "gateway": {"host": "127.0.0.1", "port": 7860},
+    }
+
+    with open(path, "wb") as fh:
+        tomli_w.dump(data, fh)
+
+    return path

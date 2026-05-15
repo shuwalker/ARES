@@ -331,5 +331,5 @@ def get_nas_paths() -> dict:
 
 def open_default() -> Memory:
     """Open the default ARES memory store at ~/.ares/memory.db (opened, caller closes)."""
-    from ..config import ares_home
+    from ares.runtime.config import ares_home
     return Memory(ares_home() / "memory.db").open()

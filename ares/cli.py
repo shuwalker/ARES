@@ -28,8 +28,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 
-from .config import ares_paths, get_config, write_default_config
-from .audit import tail_log, log_sync
+from ares.runtime.config import ares_paths, get_config, write_default_config
+from ares.runtime.audit import tail_log, log_sync
 from .memory import list_episodic, read_preferences, list_knowledge, list_projects
 from .tools.registry import load_registry, probe_all_tools, register_tool, ToolEntry
 
@@ -129,7 +129,7 @@ def start(daemon: bool, register_launchd: bool) -> None:
 
     if daemon:
         # Actually run the daemon loop
-        from .daemon import start_daemon
+        from ares.runtime.daemon import start_daemon
 
         console.print("[bold green]ARES starting...[/bold green]")
         start_daemon()
@@ -589,7 +589,7 @@ def memory_path() -> None:
 @main.command()
 def setup() -> None:
     """First-time setup — discovery conversation + config."""
-    from .discovery import run_discovery
+    from ares.runtime.discovery import run_discovery
 
     asyncio.run(run_discovery())
 
@@ -807,7 +807,7 @@ def mcp(verbose: bool) -> None:
     Add to your claude_desktop_config.json:
         {"mcpServers": {"ares": {"command": "ares", "args": ["mcp"]}}}
     """
-    from .mcp_serve import run_mcp_server
+    from ares.runtime.mcp_serve import run_mcp_server
 
     run_mcp_server(verbose=verbose)
 

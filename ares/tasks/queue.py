@@ -14,8 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..config import ares_paths
-from ..audit import log
+from ares.runtime.config import ares_paths
+from ares.runtime.audit import log
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from ..audit import log
-from ..reasoning import PlanStage
+from ares.runtime.audit import log
+from ares.core.reasoning import PlanStage
 from ..tasks.queue import Task
 from . import registry
 

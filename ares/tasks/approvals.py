@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ..config import ares_paths
+from ares.runtime.config import ares_paths
 
 
 def _dir() -> Path:

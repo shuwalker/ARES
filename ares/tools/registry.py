@@ -24,11 +24,11 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
-from ..config import ares_paths
-from ..audit import log_sync
+from ares.runtime.config import ares_paths
+from ares.runtime.audit import log_sync
 
 if TYPE_CHECKING:
-    from ..reasoning import Plan, PlanStage
+    from ares.core.reasoning import Plan, PlanStage
     from ..tasks.queue import Task
 
 

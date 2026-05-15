@@ -11,8 +11,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
-from ..audit import log
-from ..reasoning import Plan, PlanStage
+from ares.runtime.audit import log
+from ares.core.reasoning import Plan, PlanStage
 from ..tools import registry
 from .queue import Task, update_task
 
