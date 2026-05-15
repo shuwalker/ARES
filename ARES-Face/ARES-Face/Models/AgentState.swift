@@ -22,4 +22,8 @@ enum AgentState: String, CaseIterable, Codable {
         case .sleeping:  return "gray"
         }
     }
+
+    var description: String {
+        displayName
+    }
 }

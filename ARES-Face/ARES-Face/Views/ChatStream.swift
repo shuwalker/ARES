@@ -1,35 +1,34 @@
 import SwiftUI
 
-/// Chat stream with AIRI-style message bubbles, auto-scroll, and streaming placeholder.
+/// Chat stream with Hermes-inspired message bubbles, auto-scroll, and streaming placeholder.
 ///
-/// Patterns from AIRI (stage-tamagotchi InteractiveArea):
-///   - User messages right-aligned, blue accent
-///   - Assistant messages left-aligned, translucent material
-///   - Error messages centered, red tint
-///   - Streaming placeholder with animated dots
+/// Patterns from Hermes Web UI:
+///   - User messages right-aligned, colored background
+///   - Assistant messages left-aligned, dark glass material
+///   - Avatars on assistant messages (ARES icon)
+///   - Status indicators (thinking, streaming)
 ///   - Auto-scroll in Avatar Twin mode, free-scroll in Manual mode
 ///   - Markdown rendering for assistant messages (code blocks, tables, links, bold, italic)
-///   - Slash command autocomplete in input bar
 struct ChatStream: View {
     @EnvironmentObject var brain: BrainConnection
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 6) {
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(brain.messages) { msg in
-                        ChatBubble(msg: msg)
+                        MessageRow(msg: msg)
                             .id(msg.id)
                     }
 
                     // Streaming indicator while thinking (before first token)
                     if brain.agentState == .thinking && (brain.messages.last?.isUser ?? true) {
-                        StreamingIndicator()
+                        ThinkingIndicator()
                             .id("streaming")
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
             .onChange(of: brain.messages.count) { _, _ in
                 scrollToBottom(proxy: proxy)
@@ -56,84 +55,149 @@ struct ChatStream: View {
     }
 }
 
-// MARK: - Chat Bubble
+// MARK: - Message Row
 
-struct ChatBubble: View {
+struct MessageRow: View {
     let msg: ARESMessage
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            if msg.isUser { Spacer(minLength: 40) }
+            if msg.isUser { Spacer(minLength: 60) }
+
+            if !msg.isUser {
+                // Assistant avatar
+                assistantAvatar
+                    .padding(.trailing, 8)
+            }
 
             VStack(alignment: msg.isUser ? .trailing : .leading, spacing: 2) {
                 // ── Sender label ──
-                if !msg.isUser {
-                    Text("ARES")
-                        .font(.system(size: 10, weight: .semibold).lowercaseSmallCaps())
-                        .foregroundStyle(.cyan.opacity(0.7))
-                        .padding(.leading, 12)
-                }
+                senderLabel
 
-                // ── Message content ──
-                // User messages: plain text
-                // ARES messages: full markdown rendering
-                if msg.isUser {
-                    Text(msg.text)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(bubbleBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .frame(maxWidth: 360, alignment: .trailing)
-                } else {
-                    MarkdownView(markdown: msg.text, fontSize: 13)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(bubbleBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .frame(maxWidth: 480, alignment: .leading)
-                }
+                // ── Message bubble ──
+                messageBubble
             }
 
-            if !msg.isUser { Spacer(minLength: 40) }
+            if !msg.isUser { Spacer(minLength: 60) }
         }
-        .transition(.move(edge: msg.isUser ? .trailing : .leading).combined(with: .opacity))
+        .transition(.opacity)
     }
 
-    private var bubbleBackground: some View {
-        Group {
-            if msg.isUser {
-                Color.accentColor.opacity(0.65)
-            } else {
-                Color.white.opacity(0.08)
-            }
+    private var assistantAvatar: some View {
+        Image(systemName: "flame.fill")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(ARESPalette.accent)
+            .frame(width: 26, height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(ARESPalette.accent.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(ARESPalette.accent.opacity(0.2), lineWidth: 0.5)
+            )
+    }
+
+    @ViewBuilder
+    private var senderLabel: some View {
+        if !msg.isUser {
+            Text("ARES")
+                .font(.system(size: 10, weight: .semibold).lowercaseSmallCaps())
+                .foregroundStyle(ARESPalette.accent.opacity(0.7))
+                .padding(.leading, 12)
+        }
+    }
+
+    @ViewBuilder
+    private var messageBubble: some View {
+        if msg.isUser {
+            Text(msg.text)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(ARESPalette.accent.opacity(0.65))
+                )
+                .frame(maxWidth: 420, alignment: .trailing)
+        } else {
+            MarkdownView(markdown: msg.text, fontSize: 13)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(ARESPalette.surfaceBorder, lineWidth: 0.5)
+                        )
+                )
+                .frame(maxWidth: 520, alignment: .leading)
         }
     }
 }
 
-// MARK: - Streaming Indicator
+// MARK: - Thinking Indicator
 
-/// Animated typing dots shown while the assistant is generating a response.
-struct StreamingIndicator: View {
+/// Animated typing indicator shown while the assistant is generating a response.
+struct ThinkingIndicator: View {
     @State private var isAnimating = false
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { i in
-                Circle()
-                    .fill(Color.cyan.opacity(0.6))
-                    .frame(width: 6, height: 6)
-                    .offset(y: isAnimating ? -4 : 2)
-                    .animation(
-                        .easeInOut(duration: 0.5)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.12),
-                        value: isAnimating
-                    )
+        HStack(alignment: .top, spacing: 0) {
+            assistantAvatar
+                .padding(.trailing, 8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ARES")
+                    .font(.system(size: 10, weight: .semibold).lowercaseSmallCaps())
+                    .foregroundStyle(ARESPalette.accent.opacity(0.7))
+
+                HStack(spacing: 6) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .fill(ARESPalette.accent.opacity(0.6))
+                            .frame(width: 6, height: 6)
+                            .offset(y: isAnimating ? -4 : 2)
+                            .animation(
+                                .easeInOut(duration: 0.5)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(i) * 0.12),
+                                value: isAnimating
+                            )
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(ARESPalette.surfaceBorder, lineWidth: 0.5)
+                        )
+                )
             }
+
+            Spacer(minLength: 60)
         }
-        .padding(.leading, 12)
+        .padding(.leading, 2)
         .onAppear { isAnimating = true }
+    }
+
+    private var assistantAvatar: some View {
+        Image(systemName: "flame.fill")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(ARESPalette.accent)
+            .frame(width: 26, height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(ARESPalette.accent.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(ARESPalette.accent.opacity(0.2), lineWidth: 0.5)
+            )
     }
 }

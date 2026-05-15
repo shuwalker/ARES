@@ -2,9 +2,8 @@ import SwiftUI
 
 // MARK: - ARES Palette
 //
-// Centralized design tokens from OS1 analysis + ARES brand.
-// Every color, spacing, and corner radius in one place.
-// Views reference these instead of magic numbers.
+// Centralized design tokens from Hermes Web UI analysis + ARES brand.
+// Dark glass theme with cyan/violet accents.
 
 enum ARESPalette {
     // ── Brand ──
@@ -17,6 +16,7 @@ enum ARESPalette {
     static let surfaceHover = Color.white.opacity(0.06)
     static let surfaceActive = Color.white.opacity(0.08)
     static let surfaceBorder = Color.white.opacity(0.08)
+    static let surfaceGlass = Color.black.opacity(0.25)
 
     // ── Text ──
     static let textPrimary = Color.primary
@@ -55,9 +55,6 @@ enum ARESPalette {
 }
 
 // MARK: - Glass Modifier
-//
-// OS1-inspired frosted glass surface for dashboard panels.
-// Usage: .glass() on any View.
 
 struct GlassModifier: ViewModifier {
     var cornerRadius: CGFloat = ARESPalette.cornerM
@@ -79,10 +76,6 @@ struct GlassModifier: ViewModifier {
 }
 
 extension View {
-    /// Apply frosted glass surface effect to the view.
-    /// - Parameters:
-    ///   - cornerRadius: Override corner radius (default: ARESPalette.cornerM = 10)
-    ///   - opacity: Override material opacity (default: 0.9)
     func glass(cornerRadius: CGFloat = ARESPalette.cornerM, opacity: Double = 0.9) -> some View {
         modifier(GlassModifier(cornerRadius: cornerRadius, opacity: opacity))
     }

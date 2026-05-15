@@ -1,56 +1,121 @@
 import SwiftUI
 
 /// Cron job browser — list, pause, resume, delete, run from Hermes dashboard API.
-/// From OS1 pattern: action buttons per row, last status, schedule display.
+/// Hermes-inspired styling with status badges and action buttons.
 struct CronView: View {
     @State private var jobs: [CronJob] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("Cron Jobs").font(.headline)
-                Spacer()
-                if !isLoading {
-                    Button("Refresh") { loadJobs() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                }
-            }
-            .padding(10)
-            .background(.ultraThinMaterial)
-            
+            toolbar
+
+            Divider()
+                .background(ARESPalette.surfaceBorder)
+
             if isLoading {
-                Spacer()
-                ProgressView("Loading cron jobs...")
-                Spacer()
+                loadingState
             } else if let error = errorMessage {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.orange)
-                    Text(error).font(.caption).foregroundStyle(.secondary)
-                    Button("Retry") { loadJobs() }.buttonStyle(.bordered)
-                }
-                Spacer()
-            } else if jobs.isEmpty {
-                Spacer()
-                Text("No cron jobs scheduled")
-                    .foregroundStyle(.secondary)
-                Spacer()
+                errorState(error)
             } else {
-                List(jobs) { job in
-                    CronJobRow(job: job, onAction: { action in
-                        performAction(action, jobID: job.id)
-                    })
-                }
-                .listStyle(.inset)
+                jobList
             }
         }
         .onAppear { loadJobs() }
     }
-    
+
+    // MARK: - Toolbar
+
+    private var toolbar: some View {
+        HStack(spacing: 12) {
+            Text("Cron Jobs")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Text("\(jobs.count) jobs")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary.opacity(0.6))
+
+            if !isLoading {
+                Button {
+                    loadJobs()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10))
+                        Text("Refresh")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .foregroundStyle(.primary)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.black.opacity(0.15))
+    }
+
+    // MARK: - Loading
+
+    private var loadingState: some View {
+        VStack {
+            Spacer()
+            ProgressView("Loading cron jobs...")
+                .controlSize(.small)
+            Spacer()
+        }
+    }
+
+    // MARK: - Error
+
+    private func errorState(_ error: String) -> some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.title2)
+                    .foregroundStyle(.orange)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                Button("Retry") { loadJobs() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            Spacer()
+        }
+    }
+
+    // MARK: - Job List
+
+    private var jobList: some View {
+        ScrollView {
+            LazyVStack(spacing: 2) {
+                ForEach(jobs) { job in
+                    CronJobListRow(job: job) { action in
+                        performAction(action, jobID: job.id)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    // MARK: - Data
+
     private func loadJobs() {
         isLoading = true
         errorMessage = nil
@@ -64,7 +129,7 @@ struct CronView: View {
             }
         }
     }
-    
+
     private func performAction(_ action: CronAction, jobID: String) {
         Task {
             do {
@@ -87,62 +152,126 @@ enum CronAction {
     case pause, resume, delete, run
 }
 
-struct CronJobRow: View {
+// MARK: - CronJob List Row
+
+struct CronJobListRow: View {
     let job: CronJob
     let onAction: (CronAction) -> Void
-    
+    @State private var isHovered = false
+
     var body: some View {
         HStack(spacing: 12) {
             // Status dot
-            Circle()
-                .fill(job.state == "running" ? Color.green :
-                      job.state == "paused" ? Color.orange :
-                      job.state == "error" || job.state == "failed" ? Color.red :
-                      Color.gray.opacity(0.4))
-                .frame(width: 8, height: 8)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(job.name ?? job.id.prefix(12).description)
-                    .font(.body.weight(.medium))
+            statusCircle
+
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
+                    Text(job.name ?? job.id.prefix(12).description)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.primary.opacity(0.9))
+                        .lineLimit(1)
+
+                    statusBadge
+                }
+
+                HStack(spacing: 10) {
                     if let sched = job.schedule {
-                        Text(sched).font(.caption).foregroundStyle(.teal)
-                    }
-                    if let state = job.state {
-                        Text(state).font(.caption).foregroundStyle(.secondary)
+                        metaLabel(sched, icon: "calendar")
                     }
                     if let last = job.lastStatus {
-                        Text(last).font(.caption).foregroundStyle(.secondary)
+                        metaLabel(last, icon: "checkmark.circle")
+                    }
+                    if let error = job.lastError {
+                        Text(error)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.red.opacity(0.8))
+                            .lineLimit(1)
                     }
                 }
-                if let error = job.lastError {
-                    Text(error).font(.caption2).foregroundStyle(.red)
-                        .lineLimit(1)
-                }
             }
-            
-            Spacer()
-            
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             // Actions
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 if job.state == "paused" || job.state == "error" {
-                    Button { onAction(.resume) } label: {
-                        Image(systemName: "play.fill").font(.caption)
-                    }.buttonStyle(.plain).help("Resume")
+                    actionButton("play.fill", .resume, color: .green)
                 } else {
-                    Button { onAction(.pause) } label: {
-                        Image(systemName: "pause.fill").font(.caption)
-                    }.buttonStyle(.plain).help("Pause")
+                    actionButton("pause.fill", .pause, color: .orange)
                 }
-                Button { onAction(.run) } label: {
-                    Image(systemName: "forward.fill").font(.caption)
-                }.buttonStyle(.plain).help("Run now")
-                Button { onAction(.delete) } label: {
-                    Image(systemName: "trash").font(.caption)
-                        .foregroundStyle(.red)
-                }.buttonStyle(.plain).help("Delete")
+                actionButton("forward.fill", .run, color: .cyan)
+                actionButton("trash", .delete, color: .red.opacity(0.8))
             }
+            .opacity(isHovered ? 1.0 : 0.4)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHovered ? Color.white.opacity(0.04) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isHovered ? ARESPalette.surfaceBorder : Color.clear, lineWidth: 0.5)
+        )
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+
+    private var statusCircle: some View {
+        Circle()
+            .fill(stateColor)
+            .frame(width: 8, height: 8)
+            .shadow(color: stateColor.opacity(0.3), radius: 3)
+    }
+
+    private var stateColor: Color {
+        switch job.state {
+        case "running": return .green
+        case "paused": return .orange
+        case "error", "failed": return .red
+        default: return .gray.opacity(0.4)
+        }
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if let state = job.state {
+            Text(state)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(stateColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(stateColor.opacity(0.12))
+                )
+        }
+    }
+
+    private func metaLabel(_ text: String, icon: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 8))
+            Text(text)
+                .font(.system(size: 10))
+        }
+        .foregroundStyle(.secondary.opacity(0.6))
+    }
+
+    private func actionButton(_ icon: String, _ action: CronAction, color: Color) -> some View {
+        Button {
+            onAction(action)
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(color)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(color.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
