@@ -1,0 +1,42 @@
+{
+  "name": "claude-code-agent-monitor-plugins",
+  "description": "Official plugin marketplace for Claude Code Agent Monitor — analytics, productivity, developer tools, insights, and dashboard connectivity plugins for monitoring and optimizing your Claude Code sessions.",
+  "owner": {
+    "name": "hoangsonww",
+    "url": "https://github.com/hoangsonww"
+  },
+  "homepage": "https://github.com/hoangsonww/Claude-Code-Agent-Monitor",
+  "repository": "https://github.com/hoangsonww/Claude-Code-Agent-Monitor",
+  "plugins": [
+    {
+      "name": "ccam-analytics",
+      "path": "plugins/ccam-analytics",
+      "description": "Deep analytics on Claude Code sessions — token usage (total_input/total_output/total_cache_read/total_cache_write with compaction baselines pre-summed), cost breakdowns via the pricing engine, usage trends over 365 days, and productivity scoring.",
+      "tags": ["analytics", "tokens", "cost", "productivity"]
+    },
+    {
+      "name": "ccam-productivity",
+      "path": "plugins/ccam-productivity",
+      "description": "Productivity automation — daily standups, weekly reports, sprint summaries from session data, and workflow optimization using the workflow intelligence API's 11 datasets.",
+      "tags": ["productivity", "reports", "workflows", "standup"]
+    },
+    {
+      "name": "ccam-devtools",
+      "path": "plugins/ccam-devtools",
+      "description": "Developer tools for the Agent Monitor — session debugging with full event chain inspection, hook diagnostics, data export (JSON/CSV/Markdown), and system health checks.",
+      "tags": ["devtools", "debug", "diagnostics", "export"]
+    },
+    {
+      "name": "ccam-insights",
+      "path": "plugins/ccam-insights",
+      "description": "AI-powered insights — pattern detection via workflow intelligence (tool flow transitions, agent co-occurrence), anomaly alerting, optimization recommendations, and session comparison.",
+      "tags": ["insights", "patterns", "anomaly", "optimization"]
+    },
+    {
+      "name": "ccam-dashboard",
+      "path": "plugins/ccam-dashboard",
+      "description": "Dashboard connector — quick status checks, one-line metrics, and MCP server integration for direct tool access to the Agent Monitor API.",
+      "tags": ["dashboard", "status", "mcp", "connector"]
+    }
+  ]
+}

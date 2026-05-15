@@ -1,0 +1,241 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Alertmanager configuration for Claude Code Agent Monitor
+#
+# Replace placeholder values (marked with <PLACEHOLDER>) before deploying.
+# ─────────────────────────────────────────────────────────────────────────────
+global:
+  # SMTP defaults for email notifications
+  smtp_smarthost: "<SMTP_HOST>:587"
+  smtp_from: "alertmanager@example.com"
+  smtp_auth_username: "<SMTP_USERNAME>"
+  smtp_auth_password: "<SMTP_PASSWORD>"
+  smtp_require_tls: true
+
+  # Slack API URL (override per-receiver if needed)
+  slack_api_url: "<SLACK_WEBHOOK_URL>"
+
+  # PagerDuty URL
+  pagerduty_url: "https://events.pagerduty.com/v2/enqueue"
+
+  # Global resolve timeout
+  resolve_timeout: 5m
+
+# ── Templates ───────────────────────────────────────────────────────────────
+templates:
+  - "/etc/alertmanager/templates/*.tmpl"
+
+# ── Inhibition rules ───────────────────────────────────────────────────────
+# Prevent lower-severity alerts from firing when a higher-severity alert
+# for the same service/alertname is already active.
+inhibit_rules:
+  # If a critical alert is firing, suppress warning alerts for the same service
+  - source_matchers:
+      - severity = critical
+    target_matchers:
+      - severity = warning
+    equal:
+      - alertname
+      - service
+      - namespace
+
+  # If a critical alert is firing, suppress info alerts for the same service
+  - source_matchers:
+      - severity = critical
+    target_matchers:
+      - severity = info
+    equal:
+      - service
+      - namespace
+
+  # If a warning alert is firing, suppress info alerts for the same service
+  - source_matchers:
+      - severity = warning
+    target_matchers:
+      - severity = info
+    equal:
+      - service
+      - namespace
+
+  # If AgentMonitorDown is firing, suppress all other agent-monitor alerts
+  - source_matchers:
+      - alertname = AgentMonitorDown
+    target_matchers:
+      - service = agent-monitor
+    equal:
+      - namespace
+
+# ── Route tree ──────────────────────────────────────────────────────────────
+route:
+  # Default receiver for unmatched alerts
+  receiver: slack-default
+
+  # Group alerts by these labels
+  group_by:
+    - alertname
+    - environment
+    - namespace
+
+  # Wait before sending initial notification (allows grouping)
+  group_wait: 30s
+
+  # Wait before sending updates to an existing group
+  group_interval: 5m
+
+  # Wait before re-sending a resolved notification
+  repeat_interval: 4h
+
+  # Child routes (evaluated top-to-bottom, first match wins)
+  routes:
+    # ── Critical → PagerDuty + Slack ──────────────────────────────────────
+    - matchers:
+        - severity = critical
+      receiver: pagerduty-critical
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true # Also notify Slack
+
+    - matchers:
+        - severity = critical
+      receiver: slack-critical
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # ── Warning → Slack ───────────────────────────────────────────────────
+    - matchers:
+        - severity = warning
+      receiver: slack-warning
+      group_wait: 30s
+      repeat_interval: 4h
+
+    # ── Info → Email ──────────────────────────────────────────────────────
+    - matchers:
+        - severity = info
+      receiver: email-info
+      group_wait: 1m
+      repeat_interval: 12h
+
+    # ── Watchdog (deadman's switch) ───────────────────────────────────────
+    - matchers:
+        - alertname = Watchdog
+      receiver: "null"
+      repeat_interval: 5m
+
+# ── Receivers ───────────────────────────────────────────────────────────────
+receivers:
+  # ── Null receiver (discard alerts) ────────────────────────────────────────
+  - name: "null"
+
+  # ── Slack: Default channel ────────────────────────────────────────────────
+  - name: slack-default
+    slack_configs:
+      - channel: "#agent-monitor-alerts"
+        send_resolved: true
+        username: "AlertManager"
+        icon_emoji: ":bell:"
+        title: >-
+          [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}]
+          {{ .CommonLabels.alertname }}
+        text: >-
+          {{ range .Alerts }}
+          *Alert:* {{ .Labels.alertname }} - `{{ .Labels.severity }}`
+          *Environment:* {{ .Labels.namespace }}
+          *Description:* {{ .Annotations.description }}
+          *Details:*
+            {{ range .Labels.SortedPairs }} • *{{ .Name }}:* `{{ .Value }}`
+            {{ end }}
+          {{ end }}
+        actions:
+          - type: button
+            text: "Dashboard :grafana:"
+            url: "{{ (index .Alerts 0).Annotations.dashboard_url }}"
+          - type: button
+            text: "Runbook :book:"
+            url: "{{ (index .Alerts 0).Annotations.runbook_url }}"
+
+  # ── Slack: Critical alerts ────────────────────────────────────────────────
+  - name: slack-critical
+    slack_configs:
+      - channel: "#agent-monitor-critical"
+        send_resolved: true
+        username: "AlertManager"
+        icon_emoji: ":rotating_light:"
+        color: >-
+          {{ if eq .Status "firing" }}danger{{ else }}good{{ end }}
+        title: >-
+          :rotating_light: [{{ .Status | toUpper }}]
+          {{ .CommonLabels.alertname }}
+        text: >-
+          {{ range .Alerts }}
+          *CRITICAL Alert:* {{ .Labels.alertname }}
+          *Environment:* {{ .Labels.namespace }}
+          *Description:* {{ .Annotations.description }}
+          *Summary:* {{ .Annotations.summary }}
+          *Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+          {{ end }}
+        actions:
+          - type: button
+            text: "Dashboard"
+            url: "{{ (index .Alerts 0).Annotations.dashboard_url }}"
+          - type: button
+            text: "Runbook"
+            url: "{{ (index .Alerts 0).Annotations.runbook_url }}"
+
+  # ── Slack: Warning alerts ─────────────────────────────────────────────────
+  - name: slack-warning
+    slack_configs:
+      - channel: "#agent-monitor-alerts"
+        send_resolved: true
+        username: "AlertManager"
+        icon_emoji: ":warning:"
+        color: >-
+          {{ if eq .Status "firing" }}warning{{ else }}good{{ end }}
+        title: >-
+          :warning: [{{ .Status | toUpper }}]
+          {{ .CommonLabels.alertname }}
+        text: >-
+          {{ range .Alerts }}
+          *Warning:* {{ .Labels.alertname }}
+          *Environment:* {{ .Labels.namespace }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  # ── PagerDuty: Critical alerts ───────────────────────────────────────────
+  - name: pagerduty-critical
+    pagerduty_configs:
+      - routing_key: "<PAGERDUTY_ROUTING_KEY>"
+        severity: >-
+          {{ if eq .CommonLabels.severity "critical" }}critical{{ else }}warning{{ end }}
+        description: >-
+          {{ .CommonAnnotations.summary }}
+        details:
+          environment: "{{ .CommonLabels.namespace }}"
+          alertname: "{{ .CommonLabels.alertname }}"
+          service: "{{ .CommonLabels.service }}"
+          description: "{{ .CommonAnnotations.description }}"
+          num_firing: "{{ .Alerts.Firing | len }}"
+
+  # ── Email: Info-level alerts ──────────────────────────────────────────────
+  - name: email-info
+    email_configs:
+      - to: "<ALERT_EMAIL_RECIPIENTS>"
+        send_resolved: true
+        headers:
+          Subject: >-
+            [Agent Monitor {{ .Status | toUpper }}]
+            {{ .CommonLabels.alertname }}
+            ({{ .CommonLabels.namespace }})
+        html: |
+          <h2>{{ .CommonLabels.alertname }}</h2>
+          <p><b>Status:</b> {{ .Status }}</p>
+          <p><b>Environment:</b> {{ .CommonLabels.namespace }}</p>
+          <table border="1" cellpadding="5">
+            <tr><th>Alert</th><th>Severity</th><th>Description</th><th>Started</th></tr>
+            {{ range .Alerts }}
+            <tr>
+              <td>{{ .Labels.alertname }}</td>
+              <td>{{ .Labels.severity }}</td>
+              <td>{{ .Annotations.description }}</td>
+              <td>{{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}</td>
+            </tr>
+            {{ end }}
+          </table>

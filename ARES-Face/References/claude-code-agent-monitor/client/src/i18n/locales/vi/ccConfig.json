@@ -1,0 +1,233 @@
+{
+  "title": "Trình khám phá cấu hình Claude",
+  "subtitle": "Toàn cảnh thiết lập Claude Code của bạn - plugin, skill, subagent, máy chủ MCP, hook và cài đặt.",
+  "refresh": "Làm mới",
+  "refreshing": "Đang làm mới…",
+  "lastUpdated": "Cập nhật lần cuối {{time}}",
+  "loadError": "Tải thất bại: {{message}}",
+  "scope": {
+    "all": "Tất cả phạm vi",
+    "user": "Người dùng",
+    "project": "Dự án",
+    "projectLocal": "Dự án (cục bộ)",
+    "home": "Home"
+  },
+  "tabs": {
+    "overview": "Tổng quan",
+    "skills": "Skills",
+    "agents": "Subagent",
+    "commands": "Lệnh slash",
+    "outputStyles": "Kiểu xuất",
+    "plugins": "Plugin",
+    "marketplaces": "Marketplace",
+    "mcp": "Máy chủ MCP",
+    "hooks": "Hooks",
+    "keybindings": "Phím tắt",
+    "settings": "Cài đặt",
+    "memory": "Bộ nhớ"
+  },
+  "overview": {
+    "rootsTitle": "Thư mục gốc",
+    "claudeHome": "Claude home",
+    "projectClaudeDir": "Dự án .claude",
+    "projectRoot": "Thư mục dự án",
+    "claudeJson": "claude.json",
+    "summary": "Tóm tắt nhanh",
+    "user": "người dùng",
+    "project": "dự án",
+    "items": "mục"
+  },
+  "common": {
+    "search": "Tìm theo tên…",
+    "empty": "Chưa có nội dung.",
+    "viewSource": "Xem nguồn",
+    "close": "Đóng",
+    "copyPath": "Sao chép đường dẫn",
+    "copied": "Đã sao chép",
+    "truncated": "(đã cắt bớt để xem trước)",
+    "size": "Kích thước",
+    "modified": "Đã sửa",
+    "scopeLabel": "Phạm vi",
+    "noFrontmatter": "Không có frontmatter",
+    "redactedNotice": "Các giá trị khớp /token|secret|password|key|auth/i đã được ẩn ở phía máy chủ."
+  },
+  "skills": {
+    "name": "Tên",
+    "description": "Mô tả"
+  },
+  "agents": {
+    "name": "Tên",
+    "model": "Model",
+    "tools": "Công cụ"
+  },
+  "plugins": {
+    "manifest": "Manifest",
+    "marketplace": "Marketplace",
+    "version": "Phiên bản",
+    "installedAt": "Cài đặt lúc",
+    "lastUpdated": "Cập nhật",
+    "installPath": "Đường dẫn cài đặt",
+    "missing": "Thiếu đường dẫn cài đặt",
+    "manifestMissing": "Không tìm thấy installed_plugins.json tại {{path}}",
+    "enabled": "Đang bật",
+    "disabled": "Đã tắt",
+    "contributes": "Cung cấp",
+    "skills_other": "{{count}} skill",
+    "agents_other": "{{count}} agent",
+    "commands_other": "{{count}} lệnh",
+    "outputStyles_other": "{{count}} output style",
+    "hooks_other": "{{count}} hook script",
+    "author": "Tác giả",
+    "homepage": "Trang chủ",
+    "license": "Giấy phép",
+    "description": "Mô tả"
+  },
+  "marketplaces": {
+    "manifest": "Manifest marketplace đã biết",
+    "noMarketplaces": "Chưa đăng ký marketplace.",
+    "source": "Nguồn",
+    "lastUpdated": "Đồng bộ lần cuối",
+    "pluginCount": "Plugin",
+    "owner": "Chủ sở hữu",
+    "installLocation": "Đường dẫn cài",
+    "addCmd": "claude plugin marketplace add <repo>"
+  },
+  "keybindings": {
+    "file": "Tệp nguồn",
+    "missing": "Không tìm thấy keybindings.json tại {{path}}",
+    "context": "Ngữ cảnh",
+    "key": "Phím",
+    "action": "Hành động",
+    "docsLink": "Xem tài liệu phím tắt"
+  },
+  "statusline": {
+    "title": "Statusline",
+    "configured": "Lệnh statusline đã cấu hình",
+    "scripts": "Script statusline trong CLAUDE_HOME",
+    "noStatusline": "Chưa cấu hình statusline."
+  },
+  "hookScripts": {
+    "title": "Script ~/.claude/hooks/",
+    "subtitle": "Các script hỗ trợ được tham chiếu bởi lệnh hook của bạn. Chạy khi `hooks.<event>.hooks[].command` trong settings.json gọi đến.",
+    "empty": "Không có script trong ~/.claude/hooks/."
+  },
+  "mcp": {
+    "userScope": "Máy chủ phạm vi người dùng",
+    "projectScope": "Máy chủ phạm vi dự án",
+    "command": "Lệnh",
+    "args": "Tham số",
+    "env": "Tên env",
+    "url": "URL",
+    "headers": "Tên Header",
+    "kind": "Loại",
+    "source": "Nguồn",
+    "noServers": "Không tìm thấy máy chủ MCP."
+  },
+  "hooks": {
+    "noHooks": "Chưa cấu hình hook.",
+    "matcher": "Bộ khớp",
+    "command": "Lệnh",
+    "type": "Loại",
+    "timeout": "Timeout",
+    "fileMissing": "(không có file settings trong phạm vi này)"
+  },
+  "settings": {
+    "fileMissing": "(không có file settings trong phạm vi này)"
+  },
+  "memory": {
+    "userScope": "Bộ nhớ người dùng",
+    "projectScope": "Bộ nhớ dự án",
+    "missing": "Không tìm thấy CLAUDE.md."
+  },
+  "edit": {
+    "newButton": "Tạo mới",
+    "editButton": "Sửa",
+    "deleteButton": "Xoá",
+    "save": "Lưu",
+    "cancel": "Huỷ",
+    "saving": "Đang lưu…",
+    "deleting": "Đang xoá…",
+    "newTitle": "Tạo mới {{type}}",
+    "editTitle": "Sửa {{name}}",
+    "namePlaceholder": "tên (kebab-case, không khoảng trắng)",
+    "nameLabel": "Tên",
+    "nameHelp": "Chữ, số, dấu chấm, gạch ngang, gạch dưới. Tối đa 64 ký tự.",
+    "contentLabel": "Nội dung",
+    "scopePicker": "Phạm vi",
+    "writeError": "Lưu thất bại: {{message}}",
+    "deleteError": "Xoá thất bại: {{message}}",
+    "saveSuccess": "Đã lưu · bản sao tại {{path}}",
+    "saveSuccessNew": "Đã tạo.",
+    "deleteSuccess": "Đã xoá · bản sao tại {{path}}",
+    "confirmDelete": "Xoá mục này?",
+    "confirmDeleteBody": "Tệp (hoặc thư mục skill cùng tài nguyên đi kèm) sẽ được sao lưu kèm dấu thời gian trước khi xoá. Bản sao nằm ngoài thư mục Claude Code quét, nên mục này sẽ biến mất khỏi CLI.",
+    "confirmDeletePath": "Đường dẫn: {{path}}",
+    "confirmDeleteAction": "Xác nhận sao lưu và xoá",
+    "templates": {
+      "skills": "---\nname: my-skill\ndescription: Mô tả ngắn gọn\n---\n\nNội dung — skill làm gì, khi nào dùng, ví dụ.\n",
+      "agents": "---\nname: my-agent\ndescription: Khi nào gọi subagent này\ntools: Read, Grep\nmodel: sonnet\n---\n\nSystem prompt cho subagent.\n",
+      "commands": "---\ndescription: Mô tả hiển thị trong menu /\n---\n\n/my-command làm gì.\n",
+      "output-styles": "---\nname: my-style\ndescription: Mô tả kiểu xuất\n---\n\nChỉ thị về kiểu.\n",
+      "memory": "# Bộ nhớ dự án\n\nClaude đọc tệp này khi bắt đầu phiên.\n"
+    }
+  },
+  "backups": {
+    "title": "Bản sao lưu",
+    "empty": "Chưa có bản sao lưu — mỗi lần sửa hoặc xoá sẽ tạo bản sao có dấu thời gian.",
+    "viewLink": "Xem lịch sử sao lưu",
+    "openButton": "Bản sao lưu",
+    "subtitle": "Mỗi thao tác lưu / xoá đều ghi bản sao tới đây trước. Thư mục sao lưu nằm ngoài các vị trí Claude Code quét, nên không xuất hiện như mục thừa trong CLI.",
+    "restoreHint": "Khôi phục bằng cách đổi tên bản sao về vị trí cũ:",
+    "size": "Kích thước",
+    "created": "Tạo lúc",
+    "type": "Loại",
+    "scopeLabel": "Phạm vi",
+    "filterAll": "Tất cả loại"
+  },
+  "explain": {
+    "hooks": {
+      "title": "Hooks ở đây cố tình chỉ đọc",
+      "body": "Hooks nằm trong khối `hooks` của các tệp `settings.json` mà Claude Code liên tục ghi vào. Sửa từ dashboard sẽ tranh chấp với CLI đang chạy và có thể ngầm phá hỏng đường tiếp nhận sự kiện của chính dashboard (`hook-handler.js` bên dưới).",
+      "howTo": "Tự sửa bằng một trong các cách:",
+      "cmd1": "claude config /hooks",
+      "cmd1Note": "Trình chỉnh sửa hooks tương tác trong Claude Code",
+      "cmd2": "$EDITOR ~/.claude/settings.json",
+      "cmd2Note": "Sửa thủ công khối hooks ở phạm vi user",
+      "cmd3": "$EDITOR .claude/settings.json",
+      "cmd3Note": "Sửa thủ công khối hooks ở phạm vi dự án"
+    },
+    "settings": {
+      "title": "Settings ở đây cố tình chỉ đọc",
+      "body": "Các tệp JSON này được CLI `claude` ghi đè mỗi khi đổi model, theme, bật plugin… Việc dashboard ghi sẽ tranh chấp với CLI và mất trạng thái.",
+      "howTo": "Sửa settings qua chính Claude Code:",
+      "cmd1": "claude config set <key> <value>",
+      "cmd1Note": "Đặt một khoá riêng lẻ an toàn",
+      "cmd2": "/config",
+      "cmd2Note": "Mở giao diện config tương tác trong CLI",
+      "cmd3": "$EDITOR ~/.claude/settings.json",
+      "cmd3Note": "Sửa thủ công (chỉ khi không có process claude nào đang chạy)"
+    },
+    "plugins": {
+      "title": "Plugin được CLI quản lý",
+      "body": "Plugin là bundle có registry riêng — `installed_plugins.json` và đường dẫn cài trong `plugins/cache/`. Dashboard đọc thôi; install/uninstall giao cho `claude plugin …` để giữ registry nhất quán.",
+      "install": "Cài plugin:",
+      "installCmd": "claude plugin install <marketplace>/<plugin>",
+      "uninstall": "Gỡ plugin này:",
+      "uninstallButton": "Sao chép lệnh gỡ"
+    },
+    "mcp": {
+      "title": "MCP server được CLI quản lý",
+      "body": "Cấu hình MCP server nằm trong `~/.claude.json`, đúng tệp mà CLI đang chạy ghi liên tục. Ghi đồng thời từ dashboard sẽ phá hỏng trạng thái dự án, nên flow add/remove đi qua chính Claude Code.",
+      "list": "Liệt kê server đã cấu hình:",
+      "listCmd": "claude mcp list",
+      "add": "Thêm server:",
+      "addCmd": "claude mcp add <name> <command> [args…]",
+      "remove": "Gỡ server này:",
+      "removeButton": "Sao chép lệnh gỡ"
+    }
+  },
+  "snippet": {
+    "copy": "Sao chép",
+    "copied": "Đã sao chép"
+  }
+}

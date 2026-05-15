@@ -1,0 +1,31 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: agent-monitor
+  namespace: agent-monitor
+  labels:
+    app.kubernetes.io/name: agent-monitor
+    app.kubernetes.io/instance: agent-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/managed-by: kustomize
+    # Common label for Prometheus Operator discovery
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agent-monitor
+      app.kubernetes.io/instance: agent-monitor
+  namespaceSelector:
+    matchNames:
+      - agent-monitor
+  endpoints:
+    - port: http
+      path: /api/health
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: "(http_requests_total|http_request_duration_.*|nodejs_.*|process_.*)"
+          action: keep

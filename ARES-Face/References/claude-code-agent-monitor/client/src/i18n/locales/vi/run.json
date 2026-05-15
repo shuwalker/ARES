@@ -1,0 +1,160 @@
+{
+  "title": "Chạy Claude",
+  "subtitle": "Khởi chạy một phiên Claude Code ngay trong dashboard. Stream output trực tiếp, hội thoại đa lượt, và chia sẻ cùng pipeline hooks/analytics với phiên ở terminal.",
+  "mode": {
+    "label": "Chế độ",
+    "conversation": "Hội thoại",
+    "conversationHint": "Đa lượt — tiếp tục gõ trong khi agent xử lý.",
+    "headless": "Một lần",
+    "headlessHint": "Một prompt, một phản hồi. Stdin đóng ngay sau khi spawn."
+  },
+  "fields": {
+    "prompt": "Prompt",
+    "promptPlaceholder": "Hỏi Claude bất cứ điều gì…",
+    "cwd": "Thư mục làm việc",
+    "cwdHint": "Đường dẫn tuyệt đối. Mặc định là cwd của dashboard.",
+    "cwdPlaceholder": "Gõ để tìm hoặc dán đường dẫn tuyệt đối…",
+    "cwdGroups": {
+      "dashboard": "Dashboard server",
+      "home": "Home",
+      "recent": "Gần đây — Claude Code đã dùng"
+    },
+    "cwdNoMatches": "Không khớp. Gõ đường dẫn tuyệt đối để dùng trực tiếp.",
+    "model": "Model",
+    "modelInheritLabel": "Kế thừa từ settings",
+    "modelCustom": "Tuỳ chỉnh…",
+    "modelCustomPlaceholder": "model id (vd: claude-opus-4-7-20260101)",
+    "permissionMode": "Permission mode",
+    "permissionAcceptEdits": "acceptEdits (khuyên dùng)",
+    "permissionDefault": "default (prompt tương tác — headless sẽ treo)",
+    "permissionPlan": "plan (chỉ đọc, lập kế hoạch)",
+    "permissionBypass": "bypassPermissions (NGUY HIỂM — cho phép tất cả mà không hỏi)",
+    "effort": "Mức độ suy nghĩ",
+    "effortHint": "Điều chỉnh mức suy luận của model trước khi trả lời. Cao hơn = nhiều token suy nghĩ hơn, chậm hơn, sâu hơn. Để trống để dùng mặc định của model."
+  },
+  "actions": {
+    "start": "Chạy",
+    "starting": "Đang khởi động…",
+    "send": "Gửi",
+    "sending": "Đang gửi…",
+    "stop": "Dừng",
+    "stopping": "Đang dừng…",
+    "newRun": "Lượt chạy mới",
+    "viewSession": "Xem phiên"
+  },
+  "status": {
+    "idle": "Rảnh",
+    "spawning": "Khởi động…",
+    "running": "Đang chạy",
+    "completed": "Hoàn tất",
+    "error": "Lỗi",
+    "killed": "Đã dừng",
+    "abandoned": "Bị bỏ"
+  },
+  "binary": {
+    "missing": "Không thấy CLI `claude` trong PATH. Cài đặt Claude Code hoặc đặt PATH.",
+    "found": "Đang dùng {{path}}"
+  },
+  "concurrency": {
+    "active_other": "Có {{count}} run đang chạy",
+    "viewActive": "Xem các run đang chạy",
+    "atCap": "Đạt giới hạn concurrent ({{max}}). Dừng một run đang chạy để bắt đầu run mới."
+  },
+  "hint": {
+    "shortcut": "Cmd+Enter / Ctrl+Enter để gửi",
+    "permissionWarning": "bypassPermissions cho phép gọi mọi tool không cần xác nhận. Chỉ dùng cho prompt bạn tin tưởng.",
+    "headlessExplain": "Headless phù hợp cho tác vụ tự động. Phiên không thể hỏi lại, sẽ treo ở prompt xin quyền nếu bạn không giữ acceptEdits."
+  },
+  "empty": {
+    "title": "Chưa có gì",
+    "body": "Gõ prompt và bấm Chạy. Output sẽ stream khi model suy nghĩ, gọi tool, và trả lời."
+  },
+  "events": {
+    "you": "Bạn",
+    "claude": "Claude",
+    "tool": "Tool",
+    "toolResult": "Kết quả tool",
+    "system": "Hệ thống",
+    "thinking": "Đang suy nghĩ",
+    "expand": "Mở rộng",
+    "collapse": "Thu gọn"
+  },
+  "footer": {
+    "duration": "Thời lượng",
+    "cost": "Chi phí",
+    "turns": "Lượt",
+    "exitCode": "Exit code",
+    "sessionId": "Session ID"
+  },
+  "errors": {
+    "startFailed": "Không khởi động được: {{message}}",
+    "sendFailed": "Không gửi được: {{message}}",
+    "killFailed": "Không dừng được: {{message}}",
+    "attachFailed": "Không gắn được vào run: {{message}}"
+  },
+  "runs": {
+    "switcher": "Run đang chạy",
+    "switcherEmpty": "Không có run đang chạy",
+    "attached": "Đã gắn vào run đang chạy",
+    "started": "Bắt đầu lúc {{when}}",
+    "viewActive": "Xem run đang chạy",
+    "viewActive_other": "{{count}} run đang chạy",
+    "scopeNote": "Chỉ hiển thị các run bạn khởi chạy từ dashboard này.",
+    "allSessionsLink": "Xem tất cả phiên Claude Code →",
+    "viewLabel": "Xem"
+  },
+  "resume": {
+    "label": "Phiên nguồn",
+    "freshOption": "Phiên mới",
+    "freshHint": "Bắt đầu phiên Claude Code mới.",
+    "resumeOption": "Tiếp tục phiên đã có",
+    "resumeHint": "Chọn một phiên từ lịch sử để tiếp tục. cwd được khoá theo phiên gốc.",
+    "pickSession": "Chọn phiên…",
+    "search": "Tìm theo ID, cwd hoặc status…",
+    "noSessions": "Không tìm thấy phiên.",
+    "originalCwd": "cwd gốc",
+    "preview": "Hoạt động gần nhất",
+    "selectedBadge": "Đang tiếp tục",
+    "clear": "Xoá lựa chọn"
+  },
+  "limitations": {
+    "title": "Chạy Claude trong trình duyệt",
+    "subtitle": "cùng binary, bề mặt khác",
+    "peek": "Hầu hết tính năng TUI đều hoạt động. Một vài tính năng tương tác thì không.",
+    "why": "Tại sao",
+    "intro": "Bên dưới chúng tôi khởi chạy chính `claude` binary mà terminal bạn dùng — nhưng stream-json (giao diện lập trình duy nhất Claude phơi ra) là luồng một chiều, không phải TUI tương tác. Mọi tính năng cần một phiên terminal đang chạy — prompt cấp quyền tại chỗ, bảng keybinding, đổi cấu hình giữa phiên — đều phải cấu hình lúc spawn thay vì giữa cuộc trò chuyện.",
+    "supported": "Hỗ trợ ở đây",
+    "limited": "Chỉ CLI",
+    "tldr": "Nếu thiếu tính năng nào, mở cùng phiên ở terminal với `claude --resume <session-id>` — cả hai cùng đọc một tệp JSONL transcript trên đĩa, nên đổi bề mặt không làm mất ngữ cảnh.",
+    "dismiss": "Đã rõ",
+    "minimize": "Thu nhỏ",
+    "restore": "Hiện ghi chú chạy trong trình duyệt",
+    "expand": "Đọc thêm",
+    "collapse": "Thu gọn"
+  },
+  "tokens": {
+    "label": "Context",
+    "input": "Input",
+    "output": "Output",
+    "cacheRead": "Cache hit",
+    "cost": "Chi phí"
+  },
+  "autocomplete": {
+    "slashHint": "Gõ / để tìm lệnh slash",
+    "fileHint": "Gõ @ để tham chiếu file",
+    "noMatches": "Không có",
+    "groupBuiltin": "Built-in (chỉ CLI — không chạy ở đây)",
+    "groupUser": "Lệnh user",
+    "groupProject": "Lệnh project",
+    "groupFiles": "File trong cwd"
+  },
+  "statusHeader": {
+    "model": "Model",
+    "effort": "Effort",
+    "permissionMode": "Mode",
+    "cwd": "Cwd",
+    "session": "Session",
+    "envelopes": "Sự kiện",
+    "duration": "Đã chạy"
+  }
+}

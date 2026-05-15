@@ -1,0 +1,238 @@
+{
+  "title": "Claude Config Explorer",
+  "subtitle": "Your Claude Code setup at a glance - plugins, skills, subagents, MCP servers, hooks, and settings.",
+  "refresh": "Refresh",
+  "refreshing": "Refreshing…",
+  "lastUpdated": "Last updated {{time}}",
+  "loadError": "Failed to load: {{message}}",
+  "scope": {
+    "all": "All scopes",
+    "user": "User",
+    "project": "Project",
+    "projectLocal": "Project (local)",
+    "home": "Home"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "skills": "Skills",
+    "agents": "Subagents",
+    "commands": "Slash commands",
+    "outputStyles": "Output styles",
+    "plugins": "Plugins",
+    "marketplaces": "Marketplaces",
+    "mcp": "MCP servers",
+    "hooks": "Hooks",
+    "keybindings": "Keybindings",
+    "settings": "Settings",
+    "memory": "Memory"
+  },
+  "overview": {
+    "rootsTitle": "Roots",
+    "claudeHome": "Claude home",
+    "projectClaudeDir": "Project .claude",
+    "projectRoot": "Project root",
+    "claudeJson": "claude.json",
+    "summary": "Quick summary",
+    "user": "user",
+    "project": "project",
+    "items": "items"
+  },
+  "common": {
+    "search": "Search by name…",
+    "empty": "Nothing here yet.",
+    "viewSource": "View source",
+    "close": "Close",
+    "copyPath": "Copy path",
+    "copied": "Copied",
+    "truncated": "(truncated for preview)",
+    "size": "Size",
+    "modified": "Modified",
+    "scopeLabel": "Scope",
+    "noFrontmatter": "No frontmatter",
+    "redactedNotice": "Values matching /token|secret|password|key|auth/i are redacted server-side."
+  },
+  "skills": {
+    "name": "Name",
+    "description": "Description"
+  },
+  "agents": {
+    "name": "Name",
+    "model": "Model",
+    "tools": "Tools"
+  },
+  "plugins": {
+    "manifest": "Manifest",
+    "marketplace": "Marketplace",
+    "version": "Version",
+    "installedAt": "Installed",
+    "lastUpdated": "Updated",
+    "installPath": "Install path",
+    "missing": "Install path missing",
+    "manifestMissing": "No installed_plugins.json found at {{path}}",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "contributes": "Contributes",
+    "skills_one": "{{count}} skill",
+    "skills_other": "{{count}} skills",
+    "agents_one": "{{count}} agent",
+    "agents_other": "{{count}} agents",
+    "commands_one": "{{count}} command",
+    "commands_other": "{{count}} commands",
+    "outputStyles_one": "{{count}} output style",
+    "outputStyles_other": "{{count}} output styles",
+    "hooks_one": "{{count}} hook script",
+    "hooks_other": "{{count}} hook scripts",
+    "author": "Author",
+    "homepage": "Homepage",
+    "license": "License",
+    "description": "Description"
+  },
+  "marketplaces": {
+    "manifest": "Known marketplaces manifest",
+    "noMarketplaces": "No marketplaces registered.",
+    "source": "Source",
+    "lastUpdated": "Last synced",
+    "pluginCount": "Plugins",
+    "owner": "Owner",
+    "installLocation": "Install path",
+    "addCmd": "claude plugin marketplace add <repo>"
+  },
+  "keybindings": {
+    "file": "Source file",
+    "missing": "No keybindings.json found at {{path}}",
+    "context": "Context",
+    "key": "Key",
+    "action": "Action",
+    "docsLink": "View keybindings docs"
+  },
+  "statusline": {
+    "title": "Statusline",
+    "configured": "Configured statusline command",
+    "scripts": "Statusline scripts found in CLAUDE_HOME",
+    "noStatusline": "No statusline configured."
+  },
+  "hookScripts": {
+    "title": "~/.claude/hooks/ scripts",
+    "subtitle": "Helper scripts referenced by your hook commands. These run when settings.json `hooks.<event>.hooks[].command` invokes them.",
+    "empty": "No scripts in ~/.claude/hooks/."
+  },
+  "mcp": {
+    "userScope": "User-scoped servers",
+    "projectScope": "Project-scoped servers",
+    "command": "Command",
+    "args": "Args",
+    "env": "Env names",
+    "url": "URL",
+    "headers": "Header names",
+    "kind": "Kind",
+    "source": "Source",
+    "noServers": "No MCP servers found."
+  },
+  "hooks": {
+    "noHooks": "No hooks configured.",
+    "matcher": "Matcher",
+    "command": "Command",
+    "type": "Type",
+    "timeout": "Timeout",
+    "fileMissing": "(no settings file at this scope)"
+  },
+  "settings": {
+    "fileMissing": "(no settings file at this scope)"
+  },
+  "memory": {
+    "userScope": "User memory",
+    "projectScope": "Project memory",
+    "missing": "No CLAUDE.md found."
+  },
+  "edit": {
+    "newButton": "New",
+    "editButton": "Edit",
+    "deleteButton": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "deleting": "Deleting…",
+    "newTitle": "Create new {{type}}",
+    "editTitle": "Edit {{name}}",
+    "namePlaceholder": "name (kebab-case, no spaces)",
+    "nameLabel": "Name",
+    "nameHelp": "Letters, digits, dot, dash, underscore. Max 64 chars.",
+    "contentLabel": "Content",
+    "scopePicker": "Scope",
+    "writeError": "Save failed: {{message}}",
+    "deleteError": "Delete failed: {{message}}",
+    "saveSuccess": "Saved · backup at {{path}}",
+    "saveSuccessNew": "Created.",
+    "deleteSuccess": "Deleted · backup at {{path}}",
+    "confirmDelete": "Delete this item?",
+    "confirmDeleteBody": "This will move the file (or skill folder, including bundled assets) to a timestamped backup before removing it. The backup lives outside the directories Claude Code scans, so the entry will disappear from your CLI.",
+    "confirmDeletePath": "Path: {{path}}",
+    "confirmDeleteAction": "Yes, back up and delete",
+    "templates": {
+      "skills": "---\nname: my-skill\ndescription: One-line description (shown when Claude picks the skill)\n---\n\nBody — what the skill does, when to use it, examples.\n",
+      "agents": "---\nname: my-agent\ndescription: When to invoke this subagent\ntools: Read, Grep\nmodel: sonnet\n---\n\nSystem prompt for the subagent.\n",
+      "commands": "---\ndescription: One-line description shown in the slash menu\n---\n\nWhat /my-command does.\n",
+      "output-styles": "---\nname: my-style\ndescription: Output style description\n---\n\nStyle instructions.\n",
+      "memory": "# Project memory\n\nClaude reads this on session start.\n"
+    }
+  },
+  "backups": {
+    "title": "Backups",
+    "empty": "No backups yet — every edit or delete creates a timestamped backup that lands here.",
+    "viewLink": "Show backup history",
+    "openButton": "Backups",
+    "subtitle": "Every save / delete in the editor writes a copy here first. Backup folders live outside the directories Claude Code scans, so they don't reappear as ghosts in your CLI.",
+    "restoreHint": "Restore by renaming the backup back into place:",
+    "size": "Size",
+    "created": "Created",
+    "type": "Type",
+    "scopeLabel": "Scope",
+    "filterAll": "All types"
+  },
+  "explain": {
+    "hooks": {
+      "title": "Hooks are read-only here on purpose",
+      "body": "Hooks live in the `hooks` block of `settings.json` files that Claude Code writes to constantly. Editing them from the dashboard would race with the live CLI and could silently break the dashboard's own ingestion (the `hook-handler.js` entry below).",
+      "howTo": "Edit them yourself with one of:",
+      "cmd1": "claude config /hooks",
+      "cmd1Note": "Interactive hook editor inside Claude Code",
+      "cmd2": "$EDITOR ~/.claude/settings.json",
+      "cmd2Note": "Hand-edit the user-level hooks block",
+      "cmd3": "$EDITOR .claude/settings.json",
+      "cmd3Note": "Hand-edit the project-level hooks block"
+    },
+    "settings": {
+      "title": "Settings are read-only here on purpose",
+      "body": "These JSON files are rewritten by the live `claude` CLI on every model change, theme toggle, plugin enable, etc. A dashboard write would race with the CLI and lose state.",
+      "howTo": "Edit settings via Claude Code itself:",
+      "cmd1": "claude config set <key> <value>",
+      "cmd1Note": "Set an individual key safely",
+      "cmd2": "/config",
+      "cmd2Note": "Open the interactive config UI inside the CLI",
+      "cmd3": "$EDITOR ~/.claude/settings.json",
+      "cmd3Note": "Hand-edit (only when no `claude` process is running)"
+    },
+    "plugins": {
+      "title": "Plugins are managed by the CLI",
+      "body": "Plugins are bundles with their own registry — `installed_plugins.json` plus install paths under `plugins/cache/`. The dashboard reads them but defers install/uninstall to `claude plugin …` so the registry stays consistent.",
+      "install": "Install a plugin:",
+      "installCmd": "claude plugin install <marketplace>/<plugin>",
+      "uninstall": "Uninstall this plugin:",
+      "uninstallButton": "Copy uninstall command"
+    },
+    "mcp": {
+      "title": "MCP servers are managed by the CLI",
+      "body": "MCP server config lives inside `~/.claude.json`, the same file the live CLI writes to constantly. Concurrent writes from the dashboard would corrupt project state, so add/remove flow goes through Claude Code itself.",
+      "list": "List configured servers:",
+      "listCmd": "claude mcp list",
+      "add": "Add a server:",
+      "addCmd": "claude mcp add <name> <command> [args…]",
+      "remove": "Remove this server:",
+      "removeButton": "Copy remove command"
+    }
+  },
+  "snippet": {
+    "copy": "Copy",
+    "copied": "Copied"
+  }
+}

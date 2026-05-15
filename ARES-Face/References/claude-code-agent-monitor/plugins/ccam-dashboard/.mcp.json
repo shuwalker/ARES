@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ccam-dashboard": {
+      "command": "node",
+      "args": ["../../mcp/build/index.js"],
+      "env": {
+        "CCAM_DASHBOARD_URL": "http://localhost:4820"
+      }
+    }
+  }
+}

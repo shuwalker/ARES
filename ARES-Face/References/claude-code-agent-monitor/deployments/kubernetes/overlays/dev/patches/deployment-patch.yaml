@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-monitor
+  namespace: agent-monitor
+spec:
+  # Single replica for dev
+  replicas: 1
+  template:
+    spec:
+      # Remove anti-affinity in dev (single node is fine)
+      affinity: null
+      topologySpreadConstraints: []
+      containers:
+        - name: agent-monitor
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"

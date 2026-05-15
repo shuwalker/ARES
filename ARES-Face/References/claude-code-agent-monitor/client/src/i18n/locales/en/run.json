@@ -1,0 +1,161 @@
+{
+  "title": "Run Claude",
+  "subtitle": "Spin up a Claude Code session right inside the dashboard. Live streaming output, multi-turn conversation, and the same hooks-driven analytics as your terminal sessions.",
+  "mode": {
+    "label": "Mode",
+    "conversation": "Conversation",
+    "conversationHint": "Multi-turn — keep typing follow-ups while the agent works.",
+    "headless": "One-shot",
+    "headlessHint": "Single prompt, single response. Stdin closes after spawn."
+  },
+  "fields": {
+    "prompt": "Prompt",
+    "promptPlaceholder": "Ask Claude anything…",
+    "cwd": "Working directory",
+    "cwdHint": "Absolute path. Defaults to the dashboard's own cwd.",
+    "cwdPlaceholder": "Type to search or paste an absolute path…",
+    "cwdGroups": {
+      "dashboard": "Dashboard server",
+      "home": "Home",
+      "recent": "Recent — used by Claude Code"
+    },
+    "cwdNoMatches": "No matches. Type an absolute path to use it directly.",
+    "model": "Model",
+    "modelInheritLabel": "Inherit from settings",
+    "modelCustom": "Custom…",
+    "modelCustomPlaceholder": "model id (e.g. claude-opus-4-7-20260101)",
+    "permissionMode": "Permission mode",
+    "permissionAcceptEdits": "acceptEdits (recommended)",
+    "permissionDefault": "default (interactive prompts — sessions may hang headlessly)",
+    "permissionPlan": "plan (read-only planning)",
+    "permissionBypass": "bypassPermissions (DANGER — allows everything without asking)",
+    "effort": "Thinking effort",
+    "effortHint": "Drives how much the model reasons before answering. Higher = more thinking tokens, slower, deeper. Empty inherits the model's default."
+  },
+  "actions": {
+    "start": "Run",
+    "starting": "Starting…",
+    "send": "Send",
+    "sending": "Sending…",
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "newRun": "New run",
+    "viewSession": "View session"
+  },
+  "status": {
+    "idle": "Idle",
+    "spawning": "Spawning…",
+    "running": "Running",
+    "completed": "Completed",
+    "error": "Error",
+    "killed": "Killed",
+    "abandoned": "Abandoned"
+  },
+  "binary": {
+    "missing": "The `claude` CLI isn't on your PATH. Install Claude Code or set PATH so the dashboard can spawn it.",
+    "found": "Using {{path}}"
+  },
+  "concurrency": {
+    "active_one": "{{count}} run already in flight",
+    "active_other": "{{count}} runs already in flight",
+    "viewActive": "View active runs",
+    "atCap": "Concurrency cap reached ({{max}}). Stop one of the running runs to start a new one."
+  },
+  "hint": {
+    "shortcut": "Cmd+Enter / Ctrl+Enter to send",
+    "permissionWarning": "bypassPermissions allows ALL tool invocations without confirming. Only use for trusted prompts.",
+    "headlessExplain": "Headless mode is best for scripted tasks where you know exactly what you want. The session can't ask follow-up questions and will hang on permission prompts unless you stay in acceptEdits."
+  },
+  "empty": {
+    "title": "Nothing yet",
+    "body": "Type a prompt and click Run. Output streams here as the model thinks, calls tools, and answers."
+  },
+  "events": {
+    "you": "You",
+    "claude": "Claude",
+    "tool": "Tool",
+    "toolResult": "Tool result",
+    "system": "System",
+    "thinking": "Thinking",
+    "expand": "Expand",
+    "collapse": "Collapse"
+  },
+  "footer": {
+    "duration": "Duration",
+    "cost": "Cost",
+    "turns": "Turns",
+    "exitCode": "Exit code",
+    "sessionId": "Session ID"
+  },
+  "errors": {
+    "startFailed": "Couldn't start run: {{message}}",
+    "sendFailed": "Couldn't send: {{message}}",
+    "killFailed": "Couldn't stop: {{message}}",
+    "attachFailed": "Couldn't attach to run: {{message}}"
+  },
+  "runs": {
+    "switcher": "Active runs",
+    "switcherEmpty": "No active runs",
+    "attached": "Attached to existing run",
+    "started": "Started {{when}}",
+    "viewActive": "View active run",
+    "viewActive_other": "{{count}} active runs",
+    "scopeNote": "Only shows runs you started from this dashboard.",
+    "allSessionsLink": "See all Claude Code sessions →",
+    "viewLabel": "View"
+  },
+  "resume": {
+    "label": "Source session",
+    "freshOption": "New session",
+    "freshHint": "Start a fresh Claude Code session.",
+    "resumeOption": "Resume existing session",
+    "resumeHint": "Pick a session from your history and continue the conversation. Cwd is locked to the original.",
+    "pickSession": "Pick a session…",
+    "search": "Search by ID, cwd, or status…",
+    "noSessions": "No sessions found.",
+    "originalCwd": "Original cwd",
+    "preview": "Last activity",
+    "selectedBadge": "Resuming",
+    "clear": "Clear selection"
+  },
+  "limitations": {
+    "title": "Running Claude in your browser",
+    "subtitle": "same binary, different surface",
+    "peek": "Most TUI features carry over. A handful of interactive ones don't.",
+    "why": "Why",
+    "intro": "Under the hood we spawn the same `claude` binary your terminal uses — but stream-json (the only programmatic interface Claude exposes) is a one-way fire-hose, not the interactive TUI. Anything that depends on a running terminal session — in-place permission prompts, the keybinding overlay, mid-session config changes — has to be set up at spawn time instead of mid-conversation.",
+    "supported": "Works here",
+    "limited": "CLI only",
+    "tldr": "If a feature isn't here, pop the same session open in your terminal with `claude --resume <session-id>` — both sides share the same JSONL transcript on disk, so you never lose context by switching surfaces.",
+    "dismiss": "Got it",
+    "minimize": "Minimize",
+    "restore": "Show in-browser run notes",
+    "expand": "Read more",
+    "collapse": "Collapse"
+  },
+  "tokens": {
+    "label": "Context",
+    "input": "Input",
+    "output": "Output",
+    "cacheRead": "Cache hit",
+    "cost": "Cost"
+  },
+  "autocomplete": {
+    "slashHint": "Type / for slash commands",
+    "fileHint": "Type @ to reference a file",
+    "noMatches": "No matches",
+    "groupBuiltin": "Built-in (CLI only — won't run from here)",
+    "groupUser": "User commands",
+    "groupProject": "Project commands",
+    "groupFiles": "Files in cwd"
+  },
+  "statusHeader": {
+    "model": "Model",
+    "effort": "Effort",
+    "permissionMode": "Mode",
+    "cwd": "Cwd",
+    "session": "Session",
+    "envelopes": "Events",
+    "duration": "Elapsed"
+  }
+}

@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: agent-monitor-staging
+
+namespace: agent-monitor
+
+resources:
+  - ../../base
+
+patches:
+  - path: patches/deployment-patch.yaml
+
+images:
+  - name: ${IMAGE_REGISTRY}/agent-monitor
+    newName: agent-monitor
+    newTag: staging
+
+configMapGenerator:
+  - name: agent-monitor-config
+    behavior: merge
+    literals:
+      - NODE_ENV=staging
+      - LOG_LEVEL=info

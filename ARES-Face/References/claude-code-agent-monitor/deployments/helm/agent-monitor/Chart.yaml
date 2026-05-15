@@ -1,0 +1,29 @@
+apiVersion: v2
+name: agent-monitor
+description: Claude Code Agent Monitor - Real-time dashboard for tracking Claude Code agent activity
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+home: https://github.com/davidnguyen/Claude-Code-Agent-Monitor
+sources:
+  - https://github.com/davidnguyen/Claude-Code-Agent-Monitor
+
+keywords:
+  - claude
+  - agent
+  - monitor
+  - dashboard
+  - ai
+  - devtools
+  - observability
+
+maintainers:
+  - name: David Nguyen
+    url: https://github.com/davidnguyen
+
+icon: https://raw.githubusercontent.com/davidnguyen/Claude-Code-Agent-Monitor/main/favicon.svg
+
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/category: monitoring-logging

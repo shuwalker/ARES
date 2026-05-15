@@ -1,0 +1,160 @@
+{
+  "title": "运行 Claude",
+  "subtitle": "直接在仪表盘内启动一个 Claude Code 会话。实时流式输出、多轮对话,与你终端里运行的会话共享同一套 hooks 分析。",
+  "mode": {
+    "label": "模式",
+    "conversation": "对话",
+    "conversationHint": "多轮 — 在 agent 工作时持续追加消息。",
+    "headless": "单次",
+    "headlessHint": "一个 prompt,一个响应。spawn 后立即关闭 stdin。"
+  },
+  "fields": {
+    "prompt": "提示词",
+    "promptPlaceholder": "向 Claude 问任何问题…",
+    "cwd": "工作目录",
+    "cwdHint": "绝对路径。默认使用仪表盘自己的 cwd。",
+    "cwdPlaceholder": "输入以搜索或粘贴绝对路径…",
+    "cwdGroups": {
+      "dashboard": "仪表盘服务器",
+      "home": "Home",
+      "recent": "最近 — Claude Code 使用过"
+    },
+    "cwdNoMatches": "无匹配。输入绝对路径直接使用。",
+    "model": "模型",
+    "modelInheritLabel": "继承 settings 配置",
+    "modelCustom": "自定义…",
+    "modelCustomPlaceholder": "model id(例如 claude-opus-4-7-20260101)",
+    "permissionMode": "权限模式",
+    "permissionAcceptEdits": "acceptEdits(推荐)",
+    "permissionDefault": "default(交互式提示 — headless 会卡住)",
+    "permissionPlan": "plan(只读规划)",
+    "permissionBypass": "bypassPermissions(危险 — 允许一切而不询问)",
+    "effort": "思考强度",
+    "effortHint": "控制模型在回答前的推理量。越高 = 越多思考 token,越慢、越深入。留空使用模型默认值。"
+  },
+  "actions": {
+    "start": "运行",
+    "starting": "启动中…",
+    "send": "发送",
+    "sending": "发送中…",
+    "stop": "停止",
+    "stopping": "停止中…",
+    "newRun": "新建运行",
+    "viewSession": "查看会话"
+  },
+  "status": {
+    "idle": "空闲",
+    "spawning": "启动中…",
+    "running": "运行中",
+    "completed": "已完成",
+    "error": "错误",
+    "killed": "已停止",
+    "abandoned": "已遗弃"
+  },
+  "binary": {
+    "missing": "未在 PATH 中找到 `claude` CLI。请安装 Claude Code 或设置 PATH。",
+    "found": "使用 {{path}}"
+  },
+  "concurrency": {
+    "active_other": "已有 {{count}} 个运行进行中",
+    "viewActive": "查看进行中的运行",
+    "atCap": "已达并发上限({{max}})。停止一个正在运行的以启动新运行。"
+  },
+  "hint": {
+    "shortcut": "Cmd+Enter / Ctrl+Enter 发送",
+    "permissionWarning": "bypassPermissions 允许所有工具调用不经过确认。仅对你信任的提示使用。",
+    "headlessExplain": "Headless 模式适合脚本化任务。会话无法提问,在权限提示时会卡住,除非保持 acceptEdits。"
+  },
+  "empty": {
+    "title": "暂无输出",
+    "body": "输入提示词并点击运行。输出会在模型思考、调用工具与回答时实时流式显示。"
+  },
+  "events": {
+    "you": "你",
+    "claude": "Claude",
+    "tool": "工具",
+    "toolResult": "工具结果",
+    "system": "系统",
+    "thinking": "思考中",
+    "expand": "展开",
+    "collapse": "收起"
+  },
+  "footer": {
+    "duration": "时长",
+    "cost": "成本",
+    "turns": "回合",
+    "exitCode": "退出码",
+    "sessionId": "会话 ID"
+  },
+  "errors": {
+    "startFailed": "启动失败:{{message}}",
+    "sendFailed": "发送失败:{{message}}",
+    "killFailed": "停止失败:{{message}}",
+    "attachFailed": "无法附加到运行:{{message}}"
+  },
+  "runs": {
+    "switcher": "进行中的运行",
+    "switcherEmpty": "暂无进行中的运行",
+    "attached": "已附加到现有运行",
+    "started": "已开始 {{when}}",
+    "viewActive": "查看进行中的运行",
+    "viewActive_other": "{{count}} 个进行中的运行",
+    "scopeNote": "仅显示通过此仪表盘启动的运行。",
+    "allSessionsLink": "查看所有 Claude Code 会话 →",
+    "viewLabel": "查看"
+  },
+  "resume": {
+    "label": "源会话",
+    "freshOption": "新会话",
+    "freshHint": "开始一个全新的 Claude Code 会话。",
+    "resumeOption": "恢复已有会话",
+    "resumeHint": "从历史中选择一个会话继续对话。cwd 锁定为原会话的 cwd。",
+    "pickSession": "选择会话…",
+    "search": "按 ID、cwd 或状态搜索…",
+    "noSessions": "未找到会话。",
+    "originalCwd": "原 cwd",
+    "preview": "最近活动",
+    "selectedBadge": "恢复中",
+    "clear": "清除选择"
+  },
+  "limitations": {
+    "title": "在浏览器中运行 Claude",
+    "subtitle": "同一个二进制,不同的表面",
+    "peek": "大多数 TUI 功能可用,少数交互式功能不支持。",
+    "why": "为什么",
+    "intro": "底层启动的就是你终端用的 `claude` 二进制 — 但 stream-json(Claude 唯一对外的程序化接口)是单向输出流,而不是交互式 TUI。任何依赖运行中终端会话的能力 — 原地权限提示、键位绑定面板、会话中途修改配置 — 都需要在启动时配置好,而不是中途变更。",
+    "supported": "此处支持",
+    "limited": "仅 CLI",
+    "tldr": "如果某项功能这里没有,在终端用 `claude --resume <session-id>` 打开同一会话即可 — 双方共享磁盘上的同一份 JSONL transcript,不会因为切换界面而丢失上下文。",
+    "dismiss": "知道了",
+    "minimize": "最小化",
+    "restore": "显示浏览器内运行说明",
+    "expand": "查看详情",
+    "collapse": "收起"
+  },
+  "tokens": {
+    "label": "上下文",
+    "input": "输入",
+    "output": "输出",
+    "cacheRead": "缓存命中",
+    "cost": "成本"
+  },
+  "autocomplete": {
+    "slashHint": "输入 / 选择斜杠命令",
+    "fileHint": "输入 @ 引用文件",
+    "noMatches": "无匹配",
+    "groupBuiltin": "内置(仅 CLI — 此处不会执行)",
+    "groupUser": "用户命令",
+    "groupProject": "项目命令",
+    "groupFiles": "cwd 中的文件"
+  },
+  "statusHeader": {
+    "model": "模型",
+    "effort": "强度",
+    "permissionMode": "模式",
+    "cwd": "Cwd",
+    "session": "会话",
+    "envelopes": "事件",
+    "duration": "已用时"
+  }
+}

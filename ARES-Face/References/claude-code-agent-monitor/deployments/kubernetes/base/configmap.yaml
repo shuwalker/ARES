@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-monitor-config
+  namespace: agent-monitor
+  labels:
+    app.kubernetes.io/name: agent-monitor
+    app.kubernetes.io/instance: agent-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: config
+    app.kubernetes.io/managed-by: kustomize
+data:
+  NODE_ENV: "production"
+  DASHBOARD_PORT: "4820"
+  LOG_LEVEL: "info"

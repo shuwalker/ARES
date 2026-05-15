@@ -1,0 +1,15 @@
+{
+  "title": "Có bản cập nhật cho bảng điều khiển",
+  "lead": "Đã có commit mới trên nhánh remote. Hãy sao chép lệnh bên dưới và chạy trong terminal — bảng điều khiển sẽ không tự cập nhật.",
+  "commitsBehind": "Chậm {{ref}} {{count}} commit",
+  "copy": "Sao chép lệnh",
+  "commandLabel": "Lệnh terminal để cập nhật bảng điều khiển",
+  "copied": "Đã sao chép",
+  "dismiss": "Bỏ qua",
+  "fetchError": "Không kết nối được remote git. Thử lại khi có mạng.",
+  "notGit": "Bản cài đặt này không phải bản git clone; hãy nâng cấp thủ công.",
+  "restartNote": "Sau khi chạy xong lệnh, hãy khởi động lại bảng điều khiển theo cách bạn đã dùng để chạy nó.",
+  "checkNow": "Kiểm tra ngay",
+  "checking": "Đang kiểm tra...",
+  "checkError": "Không thể kiểm tra cập nhật"
+}

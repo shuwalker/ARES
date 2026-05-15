@@ -1,0 +1,233 @@
+{
+  "title": "Claude 配置浏览器",
+  "subtitle": "你的 Claude Code 配置一览 - 插件、技能、子代理、MCP 服务器、Hook 与设置。",
+  "refresh": "刷新",
+  "refreshing": "正在刷新…",
+  "lastUpdated": "最后更新 {{time}}",
+  "loadError": "加载失败:{{message}}",
+  "scope": {
+    "all": "全部范围",
+    "user": "用户",
+    "project": "项目",
+    "projectLocal": "项目(本地)",
+    "home": "Home"
+  },
+  "tabs": {
+    "overview": "概览",
+    "skills": "技能",
+    "agents": "子代理",
+    "commands": "斜杠命令",
+    "outputStyles": "输出样式",
+    "plugins": "插件",
+    "marketplaces": "市场",
+    "mcp": "MCP 服务器",
+    "hooks": "Hooks",
+    "keybindings": "快捷键",
+    "settings": "设置",
+    "memory": "记忆"
+  },
+  "overview": {
+    "rootsTitle": "根目录",
+    "claudeHome": "Claude home",
+    "projectClaudeDir": "项目 .claude",
+    "projectRoot": "项目根目录",
+    "claudeJson": "claude.json",
+    "summary": "快速摘要",
+    "user": "用户",
+    "project": "项目",
+    "items": "项"
+  },
+  "common": {
+    "search": "按名称搜索…",
+    "empty": "暂无内容。",
+    "viewSource": "查看源码",
+    "close": "关闭",
+    "copyPath": "复制路径",
+    "copied": "已复制",
+    "truncated": "(预览已截断)",
+    "size": "大小",
+    "modified": "修改时间",
+    "scopeLabel": "范围",
+    "noFrontmatter": "无前置元数据",
+    "redactedNotice": "匹配 /token|secret|password|key|auth/i 的值已在服务器端脱敏。"
+  },
+  "skills": {
+    "name": "名称",
+    "description": "描述"
+  },
+  "agents": {
+    "name": "名称",
+    "model": "模型",
+    "tools": "工具"
+  },
+  "plugins": {
+    "manifest": "清单文件",
+    "marketplace": "市场",
+    "version": "版本",
+    "installedAt": "安装时间",
+    "lastUpdated": "更新时间",
+    "installPath": "安装路径",
+    "missing": "安装路径丢失",
+    "manifestMissing": "在 {{path}} 未找到 installed_plugins.json",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "contributes": "提供",
+    "skills_other": "{{count}} 个技能",
+    "agents_other": "{{count}} 个子代理",
+    "commands_other": "{{count}} 个命令",
+    "outputStyles_other": "{{count}} 个输出样式",
+    "hooks_other": "{{count}} 个 hook 脚本",
+    "author": "作者",
+    "homepage": "主页",
+    "license": "许可证",
+    "description": "描述"
+  },
+  "marketplaces": {
+    "manifest": "已知市场清单",
+    "noMarketplaces": "未注册市场。",
+    "source": "源",
+    "lastUpdated": "最后同步",
+    "pluginCount": "插件",
+    "owner": "所有者",
+    "installLocation": "安装路径",
+    "addCmd": "claude plugin marketplace add <repo>"
+  },
+  "keybindings": {
+    "file": "源文件",
+    "missing": "在 {{path}} 未找到 keybindings.json",
+    "context": "上下文",
+    "key": "按键",
+    "action": "动作",
+    "docsLink": "查看快捷键文档"
+  },
+  "statusline": {
+    "title": "状态行",
+    "configured": "配置的状态行命令",
+    "scripts": "在 CLAUDE_HOME 中找到的状态行脚本",
+    "noStatusline": "未配置状态行。"
+  },
+  "hookScripts": {
+    "title": "~/.claude/hooks/ 脚本",
+    "subtitle": "被你的 hook 命令引用的辅助脚本。当 settings.json 的 `hooks.<event>.hooks[].command` 调用它们时运行。",
+    "empty": "~/.claude/hooks/ 中无脚本。"
+  },
+  "mcp": {
+    "userScope": "用户级服务器",
+    "projectScope": "项目级服务器",
+    "command": "命令",
+    "args": "参数",
+    "env": "环境变量名",
+    "url": "URL",
+    "headers": "Header 名称",
+    "kind": "类型",
+    "source": "来源",
+    "noServers": "未找到 MCP 服务器。"
+  },
+  "hooks": {
+    "noHooks": "未配置 Hooks。",
+    "matcher": "匹配器",
+    "command": "命令",
+    "type": "类型",
+    "timeout": "超时",
+    "fileMissing": "(此范围下无设置文件)"
+  },
+  "settings": {
+    "fileMissing": "(此范围下无设置文件)"
+  },
+  "memory": {
+    "userScope": "用户记忆",
+    "projectScope": "项目记忆",
+    "missing": "未找到 CLAUDE.md。"
+  },
+  "edit": {
+    "newButton": "新建",
+    "editButton": "编辑",
+    "deleteButton": "删除",
+    "save": "保存",
+    "cancel": "取消",
+    "saving": "保存中…",
+    "deleting": "删除中…",
+    "newTitle": "新建 {{type}}",
+    "editTitle": "编辑 {{name}}",
+    "namePlaceholder": "名称(kebab-case,无空格)",
+    "nameLabel": "名称",
+    "nameHelp": "字母、数字、点、短横线、下划线。最长 64 个字符。",
+    "contentLabel": "内容",
+    "scopePicker": "范围",
+    "writeError": "保存失败:{{message}}",
+    "deleteError": "删除失败:{{message}}",
+    "saveSuccess": "已保存 · 备份位于 {{path}}",
+    "saveSuccessNew": "已创建。",
+    "deleteSuccess": "已删除 · 备份位于 {{path}}",
+    "confirmDelete": "删除此项?",
+    "confirmDeleteBody": "在删除前会先把文件(或整个 skill 文件夹,包含捆绑资源)移动到带时间戳的备份。备份位于 Claude Code 不扫描的目录,因此该项将从 CLI 中消失。",
+    "confirmDeletePath": "路径:{{path}}",
+    "confirmDeleteAction": "确认备份并删除",
+    "templates": {
+      "skills": "---\nname: my-skill\ndescription: 一句话描述\n---\n\n说明此 skill 的用途、调用时机与示例。\n",
+      "agents": "---\nname: my-agent\ndescription: 何时调用此子代理\ntools: Read, Grep\nmodel: sonnet\n---\n\n子代理的系统提示。\n",
+      "commands": "---\ndescription: 出现在 / 菜单的描述\n---\n\n/my-command 的功能说明。\n",
+      "output-styles": "---\nname: my-style\ndescription: 输出风格描述\n---\n\n风格指令。\n",
+      "memory": "# 项目记忆\n\nClaude 在会话开始时读取此文件。\n"
+    }
+  },
+  "backups": {
+    "title": "备份",
+    "empty": "暂无备份 — 每次编辑或删除都会创建带时间戳的备份。",
+    "viewLink": "查看备份历史",
+    "openButton": "备份",
+    "subtitle": "编辑器中每次保存/删除会先写入备份。备份目录位于 Claude Code 不扫描的位置,因此不会作为残留显示在 CLI 中。",
+    "restoreHint": "通过将备份重新命名回原处来恢复:",
+    "size": "大小",
+    "created": "创建于",
+    "type": "类型",
+    "scopeLabel": "范围",
+    "filterAll": "全部类型"
+  },
+  "explain": {
+    "hooks": {
+      "title": "Hooks 在此页只读",
+      "body": "Hooks 位于 `settings.json` 的 `hooks` 块中,Claude Code 会持续写入这些文件。从仪表盘编辑会与正在运行的 CLI 产生写入竞争,可能会悄悄破坏仪表盘自身的事件接收(下面的 `hook-handler.js` 条目)。",
+      "howTo": "请使用以下任一方式自行编辑:",
+      "cmd1": "claude config /hooks",
+      "cmd1Note": "在 Claude Code 内部交互式编辑 hooks",
+      "cmd2": "$EDITOR ~/.claude/settings.json",
+      "cmd2Note": "手动编辑用户级 hooks 块",
+      "cmd3": "$EDITOR .claude/settings.json",
+      "cmd3Note": "手动编辑项目级 hooks 块"
+    },
+    "settings": {
+      "title": "Settings 在此页只读",
+      "body": "这些 JSON 文件会被 `claude` CLI 在每次切换模型、主题、启用插件时重写。仪表盘的写入会与 CLI 竞争并丢失状态。",
+      "howTo": "通过 Claude Code 本身编辑设置:",
+      "cmd1": "claude config set <key> <value>",
+      "cmd1Note": "安全地设置单个键",
+      "cmd2": "/config",
+      "cmd2Note": "在 CLI 内部打开交互式配置界面",
+      "cmd3": "$EDITOR ~/.claude/settings.json",
+      "cmd3Note": "手动编辑(仅在没有 claude 进程运行时)"
+    },
+    "plugins": {
+      "title": "插件由 CLI 管理",
+      "body": "插件是带有自己注册表的捆绑包 — `installed_plugins.json` 加上 `plugins/cache/` 下的安装路径。仪表盘只读取它们,安装/卸载交给 `claude plugin …` 以保持注册表一致性。",
+      "install": "安装插件:",
+      "installCmd": "claude plugin install <marketplace>/<plugin>",
+      "uninstall": "卸载此插件:",
+      "uninstallButton": "复制卸载命令"
+    },
+    "mcp": {
+      "title": "MCP 服务器由 CLI 管理",
+      "body": "MCP 服务器配置位于 `~/.claude.json` 中,这是正在运行的 CLI 持续写入的同一个文件。仪表盘的并发写入会破坏项目状态,因此添加/移除流程通过 Claude Code 本身进行。",
+      "list": "列出已配置服务器:",
+      "listCmd": "claude mcp list",
+      "add": "添加服务器:",
+      "addCmd": "claude mcp add <name> <command> [args…]",
+      "remove": "移除此服务器:",
+      "removeButton": "复制移除命令"
+    }
+  },
+  "snippet": {
+    "copy": "复制",
+    "copied": "已复制"
+  }
+}

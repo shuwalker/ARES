@@ -1,0 +1,39 @@
+# CODEOWNERS — Claude Code Agent Monitor
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+*                       @hoangsonww
+
+# Backend — API, hooks, SQLite, WebSocket
+/server/                @hoangsonww
+
+# Frontend — React + Vite UI
+/client/                @hoangsonww
+
+# MCP server integration
+/mcp/                   @hoangsonww
+
+# Hook installer, import, seed, cleanup utilities
+/scripts/               @hoangsonww
+
+# VS Code extension
+/vscode-extension/      @hoangsonww
+
+# Statusline plugin
+/statusline/            @hoangsonww
+
+# Claude Code plugins
+/plugins/               @hoangsonww
+
+# Deployment configs (Docker, k8s, etc.)
+/deployments/           @hoangsonww
+/Dockerfile             @hoangsonww
+/docker-compose.yml     @hoangsonww
+
+# CI/CD workflows and GitHub config
+/.github/               @hoangsonww
+
+# Documentation
+/docs/                  @hoangsonww
+/wiki/                  @hoangsonww
+*.md                    @hoangsonww

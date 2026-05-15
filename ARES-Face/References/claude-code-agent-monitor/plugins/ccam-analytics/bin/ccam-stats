@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# ccam-stats — Quick CLI stats from Claude Code Agent Monitor
+# Usage: ccam-stats [--json] [--cost] [--sessions] [--all]
+set -euo pipefail
+
+DASHBOARD_URL="${CCAM_DASHBOARD_URL:-http://localhost:4820}"
+
+usage() {
+  cat <<EOF
+ccam-stats — Claude Code Agent Monitor Quick Stats
+
+USAGE:
+  ccam-stats [OPTIONS]
+
+OPTIONS:
+  --all        Show all stats (default)
+  --sessions   Show session summary
+  --cost       Show cost summary
+  --tokens     Show token usage summary
+  --json       Output raw JSON instead of formatted text
+  --help       Show this help
+
+ENVIRONMENT:
+  CCAM_DASHBOARD_URL   Dashboard URL (default: http://localhost:4820)
+
+EXAMPLES:
+  ccam-stats                # Show all stats
+  ccam-stats --cost         # Show cost summary only
+  ccam-stats --json         # Get raw JSON output
+EOF
+  exit 0
+}
+
+check_dashboard() {
+  if ! curl -sf "${DASHBOARD_URL}/api/health" > /dev/null 2>&1; then
+    echo "✗ Dashboard unreachable at ${DASHBOARD_URL}" >&2
+    echo "  Start it with: cd <agent-monitor-dir> && npm start" >&2
+    exit 1
+  fi
+}
+
+format_number() {
+  printf "%'d" "$1" 2>/dev/null || echo "$1"
+}
+
+show_sessions() {
+  local stats
+  stats=$(curl -sf "${DASHBOARD_URL}/api/stats")
+
+  local total active completed errored
+  total=$(echo "$stats" | jq -r '.total_sessions // 0')
+  active=$(echo "$stats" | jq -r '.active_sessions // 0')
+  completed=$(echo "$stats" | jq -r '.sessions_by_status.completed // 0')
+  errored=$(echo "$stats" | jq -r '.sessions_by_status.error // 0')
+
+  echo "╔══════════════════════════════════════╗"
+  echo "║        SESSION SUMMARY               ║"
+  echo "╠══════════════════════════════════════╣"
+  printf "║  Total Sessions:    %15s ║\n" "$(format_number "$total")"
+  printf "║  Active:            %15s ║\n" "$(format_number "$active")"
+  printf "║  Completed:         %15s ║\n" "$(format_number "$completed")"
+  printf "║  Errored:           %15s ║\n" "$(format_number "$errored")"
+  echo "╚══════════════════════════════════════╝"
+}
+
+show_cost() {
+  local cost
+  cost=$(curl -sf "${DASHBOARD_URL}/api/pricing/cost")
+
+  local total_cost model_count
+  total_cost=$(echo "$cost" | jq -r '.total_cost // "0.0000"')
+  model_count=$(echo "$cost" | jq -r '.breakdown | length // 0')
+
+  echo "╔══════════════════════════════════════╗"
+  echo "║        COST SUMMARY                  ║"
+  echo "╠══════════════════════════════════════╣"
+  printf "║  Total Cost (USD):  %15s ║\n" "\$${total_cost}"
+  printf "║  Models Tracked:    %15s ║\n" "${model_count}"
+  echo "╚══════════════════════════════════════╝"
+
+  if [ "$model_count" -gt 0 ] 2>/dev/null; then
+    echo ""
+    echo "  Per-model breakdown:"
+    echo "$cost" | jq -r '.breakdown[] | "    \(.model): $\(.cost) (\(.matched_rule))"' 2>/dev/null || true
+  fi
+}
+
+show_tokens() {
+  local analytics
+  analytics=$(curl -sf "${DASHBOARD_URL}/api/analytics")
+
+  local input output cache_read cache_write
+  input=$(echo "$analytics" | jq -r '.tokens.total_input // 0')
+  output=$(echo "$analytics" | jq -r '.tokens.total_output // 0')
+  cache_read=$(echo "$analytics" | jq -r '.tokens.total_cache_read // 0')
+  cache_write=$(echo "$analytics" | jq -r '.tokens.total_cache_write // 0')
+
+  echo "╔══════════════════════════════════════╗"
+  echo "║        TOKEN USAGE                   ║"
+  echo "╠══════════════════════════════════════╣"
+  printf "║  Input Tokens:      %15s ║\n" "$(format_number "$input")"
+  printf "║  Output Tokens:     %15s ║\n" "$(format_number "$output")"
+  printf "║  Cache Read:        %15s ║\n" "$(format_number "$cache_read")"
+  printf "║  Cache Write:       %15s ║\n" "$(format_number "$cache_write")"
+  echo "╚══════════════════════════════════════╝"
+}
+
+show_json() {
+  local section="${1:-all}"
+  case "$section" in
+    sessions) curl -sf "${DASHBOARD_URL}/api/stats" | jq . ;;
+    cost)     curl -sf "${DASHBOARD_URL}/api/pricing/cost" | jq . ;;
+    tokens)   curl -sf "${DASHBOARD_URL}/api/analytics" | jq '.tokens' ;;
+    all)
+      echo '{'
+      echo '  "stats":'
+      curl -sf "${DASHBOARD_URL}/api/stats" | jq '  .'
+      echo ','
+      echo '  "cost":'
+      curl -sf "${DASHBOARD_URL}/api/pricing/cost" | jq '  .'
+      echo ','
+      echo '  "tokens":'
+      curl -sf "${DASHBOARD_URL}/api/analytics" | jq '  .tokens'
+      echo '}'
+      ;;
+  esac
+}
+
+# --- Main ---
+
+JSON_MODE=false
+SECTION="all"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)    usage ;;
+    --json)       JSON_MODE=true; shift ;;
+    --sessions)   SECTION="sessions"; shift ;;
+    --cost)       SECTION="cost"; shift ;;
+    --tokens)     SECTION="tokens"; shift ;;
+    --all)        SECTION="all"; shift ;;
+    *)            echo "Unknown option: $1" >&2; usage ;;
+  esac
+done
+
+check_dashboard
+
+if $JSON_MODE; then
+  show_json "$SECTION"
+  exit 0
+fi
+
+echo ""
+echo "  Claude Code Agent Monitor — $(date '+%Y-%m-%d %H:%M')"
+echo "  Dashboard: ${DASHBOARD_URL}"
+echo ""
+
+case "$SECTION" in
+  sessions) show_sessions ;;
+  cost)     show_cost ;;
+  tokens)   show_tokens ;;
+  all)
+    show_sessions
+    echo ""
+    show_cost
+    echo ""
+    show_tokens
+    ;;
+esac
+
+echo ""

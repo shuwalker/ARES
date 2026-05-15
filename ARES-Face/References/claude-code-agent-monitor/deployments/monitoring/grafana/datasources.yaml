@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Grafana datasource provisioning for Claude Code Agent Monitor
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: 1
+
+# Prevent users from deleting provisioned data sources in the UI
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+
+datasources:
+  # ── Primary Prometheus datasource ─────────────────────────────────────────
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus-server:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Scrape interval matches prometheus.yaml global setting
+      timeInterval: "15s"
+      # Query timeout
+      queryTimeout: "30s"
+      # HTTP method for queries
+      httpMethod: POST
+      # Manage alerts via Prometheus
+      manageAlerts: true
+      # Alerting rule settings
+      prometheusType: Prometheus
+      prometheusVersion: ">=2.45.0"
+      # Incremental querying for better performance
+      incrementalQuerying: true
+      incrementalQueryOverlapWindow: "10m"
+      # Exemplar trace support (uncomment if using tracing)
+      # exemplarTraceIdDestinations:
+      #   - name: traceId
+      #     datasourceUid: tempo
+    version: 1
+
+  # ── Alertmanager datasource ───────────────────────────────────────────────
+  - name: Alertmanager
+    type: alertmanager
+    uid: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false
+    version: 1

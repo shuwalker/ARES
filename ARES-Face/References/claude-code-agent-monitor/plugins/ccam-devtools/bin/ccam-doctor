@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# ccam-doctor — Diagnostic tool for Claude Code Agent Monitor
+# Usage: ccam-doctor [--quick] [--deep] [--fix]
+set -euo pipefail
+
+DASHBOARD_URL="${CCAM_DASHBOARD_URL:-http://localhost:4820}"
+HOOK_HANDLER_NAME="hook-handler.js"
+CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+PASS=0
+WARN=0
+FAIL=0
+
+usage() {
+  cat <<EOF
+ccam-doctor — Claude Code Agent Monitor Diagnostic Tool
+
+USAGE:
+  ccam-doctor [OPTIONS]
+
+OPTIONS:
+  --quick    Run basic connectivity checks only
+  --deep     Run all checks including database integrity
+  --fix      Attempt to auto-fix common issues
+  --json     Output results as JSON
+  --help     Show this help
+
+ENVIRONMENT:
+  CCAM_DASHBOARD_URL   Dashboard URL (default: http://localhost:4820)
+EOF
+  exit 0
+}
+
+check_pass() { echo -e "  ${GREEN}✅ $1${NC}"; ((PASS++)); }
+check_warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; ((WARN++)); }
+check_fail() { echo -e "  ${RED}❌ $1${NC}"; ((FAIL++)); }
+
+header() {
+  echo ""
+  echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════╗${NC}"
+  echo -e "${BOLD}${CYAN}║   AGENT MONITOR DIAGNOSTIC REPORT            ║${NC}"
+  echo -e "${BOLD}${CYAN}║   $(date '+%Y-%m-%d %H:%M:%S %Z')                    ║${NC}"
+  echo -e "${BOLD}${CYAN}╠══════════════════════════════════════════════╣${NC}"
+  echo ""
+}
+
+check_api() {
+  echo -e "${BOLD}API Server${NC}"
+  local start_ms end_ms duration_ms
+  start_ms=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
+
+  if response=$(curl -sf --max-time 5 "${DASHBOARD_URL}/api/health" 2>/dev/null); then
+    end_ms=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
+    duration_ms=$((end_ms - start_ms))
+    if [ "$duration_ms" -lt 500 ]; then
+      check_pass "API responding (${duration_ms}ms)"
+    else
+      check_warn "API slow (${duration_ms}ms — expected <500ms)"
+    fi
+  else
+    check_fail "API unreachable at ${DASHBOARD_URL}"
+    echo "    → Start the server: npm start (from the project directory)"
+    return 1
+  fi
+}
+
+check_endpoints() {
+  echo -e "${BOLD}API Endpoints${NC}"
+  local endpoints=("sessions?limit=1" "events?limit=1" "analytics" "pricing" "stats" "settings/info")
+  local pass_count=0
+  local total=${#endpoints[@]}
+
+  for ep in "${endpoints[@]}"; do
+    if curl -sf --max-time 5 "${DASHBOARD_URL}/api/${ep}" > /dev/null 2>&1; then
+      ((pass_count++))
+    fi
+  done
+
+  if [ "$pass_count" -eq "$total" ]; then
+    check_pass "All ${total} endpoints responding"
+  elif [ "$pass_count" -gt 0 ]; then
+    check_warn "${pass_count}/${total} endpoints responding"
+  else
+    check_fail "No endpoints responding"
+  fi
+}
+
+check_database() {
+  echo -e "${BOLD}Database${NC}"
+  local stats
+  if stats=$(curl -sf --max-time 5 "${DASHBOARD_URL}/api/stats" 2>/dev/null); then
+    local sessions events
+    sessions=$(echo "$stats" | jq -r '.total_sessions // 0')
+    events=$(echo "$stats" | jq -r '.total_events // 0')
+    check_pass "Database OK (${sessions} sessions, ${events} events)"
+  else
+    check_fail "Database query failed"
+  fi
+}
+
+check_hooks() {
+  echo -e "${BOLD}Hook Configuration${NC}"
+
+  if [ ! -f "$CLAUDE_SETTINGS" ]; then
+    check_fail "Claude settings not found at ${CLAUDE_SETTINGS}"
+    echo "    → Run: npm run install-hooks (from the project directory)"
+    return
+  fi
+
+  local hook_count
+  hook_count=$(jq '[.hooks // {} | to_entries[] | .value[] | .hooks[]? ] | length' "$CLAUDE_SETTINGS" 2>/dev/null || echo "0")
+
+  if [ "$hook_count" -ge 7 ]; then
+    check_pass "Hooks configured (${hook_count} hook entries)"
+  elif [ "$hook_count" -gt 0 ]; then
+    check_warn "Partial hook setup (${hook_count}/7+ expected)"
+    echo "    → Run: npm run install-hooks"
+  else
+    check_fail "No hooks configured"
+    echo "    → Run: npm run install-hooks (from the project directory)"
+  fi
+}
+
+check_data_freshness() {
+  echo -e "${BOLD}Data Freshness${NC}"
+  local events
+  if events=$(curl -sf --max-time 5 "${DASHBOARD_URL}/api/events?limit=1" 2>/dev/null); then
+    local last_event
+    last_event=$(echo "$events" | jq -r '.[0].created_at // empty' 2>/dev/null)
+    if [ -n "$last_event" ]; then
+      check_pass "Last event: ${last_event}"
+    else
+      check_warn "No events found — dashboard may be newly set up"
+    fi
+  else
+    check_warn "Could not check data freshness"
+  fi
+}
+
+summary() {
+  local total=$((PASS + WARN + FAIL))
+  echo ""
+  echo -e "${BOLD}${CYAN}╠══════════════════════════════════════════════╣${NC}"
+  if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
+    echo -e "${BOLD}${GREEN}║   Overall: HEALTHY (${PASS}/${total} checks passed)       ║${NC}"
+  elif [ "$FAIL" -eq 0 ]; then
+    echo -e "${BOLD}${YELLOW}║   Overall: DEGRADED (${WARN} warnings)               ║${NC}"
+  else
+    echo -e "${BOLD}${RED}║   Overall: UNHEALTHY (${FAIL} failures)              ║${NC}"
+  fi
+  echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════╝${NC}"
+  echo ""
+}
+
+# --- Main ---
+MODE="standard"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)  usage ;;
+    --quick)    MODE="quick"; shift ;;
+    --deep)     MODE="deep"; shift ;;
+    --fix)      MODE="fix"; shift ;;
+    --json)     MODE="json"; shift ;;
+    *)          echo "Unknown option: $1" >&2; usage ;;
+  esac
+done
+
+header
+
+check_api || { summary; exit 1; }
+echo ""
+
+if [ "$MODE" != "quick" ]; then
+  check_endpoints
+  echo ""
+  check_database
+  echo ""
+fi
+
+check_hooks
+echo ""
+check_data_freshness
+
+summary
+
+exit "$FAIL"

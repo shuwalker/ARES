@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '{session_id: .session_id, stop_reason: .stop_reason, timestamp: now | todate}' | curl -s -X POST http://localhost:4820/api/hooks/event -H 'Content-Type: application/json' -d @- > /dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '{session_id: .session_id, agent_id: .agent_id, stop_reason: .stop_reason, timestamp: now | todate}' | curl -s -X POST http://localhost:4820/api/hooks/event -H 'Content-Type: application/json' -d @- > /dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}

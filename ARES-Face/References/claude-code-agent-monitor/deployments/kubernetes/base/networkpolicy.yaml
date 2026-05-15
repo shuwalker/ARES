@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agent-monitor
+  namespace: agent-monitor
+  labels:
+    app.kubernetes.io/name: agent-monitor
+    app.kubernetes.io/instance: agent-monitor
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: network
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-monitor
+      app.kubernetes.io/instance: agent-monitor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 4820
+    # Allow intra-namespace traffic (pod-to-pod)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: agent-monitor
+      ports:
+        - protocol: TCP
+          port: 4820
+  egress:
+    # Allow DNS resolution (required for service discovery)
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow outbound HTTPS (for external API calls if needed)
+    - ports:
+        - port: 443
+          protocol: TCP
+    # Allow internal communication within the namespace (pod-to-pod)
+    - to:
+        - podSelector: {}

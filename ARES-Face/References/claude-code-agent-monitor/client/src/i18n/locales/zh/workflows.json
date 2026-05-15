@@ -1,0 +1,420 @@
+{
+  "title": "工作流",
+  "subtitle": "Agent编排智能分析",
+  "failedLoad": "工作流数据加载失败",
+  "filteredBy": "筛选：",
+  "clearFilter": "清除筛选",
+  "refreshData": "刷新数据",
+  "exportJson": "导出 JSON",
+  "allSessions": "所有会话",
+  "activeOnly": "仅活跃",
+  "completed": "已完成",
+  "chartInfo": {
+    "labels": {
+      "what": "此图展示了什么",
+      "howToRead": "如何阅读",
+      "why": "为何重要"
+    },
+    "orchestration": {
+      "what": "一张分层 DAG，描绘 Claude Code 会话的扩散路径：从源会话出发，进入主 Agent，再到各个 Subagent 类型，经过任何上下文压缩，最终到达终止结果（完成 / 错误 / 中止）。",
+      "howToRead": "每一列代表一层。节点尺寸固定；小徽章是次数。边由左向右流动；边越粗 = 流转越频繁。悬停任意节点查看统计；点击即可按该节点筛选页面其余内容。",
+      "why": "用以回答「我的工作流里工作流向哪里？」——哪些 Subagent 占主导、压缩在何处出现、以及哪些路径以错误而非干净完成收尾。"
+    },
+    "toolFlow": {
+      "what": "桑基图风格地展示范围内所有会话的相邻工具调用流转。每条带状代表一对（源 → 目标），统计自所有会话。",
+      "howToRead": "工具显示为左右两侧的彩色条。带状连接它们：粗细 = 源紧接着在目标之前运行的次数。悬停一条带状查看占源/占目标的比例；悬停节点查看其总用量与占全部工具调用的比例。",
+      "why": "暴露习惯性的工具链（例如 Read → Edit → Bash）。便于发现循环、多余跳转及工具种类不足的 Agent 行为。"
+    },
+    "pipeline": {
+      "what": "一张有向图，展示 Agent 类型的共现关系：哪些 Agent 类型倾向于在哪些之后顺序运行，以及频率如何。",
+      "howToRead": "圆圈是 Agent 类型；大小编码总生成数。当 B 在同一会话中紧随 A 出现时，箭头从 A → B，标签 = 次数。悬停箭头查看占源/占目标的比例；悬停圆圈查看生成数、会话数与成功率。可拖拽节点重新排布。",
+      "why": "暴露你也许并非有意设计的真实委派管道——例如几乎总跟在 build agent 之后运行的 code-review agent——以便编码或精简它们。"
+    },
+    "effectiveness": {
+      "what": "每种 Subagent 一张卡片，包含成功率环、总会话数、平均时长以及 7 天活动迷你图。",
+      "howToRead": "环的填充比例就是成功率；中央百分比含义相同。两个小框给出数量和平均实际时长。迷你图为过去一周每天的会话数——悬停某个柱条可查看当天数据。",
+      "why": "对每个 Agent 做快速健康检查：哪些可靠、哪些较慢、哪些使用量在上升或下降。"
+    },
+    "patterns": {
+      "what": "从会话轨迹中检测到的、按出现频次排序的 Agent 编排序列列表，并对没有 Subagent 的独立会话单列。",
+      "howToRead": "每行是一个步骤序列（main → sub → sub …）。右侧显示匹配的会话数及占总会话比例。点击模式可高亮。",
+      "why": "揭示项目中工作的标准「形态」。频繁出现的模式很适合正式化为命名工作流或 skill。"
+    },
+    "modelDelegation": {
+      "what": "两列流图，展示哪些主模型委派给了哪些 Subagent 模型，并附带每节点的 Agent 数与总 Token。",
+      "howToRead": "左列 = 会话使用的主模型；右列 = Subagent 内部使用的模型。连线代表观察到的「主 → Subagent」搭配。悬停节点查看占总 Agent 比例、会话数、总 Token，以及模型系列说明（Opus / Sonnet / Haiku）。",
+      "why": "帮助确认成本/延迟的分级——例如主模型 Sonnet、Subagent Haiku——并捕获意外升级到 Opus 的情况。"
+    },
+    "errorPropagation": {
+      "what": "错误在 Agent 层级中的聚集情况：按深度（会话/主 vs 直接 Subagent vs 嵌套）、按 Agent 类型、按 API/会话级错误类别。",
+      "howToRead": "顶部横幅给出会话级错误率。深度条形显示每一嵌套层级的错误数。「易错类型」列表按错误数对 Subagent 进行排序。底部块呈现 API/会话错误摘要。",
+      "why": "判断失败到底位于编排主线（主 Agent）、特定 Subagent，还是深层嵌套链——指引你应将重试、校验或重写的精力投在哪里。"
+    },
+    "concurrency": {
+      "what": "聚合显示每种 Agent 类型相对会话时间线的活跃时段，并附带涉及它的会话数。",
+      "howToRead": "每行一种 Agent 类型。条形长度与会话数成正比。右侧百分比表示在会话中的平均起止位置（0% = 会话开始，100% = 会话结束）。悬停可查看时间模式说明（前段、中段、后段等）。",
+      "why": "揭示会话节奏——例如开头跑 lint、结尾跑 code-review——并暴露占据整个会话的 Agent。"
+    },
+    "complexity": {
+      "what": "对每个会话的散点图：x = 实际时长，y = 涉及的 Agent 总数，气泡大小 = 总 Token，颜色 = 终止状态。",
+      "howToRead": "右上角的气泡是耗时长且 Agent 多的会话。大气泡消耗的 Token 最多。红/黄 = 错误/中止。悬停任一气泡查看完整会话统计；点击即可在下方深入。",
+      "why": "在一个视图里看清成本/复杂度分布。离群点正是值得追查失控行为或费用峰值的会话。"
+    },
+    "compaction": {
+      "what": "Claude 触发上下文压缩的频率：总事件数、回收的 Token 与每会话分布。",
+      "howToRead": "两个数字框给出压缩事件总数及回收 Token 总量。柱状图列出至少触发过一次压缩的会话，按次数降序排序。",
+      "why": "压缩是上下文压力的信号。大量高压缩会话通常意味着工作流应当被拆分、汇总或迁移到更长上下文的模型上。"
+    },
+    "drillIn": {
+      "what": "按会话查看的详细视图：完整 Agent 树、工具调用时间线，以及你所选会话的原始事件序列。",
+      "howToRead": "从上方下拉中选择一个会话，或点击散点图中的气泡。标签页可在分层视图（Agent Tree）、时间视图（Tool Timeline）与按时间顺序视图（Event Sequence）之间切换。",
+      "why": "当某个聚合图标记出一个可疑会话时，这里就是你按顺序读懂究竟发生了什么的地方。"
+    }
+  },
+  "stats": {
+    "avgAgentDepth": "平均Agent深度",
+    "avgSubagentsPerSession": "每会话平均Subagent数",
+    "agentSuccessRate": "Agent成功率",
+    "mostCommonFlow": "最常见流程",
+    "avgCompactions": "平均压缩次数",
+    "avgDuration": "平均时长",
+    "tooltip": {
+      "howCalc": "计算方式",
+      "whatItMeans": "这个数字意味着什么",
+      "moreInfo": "解释此指标",
+      "valueMeansFmt": "{{value}} {{phrase}} 表示 {{interpretation}}",
+      "phrase": {
+        "depth": "平均 Agent 深度",
+        "subagents": "每会话 Subagent 数",
+        "success": "Agent 成功率",
+        "topFlow": "最常见流程",
+        "compactions": "每会话上下文压缩次数",
+        "duration": "平均时长"
+      },
+      "calc": {
+        "depth": "对每个会话记录最深的 Agent 嵌套层级（main = 0，直接 Subagent = 1，Subagent 的 Subagent = 2，...），然后在当前筛选下的所有会话中对这些最大值取平均。",
+        "subagents": "Subagent 调用总数（每对 Task / SubagentStop）除以范围内的会话数。包括并行和被重新生成的 Subagent。",
+        "success": "在范围内的所有 main + Subagent 运行中：完成数 ÷（完成 + 出错 + 中止）× 100。当观察到 Stop / SubagentStop 而期间没有错误事件时，该次运行计为已完成。",
+        "topFlow": "会话内每对相邻的工具调用算作一次流转。所有会话中出现频率最高的那对在此处以「源 → 目标」的形式显示。",
+        "compactions": "PreCompact / SessionStart(compact) 钩子记录的上下文压缩事件总数除以范围内的会话数。",
+        "duration": "每个会话从首个事件（SessionStart）到末个事件（Stop / SessionEnd / 最近钩子）的实际时间，在范围内的所有会话上取平均。"
+      },
+      "depth": {
+        "zero": "未观察到嵌套 Agent。所有会话都仅由主 Agent 运行——没有发生 Subagent 委派。",
+        "rare": "嵌套很少。大多数会话停留在深度 0（仅主 Agent）；只有极少数进入 Subagent。",
+        "single": "会话通常会委派一层 Subagent（main → Subagent），没有更深的嵌套。",
+        "multi": "多层编排很常见——Subagent 自身经常再生成更多 Subagent（main → sub → sub）。",
+        "deep": "深度递归编排是常态。会话经常串联三层及以上的 Agent。"
+      },
+      "subagents": {
+        "zero": "没有 Subagent 触发。会话完全在主 Agent 上完成。",
+        "lowFreq": "实际表现：每 ~{{count}} 个会话才约有一个 Subagent。大多数会话根本不会生成 Subagent。",
+        "moderate": "会话通常委派 1–3 个 Subagent——使用专用辅助的程度适中。",
+        "heavy": "委派较重——会话经常扩散到多个 Subagent。",
+        "veryHeavy": "编排负担很重：会话平均每次有 6+ 次 Subagent 运行。"
+      },
+      "success": {
+        "perfect": "几近完美。几乎所有 Agent 运行都以干净的 Stop 事件结束——没有错误或中止。",
+        "healthy": "健康。绝大多数 Agent 运行都成功完成；只有零星失败。",
+        "acceptable": "可以接受，但需关注错误趋势——大约每 5–20 次运行有 1 次失败或被中止。",
+        "concerning": "值得担忧——相当一部分 Agent 运行失败。请检查 Errors 页面找出主因。",
+        "critical": "严重：大多数 Agent 运行失败或被中止。请检查 ErrorPropagation 与近期发布。"
+      },
+      "topFlow": {
+        "none": "尚未记录足够多的相邻工具调用，无法显出主导对。",
+        "selfLoop": "{{tool}} 最常自己接自己——典型于反复读取/编辑或链式 shell 命令。",
+        "pair": "{{source}} 最常紧接着在 {{target}} 之前运行。可视为习惯：Agent 倾向先 {{sourceLower}}，再 {{targetLower}} 作为下一步。"
+      },
+      "compactions": {
+        "zero": "未观察到上下文压缩。会话稳稳停留在模型的上下文窗口内。",
+        "lowFreq": "实际表现：每 {{count}} 个会话才约 1 次压缩。长时间会话是例外。",
+        "moderate": "会话通常会触发 1–2 次压缩——存在上下文压力但仍可控。",
+        "high": "压缩率较高。会话经常运行得足够长，需要多次上下文压缩；考虑拆分工作。"
+      },
+      "duration": {
+        "zero": "尚无已完成的会话——时长为 0。",
+        "veryShort": "非常短的会话（不到 1 分钟）——很可能是快速的工具调用或一次性提示。",
+        "short": "短会话，几分钟级别。常见于聚焦的单一功能工作。",
+        "medium": "中等时长会话（5–30 分钟）。标准开发节奏。",
+        "long": "较长会话（30–60 分钟）。可能是多步骤工作流或较长的评审周期。",
+        "veryLong": "很长的会话（1–3 小时）。注意压缩与上下文压力。",
+        "marathon": "马拉松会话（3+ 小时）。考虑将工作拆分成多个较短会话。"
+      }
+    }
+  },
+  "orchestration": {
+    "title": "Agent编排图",
+    "subtitle": "跨所有会话的聚合生成模式 - 点击节点筛选",
+    "sessions": "会话",
+    "mainAgent": "主Agent",
+    "compactions": "压缩",
+    "noData": "暂无编排数据",
+    "noDataDesc": "当记录了包含Subagent的会话后，Agent生成数据将显示在此处。",
+    "legend": "图例",
+    "edgeWeight": "边权重 = 频率",
+    "count": "计数",
+    "otherTypes": "{{count}} 种其他类型",
+    "ariaLabel": "Agent编排有向无环图",
+    "layers": {
+      "origin": "起点",
+      "mainAgent": "主Agent",
+      "subagentTypes": "Subagent类型",
+      "compactions": "压缩",
+      "outcomes": "结果"
+    },
+    "tooltip": {
+      "tipClickToFilter": "提示：点击可按该节点筛选页面其余内容。",
+      "layer": {
+        "session": "第 0 层 — 起点",
+        "main": "第 1 层 — 主 Agent",
+        "subagent": "第 2 层 — Subagent 类型",
+        "subagentOverflow": "第 2 层 — Subagent 类型",
+        "nested": "第 3 层 — 上下文压缩",
+        "outcome": "第 4 层 — 结果"
+      },
+      "desc": {
+        "session": "此处每个单元都是与当前状态筛选匹配的 Claude Code 会话。出向边连向这些会话启动的主 Agent。",
+        "main": "每个会话最顶层的 Claude 运行。每个会话有且只有一个主 Agent；从这里图分支到其委派的各种 Subagent 类型。",
+        "subagent": "主 Agent 委派的专用 Subagent（例如通过 Task 工具）。",
+        "subagentClean": " 该 Subagent 的每次运行都干净完成。",
+        "subagentAllError": " 该 Subagent 的每次运行都出错——请检查 Agent 定义。",
+        "subagentSomeErrors": " {{count}} 次运行出错——详见下方 Error Propagation。",
+        "subagentOverflow": "其余所有 Subagent 类型已合并到一个节点，以保持图的可读性。悬停其它 Subagent 节点可查看各自统计。",
+        "nested": "上下文窗口压缩事件。当运行中的上下文接近模型上限时，Claude 触发压缩；此计数反映在范围内的会话中发生的次数。",
+        "outcomeCompleted": "末次钩子为干净 Stop 事件的会话。结束前没有发出任何错误事件。",
+        "outcomeError": "在结束前至少发出一次错误事件（工具错误、Subagent 错误或会话错误）的会话。",
+        "outcomeAbandoned": "在没有干净 Stop 且没有显式错误的情况下停止的会话——通常是中途关闭。",
+        "outcomeFallback": "范围内会话的终止状态，依据每个会话最后观察到的钩子事件计算。"
+      }
+    }
+  },
+  "toolFlow": {
+    "title": "工具执行流",
+    "subtitle": "工具如何串联 - 桑基图风格的有向流",
+    "noData": "暂无工具流数据",
+    "transitionCount_one": "{{count}} 次流转",
+    "transitionCount_other": "{{count}} 次流转",
+    "tooltip": {
+      "node": "工具节点",
+      "link": "工具流转",
+      "totalCalls": "总调用数",
+      "shareOfAll": "占全部工具调用比例",
+      "transitionsObserved": "观察到的流转数",
+      "shareOfSourceFmt": "{{source}} → 下一步占比",
+      "shareOfTargetFmt": "上一步 → {{target}} 占比",
+      "nodeDescFmt": "条形高度表示 {{name}} 在范围内所有会话中出现的频率。左侧流入的条带显示 {{name}} 之前运行了什么；右侧流出的条带显示之后运行了什么。",
+      "linkDescFmt": "在所有会话中，这统计了 {{source}} 紧接着在 {{target}} 之前运行的次数。条带越粗 = 流转越频繁；百分比显示这一跳在每个工具的出/入流中所占比例。"
+    }
+  },
+  "pipeline": {
+    "title": "Agent管道图",
+    "subtitle": "有向工作流 - 哪些Agent类型在哪些之后运行，带频率标签",
+    "noData": "暂无管道数据",
+    "noDataDesc": "当Agent类型在多个会话中按顺序运行时，有向工作流边将显示在此处。",
+    "legend": "图例",
+    "legendDesc": "A 在 B 之前运行（标注计数）",
+    "frequency": "频率",
+    "meaning": "含义",
+    "times": " 次",
+    "ranAfter": " 在 ",
+    "spawns": " 次生成",
+    "spawned": "已生成",
+    "inSessions": "涉及会话",
+    "ariaLabel": "Agent管道关系图",
+    "tooltip": {
+      "agentType": "Agent 类型",
+      "edge": "顺序边",
+      "shareOfAllSpawns": "占总生成的比例",
+      "sequentialPairs": "顺序对",
+      "totalSpawnsFmt": "{{id}} 的总生成数",
+      "shareOfSrcFmt": "{{source}} → 下一步占比",
+      "shareOfTgtFmt": "上一步 → {{target}} 占比",
+      "edgeDescFmt": "{{target}} 紧接着在 {{source}} 之后运行了 {{count}} 次（覆盖所有会话）。箭头越粗，这种交接越频繁。可用此发现工作流中习惯性的委派链。",
+      "nodeDescFmt": "{{id}} 共运行 {{total}} 次，覆盖 {{sessions}} 个会话；成功率 {{rate}}%（{{health}}）。圆圈大小表示总生成数；箭头显示哪些 Agent 类型倾向于在它之前或之后运行。",
+      "health": {
+        "perfect": "几近完美",
+        "healthy": "健康",
+        "shaky": "略有不稳",
+        "failing": "经常失败"
+      }
+    }
+  },
+  "effectiveness": {
+    "title": "Subagent效能",
+    "subtitle": "每种Agent类型的性能指标",
+    "success": "成功",
+    "sessions": "会话",
+    "avgDuration": "平均时长",
+    "weeklyActivity": "每周活动",
+    "noData": "暂无Subagent数据",
+    "successRateAria": "成功率：{{rate}}%",
+    "weeklyActivityAria": "每周活动迷你图",
+    "sessionCount_one": "{{count}} 个会话",
+    "sessionCount_other": "{{count}} 个会话"
+  },
+  "patterns": {
+    "title": "检测到的工作流模式",
+    "subtitle": "常见的Agent编排序列",
+    "noData": "尚未检测到模式",
+    "noDataDesc": "当多个会话共享相同的Agent序列时，模式将显示在此处。",
+    "solo": "独立（无Subagent）",
+    "label": "工作流模式",
+    "detail": {
+      "clickHint": "点击查看详情",
+      "stepsHeading": "完整步骤序列",
+      "statsHeading": "统计",
+      "stepsCount_one": "{{count}} 步",
+      "stepsCount_other": "{{count}} 步",
+      "uniqueAgents": "不同 Agent 类型数",
+      "occurrences": "匹配此模式的会话数",
+      "shareOfSessions": "占全部会话比例",
+      "narrativeHeading": "此模式的含义",
+      "suggestionHeading": "建议",
+      "narrative": {
+        "soloFmt": "仅运行 {{first}} 的会话——未委派给其他 Agent 类型。",
+        "twoStepFmt": "两步交接：{{first}} 直接委派给 {{last}}，没有其它分支。",
+        "shortFmt": "一条 {{count}} 步链，从 {{first}} 开始，到 {{last}} 结束。",
+        "longFmt": "较长的 {{count}} 步链——起于 {{first}}，穿过多个 Agent，最终落到 {{last}}。",
+        "loopHintFmt": " {{agent}} 在此序列中出现多次——通常意味着一次校验或修订循环。",
+        "dominant": " 这是项目中的主导工作流——超过一半的会话遵循这一模式。",
+        "common": " 这是一种常见工作流，约占四分之一会话。",
+        "regular": " 是被识别出来的工作流，但并非主流模式。",
+        "niche": " 一种较为小众的模式，只在偶尔的会话中出现。"
+      },
+      "suggestion": {
+        "solo": "独立运行——加入 code-reviewer 或 test-runner Subagent 是否能提升这些会话的质量？",
+        "shortChain": "短链。如果它反复出现，建议命名为 slash 命令、skill 或具名工作流以便复用。",
+        "mediumChain": "出现频率足以正式化。一个具名工作流或模板会让此模式易于复用。",
+        "longChain": "较长的链——审视每一跳是否必要，或是否可以合并/省略一些 Agent。",
+        "loop": "检测到循环。确认重复步骤是有意为之的校验，而不是对失败调用的静默重试。"
+      }
+    }
+  },
+  "modelDelegation": {
+    "title": "模型委派流",
+    "subtitle": "模型如何在Agent层级中路由",
+    "mainModels": "主模型",
+    "subagentModels": "Subagent模型",
+    "noData": "暂无模型委派数据",
+    "agentsCount_one": "{{count}} 个Agent",
+    "agentsCount_other": "{{count}} 个Agent",
+    "tokensCount": "{{tokens}} Token",
+    "sessionsCount_one": "{{count}} 个会话",
+    "sessionsCount_other": "{{count}} 个会话",
+    "ariaLabel": "模型委派流图",
+    "tooltip": {
+      "mainModel": "主模型",
+      "subagentModel": "Subagent 模型",
+      "agentRuns": "Agent 运行数",
+      "shareOfAll": "占所有 Agent 比例",
+      "sessionsOnModel": "使用此模型的会话数",
+      "totalTokens": "总 Token",
+      "family": {
+        "opus": "Opus —— 能力最高的等级；适合复杂推理与最长上下文，每 Token 成本最贵。",
+        "sonnet": "Sonnet —— 平衡等级；大多数编码与工具调用工作流的良好默认选择。",
+        "haiku": "Haiku —— 最快、最便宜的等级；适合短小、对延迟敏感的 Subagent。",
+        "other": "非 Anthropic 或未识别的模型——不属于标准的 Opus/Sonnet/Haiku 系列。"
+      },
+      "lines": {
+        "main": "右侧的连线显示此主模型委派给的 Subagent 模型。",
+        "sub": "左侧的连线显示哪些主模型委派给了此 Subagent 模型。"
+      }
+    }
+  },
+  "errorPropagation": {
+    "title": "错误传播图",
+    "subtitle": "错误在Agent层级深度中的聚集位置",
+    "noErrors": "未记录错误",
+    "allSuccess": "所有会话均已成功完成",
+    "sessionsHadErrors": " 个会话存在错误",
+    "sessionsErrorSummary": "{{errorSessions}} / {{totalSessions}} 个会话存在错误",
+    "agentErrors": " 个Agent级别错误（跨层级）",
+    "sessionErrorsOnly": "仅会话级别错误",
+    "errorsByDepth": "按层级深度的错误",
+    "errorProneTypes": "易出错的Agent类型",
+    "apiSessionErrors": "API 和会话错误",
+    "depthLabels": {
+      "sessionMain": "会话 / 主Agent",
+      "directSubagent": "直接Subagent",
+      "nested": "嵌套（深度 2）",
+      "deep": "深层（深度 3+）"
+    }
+  },
+  "concurrency": {
+    "title": "Agent并发时间线",
+    "subtitle": "并行Agent执行模式 - 显示Agent如何时间重叠",
+    "noData": "暂无并发数据",
+    "noDataDesc": "当记录了包含Subagent的会话后，并发数据将显示在此处。",
+    "sessions": "会话",
+    "timing": "时间",
+    "max": " 最大",
+    "sessionInfo_one": "{{count}} 个会话 - 在会话 {{from}}%-{{to}}% 时段活跃",
+    "sessionInfo_other": "{{count}} 个会话 - 在会话 {{from}}%-{{to}}% 时段活跃",
+    "tooltip": {
+      "lane": "并发泳道",
+      "sessionsWith": "包含此 Agent 的会话",
+      "avgStart": "在会话中的平均起点",
+      "avgEnd": "在会话中的平均终点",
+      "barHint": "条形长度与包含该 Agent 类型的会话数成正比。时间百分比是这些会话的平均值。",
+      "timing": {
+        "wholeSession": "几乎贯穿整个会话——从开始一直运行到结束。",
+        "frontLoadedFmt": "偏向前段：通常从会话开始一直活跃到约 ~{{end}}% 处。",
+        "backLoadedFmt": "偏向后段：通常在会话约 {{start}}% 处启动并持续到结束。",
+        "tightFmt": "范围紧凑：在会话时间线 {{start}}% 至 {{end}}% 的窄带内运行。",
+        "midSessionFmt": "中段工作：约在会话时间线 {{start}}% 至 {{end}}% 之间运行。"
+      }
+    }
+  },
+  "complexity": {
+    "title": "会话复杂度散点图",
+    "subtitle": "时长 vs Agent数 vs Token - 气泡大小 = Token 用量",
+    "noData": "暂无会话复杂度数据",
+    "noDataDesc": "当包含Agent活动的会话完成后，将显示在此处。",
+    "duration": "时长",
+    "agentCount": "Agent数",
+    "ariaLabel": "会话复杂度散点图",
+    "tooltip": {
+      "duration": "时长：",
+      "agents": "Agent：",
+      "subagents": "Subagent：",
+      "tokens": "Token：",
+      "model": "模型："
+    }
+  },
+  "compaction": {
+    "title": "压缩影响分析",
+    "subtitle": "上下文压缩事件和 Token 恢复",
+    "noData": "未记录压缩",
+    "totalCompactions": "总压缩次数",
+    "tokensRecovered": "恢复的 Token 数",
+    "distribution": "跨会话的压缩分布",
+    "hadCompactions": " 个会话（{{pct}}%）存在压缩",
+    "ariaLabel": "每个会话的压缩次数"
+  },
+  "drillIn": {
+    "title": "会话深入分析",
+    "subtitle": "从散点图选择会话或使用下拉菜单探索",
+    "searchPlaceholder": "搜索会话...",
+    "noSessionSelected": "未选择会话",
+    "noSessionDesc": "在上方搜索并选择会话，或点击散点图中的气泡，以深入查看其Agent树、工具时间线和事件序列。",
+    "failedLoad": "会话加载失败",
+    "loading": "加载中...",
+    "loadMore": "加载更多",
+    "noMatch": "没有匹配的会话。",
+    "notFound": "未找到会话。",
+    "unknownModel": "未知模型",
+    "closePanel": "关闭深入分析面板",
+    "close": "关闭",
+    "tabs": {
+      "agentTree": "Agent树",
+      "toolTimeline": "工具时间线",
+      "eventSequence": "事件序列"
+    },
+    "noAgentTree": "暂无Agent树数据。",
+    "noToolEvents": "暂无工具事件记录。",
+    "noEvents": "暂无此会话的事件记录。",
+    "showingOf": "显示 100/{{total}} 条事件",
+    "sessionInfo": " 个会话 - 占会话时长的 {{from}}%-{{to}}%",
+    "sortedByCompaction": " 个会话（按压缩次数排序）"
+  }
+}

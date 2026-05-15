@@ -1,0 +1,310 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Prometheus alerting rules for Claude Code Agent Monitor
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: agent-monitor-alerts
+  namespace: agent-monitor
+  labels:
+    app.kubernetes.io/name: agent-monitor
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    # ── Availability alerts ─────────────────────────────────────────────────
+    - name: agent-monitor.availability
+      rules:
+        - alert: AgentMonitorDown
+          expr: up{job="agent-monitor"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: agent-monitor
+            team: platform
+          annotations:
+            summary: "Agent Monitor is down"
+            description: >-
+              The Agent Monitor instance {{ $labels.instance }} has been
+              unreachable for more than 2 minutes. Immediate investigation
+              required.
+            runbook_url: "https://wiki.example.com/runbooks/agent-monitor-down"
+            dashboard_url: "https://grafana.example.com/d/agent-monitor"
+
+        - alert: AgentMonitorHighAvailabilityDegraded
+          expr: |
+            count(up{job="agent-monitor"} == 1)
+            < count(up{job="agent-monitor"})
+          for: 5m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "Agent Monitor partial outage"
+            description: >-
+              Not all Agent Monitor replicas are healthy. Only
+              {{ $value }} of expected replicas are up.
+
+    # ── Error rate alerts ───────────────────────────────────────────────────
+    - name: agent-monitor.errors
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{job="agent-monitor", status=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{job="agent-monitor"}[5m]))
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "High HTTP error rate (>5%)"
+            description: >-
+              The Agent Monitor is returning 5xx errors at a rate of
+              {{ $value | humanizePercentage }} over the last 5 minutes.
+            dashboard_url: "https://grafana.example.com/d/agent-monitor?tab=errors"
+
+        - alert: CriticalErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{job="agent-monitor", status=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{job="agent-monitor"}[5m]))
+            ) > 0.25
+          for: 2m
+          labels:
+            severity: critical
+            service: agent-monitor
+          annotations:
+            summary: "Critical HTTP error rate (>25%)"
+            description: >-
+              The Agent Monitor is returning 5xx errors at a rate of
+              {{ $value | humanizePercentage }}. Service may be severely degraded.
+
+    # ── Latency alerts ──────────────────────────────────────────────────────
+    - name: agent-monitor.latency
+      rules:
+        - alert: HighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{job="agent-monitor"}[5m])) by (le)
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "High p99 response latency (>1s)"
+            description: >-
+              The 99th percentile response time for Agent Monitor is
+              {{ $value | humanizeDuration }}. Users may experience slow page loads.
+
+        - alert: HighMedianLatency
+          expr: |
+            histogram_quantile(0.50,
+              sum(rate(http_request_duration_seconds_bucket{job="agent-monitor"}[5m])) by (le)
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "High median response latency (>500ms)"
+            description: >-
+              The median response time is {{ $value | humanizeDuration }}.
+              This affects the majority of requests.
+
+    # ── Resource alerts ─────────────────────────────────────────────────────
+    - name: agent-monitor.resources
+      rules:
+        - alert: HighMemoryUsage
+          expr: |
+            (
+              container_memory_working_set_bytes{
+                namespace=~"agent-monitor.*",
+                container="agent-monitor"
+              }
+              /
+              container_spec_memory_limit_bytes{
+                namespace=~"agent-monitor.*",
+                container="agent-monitor"
+              }
+            ) > 0.90
+          for: 10m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "High memory usage (>90% of limit)"
+            description: >-
+              Pod {{ $labels.pod }} is using {{ $value | humanizePercentage }}
+              of its memory limit. OOMKill risk is elevated.
+
+        - alert: HighCPUUsage
+          expr: |
+            (
+              rate(container_cpu_usage_seconds_total{
+                namespace=~"agent-monitor.*",
+                container="agent-monitor"
+              }[5m])
+              /
+              container_spec_cpu_quota{
+                namespace=~"agent-monitor.*",
+                container="agent-monitor"
+              }
+              * 100000
+            ) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "High CPU usage (>85% of limit)"
+            description: >-
+              Pod {{ $labels.pod }} is using {{ $value | humanizePercentage }}
+              of its CPU limit. Consider scaling up.
+
+        - alert: PersistentVolumeNearlyFull
+          expr: |
+            (
+              kubelet_volume_stats_used_bytes{
+                namespace=~"agent-monitor.*",
+                persistentvolumeclaim=~"agent-monitor.*"
+              }
+              /
+              kubelet_volume_stats_capacity_bytes{
+                namespace=~"agent-monitor.*",
+                persistentvolumeclaim=~"agent-monitor.*"
+              }
+            ) > 0.85
+          for: 15m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "Persistent volume nearly full (>85%)"
+            description: >-
+              PVC {{ $labels.persistentvolumeclaim }} in namespace
+              {{ $labels.namespace }} is {{ $value | humanizePercentage }}
+              full. SQLite writes may fail when volume is exhausted.
+
+        - alert: PersistentVolumeCriticallyFull
+          expr: |
+            (
+              kubelet_volume_stats_used_bytes{
+                namespace=~"agent-monitor.*",
+                persistentvolumeclaim=~"agent-monitor.*"
+              }
+              /
+              kubelet_volume_stats_capacity_bytes{
+                namespace=~"agent-monitor.*",
+                persistentvolumeclaim=~"agent-monitor.*"
+              }
+            ) > 0.95
+          for: 5m
+          labels:
+            severity: critical
+            service: agent-monitor
+          annotations:
+            summary: "Persistent volume critically full (>95%)"
+            description: >-
+              PVC {{ $labels.persistentvolumeclaim }} is at
+              {{ $value | humanizePercentage }} capacity.
+              Immediate action required to prevent data loss.
+
+    # ── WebSocket alerts ────────────────────────────────────────────────────
+    - name: agent-monitor.websocket
+      rules:
+        - alert: WebSocketConnectionsDrop
+          expr: |
+            (
+              max_over_time(websocket_connections_active{job="agent-monitor"}[10m])
+              - websocket_connections_active{job="agent-monitor"}
+            )
+            /
+            max_over_time(websocket_connections_active{job="agent-monitor"}[10m])
+            > 0.50
+          for: 5m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "WebSocket connections dropped >50%"
+            description: >-
+              Active WebSocket connections have dropped by more than 50%
+              in the last 5 minutes (from
+              {{ with printf `max_over_time(websocket_connections_active{instance="%s"}[10m])` .Labels.instance | query }}{{ . | first | value }}{{ end }}
+              to {{ $value }}). This may indicate connectivity issues.
+
+        - alert: NoWebSocketConnections
+          expr: |
+            websocket_connections_active{job="agent-monitor"} == 0
+            and on() hour() >= 8 <= 20
+          for: 15m
+          labels:
+            severity: info
+            service: agent-monitor
+          annotations:
+            summary: "No active WebSocket connections during business hours"
+            description: >-
+              There are no active WebSocket connections to Agent Monitor
+              during expected business hours.
+
+    # ── Pod stability alerts ────────────────────────────────────────────────
+    - name: agent-monitor.stability
+      rules:
+        - alert: PodRestarting
+          expr: |
+            increase(
+              kube_pod_container_status_restarts_total{
+                namespace=~"agent-monitor.*",
+                container="agent-monitor"
+              }[15m]
+            ) > 3
+          for: 0m
+          labels:
+            severity: critical
+            service: agent-monitor
+          annotations:
+            summary: "Pod restarting frequently (>3 in 15m)"
+            description: >-
+              Pod {{ $labels.pod }} in namespace {{ $labels.namespace }}
+              has restarted {{ $value }} times in the last 15 minutes.
+              Check logs: kubectl logs {{ $labels.pod }} -n {{ $labels.namespace }} --previous
+
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_ready{
+              namespace=~"agent-monitor.*",
+              condition="true"
+            } == 0
+          for: 5m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "Pod not ready for >5 minutes"
+            description: >-
+              Pod {{ $labels.pod }} has been in a not-ready state for
+              more than 5 minutes.
+
+        - alert: DeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas{namespace=~"agent-monitor.*"}
+            !=
+            kube_deployment_status_ready_replicas{namespace=~"agent-monitor.*"}
+          for: 10m
+          labels:
+            severity: warning
+            service: agent-monitor
+          annotations:
+            summary: "Deployment replicas mismatch"
+            description: >-
+              Deployment {{ $labels.deployment }} has
+              {{ with printf `kube_deployment_status_ready_replicas{deployment="%s",namespace="%s"}` .Labels.deployment .Labels.namespace | query }}{{ . | first | value }}{{ end }}
+              ready replicas but
+              {{ with printf `kube_deployment_spec_replicas{deployment="%s",namespace="%s"}` .Labels.deployment .Labels.namespace | query }}{{ . | first | value }}{{ end }}
+              desired.

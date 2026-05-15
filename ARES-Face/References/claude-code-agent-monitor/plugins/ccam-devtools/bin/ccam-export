@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# ccam-export — Quick data export from Claude Code Agent Monitor
+# Usage: ccam-export [sessions|events|analytics|costs|all] [--format json|csv] [--limit N]
+set -euo pipefail
+
+DASHBOARD_URL="${CCAM_DASHBOARD_URL:-http://localhost:4820}"
+
+usage() {
+  cat <<EOF
+ccam-export — Claude Code Agent Monitor Data Export
+
+USAGE:
+  ccam-export <DATA_TYPE> [OPTIONS]
+
+DATA TYPES:
+  sessions    Export session data
+  events      Export event data
+  analytics   Export analytics summary
+  costs       Export cost data
+  all         Export everything (uses /api/settings/export)
+
+OPTIONS:
+  --format FORMAT   Output format: json (default), csv
+  --limit N         Maximum records to export (default: 100)
+  --output FILE     Write to file instead of stdout
+  --pretty          Pretty-print JSON output
+  --help            Show this help
+
+ENVIRONMENT:
+  CCAM_DASHBOARD_URL   Dashboard URL (default: http://localhost:4820)
+
+EXAMPLES:
+  ccam-export sessions                      # Export sessions as JSON
+  ccam-export events --format csv --limit 500  # Export 500 events as CSV
+  ccam-export all --output backup.json      # Full backup to file
+  ccam-export costs --pretty                # Pretty-printed cost data
+EOF
+  exit 0
+}
+
+check_dashboard() {
+  if ! curl -sf "${DASHBOARD_URL}/api/health" > /dev/null 2>&1; then
+    echo "Error: Dashboard unreachable at ${DASHBOARD_URL}" >&2
+    exit 1
+  fi
+}
+
+json_to_csv() {
+  local data_type="$1"
+  case "$data_type" in
+    sessions)
+      echo "id,name,status,model,cwd,started_at,ended_at,updated_at"
+      jq -r '.sessions[] | [.id, .name, .status, .model, .cwd, .started_at, .ended_at, .updated_at] | @csv'
+      ;;
+    events)
+      echo "id,session_id,agent_id,event_type,tool_name,summary,created_at"
+      jq -r '.events[] | [.id, .session_id, .agent_id, .event_type, .tool_name, .summary, .created_at] | @csv'
+      ;;
+    *)
+      echo "CSV format not supported for ${data_type}. Use JSON instead." >&2
+      exit 1
+      ;;
+  esac
+}
+
+# --- Parse args ---
+DATA_TYPE=""
+FORMAT="json"
+LIMIT=100
+OUTPUT=""
+PRETTY=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)    usage ;;
+    --format)     FORMAT="$2"; shift 2 ;;
+    --limit)      LIMIT="$2"; shift 2 ;;
+    --output)     OUTPUT="$2"; shift 2 ;;
+    --pretty)     PRETTY=true; shift ;;
+    sessions|events|analytics|costs|all)
+      DATA_TYPE="$1"; shift ;;
+    *)
+      echo "Unknown argument: $1" >&2; usage ;;
+  esac
+done
+
+if [ -z "$DATA_TYPE" ]; then
+  echo "Error: Data type required (sessions, events, analytics, costs, all)" >&2
+  echo ""
+  usage
+fi
+
+check_dashboard
+
+# --- Fetch data ---
+fetch_data() {
+  case "$DATA_TYPE" in
+    sessions)   curl -sf "${DASHBOARD_URL}/api/sessions?limit=${LIMIT}" ;;
+    events)     curl -sf "${DASHBOARD_URL}/api/events?limit=${LIMIT}" ;;
+    analytics)  curl -sf "${DASHBOARD_URL}/api/analytics" ;;
+    costs)      curl -sf "${DASHBOARD_URL}/api/pricing/cost" ;;
+    all)        curl -sf "${DASHBOARD_URL}/api/settings/export" ;;
+  esac
+}
+
+format_output() {
+  if [ "$FORMAT" = "csv" ]; then
+    json_to_csv "$DATA_TYPE"
+  elif $PRETTY; then
+    jq .
+  else
+    cat
+  fi
+}
+
+# --- Export ---
+RESULT=$(fetch_data)
+
+if [ -z "$RESULT" ]; then
+  echo "Error: No data returned for ${DATA_TYPE}" >&2
+  exit 1
+fi
+
+if [ -n "$OUTPUT" ]; then
+  echo "$RESULT" | format_output > "$OUTPUT"
+  RECORD_COUNT=$(echo "$RESULT" | jq 'if .sessions then (.sessions | length) elif .events then (.events | length) elif type == "array" then length else 1 end' 2>/dev/null || echo "1")
+  echo "Exported ${RECORD_COUNT} record(s) to ${OUTPUT}" >&2
+else
+  echo "$RESULT" | format_output
+fi

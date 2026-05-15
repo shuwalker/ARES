@@ -1,0 +1,420 @@
+{
+  "title": "Workflows",
+  "subtitle": "Agent orchestration intelligence",
+  "failedLoad": "Failed to load workflow data",
+  "filteredBy": "Filtered by:",
+  "clearFilter": "Clear filter",
+  "refreshData": "Refresh data",
+  "exportJson": "Export as JSON",
+  "allSessions": "All Sessions",
+  "activeOnly": "Active Only",
+  "completed": "Completed",
+  "chartInfo": {
+    "labels": {
+      "what": "What this shows",
+      "howToRead": "How to read it",
+      "why": "Why it matters"
+    },
+    "orchestration": {
+      "what": "A layered DAG of how Claude Code sessions fan out: from the originating sessions, into the main agent, into each subagent type, through any context compactions, and finally into terminal outcomes (completed / error / abandoned).",
+      "howToRead": "Each column is one layer. Box width is constant; the small badge is the count. Edges flow left-to-right; thicker edges = more frequent transitions. Hover any node for stats; click to filter the rest of the page by it.",
+      "why": "Use it to answer 'where does work go in my workflows?' — which subagent types dominate, where compaction kicks in, and which paths end in errors vs clean completions."
+    },
+    "toolFlow": {
+      "what": "A Sankey-style chart of consecutive tool-call transitions across every session in scope. Each band is one (source → target) pair counted across all sessions.",
+      "howToRead": "Tools appear as colored bars on the left and right. Bands connect them: thickness = number of times the source ran immediately before the target. Hover a band for share-of-source and share-of-target percentages; hover a node for its total usage and share of all tool calls.",
+      "why": "Surfaces habitual tool chains (e.g. Read → Edit → Bash). Useful for spotting loops, wasted hops, and missing tool variety in agent behavior."
+    },
+    "pipeline": {
+      "what": "A directed graph of agent-type co-occurrence: which agent types tend to run sequentially after which, and how often.",
+      "howToRead": "Circles are agent types; size encodes total spawns. Arrows go A → B when B was observed running shortly after A in the same session, with the label = count. Hover an arrow for share of source/target; hover a circle for spawns, sessions, and success rate. Drag nodes to rearrange.",
+      "why": "Surfaces real delegation pipelines you may not have intentionally designed — e.g. a code-review agent that nearly always follows a build agent — so you can codify or simplify them."
+    },
+    "effectiveness": {
+      "what": "One card per subagent type with a success-rate ring, total sessions, average duration, and a 7-day activity sparkline.",
+      "howToRead": "Ring fill is success rate; the percentage in the center is the same. The two boxes give counts and average wall-clock duration. The sparkline is sessions per day for the last week — hover a bar for the daily count.",
+      "why": "Quick health check per agent: which agents are reliable, which are slow, and which are trending up or down in usage."
+    },
+    "patterns": {
+      "what": "A ranked list of recurring agent-orchestration sequences detected from session traces, plus a callout for solo sessions that ran without subagents.",
+      "howToRead": "Each row is a step sequence (main → sub → sub …). The right side shows how many sessions matched it and what percentage of all sessions that represents. Click a pattern to highlight it.",
+      "why": "Reveals the standard 'shapes' of work in your project. Frequent patterns are good candidates to formalize as named workflows or skills."
+    },
+    "modelDelegation": {
+      "what": "A two-column flow showing which main models delegate to which subagent models, plus per-node agent counts and total tokens.",
+      "howToRead": "Left column = main models for sessions; right column = models used inside subagents. Lines indicate observed main → subagent pairings. Hover a node for share-of-all-agents, sessions, total tokens, and a description of the model family (Opus / Sonnet / Haiku).",
+      "why": "Helps you confirm cost/latency tiering — e.g. main on Sonnet, subagents on Haiku — and catch unintended escalations to Opus."
+    },
+    "errorPropagation": {
+      "what": "Where errors cluster across the agent hierarchy: by depth (session/main vs direct subagent vs nested), by agent type, and by API/session-level error category.",
+      "howToRead": "The top banner gives the session-level error rate. The depth bars show how many errors occurred at each nesting level. The error-prone types list ranks subagent types by error count. The bottom block surfaces API/session error summaries.",
+      "why": "Pinpoints whether failures live in the orchestration spine (main agent), in specific subagents, or in deep nested chains — guiding where to invest in retries, validation, or rewrites."
+    },
+    "concurrency": {
+      "what": "Aggregate timing of when each agent type is active relative to the session timeline, plus how many sessions feature it.",
+      "howToRead": "Each row is one agent type. Bar length is proportional to session count. The right-hand percentages show the average start and end position within a session (0% = session start, 100% = session end). Hover for a description of the timing pattern (front-loaded, mid-session, back-loaded, etc.).",
+      "why": "Reveals the rhythm of your sessions — e.g. linting up front, code-review near the end — and surfaces agents that monopolize the entire session."
+    },
+    "complexity": {
+      "what": "A scatter plot of every session: x = wall-clock duration, y = total agents involved, bubble size = total tokens, color = final status.",
+      "howToRead": "Top-right bubbles are long, agent-heavy sessions. Big bubbles burned the most tokens. Reds/yellows = error/abandoned outcomes. Hover any bubble for full session stats; click to drill into it below.",
+      "why": "Gives a single view of the cost/complexity distribution. Outliers are the sessions worth investigating for runaway behavior or cost spikes."
+    },
+    "compaction": {
+      "what": "How often Claude triggered context compaction across sessions: total events, tokens recovered, and a per-session distribution.",
+      "howToRead": "The two stat boxes show total compaction events and the cumulative tokens reclaimed. The bar chart lists sessions with at least one compaction, sorted descending by count.",
+      "why": "Compactions indicate context pressure. A long tail of high-compaction sessions usually means workflows that should be split, summarized, or migrated to a longer-context model."
+    },
+    "drillIn": {
+      "what": "Per-session detail view: full agent tree, tool-call timeline, and raw event sequence for whichever session you select.",
+      "howToRead": "Pick a session from the dropdown above or click a bubble in the scatter plot. The tabs let you switch between hierarchical (Agent Tree), temporal (Tool Timeline), and chronological (Event Sequence) views of the same session.",
+      "why": "When an aggregate chart flags a suspicious session, this is where you go to read exactly what happened, in order."
+    }
+  },
+  "stats": {
+    "avgAgentDepth": "Avg Agent Depth",
+    "avgSubagentsPerSession": "Avg Subagents / Session",
+    "agentSuccessRate": "Agent Success Rate",
+    "mostCommonFlow": "Most Common Flow",
+    "avgCompactions": "Avg Compactions",
+    "avgDuration": "Avg Duration",
+    "tooltip": {
+      "howCalc": "How it's calculated",
+      "whatItMeans": "What this number means",
+      "moreInfo": "Explain this metric",
+      "valueMeansFmt": "{{value}} {{phrase}} means {{interpretation}}",
+      "phrase": {
+        "depth": "average agent depth",
+        "subagents": "subagents per session",
+        "success": "agent success rate",
+        "topFlow": "most common flow",
+        "compactions": "compactions per session",
+        "duration": "average duration"
+      },
+      "calc": {
+        "depth": "For each session we record the deepest agent nesting level (main = 0, direct subagent = 1, sub-subagent = 2, …) and average those maximums across all sessions in the current filter.",
+        "subagents": "Total number of subagent invocations (every Task / SubagentStop pair) divided by the number of sessions in scope. Counts every subagent run, including parallel and re-spawned ones.",
+        "success": "Across all main + subagent runs in scope: completed runs ÷ (completed + errored + abandoned) × 100. A run counts as completed when a Stop / SubagentStop is observed without an error event in between.",
+        "topFlow": "Every consecutive pair of tool calls within a session is counted as one transition. The pair that appears most frequently across all sessions is shown here as 'source → target'.",
+        "compactions": "Total number of context-compaction events recorded by the PreCompact / SessionStart(compact) hooks, divided by the number of sessions in scope.",
+        "duration": "Mean wall-clock time from each session's first event (SessionStart) to its last event (Stop / SessionEnd / latest hook), averaged across all sessions in scope."
+      },
+      "depth": {
+        "zero": "no nested agents have been observed. Every session ran with just the main agent — no subagent delegation occurred.",
+        "rare": "nesting is rare. Most sessions stay at depth 0 (main agent only); only a small fraction reach into subagents.",
+        "single": "sessions typically delegate to a single layer of subagents (main → subagent), without further nesting.",
+        "multi": "multi-layer orchestration is common — subagents themselves frequently spawn further subagents (main → sub → sub).",
+        "deep": "deep, recursive orchestration is the norm. Sessions consistently chain three or more agent layers."
+      },
+      "subagents": {
+        "zero": "no subagents have fired. Sessions completed entirely on the main agent.",
+        "lowFreq": "practically: roughly one subagent every ~{{count}} sessions. Most sessions don't spawn any subagent at all.",
+        "moderate": "sessions typically delegate to 1–3 subagents — moderate use of specialized helpers.",
+        "heavy": "heavy delegation — sessions routinely fan out to several subagents.",
+        "veryHeavy": "very orchestration-heavy: sessions average 6+ subagent runs each."
+      },
+      "success": {
+        "perfect": "near-perfect. Almost every agent run finishes with a clean Stop event — no errors or abandonment.",
+        "healthy": "healthy. The vast majority of agent runs complete successfully; only sporadic failures.",
+        "acceptable": "acceptable, but watch the error trend — roughly 1 in every 5–20 runs fails or is abandoned.",
+        "concerning": "concerning — a meaningful share of agent runs are failing. Inspect the Errors page for top culprits.",
+        "critical": "critical: most agent runs are failing or being abandoned. Check ErrorPropagation and recent deploys."
+      },
+      "topFlow": {
+        "none": "not enough consecutive tool calls have been recorded yet to surface a dominant pair.",
+        "selfLoop": "{{tool}} most often follows itself — typical for repeated reads/edits or chained shell commands.",
+        "pair": "{{source}} most often runs immediately before {{target}}. Read it as a habit: agents tend to {{sourceLower}} and then {{targetLower}} as their next step."
+      },
+      "compactions": {
+        "zero": "no context compaction has been observed. Sessions stayed comfortably within the model's context window.",
+        "lowFreq": "practically: ~1 compaction every {{count}} sessions. Long-running sessions are the exception.",
+        "moderate": "sessions typically hit compaction once or twice — context pressure exists but is manageable.",
+        "high": "high compaction rate. Sessions routinely run long enough to require multiple context compressions; consider splitting work."
+      },
+      "duration": {
+        "zero": "no completed sessions yet — duration is 0.",
+        "veryShort": "very short sessions (under a minute) — likely quick tool calls or single-shot prompts.",
+        "short": "short sessions, on the order of a few minutes. Typical for focused, single-feature work.",
+        "medium": "medium-length sessions (5–30 min). Standard development cadence.",
+        "long": "long sessions (30–60 min). Likely multi-step workflows or longer review cycles.",
+        "veryLong": "very long sessions (1–3 hr). Watch for compaction and context pressure.",
+        "marathon": "marathon sessions (3+ hours). Consider whether work could be split into multiple shorter sessions."
+      }
+    }
+  },
+  "orchestration": {
+    "title": "Agent Orchestration Graph",
+    "subtitle": "Aggregate spawning patterns across all sessions - Click a node to filter",
+    "sessions": "Sessions",
+    "mainAgent": "Main Agent",
+    "compactions": "Compactions",
+    "noData": "No orchestration data",
+    "noDataDesc": "Agent spawning data will appear here once sessions with subagents have been recorded.",
+    "legend": "Legend",
+    "edgeWeight": "Edge weight = frequency",
+    "count": "Count",
+    "otherTypes": "{{count}} other types",
+    "ariaLabel": "Agent orchestration directed acyclic graph",
+    "layers": {
+      "origin": "Origin",
+      "mainAgent": "Main Agent",
+      "subagentTypes": "Subagent Types",
+      "compactions": "Compactions",
+      "outcomes": "Outcomes"
+    },
+    "tooltip": {
+      "tipClickToFilter": "Tip: click to filter the rest of the page by this node.",
+      "layer": {
+        "session": "Layer 0 — Origin",
+        "main": "Layer 1 — Main agent",
+        "subagent": "Layer 2 — Subagent type",
+        "subagentOverflow": "Layer 2 — Subagent types",
+        "nested": "Layer 3 — Compactions",
+        "outcome": "Layer 4 — Outcome"
+      },
+      "desc": {
+        "session": "Each unit here is a Claude Code session matching the current status filter. Outgoing edges fan out to the main agents these sessions launched.",
+        "main": "The top-level Claude run for each session. Every session has exactly one main agent; from here the graph branches into the subagent types it delegated to.",
+        "subagent": "A specialized subagent the main agent delegated to (e.g. via the Task tool).",
+        "subagentClean": " Every run of this subagent has completed cleanly.",
+        "subagentAllError": " Every run of this subagent has errored — investigate the agent definition.",
+        "subagentSomeErrors": " {{count}} run(s) errored — see Error Propagation below for details.",
+        "subagentOverflow": "All remaining subagent types collapsed into one node so the graph stays readable. Hover any other subagent node to see individual stats.",
+        "nested": "Context-window compaction events. Claude triggers a compaction when the running context approaches the model's limit; the count reflects how often that happened across the sessions in scope.",
+        "outcomeCompleted": "Sessions whose final hook was a clean Stop event. No error events were emitted before termination.",
+        "outcomeError": "Sessions that emitted at least one error event (tool error, subagent error, or session error) before terminating.",
+        "outcomeAbandoned": "Sessions that stopped without a clean Stop event and without explicit errors — usually closed mid-flight.",
+        "outcomeFallback": "The terminal status of sessions in scope, computed from the last hook event observed for each session."
+      }
+    }
+  },
+  "toolFlow": {
+    "title": "Tool Execution Flow",
+    "subtitle": "How tools chain together - Sankey-style directed flow",
+    "noData": "No tool flow data",
+    "transitionCount_one": "{{count}} transition",
+    "transitionCount_other": "{{count}} transitions",
+    "tooltip": {
+      "node": "Tool node",
+      "link": "Tool transition",
+      "totalCalls": "Total calls",
+      "shareOfAll": "Share of all tool use",
+      "transitionsObserved": "Transitions observed",
+      "shareOfSourceFmt": "Share of {{source}} → next",
+      "shareOfTargetFmt": "Share of prev → {{target}}",
+      "nodeDescFmt": "Bar height shows how often {{name}} appears across all sessions in scope. Bands flowing in on the left show what ran before {{name}}; bands flowing out on the right show what ran after.",
+      "linkDescFmt": "Across every session, this counts how often {{source}} ran immediately before {{target}}. Thicker bands = more common transitions; the percentages show how dominant this hop is among each tool's outgoing / incoming flow."
+    }
+  },
+  "pipeline": {
+    "title": "Agent Pipeline Graph",
+    "subtitle": "Directed workflow - which agent types run after which, with frequency labels",
+    "noData": "No pipeline data yet",
+    "noDataDesc": "Directed workflow edges appear once agent types run sequentially across multiple sessions.",
+    "legend": "Legend",
+    "legendDesc": "A runs before B (labeled count)",
+    "frequency": "Frequency",
+    "meaning": "Meaning",
+    "times": " times",
+    "ranAfter": " ran after ",
+    "spawns": " spawns",
+    "spawned": "Spawned",
+    "inSessions": "In sessions",
+    "ariaLabel": "Agent pipeline graph",
+    "tooltip": {
+      "agentType": "Agent type",
+      "edge": "Sequential edge",
+      "shareOfAllSpawns": "Share of all spawns",
+      "sequentialPairs": "Sequential pairs",
+      "totalSpawnsFmt": "{{id}} total spawns",
+      "shareOfSrcFmt": "Share of {{source}} → next",
+      "shareOfTgtFmt": "Share of prev → {{target}}",
+      "edgeDescFmt": "{{target}} ran immediately after {{source}} {{count}} time(s) across all sessions. The thicker the arrow, the more often this hand-off occurred. Use this to spot habitual delegation chains in your workflows.",
+      "nodeDescFmt": "{{id}} ran {{total}} time(s) across {{sessions}} session(s); its success rate is {{rate}}% ({{health}}). Circle size encodes total spawns; arrows show which agent types tend to run before or after it.",
+      "health": {
+        "perfect": "near-perfect",
+        "healthy": "healthy",
+        "shaky": "shaky",
+        "failing": "failing often"
+      }
+    }
+  },
+  "effectiveness": {
+    "title": "Subagent Effectiveness",
+    "subtitle": "Performance metrics per agent type",
+    "success": "Success",
+    "sessions": "Sessions",
+    "avgDuration": "Avg Duration",
+    "weeklyActivity": "Weekly activity",
+    "noData": "No subagent data available",
+    "successRateAria": "Success rate: {{rate}}%",
+    "weeklyActivityAria": "Weekly activity sparkline",
+    "sessionCount_one": "{{count}} session",
+    "sessionCount_other": "{{count}} sessions"
+  },
+  "patterns": {
+    "title": "Detected Workflow Patterns",
+    "subtitle": "Common agent orchestration sequences",
+    "noData": "No patterns detected yet",
+    "noDataDesc": "Patterns appear once multiple sessions share the same agent sequence.",
+    "solo": "solo (no subagents)",
+    "label": "Workflow Patterns",
+    "detail": {
+      "clickHint": "Click for details",
+      "stepsHeading": "Full step sequence",
+      "statsHeading": "Stats",
+      "stepsCount_one": "{{count}} step",
+      "stepsCount_other": "{{count}} steps",
+      "uniqueAgents": "Unique agent types",
+      "occurrences": "Sessions matching this pattern",
+      "shareOfSessions": "Share of all sessions",
+      "narrativeHeading": "What this means",
+      "suggestionHeading": "Suggestion",
+      "narrative": {
+        "soloFmt": "Sessions that ran with only {{first}} — no delegation to other agent types.",
+        "twoStepFmt": "A two-step hand-off: {{first}} delegates straight to {{last}}, with no further branching.",
+        "shortFmt": "A {{count}}-step chain that starts at {{first}} and ends at {{last}}.",
+        "longFmt": "A long {{count}}-step chain — begins at {{first}}, threads through several agents, and lands at {{last}}.",
+        "loopHintFmt": " {{agent}} appears more than once in this sequence — typical of a verification or revision loop.",
+        "dominant": " This is the dominant workflow in your project — more than half of sessions follow it.",
+        "common": " This is a common workflow, accounting for roughly a quarter of sessions.",
+        "regular": " A recognised workflow, but not the majority pattern.",
+        "niche": " A niche pattern that only surfaces occasionally."
+      },
+      "suggestion": {
+        "solo": "Solo run — would a code-reviewer or test-runner subagent raise the quality of these sessions?",
+        "shortChain": "Short chain. If it keeps recurring, name it as a slash command, skill, or named workflow so it's easy to reproduce.",
+        "mediumChain": "Frequent enough to formalise. A named workflow or template would make this pattern reusable.",
+        "longChain": "Long chain — review whether every hop is necessary, or whether some agents could be merged or skipped.",
+        "loop": "Loop detected. Confirm the repeated step is intentional verification rather than a silent retry of a failing call."
+      }
+    }
+  },
+  "modelDelegation": {
+    "title": "Model Delegation Flow",
+    "subtitle": "How models route through agent hierarchies",
+    "mainModels": "MAIN MODELS",
+    "subagentModels": "SUBAGENT MODELS",
+    "noData": "No model delegation data available",
+    "agentsCount_one": "{{count}} agent",
+    "agentsCount_other": "{{count}} agents",
+    "tokensCount": "{{tokens}} tokens",
+    "sessionsCount_one": "{{count}} session",
+    "sessionsCount_other": "{{count}} sessions",
+    "ariaLabel": "Model delegation flow diagram",
+    "tooltip": {
+      "mainModel": "Main model",
+      "subagentModel": "Subagent model",
+      "agentRuns": "Agent runs",
+      "shareOfAll": "Share of all agents",
+      "sessionsOnModel": "Sessions on this model",
+      "totalTokens": "Total tokens",
+      "family": {
+        "opus": "Opus — highest-capability tier; best for complex reasoning, longest context, costliest per token.",
+        "sonnet": "Sonnet — balanced tier; good default for most coding and tool-use workflows.",
+        "haiku": "Haiku — fastest, cheapest tier; ideal for short, latency-sensitive subagents.",
+        "other": "Non-Anthropic or unrecognized model — falls outside the standard Opus/Sonnet/Haiku families."
+      },
+      "lines": {
+        "main": "Lines on the right show subagent models this main model delegated work to.",
+        "sub": "Lines on the left show main models that delegated work to this subagent model."
+      }
+    }
+  },
+  "errorPropagation": {
+    "title": "Error Propagation Map",
+    "subtitle": "Where errors cluster in agent hierarchy depth",
+    "noErrors": "No errors recorded",
+    "allSuccess": "All sessions completed successfully",
+    "sessionsHadErrors": " sessions had errors",
+    "sessionsErrorSummary": "{{errorSessions}} of {{totalSessions}} sessions had errors",
+    "agentErrors": " agent-level error(s) across hierarchy",
+    "sessionErrorsOnly": "Session-level errors only",
+    "errorsByDepth": "Errors by hierarchy depth",
+    "errorProneTypes": "Error-prone agent types",
+    "apiSessionErrors": "API & session errors",
+    "depthLabels": {
+      "sessionMain": "Session / Main",
+      "directSubagent": "Direct Subagent",
+      "nested": "Nested (depth 2)",
+      "deep": "Deep (depth 3+)"
+    }
+  },
+  "concurrency": {
+    "title": "Agent Concurrency Timeline",
+    "subtitle": "Parallel agent execution patterns - Shows how agents overlap in time",
+    "noData": "No concurrency data",
+    "noDataDesc": "Concurrency data appears once sessions with subagents have been recorded.",
+    "sessions": "Sessions",
+    "timing": "Timing",
+    "max": " max",
+    "sessionInfo_one": "{{count}} session - active {{from}}%-{{to}}% of session",
+    "sessionInfo_other": "{{count}} sessions - active {{from}}%-{{to}}% of session",
+    "tooltip": {
+      "lane": "Concurrency lane",
+      "sessionsWith": "Sessions with this agent",
+      "avgStart": "Avg start in session",
+      "avgEnd": "Avg end in session",
+      "barHint": "Bar length is proportional to how many sessions feature this agent type. Timing percentages are averages across those sessions.",
+      "timing": {
+        "wholeSession": "Active across nearly the entire session — runs from the start through to the end.",
+        "frontLoadedFmt": "Front-loaded: typically active from session start until ~{{end}}% of the way through.",
+        "backLoadedFmt": "Back-loaded: typically kicks in around {{start}}% of the session and stays until the end.",
+        "tightFmt": "Tightly scoped: runs in a narrow band between {{start}}% and {{end}}% of the session timeline.",
+        "midSessionFmt": "Mid-session work: runs roughly from {{start}}% to {{end}}% of the session timeline."
+      }
+    }
+  },
+  "complexity": {
+    "title": "Session Complexity Scatter",
+    "subtitle": "Duration vs agent count vs tokens - Bubble size = token usage",
+    "noData": "No session complexity data",
+    "noDataDesc": "Sessions will appear here once they complete with agent activity.",
+    "duration": "Duration",
+    "agentCount": "Agent Count",
+    "ariaLabel": "Session complexity scatter plot",
+    "tooltip": {
+      "duration": "Duration:",
+      "agents": "Agents:",
+      "subagents": "Subagents:",
+      "tokens": "Tokens:",
+      "model": "Model:"
+    }
+  },
+  "compaction": {
+    "title": "Compaction Impact Analysis",
+    "subtitle": "Context compression events and token recovery",
+    "noData": "No compactions recorded",
+    "totalCompactions": "Total Compactions",
+    "tokensRecovered": "Tokens Recovered",
+    "distribution": "Compaction distribution across sessions",
+    "hadCompactions": " sessions ({{pct}}%) had compactions",
+    "ariaLabel": "Compaction count per session"
+  },
+  "drillIn": {
+    "title": "Session Drill-In",
+    "subtitle": "Select a session from the scatter plot or use the dropdown to explore",
+    "searchPlaceholder": "Search sessions...",
+    "noSessionSelected": "No session selected",
+    "noSessionDesc": "Search and select a session above, or click a bubble in the scatter plot, to drill into its agent tree, tool timeline, and event sequence.",
+    "failedLoad": "Failed to load session",
+    "loading": "Loading...",
+    "loadMore": "Load more",
+    "noMatch": "No sessions match your search.",
+    "notFound": "No sessions found.",
+    "unknownModel": "unknown model",
+    "closePanel": "Close drill-in panel",
+    "close": "Close",
+    "tabs": {
+      "agentTree": "Agent Tree",
+      "toolTimeline": "Tool Timeline",
+      "eventSequence": "Event Sequence"
+    },
+    "noAgentTree": "No agent tree data available.",
+    "noToolEvents": "No tool events recorded.",
+    "noEvents": "No events recorded for this session.",
+    "showingOf": "Showing 100 of {{total}} events",
+    "sessionInfo": " session(s) - active {{from}}%-{{to}}% of session",
+    "sortedByCompaction": " session(s) (sorted by compaction count)"
+  }
+}
