@@ -21,7 +21,6 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-import asyncio
 import httpx
 from mcp.server.fastmcp import FastMCP
 
@@ -464,9 +463,7 @@ async def generate_avatar_variant(style: str = "synthMuse", description: str = "
         style = "mysticVoid"
 
     if style not in _AVATAR_STYLE_CONCEPTS:
-        return _graceful_error(
-            f"Unknown style '{style}'. Choose from: {', '.join(_AVATAR_STYLE_CONCEPTS.keys())}"
-        )
+        return _graceful_error(f"Unknown style '{style}'. Choose from: {', '.join(_AVATAR_STYLE_CONCEPTS.keys())}")
 
     base_prompt = _AVATAR_STYLE_CONCEPTS[style]
     full_prompt = f"{base_prompt}. {description}" if description else base_prompt

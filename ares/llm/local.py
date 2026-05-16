@@ -76,9 +76,7 @@ async def complete(
             backend="local",
             error=str(e),
         )
-        raise RuntimeError(
-            f"LM Studio not reachable at {base_url}. Is LM Studio running with a model loaded?"
-        ) from e
+        raise RuntimeError(f"LM Studio not reachable at {base_url}. Is LM Studio running with a model loaded?") from e
 
 
 async def is_available() -> bool:

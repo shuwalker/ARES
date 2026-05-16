@@ -301,6 +301,7 @@ def resume() -> None:
 # ares approve / reject / approvals
 # ---------------------------------------------------------------------------
 
+
 @main.command()
 @click.argument("task_id")
 def approve(task_id: str) -> None:

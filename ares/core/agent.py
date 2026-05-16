@@ -49,9 +49,7 @@ class AgentInterface(ABC):
         ...
 
     @abstractmethod
-    def send_streaming(
-        self, message: str, context: Optional[dict] = None
-    ) -> Iterator[StreamDelta]:
+    def send_streaming(self, message: str, context: Optional[dict] = None) -> Iterator[StreamDelta]:
         """Send a message and yield streaming deltas."""
         ...
 
@@ -90,10 +88,7 @@ def load_backend(backend_name: str, config: dict) -> AgentInterface:
 
     module_path = module_map.get(backend_name)
     if module_path is None:
-        raise ValueError(
-            f"Unknown backend: {backend_name!r}. "
-            f"Supported: {', '.join(module_map)}"
-        )
+        raise ValueError(f"Unknown backend: {backend_name!r}. " f"Supported: {', '.join(module_map)}")
 
     module = importlib.import_module(module_path)
     class_name = f"{backend_name.title()}Backend"

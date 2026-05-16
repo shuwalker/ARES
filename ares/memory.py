@@ -40,6 +40,7 @@ def _now_iso() -> str:
 # Episodic memory — JSONL task logs
 # ---------------------------------------------------------------------------
 
+
 class EpisodicEntry(BaseModel):
     """A single retrospective entry written per task to JSONL."""
 
@@ -52,7 +53,9 @@ class EpisodicEntry(BaseModel):
     outcome: str = Field(default="in_progress", description="in_progress | success | failed | cancelled")
     stages: list[dict[str, Any]] = Field(default_factory=list, description="Per-stage execution records")
     retrospective: str = Field(default="", description="Free-form retrospective notes")
-    preferences_noticed: list[str] = Field(default_factory=list, description="User preferences inferred during this task")
+    preferences_noticed: list[str] = Field(
+        default_factory=list, description="User preferences inferred during this task"
+    )
     api_cost_usd: float = Field(default=0.0, description="Total API cost in USD")
 
 

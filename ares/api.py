@@ -22,7 +22,6 @@ WebSocket:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -31,7 +30,6 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
-import httpx
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,13 +40,23 @@ from ares.core.identity import DEFAULT_IDENTITY
 from ares.core.personality import CharacterProfile, load_personality, save_personality
 from ares.core.memory_store import MemoryStore, default_memory_store
 from ares.models.api import (
-    ChatRequest, ChatResponse,
-    CognitiveStartResponse, CognitiveStopResponse, CognitiveStatusResponse,
-    FaceConfigBlock, FaceStateEntry, FaceStateRequest, FaceStateResponse, FaceStatesResponse,
+    ChatRequest,
+    ChatResponse,
+    FaceConfigBlock,
+    FaceStateEntry,
+    FaceStateRequest,
+    FaceStateResponse,
+    FaceStatesResponse,
     IdentityResponse,
-    MemorySearchResponse, MemoryStoreRequest, MemoryStoreResponse,
-    PersonalityPromptResponse, PersonalityUpdateRequest, PersonalityUpdateResponse,
-    ServiceHealth, ServicesResponse, StatusResponse,
+    MemorySearchResponse,
+    MemoryStoreRequest,
+    MemoryStoreResponse,
+    PersonalityPromptResponse,
+    PersonalityUpdateRequest,
+    PersonalityUpdateResponse,
+    ServiceHealth,
+    ServicesResponse,
+    StatusResponse,
 )
 from ares.models.cognitive import CognitiveSnapshot, MemoryHitBlock
 from ares.runtime.service_manager import SERVICES, _get_api_client
@@ -436,7 +444,10 @@ def create_app(
     @app.post("/api/cognitive/start")
     async def start_cognitive_loop(goal: str = "Observe and respond"):
         """Start the cognitive loop. Stub — will delegate to AgentInterface."""
-        return {"status": "disabled", "message": "Cognitive loop not yet reimplemented. Use /api/chat for direct Hermes queries."}
+        return {
+            "status": "disabled",
+            "message": "Cognitive loop not yet reimplemented. Use /api/chat for direct Hermes queries.",
+        }
 
     @app.post("/api/cognitive/stop")
     async def stop_cognitive_loop():

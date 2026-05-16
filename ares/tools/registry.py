@@ -36,13 +36,13 @@ if TYPE_CHECKING:
 # Errors
 # ---------------------------------------------------------------------------
 
+
 class ToolNotFoundError(Exception):
     """Stage references a tool the registry doesn't know about."""
 
 
 class ToolNotInstalledError(Exception):
     """Stage references a tool that's registered but not installed."""
-
 
 
 # ---------------------------------------------------------------------------
@@ -305,26 +305,19 @@ def resolve_tool_key(tool_string: str) -> str | None:
 def _check_stage(stage: "PlanStage") -> str:
     """Validate a single stage's tool. Returns canonical key or raises."""
     if not stage.tool:
-        raise ToolNotFoundError(
-            f"stage {stage.id} ({stage.name!r}) has no tool declared"
-        )
+        raise ToolNotFoundError(f"stage {stage.id} ({stage.name!r}) has no tool declared")
     key = resolve_tool_key(stage.tool)
     if key is None:
-        raise ToolNotFoundError(
-            f"stage {stage.id}: unknown tool {stage.tool!r} — not in registry"
-        )
+        raise ToolNotFoundError(f"stage {stage.id}: unknown tool {stage.tool!r} — not in registry")
     entry = get_tool(key)
     if entry is not None and entry.install_method not in _NO_INSTALL_METHODS:
         if not entry.installed:
             install_hint = entry.install_command or "(no install command on file)"
             raise ToolNotInstalledError(
-                f"stage {stage.id}: tool {key!r} is registered but not installed. "
-                f"Install with: {install_hint}"
+                f"stage {stage.id}: tool {key!r} is registered but not installed. " f"Install with: {install_hint}"
             )
     if key not in _INVOKERS:
-        raise ToolNotFoundError(
-            f"stage {stage.id}: no invoker registered for tool {key!r}"
-        )
+        raise ToolNotFoundError(f"stage {stage.id}: no invoker registered for tool {key!r}")
     return key
 
 
