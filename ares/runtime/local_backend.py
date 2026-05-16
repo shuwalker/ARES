@@ -79,9 +79,7 @@ class LocalBackend(AgentInterface):
             usage=data.get("eval_count"),
         )
 
-    def send_streaming(
-        self, message: str, context: Optional[dict] = None
-    ) -> Iterator[StreamDelta]:
+    def send_streaming(self, message: str, context: Optional[dict] = None) -> Iterator[StreamDelta]:
         """Stream from local Ollama. Falls back to synchronous."""
         response = self.send(message, context)
         yield StreamDelta(

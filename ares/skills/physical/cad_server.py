@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import os
 import tempfile
 import time
 from pathlib import Path
@@ -48,6 +47,7 @@ def _get_cadquery():
         return _cq
     try:
         import cadquery as cq
+
         _cq = cq
     except Exception as e:
         logger.error("CadQuery import failed: %s", e)
@@ -62,6 +62,7 @@ def _get_trimesh():
         return _trimesh
     try:
         import trimesh as tm
+
         _trimesh = tm
     except Exception as e:
         logger.error("trimesh import failed: %s", e)
@@ -279,10 +280,16 @@ def generate_bracket(params: str) -> dict:
                 # Re-center after hole
                 bracket = bracket.moveTo(0, 0)
             # Simpler pattern: use arrayOfHoles or linearPattern
-            bracket = cq.Workplane("XY").box(w, h, t).edges().fillet(fillet) if fillet > 0 else cq.Workplane("XY").box(w, h, t)
+            bracket = (
+                cq.Workplane("XY").box(w, h, t).edges().fillet(fillet)
+                if fillet > 0
+                else cq.Workplane("XY").box(w, h, t)
+            )
             bracket = bracket.faces("<Z").workplane()
             if hc > 1:
-                bracket = bracket.rarray(xCount=hc, yCount=1, xSpacing=w / (hc + 1) if hc > 1 else w, ySpacing=h).hole(hd, depth=t)
+                bracket = bracket.rarray(xCount=hc, yCount=1, xSpacing=w / (hc + 1) if hc > 1 else w, ySpacing=h).hole(
+                    hd, depth=t
+                )
             else:
                 bracket = bracket.hole(hd, depth=t)
         elif pattern == "grid":
@@ -293,7 +300,12 @@ def generate_bracket(params: str) -> dict:
             bracket = cq.Workplane("XY").box(w, h, t)
             if fillet > 0:
                 bracket = bracket.edges().fillet(fillet)
-            bracket = bracket.faces("<Z").workplane().rarray(xCount=cols, yCount=rows, xSpacing=xsp, ySpacing=ysp).hole(hd, depth=t)
+            bracket = (
+                bracket.faces("<Z")
+                .workplane()
+                .rarray(xCount=cols, yCount=rows, xSpacing=xsp, ySpacing=ysp)
+                .hole(hd, depth=t)
+            )
         elif pattern == "circle":
             radius = min(w, h) * 0.35
             bracket = cq.Workplane("XY").box(w, h, t)
@@ -357,7 +369,12 @@ def convert_mesh(path: str, target_format: str) -> dict:
             # USDZ not native in trimesh; export GLB and note
             intermediate = out_path.with_suffix(".glb")
             mesh.export(str(intermediate))
-            return {"status": "ok", "output": str(intermediate), "note": "USDZ requires usd-core; exported GLB fallback", "source": path}
+            return {
+                "status": "ok",
+                "output": str(intermediate),
+                "note": "USDZ requires usd-core; exported GLB fallback",
+                "source": path,
+            }
         else:
             mesh.export(str(out_path))
             return {"status": "ok", "output": str(out_path), "source": path}
@@ -385,7 +402,6 @@ def slice_for_3dprint(path: str, layer_height: float = 0.2) -> dict:
     if tm is False or tm is None:
         return {"status": "error", "error": "trimesh not available"}
 
-    bounds = mesh.bounds
     extents = mesh.extents
     height_mm = float(extents[2]) if len(extents) > 2 else 0.0
     layers = max(1, int(height_mm / layer_height))

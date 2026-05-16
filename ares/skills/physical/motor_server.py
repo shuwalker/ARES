@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import glob
 import logging
-import os
 import threading
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -80,6 +78,7 @@ def _check_dynamixel() -> bool:
             return _dynamixel_available
         try:
             import dynamixel_sdk  # noqa: F401
+
             _dynamixel_available = True
             logger.info("dynamixel_sdk available")
         except ImportError:
@@ -181,12 +180,10 @@ def _raw_to_voltage(raw_val: int) -> float:
 
 # ═══ Helpers for bus operations ════════════════════════════════════════════
 
+
 def _read_byte(port_handler, packet_handler, servo_id: int, addr: int) -> tuple:
     """Read a 1-byte register. Returns (value, error_str)."""
-    from dynamixel_sdk import COMM_SUCCESS
-    val, dxl_comm_result, dxl_error = packet_handler.read1ByteTxRx(
-        port_handler, servo_id, addr
-    )
+    val, dxl_comm_result, dxl_error = packet_handler.read1ByteTxRx(port_handler, servo_id, addr)
     err = _dxl_error(packet_handler, dxl_comm_result, dxl_error, f"read1B id={servo_id} addr={addr}")
     if err:
         return None, err
@@ -195,10 +192,7 @@ def _read_byte(port_handler, packet_handler, servo_id: int, addr: int) -> tuple:
 
 def _read_word(port_handler, packet_handler, servo_id: int, addr: int) -> tuple:
     """Read a 2-byte register. Returns (value, error_str)."""
-    from dynamixel_sdk import COMM_SUCCESS
-    val, dxl_comm_result, dxl_error = packet_handler.read2ByteTxRx(
-        port_handler, servo_id, addr
-    )
+    val, dxl_comm_result, dxl_error = packet_handler.read2ByteTxRx(port_handler, servo_id, addr)
     err = _dxl_error(packet_handler, dxl_comm_result, dxl_error, f"read2B id={servo_id} addr={addr}")
     if err:
         return None, err
@@ -207,10 +201,7 @@ def _read_word(port_handler, packet_handler, servo_id: int, addr: int) -> tuple:
 
 def _read_dword(port_handler, packet_handler, servo_id: int, addr: int) -> tuple:
     """Read a 4-byte register. Returns (value, error_str)."""
-    from dynamixel_sdk import COMM_SUCCESS
-    val, dxl_comm_result, dxl_error = packet_handler.read4ByteTxRx(
-        port_handler, servo_id, addr
-    )
+    val, dxl_comm_result, dxl_error = packet_handler.read4ByteTxRx(port_handler, servo_id, addr)
     err = _dxl_error(packet_handler, dxl_comm_result, dxl_error, f"read4B id={servo_id} addr={addr}")
     if err:
         return None, err
@@ -219,28 +210,19 @@ def _read_dword(port_handler, packet_handler, servo_id: int, addr: int) -> tuple
 
 def _write_byte(port_handler, packet_handler, servo_id: int, addr: int, value: int) -> Optional[str]:
     """Write a 1-byte register. Returns error_str or None."""
-    from dynamixel_sdk import COMM_SUCCESS
-    dxl_comm_result, dxl_error = packet_handler.write1ByteTxRx(
-        port_handler, servo_id, addr, value
-    )
+    dxl_comm_result, dxl_error = packet_handler.write1ByteTxRx(port_handler, servo_id, addr, value)
     return _dxl_error(packet_handler, dxl_comm_result, dxl_error, f"write1B id={servo_id} addr={addr}")
 
 
 def _write_word(port_handler, packet_handler, servo_id: int, addr: int, value: int) -> Optional[str]:
     """Write a 2-byte register. Returns error_str or None."""
-    from dynamixel_sdk import COMM_SUCCESS
-    dxl_comm_result, dxl_error = packet_handler.write2ByteTxRx(
-        port_handler, servo_id, addr, value
-    )
+    dxl_comm_result, dxl_error = packet_handler.write2ByteTxRx(port_handler, servo_id, addr, value)
     return _dxl_error(packet_handler, dxl_comm_result, dxl_error, f"write2B id={servo_id} addr={addr}")
 
 
 def _write_dword(port_handler, packet_handler, servo_id: int, addr: int, value: int) -> Optional[str]:
     """Write a 4-byte register. Returns error_str or None."""
-    from dynamixel_sdk import COMM_SUCCESS
-    dxl_comm_result, dxl_error = packet_handler.write4ByteTxRx(
-        port_handler, servo_id, addr, value
-    )
+    dxl_comm_result, dxl_error = packet_handler.write4ByteTxRx(port_handler, servo_id, addr, value)
     return _dxl_error(packet_handler, dxl_comm_result, dxl_error, f"write4B id={servo_id} addr={addr}")
 
 
@@ -295,19 +277,19 @@ def scan_bus(port: str = "/dev/tty.usbmodem", baudrate: int = 57600) -> dict:
         found = []
         for servo_id in range(1, 254):
             try:
-                model_raw, dxl_comm_result, dxl_error = packet_handler.ping(
-                    port_handler, servo_id
-                )
+                model_raw, dxl_comm_result, dxl_error = packet_handler.ping(port_handler, servo_id)
                 if dxl_comm_result == COMM_SUCCESS and dxl_error == 0:
                     model_number = model_raw
                     fw_ver, _ = _read_byte(port_handler, packet_handler, servo_id, ADDR_FIRMWARE_VERSION)
                     baud, _ = _read_byte(port_handler, packet_handler, servo_id, ADDR_BAUD_RATE)
-                    found.append({
-                        "id": servo_id,
-                        "model": _get_model_name(model_number),
-                        "firmware_version": fw_ver if fw_ver is not None else -1,
-                        "baudrate": baudrate,
-                    })
+                    found.append(
+                        {
+                            "id": servo_id,
+                            "model": _get_model_name(model_number),
+                            "firmware_version": fw_ver if fw_ver is not None else -1,
+                            "baudrate": baudrate,
+                        }
+                    )
             except Exception:
                 # Device not present — expected for most IDs
                 continue
@@ -338,9 +320,7 @@ def ping(servo_id: int, port: str = "/dev/tty.usbmodem") -> dict:
         return {"status": "error", "error": f"could not open port {port}"}
 
     try:
-        model_number, dxl_comm_result, dxl_error = packet_handler.ping(
-            port_handler, servo_id
-        )
+        model_number, dxl_comm_result, dxl_error = packet_handler.ping(port_handler, servo_id)
         if dxl_comm_result != 0 or dxl_error != 0:
             err = _dxl_error(packet_handler, dxl_comm_result, dxl_error, f"ping id={servo_id}")
             return {
@@ -484,6 +464,7 @@ def move_to(
             "servo_id": servo_id,
             "target_deg": round(target_deg, 2),
             "previous_deg": previous_deg,
+            "torque_percent": round(safe_torque, 1),
             "moving": True,
         }
     finally:

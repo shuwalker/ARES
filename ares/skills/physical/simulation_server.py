@@ -11,7 +11,6 @@ MCP :9516, StreamableHTTP.
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import os
@@ -42,7 +41,6 @@ def _get_pb() -> bool:
         return _pb_available
     try:
         import pybullet as pb
-        import pybullet_data
 
         _pb = pb
         _pb_available = True
@@ -89,6 +87,7 @@ def _pb_pose_to_dict(pos, orn) -> dict:
 
 
 # ═══ Helpers for optional trimesh support ════════════════════════════════════
+
 
 def _load_mesh_collision_shape(pb_module, mesh_path: str) -> Optional[int]:
     """Create a PyBullet collision shape from a mesh file."""
@@ -159,7 +158,7 @@ def simulate_gravity(mesh_path: str, mass_kg: float = 1.0) -> dict:
             "error": f"Mesh not found: {mesh_path}",
         }
 
-    client = pb.connect(pb.DIRECT)
+    pb.connect(pb.DIRECT)
     try:
         pb.setGravity(0, 0, -9.81)
         pb.setAdditionalSearchPath(os.path.dirname(str(p)))
@@ -199,11 +198,13 @@ def simulate_gravity(mesh_path: str, mass_kg: float = 1.0) -> dict:
             pb.stepSimulation()
             pos, orn = pb.getBasePositionAndOrientation(body_id)
             euler = _quat_to_euler(orn)
-            trajectory.append({
-                "time": round(i / 240.0, 3),
-                "position": [round(float(v), 4) for v in pos],
-                "euler_deg": [round(math.degrees(v), 2) for v in euler],
-            })
+            trajectory.append(
+                {
+                    "time": round(i / 240.0, 3),
+                    "position": [round(float(v), 4) for v in pos],
+                    "euler_deg": [round(math.degrees(v), 2) for v in euler],
+                }
+            )
             # Detect if it fell over (any axis > 45°)
             max_lean = max(abs(euler[0]), abs(euler[1]))
             if max_lean > math.radians(45):
@@ -260,7 +261,7 @@ def simulate_balance(link_lengths: list[float], link_masses: list[float], base_w
         }
 
     pb = _pb
-    client = pb.connect(pb.DIRECT)
+    pb.connect(pb.DIRECT)
     try:
         pb.setGravity(0, 0, -9.81)
 
@@ -280,11 +281,6 @@ def simulate_balance(link_lengths: list[float], link_masses: list[float], base_w
             half_extents = [0.03, 0.03, length / 2.0]
             shape_id = pb.createCollisionShape(pb.GEOM_BOX, halfExtents=half_extents)
             link_mass = float(mass)
-
-            link_pos = [0, 0, length / 2.0]
-            joint_axis = [1, 0, 0]
-            if i % 2 == 1:
-                joint_axis = [0, 1, 0]
 
             body_id = pb.createMultiBody(
                 baseMass=link_mass,
@@ -388,7 +384,7 @@ def check_collision(mesh_a: str, mesh_b: str, transform_a: dict = None, transfor
         )
         return body
 
-    client = pb.connect(pb.DIRECT)
+    pb.connect(pb.DIRECT)
     try:
         body_a = _build_body(pb, str(p_a), transform_a)
         body_b = _build_body(pb, str(p_b), transform_b)
@@ -406,12 +402,14 @@ def check_collision(mesh_a: str, mesh_b: str, transform_a: dict = None, transfor
         for c in contacts:
             dist = float(c[8])
             pen = float(c[9])
-            pts.append({
-                "positionOnA": [round(float(v), 4) for v in c[5]],
-                "positionOnB": [round(float(v), 4) for v in c[6]],
-                "contactDistance": round(dist, 6),
-                "penetrationDepth": round(pen, 6),
-            })
+            pts.append(
+                {
+                    "positionOnA": [round(float(v), 4) for v in c[5]],
+                    "positionOnB": [round(float(v), 4) for v in c[6]],
+                    "contactDistance": round(dist, 6),
+                    "penetrationDepth": round(pen, 6),
+                }
+            )
             if dist < min_dist:
                 min_dist = dist
             if pen > (max_pen or 0):
@@ -474,10 +472,10 @@ def simulate_torque(
         }
 
     pb = _pb
-    client = pb.connect(pb.DIRECT)
+    pb.connect(pb.DIRECT)
     try:
         pb.setGravity(0, 0, -9.81)
-        planner = pb.loadURDF(
+        pb.loadURDF(
             "plane.urdf",
             basePosition=[0, 0, 0],
         )
@@ -541,7 +539,6 @@ def simulate_torque(
         steps = int(10.0 * 240)
         tol = math.radians(2.0)
 
-        prev_states = {}
         for i in range(steps):
             pb.stepSimulation()
             # Measure joint states via constraint relative orientation approx

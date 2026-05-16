@@ -38,7 +38,9 @@ class LilithBackend(AgentInterface):
         self._connected = False
         logger.info(
             "LilithBackend created (%s:%d/%d) — stub, not yet functional",
-            zmq_host, input_port, output_port,
+            zmq_host,
+            input_port,
+            output_port,
         )
 
     def send(self, message: str, context: Optional[dict] = None) -> AgentResponse:
@@ -50,9 +52,7 @@ class LilithBackend(AgentInterface):
             expression="neutral",
         )
 
-    def send_streaming(
-        self, message: str, context: Optional[dict] = None
-    ) -> Iterator[StreamDelta]:
+    def send_streaming(self, message: str, context: Optional[dict] = None) -> Iterator[StreamDelta]:
         """Stream from Lilith. Stub — yields single delta."""
         yield StreamDelta(
             type="complete",

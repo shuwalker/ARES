@@ -26,6 +26,12 @@ from pathlib import Path
 
 import httpx
 
+from ares.runtime.config import get_config
+from ares.runtime.audit import log
+from ..llm import cloud
+from ..memory import write_project, read_project
+from ..tools.n8n import N8NClient, youtube_publish_workflow, save_workflow_draft
+
 # ---------------------------------------------------------------------------
 # Shared ElevenLabs client (avoids per-request client creation)
 # ---------------------------------------------------------------------------
@@ -38,12 +44,6 @@ def _get_elevenlabs_client() -> httpx.AsyncClient:
         _elevenlabs_client = httpx.AsyncClient(timeout=120.0)
     return _elevenlabs_client
 
-
-from ares.runtime.config import get_config
-from ares.runtime.audit import log
-from ..llm import cloud
-from ..memory import write_project, read_project
-from ..tools.n8n import N8NClient, youtube_publish_workflow, save_workflow_draft
 
 # ---------------------------------------------------------------------------
 # Project state

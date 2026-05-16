@@ -24,12 +24,12 @@ from typing import Any
 import httpx
 
 from .audit import log, log_sync
-from .config import ares_paths, write_default_config
+from .config import ares_paths, get_config, write_default_config
 from ares.core.bus import ARESBus, BusMessage, get_bus
 from ares.core.face_state import FaceState, get_face_config
 from ares.core.memory import open_default as _open_memory_db
 from ares.memory import write_retrospective
-from ares.core.reasoning import reason, format_proposal, Plan, PlanStage
+from ares.core.reasoning import reason, format_proposal, PlanStage
 from ares.runtime.ares_bridge_minimal import HOST as BRIDGE_HOST, PORT as BRIDGE_PORT
 from .sync import flush
 from ares.tasks import approvals
@@ -58,8 +58,14 @@ def _get_bridge_client() -> httpx.AsyncClient:
 # ---------------------------------------------------------------------------
 
 SOCKET_COMMANDS = {
-    "goal", "status", "pause", "resume", "stop",
-    "approve", "reject", "approvals",
+    "goal",
+    "status",
+    "pause",
+    "resume",
+    "stop",
+    "approve",
+    "reject",
+    "approvals",
 }
 
 
@@ -266,26 +272,22 @@ class Daemon:
                 break
             status = current.get("status")
             if status == "approved":
-                await log(action="approval_granted", task_id=task.id,
-                          stage=stage.id, responder=current.get("responder"))
+                await log(
+                    action="approval_granted", task_id=task.id, stage=stage.id, responder=current.get("responder")
+                )
                 approvals.clear(task.id)
-                await self._log_phase("executing", task_id=task.id,
-                                      reason="approval_granted")
+                await self._log_phase("executing", task_id=task.id, reason="approval_granted")
                 return True
             if status == "rejected":
-                await log(action="approval_denied", task_id=task.id,
-                          stage=stage.id, responder=current.get("responder"))
+                await log(action="approval_denied", task_id=task.id, stage=stage.id, responder=current.get("responder"))
                 approvals.clear(task.id)
-                await self._log_phase("executing", task_id=task.id,
-                                      reason="approval_denied")
+                await self._log_phase("executing", task_id=task.id, reason="approval_denied")
                 return False
 
         approvals.mark_expired(task.id)
-        await log(action="approval_timeout", task_id=task.id,
-                  stage=stage.id, default_action=cfg.default_action)
+        await log(action="approval_timeout", task_id=task.id, stage=stage.id, default_action=cfg.default_action)
         approvals.clear(task.id)
-        await self._log_phase("executing", task_id=task.id,
-                              reason=f"approval_timeout:{cfg.default_action}")
+        await self._log_phase("executing", task_id=task.id, reason=f"approval_timeout:{cfg.default_action}")
         return cfg.default_action == "approve"
 
     def get_status(self) -> dict[str, Any]:
@@ -457,9 +459,7 @@ class Daemon:
 
             memory_context = ""
             if past:
-                memory_context = "Similar past tasks:\n" + "\n".join(
-                    f"- {p['content']}" for p in past
-                )
+                memory_context = "Similar past tasks:\n" + "\n".join(f"- {p['content']}" for p in past)
 
             base_context = json.dumps(task.context) if task.context else ""
             combined_context = "\n\n".join(x for x in (memory_context, base_context) if x)

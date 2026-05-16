@@ -29,10 +29,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ares.runtime.config import ares_paths
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -45,6 +45,7 @@ def new_thought_id() -> str:
 # ---------------------------------------------------------------------------
 # Pydantic schema
 # ---------------------------------------------------------------------------
+
 
 class ThoughtCheckpoint(BaseModel):
     """A single checkpoint in a reasoning DAG."""

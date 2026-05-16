@@ -15,20 +15,17 @@ from ares.core.reasoning import PlanStage
 from ..tasks.queue import Task
 from . import registry
 
-
 # ---------------------------------------------------------------------------
 # llm — LLM-backed content generation
 # ---------------------------------------------------------------------------
+
 
 async def llm_handler(stage: PlanStage, task: Task) -> str:
     from ..llm import cloud
     from ..core.personality import load_personality
 
     personality = load_personality()
-    system_prompt = (
-        "You are ARES — Autonomous Reasoning & Execution System.\n\n"
-        + personality.to_system_prompt()
-    )
+    system_prompt = "You are ARES — Autonomous Reasoning & Execution System.\n\n" + personality.to_system_prompt()
     text = await cloud.complete(
         system=system_prompt,
         messages=[{"role": "user", "content": f"Execute stage: {stage.action}"}],
@@ -52,12 +49,13 @@ async def llm_handler(stage: PlanStage, task: Task) -> str:
 # shell — local command execution
 # ---------------------------------------------------------------------------
 
+
 async def shell_handler(stage: PlanStage, task: Task) -> str:
     cmd = stage.action or ""
     # Tolerate the historical "run:" / "exec:" prefixes that planner output uses.
     for prefix in ("run:", "exec:"):
         if cmd.lower().startswith(prefix):
-            cmd = cmd[len(prefix):].strip()
+            cmd = cmd[len(prefix) :].strip()
             break
     if not cmd:
         raise RuntimeError(f"Stage {stage.id} has no shell command in action.")
@@ -71,15 +69,14 @@ async def shell_handler(stage: PlanStage, task: Task) -> str:
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"Stage {stage.id} failed (exit {proc.returncode}):\n{stderr.decode()}"
-        )
+        raise RuntimeError(f"Stage {stage.id} failed (exit {proc.returncode}):\n{stderr.decode()}")
     return stdout.decode()
 
 
 # ---------------------------------------------------------------------------
 # human — manual stage marker
 # ---------------------------------------------------------------------------
+
 
 async def human_handler(stage: PlanStage, task: Task) -> str:
     return f"Manual stage — awaiting human: {stage.action}"
@@ -89,14 +86,13 @@ async def human_handler(stage: PlanStage, task: Task) -> str:
 # n8n — workflow automation bridge
 # ---------------------------------------------------------------------------
 
+
 async def n8n_handler(stage: PlanStage, task: Task) -> str:
     from . import n8n as n8n_mod
 
     name = (stage.output_file or stage.name or "").strip()
     if not name:
-        raise RuntimeError(
-            f"Stage {stage.id}: n8n stages must set output_file (workflow name)."
-        )
+        raise RuntimeError(f"Stage {stage.id}: n8n stages must set output_file (workflow name).")
     # stage.action carries either a workflow JSON spec or a known template name.
     action = (stage.action or "").strip()
     if action == "youtube_publish":
@@ -105,8 +101,7 @@ async def n8n_handler(stage: PlanStage, task: Task) -> str:
         workflow = n8n_mod.notification_workflow()
     else:
         raise RuntimeError(
-            f"Stage {stage.id}: unknown n8n workflow action {action!r}. "
-            "Use 'youtube_publish' or 'notification'."
+            f"Stage {stage.id}: unknown n8n workflow action {action!r}. " "Use 'youtube_publish' or 'notification'."
         )
     result = await n8n_mod.ensure_n8n_workflow(name, workflow, task_id=task.id)
     return f"n8n workflow ensured: {result.get('name')} (id={result.get('id')})"

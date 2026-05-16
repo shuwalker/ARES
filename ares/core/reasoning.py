@@ -76,6 +76,7 @@ have requires_approval set to true.."""
 # Plan data models (BaseModel — Pydantic v2)
 # ---------------------------------------------------------------------------
 
+
 class PlanStage(BaseModel):
     model_config = ConfigDict(validate_assignment=False)
 
@@ -113,6 +114,7 @@ class Plan(BaseModel):
 # ---------------------------------------------------------------------------
 # LLM response schema (lenient — defaults everywhere, extras ignored)
 # ---------------------------------------------------------------------------
+
 
 class _LLMStage(BaseModel):
     model_config = ConfigDict(extra="ignore")

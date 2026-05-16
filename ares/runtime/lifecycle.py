@@ -132,7 +132,9 @@ def cleanup_previous_instance(home: Optional[Path] = None) -> dict:
     try:
         result = subprocess.run(
             ["pgrep", "-f", "python.*-m.*ares"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.stdout.strip():
             for pid_str in result.stdout.strip().split("\n"):
@@ -148,7 +150,9 @@ def cleanup_previous_instance(home: Optional[Path] = None) -> dict:
         try:
             result = subprocess.run(
                 ["lsof", "-ti", f":{port}"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.stdout.strip():
                 for pid_str in result.stdout.strip().split("\n"):
@@ -171,7 +175,9 @@ def _is_ares_process(pid: int) -> bool:
         try:
             result = subprocess.run(
                 ["ps", "-p", str(pid), "-o", "command="],
-                capture_output=True, text=True, timeout=3,
+                capture_output=True,
+                text=True,
+                timeout=3,
             )
             cmdline = result.stdout.strip()
         except Exception as exc:

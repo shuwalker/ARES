@@ -13,32 +13,32 @@ from ares.core.face_state import FaceState
 
 # Agent event → (face_state, expression)
 AGENT_TO_FACE: dict[str, tuple[str, str]] = {
-    "thinking":           ("thinking", "thinking"),
-    "tool_call":          ("curious", "curious"),
-    "tool_executing":     ("curious", "curious"),
-    "streaming":          ("speaking", "neutral"),
-    "idle":               ("idle", "neutral"),
-    "error":              ("error", "concerned"),
-    "perceiving":         ("awakened", "curious"),
-    "listening":          ("listening", "neutral"),
-    "awakened":          ("awakened", "surprised"),
-    "sleeping":          ("sleeping", "sleepy"),
+    "thinking": ("thinking", "thinking"),
+    "tool_call": ("curious", "curious"),
+    "tool_executing": ("curious", "curious"),
+    "streaming": ("speaking", "neutral"),
+    "idle": ("idle", "neutral"),
+    "error": ("error", "concerned"),
+    "perceiving": ("awakened", "curious"),
+    "listening": ("listening", "neutral"),
+    "awakened": ("awakened", "surprised"),
+    "sleeping": ("sleeping", "sleepy"),
 }
 
 # Control tag patterns → (face_state, expression)
 CONTROL_TAG_MAP: dict[str, tuple[str, str]] = {
-    "face:happy":         ("speaking", "happy"),
-    "face:curious":      ("listening", "curious"),
-    "face:thinking":     ("thinking", "thinking"),
-    "face:surprised":    ("awakened", "surprised"),
-    "face:concerned":    ("listening", "concerned"),
-    "face:excited":      ("speaking", "excited"),
-    "face:sleepy":       ("idle", "sleepy"),
-    "face:neutral":      ("idle", "neutral"),
-    "anim:wave":         ("speaking", "happy"),
-    "anim:look":         ("awakened", "curious"),
-    "anim:nod":          ("speaking", "neutral"),
-    "anim:shake":        ("listening", "concerned"),
+    "face:happy": ("speaking", "happy"),
+    "face:curious": ("listening", "curious"),
+    "face:thinking": ("thinking", "thinking"),
+    "face:surprised": ("awakened", "surprised"),
+    "face:concerned": ("listening", "concerned"),
+    "face:excited": ("speaking", "excited"),
+    "face:sleepy": ("idle", "sleepy"),
+    "face:neutral": ("idle", "neutral"),
+    "anim:wave": ("speaking", "happy"),
+    "anim:look": ("awakened", "curious"),
+    "anim:nod": ("speaking", "neutral"),
+    "anim:shake": ("listening", "concerned"),
 }
 
 

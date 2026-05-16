@@ -19,7 +19,6 @@ import re
 import time
 from pathlib import Path
 
-
 # ─── MEMTIER five-signal scoring ───
 # Composite recall score = recency × frequency × relevance × importance × decay.
 # Each signal is normalized to (0, 1] (relevance can hit 0 when a query is given
@@ -27,10 +26,10 @@ from pathlib import Path
 # irrelevant items when a query is supplied).
 
 _TOKEN_RE = re.compile(r"\w+")
-_RECENCY_TAU_DAYS = 7.0      # sharp recency: half-life ≈ 4.85 days
+_RECENCY_TAU_DAYS = 7.0  # sharp recency: half-life ≈ 4.85 days
 _DECAY_HALF_LIFE_DAYS = 30.0  # smooth long-tail decay
-_FREQUENCY_REFERENCE = 10.0   # smoothing constant: never zero, asymptotes to 1
-_CANDIDATE_POOL_MULT = 20     # how many candidates to score per requested item
+_FREQUENCY_REFERENCE = 10.0  # smoothing constant: never zero, asymptotes to 1
+_CANDIDATE_POOL_MULT = 20  # how many candidates to score per requested item
 _CANDIDATE_POOL_MAX = 500
 
 
@@ -65,7 +64,6 @@ def _frequency_score(recall_count: int) -> float:
     """Smooth saturating function: 0 recalls → 0.1, 10 → 0.55, 100 → 0.92."""
     n = max(recall_count, 0)
     return (n + 1) / (n + _FREQUENCY_REFERENCE)
-
 
 
 SCHEMA_SQL = """
@@ -158,8 +156,9 @@ class Memory:
         except sqlite3.OperationalError:
             return 0
 
-    def remember(self, content: str, tags: list[str] | None = None, source: str = "main",
-                 importance: float = 0.5) -> str:
+    def remember(
+        self, content: str, tags: list[str] | None = None, source: str = "main", importance: float = 0.5
+    ) -> str:
         """Add a fact to memory. Returns the fact ID.
 
         ``importance`` is the MEMTIER quality signal in [0.0, 1.0]; clamped on write.
@@ -168,15 +167,15 @@ class Memory:
         importance = max(0.0, min(1.0, float(importance)))
         with self._lock:
             self._conn.execute(
-                "INSERT INTO facts (content, tags, source, learned_at, importance) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO facts (content, tags, source, learned_at, importance) " "VALUES (?, ?, ?, ?, ?)",
                 (content, tags_json, source, time.time(), importance),
             )
             self._conn.commit()
             return str(self._conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-    def recall(self, tag: str | None = None, query: str | None = None, limit: int = 10,
-               source: str | None = None) -> list[dict]:
+    def recall(
+        self, tag: str | None = None, query: str | None = None, limit: int = 10, source: str | None = None
+    ) -> list[dict]:
         """Recall facts ranked by MEMTIER five-signal composite score:
 
             score = recency × frequency × relevance × importance × decay
@@ -235,22 +234,24 @@ class Memory:
                 relevance = 1.0
 
             score = recency * frequency * relevance * importance * decay
-            scored.append({
-                "id": str(fid),
-                "content": content,
-                "tags": json.loads(tags_json) if tags_json else [],
-                "source": src,
-                "learned_at": learned_at,
-                "recall_count": recall_count,
-                "score": score,
-                "score_breakdown": {
-                    "recency": recency,
-                    "frequency": frequency,
-                    "relevance": relevance,
-                    "importance": importance,
-                    "decay": decay,
-                },
-            })
+            scored.append(
+                {
+                    "id": str(fid),
+                    "content": content,
+                    "tags": json.loads(tags_json) if tags_json else [],
+                    "source": src,
+                    "learned_at": learned_at,
+                    "recall_count": recall_count,
+                    "score": score,
+                    "score_breakdown": {
+                        "recency": recency,
+                        "frequency": frequency,
+                        "relevance": relevance,
+                        "importance": importance,
+                        "decay": decay,
+                    },
+                }
+            )
 
         # 3. Rank by composite score, tie-break by recency.
         scored.sort(key=lambda r: (r["score"], r["learned_at"] or 0.0), reverse=True)
@@ -332,4 +333,5 @@ def get_nas_paths() -> dict:
 def open_default() -> Memory:
     """Open the default ARES memory store at ~/.ares/memory.db (opened, caller closes)."""
     from ares.runtime.config import ares_home
+
     return Memory(ares_home() / "memory.db").open()

@@ -18,7 +18,7 @@ from typing import Iterator, Optional
 import httpx
 
 from ares.core.agent import AgentInterface, AgentResponse, StreamDelta
-from ares.core.control_tags import parse_control_tags, tags_to_face_events
+from ares.core.control_tags import parse_control_tags
 
 logger = logging.getLogger("ares.runtime.hermes_backend")
 
@@ -86,9 +86,7 @@ class HermesBackend(AgentInterface):
             session_id=data.get("session_id"),
         )
 
-    def send_streaming(
-        self, message: str, context: Optional[dict] = None
-    ) -> Iterator[StreamDelta]:
+    def send_streaming(self, message: str, context: Optional[dict] = None) -> Iterator[StreamDelta]:
         """Stream deltas from Hermes. Falls back to synchronous if SSE not supported."""
         # TODO: implement SSE streaming when Hermes API supports it
         response = self.send(message, context)

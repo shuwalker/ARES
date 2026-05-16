@@ -21,6 +21,7 @@ from ares.runtime.audit import log
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -28,6 +29,7 @@ def _now_iso() -> str:
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
+
 
 class Task(BaseModel):
     """A single ARES task — flows through queued → planning → executing → done/failed."""
