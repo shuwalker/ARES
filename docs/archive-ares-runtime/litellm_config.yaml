@@ -1,0 +1,40 @@
+model_list:
+  # Local first — LM Studio (Gemma-3-12B, best balance of speed/quality)
+  - model_name: local
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://localhost:11434/v1
+      api_key: ollama
+
+  # Local option 2 — larger model for harder tasks
+  - model_name: local-large
+    litellm_params:
+      model: ollama/gemma2:27b
+      api_base: http://localhost:11434/v1
+      api_key: ollama
+
+  # Cloud fallback — only used when local fails or explicitly requested
+  - model_name: cloud
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+router_settings:
+  # Try local first, fall back to cloud automatically
+  fallbacks:
+    - {"local": ["cloud"]}
+    - {"local-large": ["cloud"]}
+  retry_after: 0
+  allowed_fails: 1
+
+litellm_settings:
+  # Drop params that local models don't support
+  drop_params: true
+  # Request timeout before falling back
+  request_timeout: 30
+
+general_settings:
+  master_key: sk-ares-local-proxy
+  port: 4000
+  # Expose both OpenAI and Anthropic compatible endpoints
+  completion_model: local
