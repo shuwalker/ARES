@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# commit-msg hook – runs Commitlint
-npx --no-install commitlint --edit "$1"

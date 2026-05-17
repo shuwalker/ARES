@@ -1,5 +1,0 @@
-# https://hoangsonww.github.io/Claude-Code-Agent-Monitor/
-User-agent: *
-Allow: /
-
-Sitemap: https://hoangsonww.github.io/Claude-Code-Agent-Monitor/sitemap.xml
