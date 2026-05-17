@@ -4,16 +4,18 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="HermesDesktop"
-APP_DISPLAY_NAME="Hermes Desktop"
-BUNDLE_PATH="$ROOT_DIR/dist/${APP_NAME}.app"
+APP_DISPLAY_NAME="ARES"
+INSTALL_PREFIX="${ARES_INSTALL_PREFIX:-/Applications}"
+BUNDLE_PATH="$ROOT_DIR/dist/${APP_DISPLAY_NAME}.app"
+INSTALLED_PATH="$INSTALL_PREFIX/${APP_DISPLAY_NAME}.app"
 CONTENTS_PATH="$BUNDLE_PATH/Contents"
 MACOS_PATH="$CONTENTS_PATH/MacOS"
 RESOURCES_PATH="$CONTENTS_PATH/Resources"
 SWIFTPM_HOME="$ROOT_DIR/.swiftpm-home"
 SCRATCH_PATH="$ROOT_DIR/.build"
-ICON_SOURCE="$ROOT_DIR/packaging/AppIcon-1024.png"
+ICON_SOURCE="$ROOT_DIR/assets/AppIcon_1024.png"
 ICONSET_PATH="$ROOT_DIR/packaging/AppIcon.iconset"
-ICNS_PATH="$ROOT_DIR/packaging/HermesDesktop.icns"
+ICNS_PATH="$ROOT_DIR/packaging/AppIcon.icns"
 PLIST_PATH="$ROOT_DIR/packaging/Info.plist"
 SHADER_SOURCE_PATH="$ROOT_DIR/Vendor/SwiftTerm/Sources/SwiftTerm/Apple/Metal/Shaders.metal"
 LOCALIZATION_SOURCE_PATH="$ROOT_DIR/Sources/HermesDesktop/Resources"
@@ -253,3 +255,12 @@ echo "  $BUNDLE_PATH"
 echo "Version: ${STAMPED_VERSION} (build ${STAMPED_BUILD})"
 echo "Architectures: $(lipo -archs "$MACOS_PATH/$APP_NAME")"
 echo "Ad-hoc signed bundle created: macOS may still require right-click > Open on first launch."
+
+if [[ "${1:-}" == "--install" ]]; then
+    echo
+    echo "Installing to $INSTALLED_PATH..."
+    rm -rf "$INSTALLED_PATH"
+    cp -R "$BUNDLE_PATH" "$INSTALLED_PATH"
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$INSTALLED_PATH" 2>/dev/null || true
+    echo "Installed. Launch with: open $INSTALLED_PATH"
+fi
