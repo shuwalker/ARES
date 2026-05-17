@@ -6,6 +6,8 @@ struct SessionsView: View {
     @Binding var splitLayout: HermesSplitLayout
     let isActive: Bool
     @State private var searchText = ""
+    @State private var showToolActivity = false
+    @StateObject private var toolActivityModel = LiveToolActivityModel()
 
     var body: some View {
         HermesCollapsibleHSplitView(layout: $splitLayout, detailMinWidth: 420) {
@@ -30,43 +32,89 @@ struct SessionsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
         } detail: {
-            SessionDetailView(
-                session: selectedSession,
-                messages: appState.sessionMessageDisplays,
-                errorMessage: appState.sessionsError,
-                conversationError: appState.sessionConversationError,
-                isSendingMessage: appState.isSendingSessionMessage,
-                isDeletingSession: selectedSession.map { selectedSession in
-                    appState.isDeletingSession && appState.selectedSessionID == selectedSession.id
-                } ?? false,
-                pendingTurn: appState.pendingSessionTurn,
-                isActive: isActive,
-                savedScrollOffset: selectedSession.flatMap { selectedSession in
-                    appState.savedSessionScrollOffset(for: selectedSession.id)
-                },
-                onSaveScrollOffset: { sessionID, offset in
-                    appState.saveSessionScrollOffset(offset, for: sessionID)
-                },
-                onResumeInTerminal: { session in
-                    appState.resumeSessionInTerminal(session)
-                },
-                onDeleteSession: { session in
-                    await appState.deleteSession(session)
-                },
-                onStartSession: { prompt, autoApproveCommands in
-                    await appState.startNewSession(
-                        with: prompt,
-                        autoApproveCommands: autoApproveCommands
+            if showToolActivity {
+                // Split detail: chat + tool activity panel
+                HSplitView {
+                    SessionDetailView(
+                        session: selectedSession,
+                        messages: appState.sessionMessageDisplays,
+                        errorMessage: appState.sessionsError,
+                        conversationError: appState.sessionConversationError,
+                        isSendingMessage: appState.isSendingSessionMessage,
+                        isDeletingSession: selectedSession.map { selectedSession in
+                            appState.isDeletingSession && appState.selectedSessionID == selectedSession.id
+                        } ?? false,
+                        pendingTurn: appState.pendingSessionTurn,
+                        isActive: isActive,
+                        savedScrollOffset: selectedSession.flatMap { selectedSession in
+                            appState.savedSessionScrollOffset(for: selectedSession.id)
+                        },
+                        onSaveScrollOffset: { sessionID, offset in
+                            appState.saveSessionScrollOffset(offset, for: sessionID)
+                        },
+                        onResumeInTerminal: { session in
+                            appState.resumeSessionInTerminal(session)
+                        },
+                        onDeleteSession: { session in
+                            await appState.deleteSession(session)
+                        },
+                        onStartSession: { prompt, autoApproveCommands in
+                            await appState.startNewSession(
+                                with: prompt,
+                                autoApproveCommands: autoApproveCommands
+                            )
+                        },
+                        onSendMessage: { prompt, autoApproveCommands in
+                            await appState.sendMessageToSelectedSession(
+                                prompt,
+                                autoApproveCommands: autoApproveCommands
+                            )
+                        }
                     )
-                },
-                onSendMessage: { prompt, autoApproveCommands in
-                    await appState.sendMessageToSelectedSession(
-                        prompt,
-                        autoApproveCommands: autoApproveCommands
-                    )
+                    .frame(minWidth: 320)
+
+                    LiveToolActivityView(model: toolActivityModel)
+                        .frame(minWidth: 220, idealWidth: 280, maxWidth: 400)
                 }
-            )
-            .hermesSplitDetailColumn(minWidth: 420, idealWidth: 520)
+            } else {
+                SessionDetailView(
+                    session: selectedSession,
+                    messages: appState.sessionMessageDisplays,
+                    errorMessage: appState.sessionsError,
+                    conversationError: appState.sessionConversationError,
+                    isSendingMessage: appState.isSendingSessionMessage,
+                    isDeletingSession: selectedSession.map { selectedSession in
+                        appState.isDeletingSession && appState.selectedSessionID == selectedSession.id
+                    } ?? false,
+                    pendingTurn: appState.pendingSessionTurn,
+                    isActive: isActive,
+                    savedScrollOffset: selectedSession.flatMap { selectedSession in
+                        appState.savedSessionScrollOffset(for: selectedSession.id)
+                    },
+                    onSaveScrollOffset: { sessionID, offset in
+                        appState.saveSessionScrollOffset(offset, for: sessionID)
+                    },
+                    onResumeInTerminal: { session in
+                        appState.resumeSessionInTerminal(session)
+                    },
+                    onDeleteSession: { session in
+                        await appState.deleteSession(session)
+                    },
+                    onStartSession: { prompt, autoApproveCommands in
+                        await appState.startNewSession(
+                            with: prompt,
+                            autoApproveCommands: autoApproveCommands
+                        )
+                    },
+                    onSendMessage: { prompt, autoApproveCommands in
+                        await appState.sendMessageToSelectedSession(
+                            prompt,
+                            autoApproveCommands: autoApproveCommands
+                        )
+                    }
+                )
+                .hermesSplitDetailColumn(minWidth: 420, idealWidth: 520)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task(id: sessionsLoadTaskID) {
@@ -238,9 +286,81 @@ struct SessionsView: View {
                 appState.prepareNewSessionComposer()
             }
             .disabled(appState.isSendingSessionMessage)
+
+            Spacer()
+
+            // Toggle live tool activity viewer
+            Button {
+                showToolActivity.toggle()
+                if showToolActivity {
+                    configureToolActivityModel()
+                    toolActivityModel.connect()
+                } else {
+                    toolActivityModel.disconnect()
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: showToolActivity ? "wrench.and.screwdriver.fill" : "wrench.and.screwdriver")
+                        .font(.caption.weight(.medium))
+                    if !toolActivityModel.events.isEmpty {
+                        Text("\(toolActivityModel.events.count)")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.accentColor))
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(showToolActivity ? "Hide Tool Activity" : "Show Tool Activity")
+            .tint(showToolActivity ? .accentColor : .secondary)
         }
         .fixedSize(horizontal: true, vertical: false)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func configureToolActivityModel() {
+        // Read gateway config from the active connection
+        if let connection = appState.activeConnection {
+            if connection.sshHost.isEmpty {
+                // Local connection — gateway is on this machine
+                toolActivityModel.gatewayHost = "localhost"
+                toolActivityModel.gatewayPort = 9119
+            } else {
+                // Remote connection — gateway is on the SSH host
+                toolActivityModel.gatewayHost = connection.sshHost
+                toolActivityModel.gatewayPort = 9119
+            }
+            // Fetch token asynchronously then connect
+            Task {
+                toolActivityModel.sessionToken = await fetchGatewayToken()
+            }
+        }
+    }
+
+    @MainActor
+    private func fetchGatewayToken() async -> String? {
+        // Fetch the session token from the gateway HTML page
+        let urlString = "http://\(toolActivityModel.gatewayHost):\(toolActivityModel.gatewayPort)/"
+        guard let url = URL(string: urlString) else { return nil }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let html = String(data: data, encoding: .utf8) else { return nil }
+            // Extract __HERMES_SESSION_TOKEN__="<token>"
+            if let range = html.range(of: #"__HERMES_SESSION_TOKEN__="([^"]+)""#, options: .regularExpression) {
+                let match = String(html[range])
+                if let quoteRange = match.range(of: #"="([^"]+)""#, options: .regularExpression) {
+                    let value = String(match[quoteRange])
+                    return value.replacingOccurrences(of: "=\"", with: "").replacingOccurrences(of: "\"", with: "")
+                }
+            }
+        } catch {
+            // Silently fail — token will be nil, WS connects without it
+        }
+        return nil
     }
 
     private var panelTitle: String {
