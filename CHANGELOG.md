@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Board selector menu labels no longer overlap board titles when board metadata uses a longer text label in the icon/color slot.
+
 ## [v0.51.89] — 2026-05-18 — Release BM (stage-382 — 6-PR full sweep batch — runtime adapter approval/clarify seam + SOUL.md memory panel + #1855 resolve_model_provider fast-path + PWA sidebar spinner fix + /model active-provider preference + contributor contract docs index)
 
 ### Changed
@@ -70,6 +74,7 @@
 ### Changed
 
 - **PR #2479** by @Michaelyklam (refs #1925) — Route Stop Generation through the default-off `RuntimeAdapter.cancel_run(...)` seam when `HERMES_WEBUI_RUNTIME_ADAPTER=legacy-journal` is enabled. Implements the first code slice of the Slice 3a cancel-control gate accepted in #2469 / v0.51.85. The default `legacy-direct` path still calls `cancel_stream(...)` directly; the adapter branch preserves the existing `{ok, cancelled, stream_id}` JSON response contract. No new cancellation registry, runner, sidecar, approval/clarify, queue/goal, or cached-agent state is introduced — adapter remains a pure protocol translator.
+
 
 ## [v0.51.85] — 2026-05-17 — Release BI (stage-378 — 3-PR batch — workspace-prefix display leakage fix + release-tag update banner + Slice 3a cancel-control gate RFC)
 
