@@ -245,7 +245,8 @@ It gives the real Hermes workflow a native workbench:
 
 - `Overview`
   Confirms the active host, active Hermes profile, discovered profiles,
-  important paths, cron location, and session store source.
+  important paths, cron location, and session store source. Includes
+  gateway restart and update controls.
 - `Sessions`
   Searches and reads the remote session store, including transcript content.
   You can pin important sessions, continue a chat, resume in Terminal, and keep
@@ -266,13 +267,30 @@ It gives the real Hermes workflow a native workbench:
   create, edit, pause, resume, run-now, and delete actions.
 - `Usage`
   Shows token totals, top sessions, top models, recent trends, and profile
-  breakdowns when available.
+  breakdowns when available. Includes analytics with daily token charts,
+  per-model breakdown, and skill usage statistics over configurable periods
+  (7d / 30d / 90d).
 - `Skills`
   Discovers remote `SKILL.md` files, reads skill metadata, and lets you create
   or edit skills anchored to the Hermes skills store.
+- `Plugins`
+  Installs, enables/disables, updates, and removes agent plugins. Configure
+  memory providers and context engines. Rescan for new plugins and discover
+  orphan dashboard plugins.
+- `Documentation`
+  In-app documentation viewer loading the Hermes docs site. Reload and open
+  in browser buttons.
 - `Terminal`
   Opens a real SSH shell inside the app, with tabs, theme presets, color
   controls, and enough room for multi-profile, multi-agent work.
+- `Avatar`
+  Embedded VTuber/avatar panel for local connections. Loads the avatar
+  server and provides reload controls.
+- `Second Brain`
+  Searches LanceDB embeddings for documents, sessions, and skills discovered
+  on the active host.
+- `YouTube Pipeline`
+  Reviews, edits metadata, and approves/rejects staged videos for publishing.
 
 ## Which chat surface to use
 
