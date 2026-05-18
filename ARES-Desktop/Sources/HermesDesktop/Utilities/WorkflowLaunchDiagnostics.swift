@@ -76,7 +76,7 @@ actor WorkflowLaunchDiagnostics {
 
     init(logFileURL: URL, fileManager: FileManager = .default) {
         let diagnosticsDirectoryURL = logFileURL.deletingLastPathComponent()
-        let subsystem = Bundle.main.bundleIdentifier ?? "HermesDesktop"
+        let subsystem = Bundle.main.bundleIdentifier ?? "ARES"
 
         self.logFileURL = logFileURL
         self.fileManager = fileManager
