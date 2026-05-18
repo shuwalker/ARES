@@ -1,73 +1,25 @@
 import Foundation
 
-extension JSONValue {
-    var stringValueOrDescription: String {
-        switch self {
-        case .string(let s): return s
-        case .int(let i): return String(i)
-        case .number(let d): return String(d)
-        case .bool(let b): return String(b)
-        case .null: return "null"
-        case .array(let arr): return arr.map(\.stringValueOrDescription).joined(separator: ", ")
-        case .object(let dict): return dict.map { "\($0.key): \($0.value.stringValueOrDescription)" }.joined(separator: ", ")
-        }
-    }
-}
-
 // MARK: - Config
 
-struct ConfigResponse: Decodable {
-    let config: [String: JSONValue]
-    let schema: ConfigSchema?
+/// GET /api/config returns a flat dictionary.
+/// The response is NOT wrapped in a top-level key — it's just the config dict directly.
+typealias ConfigResponse = [String: JSONValue]
 
-    enum CodingKeys: String, CodingKey {
-        case config, schema
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        config = try container.decode([String: JSONValue].self, forKey: .config)
-        schema = try container.decodeIfPresent(ConfigSchema.self, forKey: .schema)
-    }
+/// GET /api/config/schema returns { "fields": { "key": { "type", "description", "category", ... } } }
+struct ConfigSchemaResponse: Decodable {
+    let fields: [String: ConfigSchemaField]?
 }
 
-struct ConfigSchema: Decodable {
-    let sections: [ConfigSchemaSection]?
-
-    enum CodingKeys: String, CodingKey {
-        case sections
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        sections = try container.decodeIfPresent([ConfigSchemaSection].self, forKey: .sections)
-    }
-}
-
-struct ConfigSchemaSection: Decodable, Identifiable {
-    let name: String
-    let icon: String?
-    let fields: [ConfigSchemaField]?
-
-    var id: String { name }
-
-    enum CodingKeys: String, CodingKey {
-        case name, icon, fields
-    }
-}
-
-struct ConfigSchemaField: Decodable, Identifiable {
-    let key: String
-    let label: String?
+struct ConfigSchemaField: Decodable {
     let type: String?
+    let description: String?
+    let category: String?
     let options: [String]?
-    let defaultValue: JSONValue?
-
-    var id: String { key }
+    let `default`: JSONValue?
 
     enum CodingKeys: String, CodingKey {
-        case key, label, type, options
-        case defaultValue = "default"
+        case type, description, category, options, `default`
     }
 }
 
@@ -91,8 +43,26 @@ struct ConfigField: Identifiable {
 
 // MARK: - Environment Variables
 
-struct EnvResponse: Decodable {
-    let env: [String: String?]
+/// GET /api/env returns a flat dict where each key maps to an env var info object.
+typealias EnvResponse = [String: EnvVarInfo]
+
+struct EnvVarInfo: Decodable {
+    let isSet: Bool?
+    let redactedValue: String?
+    let description: String?
+    let url: String?
+    let category: String?
+    let isPassword: Bool?
+    let tools: [String]?
+    let advanced: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case isSet = "is_set"
+        case redactedValue = "redacted_value"
+        case description, url, category
+        case isPassword = "is_password"
+        case tools, advanced
+    }
 }
 
 struct EnvEntry: Identifiable {
@@ -110,96 +80,140 @@ struct EnvEntry: Identifiable {
 
 // MARK: - Logs
 
+/// GET /api/logs?file=agent&lines=200&level=ALL returns { "file": "agent", "lines": ["...", ...] }
 struct LogsResponse: Decodable {
-    let lines: [LogLine]
     let file: String?
-
-    enum CodingKeys: String, CodingKey {
-        case lines, file
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        // API may return lines as a raw string or as an array
-        if let lineArray = try? container.decode([LogLine].self, forKey: .lines) {
-            lines = lineArray
-        } else if let rawString = try? container.decode(String.self, forKey: .lines) {
-            lines = rawString.components(separatedBy: "\n").filter { !$0.isEmpty }.map { LogLine(text: $0, level: nil, timestamp: nil) }
-        } else {
-            lines = []
-        }
-        file = try container.decodeIfPresent(String.self, forKey: .file)
-    }
+    let lines: [String]
 }
 
-struct LogLine: Decodable {
+/// Parsed log line for display in the UI.
+struct LogLine: Identifiable {
     let text: String
     let level: String?
     let timestamp: String?
+    let index: Int
 
-    var identifier: String { (timestamp ?? "") + text.prefix(100) }
-
-    var levelColor: String {
-        guard let lvl = level?.uppercased() else { return "default" }
-        if lvl.contains("ERROR") || lvl.contains("CRITICAL") || lvl.contains("FATAL") { return "error" }
-        if lvl.contains("WARNING") || lvl.contains("WARN") { return "warning" }
-        if lvl.contains("DEBUG") { return "debug" }
-        return "info"
-    }
+    var id: Int { index }
 }
 
 // MARK: - Models
 
-struct ModelsResponse: Decodable {
-    let current: String
-    let available: [ModelOption]
-    let auxiliary: [String: String]?
+/// GET /api/model/info returns the current active model info.
+struct ModelInfoResponse: Decodable {
+    let model: String
+    let provider: String?
+    let autoContextLength: Int?
+    let configContextLength: Int?
+    let effectiveContextLength: Int?
+    let capabilities: [String: JSONValue]?
 
     enum CodingKeys: String, CodingKey {
-        case current, available, auxiliary
+        case model, provider, capabilities
+        case autoContextLength = "auto_context_length"
+        case configContextLength = "config_context_length"
+        case effectiveContextLength = "effective_context_length"
     }
 }
 
-struct ModelOption: Decodable, Identifiable {
-    let modelId: String
-    let name: String?
+/// GET /api/model/options returns { "providers": [...] }
+struct ModelOptionsResponse: Decodable {
+    let providers: [ModelProvider]
+}
+
+struct ModelProvider: Decodable, Identifiable {
+    let slug: String
+    let name: String
+    let isCurrent: Bool?
+    let isUserDefined: Bool?
+    let models: [String]?
+    let totalModels: Int?
+    let source: String?
+
+    var id: String { slug }
+
+    enum CodingKeys: String, CodingKey {
+        case slug, name, models, source
+        case isCurrent = "is_current"
+        case isUserDefined = "is_user_defined"
+        case totalModels = "total_models"
+    }
+}
+
+/// GET /api/model/auxiliary returns { "tasks": [...], "main": {...} }
+struct AuxiliaryModelsResponse: Decodable {
+    let tasks: [AuxiliaryTask]?
+    let main: AuxiliaryMain?
+}
+
+struct AuxiliaryTask: Decodable, Identifiable {
+    let task: String
+    let provider: String?
+    let model: String?
+    let baseUrl: String?
+
+    var id: String { task }
+
+    enum CodingKeys: String, CodingKey {
+        case task, provider, model
+        case baseUrl = "base_url"
+    }
+}
+
+struct AuxiliaryMain: Decodable {
+    let provider: String?
+    let model: String?
+}
+
+/// POST /api/model/set body
+struct ModelSetRequest: Encodable {
+    let model: String
     let provider: String?
 
-    var id: String { modelId }
-
     enum CodingKeys: String, CodingKey {
-        case modelId = "id", name, provider
+        case model, provider
     }
 }
 
+/// GET /api/analytics/models?days=7
 struct ModelsAnalyticsResponse: Decodable {
     let models: [ModelAnalytics]?
-
-    enum CodingKeys: String, CodingKey {
-        case models
-    }
 }
 
 struct ModelAnalytics: Decodable, Identifiable {
     let model: String
+    let provider: String?
     let inputTokens: Int?
     let outputTokens: Int?
-    let totalCost: Double?
-    let sessionCount: Int?
+    let cacheReadTokens: Int?
+    let reasoningTokens: Int?
+    let estimatedCost: Double?
+    let actualCost: Double?
+    let sessions: Int?
+    let apiCalls: Int?
+    let toolCalls: Int?
+    let lastUsedAt: Double?
+    let capabilities: [String: JSONValue]?
 
     var id: String { model }
 
     enum CodingKeys: String, CodingKey {
-        case model
+        case model, provider, capabilities
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
-        case totalCost = "total_cost"
-        case sessionCount = "session_count"
+        case cacheReadTokens = "cache_read_tokens"
+        case reasoningTokens = "reasoning_tokens"
+        case estimatedCost = "estimated_cost"
+        case actualCost = "actual_cost"
+        case sessions
+        case apiCalls = "api_calls"
+        case toolCalls = "tool_calls"
+        case lastUsedAt = "last_used_at"
     }
 }
 
 // MARK: - Profiles
 
+/// GET /api/profiles returns { "profiles": [...] }
 struct ProfilesResponse: Decodable {
     let profiles: [ProfileInfo]
 }
@@ -208,27 +222,64 @@ struct ProfileInfo: Decodable, Identifiable {
     let name: String
     let path: String?
     let isDefault: Bool?
-    let exists: Bool?
+    let model: String?
+    let provider: String?
+    let hasEnv: Bool?
+    let skillCount: Int?
 
     var id: String { name }
 
     enum CodingKeys: String, CodingKey {
-        case name, path
+        case name, path, model, provider
         case isDefault = "is_default"
-        case exists
+        case hasEnv = "has_env"
+        case skillCount = "skill_count"
     }
 }
 
 // MARK: - Gateway Status
 
+/// GET /api/status — public endpoint (no auth required)
 struct StatusResponse: Decodable {
-    let status: String
-    let platform: String?
-    let activeSessions: Int?
     let version: String?
+    let releaseDate: String?
+    let hermesHome: String?
+    let configPath: String?
+    let envPath: String?
+    let configVersion: Int?
+    let latestConfigVersion: Int?
+    let gatewayRunning: Bool?
+    let gatewayPid: Int?
+    let gatewayState: String?
+    let gatewayPlatforms: [String: PlatformStatus]?
+    let activeSessions: Int?
 
     enum CodingKeys: String, CodingKey {
-        case status, platform, version
+        case version
+        case releaseDate = "release_date"
+        case hermesHome = "hermes_home"
+        case configPath = "config_path"
+        case envPath = "env_path"
+        case configVersion = "config_version"
+        case latestConfigVersion = "latest_config_version"
+        case gatewayRunning = "gateway_running"
+        case gatewayPid = "gateway_pid"
+        case gatewayState = "gateway_state"
+        case gatewayPlatforms = "gateway_platforms"
         case activeSessions = "active_sessions"
+    }
+}
+
+struct PlatformStatus: Decodable {
+    let state: String?
+    let errorCode: String?
+    let errorMessage: String?
+    let updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case errorCode = "error_code"
+        case errorMessage = "error_message"
+        case updatedAt = "updated_at"
     }
 }

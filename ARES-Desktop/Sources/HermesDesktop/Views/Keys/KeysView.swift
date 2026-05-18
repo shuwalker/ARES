@@ -179,8 +179,8 @@ struct KeysView: View {
 
         do {
             let response = try await appState.dashboardAPIService.fetchEnv()
-            envEntries = response.env.map { key, value in
-                EnvEntry(key: key, value: value, isRevealed: false)
+            envEntries = response.map { key, info in
+                EnvEntry(key: key, value: info.redactedValue, isRevealed: false)
             }.sorted { $0.key < $1.key }
             editedValues = [:]
         } catch {

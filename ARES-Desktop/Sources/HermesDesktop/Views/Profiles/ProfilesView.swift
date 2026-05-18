@@ -140,14 +140,14 @@ struct ProfilesView: View {
                             .foregroundStyle(.yellow)
                     }
 
-                    if profile.exists == true {
+                    if profile.hasEnv == true {
                         Text("Active")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(.green.opacity(0.2), in: Capsule())
                             .foregroundStyle(.green)
-                    } else if profile.exists == false {
+                    } else if profile.hasEnv == false {
                         Text("Not Found")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6)
@@ -162,6 +162,19 @@ struct ProfilesView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                }
+
+                HStack(spacing: 8) {
+                    if let model = profile.model {
+                        Label(model, systemImage: "brain")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let skillCount = profile.skillCount, skillCount > 0 {
+                        Label("\(skillCount) skills", systemImage: "book")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 

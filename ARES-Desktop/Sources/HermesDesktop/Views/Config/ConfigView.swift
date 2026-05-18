@@ -219,8 +219,8 @@ struct ConfigView: View {
                     icon: result[idx].icon,
                     fields: result[idx].fields + [ConfigField(
                         key: key,
-                        value: value.stringValueOrDescription,
-                        originalValue: value.stringValueOrDescription,
+                        value: value.displayString,
+                        originalValue: value.displayString,
                         typeHint: nil
                     )]
                 )
@@ -261,8 +261,8 @@ struct ConfigView: View {
         errorMessage = nil
 
         do {
-            let configResponse = try await appState.dashboardAPIService.fetchConfig()
-            configDict = configResponse.config
+            let config = try await appState.dashboardAPIService.fetchConfig()
+            configDict = config
 
             let raw = try await appState.dashboardAPIService.fetchRawConfig()
             rawYAML = raw
@@ -284,8 +284,8 @@ struct ConfigView: View {
             saveMessage = "Configuration saved. Restart or /reset to apply."
 
             // Refresh structured view
-            let configResponse = try await appState.dashboardAPIService.fetchConfig()
-            configDict = configResponse.config
+            let config = try await appState.dashboardAPIService.fetchConfig()
+            configDict = config
         } catch {
             saveMessage = "Save failed: \(error.localizedDescription)"
         }

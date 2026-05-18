@@ -3,6 +3,7 @@ import SwiftUI
 struct LogsView: View {
     @EnvironmentObject private var appState: AppState
     @State private var logLines: [LogLine] = []
+    @State private var currentLogFile: String = "agent"
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedFile = "agent"
@@ -119,16 +120,16 @@ struct LogsView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(filteredLines, id: \.identifier) { line in
+                        ForEach(filteredLines) { line in
                             logLineRow(line)
-                                .id(line.identifier)
+                                .id(line.id)
                         }
                     }
                 }
                 .onChange(of: logLines.count) {
                     if autoScroll, let last = filteredLines.last {
                         withAnimation {
-                            proxy.scrollTo(last.identifier, anchor: .bottom)
+                            proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }
@@ -185,11 +186,47 @@ struct LogsView: View {
                 level: selectedLevel,
                 lines: selectedLineCount
             )
-            logLines = response.lines
+            currentLogFile = response.file ?? selectedFile
+            // API returns plain strings — parse level and timestamp from each line
+            logLines = response.lines.enumerated().map { index, line in
+                let parsed = parseLogLine(line)
+                return LogLine(
+                    text: parsed.text,
+                    level: parsed.level,
+                    timestamp: parsed.timestamp,
+                    index: index
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    /// Parse a raw log line like "2026-05-17 19:07:53,457 INFO [...] message"
+    /// into structured (timestamp, level, text) components.
+    private func parseLogLine(_ line: String) -> (text: String, level: String?, timestamp: String?) {
+        // Pattern: YYYY-MM-DD HH:MM:SS,mmm LEVEL [...] message
+        let pattern = #"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3})\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s+\[.*?\]\s+(.*)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else {
+            // Try simpler pattern: YYYY-MM-DD HH:MM:SS LEVEL message
+            let simplePattern = #"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s+(.*)$"#
+            guard let simpleRegex = try? NSRegularExpression(pattern: simplePattern, options: .caseInsensitive),
+                  let simpleMatch = simpleRegex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+                  let tsRange = Range(simpleMatch.range(at: 1), in: line),
+                  let lvlRange = Range(simpleMatch.range(at: 2), in: line),
+                  let msgRange = Range(simpleMatch.range(at: 3), in: line) else {
+                return (text: line, level: nil, timestamp: nil)
+            }
+            return (text: String(line[msgRange]), level: String(line[lvlRange]), timestamp: String(line[tsRange]))
+        }
+
+        let ts = Range(match.range(at: 1), in: line).map { String(line[$0]) }
+        let lvl = Range(match.range(at: 2), in: line).map { String(line[$0]) }
+        let msg = Range(match.range(at: 3), in: line).map { String(line[$0]) }
+
+        return (text: msg ?? line, level: lvl, timestamp: ts)
     }
 }

@@ -2,14 +2,15 @@ import SwiftUI
 
 struct ModelsView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var models: ModelsResponse?
+    @State private var modelInfo: ModelInfoResponse?
+    @State private var modelOptions: ModelOptionsResponse?
+    @State private var auxiliaryModels: AuxiliaryModelsResponse?
     @State private var analytics: ModelsAnalyticsResponse?
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var selectedModel: String?
-    @State private var showModelConfirmation = false
     @State private var pendingModelSwitch: String?
-    @State private var auxiliaryAssignments: [String: String] = [:]
+    @State private var pendingProviderSwitch: String?
+    @State private var showModelConfirmation = false
 
     var body: some View {
         HermesPageContainer(width: .analytics) {
@@ -22,7 +23,7 @@ struct ModelsView: View {
                 modelsContent
             }
             .overlay(alignment: .topTrailing) {
-                if isLoading && models == nil {
+                if isLoading && modelInfo == nil {
                     HermesLoadingOverlay()
                         .padding(18)
                 }
@@ -35,7 +36,7 @@ struct ModelsView: View {
             Button("Cancel", role: .cancel) {}
             Button("Switch") {
                 if let model = pendingModelSwitch {
-                    Task { await switchModel(to: model) }
+                    Task { await switchModel(to: model, provider: pendingProviderSwitch) }
                 }
             }
         } message: {
@@ -47,7 +48,7 @@ struct ModelsView: View {
 
     @ViewBuilder
     private var modelsContent: some View {
-        if isLoading && models == nil {
+        if isLoading && modelInfo == nil {
             HermesSurfacePanel {
                 HermesLoadingState(label: "Loading models…", minHeight: 320)
             }
@@ -60,8 +61,8 @@ struct ModelsView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 320)
             }
-        } else if let models = models {
-            modelsLoadedView(models: models)
+        } else if let modelInfo = modelInfo {
+            modelsLoadedView(info: modelInfo)
         } else {
             HermesSurfacePanel {
                 HermesLoadingState(label: "Loading models…", minHeight: 320)
@@ -69,10 +70,10 @@ struct ModelsView: View {
         }
     }
 
-    private func modelsLoadedView(models: ModelsResponse) -> some View {
+    private func modelsLoadedView(info: ModelInfoResponse) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            activeModelPanel(models: models)
-            auxiliaryModelsPanel(models: models)
+            activeModelPanel(info: info)
+            auxiliaryModelsPanel()
 
             if let analytics = analytics, let modelData = analytics.models, !modelData.isEmpty {
                 analyticsPanel(analytics: modelData)
@@ -80,7 +81,7 @@ struct ModelsView: View {
         }
     }
 
-    private func activeModelPanel(models: ModelsResponse) -> some View {
+    private func activeModelPanel(info: ModelInfoResponse) -> some View {
         HermesSurfacePanel {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Active Model")
@@ -92,11 +93,16 @@ struct ModelsView: View {
                         .foregroundStyle(Color.accentColor)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(models.current)
+                        Text(info.model)
                             .font(.title3.weight(.semibold))
                             .textSelection(.enabled)
-                        if models.available.isEmpty {
-                            Text("No alternative models available")
+                        if let provider = info.provider {
+                            Text(provider)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let ctx = info.effectiveContextLength, ctx > 0 {
+                            Text("\(formatTokens(ctx)) token context")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -105,7 +111,7 @@ struct ModelsView: View {
                     Spacer()
                 }
 
-                if !models.available.isEmpty {
+                if let options = modelOptions, !options.providers.isEmpty {
                     Divider()
 
                     Text("Switch Model")
@@ -114,51 +120,56 @@ struct ModelsView: View {
 
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(models.available) { option in
-                                Button {
-                                    pendingModelSwitch = option.id
-                                    showModelConfirmation = true
-                                } label: {
-                                    HStack {
-                                        if option.id == models.current {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundStyle(.green)
-                                        } else {
-                                            Image(systemName: "circle")
-                                                .foregroundStyle(.secondary)
-                                        }
+                            ForEach(options.providers) { provider in
+                                if let models = provider.models {
+                                    Section(provider.name) {
+                                        ForEach(models, id: \.self) { model in
+                                            Button {
+                                                pendingModelSwitch = model
+                                                pendingProviderSwitch = provider.slug
+                                                showModelConfirmation = true
+                                            } label: {
+                                                HStack {
+                                                    if model == info.model && provider.isCurrent == true {
+                                                        Image(systemName: "checkmark.circle.fill")
+                                                            .foregroundStyle(.green)
+                                                    } else {
+                                                        Image(systemName: "circle")
+                                                            .foregroundStyle(.secondary)
+                                                    }
 
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(option.name ?? option.id)
-                                                .font(.body)
-                                            if let provider = option.provider {
-                                                Text(provider)
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
+                                                    VStack(alignment: .leading, spacing: 1) {
+                                                        Text(model)
+                                                            .font(.body)
+                                                        Text(provider.name)
+                                                            .font(.caption)
+                                                            .foregroundStyle(.secondary)
+                                                    }
+
+                                                    Spacer()
+                                                }
+                                                .contentShape(Rectangle())
                                             }
+                                            .buttonStyle(.plain)
+                                            .padding(.vertical, 4)
+                                            .padding(.horizontal, 8)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 6)
+                                                    .fill(model == info.model && provider.isCurrent == true ? Color.accentColor.opacity(0.1) : Color.clear)
+                                            )
                                         }
-
-                                        Spacer()
                                     }
-                                    .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(option.id == models.current ? Color.accentColor.opacity(0.1) : Color.clear)
-                                )
                             }
                         }
                     }
-                    .frame(maxHeight: 240)
+                    .frame(maxHeight: 300)
                 }
             }
         }
     }
 
-    private func auxiliaryModelsPanel(models: ModelsResponse) -> some View {
+    private func auxiliaryModelsPanel() -> some View {
         HermesSurfacePanel {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Auxiliary Models")
@@ -168,26 +179,31 @@ struct ModelsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                let auxEntries = auxiliaryAssignments.sorted(by: { $0.key < $1.key })
-
-                if auxEntries.isEmpty {
-                    Text("No auxiliary model assignments configured")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(auxEntries, id: \.key) { key, value in
+                if let aux = auxiliaryModels, let tasks = aux.tasks, !tasks.isEmpty {
+                    ForEach(tasks) { task in
                         HStack {
-                            Text(auxiliaryLabel(for: key))
+                            Text(auxiliaryLabel(for: task.task))
                                 .font(.subheadline)
                             Spacer()
-                            Text(value.isEmpty ? "(default)" : value)
-                                .font(.subheadline)
-                                .foregroundStyle(value.isEmpty ? .secondary : .primary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(task.model ?? "(default)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(task.model != nil ? .primary : .secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                if let provider = task.provider {
+                                    Text(provider)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
                         .padding(.vertical, 2)
                     }
+                } else {
+                    Text("No auxiliary model assignments configured")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -206,7 +222,12 @@ struct ModelsView: View {
                                 .font(.subheadline.weight(.medium))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
-                            if let sessions = entry.sessionCount, sessions > 0 {
+                            if let provider = entry.provider {
+                                Text(provider)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let sessions = entry.sessions, sessions > 0 {
                                 Text("\(sessions) session\(sessions == 1 ? "" : "s")")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -214,7 +235,7 @@ struct ModelsView: View {
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
-                            if let cost = entry.totalCost, cost > 0 {
+                            if let cost = entry.estimatedCost, cost > 0 {
                                 Text(String(format: "$%.4f", cost))
                                     .font(.subheadline.weight(.medium).monospacedDigit())
                             }
@@ -264,9 +285,14 @@ struct ModelsView: View {
         errorMessage = nil
 
         do {
-            let modelsData = try await appState.dashboardAPIService.fetchModels()
-            models = modelsData
-            auxiliaryAssignments = modelsData.auxiliary ?? [:]
+            async let infoTask = appState.dashboardAPIService.fetchModelInfo()
+            async let optionsTask = appState.dashboardAPIService.fetchModelOptions()
+            async let auxTask = appState.dashboardAPIService.fetchAuxiliaryModels()
+
+            let (info, options, aux) = try await (infoTask, optionsTask, auxTask)
+            modelInfo = info
+            modelOptions = options
+            auxiliaryModels = aux
 
             if let analyticsData = try? await appState.dashboardAPIService.fetchModelsAnalytics() {
                 analytics = analyticsData
@@ -278,10 +304,10 @@ struct ModelsView: View {
         isLoading = false
     }
 
-    private func switchModel(to model: String) async {
+    private func switchModel(to model: String, provider: String?) async {
         isLoading = true
         do {
-            try await appState.dashboardAPIService.setModel(model)
+            try await appState.dashboardAPIService.setModel(model: model, provider: provider)
             // Refresh models after switching
             await loadModels()
         } catch {

@@ -153,4 +153,82 @@ final class HTTPTransport: HermesTransport, @unchecked Sendable {
         }
         return data
     }
+
+    /// Generic GET request with custom headers (for dashboard session token auth)
+    func getWithHeaders(path: String, baseURL: URL, headers: [String: String] = [:]) async throws -> Data {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "GET"
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
+        }
+        return data
+    }
+
+    /// Generic POST request with custom headers (for dashboard session token auth)
+    func postWithHeaders(path: String, body: Data, baseURL: URL, headers: [String: String] = [:]) async throws -> Data {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = body
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
+        }
+        return data
+    }
+
+    /// Generic PUT request
+    func put(path: String, body: Data, baseURL: URL, apiKey: String?) async throws -> Data {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let apiKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = body
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
+        }
+        return data
+    }
+
+    /// Generic PUT request with custom headers (for dashboard session token auth)
+    func putWithHeaders(path: String, body: Data, baseURL: URL, headers: [String: String] = [:]) async throws -> Data {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = body
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
+        }
+        return data
+    }
 }
