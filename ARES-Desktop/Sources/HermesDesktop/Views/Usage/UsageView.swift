@@ -8,12 +8,9 @@ struct UsageView: View {
     var body: some View {
         HermesPageContainer(width: .analytics) {
             VStack(alignment: .leading, spacing: 24) {
-                HermesPageHeader(
-                    title: "Usage",
-                    subtitle: "The main cards and charts show input/output tokens for the active Hermes profile. When more than one profile is discovered, the host-wide panel shows all-categories tokens across readable profiles."
-                )
-
+                headerSection
                 usageContent
+                analyticsContent
             }
             .overlay(alignment: .topTrailing) {
                 if appState.isLoadingUsage && !appState.isRefreshingUsage && appState.usageSummary != nil {
@@ -24,7 +21,259 @@ struct UsageView: View {
         }
         .task(id: appState.activeConnectionID) {
             await appState.loadUsage()
+            await appState.loadAnalytics()
+            await appState.loadModelsAnalytics()
         }
+    }
+
+    private var headerSection: some View {
+        HermesPageHeader(
+            title: "Usage",
+            subtitle: "The main cards and charts show input/output tokens for the active Hermes profile. When more than one profile is discovered, the host-wide panel shows all-categories tokens across readable profiles."
+        ) {
+            analyticsPeriodSelector
+        }
+    }
+
+    // MARK: - Period Selector
+
+    private var analyticsPeriodSelector: some View {
+        HStack(spacing: 6) {
+            ForEach([7, 30, 90], id: \.self) { days in
+                Button {
+                    appState.analyticsDays = days
+                    Task {
+                        await appState.loadAnalytics(forceRefresh: true)
+                        await appState.loadModelsAnalytics(forceRefresh: true)
+                    }
+                } label: {
+                    Text("\(days)d")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            appState.analyticsDays == days
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.secondary.opacity(0.08),
+                            in: Capsule()
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Analytics Content
+
+    @ViewBuilder
+    private var analyticsContent: some View {
+        if appState.isLoadingAnalytics && appState.analyticsResponse == nil && appState.modelsAnalyticsResponse == nil {
+            // Initial loading — don't show anything yet
+            EmptyView()
+        } else {
+            dailyTokenChartPanel
+            perModelTablePanel
+            topSkillsPanel
+        }
+    }
+
+    // MARK: - Daily Token Chart
+
+    private var dailyTokenChartPanel: some View {
+        guard let daily = appState.analyticsResponse?.daily, !daily.isEmpty else {
+            return AnyView(EmptyView())
+        }
+
+        let chartData = daily.map { entry in
+            DailyTokenData(
+                day: entry.day,
+                input: entry.inputTokens ?? 0,
+                output: entry.outputTokens ?? 0
+            )
+        }
+
+        return AnyView(
+            HermesSurfacePanel(
+                title: "Daily Token Usage",
+                subtitle: "Input vs output tokens over the last \(appState.analyticsDays) days."
+            ) {
+                Chart(chartData) { point in
+                    BarMark(
+                        x: .value("Day", point.day),
+                        y: .value("Tokens", point.input)
+                    )
+                    .foregroundStyle(by: .value("Type", "Input"))
+
+                    BarMark(
+                        x: .value("Day", point.day),
+                        y: .value("Tokens", point.output)
+                    )
+                    .foregroundStyle(by: .value("Type", "Output"))
+                }
+                .chartForegroundStyleScale([
+                    "Input": Color.red.opacity(0.7),
+                    "Output": Color.yellow.opacity(0.7)
+                ])
+                .frame(height: 260)
+                .chartLegend(position: .bottom, alignment: .leading)
+            }
+        )
+    }
+
+    // MARK: - Per-Model Table
+
+    private var perModelTablePanel: some View {
+        guard let models = appState.modelsAnalyticsResponse?.models, !models.isEmpty else {
+            return AnyView(EmptyView())
+        }
+
+        return AnyView(
+            HermesSurfacePanel(
+                title: "Per-Model Breakdown",
+                subtitle: "\(models.count) model(s) used in the last \(appState.analyticsDays) days."
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Header row
+                    HStack(spacing: 12) {
+                        Text(L10n.string("Model"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(L10n.string("Input"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 70, alignment: .trailing)
+                        Text(L10n.string("Output"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 70, alignment: .trailing)
+                        Text(L10n.string("Cost"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 60, alignment: .trailing)
+                        Text(L10n.string("Sessions"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 50, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+
+                    ForEach(models) { model in
+                        HStack(spacing: 12) {
+                            Text(model.model)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text(UsageNumberFormatter.string(for: model.inputTokens ?? 0))
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 70, alignment: .trailing)
+
+                            Text(UsageNumberFormatter.string(for: model.outputTokens ?? 0))
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 70, alignment: .trailing)
+
+                            Text(String(format: "$%.2f", model.estimatedCost ?? 0))
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 60, alignment: .trailing)
+
+                            Text("\(model.sessions ?? 0)")
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 50, alignment: .trailing)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                                .fill(HermesTheme.rowFill)
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    // MARK: - Top Skills Panel
+
+    private var topSkillsPanel: some View {
+        guard let skills = appState.analyticsResponse?.skills?.topSkills, !skills.isEmpty else {
+            return AnyView(EmptyView())
+        }
+
+        return AnyView(
+            HermesSurfacePanel(
+                title: "Top Skills",
+                subtitle: "\(appState.analyticsResponse?.skills?.distinctSkillsUsed ?? 0) skill(s) used, \(appState.analyticsResponse?.skills?.totalSkillActions ?? 0) total action(s)."
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        Text(L10n.string("Skill"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(L10n.string("Loads"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 50, alignment: .trailing)
+                        Text(L10n.string("Edits"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 50, alignment: .trailing)
+                        Text(L10n.string("Last Used"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 80, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+
+                    ForEach(skills) { skill in
+                        HStack(spacing: 12) {
+                            Text(skill.skill)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text("\(skill.viewCount ?? 0)")
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 50, alignment: .trailing)
+
+                            Text("\(skill.manageCount ?? 0)")
+                                .font(.caption.monospacedDigit())
+                                .frame(width: 50, alignment: .trailing)
+
+                            if let lastUsed = skill.lastUsedAt {
+                                Text(formatTimestamp(lastUsed))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 80, alignment: .trailing)
+                            } else {
+                                Text("—")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 80, alignment: .trailing)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                                .fill(HermesTheme.rowFill)
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    private func formatTimestamp(_ ts: Double) -> String {
+        let date = Date(timeIntervalSince1970: ts)
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     @ViewBuilder
@@ -1198,4 +1447,11 @@ private extension Array {
         guard indices.contains(index) else { return nil }
         return self[index]
     }
+}
+
+private struct DailyTokenData: Identifiable {
+    let day: String
+    let input: Int
+    let output: Int
+    var id: String { day }
 }

@@ -293,6 +293,15 @@ final class DashboardAPIService: @unchecked Sendable {
         _ = try await authenticatedPost(path: "api/model/set", body: payload)
     }
 
+    // MARK: - Analytics
+
+    /// GET /api/analytics/usage?days={n}
+    func fetchAnalyticsUsage(days: Int = 30) async throws -> AnalyticsResponse {
+        let path = "api/analytics/usage?days=\(days)"
+        let data = try await authenticatedGet(path: path)
+        return try JSONDecoder().decode(AnalyticsResponse.self, from: data)
+    }
+
     /// GET /api/analytics/models?days=7
     func fetchModelsAnalytics(days: Int = 30) async throws -> ModelsAnalyticsResponse {
         let path = "api/analytics/models?days=\(days)"

@@ -40,6 +40,12 @@ final class AppState: ObservableObject {
     @Published var usageError: String?
     @Published var isLoadingUsage = false
     @Published var isRefreshingUsage = false
+    @Published var analyticsResponse: AnalyticsResponse?
+    @Published var modelsAnalyticsResponse: ModelsAnalyticsResponse?
+    @Published var isLoadingAnalytics = false
+    @Published var isRefreshingAnalytics = false
+    @Published var analyticsError: String?
+    @Published var analyticsDays: Int = 30
     @Published var selectedSkillID: String?
     @Published var skills: [SkillSummary] = []
     @Published var selectedSkillDetail: SkillDetail?
@@ -299,7 +305,7 @@ final class AppState: ObservableObject {
         case .youtubePipeline:
             return !isLoadingYouTube && !isRefreshingYouTube && !isOperatingOnYouTube
         case .usage:
-            return !isLoadingUsage && !isRefreshingUsage
+            return !isLoadingUsage && !isRefreshingUsage && !isLoadingAnalytics && !isRefreshingAnalytics
         case .skills:
             return !isLoadingSkills && !isRefreshingSkills
         case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs:
@@ -402,6 +408,7 @@ final class AppState: ObservableObject {
             await refreshKanbanBoard()
         case .usage:
             await refreshUsage()
+            await refreshAnalytics()
         case .skills:
             await refreshSkills()
         case .secondBrain, .youtubePipeline, .physicsSim, .docs:
@@ -640,6 +647,56 @@ final class AppState: ObservableObject {
         isRefreshingUsage = true
         await loadUsage(forceRefresh: true)
         isRefreshingUsage = false
+    }
+
+    func refreshAnalytics() async {
+        guard !isLoadingAnalytics, !isRefreshingAnalytics else { return }
+        isRefreshingAnalytics = true
+        await loadAnalytics(forceRefresh: true)
+        await loadModelsAnalytics(forceRefresh: true)
+        isRefreshingAnalytics = false
+    }
+
+    func loadAnalytics(forceRefresh: Bool = false) async {
+        guard let profile = activeConnection else { return }
+        if isLoadingAnalytics { return }
+        guard forceRefresh || analyticsResponse == nil else { return }
+
+        isLoadingAnalytics = true
+        analyticsError = nil
+
+        do {
+            let response = try await dashboardAPIService.fetchAnalyticsUsage(days: analyticsDays)
+            guard isActiveWorkspace(profile) else { return }
+            analyticsResponse = response
+            isLoadingAnalytics = false
+        } catch {
+            guard isActiveWorkspace(profile) else { return }
+            isLoadingAnalytics = false
+            analyticsResponse = nil
+            analyticsError = error.localizedDescription
+        }
+    }
+
+    func loadModelsAnalytics(forceRefresh: Bool = false) async {
+        guard let profile = activeConnection else { return }
+        if isLoadingAnalytics { return }
+        guard forceRefresh || modelsAnalyticsResponse == nil else { return }
+
+        isLoadingAnalytics = true
+        analyticsError = nil
+
+        do {
+            let response = try await dashboardAPIService.fetchModelsAnalytics(days: analyticsDays)
+            guard isActiveWorkspace(profile) else { return }
+            modelsAnalyticsResponse = response
+            isLoadingAnalytics = false
+        } catch {
+            guard isActiveWorkspace(profile) else { return }
+            isLoadingAnalytics = false
+            modelsAnalyticsResponse = nil
+            analyticsError = error.localizedDescription
+        }
     }
 
     func refreshSkills() async {
@@ -2338,6 +2395,8 @@ final class AppState: ObservableObject {
             Task { await loadKanbanBoard() }
         case .usage:
             Task { await loadUsage(forceRefresh: true) }
+            Task { await loadAnalytics(forceRefresh: true) }
+            Task { await loadModelsAnalytics(forceRefresh: true) }
         case .skills:
             Task { await loadSkills(reset: true) }
         case .terminal:
@@ -2447,6 +2506,8 @@ final class AppState: ObservableObject {
             await loadKanbanBoard()
         case .usage:
             await loadUsage(forceRefresh: true)
+            await loadAnalytics(forceRefresh: true)
+            await loadModelsAnalytics(forceRefresh: true)
         case .skills:
             await loadSkills(reset: true)
         case .terminal:
@@ -2679,6 +2740,12 @@ final class AppState: ObservableObject {
             usageError = nil
             isLoadingUsage = false
             isRefreshingUsage = false
+            analyticsResponse = nil
+            modelsAnalyticsResponse = nil
+            isLoadingAnalytics = false
+            isRefreshingAnalytics = false
+            analyticsError = nil
+            analyticsDays = 30
             skills = []
             selectedSkillID = nil
             selectedSkillDetail = nil
@@ -2753,6 +2820,12 @@ final class AppState: ObservableObject {
         usageError = nil
         isLoadingUsage = false
         isRefreshingUsage = false
+        analyticsResponse = nil
+        modelsAnalyticsResponse = nil
+        isLoadingAnalytics = false
+        isRefreshingAnalytics = false
+        analyticsError = nil
+        analyticsDays = 30
         skills = []
         selectedSkillID = nil
         selectedSkillDetail = nil

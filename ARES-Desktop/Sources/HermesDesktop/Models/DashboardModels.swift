@@ -174,12 +174,161 @@ struct ModelSetRequest: Encodable {
     }
 }
 
-/// GET /api/analytics/models?days=7
-struct ModelsAnalyticsResponse: Decodable {
-    let models: [ModelAnalytics]?
+// MARK: - Analytics Daily
+
+struct AnalyticsDailyEntry: Decodable, Identifiable {
+    let day: String
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cacheReadTokens: Int?
+    let reasoningTokens: Int?
+    let estimatedCost: Double?
+    let actualCost: Double?
+    let sessions: Int?
+    let apiCalls: Int?
+
+    var id: String { day }
+
+    enum CodingKeys: String, CodingKey {
+        case day
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+        case cacheReadTokens = "cache_read_tokens"
+        case reasoningTokens = "reasoning_tokens"
+        case estimatedCost = "estimated_cost"
+        case actualCost = "actual_cost"
+        case sessions
+        case apiCalls = "api_calls"
+    }
 }
 
-struct ModelAnalytics: Decodable, Identifiable {
+struct AnalyticsModelEntry: Decodable, Identifiable {
+    let model: String
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let estimatedCost: Double?
+    let sessions: Int?
+    let apiCalls: Int?
+
+    var id: String { model }
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case inputTokens = "input_tokens"
+        case outputTokens = "output_tokens"
+        case estimatedCost = "estimated_cost"
+        case sessions
+        case apiCalls = "api_calls"
+    }
+}
+
+struct AnalyticsSkillEntry: Decodable, Identifiable {
+    let skill: String
+    let viewCount: Int?
+    let manageCount: Int?
+    let totalCount: Int?
+    let percentage: Double?
+    let lastUsedAt: Double?
+
+    var id: String { skill }
+
+    enum CodingKeys: String, CodingKey {
+        case skill
+        case viewCount = "view_count"
+        case manageCount = "manage_count"
+        case totalCount = "total_count"
+        case percentage
+        case lastUsedAt = "last_used_at"
+    }
+}
+
+struct AnalyticsSkillsSummary: Decodable {
+    let totalSkillLoads: Int?
+    let totalSkillEdits: Int?
+    let totalSkillActions: Int?
+    let distinctSkillsUsed: Int?
+    let topSkills: [AnalyticsSkillEntry]?
+
+    enum CodingKeys: String, CodingKey {
+        case totalSkillLoads = "total_skill_loads"
+        case totalSkillEdits = "total_skill_edits"
+        case totalSkillActions = "total_skill_actions"
+        case distinctSkillsUsed = "distinct_skills_used"
+        case topSkills = "top_skills"
+    }
+}
+
+struct AnalyticsTotal: Decodable {
+    let totalInput: Int?
+    let totalOutput: Int?
+    let totalCacheRead: Int?
+    let totalReasoning: Int?
+    let totalEstimatedCost: Double?
+    let totalActualCost: Double?
+    let totalSessions: Int?
+    let totalApiCalls: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case totalInput = "total_input"
+        case totalOutput = "total_output"
+        case totalCacheRead = "total_cache_read"
+        case totalReasoning = "total_reasoning"
+        case totalEstimatedCost = "total_estimated_cost"
+        case totalActualCost = "total_actual_cost"
+        case totalSessions = "total_sessions"
+        case totalApiCalls = "total_api_calls"
+    }
+}
+
+struct AnalyticsResponse: Decodable {
+    let daily: [AnalyticsDailyEntry]?
+    let byModel: [AnalyticsModelEntry]?
+    let totals: AnalyticsTotal?
+    let skills: AnalyticsSkillsSummary?
+
+    enum CodingKeys: String, CodingKey {
+        case daily
+        case byModel = "by_model"
+        case totals
+        case skills
+    }
+}
+
+// MARK: - Models Analytics
+
+/// GET /api/analytics/models?days=7
+struct ModelsAnalyticsResponse: Decodable {
+    let models: [ModelsAnalyticsModelEntry]?
+    let totals: ModelsAnalyticsTotals?
+}
+
+struct ModelsAnalyticsTotals: Decodable {
+    let distinctModels: Int?
+    let totalInput: Int?
+    let totalOutput: Int?
+    let totalCacheRead: Int?
+    let totalReasoning: Int?
+    let totalEstimatedCost: Double?
+    let totalActualCost: Double?
+    let totalSessions: Int?
+    let totalApiCalls: Int?
+    let totalToolCalls: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case distinctModels = "distinct_models"
+        case totalInput = "total_input"
+        case totalOutput = "total_output"
+        case totalCacheRead = "total_cache_read"
+        case totalReasoning = "total_reasoning"
+        case totalEstimatedCost = "total_estimated_cost"
+        case totalActualCost = "total_actual_cost"
+        case totalSessions = "total_sessions"
+        case totalApiCalls = "total_api_calls"
+        case totalToolCalls = "total_tool_calls"
+    }
+}
+
+struct ModelsAnalyticsModelEntry: Decodable, Identifiable {
     let model: String
     let provider: String?
     let inputTokens: Int?
@@ -192,6 +341,7 @@ struct ModelAnalytics: Decodable, Identifiable {
     let apiCalls: Int?
     let toolCalls: Int?
     let lastUsedAt: Double?
+    let avgTokensPerSession: Int?
     let capabilities: [String: JSONValue]?
 
     var id: String { model }
@@ -208,8 +358,12 @@ struct ModelAnalytics: Decodable, Identifiable {
         case apiCalls = "api_calls"
         case toolCalls = "tool_calls"
         case lastUsedAt = "last_used_at"
+        case avgTokensPerSession = "avg_tokens_per_session"
     }
 }
+
+/// Legacy alias kept for backward compatibility.
+typealias ModelAnalytics = ModelsAnalyticsModelEntry
 
 // MARK: - Profiles
 
