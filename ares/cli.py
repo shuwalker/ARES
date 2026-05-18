@@ -860,3 +860,12 @@ def doctor() -> None:
         path = ARES_HOME / subdir
         exists = path.exists()
         console.print(f"  {subdir}: {'[green]✓[/green]' if exists else '[yellow]missing[/yellow]'}")
+
+
+# ---------------------------------------------------------------------------
+# ares mail (plugin subcommands)
+# ---------------------------------------------------------------------------
+
+from ares.plugins.mail.cli import mail_cli
+
+main.add_command(mail_cli)
