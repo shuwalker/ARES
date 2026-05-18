@@ -302,7 +302,7 @@ final class AppState: ObservableObject {
             return !isLoadingUsage && !isRefreshingUsage
         case .skills:
             return !isLoadingSkills && !isRefreshingSkills
-        case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles:
+        case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins:
             return false
         }
     }
@@ -317,7 +317,7 @@ final class AppState: ObservableObject {
         guard activeConnection != nil else { return false }
 
         switch selectedSection {
-        case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles:
+        case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles, .plugins:
             return true
         case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim:
             return false
@@ -406,7 +406,7 @@ final class AppState: ObservableObject {
             await refreshSkills()
         case .secondBrain, .youtubePipeline, .physicsSim:
             break
-        case .connections, .files, .terminal, .avatar, .models, .config, .logs, .keys, .profiles:
+        case .connections, .files, .terminal, .avatar, .models, .config, .logs, .keys, .profiles, .plugins:
             break
         }
     }
@@ -2320,6 +2320,8 @@ final class AppState: ObservableObject {
         switch section {
         case .overview:
             Task { await refreshOverview() }
+        case .plugins:
+            break
         case .files:
             Task { await ensureInitialFileLoads() }
         case .sessions:
@@ -2449,7 +2451,7 @@ final class AppState: ObservableObject {
             await loadSkills(reset: true)
         case .terminal:
             ensureTerminalSession()
-        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles:
+        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins:
             break
         }
     }
@@ -2800,7 +2802,7 @@ final class AppState: ObservableObject {
         selectedWorkspaceFileID = RemoteTrackedFile.memory.workspaceFileID
     }
 
-    private func setStatusMessage(_ message: String?) {
+    func setStatusMessage(_ message: String?) {
         statusTask?.cancel()
         statusMessage = message
 

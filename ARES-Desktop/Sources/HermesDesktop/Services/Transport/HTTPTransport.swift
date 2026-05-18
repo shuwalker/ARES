@@ -3,7 +3,7 @@ import Foundation
 /// HTTP-based transport for direct local Hermes API connections.
 /// Replaces SSH for connections where the Hermes instance is running locally.
 final class HTTPTransport: HermesTransport, @unchecked Sendable {
-    private let session: URLSession
+    let session: URLSession
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -221,6 +221,42 @@ final class HTTPTransport: HermesTransport, @unchecked Sendable {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = body
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
+        }
+        return data
+    }
+
+    /// Generic DELETE request with custom headers (for dashboard session token auth)
+    func deleteWithHeaders(path: String, baseURL: URL, headers: [String: String] = [:]) async throws -> Data {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "DELETE"
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
+        }
+        return data
+    }
+
+    /// Generic DELETE request
+    func delete(path: String, baseURL: URL, apiKey: String?) async throws -> Data {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "DELETE"
+        if let apiKey {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,

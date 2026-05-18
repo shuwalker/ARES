@@ -21,6 +21,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case secondBrain
     case youtubePipeline
     case physicsSim
+    case plugins
 
     var id: String { rawValue }
 
@@ -49,6 +50,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .secondBrain: "Second Brain"
         case .youtubePipeline: "YouTube"
         case .physicsSim: "Physics"
+        case .plugins: "Plugins"
         }
     }
 
@@ -73,6 +75,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .secondBrain: "brain"
         case .youtubePipeline: "play.rectangle"
         case .physicsSim: "atom"
+        case .plugins: "puzzlepiece"
         }
     }
 
@@ -93,7 +96,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .keys: return nil
         case .profiles: return nil
         case .terminal: return "0"
-        case .avatar, .secondBrain, .youtubePipeline, .physicsSim: return nil
+        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins: return nil
         }
     }
 }
