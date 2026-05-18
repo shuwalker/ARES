@@ -1,9 +1,9 @@
-# Hermes Desktop v0.7.0
+# ARES v0.7.0
 
 `v0.7.0` is a release about staying close to upstream Hermes while making the
 desktop workspace feel more deliberate.
 
-Since `v0.6.1`, the biggest change is the Kanban upgrade: Hermes Desktop now
+Since `v0.6.1`, the biggest change is the Kanban upgrade: ARES now
 understands the newer upstream board model, while keeping the same host-first
 SSH design. The default board still lives at `~/.hermes/kanban.db`, and newer
 Hermes Agent builds can expose additional boards under the host-wide Kanban
@@ -27,7 +27,7 @@ appearance controls.
 - terminal appearance polish with six stable presets, custom background and
   text color tuning, and anchored ANSI palettes so prompts, git output, and
   command-line tools stay readable
-- built-in Hermes Desktop update checks against GitHub Releases, with automatic
+- built-in ARES update checks against GitHub Releases, with automatic
   checks limited to the app itself and manual checks available from the Hermes
   menu
 - refreshed README preview gallery with six current screenshots: Sessions,
@@ -43,13 +43,13 @@ appearance controls.
   board APIs.
 - Hosts with only the default upstream Kanban database still use
   `~/.hermes/kanban.db`.
-- The update checker checks Hermes Desktop releases only. It does not update
+- The update checker checks ARES releases only. It does not update
   Hermes Agent on the host and does not send host, profile, file, session, or
   Kanban content to GitHub.
 
 ## Still True
 
-- Hermes Desktop still connects directly over SSH.
+- ARES still connects directly over SSH.
 - The Hermes host remains the source of truth.
 - There is no desktop gateway API, remote helper daemon, local mirror, or shadow
   sync layer.
@@ -64,5 +64,5 @@ appearance controls.
 - open source
 - ad-hoc signed and not notarized yet, so first launch may still require
   right-click -> Open / Open Anyway
-- release archive: `HermesDesktop.app.zip`
-- checksum: `HermesDesktop.app.zip.sha256`
+- release archive: `ARES.app.zip`
+- checksum: `ARES.app.zip.sha256`

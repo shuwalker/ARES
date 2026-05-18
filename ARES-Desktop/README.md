@@ -1,4 +1,4 @@
-# Hermes Desktop
+# ARES
 
 Native macOS companion for Hermes Agent over SSH.
 
@@ -14,7 +14,7 @@ extra sync layer slowly drifting away from the machine that actually matters.
 
 That restraint is the point of the app.
 
-Hermes Desktop does not invent a softer second version of Hermes. It gives the
+ARES does not invent a softer second version of Hermes. It gives the
 real SSH-first workflow a calm, fast, native Mac surface while keeping the model
 visible. You always know which host you are on, which Hermes profile is active,
 which path the app is using, and where the work is happening.
@@ -24,26 +24,26 @@ which path the app is using, and where the work is happening.
 <table>
   <tr>
     <td width="50%">
-      <img src="assets/sessions.png" alt="Hermes Desktop Sessions view" />
+      <img src="assets/sessions.png" alt="ARES Sessions view" />
     </td>
     <td width="50%">
-      <img src="assets/workflows.png" alt="Hermes Desktop Workflows view" />
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="assets/kanban.png" alt="Hermes Desktop Kanban view" />
-    </td>
-    <td width="50%">
-      <img src="assets/files.png" alt="Hermes Desktop Files view" />
+      <img src="assets/workflows.png" alt="ARES Workflows view" />
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="assets/USAGE.png" alt="Hermes Desktop Usage view" />
+      <img src="assets/kanban.png" alt="ARES Kanban view" />
     </td>
     <td width="50%">
-      <img src="assets/terminal.png" alt="Hermes Desktop Terminal view" />
+      <img src="assets/files.png" alt="ARES Files view" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/USAGE.png" alt="ARES Usage view" />
+    </td>
+    <td width="50%">
+      <img src="assets/terminal.png" alt="ARES Terminal view" />
     </td>
   </tr>
 </table>
@@ -51,9 +51,9 @@ which path the app is using, and where the work is happening.
 Six previewed views from the app: sessions, workflows, Kanban, workspace
 files, usage, and terminal.
 
-## What Hermes Desktop gives you
+## What ARES gives you
 
-Hermes Desktop is for people who want a native Mac workbench for the Hermes
+ARES is for people who want a native Mac workbench for the Hermes
 host they already use, without adding another layer to trust.
 
 - connects directly over SSH
@@ -67,7 +67,7 @@ host they already use, without adding another layer to trust.
 - ships as a universal macOS app for Apple Silicon and Intel Macs
 - includes English, Simplified Chinese, and Russian localization resources
 
-If Hermes runs there and SSH already works, Hermes Desktop will usually meet
+If Hermes runs there and SSH already works, ARES will usually meet
 you there. That includes a Raspberry Pi, another Mac, a VPS, a remote server,
 or the same Mac through `ssh localhost` or a local SSH alias.
 
@@ -87,7 +87,7 @@ That makes the app easier to reason about. There is no hidden execution layer
 to audit, no shadow state to reconcile, and no ambiguity about which machine
 owns the work.
 
-That restraint has a practical advantage: Hermes Desktop can remain useful when
+That restraint has a practical advantage: ARES can remain useful when
 higher-level surfaces are unavailable. If a dashboard, gateway, or agent
 configuration breaks, the app still has the direct SSH path: inspect the host,
 edit the relevant files, open a terminal, and repair the system from the place
@@ -101,7 +101,7 @@ Use the dashboard when you want a browser-based management surface for the
 installation: configuration, API keys, logs, sessions, analytics, cron jobs,
 skills, and browser chat.
 
-Use Hermes Desktop when you want to work close to the host from your Mac:
+Use ARES when you want to work close to the host from your Mac:
 sessions, workflows, Kanban, remote files, editable skills, usage, cron jobs,
 and a real terminal without adding another backend around Hermes.
 
@@ -137,28 +137,28 @@ ssh your-host
 
 ## Install the app
 
-1. Download `HermesDesktop.app.zip` from the
+1. Download `ARES.app.zip` from the
    [latest GitHub Release](https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/latest).
-2. Double click the zip to extract `HermesDesktop.app`.
-3. Quit Hermes Desktop if an older version is already running.
-4. Drag `HermesDesktop.app` into `Applications` and replace the old copy if
+2. Double click the zip to extract `ARES.app`.
+3. Quit ARES if an older version is already running.
+4. Drag `ARES.app` into `Applications` and replace the old copy if
    macOS asks.
-5. First launch: right click `HermesDesktop.app`, choose `Open`, then confirm
+5. First launch: right click `ARES.app`, choose `Open`, then confirm
    `Open`.
 
-Hermes Desktop is currently ad-hoc signed and not notarized by Apple. macOS may
+ARES is currently ad-hoc signed and not notarized by Apple. macOS may
 show a first-launch warning saying Apple cannot verify it for malware. That is
 expected for this distribution model and does not mean macOS found malware in
-Hermes Desktop.
+ARES.
 
 If macOS blocks the first launch:
 
 1. Click `Done`, not `Move to Bin`.
-2. Right click `HermesDesktop.app` and choose `Open`.
+2. Right click `ARES.app` and choose `Open`.
 3. If needed, go to `System Settings` > `Privacy & Security` and click
    `Open Anyway`.
 
-Do not disable Gatekeeper or run `sudo` commands to install Hermes Desktop.
+Do not disable Gatekeeper or run `sudo` commands to install ARES.
 
 For the exact distribution and verification details, read
 [docs/distribution.md](docs/distribution.md). If you prefer not to trust the
@@ -209,7 +209,7 @@ then in the app:
 
 ### Choose a Hermes profile
 
-Hermes Desktop can target multiple profiles on the same SSH host.
+ARES can target multiple profiles on the same SSH host.
 
 - leave `Hermes profile` empty to use `~/.hermes`; the app still discovers
   other profiles available on the active host
@@ -224,7 +224,7 @@ aligned with the selected host and profile.
 
 If Hermes runs on the same Mac, the model stays the same: SSH.
 
-Use `localhost`, your local hostname, or a local SSH alias. Hermes Desktop
+Use `localhost`, your local hostname, or a local SSH alias. ARES
 still connects over SSH and does not read those files directly from disk.
 
 ### What `Test` checks
@@ -238,7 +238,7 @@ support, are checked when those sections actually run.
 
 ## What you can do in the app
 
-Hermes Desktop is intentionally focused. It is not trying to become a cloud
+ARES is intentionally focused. It is not trying to become a cloud
 workspace, a remote IDE, or a generic SFTP client.
 
 It gives the real Hermes workflow a native workbench:
@@ -294,7 +294,7 @@ It gives the real Hermes workflow a native workbench:
 
 ## Which chat surface to use
 
-Hermes Desktop does not replace the terminal surfaces Hermes already gives you.
+ARES does not replace the terminal surfaces Hermes already gives you.
 It lets you choose the right one for the job.
 
 - Use in-app chat in `Sessions` for quick turns, context checks, and continuing
@@ -309,7 +309,7 @@ surface area, not about creating a second source of truth.
 
 ## Trust and verification
 
-If you are evaluating whether to trust Hermes Desktop, start here:
+If you are evaluating whether to trust ARES, start here:
 
 - read [SECURITY.md](SECURITY.md) for the current security model: what runs
   locally, what runs remotely over SSH, what the app stores, and which network
@@ -321,26 +321,26 @@ If you are evaluating whether to trust Hermes Desktop, start here:
   the clearest trust path available in this repo today
 
 Current public releases include a SHA-256 checksum and a small JSON manifest
-for `HermesDesktop.app.zip`.
+for `ARES.app.zip`.
 
 After downloading:
 
 ```bash
-shasum -a 256 HermesDesktop.app.zip
+shasum -a 256 ARES.app.zip
 ```
 
 After installing:
 
 ```bash
-codesign --verify --deep --strict /Applications/HermesDesktop.app
+codesign --verify --deep --strict /Applications/ARES.app
 ```
 
 To verify a release zip against the published manifest from a repo checkout:
 
 ```bash
 ./scripts/verify-release.sh \
-  /path/to/HermesDesktop.app.zip \
-  /path/to/HermesDesktop.app.zip.manifest.json
+  /path/to/ARES.app.zip \
+  /path/to/ARES.app.zip.manifest.json
 ```
 
 Checksums are a useful integrity check, not a trust model. They tell you
@@ -360,7 +360,7 @@ producing the app bundle directly:
 Then open:
 
 ```bash
-dist/HermesDesktop.app
+dist/ARES.app
 ```
 
 To run the release-support test suite:
@@ -383,9 +383,9 @@ HERMES_VERSION=1.2.3 ./scripts/package-github-release.sh
 
 Release artifacts:
 
-- `dist/HermesDesktop.app.zip`
-- `dist/HermesDesktop.app.zip.sha256`
-- `dist/HermesDesktop.app.zip.manifest.json`
+- `dist/ARES.app.zip`
+- `dist/ARES.app.zip.sha256`
+- `dist/ARES.app.zip.manifest.json`
 
 ## FAQ
 
@@ -393,10 +393,10 @@ Release artifacts:
 
 That is the right question, and you should not rely on reassurance alone.
 
-Hermes Desktop is open source, uses direct SSH to the host you choose, does not
+ARES is open source, uses direct SSH to the host you choose, does not
 require a gateway API or helper service, and stores only a small amount of local
 app state on your Mac. The built-in update check calls GitHub Releases for the
-latest Hermes Desktop app version only; it does not update Hermes Agent and
+latest ARES app version only; it does not update Hermes Agent and
 does not send your host, profile, file, session, or Kanban content.
 
 The current public build is ad-hoc signed and not notarized by Apple, so
@@ -409,11 +409,11 @@ and consider building from source.
 On the Hermes host.
 
 Sessions, Kanban, cron jobs, files, skills, and usage are read from the
-selected host and profile. Hermes Desktop does not maintain a local mirror of
+selected host and profile. ARES does not maintain a local mirror of
 Hermes state.
 
 Some local app preferences and connection details are stored under
-`~/Library/Application Support/HermesDesktop`. That includes connection
+`~/Library/Application Support/ARES`. That includes connection
 profiles, pinned sessions, bookmarked files, and workflow presets. The current
 local state is documented in [SECURITY.md](SECURITY.md).
 
@@ -437,7 +437,7 @@ If Hermes requests command approval during a non-interactive chat turn, Hermes
 Desktop cannot collect a manual approval inside that chat surface. When you
 need to review or approve commands yourself, resume the session in Terminal.
 
-### Does Hermes Desktop replace a remote file manager or IDE?
+### Does ARES replace a remote file manager or IDE?
 
 No.
 
@@ -447,17 +447,17 @@ SFTP client or remote IDE. Remote text files up to 10 MB are editable.
 
 ### What happens if a remote file changed after I opened it?
 
-Hermes Desktop will not blindly overwrite it.
+ARES will not blindly overwrite it.
 
 Before saving an edited workspace file or skill, the app checks whether the
 remote file still matches the version you opened. If it changed, save is
 blocked and your local edits stay intact until you reload intentionally.
 
-## Where Hermes Desktop goes next
+## Where ARES goes next
 
 Most of the original roadmap is now shipped.
 
-Hermes Desktop has reached the shape it was aiming for: a calm, capable native
+ARES has reached the shape it was aiming for: a calm, capable native
 macOS workspace for the real Hermes workflow, still anchored to SSH and the
 host as source of truth.
 

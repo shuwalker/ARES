@@ -1,5 +1,5 @@
 import Testing
-@testable import HermesDesktop
+@testable import ARES
 
 struct SkillModelSourceTests {
     @Test

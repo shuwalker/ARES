@@ -1,9 +1,9 @@
-# Hermes Desktop v0.8.0
+# ARES v0.8.0
 
 `v0.8.0` adds reusable terminal workflows, tighter SSH behavior, and a more
 complete release verification path.
 
-Hermes Desktop still talks directly to the selected Hermes host over SSH. The
+ARES still talks directly to the selected Hermes host over SSH. The
 host remains the source of truth. There is no gateway API, remote helper
 daemon, local mirror, or background sync layer added in this release.
 
@@ -33,7 +33,7 @@ daemon, local mirror, or background sync layer added in this release.
 
 ## Still True
 
-- Hermes Desktop still connects directly over SSH.
+- ARES still connects directly over SSH.
 - The Hermes host remains the source of truth.
 - Sessions, Kanban, cron jobs, files, skills, usage, and terminal work stay
   anchored to the selected host and profile.
@@ -45,6 +45,6 @@ daemon, local mirror, or background sync layer added in this release.
 - universal macOS build for Apple Silicon and Intel
 - ad-hoc signed and not notarized yet, so first launch may still require
   right-click -> Open / Open Anyway
-- release archive: `HermesDesktop.app.zip`
-- checksum: `HermesDesktop.app.zip.sha256`
-- manifest: `HermesDesktop.app.zip.manifest.json`
+- release archive: `ARES.app.zip`
+- checksum: `ARES.app.zip.sha256`
+- manifest: `ARES.app.zip.manifest.json`

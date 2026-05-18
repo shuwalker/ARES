@@ -86,7 +86,7 @@ ditto -x -k "$ZIP_PATH" "$TMP_DIR"
 APP_PATH="$TMP_DIR/$EXPECTED_BUNDLE_NAME"
 INFO_PLIST_PATH="$APP_PATH/Contents/Info.plist"
 EXECUTABLE_PATH="$APP_PATH/Contents/MacOS/$EXPECTED_EXECUTABLE_NAME"
-RESOURCE_BUNDLE_PATH="$APP_PATH/Contents/Resources/HermesDesktop_HermesDesktop.bundle"
+RESOURCE_BUNDLE_PATH="$APP_PATH/Contents/Resources/ARES_ARES.bundle"
 ICON_PATH="$APP_PATH/Contents/Resources/AppIcon.icns"
 
 assert_file_exists "$APP_PATH"

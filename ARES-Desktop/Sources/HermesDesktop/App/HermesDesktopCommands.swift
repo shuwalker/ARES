@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct HermesDesktopCommands: Commands {
+struct ARESCommands: Commands {
     @ObservedObject var appState: AppState
 
     var body: some Commands {

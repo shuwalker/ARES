@@ -1,11 +1,11 @@
-# Hermes Desktop v0.7.1
+# ARES v0.7.1
 
 `v0.7.1` is a focused reliability release for people already working inside
-Hermes Desktop every day. It improves in-app chat approval handling, adds more
+ARES every day. It improves in-app chat approval handling, adds more
 complete Kanban operations, and makes cron jobs more flexible while preserving
 the same direct SSH-only model.
 
-Hermes Desktop still talks to the selected Hermes host over SSH. The host
+ARES still talks to the selected Hermes host over SSH. The host
 remains the source of truth. There is no gateway API, remote helper daemon,
 local mirror, or background sync layer added in this release.
 
@@ -52,7 +52,7 @@ local mirror, or background sync layer added in this release.
 
 ## Still True
 
-- Hermes Desktop still connects directly over SSH.
+- ARES still connects directly over SSH.
 - The Hermes host remains the source of truth.
 - Sessions, Kanban, cron jobs, files, skills, usage, and terminal work stay
   anchored to the selected host and profile.
@@ -65,5 +65,5 @@ local mirror, or background sync layer added in this release.
 - open source
 - ad-hoc signed and not notarized yet, so first launch may still require
   right-click -> Open / Open Anyway
-- release archive: `HermesDesktop.app.zip`
-- checksum: `HermesDesktop.app.zip.sha256`
+- release archive: `ARES.app.zip`
+- checksum: `ARES.app.zip.sha256`
