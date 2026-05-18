@@ -158,11 +158,13 @@ final class SSHTransport: @unchecked Sendable {
                 "-o", "ControlPath=\(paths.controlPath(for: connection))"
             ])
         case .terminalShell:
-            // Keep interactive terminal shells isolated from background RPC-style
-            // requests so an open PTY session cannot destabilize profile reloads.
+            // Terminal shells share the control master with service calls.
+            // In single-user / single-target setups, isolation causes auth failures
+            // when the SSH agent key is not loaded for fresh connections.
             arguments.append(contentsOf: [
-                "-o", "ControlMaster=no",
-                "-S", "none"
+                "-o", "ControlMaster=auto",
+                "-o", "ControlPersist=300",
+                "-o", "ControlPath=\(paths.controlPath(for: connection))"
             ])
         }
 
