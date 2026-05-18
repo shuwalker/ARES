@@ -231,7 +231,7 @@ struct RootView: View {
             return $filesSplitLayout
         case .skills:
             return $skillsSplitLayout
-        case .connections, .overview, .usage, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim:
+        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim:
             return nil
         }
     }
@@ -254,7 +254,7 @@ struct RootView: View {
         if appState.activeConnection == nil {
             return [.connections]
         }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .terminal, .avatar]
+        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -314,6 +314,16 @@ struct RootView: View {
             UsageView()
         case .skills:
             SkillsView(splitLayout: $skillsSplitLayout)
+        case .config:
+            ConfigView()
+        case .logs:
+            LogsView()
+        case .models:
+            ModelsView()
+        case .keys:
+            KeysView()
+        case .profiles:
+            ProfilesView()
         case .terminal:
             TerminalWorkspaceView(
                 workspace: appState.terminalWorkspace,

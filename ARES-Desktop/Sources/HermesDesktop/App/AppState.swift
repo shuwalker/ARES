@@ -100,6 +100,7 @@ final class AppState: ObservableObject {
     @Published var isDesktopPetMode = false
 
     let connectionStore: ConnectionStore
+    let dashboardAPIService: DashboardAPIService
     let sshTransport: SSHTransport
     let httpTransport: HTTPTransport
     let webSocketTransport: WebSocketTransport
@@ -171,6 +172,13 @@ final class AppState: ObservableObject {
         self.youtubePipelineService = YouTubePipelineService(sshTransport: sshTransport)
         self.updateCheckService = updateCheckService
         self.workflowLaunchDiagnostics = workflowLaunchDiagnostics
+
+        // Wire up the dashboard API service
+        let dashboardBaseURL = URL(string: "http://localhost:9119")!
+        self.dashboardAPIService = DashboardAPIService(
+            httpTransport: httpTransport,
+            baseURL: dashboardBaseURL
+        )
         self.terminalWorkspace = TerminalWorkspaceStore(
             sshTransport: sshTransport,
             workflowLaunchDiagnostics: workflowLaunchDiagnostics
@@ -291,7 +299,7 @@ final class AppState: ObservableObject {
             return !isLoadingUsage && !isRefreshingUsage
         case .skills:
             return !isLoadingSkills && !isRefreshingSkills
-        case .connections, .files, .terminal, .avatar, .physicsSim:
+        case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles:
             return false
         }
     }
@@ -306,7 +314,7 @@ final class AppState: ObservableObject {
         guard activeConnection != nil else { return false }
 
         switch selectedSection {
-        case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline:
+        case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles:
             return true
         case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim:
             return false
@@ -395,7 +403,7 @@ final class AppState: ObservableObject {
             await refreshSkills()
         case .secondBrain, .youtubePipeline, .physicsSim:
             break
-        case .connections, .files, .terminal, .avatar:
+        case .connections, .files, .terminal, .avatar, .models, .config, .logs, .keys, .profiles:
             break
         }
     }
@@ -2331,7 +2339,7 @@ final class AppState: ObservableObject {
             ensureTerminalSession()
         case .connections:
             break
-        case .avatar, .youtubePipeline, .physicsSim, .secondBrain:
+        case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles:
             break
         }
     }
@@ -2438,7 +2446,7 @@ final class AppState: ObservableObject {
             await loadSkills(reset: true)
         case .terminal:
             ensureTerminalSession()
-        case .avatar, .secondBrain, .youtubePipeline, .physicsSim:
+        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles:
             break
         }
     }
