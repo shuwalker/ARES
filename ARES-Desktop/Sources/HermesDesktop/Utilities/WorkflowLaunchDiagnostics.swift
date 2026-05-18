@@ -91,7 +91,7 @@ actor WorkflowLaunchDiagnostics {
             dateFormatter: dateFormatter,
             event: "diagnostics_session_started",
             fields: [
-                "banner": "=== Hermes Desktop workflow launch diagnostics session started ===",
+                "banner": "=== ARES workflow launch diagnostics session started ===",
                 "log_path": logFileURL.path
             ]
         )

@@ -14,7 +14,7 @@ struct AppStateUpdateCheckTests {
             fetch: { _ in
                 let payload = try JSONSerialization.data(withJSONObject: [
                     "tag_name": "v9.9.9",
-                    "html_url": "https://github.com/dodo-reach/hermes-desktop/releases/tag/v9.9.9"
+                    "html_url": "https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/tag/v9.9.9"
                 ])
                 return HTTPResult(statusCode: 200, data: payload)
             }

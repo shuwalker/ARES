@@ -1,8 +1,8 @@
 import Foundation
 
 struct UpdateCheckService: Sendable {
-    static let hermesDesktopLatestReleaseURL = URL(
-        string: "https://api.github.com/repos/dodo-reach/hermes-desktop/releases/latest"
+    static let aresDesktopLatestReleaseURL = URL(
+        string: "https://api.github.com/repos/shuwalker/ares-autonomous-reasoning-execution-system/releases/latest"
     )!
 
     private let latestReleaseURL: URL
@@ -10,7 +10,7 @@ struct UpdateCheckService: Sendable {
     private let fetch: @Sendable (URLRequest) async throws -> HTTPResult
 
     init(
-        latestReleaseURL: URL = Self.hermesDesktopLatestReleaseURL,
+        latestReleaseURL: URL = Self.aresDesktopLatestReleaseURL,
         currentVersionProvider: @escaping @Sendable () -> String = { Self.bundleShortVersion() },
         fetch: @escaping @Sendable (URLRequest) async throws -> HTTPResult = { request in
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -32,7 +32,7 @@ struct UpdateCheckService: Sendable {
         request.httpMethod = "GET"
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        request.setValue("HermesDesktop", forHTTPHeaderField: "User-Agent")
+        request.setValue("ARES", forHTTPHeaderField: "User-Agent")
 
         let result = try await fetch(request)
         guard result.statusCode == 200 else {
@@ -143,7 +143,7 @@ enum UpdateCheckError: LocalizedError, Equatable {
         switch self {
         case .unexpectedStatusCode(let statusCode):
             return L10n.string(
-                "GitHub returned HTTP %@ while checking the latest Hermes Desktop release.",
+                "GitHub returned HTTP %@ while checking the latest ARES release.",
                 "\(statusCode)"
             )
         }

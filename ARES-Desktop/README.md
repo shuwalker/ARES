@@ -138,7 +138,7 @@ ssh your-host
 ## Install the app
 
 1. Download `HermesDesktop.app.zip` from the
-   [latest GitHub Release](https://github.com/dodo-reach/hermes-desktop/releases/latest).
+   [latest GitHub Release](https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/latest).
 2. Double click the zip to extract `HermesDesktop.app`.
 3. Quit Hermes Desktop if an older version is already running.
 4. Drag `HermesDesktop.app` into `Applications` and replace the old copy if

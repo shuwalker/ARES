@@ -109,7 +109,7 @@ In the current implementation, network calls are:
 
 - SSH connections to the host you explicitly configure
 - an optional GitHub API request to
-  `https://api.github.com/repos/dodo-reach/hermes-desktop/releases/latest`
+  `https://api.github.com/repos/shuwalker/ares-autonomous-reasoning-execution-system/releases/latest`
   when checking whether a newer Hermes Desktop version exists
 
 The built-in update check does not update Hermes Agent, does not install

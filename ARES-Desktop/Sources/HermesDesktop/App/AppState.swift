@@ -439,7 +439,7 @@ final class AppState: ObservableObject {
 
     func noteOpenedRelease(for update: AvailableUpdate) {
         dismissAvailableUpdate()
-        setStatusMessage(L10n.string("Opening Hermes Desktop %@ release…", update.latestVersion))
+        setStatusMessage(L10n.string("Opening ARES %@ release…", update.latestVersion))
     }
 
     func updateAutomaticUpdateChecks(_ enabled: Bool) {
@@ -2414,7 +2414,7 @@ final class AppState: ObservableObject {
 
         isCheckingForUpdates = true
         if presentsCurrentResult {
-            setStatusMessage(L10n.string("Checking for Hermes Desktop updates…"))
+            setStatusMessage(L10n.string("Checking for ARES updates…"))
         }
 
         do {
@@ -2423,12 +2423,12 @@ final class AppState: ObservableObject {
 
             if let update {
                 availableUpdate = update
-                setStatusMessage(L10n.string("Hermes Desktop update available: %@", update.latestVersion))
+                setStatusMessage(L10n.string("ARES update available: %@", update.latestVersion))
             } else if presentsCurrentResult {
                 activeAlert = AppAlert(
-                    title: L10n.string("Hermes Desktop is up to date"),
+                    title: L10n.string("ARES is up to date"),
                     message: L10n.string(
-                        "You are running Hermes Desktop %@, which matches the latest Hermes Desktop release.",
+                        "You are running ARES %@, which matches the latest ARES release.",
                         UpdateCheckService.bundleShortVersion()
                     )
                 )

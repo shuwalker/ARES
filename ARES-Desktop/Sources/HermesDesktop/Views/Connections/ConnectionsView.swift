@@ -29,7 +29,7 @@ struct ConnectionsView: View {
                             ContentUnavailableView(
                                 L10n.string("No hosts yet"),
                                 systemImage: "network.slash",
-                                description: Text(L10n.string("Create your first SSH profile to connect Hermes Desktop to a Raspberry Pi, another Mac, a VPS, or this Mac via localhost."))
+                                description: Text(L10n.string("Create your first SSH profile to connect ARES to a Raspberry Pi, another Mac, a VPS, or this Mac via localhost."))
                             )
 
                             Button {

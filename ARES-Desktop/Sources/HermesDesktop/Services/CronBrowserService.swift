@@ -667,7 +667,7 @@ final class CronBrowserService: @unchecked Sendable {
                     "deliver": delivery,
                     "origin": {
                         "kind": "desktop",
-                        "label": "Hermes Desktop",
+                        "label": "ARES",
                     },
                 }
                 jobs.append(job)

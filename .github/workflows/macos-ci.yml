@@ -15,6 +15,9 @@ concurrency:
 jobs:
   build-and-verify:
     runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ARES-Desktop
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -34,9 +37,9 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hermes-desktop-release-${{ github.sha }}
+          name: ares-release-${{ github.sha }}
           path: |
-            dist/HermesDesktop.app.zip
-            dist/HermesDesktop.app.zip.sha256
-            dist/HermesDesktop.app.zip.manifest.json
+            ARES-Desktop/dist/ARES.app.zip
+            ARES-Desktop/dist/ARES.app.zip.sha256
+            ARES-Desktop/dist/ARES.app.zip.manifest.json
           if-no-files-found: error

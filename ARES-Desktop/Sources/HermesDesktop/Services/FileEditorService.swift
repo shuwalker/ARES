@@ -45,7 +45,7 @@ final class FileEditorService: @unchecked Sendable {
                 if max_size > 0 and size > max_size:
                     size_mb = size / 1000000
                     limit_mb = max_size / 1000000
-                    fail(f"This file is {size_mb:.1f} MB. Hermes Desktop can edit remote text files up to {limit_mb:g} MB.")
+                    fail(f"This file is {size_mb:.1f} MB. ARES can edit remote text files up to {limit_mb:g} MB.")
 
                 raw_content = target.read_bytes()
                 content_hash = hashlib.sha256(raw_content).hexdigest()

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEFAULT_ZIP_PATH="$ROOT_DIR/dist/HermesDesktop.app.zip"
+DEFAULT_ZIP_PATH="$ROOT_DIR/dist/ARES.app.zip"
 ZIP_PATH="${1:-$DEFAULT_ZIP_PATH}"
 MANIFEST_PATH="${2:-$ZIP_PATH.manifest.json}"
 SHA256_PATH="$ZIP_PATH.sha256"

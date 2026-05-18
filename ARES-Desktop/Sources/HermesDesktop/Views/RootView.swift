@@ -168,7 +168,7 @@ struct RootView: View {
     }
 
     private var showAvatarPanel: Bool {
-        appState.selectedSection == .avatar || appState.activeConnection?.transportKind == .local
+        appState.selectedSection == .avatar && appState.activeConnection?.transportKind == .local
     }
 
     private var workspaceSidebar: some View {
@@ -371,13 +371,13 @@ private struct UpdateAvailableSheet: View {
                     .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.string("Hermes Desktop %@ is available", update.latestVersion))
+                    Text(L10n.string("ARES %@ is available", update.latestVersion))
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(
                         L10n.string(
-                            "You are running Hermes Desktop %@. The latest Hermes Desktop release is %@.",
+                            "You are running ARES %@. The latest ARES release is %@.",
                             update.currentVersion,
                             update.latestVersion
                         )
@@ -402,19 +402,19 @@ private struct UpdateAvailableSheet: View {
                     }
                     .frame(maxHeight: 220)
                 } else {
-                    Text(L10n.string("Open the GitHub release to download the latest Hermes Desktop build."))
+                    Text(L10n.string("Open the GitHub release to download the latest ARES build."))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            Text(L10n.string("This checks only the Hermes Desktop app. It does not update Hermes Agent on your host."))
+            Text(L10n.string("This checks only the ARES desktop app. It does not update Hermes Agent on your host."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Toggle(L10n.string("Check Automatically for Hermes Desktop Updates"), isOn: $automaticallyChecksForUpdates)
+            Toggle(L10n.string("Check Automatically for ARES Updates"), isOn: $automaticallyChecksForUpdates)
                 .toggleStyle(.checkbox)
 
             HStack {

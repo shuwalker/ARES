@@ -167,7 +167,7 @@ struct SessionDetailView: View {
             Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { session in
             Text(L10n.string(
-                "“%@” will be removed from Hermes Desktop and deleted on the remote Hermes host as well. This action cannot be undone.",
+                "“%@” will be removed from ARES and deleted on the remote Hermes host as well. This action cannot be undone.",
                 session.resolvedTitle
             ))
         }

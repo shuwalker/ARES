@@ -78,7 +78,7 @@ struct WorkflowModelsTests {
             workspaceScopeFingerprint: "host|user|22|~/.hermes/profiles/research",
             name: "Repo triage",
             prompt: """
-            Check this GitHub repository: https://github.com/dodo-reach/hermes-desktop
+            Check this GitHub repository: https://github.com/shuwalker/ares-autonomous-reasoning-execution-system
 
 
             inspect and summarize the existing PRs and Issues.
@@ -97,7 +97,7 @@ struct WorkflowModelsTests {
 
         #expect(
             invocation.initialInput ==
-                "Check this GitHub repository: https://github.com/dodo-reach/hermes-desktop inspect and summarize the existing PRs and Issues."
+                "Check this GitHub repository: https://github.com/shuwalker/ares-autonomous-reasoning-execution-system inspect and summarize the existing PRs and Issues."
         )
     }
 
