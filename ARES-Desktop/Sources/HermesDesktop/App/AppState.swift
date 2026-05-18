@@ -187,6 +187,9 @@ final class AppState: ObservableObject {
         connectionStore.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
+                if let active = self?.activeConnection {
+                    self?.dashboardAPIService.baseURL = active.dashboardURL
+                }
             }
             .store(in: &cancellables)
 

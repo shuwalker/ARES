@@ -4,7 +4,7 @@ import Foundation
 /// Authenticates via the ephemeral session token injected into the dashboard SPA HTML.
 final class DashboardAPIService: @unchecked Sendable {
     private let httpTransport: HTTPTransport
-    let baseURL: URL
+    var baseURL: URL
 
     /// Ephemeral session token obtained from the dashboard HTML.
     /// Regenerated on each server start; must be fetched before making authenticated requests.
