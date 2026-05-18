@@ -145,7 +145,9 @@ end tell
 # ---------------------------------------------------------------------------
 
 def move_to_junk(msgs: list[EmailMessage], junk_map: dict[str, str]) -> list[EmailMessage]:
-    """Move classified junk messages to their account's junk folder."""
+    """Move classified junk messages to their account's junk folder.
+    Batches by account: one AppleScript per account, not per message.
+    """
     moved: list[EmailMessage] = []
     # Group by account
     by_account: dict[str, list[EmailMessage]] = {}
@@ -158,45 +160,57 @@ def move_to_junk(msgs: list[EmailMessage], junk_map: dict[str, str]) -> list[Ema
             continue
         safe_account = _escape(account)
         safe_junk = _escape(junk_box)
-        for msg in acct_msgs:
-            safe_id = _escape(msg.id)
-            safe_inbox = _escape(msg.inbox_name)
-            script = f'''
+        # Build list of message IDs as AppleScript list literal
+        ids_list = ", ".join(f'"{_escape(m.id)}"' for m in acct_msgs)
+        script = f'''
 tell application "Mail"
     try
         set acct to account "{safe_account}"
-        set theInbox to mailbox "{safe_inbox}" of acct
+        set theInbox to missing value
         set theJunk to missing value
         repeat with mbox in (every mailbox of acct)
-            if name of mbox is "{safe_junk}" then
+            set boxName to name of mbox
+            if boxName is "INBOX" or boxName is "Inbox" then
+                set theInbox to mbox
+            end if
+            if boxName is "{safe_junk}" then
                 set theJunk to mbox
+            end if
+            if theInbox is not missing value and theJunk is not missing value then
                 exit repeat
             end if
         end repeat
-        if theJunk is not missing value then
-            set matches to (every message of theInbox whose message id is "{safe_id}")
-            if (count of matches) > 0 then
-                move matches to theJunk
-            end if
+        if theInbox is not missing value and theJunk is not missing value then
+            set msgIds to {{{ids_list}}}
+            repeat with msgId in msgIds
+                set matches to (every message of theInbox whose message id is msgId)
+                if (count of matches) > 0 then
+                    move item 1 of matches to theJunk
+                end if
+            end repeat
         end if
     end try
 end tell
 '''
-            try:
-                _run(script)
-                moved.append(msg)
-            except RuntimeError as e:
-                # Log but don't crash
-                print(f"  ⚠ Could not move '{msg.subject[:45]}': {e}")
+        try:
+            _run(script)
+            moved.extend(acct_msgs)
+        except RuntimeError as e:
+            print(f"  ⚠ Could not move junk for {account}: {e}")
     return moved
 
 
 def move_to_inbox(msgs: list[EmailMessage]) -> list[EmailMessage]:
-    """Rescue messages from junk back to inbox."""
+    """Rescue messages from junk back to inbox. Batches by account."""
     moved: list[EmailMessage] = []
+    # Group by account
+    by_account: dict[str, list[EmailMessage]] = {}
     for msg in msgs:
-        safe_id = _escape(msg.id)
-        safe_account = _escape(msg.account)
+        by_account.setdefault(msg.account, []).append(msg)
+
+    for account, acct_msgs in by_account.items():
+        safe_account = _escape(account)
+        ids_list = ", ".join(f'"{_escape(m.id)}"' for m in acct_msgs)
         script = f'''
 tell application "Mail"
     try
@@ -210,12 +224,15 @@ tell application "Mail"
             end if
         end repeat
         if theInbox is not missing value then
-            repeat with mbox in (every mailbox of acct)
-                set msgsFound to (every message of mbox whose message id is "{safe_id}")
-                if (count of msgsFound) > 0 then
-                    move msgsFound to theInbox
-                    exit repeat
-                end if
+            set msgIds to {{{ids_list}}}
+            repeat with msgId in msgIds
+                repeat with mbox in (every mailbox of acct)
+                    set matches to (every message of mbox whose message id is msgId)
+                    if (count of matches) > 0 then
+                        move item 1 of matches to theInbox
+                        exit repeat
+                    end if
+                end repeat
             end repeat
         end if
     end try
@@ -223,12 +240,10 @@ end tell
 '''
         try:
             _run(script)
-            moved.append(msg)
+            moved.extend(acct_msgs)
         except RuntimeError as e:
-            print(f"  ⚠ Could not rescue '{msg.subject[:45]}': {e}")
+            print(f"  ⚠ Could not rescue for {account}: {e}")
     return moved
-
-
 # ---------------------------------------------------------------------------
 # Junk folder scan (for rescues)
 # ---------------------------------------------------------------------------
