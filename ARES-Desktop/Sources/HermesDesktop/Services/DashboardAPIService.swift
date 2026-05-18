@@ -390,4 +390,25 @@ final class DashboardAPIService: @unchecked Sendable {
             throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
         }
     }
+
+    // MARK: - System Controls
+
+    /// POST /api/gateway/restart
+    func restartGateway() async throws -> ActionResponse {
+        let data = try await authenticatedPost(path: "api/gateway/restart", body: Data())
+        return try JSONDecoder().decode(ActionResponse.self, from: data)
+    }
+
+    /// POST /api/hermes/update
+    func updateHermes() async throws -> ActionResponse {
+        let data = try await authenticatedPost(path: "api/hermes/update", body: Data())
+        return try JSONDecoder().decode(ActionResponse.self, from: data)
+    }
+
+    /// GET /api/actions/{name}/status?lines=200
+    func getActionStatus(name: String, lines: Int = 200) async throws -> ActionStatusResponse {
+        let path = "api/actions/\(name)/status?lines=\(lines)"
+        let data = try await authenticatedGet(path: path)
+        return try JSONDecoder().decode(ActionStatusResponse.self, from: data)
+    }
 }

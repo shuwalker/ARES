@@ -302,7 +302,7 @@ final class AppState: ObservableObject {
             return !isLoadingUsage && !isRefreshingUsage
         case .skills:
             return !isLoadingSkills && !isRefreshingSkills
-        case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins:
+        case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs:
             return false
         }
     }
@@ -319,7 +319,7 @@ final class AppState: ObservableObject {
         switch selectedSection {
         case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles, .plugins:
             return true
-        case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim:
+        case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim, .docs:
             return false
         }
     }
@@ -404,7 +404,7 @@ final class AppState: ObservableObject {
             await refreshUsage()
         case .skills:
             await refreshSkills()
-        case .secondBrain, .youtubePipeline, .physicsSim:
+        case .secondBrain, .youtubePipeline, .physicsSim, .docs:
             break
         case .connections, .files, .terminal, .avatar, .models, .config, .logs, .keys, .profiles, .plugins:
             break
@@ -2344,7 +2344,7 @@ final class AppState: ObservableObject {
             ensureTerminalSession()
         case .connections:
             break
-        case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles:
+        case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles, .docs:
             break
         }
     }
@@ -2451,7 +2451,7 @@ final class AppState: ObservableObject {
             await loadSkills(reset: true)
         case .terminal:
             ensureTerminalSession()
-        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins:
+        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs:
             break
         }
     }

@@ -283,3 +283,24 @@ struct PlatformStatus: Decodable {
         case updatedAt = "updated_at"
     }
 }
+
+// MARK: - System Controls
+
+/// Response from POST /api/gateway/restart and POST /api/hermes/update
+struct ActionResponse: Decodable {
+    let success: Bool
+    let message: String?
+}
+
+/// Response from GET /api/actions/{name}/status
+struct ActionStatusResponse: Decodable {
+    let name: String?
+    let status: String?
+    let lines: [String]?
+    let lastRunAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name, status, lines
+        case lastRunAt = "last_run_at"
+    }
+}

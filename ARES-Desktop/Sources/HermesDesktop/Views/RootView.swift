@@ -231,7 +231,7 @@ struct RootView: View {
             return $filesSplitLayout
         case .skills:
             return $skillsSplitLayout
-        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins:
+        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs:
             return nil
         }
     }
@@ -254,7 +254,7 @@ struct RootView: View {
         if appState.activeConnection == nil {
             return [.connections]
         }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins]
+        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -350,6 +350,8 @@ struct RootView: View {
             PhysicsSimulatorView()
         case .plugins:
             PluginsView()
+        case .docs:
+            DocsView()
         }
     }
 }

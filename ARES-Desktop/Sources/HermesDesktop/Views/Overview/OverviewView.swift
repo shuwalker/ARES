@@ -2,6 +2,10 @@ import SwiftUI
 
 struct OverviewView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var showRestartConfirmation = false
+    @State private var showUpdateConfirmation = false
+    @State private var isRestarting = false
+    @State private var isUpdating = false
 
     var body: some View {
         HermesPageContainer(width: .dashboard) {
@@ -34,6 +38,22 @@ struct OverviewView: View {
             if appState.overview == nil {
                 await appState.refreshOverview()
             }
+        }
+        .alert("Restart Gateway?", isPresented: $showRestartConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Restart", role: .destructive) {
+                Task { await restartGateway() }
+            }
+        } message: {
+            Text("This will restart the Hermes gateway service and may briefly interrupt active sessions.")
+        }
+        .alert("Update Hermes?", isPresented: $showUpdateConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Update") {
+                Task { await updateHermes() }
+            }
+        } message: {
+            Text("This will trigger a Hermes update. The process may take a few minutes depending on your connection.")
         }
     }
 
@@ -166,6 +186,49 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(statusItems) { item in
                         OverviewStatusRow(item: item)
+                    }
+                }
+
+                Divider()
+                    .padding(.vertical, 4)
+
+                HStack(spacing: 12) {
+                    Button {
+                        showRestartConfirmation = true
+                    } label: {
+                        Label("Restart Gateway", systemImage: "arrow.clockwise.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isRestarting || isUpdating)
+
+                    Button {
+                        showUpdateConfirmation = true
+                    } label: {
+                        Label("Update Hermes", systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isRestarting || isUpdating)
+                }
+
+                if isRestarting {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Restarting gateway…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if isUpdating {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Updating Hermes…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -472,6 +535,36 @@ struct OverviewView: View {
         }
 
         return fields
+    }
+
+    private func restartGateway() async {
+        isRestarting = true
+        defer { isRestarting = false }
+        do {
+            let response = try await appState.dashboardAPIService.restartGateway()
+            if response.success {
+                appState.setStatusMessage(response.message ?? "Gateway restarted successfully")
+            } else {
+                appState.setStatusMessage(response.message ?? "Failed to restart gateway")
+            }
+        } catch {
+            appState.setStatusMessage("Gateway restart failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func updateHermes() async {
+        isUpdating = true
+        defer { isUpdating = false }
+        do {
+            let response = try await appState.dashboardAPIService.updateHermes()
+            if response.success {
+                appState.setStatusMessage(response.message ?? "Hermes updated successfully")
+            } else {
+                appState.setStatusMessage(response.message ?? "Failed to update Hermes")
+            }
+        } catch {
+            appState.setStatusMessage("Hermes update failed: \(error.localizedDescription)")
+        }
     }
 }
 
