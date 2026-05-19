@@ -12,6 +12,9 @@ extension AppState {
         chatError = nil
         isStreamingChat = true
 
+        // Capture the index of the user message before appending so we can
+        // remove it by index (not by content match) if the send fails.
+        let userMessageIndex = chatMessages.count
         // Append user message
         chatMessages.append(ChatMessage(role: .user, content: trimmed))
 
@@ -109,15 +112,17 @@ extension AppState {
                     ))
                 } catch {
                     chatError = error.localizedDescription
-                    // Remove the user message we already appended so the conversation is clean
-                    if let userIdx = chatMessages.lastIndex(where: { $0.role == .user && $0.content == trimmed }) {
-                        chatMessages.remove(at: userIdx)
+                    // Remove the user message by the pre-captured index so we
+                    // don't match on content (which could pick the wrong message).
+                    if chatMessages.indices.contains(userMessageIndex) {
+                        chatMessages.remove(at: userMessageIndex)
                     }
                 }
             } else {
                 chatError = error.localizedDescription
-                if let userIdx = chatMessages.lastIndex(where: { $0.role == .user && $0.content == trimmed }) {
-                    chatMessages.remove(at: userIdx)
+                // Remove the user message by the pre-captured index.
+                if chatMessages.indices.contains(userMessageIndex) {
+                    chatMessages.remove(at: userMessageIndex)
                 }
             }
         }

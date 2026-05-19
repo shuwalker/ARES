@@ -81,7 +81,11 @@ final class SSHTunnelService: @unchecked Sendable {
         _localPort = nil
         lock.unlock()
 
-        proc?.terminate()
+        guard let proc else { return }
+        proc.terminate()
+        // Reap the child process on a background thread so we never block the
+        // caller (which may be on the main actor) and avoid leaving a zombie.
+        Task.detached { proc.waitUntilExit() }
     }
 
     // MARK: - Private helpers

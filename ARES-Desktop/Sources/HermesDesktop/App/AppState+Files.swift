@@ -177,7 +177,12 @@ extension AppState {
     func browseWorkspaceDirectory(path: String? = nil) async {
         guard let profile = activeConnection else { return }
         let trimmedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let browsePath = trimmedPath?.isEmpty == false ? trimmedPath! : workspaceFileBrowserDefaultPath
+        let browsePath: String
+        if let trimmedPath, !trimmedPath.isEmpty {
+            browsePath = trimmedPath
+        } else {
+            browsePath = workspaceFileBrowserDefaultPath
+        }
 
         isLoadingWorkspaceFileBrowser = true
         workspaceFileBrowserError = nil
