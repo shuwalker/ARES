@@ -615,8 +615,14 @@ def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
     4. Writes default config
     5. Registers built-in tools
     """
-    from .runtime.launcher import ARES_HOME, HERMES_HOME, find_hermes, install_hermes, hermes_status
-    from .runtime.brain_transport import transport_brain, is_migrated, get_transport_status
+    from ares.runtime.config import ares_home
+    ares_base = ares_home()
+    HERMES_HOME = ares_base / ".hermes"
+
+    # Local helpers so the command works even if launcher.py is gone
+    def _hermes_status():
+        installed = (Path.home() / ".hermes").exists() or HERMES_HOME.exists()
+        return {"installed": installed, "hermes_dir": str(HERMES_HOME), "ares_managed": HERMES_HOME.exists()}
 
     console.print(Panel.fit("[bold]ARES — Autonomous Reasoning & Execution System[/bold]", border_style="bright_blue"))
 
@@ -627,51 +633,30 @@ def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
 
     # Ensure ARES_HOME directories exist
     for subdir in ["memory", "profiles", "workspace", "trajectories", "logs"]:
-        (ARES_HOME / subdir).mkdir(parents=True, exist_ok=True)
-        console.print(f"  ✓ {ARES_HOME / subdir}")
+        (ares_base / subdir).mkdir(parents=True, exist_ok=True)
+        console.print(f"  ✓ {ares_base / subdir}")
 
-    # ── Step 2: Install Hermes ──
+    # ── Step 2: Hermes ──
     if skip_hermes:
         console.print("\n[dim][2/5] Skipping Hermes installation (--skip-hermes)[/dim]")
-        hermes_dir = find_hermes()
-        if hermes_dir:
-            console.print(f"  Using existing: {hermes_dir}")
+        if HERMES_HOME.exists():
+            console.print(f"  Using existing: {HERMES_HOME}")
         else:
             console.print("  [yellow]Warning: No Hermes found. Run 'ares init' without --skip-hermes later.[/yellow]")
     else:
         console.print("\n[bold][2/5] Checking Hermes Agent installation...[/bold]")
-        hermes_dir = find_hermes()
-        if hermes_dir:
-            console.print(f"  [green]✓[/green] Hermes found at {hermes_dir}")
+        if HERMES_HOME.exists():
+            console.print(f"  [green]✓[/green] Hermes found at {HERMES_HOME}")
         else:
-            console.print("  Hermes not found. Installing...")
-            hermes_dir = install_hermes()
-            console.print(f"  [green]✓[/green] Hermes installed at {hermes_dir}")
+            console.print("  [yellow]Hermes not found. Install Hermes Agent manually:[/yellow]")
+            console.print("  [dim]  git clone https://github.com/nousresearch/hermes-agent ~/.hermes[/dim]")
 
-    # ── Step 3: Brain transport ──
-    console.print("\n[bold][3/5] Brain transport — importing Hermes data...[/bold]")
-    if is_migrated() and not force_brain_transport:
-        console.print("  [green]✓[/green] Brain already transported to ~/.ares/.hermes/")
-        transport_status = get_transport_status()
-        if transport_status["legacy_exists"]:
-            console.print(f"  [dim]Legacy data at {transport_status['legacy_dir']} still exists (unchanged)[/dim]")
+    # ── Step 3: Brain transport (legacy — no longer required) ──
+    console.print("\n[bold][3/5] Brain transport — skipped (swappable-backend architecture)[/bold]")
+    if HERMES_HOME.exists():
+        console.print("  [green]✓[/green] HERMES_HOME exists")
     else:
-        transport_status = get_transport_status()
-        if transport_status["legacy_exists"]:
-            console.print("  Copying from ~/.hermes/ → ~/.ares/.hermes/...")
-            result = transport_brain()
-            for item in result["copied"]:
-                console.print(f"  [green]✓[/green] Copied: {item}")
-            for item in result["skipped"]:
-                console.print(f"  [dim]• Skipped: {item}[/dim]")
-            if result["errors"]:
-                console.print("  [red]Errors:[/red]")
-                for err in result["errors"]:
-                    console.print(f"    [red]✗ {err}[/red]")
-            console.print("  [green]✓[/green] Brain transport complete.")
-        else:
-            console.print("  [dim]No legacy ~/.hermes/ found — skipping transport.[/dim]")
-            console.print("  [dim]Fresh install. Hermes will create config on first run.[/dim]")
+        console.print("  [dim]No ~/.ares/.hermes/ — Hermes will create config on first run.[/dim]")
 
     # ── Step 4: Register tools ──
     console.print("\n[bold][4/5] Registering built-in tools...[/bold]")
@@ -682,20 +667,16 @@ def init_cmd(force_brain_transport: bool, skip_hermes: bool) -> None:
 
     # ── Step 5: Status ──
     console.print("\n[bold][5/5] Installation status:[/bold]")
-    status = hermes_status()
+    status = _hermes_status()
     console.print(f"  Hermes installed: {'[green]✓[/green]' if status['installed'] else '[red]✗[/red]'}")
-    if status["installed"]:
+    if status['installed']:
         console.print(f"  Hermes location: {status['hermes_dir']}")
-        console.print(
-            f"  ARES-managed: {'[green]✓[/green]' if status['ares_managed'] else '[yellow]legacy install[/yellow]'}"
-        )
-    console.print(f"  HERMES_HOME: {status['hermes_home']}")
-    console.print(f"  Config: {status['hermes_home_has_config'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
-    console.print(f"  Skills: {status['hermes_home_has_skills'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
-    console.print(f"  State: {status['hermes_home_has_state'] and '[green]✓[/green]' or '[yellow]pending[/yellow]'}")
+        console.print(f"  ARES-managed: {'[green]✓[/green]' if status['ares_managed'] else '[yellow]legacy install[/yellow]'}")
+    console.print(f"  HERMES_HOME: {HERMES_HOME}")
+    console.print(f"  Config: {'[green]✓[/green]' if HERMES_HOME.exists() else '[yellow]pending[/yellow]'}")
 
     console.print("\n[bold green]ARES initialized.[/bold green]")
-    console.print(f"Home: {ARES_HOME}")
+    console.print(f"Home: {ares_base}")
     console.print(f"Config: {paths['config'] / 'ares.toml'}")
     console.print(f"Memory: {paths['memory']}")
     console.print(f"HERMES_HOME: {HERMES_HOME}")
@@ -731,7 +712,9 @@ def shell(model: str | None) -> None:
     This launches the Hermes CLI pointed at ~/.ares/.hermes/ so it uses
     ARES's brain (config, skills, sessions, API keys).
     """
-    from .runtime.launcher import HERMES_HOME, start_hermes
+    from ares.runtime.config import ares_home
+    ares_base = ares_home()
+    HERMES_HOME = ares_base / ".hermes"
 
     env_hermes_home = os.environ.get("HERMES_HOME")
     if env_hermes_home and env_hermes_home != str(HERMES_HOME):
@@ -746,8 +729,13 @@ def shell(model: str | None) -> None:
     console.print("[dim]Launching Hermes CLI...[/dim]\n")
 
     try:
-        proc = start_hermes(extra_args=args)
-        proc.wait()
+        cmd = ["hermes"]
+        if model:
+            cmd.extend(["--model", model])
+        proc = subprocess.run(cmd)
+    except FileNotFoundError:
+        console.print(f"[red]Hermes CLI not found in PATH.[/red]")
+        console.print("Run [bold]ares init[/bold] first to install Hermes.")
     except KeyboardInterrupt:
         console.print("\n[dim]Shell exited.[/dim]")
     except RuntimeError as e:
@@ -821,45 +809,32 @@ def mcp(verbose: bool) -> None:
 @main.command()
 def doctor() -> None:
     """Check health of all ARES components."""
-    from .runtime.launcher import hermes_status, HERMES_HOME
-    from .runtime.brain_transport import get_transport_status
+    from ares.runtime.config import ares_home
+
+    ares_base = ares_home()
+    HERMES_HOME = ares_base / ".hermes"
 
     console.print(Panel.fit("[bold]ARES Health Check[/bold]", border_style="bright_blue"))
 
     # Hermes
-    h_status = hermes_status()
+    installed = (Path.home() / ".hermes").exists() or HERMES_HOME.exists()
     console.print("\n[bold]Hermes Agent[/bold]")
-    console.print(f"  Installed: {'[green]✓[/green]' if h_status['installed'] else '[red]✗[/red]'}")
-    if h_status["installed"]:
-        console.print(f"  Location: {h_status['hermes_dir']}")
-        console.print(
-            f"  ARES-managed: {'[green]✓[/green]' if h_status['ares_managed'] else '[yellow]legacy[/yellow]'}"
-        )
-        console.print(f"  Venv: {'[green]✓[/green]' if h_status.get('venv_exists') else '[red]✗[/red]'}")
-
-    # HERMES_HOME
-    console.print(f"\n[bold]HERMES_HOME ({HERMES_HOME})[/bold]")
-    console.print(f"  Config: {'[green]✓[/green]' if h_status['hermes_home_has_config'] else '[red]✗[/red]'}")
-    console.print(f"  Skills: {'[green]✓[/green]' if h_status['hermes_home_has_skills'] else '[red]✗[/red]'}")
-    console.print(f"  State: {'[green]✓[/green]' if h_status['hermes_home_has_state'] else '[red]✗[/red]'}")
-
-    # Brain transport
-    t_status = get_transport_status()
-    console.print("\n[bold]Brain Transport[/bold]")
-    console.print(f"  Migrated: {'[green]✓[/green]' if t_status['is_migrated'] else '[yellow]pending[/yellow]'}")
-    console.print(f"  Legacy ~/.hermes/ exists: {'[green]✓[/green]' if t_status['legacy_exists'] else '[dim]no[/dim]'}")
-    if t_status["legacy_items"]:
-        for item in t_status["legacy_items"]:
-            console.print(f"    {item}")
+    console.print(f"  Installed: {'[green]✓[/green]' if installed else '[red]✗[/red]'}")
+    if installed:
+        console.print(f"  Location: {HERMES_HOME}")
+        console.print(f"  ARES-managed: {'[green]✓[/green]' if HERMES_HOME.exists() else '[yellow]legacy[/yellow]'}")
 
     # ARES directories
-    from .runtime.launcher import ARES_HOME
-
-    console.print(f"\n[bold]ARES Home ({ARES_HOME})[/bold]")
+    console.print(f"\n[bold]ARES Home ({ares_base})[/bold]")
     for subdir in ["memory", "profiles", "workspace", "logs", "config"]:
-        path = ARES_HOME / subdir
+        path = ares_base / subdir
         exists = path.exists()
         console.print(f"  {subdir}: {'[green]✓[/green]' if exists else '[yellow]missing[/yellow]'}")
+
+    # Daemon socket
+    sock_path = ares_base / "ares.sock"
+    console.print(f"\n[bold]Daemon[/bold]")
+    console.print(f"  Socket: {'[green]✓[/green]' if sock_path.exists() else '[yellow]not running[/yellow]'}")
 
 
 # ---------------------------------------------------------------------------
