@@ -276,7 +276,7 @@ struct RootView: View {
         if appState.activeConnection == nil {
             return [.connections]
         }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .swarm, .files, .usage, .analytics, .jobs, .mcp, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
+        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .swarm, .conductor, .operations, .crewStatus, .files, .usage, .analytics, .jobs, .mcp, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -379,11 +379,11 @@ struct RootView: View {
         case .swarm:
             SwarmView()
         case .conductor:
-            EmptyView()
+            ConductorView()
         case .operations:
-            EmptyView()
+            OperationsView()
         case .crewStatus:
-            EmptyView()
+            CrewStatusView()
         }
     }
 }
