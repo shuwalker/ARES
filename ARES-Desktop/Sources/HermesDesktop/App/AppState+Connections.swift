@@ -25,6 +25,19 @@ extension AppState {
     }
 
     func startTunnelIfNeeded(for profile: ConnectionProfile) async {
+        // Direct HTTP path — no SSH tunnel needed.
+        if profile.transportMode == .directHTTP {
+            tunnelService.stop()
+            dashboardAPIService.baseURL = profile.directHTTPBaseURL
+            do {
+                _ = try await dashboardAPIService.fetchStatus()
+            } catch {
+                // Connectivity check failed; status message will surface this.
+                setStatusMessage(L10n.string("Direct HTTP connection to %@ failed: %@", profile.label, error.localizedDescription))
+            }
+            return
+        }
+
         guard profile.transportKind == .ssh else {
             tunnelService.stop()
             dashboardAPIService.baseURL = profile.dashboardURL

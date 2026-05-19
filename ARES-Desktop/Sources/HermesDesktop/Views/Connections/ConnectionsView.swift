@@ -8,6 +8,8 @@ struct ConnectionsView: View {
     @State private var isPresentingEditor = false
     @State private var editingExistingConnection = false
     @State private var isPresentingHealthPanel = false
+    @State private var isPresentingDiscovery = false
+    @State private var copyToastConnection: UUID?
 
     var body: some View {
         HermesPageContainer(width: .standard) {
@@ -23,6 +25,14 @@ struct ConnectionsView: View {
                     }
                     .buttonStyle(.bordered)
                     .help(L10n.string("Run connection health checks"))
+
+                    Button {
+                        isPresentingDiscovery = true
+                    } label: {
+                        Label(L10n.string("Discover"), systemImage: "magnifyingglass")
+                    }
+                    .buttonStyle(.bordered)
+                    .help(L10n.string("Scan for nearby Hermes instances"))
 
                     Button {
                         presentEditor(for: ConnectionProfile(), isEditing: false)
@@ -41,12 +51,21 @@ struct ConnectionsView: View {
                                 description: Text(L10n.string("Create your first SSH profile to connect ARES to a Raspberry Pi, another Mac, a VPS, or this Mac via localhost."))
                             )
 
-                            Button {
-                                presentEditor(for: ConnectionProfile(), isEditing: false)
-                            } label: {
-                                Label(L10n.string("Add First Host"), systemImage: "plus")
+                            HStack(spacing: 12) {
+                                Button {
+                                    isPresentingDiscovery = true
+                                } label: {
+                                    Label(L10n.string("Find Hermes…"), systemImage: "magnifyingglass")
+                                }
+                                .buttonStyle(.borderedProminent)
+
+                                Button {
+                                    presentEditor(for: ConnectionProfile(), isEditing: false)
+                                } label: {
+                                    Label(L10n.string("Add Manually"), systemImage: "plus")
+                                }
+                                .buttonStyle(.bordered)
                             }
-                            .buttonStyle(.borderedProminent)
                         }
                         .frame(maxWidth: .infinity, minHeight: 280)
                     }
@@ -82,6 +101,12 @@ struct ConnectionsView: View {
             ConnectionHealthView()
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $isPresentingDiscovery) {
+            HermesDiscoveryView { profile in
+                presentEditor(for: profile, isEditing: false)
+            }
+            .environmentObject(appState)
+        }
         .onAppear {
             presentPendingNewConnectionEditorIfNeeded()
         }
@@ -100,10 +125,14 @@ struct ConnectionsView: View {
                     ConnectionCard(
                         connection: connection,
                         isActive: appState.activeConnectionID == connection.id,
+                        showsCopiedToast: copyToastConnection == connection.id,
                         onConnect: { appState.connect(to: connection) },
                         onTest: { appState.testConnection(connection) },
                         onEdit: {
                             presentEditor(for: connection, isEditing: true)
+                        },
+                        onShare: {
+                            shareInvite(for: connection)
                         },
                         onDelete: { appState.deleteConnection(connection) }
                     )
@@ -168,6 +197,22 @@ struct ConnectionsView: View {
         presentEditor(for: ConnectionProfile(), isEditing: false)
         appState.consumeNewConnectionEditorRequest(requestID)
     }
+
+    private func shareInvite(for connection: ConnectionProfile) {
+        let code = ConnectionInviteService.generate(from: connection)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+
+        copyToastConnection = connection.id
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run {
+                if copyToastConnection == connection.id {
+                    copyToastConnection = nil
+                }
+            }
+        }
+    }
 }
 
 private struct GuideRow: View {
@@ -190,9 +235,11 @@ private struct GuideRow: View {
 private struct ConnectionCard: View {
     let connection: ConnectionProfile
     let isActive: Bool
+    let showsCopiedToast: Bool
     let onConnect: () -> Void
     let onTest: () -> Void
     let onEdit: () -> Void
+    let onShare: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -217,10 +264,14 @@ private struct ConnectionCard: View {
                             HermesBadge(text: "Active", tint: .accentColor)
                         }
 
-                        HermesBadge(
-                            text: connection.trimmedAlias != nil ? "Alias" : "Direct host",
-                            tint: .secondary
-                        )
+                        if connection.transportMode == .directHTTP {
+                            HermesBadge(text: "Direct HTTP", tint: .orange)
+                        } else {
+                            HermesBadge(
+                                text: connection.trimmedAlias != nil ? "Alias" : "Direct host",
+                                tint: .secondary
+                            )
+                        }
                     }
                 }
 
@@ -273,6 +324,16 @@ private struct ConnectionCard: View {
 
             Button(L10n.string("Edit"), action: onEdit)
                 .buttonStyle(.bordered)
+
+            Button(action: onShare) {
+                if showsCopiedToast {
+                    Label(L10n.string("Copied!"), systemImage: "checkmark")
+                } else {
+                    Label(L10n.string("Share"), systemImage: "square.and.arrow.up")
+                }
+            }
+            .buttonStyle(.bordered)
+            .help(L10n.string("Copy invite code to clipboard"))
         }
     }
 

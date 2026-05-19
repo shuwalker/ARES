@@ -331,9 +331,10 @@ final class AppState: ObservableObject {
     }
 
     /// True when the dashboard API is reachable — either the connection is local,
-    /// or an SSH tunnel has been established and its local port is known.
+    /// direct HTTP (LAN) transport is configured, or an SSH tunnel has been established.
     var dashboardAPIAvailable: Bool {
         guard let connection = activeConnection else { return false }
+        if connection.transportMode == .directHTTP { return true }
         return connection.transportKind == .local || tunnelService.localPort != nil
     }
 
