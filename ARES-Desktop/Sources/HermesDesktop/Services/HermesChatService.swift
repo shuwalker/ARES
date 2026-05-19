@@ -16,6 +16,7 @@ final class HermesChatService: @unchecked Sendable {
         sessionID: String?,
         baseURL: URL,
         thinkingBudgetTokens: Int? = nil,
+        fastMode: Bool = false,
         onChunk: @escaping @Sendable (String) -> Void,
         onSessionID: @escaping @Sendable (String) -> Void,
         onToolCall: (@escaping @Sendable (ChatToolCall) -> Void)? = nil,
@@ -26,6 +27,9 @@ final class HermesChatService: @unchecked Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        if fastMode {
+            request.setValue("true", forHTTPHeaderField: "X-Fast-Mode")
+        }
 
         var bodyObject: [String: Any] = [
             "model": "current",
@@ -37,6 +41,9 @@ final class HermesChatService: @unchecked Sendable {
         }
         if let budget = thinkingBudgetTokens {
             bodyObject["thinking"] = ["type": "enabled", "budget_tokens": budget]
+        }
+        if fastMode {
+            bodyObject["fast_mode"] = true
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: bodyObject)
 

@@ -3,7 +3,7 @@ import Foundation
 extension AppState {
     // MARK: - Streaming chat
 
-    func streamChatMessage(_ prompt: String) async {
+    func streamChatMessage(_ prompt: String, fastMode: Bool = false) async {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isStreamingChat else { return }
 
@@ -31,6 +31,7 @@ extension AppState {
                 sessionID: chatSessionID,
                 baseURL: baseURL,
                 thinkingBudgetTokens: budgetTokens,
+                fastMode: fastMode,
                 onChunk: { [weak self] delta in
                     Task { @MainActor [weak self] in
                         guard let self else { return }

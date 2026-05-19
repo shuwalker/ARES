@@ -1,5 +1,71 @@
 import SwiftUI
 
+// MARK: - DiffCodeBlockView
+
+struct DiffCodeBlockView: View {
+    let code: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(code.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                Text(line.isEmpty ? " " : line)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(lineColor(for: line))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        }
+        .textSelection(.enabled)
+    }
+
+    private func lineColor(for line: String) -> Color {
+        if line.hasPrefix("+") { return .green }
+        if line.hasPrefix("-") { return .red }
+        if line.hasPrefix("@@") { return Color(nsColor: .systemPurple) }
+        return .primary
+    }
+}
+
+// MARK: - Markdown diff/patch block parser
+
+/// Parses a markdown-style fenced code block with a diff or patch language tag from the
+/// beginning of `text`. Returns the code content and the remainder of the string, or nil
+/// if no such block is found at the start.
+private func parseDiffBlock(from text: String) -> (code: String, remainder: String)? {
+    // Match ``` followed by diff or patch (case-insensitive), then a newline
+    let lines = text.components(separatedBy: "\n")
+    guard let firstLine = lines.first else { return nil }
+    let tag = firstLine.trimmingCharacters(in: .whitespaces).lowercased()
+    guard tag == "```diff" || tag == "```patch" else { return nil }
+
+    // Find the closing ```
+    var codeLines: [String] = []
+    var closingIndex: Int? = nil
+    for i in 1..<lines.count {
+        if lines[i].trimmingCharacters(in: .whitespaces) == "```" {
+            closingIndex = i
+            break
+        }
+        codeLines.append(lines[i])
+    }
+
+    guard let closing = closingIndex else {
+        // Unclosed block — treat everything after the opening as code (streaming)
+        let code = Array(lines.dropFirst()).joined(separator: "\n")
+        return (code: code, remainder: "")
+    }
+
+    let code = codeLines.joined(separator: "\n")
+    let remainder = Array(lines[(closing + 1)...]).joined(separator: "\n")
+    return (code: code, remainder: remainder)
+}
+
 // MARK: - StreamingChatMessageRow
 
 struct StreamingChatMessageRow: View {
@@ -114,17 +180,79 @@ struct StreamingChatMessageRow: View {
 
     @ViewBuilder
     private var assistantBubble: some View {
-        Text(message.content + (message.isStreaming ? "\u{258A}" : ""))
-            .font(.body)
-            .textSelection(.enabled)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        let fullText = message.content + (message.isStreaming ? "\u{258A}" : "")
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(assistantSegments(from: fullText).enumerated()), id: \.offset) { _, segment in
+                switch segment {
+                case .text(let t):
+                    if !t.isEmpty {
+                        Text(t)
+                            .font(.body)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                case .diff(let code):
+                    DiffCodeBlockView(code: code)
+                }
             }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        }
+    }
+
+    private enum AssistantSegment {
+        case text(String)
+        case diff(String)
+    }
+
+    private func assistantSegments(from text: String) -> [AssistantSegment] {
+        var segments: [AssistantSegment] = []
+        var remaining = text
+
+        while !remaining.isEmpty {
+            // Look for the next diff/patch fence
+            let lines = remaining.components(separatedBy: "\n")
+            var fenceLineIndex: Int? = nil
+            for (i, line) in lines.enumerated() {
+                let tag = line.trimmingCharacters(in: .whitespaces).lowercased()
+                if tag == "```diff" || tag == "```patch" {
+                    fenceLineIndex = i
+                    break
+                }
+            }
+
+            guard let fenceIdx = fenceLineIndex else {
+                // No more diff blocks
+                segments.append(.text(remaining))
+                break
+            }
+
+            // Emit text before the fence
+            let beforeLines = Array(lines[..<fenceIdx])
+            let beforeText = beforeLines.joined(separator: "\n")
+            if !beforeText.isEmpty {
+                segments.append(.text(beforeText))
+            }
+
+            // Try to parse a diff block starting at fenceIdx
+            let fromFence = Array(lines[fenceIdx...]).joined(separator: "\n")
+            if let parsed = parseDiffBlock(from: fromFence) {
+                segments.append(.diff(parsed.code))
+                remaining = parsed.remainder
+            } else {
+                // Could not parse — emit the fence line as text and continue
+                segments.append(.text(lines[fenceIdx]))
+                remaining = Array(lines[(fenceIdx + 1)...]).joined(separator: "\n")
+            }
+        }
+
+        return segments
     }
 }
 

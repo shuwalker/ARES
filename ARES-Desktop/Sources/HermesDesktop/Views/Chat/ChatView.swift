@@ -476,9 +476,11 @@ struct ChatView: View {
     private var canSend: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !appState.isStreamingChat
+            && !isComposing
     }
 
     private func sendMessage() {
+        guard !isComposing else { return }
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !appState.isStreamingChat else { return }
 
@@ -500,11 +502,22 @@ struct ChatView: View {
             return
         }
 
+        // Prepend to input history (keep last 50, no consecutive duplicates)
+        if inputHistory.first != trimmed {
+            inputHistory.insert(trimmed, at: 0)
+            if inputHistory.count > 50 {
+                inputHistory = Array(inputHistory.prefix(50))
+            }
+        }
+        historyIndex = -1
+        draftText = ""
+
         inputText = ""
         showSlashPopover = false
 
+        let currentFastMode = fastMode
         Task {
-            await appState.streamChatMessage(trimmed)
+            await appState.streamChatMessage(trimmed, fastMode: currentFastMode)
         }
     }
 }
