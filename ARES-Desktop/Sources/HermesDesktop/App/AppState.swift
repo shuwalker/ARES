@@ -120,6 +120,8 @@ final class AppState: ObservableObject {
     @Published var isCheckingForUpdates = false
     @Published var isDesktopPetMode = false
     @Published var isSearchVisible = false
+    /// A prompt string set by WorkflowPresetsView to pre-populate the chat input when switching to the chat section.
+    @Published var pendingChatInput: String? = nil
 
     // MARK: - Soul
     @Published var soulContent: String?

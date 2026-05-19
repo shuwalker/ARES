@@ -79,6 +79,18 @@ struct ChatView: View {
             appState.chatSessionID = nil
             appState.chatError = nil
         }
+        .onAppear {
+            if let pending = appState.pendingChatInput {
+                inputText = pending
+                appState.pendingChatInput = nil
+            }
+        }
+        .onChange(of: appState.pendingChatInput) { _, pending in
+            if let pending {
+                inputText = pending
+                appState.pendingChatInput = nil
+            }
+        }
     }
 
     // MARK: - Toolbar
