@@ -172,8 +172,8 @@ struct LogsView: View {
     // MARK: - Data Loading
 
     private func loadLogs() async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else {
-            errorMessage = "Logs require a local Hermes connection."
+        guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
+            errorMessage = "Logs require a local Hermes connection or an active SSH tunnel."
             return
         }
 

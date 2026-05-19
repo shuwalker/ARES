@@ -105,8 +105,24 @@ final class AppState: ObservableObject {
     @Published var isCheckingForUpdates = false
     @Published var isDesktopPetMode = false
 
+    // MARK: - Soul
+    @Published var soulContent: String?
+    @Published var isSavingSoul = false
+    @Published var soulError: String?
+
+    // MARK: - Memory
+    @Published var memoryEntries: [MemoryEntry] = []
+    @Published var isLoadingMemory = false
+    @Published var memoryError: String?
+
+    // MARK: - Tools
+    @Published var tools: [ToolSummary] = []
+    @Published var isLoadingTools = false
+    @Published var toolsError: String?
+
     let connectionStore: ConnectionStore
     let dashboardAPIService: DashboardAPIService
+    let tunnelService = SSHTunnelService()
     let sshTransport: SSHTransport
     let httpTransport: HTTPTransport
     let webSocketTransport: WebSocketTransport
@@ -120,6 +136,7 @@ final class AppState: ObservableObject {
     let kanbanBrowserService: KanbanBrowserService
     let secondBrainService: SecondBrainService
     let youtubePipelineService: YouTubePipelineService
+    let soulService: SoulService
     let updateCheckService: UpdateCheckService
     let terminalWorkspace: TerminalWorkspaceStore
     let workflowLaunchDiagnostics: WorkflowLaunchDiagnostics
@@ -176,6 +193,7 @@ final class AppState: ObservableObject {
         self.kanbanBrowserService = KanbanBrowserService(sshTransport: sshTransport)
         self.secondBrainService = SecondBrainService(sshTransport: sshTransport)
         self.youtubePipelineService = YouTubePipelineService(sshTransport: sshTransport)
+        self.soulService = SoulService(sshTransport: sshTransport)
         self.updateCheckService = updateCheckService
         self.workflowLaunchDiagnostics = workflowLaunchDiagnostics
 
@@ -193,8 +211,13 @@ final class AppState: ObservableObject {
         connectionStore.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
-                if let active = self?.activeConnection {
-                    self?.dashboardAPIService.baseURL = active.dashboardURL
+                if let self, let active = self.activeConnection {
+                    // If an SSH tunnel is active, keep using the tunneled URL.
+                    if let tunnelPort = self.tunnelService.localPort {
+                        self.dashboardAPIService.baseURL = active.tunneledDashboardURL(localPort: tunnelPort)
+                    } else {
+                        self.dashboardAPIService.baseURL = active.dashboardURL
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -220,6 +243,13 @@ final class AppState: ObservableObject {
     var activeConnection: ConnectionProfile? {
         guard let activeConnectionID else { return nil }
         return connectionStore.connections.first(where: { $0.id == activeConnectionID })
+    }
+
+    /// True when the dashboard API is reachable — either the connection is local,
+    /// or an SSH tunnel has been established and its local port is known.
+    var dashboardAPIAvailable: Bool {
+        guard let connection = activeConnection else { return false }
+        return connection.transportKind == .local || tunnelService.localPort != nil
     }
 
     var selectedKanbanBoard: KanbanProject? {
@@ -308,7 +338,7 @@ final class AppState: ObservableObject {
             return !isLoadingUsage && !isRefreshingUsage && !isLoadingAnalytics && !isRefreshingAnalytics
         case .skills:
             return !isLoadingSkills && !isRefreshingSkills
-        case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs:
+        case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             return false
         }
     }
@@ -325,7 +355,7 @@ final class AppState: ObservableObject {
         switch selectedSection {
         case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles, .plugins:
             return true
-        case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim, .docs:
+        case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim, .docs, .chat, .memory, .soul, .tools, .office:
             return false
         }
     }
@@ -411,7 +441,7 @@ final class AppState: ObservableObject {
             await refreshAnalytics()
         case .skills:
             await refreshSkills()
-        case .secondBrain, .youtubePipeline, .physicsSim, .docs:
+        case .secondBrain, .youtubePipeline, .physicsSim, .docs, .chat, .memory, .soul, .tools, .office:
             break
         case .connections, .files, .terminal, .avatar, .models, .config, .logs, .keys, .profiles, .plugins:
             break
@@ -495,7 +525,29 @@ final class AppState: ObservableObject {
         setStatusMessage(L10n.string("Connecting to %@…", profile.label))
 
         Task {
+            await startTunnelIfNeeded(for: profile)
             await prepareWorkspaceForActiveConnection()
+        }
+    }
+
+    private func startTunnelIfNeeded(for profile: ConnectionProfile) async {
+        guard profile.transportKind == .ssh else {
+            tunnelService.stop()
+            dashboardAPIService.baseURL = profile.dashboardURL
+            return
+        }
+
+        do {
+            try await tunnelService.start(connection: profile)
+            if let port = tunnelService.localPort {
+                dashboardAPIService.baseURL = profile.tunneledDashboardURL(localPort: port)
+            } else {
+                // Fallback: tunnel started but port not captured — use direct URL.
+                dashboardAPIService.baseURL = profile.dashboardURL
+            }
+        } catch {
+            // Tunnel failed — fall back to direct dashboard URL (will only work if not firewalled).
+            dashboardAPIService.baseURL = profile.dashboardURL
         }
     }
 
@@ -523,6 +575,7 @@ final class AppState: ObservableObject {
         setStatusMessage(L10n.string("Refreshing %@…", normalized.label))
 
         Task {
+            await startTunnelIfNeeded(for: normalized)
             await prepareWorkspaceForActiveConnection()
         }
     }
@@ -2403,7 +2456,7 @@ final class AppState: ObservableObject {
             ensureTerminalSession()
         case .connections:
             break
-        case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles, .docs:
+        case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
     }
@@ -2484,6 +2537,9 @@ final class AppState: ObservableObject {
         resetWorkspaceStateForConnectionChange(closeTerminalTabs: false)
         selectedSection = section
         setStatusMessage(statusMessage)
+        if let profile = activeConnection {
+            await startTunnelIfNeeded(for: profile)
+        }
         await prepareWorkspaceForActiveConnection()
         await reloadSectionAfterScopeChange(section)
     }
@@ -2512,7 +2568,7 @@ final class AppState: ObservableObject {
             await loadSkills(reset: true)
         case .terminal:
             ensureTerminalSession()
-        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs:
+        case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
     }
@@ -2790,6 +2846,7 @@ final class AppState: ObservableObject {
     }
 
     private func resetWorkspaceStateForConnectionChange(closeTerminalTabs: Bool = true) {
+        tunnelService.stop()
         isBusy = false
         connectionTestRequestID = nil
         overview = nil
@@ -2888,6 +2945,104 @@ final class AppState: ObservableObject {
                 guard let self, self.statusMessage == message else { return }
                 self.statusMessage = nil
             }
+        }
+    }
+
+    // MARK: - Soul
+
+    func loadSoul() async {
+        guard let connection = activeConnection else { return }
+        soulError = nil
+        do {
+            let content = try await soulService.fetchSoul(connection: connection)
+            guard isActiveWorkspace(connection) else { return }
+            soulContent = content
+        } catch {
+            guard isActiveWorkspace(connection) else { return }
+            soulError = error.localizedDescription
+        }
+    }
+
+    func saveSoul(_ content: String) async {
+        guard let connection = activeConnection else { return }
+        isSavingSoul = true
+        soulError = nil
+        do {
+            try await soulService.saveSoul(content, connection: connection)
+            guard isActiveWorkspace(connection) else { return }
+            soulContent = content
+            isSavingSoul = false
+        } catch {
+            guard isActiveWorkspace(connection) else { return }
+            isSavingSoul = false
+            soulError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Memory
+
+    func loadMemory() async {
+        isLoadingMemory = true
+        memoryError = nil
+        do {
+            let response = try await dashboardAPIService.fetchMemory()
+            memoryEntries = response.entries
+            isLoadingMemory = false
+        } catch {
+            isLoadingMemory = false
+            memoryError = error.localizedDescription
+        }
+    }
+
+    func deleteMemoryEntry(id: String) async {
+        do {
+            try await dashboardAPIService.deleteMemoryEntry(id: id)
+            memoryEntries.removeAll { $0.id == id }
+        } catch {
+            memoryError = error.localizedDescription
+        }
+    }
+
+    func updateMemoryEntry(id: String, content: String) async {
+        do {
+            try await dashboardAPIService.updateMemoryEntry(id: id, content: content)
+            if let idx = memoryEntries.firstIndex(where: { $0.id == id }) {
+                let old = memoryEntries[idx]
+                memoryEntries[idx] = MemoryEntry(
+                    id: old.id,
+                    content: content,
+                    createdAt: old.createdAt,
+                    source: old.source
+                )
+            }
+        } catch {
+            memoryError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Tools
+
+    func loadTools() async {
+        isLoadingTools = true
+        toolsError = nil
+        do {
+            let response = try await dashboardAPIService.fetchTools()
+            tools = response.tools
+            isLoadingTools = false
+        } catch {
+            isLoadingTools = false
+            toolsError = error.localizedDescription
+        }
+    }
+
+    func setToolEnabled(name: String, enabled: Bool) async {
+        do {
+            try await dashboardAPIService.setToolEnabled(name: name, enabled: enabled)
+            if let idx = tools.firstIndex(where: { $0.name == name }) {
+                tools[idx].enabled = enabled
+            }
+        } catch {
+            toolsError = error.localizedDescription
         }
     }
 }
