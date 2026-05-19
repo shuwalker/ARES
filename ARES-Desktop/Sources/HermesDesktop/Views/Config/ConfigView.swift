@@ -1,5 +1,14 @@
 import SwiftUI
 
+// MARK: - Config Tab Enum
+
+private enum ConfigTab: String, CaseIterable {
+    case general = "General"
+    case providers = "Providers"
+    case models = "Models"
+    case memory = "Memory"
+}
+
 struct ConfigView: View {
     @EnvironmentObject private var appState: AppState
     @State private var configDict: [String: JSONValue] = [:]
@@ -11,6 +20,19 @@ struct ConfigView: View {
     @State private var isSaving = false
     @State private var saveMessage: String?
     @State private var searchText = ""
+    @State private var selectedTab: ConfigTab = .general
+
+    // Providers tab state
+    @State private var providers: [ProviderEntry] = ProviderEntry.defaults
+    @State private var showAddProviderSheet = false
+
+    // Models tab state
+    @State private var defaultModel: String = ""
+    @State private var fallbackChain: [String] = []
+
+    // Memory tab state
+    @State private var embeddingProvider: String = ""
+    @State private var memoryConsolidation: Bool = false
 
     private let categories: [ConfigCategory] = [
         ConfigCategory(name: "General", icon: "gearshape", fields: []),
@@ -36,12 +58,20 @@ struct ConfigView: View {
                 HermesPageHeader(
                     title: "Config",
                     subtitle: "View and edit the Hermes configuration. Changes take effect after session reset or gateway restart."
-                )
+                ) {
+                    Picker("Section", selection: $selectedTab) {
+                        ForEach(ConfigTab.allCases, id: \.self) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 320)
+                }
 
-                configContent
+                tabContent
             }
             .overlay(alignment: .topTrailing) {
-                if isLoading && configDict.isEmpty {
+                if isLoading && configDict.isEmpty && selectedTab == .general {
                     HermesLoadingOverlay()
                         .padding(18)
                 }
@@ -49,6 +79,20 @@ struct ConfigView: View {
         }
         .task(id: appState.activeConnectionID) {
             await loadConfig()
+        }
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .general:
+            configContent
+        case .providers:
+            providersTabContent
+        case .models:
+            modelsTabContent
+        case .memory:
+            memoryTabContent
         }
     }
 
