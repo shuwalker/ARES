@@ -425,7 +425,7 @@ private struct SessionCardRow: View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: onSelect) {
                 content
-                    .padding(.trailing, 34)
+                    .padding(.trailing, (isSelected || isHovering) ? 64 : 34)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
                     .frame(maxWidth: .infinity, alignment: .leading)

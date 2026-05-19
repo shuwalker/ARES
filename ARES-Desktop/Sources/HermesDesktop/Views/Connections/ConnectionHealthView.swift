@@ -186,25 +186,25 @@ struct ConnectionHealthView: View {
         let hasConnection = appState.activeConnection != nil
 
         // 1. SSH Reachability
-        await setStatus(for: "ssh_reachability", status: runSSHReachabilityCheck())
+        setStatus(for: "ssh_reachability", status: runSSHReachabilityCheck())
 
         // 2. Dashboard API
-        await setStatus(for: "dashboard_api", status: await runDashboardAPICheck(hasTunnel: hasTunnel))
+        setStatus(for: "dashboard_api", status: await runDashboardAPICheck(hasTunnel: hasTunnel))
 
         // 3. Port 9119 Tunnel
-        await setStatus(for: "port_tunnel", status: runTunnelCheck(tunnelPort: tunnelPort))
+        setStatus(for: "port_tunnel", status: runTunnelCheck(tunnelPort: tunnelPort))
 
         // 4. Python Bridge
-        await setStatus(for: "python_bridge", status: await runPythonBridgeCheck(hasConnection: hasConnection))
+        setStatus(for: "python_bridge", status: await runPythonBridgeCheck(hasConnection: hasConnection))
 
         // 5. Disk Space — parsed from /api/status response
         // 6. Hermes Version — parsed from /api/status response
         let (diskStatus, versionStatus) = await runStatusChecks(hasTunnel: hasTunnel)
-        await setStatus(for: "disk_space", status: diskStatus)
-        await setStatus(for: "hermes_version", status: versionStatus)
+        setStatus(for: "disk_space", status: diskStatus)
+        setStatus(for: "hermes_version", status: versionStatus)
     }
 
-    private func setStatus(for id: String, status: HealthStatus) async {
+    private func setStatus(for id: String, status: HealthStatus) {
         if let index = checks.firstIndex(where: { $0.id == id }) {
             checks[index].status = status
         }
