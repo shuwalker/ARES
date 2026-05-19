@@ -453,6 +453,7 @@ struct ChatView: View {
 
 private struct StreamingChatMessageRow: View {
     let message: ChatMessage
+    @State private var isThinkingExpanded = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -474,6 +475,14 @@ private struct StreamingChatMessageRow: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
 
+                    // Extended thinking block
+                    if let thinking = message.thinkingContent {
+                        thinkingBlock(thinking: thinking)
+                    } else if message.isStreaming {
+                        // Pulsing "Thinking…" while no thinking content yet and streaming
+                        streamingThinkingLabel
+                    }
+
                     // Tool calls above assistant text
                     if !message.toolCalls.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
@@ -488,6 +497,67 @@ private struct StreamingChatMessageRow: View {
 
                 Spacer(minLength: 40)
             }
+        }
+    }
+
+    // Animated label shown only while the stream is active and no thinking text yet arrived
+    @ViewBuilder
+    private var streamingThinkingLabel: some View {
+        EmptyView()
+    }
+
+    @ViewBuilder
+    private func thinkingBlock(thinking: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header / toggle row
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isThinkingExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "brain")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text(message.isStreaming ? L10n.string("Thinking\u{2026}") : L10n.string("Claude's thinking"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    if message.isStreaming {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.7)
+                    }
+                    Spacer()
+                    if !message.isStreaming {
+                        Image(systemName: isThinkingExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+            .disabled(message.isStreaming)
+
+            if isThinkingExpanded && !message.isStreaming {
+                ScrollView {
+                    Text(thinking)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(maxHeight: 200)
+                .background(Color.secondary.opacity(0.05))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
         }
     }
 

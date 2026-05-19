@@ -136,6 +136,17 @@ final class AppState: ObservableObject {
     // MARK: - Tool Approvals
     @Published var pendingApprovals: [ToolApprovalRequest] = []
 
+    // MARK: - Jobs (Dashboard Cron Jobs)
+    @Published var dashboardCronJobs: [DashboardCronJob] = []
+    @Published var isLoadingDashboardCronJobs = false
+    @Published var dashboardCronJobsError: String?
+
+    // MARK: - MCP Servers
+    @Published var mcpServers: [MCPServer] = []
+    @Published var mcpMarketplaceItems: [MCPMarketplaceItem] = []
+    @Published var isLoadingMCP = false
+    @Published var mcpError: String?
+
     // MARK: - Dashboard Analytics (Feature 1)
     @Published var dashboardOverview: DashboardOverview?
     @Published var isLoadingDashboard = false
@@ -366,8 +377,14 @@ final class AppState: ObservableObject {
             return !isLoadingYouTube && !isRefreshingYouTube && !isOperatingOnYouTube
         case .usage:
             return !isLoadingUsage && !isRefreshingUsage && !isLoadingAnalytics && !isRefreshingAnalytics
+        case .analytics:
+            return !isLoadingDashboard
         case .skills:
             return !isLoadingSkills && !isRefreshingSkills
+        case .jobs:
+            return !isLoadingDashboardCronJobs
+        case .mcp:
+            return !isLoadingMCP
         case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             return false
         }
@@ -385,6 +402,8 @@ final class AppState: ObservableObject {
         switch selectedSection {
         case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles, .plugins:
             return true
+        case .jobs, .mcp:
+            return false
         case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim, .docs, .chat, .memory, .soul, .tools, .office:
             return false
         }
@@ -471,6 +490,12 @@ final class AppState: ObservableObject {
             await refreshAnalytics()
         case .skills:
             await refreshSkills()
+        case .jobs:
+            await loadDashboardCronJobs()
+        case .mcp:
+            await loadMCPServers()
+        case .analytics:
+            await loadDashboardOverview()
         case .secondBrain, .youtubePipeline, .physicsSim, .docs, .chat, .memory, .soul, .tools, .office:
             break
         case .connections, .files, .terminal, .avatar, .models, .config, .logs, .keys, .profiles, .plugins:
@@ -1979,6 +2004,124 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Dashboard Cron Jobs (Jobs tab)
+
+    func loadDashboardCronJobs() async {
+        guard dashboardAPIAvailable else { return }
+        if isLoadingDashboardCronJobs { return }
+
+        isLoadingDashboardCronJobs = true
+        dashboardCronJobsError = nil
+
+        do {
+            let jobs = try await dashboardAPIService.fetchClaudeJobs()
+            dashboardCronJobs = jobs
+            isLoadingDashboardCronJobs = false
+        } catch {
+            isLoadingDashboardCronJobs = false
+            dashboardCronJobsError = error.localizedDescription
+            setStatusMessage(L10n.string("Unable to load jobs"))
+        }
+    }
+
+    func createDashboardCronJob(_ job: DashboardCronJobCreate) async {
+        guard dashboardAPIAvailable else { return }
+
+        do {
+            _ = try await dashboardAPIService.createClaudeJob(job)
+            setStatusMessage(L10n.string("%@ created", job.name))
+            await loadDashboardCronJobs()
+        } catch {
+            dashboardCronJobsError = error.localizedDescription
+            setStatusMessage(error.localizedDescription)
+        }
+    }
+
+    func deleteDashboardCronJob(id: String) async {
+        guard dashboardAPIAvailable else { return }
+
+        do {
+            try await dashboardAPIService.deleteClaudeJob(id: id)
+            dashboardCronJobs.removeAll { $0.id == id }
+            setStatusMessage(L10n.string("Job removed"))
+        } catch {
+            dashboardCronJobsError = error.localizedDescription
+            setStatusMessage(error.localizedDescription)
+        }
+    }
+
+    func toggleDashboardCronJob(id: String, enabled: Bool) async {
+        guard dashboardAPIAvailable else { return }
+
+        do {
+            let patch = DashboardCronJobPatch(enabled: enabled)
+            let updated = try await dashboardAPIService.patchClaudeJob(id: id, patch: patch)
+            if let index = dashboardCronJobs.firstIndex(where: { $0.id == id }) {
+                dashboardCronJobs[index] = updated
+            }
+        } catch {
+            dashboardCronJobsError = error.localizedDescription
+            setStatusMessage(error.localizedDescription)
+        }
+    }
+
+    // MARK: - MCP Servers
+
+    func loadMCPServers() async {
+        guard dashboardAPIAvailable else { return }
+        if isLoadingMCP { return }
+
+        isLoadingMCP = true
+        mcpError = nil
+
+        do {
+            let servers = try await dashboardAPIService.fetchMCPServers()
+            mcpServers = servers
+            isLoadingMCP = false
+        } catch {
+            isLoadingMCP = false
+            mcpError = error.localizedDescription
+            setStatusMessage(L10n.string("Unable to load MCP servers"))
+        }
+    }
+
+    func searchMCPMarketplace(query: String) async {
+        guard dashboardAPIAvailable else { return }
+
+        do {
+            let items = try await dashboardAPIService.searchMCPHub(query: query)
+            mcpMarketplaceItems = items
+        } catch {
+            mcpError = error.localizedDescription
+        }
+    }
+
+    func addMCPServer(_ server: MCPServerCreate) async {
+        guard dashboardAPIAvailable else { return }
+
+        do {
+            let created = try await dashboardAPIService.createMCPServer(server)
+            mcpServers.append(created)
+            setStatusMessage(L10n.string("%@ added", server.name))
+        } catch {
+            mcpError = error.localizedDescription
+            setStatusMessage(error.localizedDescription)
+        }
+    }
+
+    func deleteMCPServer(id: String) async {
+        guard dashboardAPIAvailable else { return }
+
+        do {
+            try await dashboardAPIService.deleteMCPServer(id: id)
+            mcpServers.removeAll { $0.id == id }
+            setStatusMessage(L10n.string("Server removed"))
+        } catch {
+            mcpError = error.localizedDescription
+            setStatusMessage(error.localizedDescription)
+        }
+    }
+
     func loadKanbanBoards() async {
         guard let profile = activeConnection else { return }
         if isLoadingKanbanBoards { return }
@@ -3453,6 +3596,64 @@ final class AppState: ObservableObject {
             // Re-poll to get fresh state on failure
             await pollApprovals()
         }
+    }
+
+    // MARK: - Dashboard Analytics (Feature 1)
+
+    func loadDashboardOverview() async {
+        guard dashboardAPIAvailable else { return }
+        isLoadingDashboard = true
+        do {
+            let overview = try await dashboardAPIService.fetchDashboardOverview(period: dashboardPeriod)
+            dashboardOverview = overview
+        } catch {
+            // silently ignore — view shows ContentUnavailableView when data is nil
+        }
+        isLoadingDashboard = false
+    }
+
+    // MARK: - Usage Meter / Session Context (Feature 2)
+
+    func startContextPolling() {
+        guard dashboardAPIAvailable else { return }
+        contextPollingTask?.cancel()
+        firedContextThresholds = []
+        contextPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.pollSessionContext()
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
+    }
+
+    func stopContextPolling() {
+        contextPollingTask?.cancel()
+        contextPollingTask = nil
+    }
+
+    private func pollSessionContext() async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            let status = try await dashboardAPIService.fetchSessionStatus()
+            sessionContextUsed = status.contextUsed
+            sessionContextLimit = max(status.contextLimit, 1)
+            sessionDailyCost = status.dailyCost
+
+            let pct = Int(Double(sessionContextUsed) / Double(sessionContextLimit) * 100)
+            for threshold in [50, 75, 90] {
+                if pct >= threshold && !firedContextThresholds.contains(threshold) {
+                    firedContextThresholds.insert(threshold)
+                    contextAlertThreshold = threshold
+                    break
+                }
+            }
+        } catch {
+            // silently ignore polling errors
+        }
+    }
+
+    func dismissContextAlert() {
+        contextAlertThreshold = nil
     }
 }
 
