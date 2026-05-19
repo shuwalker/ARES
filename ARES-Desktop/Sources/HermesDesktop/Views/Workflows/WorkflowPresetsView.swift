@@ -53,7 +53,7 @@ struct WorkflowPresetsView: View {
             }
             Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { preset in
-            Text(L10n.string(""%@" will be removed from this Mac. This cannot be undone.", preset.name))
+            Text(L10n.string("%@ will be removed from this Mac. This cannot be undone.", preset.name))
         }
     }
 
@@ -121,13 +121,8 @@ private struct WorkflowPresetCard: View {
 
                 if !preset.attachedSkills.isEmpty {
                     HStack(spacing: 6) {
-                        ForEach(preset.attachedSkills.prefix(4), id: \.self) { skill in
-                            Text(skill)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.accentColor)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Color.accentColor.opacity(0.10), in: Capsule())
+                        ForEach(Array(preset.attachedSkills.prefix(4)), id: \.self) { skill in
+                            SkillChip(text: skill)
                         }
 
                         if preset.attachedSkills.count > 4 {
@@ -288,5 +283,18 @@ private struct NewWorkflowPresetSheet: View {
         )
         onSave(preset)
         dismiss()
+    }
+}
+
+
+private struct SkillChip: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.accentColor.opacity(0.10), in: Capsule())
     }
 }

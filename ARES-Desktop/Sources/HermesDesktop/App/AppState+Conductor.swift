@@ -104,8 +104,9 @@ extension AppState {
     private func pollConductorRuntime(missionId _: String) async {
         guard dashboardAPIAvailable else { return }
         do {
-            let runtime = try await dashboardAPIService.fetchSwarmRuntime()
-            guard let workers = runtime.workers else { return }
+            let data = try await dashboardAPIService.fetchSwarmRuntime()
+            let runtime = try JSONDecoder().decode(SwarmRuntime.self, from: data)
+            guard let workers = runtime.workers, !workers.isEmpty else { return }
             var allDone = true
             for w in workers {
                 guard let workerId = w.workerId else { continue }

@@ -51,7 +51,7 @@ struct MCPView: View {
             }
         } message: {
             if let server = serverToDelete {
-                Text(L10n.string(""%@" will be removed from your MCP configuration.", server.name))
+                Text(L10n.string("%@ will be removed from your MCP configuration.", server.name))
             }
         }
     }

@@ -66,7 +66,7 @@ struct JobsView: View {
             }
         } message: {
             if let job = jobToDelete {
-                Text(L10n.string(""%@" will be permanently deleted.", job.name))
+                Text(L10n.string("%@ will be permanently deleted.", job.name))
             }
         }
     }

@@ -11,16 +11,20 @@ import Foundation
 /// Then polls localhost:localPort every 400 ms up to 10 seconds for the port to open.
 final class SSHTunnelService: @unchecked Sendable {
     private let lock = NSLock()
-    private var process: Process?
+    private var _process: Process?
     private var _localPort: Int?
+
+    /// Thread-safe synchronous access
+    private func withLock<T>(_ block: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return block()
+    }
 
     /// The forwarded local port, or nil if no tunnel is active.
     var localPort: Int? {
-        lock.lock()
-        defer { lock.unlock() }
-        return _localPort
+        withLock { _localPort }
     }
-
     // MARK: - Public API
 
     /// Starts an SSH local port-forward tunnel for the given connection profile.
@@ -49,10 +53,10 @@ final class SSHTunnelService: @unchecked Sendable {
 
         try proc.run()
 
-        lock.lock()
-        process = proc
-        _localPort = port
-        lock.unlock()
+        withLock {
+            _process = proc
+            _localPort = port
+        }
 
         // Poll until the port is open or timeout.
         let deadline = Date().addingTimeInterval(10)
@@ -72,8 +76,8 @@ final class SSHTunnelService: @unchecked Sendable {
     /// Terminates the active tunnel process and clears state.
     func stop() {
         lock.lock()
-        let proc = process
-        process = nil
+        let proc = _process
+        _process = nil
         _localPort = nil
         lock.unlock()
 

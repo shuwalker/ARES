@@ -47,7 +47,7 @@ struct KanbanView: View {
             }
             Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { board in
-            Text(L10n.string(""%@" will be moved out of the active board list. Existing task data stays recoverable on the remote host.", board.resolvedName))
+            Text(L10n.string("%@ will be moved out of the active board list. Existing task data stays recoverable on the remote host.", board.resolvedName))
         }
         .sheet(isPresented: $showOrchestrationSheet) {
             KanbanOrchestrationSheet(

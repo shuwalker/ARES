@@ -37,8 +37,8 @@ final class AppState: ObservableObject {
     @Published var thinkingLevel: ThinkingLevel = .off
     @Published var hasMoreSessions = false
     @Published var totalSessionsCount = 0
-    @Published private(set) var sessionSearchQuery = ""
-    @Published private(set) var sessionPinStateVersion = 0
+    @Published var sessionSearchQuery = ""
+    @Published var sessionPinStateVersion = 0
     @Published var selectedWorkflowID: UUID?
     @Published var workflows: [WorkflowPreset] = []
     @Published var usageSummary: UsageSummary?

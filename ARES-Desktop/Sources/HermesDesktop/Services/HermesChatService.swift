@@ -19,9 +19,9 @@ final class HermesChatService: @unchecked Sendable {
         fastMode: Bool = false,
         onChunk: @escaping @Sendable (String) -> Void,
         onSessionID: @escaping @Sendable (String) -> Void,
-        onToolCall: (@escaping @Sendable (ChatToolCall) -> Void)? = nil,
-        onToolCallDone: (@escaping @Sendable (String) -> Void)? = nil,
-        onThinkingDelta: (@escaping @Sendable (String) -> Void)? = nil
+        onToolCall: ((@Sendable (ChatToolCall) -> Void)?) = nil,
+        onToolCallDone: ((@Sendable (String) -> Void)?) = nil,
+        onThinkingDelta: ((@Sendable (String) -> Void)?) = nil
     ) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
         request.httpMethod = "POST"

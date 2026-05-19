@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Health check model
 
-private enum HealthStatus {
+enum HealthStatus {
     case idle
     case checking
     case pass(String)
@@ -40,7 +40,7 @@ private enum HealthStatus {
     }
 }
 
-private struct HealthCheckItem: Identifiable {
+struct HealthCheckItem: Identifiable {
     let id: String
     let name: String
     var status: HealthStatus = .idle
@@ -62,7 +62,7 @@ struct ConnectionHealthView: View {
             HStack(spacing: 12) {
                 Image(systemName: "stethoscope")
                     .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(.accent)
+                    .foregroundStyle(Color.accentColor)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.string("Connection Health"))

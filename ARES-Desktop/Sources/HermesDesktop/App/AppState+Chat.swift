@@ -62,14 +62,14 @@ extension AppState {
                         }
                     }
                 },
-                onThinkingDelta: budgetTokens != nil ? { [weak self] thinkingDelta in
+                onThinkingDelta: { [weak self] thinkingDelta in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         if let idx = self.chatMessages.firstIndex(where: { $0.id == assistantID }) {
                             self.chatMessages[idx].thinkingContent = (self.chatMessages[idx].thinkingContent ?? "") + thinkingDelta
                         }
                     }
-                } : nil
+                }
             )
             // Mark streaming complete
             if let idx = chatMessages.firstIndex(where: { $0.id == assistantID }) {

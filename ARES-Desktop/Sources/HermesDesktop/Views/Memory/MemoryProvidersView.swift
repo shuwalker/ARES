@@ -136,7 +136,7 @@ private struct ProviderCard: View {
                 HStack(spacing: 12) {
                     Image(systemName: provider.systemImage)
                         .font(.system(size: 28, weight: .light))
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(Color.accentColor)
                         .frame(width: 40, height: 40)
                         .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
@@ -191,7 +191,7 @@ private struct ProviderConfigSheet: View {
             HStack(spacing: 12) {
                 Image(systemName: draft.systemImage)
                     .font(.system(size: 24, weight: .light))
-                    .foregroundStyle(.accent)
+                    .foregroundStyle(Color.accentColor)
                     .frame(width: 36, height: 36)
                     .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 

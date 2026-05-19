@@ -182,7 +182,7 @@ struct KanbanBoard: Codable, Hashable, Sendable {
     let hasHermesCLI: Bool
     let dispatcher: KanbanDispatcherStatus?
     let latestEventID: Int?
-    let tasks: [KanbanTask]
+    var tasks: [KanbanTask]
     let assignees: [KanbanAssignee]
     let tenants: [String]
     let stats: KanbanStats?

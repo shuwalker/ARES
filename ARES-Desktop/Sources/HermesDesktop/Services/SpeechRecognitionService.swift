@@ -6,7 +6,7 @@ import Speech
 /// Wraps SFSpeechRecognizer and AVAudioEngine to provide live speech-to-text.
 /// Must be used from the MainActor; callbacks are delivered on the main actor.
 @MainActor
-final class SpeechRecognitionService: NSObject, @unchecked Sendable {
+final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sendable {
 
     // MARK: - State
 

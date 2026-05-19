@@ -93,9 +93,10 @@ struct KanbanTaskDetailView: View {
                 } else {
                     HermesSurfacePanel {
                         VStack(alignment: .leading, spacing: 18) {
+                            let emptyLabel = L10n.string("Select a Kanban task"); let emptySystemImage = "rectangle.3.group"
                             ContentUnavailableView(
-                                L10n.string("Select a Kanban task"),
-                                systemImage: "rectangle.3.group",
+                                emptyLabel,
+                                systemImage: emptySystemImage,
                                 description: Text(L10n.string("Choose a task from the selected board, or create a new one."))
                             )
                             .frame(maxWidth: .infinity, minHeight: 280)
@@ -132,7 +133,7 @@ struct KanbanTaskDetailView: View {
             }
             Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { task in
-            Text(L10n.string(""%@" will be hidden from the active board unless archived tasks are shown.", task.resolvedTitle))
+            Text(L10n.string("%@ will be hidden from the active board unless archived tasks are shown.", task.resolvedTitle))
         }
         .alert(L10n.string("Delete this task?"), isPresented: $showDeleteConfirmation, presenting: task) { task in
             Button(L10n.string("Delete"), role: .destructive) {
@@ -140,7 +141,7 @@ struct KanbanTaskDetailView: View {
             }
             Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { task in
-            Text(L10n.string(""%@" will be permanently removed from the remote Kanban database, including comments, links, events, and run history. Remote workspace files are left untouched.", task.resolvedTitle))
+            Text(L10n.string("%@ will be permanently removed from the remote Kanban database, including comments, links, events, and run history. Remote workspace files are left untouched.", task.resolvedTitle))
         }
         .sheet(isPresented: $showLogSheet) {
             KanbanTaskLogSheet(
