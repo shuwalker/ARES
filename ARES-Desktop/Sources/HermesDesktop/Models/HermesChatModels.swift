@@ -69,6 +69,23 @@ enum ChatMessageRole: Equatable, Sendable {
     case assistant
 }
 
+// MARK: - Thinking level
+
+enum ThinkingLevel: String, CaseIterable, Sendable {
+    case off = "Off"
+    case low = "Low"
+    case adaptive = "Adaptive"
+
+    /// budget_tokens value to include in the request body (nil = omit thinking key entirely)
+    var budgetTokens: Int? {
+        switch self {
+        case .off: return nil
+        case .low: return 1024
+        case .adaptive: return 8000
+        }
+    }
+}
+
 struct ChatMessage: Identifiable, Sendable {
     let id: UUID
     let role: ChatMessageRole
@@ -76,6 +93,10 @@ struct ChatMessage: Identifiable, Sendable {
     let timestamp: Date
     var isStreaming: Bool
     var toolCalls: [ChatToolCall]
+    /// Accumulated extended-thinking text, if any
+    var thinkingContent: String?
+    /// Whether the thinking disclosure group is expanded
+    var isThinkingExpanded: Bool
 
     init(
         id: UUID = UUID(),
@@ -83,7 +104,9 @@ struct ChatMessage: Identifiable, Sendable {
         content: String,
         timestamp: Date = Date(),
         isStreaming: Bool = false,
-        toolCalls: [ChatToolCall] = []
+        toolCalls: [ChatToolCall] = [],
+        thinkingContent: String? = nil,
+        isThinkingExpanded: Bool = false
     ) {
         self.id = id
         self.role = role
@@ -91,6 +114,8 @@ struct ChatMessage: Identifiable, Sendable {
         self.timestamp = timestamp
         self.isStreaming = isStreaming
         self.toolCalls = toolCalls
+        self.thinkingContent = thinkingContent
+        self.isThinkingExpanded = isThinkingExpanded
     }
 }
 
@@ -198,5 +223,23 @@ struct HermesChatTurnResult: Codable, Sendable {
         case sessionID = "session_id"
         case stdout
         case stderr
+    }
+}
+
+// MARK: - Tool approval models
+
+struct ToolApprovalRequest: Identifiable, Codable, Sendable {
+    let id: String
+    let toolName: String
+    let toolInput: String
+    let sessionId: String
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case toolName = "tool_name"
+        case toolInput = "tool_input"
+        case sessionId = "session_id"
+        case createdAt = "created_at"
     }
 }

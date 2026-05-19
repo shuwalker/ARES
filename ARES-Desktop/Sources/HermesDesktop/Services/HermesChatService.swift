@@ -15,10 +15,12 @@ final class HermesChatService: @unchecked Sendable {
         _ prompt: String,
         sessionID: String?,
         baseURL: URL,
+        thinkingBudgetTokens: Int? = nil,
         onChunk: @escaping @Sendable (String) -> Void,
         onSessionID: @escaping @Sendable (String) -> Void,
         onToolCall: (@escaping @Sendable (ChatToolCall) -> Void)? = nil,
-        onToolCallDone: (@escaping @Sendable (String) -> Void)? = nil
+        onToolCallDone: (@escaping @Sendable (String) -> Void)? = nil,
+        onThinkingDelta: (@escaping @Sendable (String) -> Void)? = nil
     ) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
         request.httpMethod = "POST"
@@ -32,6 +34,9 @@ final class HermesChatService: @unchecked Sendable {
         ]
         if let sessionID {
             bodyObject["session_id"] = sessionID
+        }
+        if let budget = thinkingBudgetTokens {
+            bodyObject["thinking"] = ["type": "enabled", "budget_tokens": budget]
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: bodyObject)
 
@@ -69,6 +74,19 @@ final class HermesChatService: @unchecked Sendable {
             if payload == "[DONE]" { break }
 
             guard let data = payload.data(using: .utf8) else { continue }
+
+            // Check for extended thinking delta before trying OpenAI-style decoding
+            if let onThinkingDelta,
+               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let deltaObj = raw["delta"] as? [String: Any],
+               let deltaType = deltaObj["type"] as? String,
+               deltaType == "thinking_delta",
+               let thinkingText = deltaObj["thinking"] as? String,
+               !thinkingText.isEmpty {
+                onThinkingDelta(thinkingText)
+                continue
+            }
+
             let decoder = JSONDecoder()
             guard let chunk = try? decoder.decode(ChatStreamChunk.self, from: data) else { continue }
 

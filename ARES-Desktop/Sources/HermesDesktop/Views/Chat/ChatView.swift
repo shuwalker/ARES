@@ -1,3 +1,6 @@
+import AVFoundation
+import AppKit
+import Speech
 import SwiftUI
 
 // MARK: - Slash command definitions
@@ -24,6 +27,9 @@ struct ChatView: View {
     @EnvironmentObject private var appState: AppState
     @State private var inputText = ""
     @State private var showSlashPopover = false
+    @State private var isRecording = false
+    @State private var micAuthDenied = false
+    @StateObject private var speechService = SpeechRecognitionService()
 
     // Filtered commands based on what follows the /
     private var filteredCommands: [SlashCommand] {

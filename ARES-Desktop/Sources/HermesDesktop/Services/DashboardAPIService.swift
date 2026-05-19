@@ -455,6 +455,24 @@ final class DashboardAPIService: @unchecked Sendable {
         _ = try await authenticatedPost(path: "api/tools/\(name)/\(action)", body: Data())
     }
 
+    // MARK: - Tool Approvals
+
+    /// GET /api/approvals — returns pending tool approval requests
+    func fetchPendingApprovals() async throws -> [ToolApprovalRequest] {
+        let data = try await authenticatedGet(path: "api/approvals")
+        return try JSONDecoder().decode([ToolApprovalRequest].self, from: data)
+    }
+
+    /// POST /api/approvals/{id}/approve — approve a pending tool call
+    func approveToolCall(id: String) async throws {
+        _ = try await authenticatedPost(path: "api/approvals/\(id)/approve", body: Data())
+    }
+
+    /// POST /api/approvals/{id}/deny — deny a pending tool call
+    func denyToolCall(id: String) async throws {
+        _ = try await authenticatedPost(path: "api/approvals/\(id)/deny", body: Data())
+    }
+
     // MARK: - Kanban plugin HTTP API
 
     /// PATCH /api/plugins/kanban/tasks/{taskID} — move task to a new status column

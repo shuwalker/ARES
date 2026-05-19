@@ -34,6 +34,7 @@ final class AppState: ObservableObject {
     @Published var isStreamingChat = false
     @Published var chatError: String?
     @Published var chatSessionID: String?
+    @Published var thinkingLevel: ThinkingLevel = .off
     @Published var hasMoreSessions = false
     @Published var totalSessionsCount = 0
     @Published private(set) var sessionSearchQuery = ""
@@ -115,6 +116,7 @@ final class AppState: ObservableObject {
     @Published var availableUpdate: AvailableUpdate?
     @Published var isCheckingForUpdates = false
     @Published var isDesktopPetMode = false
+    @Published var isSearchVisible = false
 
     // MARK: - Soul
     @Published var soulContent: String?
@@ -130,6 +132,9 @@ final class AppState: ObservableObject {
     @Published var tools: [ToolSummary] = []
     @Published var isLoadingTools = false
     @Published var toolsError: String?
+
+    // MARK: - Tool Approvals
+    @Published var pendingApprovals: [ToolApprovalRequest] = []
 
     let connectionStore: ConnectionStore
     let dashboardAPIService: DashboardAPIService
@@ -176,6 +181,7 @@ final class AppState: ObservableObject {
     private let automaticUpdateCheckInterval: TimeInterval = 24 * 60 * 60
     private var statusTask: Task<Void, Never>?
     private var sessionTranscriptPollingTask: Task<Void, Never>?
+    private var approvalPollingTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
     convenience init(updateCheckService: UpdateCheckService = UpdateCheckService()) {
@@ -1305,11 +1311,13 @@ final class AppState: ObservableObject {
             isStreaming: true
         ))
 
+        let budgetTokens = thinkingLevel.budgetTokens
         do {
             _ = try await hermesChatService.streamMessage(
                 trimmed,
                 sessionID: chatSessionID,
                 baseURL: baseURL,
+                thinkingBudgetTokens: budgetTokens,
                 onChunk: { [weak self] delta in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
@@ -1339,7 +1347,15 @@ final class AppState: ObservableObject {
                             self.chatMessages[msgIdx].toolCalls[tcIdx].status = .done
                         }
                     }
-                }
+                },
+                onThinkingDelta: budgetTokens != nil ? { [weak self] thinkingDelta in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if let idx = self.chatMessages.firstIndex(where: { $0.id == assistantID }) {
+                            self.chatMessages[idx].thinkingContent = (self.chatMessages[idx].thinkingContent ?? "") + thinkingDelta
+                        }
+                    }
+                } : nil
             )
             // Mark streaming complete
             if let idx = chatMessages.firstIndex(where: { $0.id == assistantID }) {
@@ -3167,9 +3183,11 @@ final class AppState: ObservableObject {
 
         await ensureInitialFileLoads()
         await loadSessions(reset: true)
+        startApprovalPolling()
     }
 
     private func resetWorkspaceStateForConnectionChange(closeTerminalTabs: Bool = true) {
+        stopApprovalPolling()
         tunnelService.stop()
         isBusy = false
         connectionTestRequestID = nil
