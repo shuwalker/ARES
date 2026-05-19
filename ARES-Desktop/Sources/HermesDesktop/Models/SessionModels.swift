@@ -1,5 +1,17 @@
 import Foundation
 
+// MARK: - Shared decoder
+
+extension JSONDecoder {
+    /// Pre-configured decoder for all session model types.
+    /// Uses ISO-8601 date strategy as the default for any `Date` fields.
+    static let sessionDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+}
+
 struct SessionListPage: Codable, Sendable {
     let ok: Bool
     let items: [SessionSummary]

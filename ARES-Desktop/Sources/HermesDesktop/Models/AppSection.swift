@@ -118,6 +118,20 @@ enum AppSection: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Returns `true` for sections that are functional without a network connection.
+    /// Used by RootView to dim or disable tabs when the app is offline.
+    var isAvailableOffline: Bool {
+        switch self {
+        case .connections, .config, .workflows, .profiles, .physicsSim, .docs:
+            return true
+        case .overview, .sessions, .cronjobs, .kanban, .files, .usage, .skills,
+             .models, .logs, .keys, .terminal, .avatar, .secondBrain,
+             .youtubePipeline, .plugins, .chat, .memory, .soul, .tools,
+             .office, .analytics, .jobs, .mcp, .swarm, .conductor, .operations, .crewStatus:
+            return false
+        }
+    }
+
     /// Non-numeric keyboard shortcut for sidebar navigation.
     /// ⌘1–⌘9 are assigned dynamically in `ARESCommands` using `allCases.prefix(9)`.
     var navigationShortcutKey: KeyEquivalent? {

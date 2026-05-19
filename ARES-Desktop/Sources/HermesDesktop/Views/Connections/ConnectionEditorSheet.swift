@@ -316,7 +316,7 @@ struct ConnectionEditorSheet: View {
         }
         .frame(minWidth: 620, minHeight: 560)
         .onAppear {
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
             DispatchQueue.main.async {
                 focusedField = .label
             }

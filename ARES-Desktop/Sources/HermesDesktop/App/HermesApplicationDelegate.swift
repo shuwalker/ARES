@@ -4,7 +4,7 @@ import AppKit
 final class HermesApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ _: Notification) {
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         NSWindow.allowsAutomaticWindowTabbing = false
     }
 }

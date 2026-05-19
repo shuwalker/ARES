@@ -360,10 +360,30 @@ private func terminalHTML(baseURL: URL) -> String {
           });
 
           // ─── Boot ─────────────────────────────────────────────────────────
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initTerminal);
-          } else {
+          function boot() {
+            if (typeof window.Terminal === 'undefined' || typeof window.FitAddon === 'undefined') {
+              // xterm.js CDN scripts did not load — show a user-facing banner
+              document.body.innerHTML = '';
+              var banner = document.createElement('div');
+              banner.style.cssText = [
+                'display:flex', 'flex-direction:column', 'align-items:center',
+                'justify-content:center', 'height:100vh', 'background:#1e1e1e',
+                'color:#d4d4d4', 'font-family:-apple-system,BlinkMacSystemFont,sans-serif',
+                'font-size:14px', 'gap:12px', 'padding:24px', 'text-align:center'
+              ].join(';');
+              banner.innerHTML = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>' +
+                '<strong style="color:#fff">Terminal requires internet connection to load.</strong>' +
+                '<span style="color:#888">Check your connection and reload.</span>';
+              document.body.appendChild(banner);
+              return;
+            }
             initTerminal();
+          }
+
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', boot);
+          } else {
+            boot();
           }
         }());
       </script>
