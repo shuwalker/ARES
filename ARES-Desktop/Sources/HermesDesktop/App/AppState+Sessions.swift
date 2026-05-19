@@ -178,6 +178,10 @@ extension AppState {
 
             if let createdSessionID {
                 await loadSessionDetail(sessionID: createdSessionID)
+                await autoTitleSessionIfNeeded(
+                    sessionID: createdSessionID,
+                    firstUserPrompt: trimmedPrompt
+                )
             }
             return true
         } catch {
@@ -499,5 +503,57 @@ extension AppState {
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
+    }
+
+    // MARK: - Auto-title
+
+    /// After a new session's first exchange, if the session has no meaningful title,
+    /// derive one from the first user prompt (truncated to 60 characters) and persist
+    /// it via the Dashboard API. The local session list is also refreshed so the
+    /// sidebar reflects the new title immediately.
+    func autoTitleSessionIfNeeded(sessionID: String, firstUserPrompt: String) async {
+        let existingSummary = sessionSummary(for: sessionID)
+        let existingTitle = existingSummary?.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let isPlaceholder = existingTitle.isEmpty
+            || existingTitle.lowercased() == "new session"
+            || existingTitle.lowercased() == "untitled"
+
+        guard isPlaceholder else { return }
+
+        let maxTitleLength = 60
+        let trimmed = firstUserPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let newTitle: String
+        if trimmed.count > maxTitleLength {
+            newTitle = String(trimmed.prefix(maxTitleLength))
+        } else {
+            newTitle = trimmed
+        }
+
+        // Update the local model immediately for instant sidebar feedback.
+        if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
+            let old = sessions[index]
+            sessions[index] = SessionSummary(
+                id: old.id,
+                title: newTitle,
+                model: old.model,
+                startedAt: old.startedAt,
+                lastActive: old.lastActive,
+                messageCount: old.messageCount,
+                preview: old.preview,
+                searchMatch: old.searchMatch,
+                source: old.source,
+                status: old.status
+            )
+        }
+
+        // Persist via Dashboard API on a best-effort basis.
+        do {
+            try await dashboardAPIService.renameSession(id: sessionID, title: newTitle)
+        } catch {
+            // Silently swallow — the title update is cosmetic and the endpoint may
+            // not be present on all Hermes versions.
+        }
     }
 }

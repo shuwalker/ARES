@@ -70,7 +70,22 @@ struct ARESCommands: Commands {
         }
 
         CommandMenu(L10n.string("Navigate")) {
-            ForEach(AppSection.allCases) { section in
+            // ⌘1–⌘9: switch to the first 9 sections in order
+            ForEach(
+                Array(AppSection.allCases.prefix(9).enumerated()),
+                id: \.offset
+            ) { index, section in
+                Button(L10n.string("Show %@", section.title)) {
+                    appState.requestSectionSelection(section)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
+                .disabled(!appState.isSectionAvailable(section))
+            }
+
+            Divider()
+
+            // Remaining sections without numeric shortcuts
+            ForEach(Array(AppSection.allCases.dropFirst(9))) { section in
                 if let shortcut = section.navigationShortcutKey {
                     Button(L10n.string("Show %@", section.title)) {
                         appState.requestSectionSelection(section)

@@ -1,9 +1,17 @@
 import SwiftUI
 
+private enum MemoryTab: String, CaseIterable, Identifiable {
+    case entries = "Entries"
+    case providers = "Providers"
+
+    var id: String { rawValue }
+}
+
 struct MemoryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var editingEntry: MemoryEntry?
     @State private var editDraft = ""
+    @State private var selectedTab: MemoryTab = .entries
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,15 +19,11 @@ struct MemoryView: View {
 
             Divider().opacity(0.5)
 
-            if appState.isLoadingMemory && appState.memoryEntries.isEmpty {
-                HermesLoadingState(label: "Loading memory…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = appState.memoryError, appState.memoryEntries.isEmpty {
-                errorView(error)
-            } else if appState.memoryEntries.isEmpty {
-                emptyState
-            } else {
-                entryList
+            switch selectedTab {
+            case .entries:
+                entriesContent
+            case .providers:
+                MemoryProvidersView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -40,6 +44,22 @@ struct MemoryView: View {
         }
     }
 
+    // MARK: - Entries content
+
+    @ViewBuilder
+    private var entriesContent: some View {
+        if appState.isLoadingMemory && appState.memoryEntries.isEmpty {
+            HermesLoadingState(label: "Loading memory…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = appState.memoryError, appState.memoryEntries.isEmpty {
+            errorView(error)
+        } else if appState.memoryEntries.isEmpty {
+            emptyState
+        } else {
+            entryList
+        }
+    }
+
     // MARK: - Toolbar
 
     private var toolbar: some View {
@@ -47,28 +67,38 @@ struct MemoryView: View {
             Text(L10n.string("Memory"))
                 .font(.headline)
 
+            Picker(L10n.string("Tab"), selection: $selectedTab) {
+                ForEach(MemoryTab.allCases) { tab in
+                    Text(L10n.string(tab.rawValue)).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 200)
+
             Spacer()
 
-            if appState.isLoadingMemory && !appState.memoryEntries.isEmpty {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.8, anchor: .center)
-            }
+            if selectedTab == .entries {
+                if appState.isLoadingMemory && !appState.memoryEntries.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.8, anchor: .center)
+                }
 
-            Text(L10n.string("%@ entries", "\(appState.memoryEntries.count)"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                Text(L10n.string("%@ entries", "\(appState.memoryEntries.count)"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
-            Button {
-                Task { await appState.loadMemory() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 13, weight: .medium))
+                Button {
+                    Task { await appState.loadMemory() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+                .help(L10n.string("Refresh memory entries"))
+                .disabled(appState.isLoadingMemory)
             }
-            .buttonStyle(.borderless)
-            .help(L10n.string("Refresh memory entries"))
-            .disabled(appState.isLoadingMemory)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

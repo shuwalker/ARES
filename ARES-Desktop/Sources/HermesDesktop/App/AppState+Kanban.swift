@@ -498,6 +498,61 @@ extension AppState {
         }
     }
 
+    /// Nudges the dispatcher for a specific task by posting a dispatch comment/event.
+    /// Uses the Dashboard API when available; falls back to adding an SSH comment.
+    func nudgeKanbanTask(taskId: String) async {
+        guard !isOperatingOnKanbanTask else { return }
+        let boardSlug = selectedKanbanBoardSlug
+
+        isOperatingOnKanbanTask = true
+        operatingKanbanTaskID = taskId
+        kanbanError = nil
+        setStatusMessage(L10n.string("Nudging task dispatcher…"))
+
+        if dashboardAPIAvailable {
+            do {
+                let body: [String: String] = ["board": boardSlug, "task_id": taskId]
+                let payload = try JSONSerialization.data(withJSONObject: body)
+                _ = try await dashboardAPIService.authenticatedPost(
+                    path: "api/plugins/kanban/dispatch",
+                    body: payload
+                )
+                await reloadKanbanAfterOperation(taskID: taskId, boardSlug: boardSlug)
+                isOperatingOnKanbanTask = false
+                operatingKanbanTaskID = nil
+                setStatusMessage(L10n.string("Dispatcher nudged for task"))
+                return
+            } catch {
+                // Fall through to SSH comment path
+            }
+        }
+
+        // SSH fallback: post a comment to the task requesting dispatcher attention
+        guard let profile = activeConnection else {
+            isOperatingOnKanbanTask = false
+            operatingKanbanTaskID = nil
+            return
+        }
+
+        do {
+            try await kanbanBrowserService.addComment(
+                connection: profile,
+                boardSlug: boardSlug,
+                taskID: taskId,
+                body: "[nudge] Please pick up this task."
+            )
+            await reloadKanbanAfterOperation(taskID: taskId, boardSlug: boardSlug)
+            isOperatingOnKanbanTask = false
+            operatingKanbanTaskID = nil
+            setStatusMessage(L10n.string("Dispatcher nudged for task"))
+        } catch {
+            isOperatingOnKanbanTask = false
+            operatingKanbanTaskID = nil
+            kanbanError = error.localizedDescription
+            setStatusMessage(L10n.string("Unable to nudge task dispatcher"))
+        }
+    }
+
     func dispatchKanbanNow() async {
         guard let profile = activeConnection else { return }
         guard !isDispatchingKanban else { return }

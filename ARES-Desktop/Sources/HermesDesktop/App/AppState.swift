@@ -109,6 +109,9 @@ final class AppState: ObservableObject {
     @Published var workspaceFileBrowserListing: RemoteDirectoryListing?
     @Published var workspaceFileBrowserError: String?
     @Published var isLoadingWorkspaceFileBrowser = false
+    /// Set to the fileID when a save is rejected because the remote file changed since load.
+    /// The UI observes this to show a "Overwrite anyway?" conflict alert.
+    @Published var workspaceFileSaveConflictFileID: String?
     @Published var pendingSectionSelection: AppSection?
     @Published var showDiscardChangesAlert = false
     @Published var pendingNewConnectionEditorRequestID: UUID?
@@ -189,6 +192,11 @@ final class AppState: ObservableObject {
     @Published var sessionContextLimit: Int = 200_000
     @Published var sessionDailyCost: Double = 0
     @Published var contextAlertThreshold: Int? = nil
+
+    /// Lightweight observable update-check helper. Distinct from `updateCheckService`,
+    /// which is injected via `init` for testability. `updateChecker` uses default
+    /// configuration and is suitable for direct use from SwiftUI views.
+    let updateChecker = UpdateCheckService()
 
     let connectionStore: ConnectionStore
     let dashboardAPIService: DashboardAPIService

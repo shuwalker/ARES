@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private let kanbanInactiveThreshold: TimeInterval = 2 * 60 * 60 // 2 hours
+
 struct KanbanColumnView: View {
     let status: KanbanTaskStatus
     let tasks: [KanbanTask]
@@ -94,22 +96,33 @@ struct KanbanTaskCard: View {
     let isChecked: Bool
     let onSelect: () -> Void
     let onToggleCheck: (() -> Void)?
+    let onNudge: (() -> Void)?
 
     init(
         task: KanbanTask,
         isSelected: Bool,
         isChecked: Bool = false,
         onSelect: @escaping () -> Void,
-        onToggleCheck: (() -> Void)? = nil
+        onToggleCheck: (() -> Void)? = nil,
+        onNudge: (() -> Void)? = nil
     ) {
         self.task = task
         self.isSelected = isSelected
         self.isChecked = isChecked
         self.onSelect = onSelect
         self.onToggleCheck = onToggleCheck
+        self.onNudge = onNudge
     }
 
     @State private var isHovering = false
+
+    private var isInactive: Bool {
+        guard !task.isTerminal else { return false }
+        let referenceDate = task.latestActivityDate
+            ?? task.createdDate
+            ?? Date.distantPast
+        return Date.now.timeIntervalSince(referenceDate) > kanbanInactiveThreshold
+    }
 
     var body: some View {
         Button(action: onSelect) {

@@ -118,17 +118,14 @@ enum AppSection: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Non-numeric keyboard shortcut for sidebar navigation.
+    /// ⌘1–⌘9 are assigned dynamically in `ARESCommands` using `allCases.prefix(9)`.
     var navigationShortcutKey: KeyEquivalent? {
         switch self {
-        case .connections: return "1"
-        case .overview: return "2"
-        case .sessions: return "3"
-        case .workflows: return "4"
-        case .cronjobs: return "5"
-        case .kanban: return "6"
-        case .files: return "7"
-        case .usage: return "8"
-        case .skills: return "9"
+        case .connections, .overview, .sessions, .workflows, .cronjobs,
+             .kanban, .files, .usage, .skills:
+            // Covered by ⌘1–⌘9 in ARESCommands; no additional shortcut needed.
+            return nil
         case .models: return nil
         case .config: return nil
         case .logs: return nil

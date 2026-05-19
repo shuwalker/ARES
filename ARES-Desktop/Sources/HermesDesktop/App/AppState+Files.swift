@@ -50,28 +50,43 @@ extension AppState {
     }
 
     func saveWorkspaceFile(fileID: String) async {
-        guard let profile = activeConnection else { return }
-        guard let reference = workspaceFileReferences.first(where: { $0.id == fileID }) else { return }
+        await saveWorkspaceFile(fileID: fileID, forceOverwrite: false)
+    }
+
+    /// Saves the workspace file identified by `fileID`.
+    ///
+    /// When `forceOverwrite` is `false` (the default) the server-side hash check is
+    /// applied and a `.remoteConflict` error is thrown if the file was modified on the
+    /// remote host after it was last loaded. When `forceOverwrite` is `true` no hash
+    /// is sent, so the save always overwrites whatever is on the server.
+    ///
+    /// - Returns: `true` on success, `false` on any failure.
+    @discardableResult
+    func saveWorkspaceFile(fileID: String, forceOverwrite: Bool) async -> Bool {
+        guard let profile = activeConnection else { return false }
+        guard let reference = workspaceFileReferences.first(where: { $0.id == fileID }) else { return false }
         var document = document(for: reference)
         guard document.hasLoaded, document.remoteContentHash != nil else {
             document.errorMessage = L10n.string("Reload the file before saving.")
             setDocument(document)
             setStatusMessage(document.errorMessage)
-            return
+            return false
         }
 
         document.isLoading = true
         document.errorMessage = nil
         setDocument(document)
 
+        let hashToSend: String? = forceOverwrite ? nil : document.remoteContentHash
+
         do {
             let saveResult = try await fileEditorService.write(
                 remotePath: reference.remotePath,
                 content: document.content,
-                expectedContentHash: document.remoteContentHash,
+                expectedContentHash: hashToSend,
                 connection: profile
             )
-            guard isActiveWorkspace(profile) else { return }
+            guard isActiveWorkspace(profile) else { return false }
             document.originalContent = document.content
             document.remoteContentHash = saveResult.contentHash
             document.lastSavedAt = Date()
@@ -79,12 +94,25 @@ extension AppState {
             document.isLoading = false
             setDocument(document)
             setStatusMessage(L10n.string("%@ saved", reference.title))
+            return true
         } catch {
-            guard isActiveWorkspace(profile) else { return }
+            guard isActiveWorkspace(profile) else { return false }
             document.isLoading = false
-            document.errorMessage = error.localizedDescription
-            setDocument(document)
-            setStatusMessage(error.localizedDescription)
+
+            // Detect a remote conflict: the server rejected the save because the file
+            // was modified on the host after we loaded it. Surface this as a distinct
+            // flag so the UI can offer an "Overwrite anyway?" dialog.
+            let errorMessage = error.localizedDescription
+            if errorMessage.localizedCaseInsensitiveContains("changed on the active host") {
+                document.errorMessage = nil
+                setDocument(document)
+                workspaceFileSaveConflictFileID = fileID
+            } else {
+                document.errorMessage = errorMessage
+                setDocument(document)
+                setStatusMessage(errorMessage)
+            }
+            return false
         }
     }
 
