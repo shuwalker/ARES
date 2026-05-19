@@ -1,6 +1,6 @@
 # Distribution And Verification
 
-This document describes the current Hermes Desktop release model in this
+This document describes the current ARES release model in this
 repository.
 
 It is intentionally narrow: what the public release zip is, how it is produced,
@@ -8,10 +8,10 @@ what you can verify yourself, and what the current limitations are.
 
 ## Current Release Shape
 
-Hermes Desktop is currently distributed as:
+ARES is currently distributed as:
 
 - a universal macOS app bundle for Apple Silicon and Intel
-- zipped as `HermesDesktop.app.zip`
+- zipped as `ARES.app.zip`
 - ad-hoc signed with `codesign --sign -`
 - not notarized by Apple
 
@@ -28,7 +28,7 @@ The release packaging flow in this repo is script-based:
 
 ## Release Manifest
 
-Each packaged release now includes `HermesDesktop.app.zip.manifest.json`.
+Each packaged release now includes `ARES.app.zip.manifest.json`.
 
 The manifest is intentionally small and stable. It records:
 
@@ -77,10 +77,10 @@ reviewing the source or understanding the distribution model.
 
 ## How To Verify A Release Zip
 
-After downloading `HermesDesktop.app.zip`:
+After downloading `ARES.app.zip`:
 
 ```bash
-shasum -a 256 HermesDesktop.app.zip
+shasum -a 256 ARES.app.zip
 ```
 
 Compare the output with the checksum published in the GitHub Release.
@@ -90,20 +90,20 @@ run this from a checkout of the repository:
 
 ```bash
 ./scripts/verify-release.sh \
-  /path/to/HermesDesktop.app.zip \
-  /path/to/HermesDesktop.app.zip.manifest.json
+  /path/to/ARES.app.zip \
+  /path/to/ARES.app.zip.manifest.json
 ```
 
 After extracting and moving the app into place:
 
 ```bash
-codesign --verify --deep --strict /Applications/HermesDesktop.app
+codesign --verify --deep --strict /Applications/ARES.app
 ```
 
 If you want more visibility into what macOS sees in the bundle:
 
 ```bash
-codesign -dv --verbose=4 /Applications/HermesDesktop.app
+codesign -dv --verbose=4 /Applications/ARES.app
 ```
 
 For network behavior, you can observe live connections with Little Snitch,
@@ -118,7 +118,7 @@ source and build the app yourself:
 ./scripts/build-macos-app.sh
 ```
 
-That produces a local app bundle in `dist/HermesDesktop.app`.
+That produces a local app bundle in `dist/ARES.app`.
 
 This is still an ad-hoc signed, non-notarized bundle, because that is the
 current build and release model in the repo. Building locally does not turn it
@@ -127,7 +127,7 @@ instead of a downloaded zip.
 
 ## What The App Depends On At Runtime
 
-Trusting the release zip is only part of the picture. Hermes Desktop also
+Trusting the release zip is only part of the picture. ARES also
 depends on the environment it connects to.
 
 The app assumes:

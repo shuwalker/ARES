@@ -1138,6 +1138,18 @@ struct KanbanBoardDraft: Equatable {
     }
 }
 
+struct KanbanOrchestrationConfig: Codable, Sendable {
+    var maxConcurrentTasks: Int?
+    var autoDispatch: Bool?
+    var dispatchIntervalSeconds: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case maxConcurrentTasks = "max_concurrent_tasks"
+        case autoDispatch = "auto_dispatch"
+        case dispatchIntervalSeconds = "dispatch_interval_seconds"
+    }
+}
+
 struct KanbanActionDraft: Equatable {
     var comment = ""
     var result = ""

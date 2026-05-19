@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import HermesDesktop
+@testable import ARES
 
 struct ConnectionProfileTests {
     @Test
@@ -203,7 +203,7 @@ struct ConnectionProfileTests {
 
         #expect(
             profile.remoteShellBootstrapCommand(startupCommandLine: "hermes --profile researcher --resume 'debug session'\\''s final turn'") ==
-                #"exec /bin/sh -c "export HERMES_HOME=\"\$HOME/.hermes/profiles/researcher\"; export PATH=\"\$HOME/.hermes/profiles/researcher/hermes-agent/venv/bin:\$HOME/.local/bin:\$HOME/.hermes/hermes-agent/venv/bin:\$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH\"; exec \"\${SHELL:-/bin/zsh}\" -lc \"hermes --profile researcher --resume 'debug session'\\\\''s final turn'; hermes_bootstrap_exit_code=\\\$?; if [ \\\"\\\$hermes_bootstrap_exit_code\\\" -ne 0 ]; then printf '\\\\n[Hermes Desktop] Startup command exited with status %s.\\\\n' \\\"\\\$hermes_bootstrap_exit_code\\\"; fi; exec \\\"\\\${SHELL:-/bin/zsh}\\\" -l\"""#
+                #"exec /bin/sh -c "export HERMES_HOME=\"\$HOME/.hermes/profiles/researcher\"; export PATH=\"\$HOME/.hermes/profiles/researcher/hermes-agent/venv/bin:\$HOME/.local/bin:\$HOME/.hermes/hermes-agent/venv/bin:\$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH\"; exec \"\${SHELL:-/bin/zsh}\" -lc \"hermes --profile researcher --resume 'debug session'\\\\''s final turn'; hermes_bootstrap_exit_code=\\\$?; if [ \\\"\\\$hermes_bootstrap_exit_code\\\" -ne 0 ]; then printf '\\\\n[ARES] Startup command exited with status %s.\\\\n' \\\"\\\$hermes_bootstrap_exit_code\\\"; fi; exec \\\"\\\${SHELL:-/bin/zsh}\\\" -l\"""#
         )
     }
 
@@ -216,7 +216,7 @@ struct ConnectionProfileTests {
 
         #expect(
             profile.remoteShellBootstrapCommand(startupCommandLine: "printf \"$HOME `whoami`\"") ==
-                #"exec /bin/sh -c "export HERMES_HOME=\"\$HOME/.hermes\"; export PATH=\"\$HOME/.hermes/hermes-agent/venv/bin:\$HOME/.local/bin:\$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH\"; exec \"\${SHELL:-/bin/zsh}\" -lc \"printf \\\"\\\$HOME \\\`whoami\\\`\\\"; hermes_bootstrap_exit_code=\\\$?; if [ \\\"\\\$hermes_bootstrap_exit_code\\\" -ne 0 ]; then printf '\\\\n[Hermes Desktop] Startup command exited with status %s.\\\\n' \\\"\\\$hermes_bootstrap_exit_code\\\"; fi; exec \\\"\\\${SHELL:-/bin/zsh}\\\" -l\"""#
+                #"exec /bin/sh -c "export HERMES_HOME=\"\$HOME/.hermes\"; export PATH=\"\$HOME/.hermes/hermes-agent/venv/bin:\$HOME/.local/bin:\$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH\"; exec \"\${SHELL:-/bin/zsh}\" -lc \"printf \\\"\\\$HOME \\\`whoami\\\`\\\"; hermes_bootstrap_exit_code=\\\$?; if [ \\\"\\\$hermes_bootstrap_exit_code\\\" -ne 0 ]; then printf '\\\\n[ARES] Startup command exited with status %s.\\\\n' \\\"\\\$hermes_bootstrap_exit_code\\\"; fi; exec \\\"\\\${SHELL:-/bin/zsh}\\\" -l\"""#
         )
     }
 

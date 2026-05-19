@@ -228,8 +228,8 @@ struct ProfilesView: View {
     // MARK: - Data Loading
 
     private func loadProfiles() async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else {
-            errorMessage = "Profile management requires a local Hermes connection."
+        guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
+            errorMessage = "Profile management requires a local Hermes connection or an active SSH tunnel."
             return
         }
 

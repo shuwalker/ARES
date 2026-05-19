@@ -438,6 +438,82 @@ struct PlatformStatus: Decodable {
     }
 }
 
+// MARK: - Memory
+
+struct MemoryEntry: Identifiable, Codable, Sendable {
+    let id: String
+    let content: String
+    let createdAt: String?
+    let source: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, content, source
+        case createdAt = "created_at"
+    }
+}
+
+struct MemoryResponse: Codable, Sendable {
+    let entries: [MemoryEntry]
+}
+
+// MARK: - Tools
+
+struct ToolSummary: Identifiable, Codable, Sendable {
+    let name: String
+    var enabled: Bool
+    let description: String?
+
+    var id: String { name }
+}
+
+struct ToolsResponse: Codable, Sendable {
+    let tools: [ToolSummary]
+}
+
+// MARK: - Dashboard Overview (Feature 1)
+
+struct DashboardOverview: Codable, Sendable {
+    let totalSessions: Int
+    let totalMessages: Int
+    let totalToolCalls: Int
+    let totalTokens: Int
+    let estimatedCost: Double
+    let cacheEfficiency: Double?
+    let dailyStats: [DailyStats]
+
+    enum CodingKeys: String, CodingKey {
+        case totalSessions = "total_sessions"
+        case totalMessages = "total_messages"
+        case totalToolCalls = "total_tool_calls"
+        case totalTokens = "total_tokens"
+        case estimatedCost = "estimated_cost"
+        case cacheEfficiency = "cache_efficiency"
+        case dailyStats = "daily_stats"
+    }
+}
+
+struct DailyStats: Codable, Sendable, Identifiable {
+    var id: String { date }
+    let date: String
+    let sessions: Int
+    let messages: Int
+    let tokens: Int
+}
+
+// MARK: - Session Status (Feature 2)
+
+struct SessionStatusResponse: Codable, Sendable {
+    let contextUsed: Int
+    let contextLimit: Int
+    let dailyCost: Double
+
+    enum CodingKeys: String, CodingKey {
+        case contextUsed = "contextUsed"
+        case contextLimit = "contextLimit"
+        case dailyCost = "dailyCost"
+    }
+}
+
 // MARK: - System Controls
 
 /// Response from POST /api/gateway/restart and POST /api/hermes/update

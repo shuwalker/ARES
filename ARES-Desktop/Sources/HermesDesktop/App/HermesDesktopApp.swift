@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct HermesDesktopApp: App {
+struct ARESApp: App {
     @NSApplicationDelegateAdaptor(HermesApplicationDelegate.self) private var appDelegate
     @StateObject private var appState = AppState()
 
@@ -15,7 +15,7 @@ struct HermesDesktopApp: App {
         }
         .defaultSize(width: 1360, height: 860)
         .commands {
-            HermesDesktopCommands(appState: appState)
+            ARESCommands(appState: appState)
         }
     }
 }

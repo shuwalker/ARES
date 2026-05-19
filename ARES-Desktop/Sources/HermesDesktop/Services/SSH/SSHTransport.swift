@@ -251,7 +251,7 @@ final class SSHTransport: @unchecked Sendable {
             if isLoopbackTarget(target) {
                 return "SSH succeeded, but python3 is not available in the non-interactive SSH shell PATH for this Mac. Install python3 or expose it in the SSH shell environment before retrying."
             }
-            return "SSH succeeded, but python3 is not available in the remote non-interactive SSH shell PATH. Install python3 or expose it in the SSH shell environment before retrying. Hermes Desktop requires python3 for discovery, file editing, and session browsing."
+            return "SSH succeeded, but python3 is not available in the remote non-interactive SSH shell PATH. Install python3 or expose it in the SSH shell environment before retrying. ARES requires python3 for discovery, file editing, and session browsing."
         }
 
         if !rawMessage.isEmpty {

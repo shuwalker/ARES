@@ -1,6 +1,6 @@
-# Hermes Desktop v0.6.0
+# ARES v0.6.0
 
-`v0.6.0` is the release where Hermes Desktop becomes a fuller host workbench
+`v0.6.0` is the release where ARES becomes a fuller host workbench
 without changing its core promise: the Hermes host remains the source of truth,
 and the app stays on the direct SSH path.
 
@@ -31,7 +31,7 @@ behavior, refreshed public docs, and tighter localization coverage.
 
 ## Still True
 
-- Hermes Desktop still connects directly over SSH
+- ARES still connects directly over SSH
 - the host remains the source of truth
 - there is no gateway API, remote daemon, local mirror, or shadow sync layer
 - workspace files are opened and saved on the host; bookmarks are local pointers,
@@ -45,5 +45,5 @@ behavior, refreshed public docs, and tighter localization coverage.
 - open source
 - ad-hoc signed and not notarized yet, so first launch may still require
   right-click -> Open / Open Anyway
-- release archive: `HermesDesktop.app.zip`
-- checksum: `HermesDesktop.app.zip.sha256`
+- release archive: `ARES.app.zip`
+- checksum: `ARES.app.zip.sha256`

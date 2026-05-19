@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import HermesDesktop
+@testable import ARES
 
 struct KanbanModelsTests {
     @Test
@@ -230,7 +230,7 @@ struct KanbanModelsTests {
             },
             {
               "slug": "desktop",
-              "name": "Hermes Desktop",
+              "name": "ARES",
               "description": "Release work",
               "icon": "desktopcomputer",
               "color": "#4F8CFF",
@@ -254,7 +254,7 @@ struct KanbanModelsTests {
         #expect(response.supportsBoardManagement)
         #expect(response.boards.count == 2)
         #expect(response.boards[0].isDefault)
-        #expect(response.boards[1].resolvedName == "Hermes Desktop")
+        #expect(response.boards[1].resolvedName == "ARES")
         #expect(response.boards[1].taskTotal == 4)
         #expect(response.boards[1].databasePath == "~/.hermes/kanban/boards/desktop/kanban.db")
         #expect(response.boards[1].isCurrent)
@@ -318,14 +318,14 @@ struct KanbanModelsTests {
         #expect(draft.validationError == "Board slug is required.")
 
         draft.slug = "  Desktop_Release-1  "
-        draft.name = " Hermes Desktop "
+        draft.name = " ARES "
         draft.description = " Release stream "
         draft.icon = " desktopcomputer "
         draft.color = " #4F8CFF "
 
         #expect(draft.validationError == nil)
         #expect(draft.normalizedSlug == "desktop_release-1")
-        #expect(draft.normalizedName == "Hermes Desktop")
+        #expect(draft.normalizedName == "ARES")
         #expect(draft.normalizedDescription == "Release stream")
         #expect(draft.normalizedIcon == "desktopcomputer")
         #expect(draft.normalizedColor == "#4F8CFF")

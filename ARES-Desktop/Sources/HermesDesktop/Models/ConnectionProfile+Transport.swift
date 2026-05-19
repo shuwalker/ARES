@@ -16,6 +16,11 @@ extension ConnectionProfile {
         return URL(string: "http://\(host):\(port)")!
     }
 
+    /// Returns the dashboard URL via an SSH local port-forward tunnel.
+    func tunneledDashboardURL(localPort: Int) -> URL {
+        URL(string: "http://localhost:\(localPort)")!
+    }
+
     var apiKey: String? {
         return nil
     }

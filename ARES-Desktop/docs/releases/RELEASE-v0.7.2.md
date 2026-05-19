@@ -1,11 +1,11 @@
-# Hermes Desktop v0.7.2
+# ARES v0.7.2
 
 `v0.7.2` is a release-candidate polish and compatibility update for people who
-already work inside Hermes Desktop every day. It fixes a real session
+already work inside ARES every day. It fixes a real session
 navigation regression, adds more flexible split-view controls, and stays aligned
 with recent Hermes Agent changes without weakening the app's SSH-first model.
 
-Hermes Desktop still talks directly to the selected Hermes host over SSH. The
+ARES still talks directly to the selected Hermes host over SSH. The
 host remains the source of truth. There is no gateway API, remote helper daemon,
 local mirror, or background sync layer added in this release.
 
@@ -43,7 +43,7 @@ local mirror, or background sync layer added in this release.
 
 ## Still True
 
-- Hermes Desktop still connects directly over SSH.
+- ARES still connects directly over SSH.
 - The Hermes host remains the source of truth.
 - Sessions, Kanban, cron jobs, files, skills, usage, and terminal work stay
   anchored to the selected host and profile.
@@ -56,5 +56,5 @@ local mirror, or background sync layer added in this release.
 - open source
 - ad-hoc signed and not notarized yet, so first launch may still require
   right-click -> Open / Open Anyway
-- release archive: `HermesDesktop.app.zip`
-- checksum: `HermesDesktop.app.zip.sha256`
+- release archive: `ARES.app.zip`
+- checksum: `ARES.app.zip.sha256`

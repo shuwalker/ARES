@@ -10,6 +10,8 @@ struct FilesView: View {
     @State private var showDiscardFileAlert = false
     @State private var showReloadDiscardAlert = false
     @State private var showRemoveBookmarkAlert = false
+    @State private var showSaveConflictAlert = false
+    @State private var conflictFileID: String?
 
     var body: some View {
         HermesCollapsibleHSplitView(layout: $splitLayout, detailMinWidth: 460) {
@@ -77,6 +79,27 @@ struct FilesView: View {
             }
         } message: {
             Text(L10n.string("The remote file stays untouched."))
+        }
+        .alert(L10n.string("File was modified on the remote host. Overwrite anyway?"), isPresented: $showSaveConflictAlert) {
+            Button(L10n.string("Overwrite"), role: .destructive) {
+                if let fileID = conflictFileID {
+                    Task {
+                        await appState.saveWorkspaceFile(fileID: fileID, forceOverwrite: true)
+                    }
+                }
+                conflictFileID = nil
+            }
+            Button(L10n.string("Cancel"), role: .cancel) {
+                conflictFileID = nil
+            }
+        } message: {
+            Text(L10n.string("The remote copy changed since this file was opened. Overwriting will replace the remote version with your local edits."))
+        }
+        .onChange(of: appState.workspaceFileSaveConflictFileID) { _, newValue in
+            guard let fileID = newValue else { return }
+            appState.workspaceFileSaveConflictFileID = nil
+            conflictFileID = fileID
+            showSaveConflictAlert = true
         }
     }
 

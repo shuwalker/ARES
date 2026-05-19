@@ -1,0 +1,51 @@
+name: macOS CI
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ARES-Desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.3.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer || true
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: ./scripts/run-tests.sh
+
+      - name: Build app bundle
+        run: ./scripts/build-macos-app.sh
+
+      - name: Package release artifact
+        run: ./scripts/package-github-release.sh
+
+      - name: Verify packaged release
+        run: ./scripts/verify-release.sh
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ares-release-${{ github.sha }}
+          path: |
+            ARES-Desktop/dist/ARES.app.zip
+            ARES-Desktop/dist/ARES.app.zip.sha256
+            ARES-Desktop/dist/ARES.app.zip.manifest.json
+          if-no-files-found: error

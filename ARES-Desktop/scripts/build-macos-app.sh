@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="HermesDesktop"
+APP_NAME="ARES"
 APP_DISPLAY_NAME="ARES"
 INSTALL_PREFIX="${ARES_INSTALL_PREFIX:-/Applications}"
 BUNDLE_PATH="$ROOT_DIR/dist/${APP_DISPLAY_NAME}.app"

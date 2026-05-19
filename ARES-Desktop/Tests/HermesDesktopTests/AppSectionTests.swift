@@ -1,6 +1,6 @@
 import Testing
 
-@testable import HermesDesktop
+@testable import ARES
 
 struct AppSectionTests {
     @Test

@@ -1,5 +1,14 @@
 import SwiftUI
 
+// MARK: - Config Tab Enum
+
+private enum ConfigTab: String, CaseIterable {
+    case general = "General"
+    case providers = "Providers"
+    case models = "Models"
+    case memory = "Memory"
+}
+
 struct ConfigView: View {
     @EnvironmentObject private var appState: AppState
     @State private var configDict: [String: JSONValue] = [:]
@@ -11,6 +20,19 @@ struct ConfigView: View {
     @State private var isSaving = false
     @State private var saveMessage: String?
     @State private var searchText = ""
+    @State private var selectedTab: ConfigTab = .general
+
+    // Providers tab state
+    @State private var providers: [ProviderEntry] = ProviderEntry.defaults
+    @State private var showAddProviderSheet = false
+
+    // Models tab state
+    @State private var defaultModel: String = ""
+    @State private var fallbackChain: [String] = []
+
+    // Memory tab state
+    @State private var embeddingProvider: String = ""
+    @State private var memoryConsolidation: Bool = false
 
     private let categories: [ConfigCategory] = [
         ConfigCategory(name: "General", icon: "gearshape", fields: []),
@@ -36,12 +58,20 @@ struct ConfigView: View {
                 HermesPageHeader(
                     title: "Config",
                     subtitle: "View and edit the Hermes configuration. Changes take effect after session reset or gateway restart."
-                )
+                ) {
+                    Picker("Section", selection: $selectedTab) {
+                        ForEach(ConfigTab.allCases, id: \.self) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 320)
+                }
 
-                configContent
+                tabContent
             }
             .overlay(alignment: .topTrailing) {
-                if isLoading && configDict.isEmpty {
+                if isLoading && configDict.isEmpty && selectedTab == .general {
                     HermesLoadingOverlay()
                         .padding(18)
                 }
@@ -49,6 +79,20 @@ struct ConfigView: View {
         }
         .task(id: appState.activeConnectionID) {
             await loadConfig()
+        }
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .general:
+            configContent
+        case .providers:
+            providersTabContent
+        case .models:
+            modelsTabContent
+        case .memory:
+            memoryTabContent
         }
     }
 
@@ -252,8 +296,8 @@ struct ConfigView: View {
     // MARK: - Data Loading
 
     private func loadConfig() async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else {
-            errorMessage = "Config editing requires a local Hermes connection."
+        guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
+            errorMessage = "Config editing requires a local Hermes connection or an active SSH tunnel."
             return
         }
 
@@ -291,5 +335,361 @@ struct ConfigView: View {
         }
 
         isSaving = false
+    }
+
+    // MARK: - Providers Tab
+
+    private var providersTabContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("API Providers")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showAddProviderSheet = true
+                } label: {
+                    Label("Add Provider", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            HermesSurfacePanel {
+                VStack(spacing: 0) {
+                    ForEach($providers) { $provider in
+                        providerRow(provider: $provider)
+                        Divider()
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            if let msg = saveMessage {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+        }
+        .sheet(isPresented: $showAddProviderSheet) {
+            AddProviderSheet { newProvider in
+                providers.append(newProvider)
+            }
+        }
+    }
+
+    private func providerRow(provider: Binding<ProviderEntry>) -> some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                if let baseURL = provider.wrappedValue.baseURL {
+                    HStack {
+                        Text("Base URL")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(baseURL)
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(1)
+                    }
+                }
+                HStack {
+                    Text("API Key")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    SecureField("Enter API key…", text: provider.apiKey)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: 240)
+                }
+                Button("Save Key") {
+                    Task { await saveProviderKey(provider.wrappedValue) }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
+        } label: {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(provider.wrappedValue.hasKey ? Color.green : Color.secondary.opacity(0.4))
+                    .frame(width: 8, height: 8)
+                Text(provider.wrappedValue.name)
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(.vertical, 6)
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private func saveProviderKey(_ provider: ProviderEntry) async {
+        guard appState.dashboardAPIAvailable else { return }
+        isSaving = true
+        saveMessage = nil
+        do {
+            let envKey = "\(provider.name.uppercased())_API_KEY"
+            try await appState.dashboardAPIService.setEnvVar(key: envKey, value: provider.apiKey)
+            if let idx = providers.firstIndex(where: { $0.id == provider.id }) {
+                providers[idx].hasKey = !provider.apiKey.isEmpty
+            }
+            saveMessage = "\(provider.name) API key saved."
+        } catch {
+            saveMessage = "Failed: \(error.localizedDescription)"
+        }
+        isSaving = false
+    }
+
+    // MARK: - Models Tab
+
+    private var modelsTabContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HermesSurfacePanel {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Model Preferences")
+                        .font(.headline)
+                        .padding(.bottom, 4)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Default Model")
+                            .font(.subheadline.weight(.semibold))
+                        TextField("e.g. claude-opus-4-5", text: $defaultModel)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Fallback Chain")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Button {
+                                fallbackChain.append("")
+                            } label: {
+                                Image(systemName: "plus.circle")
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Text("Models tried in order if the default is unavailable.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        List {
+                            ForEach(Array(fallbackChain.enumerated()), id: \.offset) { index, _ in
+                                HStack {
+                                    Text("\(index + 1).")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 24)
+                                    TextField("Model ID", text: Binding(
+                                        get: { fallbackChain[index] },
+                                        set: { fallbackChain[index] = $0 }
+                                    ))
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(.caption, design: .monospaced))
+                                    Button {
+                                        fallbackChain.remove(at: index)
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .onMove { from, to in
+                                fallbackChain.move(fromOffsets: from, toOffset: to)
+                            }
+                        }
+                        .listStyle(.plain)
+                        .frame(minHeight: 80, maxHeight: 200)
+                    }
+
+                    HStack {
+                        Spacer()
+                        Button("Save Model Preferences") {
+                            Task { await saveModelPreferences() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isSaving)
+                    }
+                }
+                .padding(16)
+            }
+
+            if let msg = saveMessage {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+
+    private func saveModelPreferences() async {
+        guard appState.dashboardAPIAvailable else { return }
+        isSaving = true
+        saveMessage = nil
+        var fields: [String: Any] = [:]
+        if !defaultModel.isEmpty { fields["default_model"] = defaultModel }
+        if !fallbackChain.isEmpty { fields["fallback_chain"] = fallbackChain.filter { !$0.isEmpty } }
+        do {
+            try await appState.dashboardAPIService.patchClaudeConfig(fields)
+            saveMessage = "Model preferences saved."
+        } catch {
+            saveMessage = "Failed: \(error.localizedDescription)"
+        }
+        isSaving = false
+    }
+
+    // MARK: - Memory Tab
+
+    private var memoryTabContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HermesSurfacePanel {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Memory Settings")
+                        .font(.headline)
+                        .padding(.bottom, 4)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Embedding Provider")
+                            .font(.subheadline.weight(.semibold))
+                        TextField("e.g. openai, local", text: $embeddingProvider)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Provider used to generate memory embeddings.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Divider()
+
+                    Toggle("Memory Consolidation", isOn: $memoryConsolidation)
+                    Text("Automatically consolidate and deduplicate memory entries.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Spacer()
+                        Button("Save Memory Settings") {
+                            Task { await saveMemorySettings() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isSaving)
+                    }
+                }
+                .padding(16)
+            }
+
+            if let msg = saveMessage {
+                Text(msg)
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+
+    private func saveMemorySettings() async {
+        guard appState.dashboardAPIAvailable else { return }
+        isSaving = true
+        saveMessage = nil
+        let fields: [String: Any] = [
+            "embedding_provider": embeddingProvider,
+            "memory_consolidation": memoryConsolidation
+        ]
+        do {
+            try await appState.dashboardAPIService.patchClaudeConfig(fields)
+            saveMessage = "Memory settings saved."
+        } catch {
+            saveMessage = "Failed: \(error.localizedDescription)"
+        }
+        isSaving = false
+    }
+}
+
+// MARK: - ProviderEntry model
+
+struct ProviderEntry: Identifiable {
+    let id: UUID
+    var name: String
+    var baseURL: String?
+    var apiKey: String
+    var hasKey: Bool
+
+    static let defaults: [ProviderEntry] = [
+        ProviderEntry(id: UUID(), name: "Anthropic", baseURL: "https://api.anthropic.com", apiKey: "", hasKey: false),
+        ProviderEntry(id: UUID(), name: "OpenAI", baseURL: "https://api.openai.com/v1", apiKey: "", hasKey: false),
+        ProviderEntry(id: UUID(), name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1", apiKey: "", hasKey: false),
+        ProviderEntry(id: UUID(), name: "Ollama", baseURL: "http://localhost:11434", apiKey: "", hasKey: true)
+    ]
+}
+
+// MARK: - Add Provider Sheet
+
+private struct AddProviderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onAdd: (ProviderEntry) -> Void
+
+    @State private var name: String = ""
+    @State private var baseURL: String = ""
+    @State private var apiKey: String = ""
+
+    private let presets = ["Anthropic", "OpenAI", "OpenRouter", "Ollama", "Custom"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Add Provider")
+                .font(.title3.weight(.semibold))
+
+            Picker("Type", selection: $name) {
+                ForEach(presets, id: \.self) { Text($0) }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: name) { _, newValue in
+                switch newValue {
+                case "Anthropic": baseURL = "https://api.anthropic.com"
+                case "OpenAI": baseURL = "https://api.openai.com/v1"
+                case "OpenRouter": baseURL = "https://openrouter.ai/api/v1"
+                case "Ollama": baseURL = "http://localhost:11434"
+                default: baseURL = ""
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Name").font(.caption.weight(.semibold))
+                TextField("Provider name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Base URL").font(.caption.weight(.semibold))
+                TextField("https://…", text: $baseURL)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("API Key").font(.caption.weight(.semibold))
+                SecureField("sk-…", text: $apiKey)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Add") {
+                    onAdd(ProviderEntry(
+                        id: UUID(),
+                        name: name.isEmpty ? "Provider" : name,
+                        baseURL: baseURL.isEmpty ? nil : baseURL,
+                        apiKey: apiKey,
+                        hasKey: !apiKey.isEmpty
+                    ))
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 400)
     }
 }

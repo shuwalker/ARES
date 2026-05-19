@@ -7,6 +7,140 @@ final class HermesChatService: @unchecked Sendable {
         self.sshTransport = sshTransport
     }
 
+    // MARK: - Streaming via HTTP SSE
+
+    /// Stream a chat message via the Hermes /v1/chat/completions SSE endpoint.
+    /// Returns the full accumulated assistant text once streaming completes.
+    func streamMessage(
+        _ prompt: String,
+        sessionID: String?,
+        baseURL: URL,
+        thinkingBudgetTokens: Int? = nil,
+        fastMode: Bool = false,
+        onChunk: @escaping @Sendable (String) -> Void,
+        onSessionID: @escaping @Sendable (String) -> Void,
+        onToolCall: (@escaping @Sendable (ChatToolCall) -> Void)? = nil,
+        onToolCallDone: (@escaping @Sendable (String) -> Void)? = nil,
+        onThinkingDelta: (@escaping @Sendable (String) -> Void)? = nil
+    ) async throws -> String {
+        var request = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        if fastMode {
+            request.setValue("true", forHTTPHeaderField: "X-Fast-Mode")
+        }
+
+        var bodyObject: [String: Any] = [
+            "model": "current",
+            "messages": [["role": "user", "content": prompt]],
+            "stream": true
+        ]
+        if let sessionID {
+            bodyObject["session_id"] = sessionID
+        }
+        if let budget = thinkingBudgetTokens {
+            bodyObject["thinking"] = ["type": "enabled", "budget_tokens": budget]
+        }
+        if fastMode {
+            bodyObject["fast_mode"] = true
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: bodyObject)
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw StreamingChatError.invalidResponse
+        }
+
+        // Extract session ID from response header if present
+        if let headerSessionID = httpResponse.value(forHTTPHeaderField: "x-hermes-session-id") {
+            onSessionID(headerSessionID)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            var errorBody = ""
+            for try await line in bytes.lines {
+                errorBody += line + "\n"
+            }
+            throw StreamingChatError.httpError(httpResponse.statusCode, errorBody.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        var accumulated = ""
+        var sessionIDReported = false
+        // Accumulate tool call data across chunks: index -> (id, name, arguments)
+        var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+
+        for try await line in bytes.lines {
+            // Skip empty lines and event: lines
+            if line.isEmpty || line.hasPrefix("event:") { continue }
+
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+
+            if payload == "[DONE]" { break }
+
+            guard let data = payload.data(using: .utf8) else { continue }
+
+            // Check for extended thinking delta before trying OpenAI-style decoding
+            if let onThinkingDelta,
+               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let deltaObj = raw["delta"] as? [String: Any],
+               let deltaType = deltaObj["type"] as? String,
+               deltaType == "thinking_delta",
+               let thinkingText = deltaObj["thinking"] as? String,
+               !thinkingText.isEmpty {
+                onThinkingDelta(thinkingText)
+                continue
+            }
+
+            let decoder = JSONDecoder()
+            guard let chunk = try? decoder.decode(ChatStreamChunk.self, from: data) else { continue }
+
+            if !sessionIDReported, let sid = chunk.sessionID, !sid.isEmpty {
+                sessionIDReported = true
+                onSessionID(sid)
+            }
+
+            // Process tool call deltas
+            for tcDelta in chunk.toolCallDeltas {
+                let idx = tcDelta.index ?? 0
+                let callID = tcDelta.id ?? ""
+                let funcName = tcDelta.function?.name ?? ""
+                let funcArgs = tcDelta.function?.arguments ?? ""
+
+                if var existing = pendingToolCalls[idx] {
+                    if !funcArgs.isEmpty { existing.arguments += funcArgs }
+                    pendingToolCalls[idx] = existing
+                } else {
+                    let newID = callID.isEmpty ? "tool-\(idx)" : callID
+                    pendingToolCalls[idx] = (id: newID, name: funcName, arguments: funcArgs)
+                    // Emit a running tool call
+                    let toolCall = ChatToolCall(id: newID, name: funcName, input: funcArgs, output: nil, status: .running)
+                    onToolCall?(toolCall)
+                }
+            }
+
+            // When finish_reason indicates tool_calls are complete, mark them done
+            if chunk.finishReason == "tool_calls" {
+                for (_, tc) in pendingToolCalls {
+                    onToolCallDone?(tc.id)
+                }
+                pendingToolCalls.removeAll()
+            }
+
+            let delta = chunk.textDelta
+            if !delta.isEmpty {
+                accumulated += delta
+                onChunk(delta)
+            }
+        }
+
+        return accumulated
+    }
+
+    // MARK: - Blocking SSH chat
+
     func sendMessage(
         _ prompt: String,
         sessionID: String?,
@@ -275,6 +409,22 @@ final class HermesChatService: @unchecked Sendable {
         except Exception as exc:
             fail(f"Unable to run Hermes chat over SSH: {exc}")
         """
+    }
+}
+
+// MARK: - Streaming errors
+
+enum StreamingChatError: LocalizedError {
+    case invalidResponse
+    case httpError(Int, String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "Received an invalid response from the Hermes API."
+        case .httpError(let code, let body):
+            return "Hermes API returned HTTP \(code)\(body.isEmpty ? "." : ": \(body)")"
+        }
     }
 }
 

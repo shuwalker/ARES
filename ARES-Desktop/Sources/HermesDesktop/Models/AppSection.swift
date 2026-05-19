@@ -23,6 +23,18 @@ enum AppSection: String, CaseIterable, Identifiable {
     case physicsSim
     case plugins
     case docs
+    case chat
+    case memory
+    case soul
+    case tools
+    case office
+    case analytics
+    case jobs
+    case mcp
+    case swarm
+    case conductor
+    case operations
+    case crewStatus
 
     var id: String { rawValue }
 
@@ -53,6 +65,18 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .physicsSim: "Physics"
         case .plugins: "Plugins"
         case .docs: "Documentation"
+        case .chat: "Chat"
+        case .memory: "Memory"
+        case .soul: "Soul"
+        case .tools: "Tools"
+        case .office: "Office"
+        case .analytics: "Analytics"
+        case .jobs: "Jobs"
+        case .mcp: "MCP"
+        case .swarm: "Swarm"
+        case .conductor: "Conductor"
+        case .operations: "Operations"
+        case .crewStatus: "Crew"
         }
     }
 
@@ -79,20 +103,29 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .physicsSim: "atom"
         case .plugins: "puzzlepiece"
         case .docs: "book"
+        case .chat: "bubble.left.and.bubble.right"
+        case .memory: "brain"
+        case .soul: "person.text.rectangle"
+        case .tools: "wrench.and.screwdriver"
+        case .office: "cube.transparent"
+        case .analytics: "chart.bar.xaxis"
+        case .jobs: "clock.badge.checkmark"
+        case .mcp: "server.rack"
+        case .swarm: "person.3.fill"
+        case .conductor: "wand.and.stars"
+        case .operations: "building.2"
+        case .crewStatus: "person.badge.shield.checkmark"
         }
     }
 
+    /// Non-numeric keyboard shortcut for sidebar navigation.
+    /// ⌘1–⌘9 are assigned dynamically in `ARESCommands` using `allCases.prefix(9)`.
     var navigationShortcutKey: KeyEquivalent? {
         switch self {
-        case .connections: return "1"
-        case .overview: return "2"
-        case .sessions: return "3"
-        case .workflows: return "4"
-        case .cronjobs: return "5"
-        case .kanban: return "6"
-        case .files: return "7"
-        case .usage: return "8"
-        case .skills: return "9"
+        case .connections, .overview, .sessions, .workflows, .cronjobs,
+             .kanban, .files, .usage, .skills:
+            // Covered by ⌘1–⌘9 in ARESCommands; no additional shortcut needed.
+            return nil
         case .models: return nil
         case .config: return nil
         case .logs: return nil
@@ -100,6 +133,10 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .profiles: return nil
         case .terminal: return "0"
         case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs: return nil
+        case .chat, .memory, .soul, .tools, .office: return nil
+        case .analytics: return nil
+        case .jobs, .mcp, .swarm: return nil
+        case .conductor, .operations, .crewStatus: return nil
         }
     }
 }

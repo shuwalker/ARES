@@ -3,15 +3,15 @@
 import PackageDescription
 
 let package = Package(
-    name: "HermesDesktop",
+    name: "ARES",
     defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .executable(
-            name: "HermesDesktop",
-            targets: ["HermesDesktop"]
+            name: "ARES",
+            targets: ["ARES"]
         )
     ],
     dependencies: [
@@ -19,7 +19,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "HermesDesktop",
+            name: "ARES",
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
@@ -29,8 +29,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "HermesDesktopTests",
-            dependencies: ["HermesDesktop"],
+            name: "ARESTests",
+            dependencies: ["ARES"],
             path: "Tests/HermesDesktopTests"
         )
     ]

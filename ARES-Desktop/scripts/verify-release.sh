@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEFAULT_ZIP_PATH="$ROOT_DIR/dist/HermesDesktop.app.zip"
+DEFAULT_ZIP_PATH="$ROOT_DIR/dist/ARES.app.zip"
 ZIP_PATH="${1:-$DEFAULT_ZIP_PATH}"
 MANIFEST_PATH="${2:-$ZIP_PATH.manifest.json}"
 SHA256_PATH="$ZIP_PATH.sha256"
@@ -86,7 +86,7 @@ ditto -x -k "$ZIP_PATH" "$TMP_DIR"
 APP_PATH="$TMP_DIR/$EXPECTED_BUNDLE_NAME"
 INFO_PLIST_PATH="$APP_PATH/Contents/Info.plist"
 EXECUTABLE_PATH="$APP_PATH/Contents/MacOS/$EXPECTED_EXECUTABLE_NAME"
-RESOURCE_BUNDLE_PATH="$APP_PATH/Contents/Resources/HermesDesktop_HermesDesktop.bundle"
+RESOURCE_BUNDLE_PATH="$APP_PATH/Contents/Resources/ARES_ARES.bundle"
 ICON_PATH="$APP_PATH/Contents/Resources/AppIcon.icns"
 
 assert_file_exists "$APP_PATH"

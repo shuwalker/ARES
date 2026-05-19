@@ -16,7 +16,7 @@ enum DateFormatters {
     }
 
     static func shortDateTimeFormatter() -> DateFormatter {
-        let cacheKey = "HermesDesktop.shortDateTimeFormatter"
+        let cacheKey = "ARES.shortDateTimeFormatter"
         if let formatter = Thread.current.threadDictionary[cacheKey] as? DateFormatter {
             return formatter
         }

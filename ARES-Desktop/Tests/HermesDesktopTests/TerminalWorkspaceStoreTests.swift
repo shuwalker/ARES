@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HermesDesktop
+@testable import ARES
 
 @MainActor
 struct TerminalWorkspaceStoreTests {

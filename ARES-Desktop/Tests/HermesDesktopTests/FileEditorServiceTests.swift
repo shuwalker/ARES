@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HermesDesktop
+@testable import ARES
 
 struct FileEditorServiceTests {
     @Test
@@ -38,7 +38,7 @@ struct FileEditorServiceTests {
         let result = try runPythonScript(script)
 
         #expect(result.exitCode == 1)
-        #expect(result.stdout.contains("Hermes Desktop can edit remote text files up to"))
+        #expect(result.stdout.contains("ARES can edit remote text files up to"))
     }
 
     @Test

@@ -7,6 +7,7 @@ struct ConnectionsView: View {
     @State private var editorPresentationID = UUID()
     @State private var isPresentingEditor = false
     @State private var editingExistingConnection = false
+    @State private var isPresentingHealthPanel = false
 
     var body: some View {
         HermesPageContainer(width: .standard) {
@@ -15,6 +16,14 @@ struct ConnectionsView: View {
                     title: "Hosts",
                     subtitle: "Alias-first SSH profiles for every Hermes workspace, from a Raspberry Pi to another Mac or a remote VPS."
                 ) {
+                    Button {
+                        isPresentingHealthPanel = true
+                    } label: {
+                        Label(L10n.string("Health Check"), systemImage: "stethoscope")
+                    }
+                    .buttonStyle(.bordered)
+                    .help(L10n.string("Run connection health checks"))
+
                     Button {
                         presentEditor(for: ConnectionProfile(), isEditing: false)
                     } label: {
@@ -29,7 +38,7 @@ struct ConnectionsView: View {
                             ContentUnavailableView(
                                 L10n.string("No hosts yet"),
                                 systemImage: "network.slash",
-                                description: Text(L10n.string("Create your first SSH profile to connect Hermes Desktop to a Raspberry Pi, another Mac, a VPS, or this Mac via localhost."))
+                                description: Text(L10n.string("Create your first SSH profile to connect ARES to a Raspberry Pi, another Mac, a VPS, or this Mac via localhost."))
                             )
 
                             Button {
@@ -68,6 +77,10 @@ struct ConnectionsView: View {
                 appState.saveConnection(updatedConnection)
             }
             .id(editorPresentationID)
+        }
+        .sheet(isPresented: $isPresentingHealthPanel) {
+            ConnectionHealthView()
+                .environmentObject(appState)
         }
         .onAppear {
             presentPendingNewConnectionEditorIfNeeded()

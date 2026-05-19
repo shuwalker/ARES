@@ -17,7 +17,7 @@ enum L10n {
     }
 
     private static let localizationBundles: [Bundle] = {
-        let resourceBundleName = "HermesDesktop_HermesDesktop.bundle"
+        let resourceBundleName = "ARES_ARES.bundle"
         let candidateURLs = [
             Bundle.main.resourceURL?.appendingPathComponent(resourceBundleName),
             Bundle.main.bundleURL.appendingPathComponent(resourceBundleName)

@@ -105,6 +105,19 @@ struct RootView: View {
                     dismissButton: .default(Text(L10n.string("OK")))
                 )
             }
+            .alert(
+                L10n.string("Context Usage Warning"),
+                isPresented: Binding(
+                    get: { appState.contextAlertThreshold != nil },
+                    set: { if !$0 { appState.dismissContextAlert() } }
+                )
+            ) {
+                Button(L10n.string("OK")) { appState.dismissContextAlert() }
+            } message: {
+                if let threshold = appState.contextAlertThreshold {
+                    Text(L10n.string("Your context window is %d%% full. Consider starting a new session soon.", threshold))
+                }
+            }
             .alert(L10n.string("Discard unsaved changes?"), isPresented: $appState.showDiscardChangesAlert) {
                 Button(L10n.string("Discard"), role: .destructive) {
                     appState.discardChangesAndContinue()
@@ -130,6 +143,9 @@ struct RootView: View {
                         appState.dismissAvailableUpdate()
                     }
                 )
+            }
+            .sheet(isPresented: $appState.isSearchVisible) {
+                GlobalSearchView(isPresented: $appState.isSearchVisible)
             }
             .task {
                 await appState.checkForUpdatesAtLaunch()
@@ -168,25 +184,31 @@ struct RootView: View {
     }
 
     private var showAvatarPanel: Bool {
-        appState.selectedSection == .avatar || appState.activeConnection?.transportKind == .local
+        appState.selectedSection == .avatar && appState.activeConnection?.transportKind == .local
     }
 
     private var workspaceSidebar: some View {
-        List(selection: sectionSelection) {
-            if let activeConnection = appState.activeConnection {
-                Section(L10n.string("Workspace")) {
-                    WorkspaceSidebarCard(connection: activeConnection)
+        VStack(spacing: 0) {
+            List(selection: sectionSelection) {
+                if let activeConnection = appState.activeConnection {
+                    Section(L10n.string("Workspace")) {
+                        WorkspaceSidebarCard(connection: activeConnection)
+                    }
+                }
+
+                Section(L10n.string("Sections")) {
+                    ForEach(availableSections) { section in
+                        SidebarSectionRow(section: section)
+                            .tag(section)
+                    }
                 }
             }
+            .listStyle(.sidebar)
 
-            Section(L10n.string("Sections")) {
-                ForEach(availableSections) { section in
-                    SidebarSectionRow(section: section)
-                        .tag(section)
-                }
+            if appState.activeConnection != nil && appState.sessionContextLimit > 0 {
+                UsageMeterView()
             }
         }
-        .listStyle(.sidebar)
         .frame(minWidth: 160, idealWidth: 188, maxWidth: 220)
     }
 
@@ -231,7 +253,7 @@ struct RootView: View {
             return $filesSplitLayout
         case .skills:
             return $skillsSplitLayout
-        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs:
+        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs, .chat, .memory, .soul, .tools, .office, .analytics, .jobs, .mcp, .swarm, .conductor, .operations, .crewStatus:
             return nil
         }
     }
@@ -254,7 +276,7 @@ struct RootView: View {
         if appState.activeConnection == nil {
             return [.connections]
         }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs]
+        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .swarm, .conductor, .operations, .crewStatus, .files, .usage, .analytics, .jobs, .mcp, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -305,7 +327,7 @@ struct RootView: View {
         case .sessions:
             EmptyView()
         case .workflows:
-            WorkflowsView(splitLayout: $workflowsSplitLayout)
+            WorkflowPresetsView()
         case .cronjobs:
             CronJobsView(splitLayout: $cronJobsSplitLayout)
         case .kanban:
@@ -325,21 +347,7 @@ struct RootView: View {
         case .profiles:
             ProfilesView()
         case .terminal:
-            TerminalWorkspaceView(
-                workspace: appState.terminalWorkspace,
-                context: TerminalWorkspaceContext(
-                    activeConnection: appState.activeConnection,
-                    activeWorkspaceScopeFingerprint: appState.activeConnection?.workspaceScopeFingerprint,
-                    isTerminalSectionActive: appState.selectedSection == .terminal,
-                    terminalTheme: appState.connectionStore.terminalTheme
-                ),
-                ensureTerminalSession: {
-                    appState.ensureTerminalSession()
-                },
-                updateTerminalTheme: { newValue in
-                    appState.connectionStore.terminalTheme = newValue
-                }
-            )
+            TerminalView()
         case .avatar:
             AvatarView()
         case .secondBrain:
@@ -352,6 +360,30 @@ struct RootView: View {
             PluginsView()
         case .docs:
             DocsView()
+        case .chat:
+            ChatView()
+        case .memory:
+            MemoryView()
+        case .soul:
+            SoulView()
+        case .tools:
+            ToolsView()
+        case .office:
+            OfficeView()
+        case .analytics:
+            DashboardView()
+        case .jobs:
+            JobsView()
+        case .mcp:
+            MCPView()
+        case .swarm:
+            SwarmView()
+        case .conductor:
+            ConductorView()
+        case .operations:
+            OperationsView()
+        case .crewStatus:
+            CrewStatusView()
         }
     }
 }
@@ -371,13 +403,13 @@ private struct UpdateAvailableSheet: View {
                     .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.string("Hermes Desktop %@ is available", update.latestVersion))
+                    Text(L10n.string("ARES %@ is available", update.latestVersion))
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(
                         L10n.string(
-                            "You are running Hermes Desktop %@. The latest Hermes Desktop release is %@.",
+                            "You are running ARES %@. The latest ARES release is %@.",
                             update.currentVersion,
                             update.latestVersion
                         )
@@ -402,19 +434,19 @@ private struct UpdateAvailableSheet: View {
                     }
                     .frame(maxHeight: 220)
                 } else {
-                    Text(L10n.string("Open the GitHub release to download the latest Hermes Desktop build."))
+                    Text(L10n.string("Open the GitHub release to download the latest ARES build."))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            Text(L10n.string("This checks only the Hermes Desktop app. It does not update Hermes Agent on your host."))
+            Text(L10n.string("This checks only the ARES desktop app. It does not update Hermes Agent on your host."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Toggle(L10n.string("Check Automatically for Hermes Desktop Updates"), isOn: $automaticallyChecksForUpdates)
+            Toggle(L10n.string("Check Automatically for ARES Updates"), isOn: $automaticallyChecksForUpdates)
                 .toggleStyle(.checkbox)
 
             HStack {

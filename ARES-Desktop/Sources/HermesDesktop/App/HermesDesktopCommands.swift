@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct HermesDesktopCommands: Commands {
+struct ARESCommands: Commands {
     @ObservedObject var appState: AppState
 
     var body: some Commands {
@@ -38,6 +38,11 @@ struct HermesDesktopCommands: Commands {
             .keyboardShortcut("f", modifiers: [.command])
             .disabled(!appState.canFocusSearchCurrentSection)
 
+            Button(L10n.string("Search…")) {
+                appState.isSearchVisible = true
+            }
+            .keyboardShortcut("k", modifiers: .command)
+
             Button(L10n.string("Save Current File")) {
                 Task {
                     await appState.saveSelectedWorkspaceFile()
@@ -49,14 +54,14 @@ struct HermesDesktopCommands: Commands {
             Divider()
 
             Toggle(
-                L10n.string("Check Automatically for Hermes Desktop Updates"),
+                L10n.string("Check Automatically for ARES Updates"),
                 isOn: Binding(
                     get: { appState.connectionStore.automaticallyChecksForUpdates },
                     set: { appState.updateAutomaticUpdateChecks($0) }
                 )
             )
 
-            Button(L10n.string("Check for Hermes Desktop Updates…")) {
+            Button(L10n.string("Check for ARES Updates…")) {
                 Task {
                     await appState.checkForUpdatesFromCommand()
                 }
@@ -65,7 +70,22 @@ struct HermesDesktopCommands: Commands {
         }
 
         CommandMenu(L10n.string("Navigate")) {
-            ForEach(AppSection.allCases) { section in
+            // ⌘1–⌘9: switch to the first 9 sections in order
+            ForEach(
+                Array(AppSection.allCases.prefix(9).enumerated()),
+                id: \.offset
+            ) { index, section in
+                Button(L10n.string("Show %@", section.title)) {
+                    appState.requestSectionSelection(section)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command])
+                .disabled(!appState.isSectionAvailable(section))
+            }
+
+            Divider()
+
+            // Remaining sections without numeric shortcuts
+            ForEach(Array(AppSection.allCases.dropFirst(9))) { section in
                 if let shortcut = section.navigationShortcutKey {
                     Button(L10n.string("Show %@", section.title)) {
                         appState.requestSectionSelection(section)

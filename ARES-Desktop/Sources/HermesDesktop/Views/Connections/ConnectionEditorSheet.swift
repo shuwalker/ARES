@@ -34,7 +34,7 @@ struct ConnectionEditorSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     HermesPageHeader(
                         title: isEditing ? "Edit Host" : "New Host",
-                        subtitle: "Set the SSH details Hermes Desktop should use for discovery, file editing, sessions and terminal access."
+                        subtitle: "Set the SSH details ARES should use for discovery, file editing, sessions and terminal access."
                     )
 
                     HermesSurfacePanel(
@@ -111,7 +111,7 @@ struct ConnectionEditorSheet: View {
                                         .foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
 
-                                    Text(L10n.string("Leave this empty for the normal setup. When set, Hermes Desktop uses this path as `HERMES_HOME` for Sessions, Files, Skills, Usage, Cron, chat, and Terminal."))
+                                    Text(L10n.string("Leave this empty for the normal setup. When set, ARES uses this path as `HERMES_HOME` for Sessions, Files, Skills, Usage, Cron, chat, and Terminal."))
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -145,7 +145,7 @@ struct ConnectionEditorSheet: View {
 
                             ConnectionHintRow(
                                 title: "Authentication",
-                                detail: "SSH must already work from this Mac without interactive prompts. Password login may still exist on the host, but Hermes Desktop expects keys, an SSH agent, or another non-interactive SSH path for the actual connection it uses."
+                                detail: "SSH must already work from this Mac without interactive prompts. Password login may still exist on the host, but ARES expects keys, an SSH agent, or another non-interactive SSH path for the actual connection it uses."
                             )
 
                             ConnectionHintRow(
@@ -183,7 +183,7 @@ struct ConnectionEditorSheet: View {
 
                     HermesSurfacePanel(
                         title: "Examples",
-                        subtitle: "A few common patterns that work well with Hermes Desktop."
+                        subtitle: "A few common patterns that work well with ARES."
                     ) {
                         VStack(alignment: .leading, spacing: 12) {
                             ExampleValueRow(label: "Raspberry Pi", value: "Alias `hermes-home` or host `raspberrypi.local`")

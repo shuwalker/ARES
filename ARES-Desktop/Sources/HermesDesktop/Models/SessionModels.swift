@@ -21,6 +21,10 @@ struct SessionSummary: Codable, Identifiable, Hashable, Sendable, TitleIdentifia
     let messageCount: Int?
     let preview: String?
     let searchMatch: SessionSearchMatch?
+    /// Originating source of the session: "cli", "telegram", "discord", "cron", "api", etc.
+    let source: String?
+    /// Lifecycle status of the session: "active", "running", "completed", "idle", etc.
+    let status: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -31,6 +35,8 @@ struct SessionSummary: Codable, Identifiable, Hashable, Sendable, TitleIdentifia
         case messageCount = "message_count"
         case preview
         case searchMatch = "search_match"
+        case source
+        case status
     }
 
     init(
@@ -41,7 +47,9 @@ struct SessionSummary: Codable, Identifiable, Hashable, Sendable, TitleIdentifia
         lastActive: SessionTimestamp?,
         messageCount: Int?,
         preview: String?,
-        searchMatch: SessionSearchMatch? = nil
+        searchMatch: SessionSearchMatch? = nil,
+        source: String? = nil,
+        status: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -51,6 +59,15 @@ struct SessionSummary: Codable, Identifiable, Hashable, Sendable, TitleIdentifia
         self.messageCount = messageCount
         self.preview = preview
         self.searchMatch = searchMatch
+        self.source = source
+        self.status = status
+    }
+
+    /// Returns `true` when the session is actively running.
+    var isRunning: Bool {
+        guard let status else { return false }
+        let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "active" || normalized == "running"
     }
 }
 

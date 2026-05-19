@@ -266,8 +266,18 @@ struct SessionsView: View {
             session: session,
             isSelected: session.id == appState.selectedSessionID,
             isPinned: isPinned,
+            isSendingMessage: appState.isSendingSessionMessage,
             onTogglePin: {
                 appState.toggleSessionPin(session)
+            },
+            onSendInline: { prompt in
+                Task {
+                    // Ensure the target session is selected before sending
+                    if appState.selectedSessionID != session.id {
+                        await appState.loadSessionDetail(sessionID: session.id)
+                    }
+                    _ = await appState.sendMessageToSelectedSession(prompt, autoApproveCommands: false)
+                }
             }
         ) {
             Task {
@@ -397,36 +407,60 @@ private struct SessionCardRow: View {
     let session: SessionSummary
     let isSelected: Bool
     let isPinned: Bool
+    let isSendingMessage: Bool
     let onTogglePin: () -> Void
+    let onSendInline: (String) -> Void
     let onSelect: () -> Void
 
     @State private var isHovering = false
+    @State private var isPulsing = false
+    @State private var isComposerExpanded = false
+    @State private var inlineDraft = ""
+
+    private var trimmedDraft: String {
+        inlineDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
-        Button(action: onSelect) {
-            content
-                .padding(.trailing, 34)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
-                        .fill(isSelected ? HermesTheme.selectedFill : HermesTheme.rowFill)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
-                        .strokeBorder(isSelected ? HermesTheme.selectedStroke : HermesTheme.subtleStroke, lineWidth: 1)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .overlay(alignment: .topTrailing) {
-            if isPinned || isSelected || isHovering {
-                pinButton
-                    .padding(.top, 10)
-                    .padding(.trailing, 14)
-                    .transition(.opacity)
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onSelect) {
+                content
+                    .padding(.trailing, (isSelected || isHovering) ? 64 : 34)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                            .fill(isSelected ? HermesTheme.selectedFill : HermesTheme.rowFill)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                            .strokeBorder(isSelected ? HermesTheme.selectedStroke : HermesTheme.subtleStroke, lineWidth: 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous))
             }
+            .buttonStyle(.plain)
+
+            if isComposerExpanded {
+                inlineComposer
+                    .padding(.top, 6)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 6) {
+                if isPinned || isSelected || isHovering {
+                    pinButton
+                        .transition(.opacity)
+                }
+
+                if isSelected || isHovering {
+                    inlineComposerToggle
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 10)
+            .padding(.trailing, 14)
         }
         .onHover { isHovering = $0 }
         .contextMenu {
@@ -437,6 +471,71 @@ private struct SessionCardRow: View {
                 NSPasteboard.general.setString(session.id, forType: .string)
             }
         }
+    }
+
+    private var inlineComposerToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isComposerExpanded.toggle()
+                if !isComposerExpanded {
+                    inlineDraft = ""
+                }
+            }
+        } label: {
+            Image(systemName: isComposerExpanded ? "chevron.up" : "paperplane")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isComposerExpanded ? Color.accentColor : Color.secondary)
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(isComposerExpanded ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(isComposerExpanded ? L10n.string("Close inline composer") : L10n.string("Send a message to this session"))
+        .accessibilityLabel(isComposerExpanded ? L10n.string("Close inline composer") : L10n.string("Send a message to this session"))
+    }
+
+    private var inlineComposer: some View {
+        HStack(spacing: 8) {
+            TextField(L10n.string("Message…"), text: $inlineDraft)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    submitInlineDraft()
+                }
+                .disabled(isSendingMessage)
+
+            Button {
+                submitInlineDraft()
+            } label: {
+                Image(systemName: "paperplane.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSendingMessage || trimmedDraft.isEmpty)
+            .help(L10n.string("Send message (Return)"))
+            .accessibilityLabel(L10n.string("Send"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                .fill(HermesTheme.rowFill)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
+                .strokeBorder(HermesTheme.subtleStroke, lineWidth: 1)
+        }
+    }
+
+    private func submitInlineDraft() {
+        let prompt = trimmedDraft
+        guard !isSendingMessage, !prompt.isEmpty else { return }
+        inlineDraft = ""
+        withAnimation(.easeInOut(duration: 0.16)) {
+            isComposerExpanded = false
+        }
+        onSendInline(prompt)
     }
 
     private var pinButton: some View {
@@ -460,10 +559,16 @@ private struct SessionCardRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(session.resolvedTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 6) {
+                        statusDot
+
+                        Text(session.resolvedTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+
+                        sourceBadge
+                    }
 
                     Text(session.id)
                         .font(.system(.caption2, design: .monospaced))
@@ -511,6 +616,55 @@ private struct SessionCardRow: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Status dot
+
+    @ViewBuilder
+    private var statusDot: some View {
+        if session.isRunning {
+            Circle()
+                .fill(Color.green)
+                .frame(width: 8, height: 8)
+                .scaleEffect(isPulsing ? 1.3 : 1.0)
+                .animation(
+                    .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+                    value: isPulsing
+                )
+                .onAppear { isPulsing = true }
+        } else {
+            Circle()
+                .fill(Color.secondary.opacity(0.35))
+                .frame(width: 8, height: 8)
+        }
+    }
+
+    // MARK: - Source badge
+
+    @ViewBuilder
+    private var sourceBadge: some View {
+        if let source = session.source?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !source.isEmpty {
+            let (label, tint) = Self.sourceAppearance(for: source)
+            HermesBadge(text: label, tint: tint)
+        }
+    }
+
+    private static func sourceAppearance(for source: String) -> (label: String, tint: Color) {
+        switch source {
+        case "cli":
+            return ("CLI", .secondary)
+        case "telegram":
+            return ("TG", .blue)
+        case "discord":
+            return ("DC", .purple)
+        case "cron":
+            return ("CRON", .orange)
+        case "api":
+            return ("API", .green)
+        default:
+            return (source.uppercased().prefix(6).description, .secondary)
         }
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import HermesDesktop
+@testable import ARES
 
 struct WorkspaceFileModelsTests {
     @Test

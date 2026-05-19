@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HermesDesktop
+@testable import ARES
 
 struct TerminalInputSequenceTests {
     private let bracketedPasteStart: [UInt8] = [0x1B, 0x5B, 0x32, 0x30, 0x30, 0x7E]
@@ -10,7 +10,7 @@ struct TerminalInputSequenceTests {
     @Test
     func bracketedPasteSubmissionPreservesBlankLinesAndSubmitsOnce() {
         let prompt = """
-        Check this GitHub repository: https://github.com/dodo-reach/hermes-desktop
+        Check this GitHub repository: https://github.com/shuwalker/ares-autonomous-reasoning-execution-system
 
 
         inspect and summarize the existing PRs and Issues.

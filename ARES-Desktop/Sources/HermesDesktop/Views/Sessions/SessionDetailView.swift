@@ -127,13 +127,16 @@ struct SessionDetailView: View {
                         Button {
                             requestScrollToLatest(proxy, reason: .pendingTurnChanged)
                         } label: {
-                            Label(L10n.string("Jump to Latest"), systemImage: "arrow.down.to.line")
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 44))
+                                .symbolRenderingMode(.hierarchical)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
                         .padding(18)
-                        .transition(.opacity)
+                        .transition(.opacity.combined(with: .scale))
                         .help(L10n.string("Scroll to the latest message"))
+                        .accessibilityLabel(L10n.string("Jump to Latest"))
                     }
                 }
                 .onChange(of: session?.id) { _, _ in
@@ -167,7 +170,7 @@ struct SessionDetailView: View {
             Button(L10n.string("Cancel"), role: .cancel) {}
         } message: { session in
             Text(L10n.string(
-                "“%@” will be removed from Hermes Desktop and deleted on the remote Hermes host as well. This action cannot be undone.",
+                "“%@” will be removed from ARES and deleted on the remote Hermes host as well. This action cannot be undone.",
                 session.resolvedTitle
             ))
         }

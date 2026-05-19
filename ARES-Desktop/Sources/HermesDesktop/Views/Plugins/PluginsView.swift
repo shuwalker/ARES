@@ -294,8 +294,8 @@ struct PluginsView: View {
     // MARK: - Data Loading
 
     private func loadPlugins() async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else {
-            errorMessage = L10n.string("Plugin management requires a local Hermes connection.")
+        guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
+            errorMessage = L10n.string("Plugin management requires a local Hermes connection or an active SSH tunnel.")
             return
         }
 
@@ -319,7 +319,7 @@ struct PluginsView: View {
     }
 
     private func rescanPlugins() async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else { return }
+        guard appState.dashboardAPIAvailable else { return }
         isRescanning = true
         actionError = nil
 
@@ -339,7 +339,7 @@ struct PluginsView: View {
     }
 
     private func installPlugin() async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else { return }
+        guard appState.dashboardAPIAvailable else { return }
         let identifier = installIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !identifier.isEmpty else { return }
 
@@ -370,7 +370,7 @@ struct PluginsView: View {
     }
 
     private func saveProviders() async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else { return }
+        guard appState.dashboardAPIAvailable else { return }
         isSavingProviders = true
         providersSaveError = nil
         providersSaveSuccess = false
@@ -392,7 +392,7 @@ struct PluginsView: View {
     // MARK: - Plugin Actions
 
     private func performPluginAction(_ action: PluginRowAction, plugin: HubAgentPluginRow) async {
-        guard let connection = appState.activeConnection, connection.transportKind == .local else { return }
+        guard appState.dashboardAPIAvailable else { return }
         operatingPluginName = plugin.name
         actionError = nil
 

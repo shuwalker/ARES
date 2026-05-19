@@ -3,12 +3,12 @@ import Foundation
 /// Service that calls the Hermes dashboard web API (port 9119) using HTTPTransport.
 /// Authenticates via the ephemeral session token injected into the dashboard SPA HTML.
 final class DashboardAPIService: @unchecked Sendable {
-    private let httpTransport: HTTPTransport
+    internal let httpTransport: HTTPTransport
     var baseURL: URL
 
     /// Ephemeral session token obtained from the dashboard HTML.
     /// Regenerated on each server start; must be fetched before making authenticated requests.
-    private var sessionToken: String?
+    internal var sessionToken: String?
 
     /// Creates a new dashboard API service.
     /// - Parameters:
@@ -25,7 +25,7 @@ final class DashboardAPIService: @unchecked Sendable {
     // MARK: - Authentication
 
     /// Fetches the session token from the dashboard HTML if we don't have one yet.
-    private func ensureSessionToken() async throws {
+    func ensureSessionToken() async throws {
         guard sessionToken == nil else { return }
 
         let data = try await httpTransport.get(
@@ -51,7 +51,7 @@ final class DashboardAPIService: @unchecked Sendable {
         sessionToken = String(html[tokenRange])
     }
 
-    private func authenticatedGet(path: String) async throws -> Data {
+    func authenticatedGet(path: String) async throws -> Data {
         try await ensureSessionToken()
 
         // Try with session token header first
@@ -84,7 +84,7 @@ final class DashboardAPIService: @unchecked Sendable {
         return try await httpTransport.get(path: path, baseURL: baseURL, apiKey: nil)
     }
 
-    private func authenticatedPost(path: String, body: Data) async throws -> Data {
+    func authenticatedPost(path: String, body: Data) async throws -> Data {
         try await ensureSessionToken()
 
         if let token = sessionToken {
@@ -115,7 +115,7 @@ final class DashboardAPIService: @unchecked Sendable {
         return try await httpTransport.post(path: path, body: body, baseURL: baseURL, apiKey: nil)
     }
 
-    private func authenticatedPut(path: String, body: Data) async throws -> Data {
+    func authenticatedPut(path: String, body: Data) async throws -> Data {
         try await ensureSessionToken()
 
         if let token = sessionToken {
@@ -146,7 +146,7 @@ final class DashboardAPIService: @unchecked Sendable {
         return try await httpTransport.put(path: path, body: body, baseURL: baseURL, apiKey: nil)
     }
 
-    private func authenticatedDelete(path: String) async throws -> Data {
+    func authenticatedDelete(path: String) async throws -> Data {
         try await ensureSessionToken()
 
         if let token = sessionToken {
@@ -184,240 +184,5 @@ final class DashboardAPIService: @unchecked Sendable {
             apiKey: nil
         )
         return try JSONDecoder().decode(StatusResponse.self, from: data)
-    }
-
-    // MARK: - Config
-
-    /// GET /api/config — returns flat config dict
-    func fetchConfig() async throws -> ConfigResponse {
-        let data = try await authenticatedGet(path: "api/config")
-        return try JSONDecoder().decode(ConfigResponse.self, from: data)
-    }
-
-    /// GET /api/config/schema — returns field definitions
-    func fetchConfigSchema() async throws -> ConfigSchemaResponse {
-        let data = try await authenticatedGet(path: "api/config/schema")
-        return try JSONDecoder().decode(ConfigSchemaResponse.self, from: data)
-    }
-
-    /// PUT /api/config — update entire config
-    func updateConfig(config: ConfigResponse) async throws {
-        let payload = try JSONEncoder().encode(config)
-        _ = try await authenticatedPut(path: "api/config", body: payload)
-    }
-
-    /// GET /api/config/raw — returns { "yaml": "..." }
-    func fetchRawConfig() async throws -> String {
-        let data = try await authenticatedGet(path: "api/config/raw")
-        struct RawConfigResponse: Decodable { let yaml: String }
-        let response = try JSONDecoder().decode(RawConfigResponse.self, from: data)
-        return response.yaml
-    }
-
-    /// PUT /api/config/raw — update raw YAML config
-    func updateRawConfig(yaml: String) async throws {
-        let body: [String: String] = ["yaml_text": yaml]
-        let payload = try JSONSerialization.data(withJSONObject: body)
-        _ = try await authenticatedPut(path: "api/config/raw", body: payload)
-    }
-
-    // MARK: - Environment
-
-    /// GET /api/env — returns flat dict of env var info objects
-    func fetchEnv() async throws -> EnvResponse {
-        let data = try await authenticatedGet(path: "api/env")
-        return try JSONDecoder().decode(EnvResponse.self, from: data)
-    }
-
-    /// PUT /api/env — set an env var
-    func setEnvVar(key: String, value: String) async throws {
-        let body: [String: String] = ["key": key, "value": value]
-        let payload = try JSONSerialization.data(withJSONObject: body)
-        _ = try await authenticatedPut(path: "api/env", body: payload)
-    }
-
-    /// POST /api/env/reveal — reveal a masked env value (requires session token)
-    func revealEnvVar(key: String) async throws -> String {
-        let body: [String: String] = ["key": key]
-        let payload = try JSONSerialization.data(withJSONObject: body)
-        let data = try await authenticatedPost(path: "api/env/reveal", body: payload)
-        struct RevealResponse: Decodable { let value: String }
-        let response = try JSONDecoder().decode(RevealResponse.self, from: data)
-        return response.value
-    }
-
-    // MARK: - Logs
-
-    /// GET /api/logs?file=agent&lines=200&level=ALL
-    func fetchLogs(file: String = "agent", level: String = "ALL", lines: Int = 200) async throws -> LogsResponse {
-        var components = URLComponents()
-        components.path = "api/logs"
-        components.queryItems = [
-            URLQueryItem(name: "file", value: file),
-            URLQueryItem(name: "level", value: level),
-            URLQueryItem(name: "lines", value: String(lines))
-        ]
-
-        guard let path = components.url?.absoluteString else {
-            throw TransportError.localFailure("Failed to construct logs query path")
-        }
-
-        let data = try await authenticatedGet(path: path)
-        return try JSONDecoder().decode(LogsResponse.self, from: data)
-    }
-
-    // MARK: - Models
-
-    /// GET /api/model/info — current active model
-    func fetchModelInfo() async throws -> ModelInfoResponse {
-        let data = try await authenticatedGet(path: "api/model/info")
-        return try JSONDecoder().decode(ModelInfoResponse.self, from: data)
-    }
-
-    /// GET /api/model/options — all providers and models
-    func fetchModelOptions() async throws -> ModelOptionsResponse {
-        let data = try await authenticatedGet(path: "api/model/options")
-        return try JSONDecoder().decode(ModelOptionsResponse.self, from: data)
-    }
-
-    /// GET /api/model/auxiliary — auxiliary model assignments
-    func fetchAuxiliaryModels() async throws -> AuxiliaryModelsResponse {
-        let data = try await authenticatedGet(path: "api/model/auxiliary")
-        return try JSONDecoder().decode(AuxiliaryModelsResponse.self, from: data)
-    }
-
-    /// POST /api/model/set — switch the active model
-    func setModel(model: String, provider: String? = nil) async throws {
-        let request = ModelSetRequest(model: model, provider: provider)
-        let payload = try JSONEncoder().encode(request)
-        _ = try await authenticatedPost(path: "api/model/set", body: payload)
-    }
-
-    // MARK: - Analytics
-
-    /// GET /api/analytics/usage?days={n}
-    func fetchAnalyticsUsage(days: Int = 30) async throws -> AnalyticsResponse {
-        let path = "api/analytics/usage?days=\(days)"
-        let data = try await authenticatedGet(path: path)
-        return try JSONDecoder().decode(AnalyticsResponse.self, from: data)
-    }
-
-    /// GET /api/analytics/models?days=7
-    func fetchModelsAnalytics(days: Int = 30) async throws -> ModelsAnalyticsResponse {
-        let path = "api/analytics/models?days=\(days)"
-        let data = try await authenticatedGet(path: path)
-        return try JSONDecoder().decode(ModelsAnalyticsResponse.self, from: data)
-    }
-
-    // MARK: - Plugins
-
-    /// GET /api/dashboard/plugins/hub
-    func getPluginsHub() async throws -> PluginsHubResponse {
-        let data = try await authenticatedGet(path: "api/dashboard/plugins/hub")
-        return try JSONDecoder().decode(PluginsHubResponse.self, from: data)
-    }
-
-    /// POST /api/dashboard/agent-plugins/install
-    func installAgentPlugin(identifier: String, force: Bool, enable: Bool) async throws -> AgentPluginInstallResponse {
-        let request = AgentPluginInstallRequest(identifier: identifier, force: force, enable: enable)
-        let payload = try JSONEncoder().encode(request)
-        let data = try await authenticatedPost(path: "api/dashboard/agent-plugins/install", body: payload)
-        return try JSONDecoder().decode(AgentPluginInstallResponse.self, from: data)
-    }
-
-    /// POST /api/dashboard/agent-plugins/{name}/enable
-    func enableAgentPlugin(name: String) async throws -> AgentPluginToggleResponse {
-        let data = try await authenticatedPost(path: "api/dashboard/agent-plugins/\(name)/enable", body: Data())
-        return try JSONDecoder().decode(AgentPluginToggleResponse.self, from: data)
-    }
-
-    /// POST /api/dashboard/agent-plugins/{name}/disable
-    func disableAgentPlugin(name: String) async throws -> AgentPluginToggleResponse {
-        let data = try await authenticatedPost(path: "api/dashboard/agent-plugins/\(name)/disable", body: Data())
-        return try JSONDecoder().decode(AgentPluginToggleResponse.self, from: data)
-    }
-
-    /// POST /api/dashboard/agent-plugins/{name}/update
-    func updateAgentPlugin(name: String) async throws -> AgentPluginUpdateResponse {
-        let data = try await authenticatedPost(path: "api/dashboard/agent-plugins/\(name)/update", body: Data())
-        return try JSONDecoder().decode(AgentPluginUpdateResponse.self, from: data)
-    }
-
-    /// DELETE /api/dashboard/agent-plugins/{name}
-    func removeAgentPlugin(name: String) async throws -> AgentPluginToggleResponse {
-        let data = try await authenticatedDelete(path: "api/dashboard/agent-plugins/\(name)")
-        return try JSONDecoder().decode(AgentPluginToggleResponse.self, from: data)
-    }
-
-    /// PUT /api/dashboard/plugin-providers
-    func savePluginProviders(memoryProvider: String, contextEngine: String) async throws -> SavePluginProvidersResponse {
-        let body: [String: String] = [
-            "memory_provider": memoryProvider,
-            "context_engine": contextEngine
-        ]
-        let payload = try JSONSerialization.data(withJSONObject: body)
-        let data = try await authenticatedPut(path: "api/dashboard/plugin-providers", body: payload)
-        return try JSONDecoder().decode(SavePluginProvidersResponse.self, from: data)
-    }
-
-    /// POST /api/dashboard/plugins/rescan
-    func rescanPlugins() async throws -> RescanPluginsResponse {
-        let data = try await authenticatedPost(path: "api/dashboard/plugins/rescan", body: Data())
-        return try JSONDecoder().decode(RescanPluginsResponse.self, from: data)
-    }
-
-    /// GET /api/profiles
-    func fetchProfiles() async throws -> ProfilesResponse {
-        let data = try await authenticatedGet(path: "api/profiles")
-        return try JSONDecoder().decode(ProfilesResponse.self, from: data)
-    }
-
-    /// POST /api/profiles — create a new profile
-    func createProfile(name: String) async throws {
-        let body: [String: String] = ["name": name]
-        let payload = try JSONSerialization.data(withJSONObject: body)
-        _ = try await authenticatedPost(path: "api/profiles", body: payload)
-    }
-
-    /// DELETE /api/profiles/{name}
-    func deleteProfile(name: String) async throws {
-        let path = "api/profiles/\(name)"
-        // Use a DELETE method
-        try await ensureSessionToken()
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
-        request.httpMethod = "DELETE"
-        if let token = sessionToken {
-            request.setValue(token, forHTTPHeaderField: "X-Hermes-Session-Token")
-        }
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let (data, response) = try await httpTransport.session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
-        }
-    }
-
-    // MARK: - System Controls
-
-    /// POST /api/gateway/restart
-    func restartGateway() async throws -> ActionResponse {
-        let data = try await authenticatedPost(path: "api/gateway/restart", body: Data())
-        return try JSONDecoder().decode(ActionResponse.self, from: data)
-    }
-
-    /// POST /api/hermes/update
-    func updateHermes() async throws -> ActionResponse {
-        let data = try await authenticatedPost(path: "api/hermes/update", body: Data())
-        return try JSONDecoder().decode(ActionResponse.self, from: data)
-    }
-
-    /// GET /api/actions/{name}/status?lines=200
-    func getActionStatus(name: String, lines: Int = 200) async throws -> ActionStatusResponse {
-        let path = "api/actions/\(name)/status?lines=\(lines)"
-        let data = try await authenticatedGet(path: path)
-        return try JSONDecoder().decode(ActionStatusResponse.self, from: data)
     }
 }

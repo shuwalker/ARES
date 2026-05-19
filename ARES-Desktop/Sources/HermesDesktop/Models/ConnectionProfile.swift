@@ -182,7 +182,7 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
         if let startupCommandLine,
            !startupCommandLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let startupSequence = """
-\(startupCommandLine); hermes_bootstrap_exit_code=$?; if [ "$hermes_bootstrap_exit_code" -ne 0 ]; then printf '\\n[Hermes Desktop] Startup command exited with status %s.\\n' "$hermes_bootstrap_exit_code"; fi; exec "${SHELL:-/bin/zsh}" -l
+\(startupCommandLine); hermes_bootstrap_exit_code=$?; if [ "$hermes_bootstrap_exit_code" -ne 0 ]; then printf '\\n[ARES] Startup command exited with status %s.\\n' "$hermes_bootstrap_exit_code"; fi; exec "${SHELL:-/bin/zsh}" -l
 """
             let escapedStartupCommand = startupSequence.escapedForDoubleQuotedShellArgument
             innerCommand = "\(exportCommand); \(pathCommand); exec \"${SHELL:-/bin/zsh}\" -lc \"\(escapedStartupCommand)\""

@@ -18,7 +18,7 @@ struct AppPaths {
         ).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         self.init(
             fileManager: fileManager,
-            applicationSupportURL: baseSupport.appendingPathComponent("HermesDesktop", isDirectory: true),
+            applicationSupportURL: baseSupport.appendingPathComponent("ARES", isDirectory: true),
             controlSocketDirectoryURL: URL(
                 fileURLWithPath: "/tmp/hd-\(getuid())",
                 isDirectory: true

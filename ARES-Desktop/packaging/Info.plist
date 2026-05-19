@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>ARES</string>
     <key>CFBundleExecutable</key>
-    <string>HermesDesktop</string>
+    <string>ARES</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>

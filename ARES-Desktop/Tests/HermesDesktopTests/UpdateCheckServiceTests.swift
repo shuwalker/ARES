@@ -1,14 +1,14 @@
 import Foundation
 import Testing
-@testable import HermesDesktop
+@testable import ARES
 
 struct UpdateCheckServiceTests {
     @Test
     func returnsAvailableUpdateWhenGitHubTagIsNewer() async throws {
         let service = UpdateCheckService.mockingRelease(
             tagName: "v0.6.1",
-            htmlURL: "https://github.com/dodo-reach/hermes-desktop/releases/tag/v0.6.1",
-            name: "Hermes Desktop v0.6.1",
+            htmlURL: "https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/tag/v0.6.1",
+            name: "ARES v0.6.1",
             body: "Patch release"
         )
 
@@ -16,9 +16,9 @@ struct UpdateCheckServiceTests {
 
         #expect(update?.latestVersion == "0.6.1")
         #expect(update?.currentVersion == "0.6.0")
-        #expect(update?.resolvedName == "Hermes Desktop v0.6.1")
+        #expect(update?.resolvedName == "ARES v0.6.1")
         #expect(update?.releaseNotesPreview == "Patch release")
-        #expect(update?.htmlURL.absoluteString == "https://github.com/dodo-reach/hermes-desktop/releases/tag/v0.6.1")
+        #expect(update?.htmlURL.absoluteString == "https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/tag/v0.6.1")
     }
 
     @Test
@@ -54,7 +54,7 @@ struct UpdateCheckServiceTests {
 private extension UpdateCheckService {
     static func mockingRelease(
         tagName: String,
-        htmlURL: String = "https://github.com/dodo-reach/hermes-desktop/releases/tag/v0.6.1",
+        htmlURL: String = "https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/tag/v0.6.1",
         name: String? = nil,
         body: String? = nil
     ) -> UpdateCheckService {
@@ -70,7 +70,7 @@ private extension UpdateCheckService {
             fetch: { request in
                 #expect(request.httpMethod == "GET")
                 #expect(request.value(forHTTPHeaderField: "Accept") == "application/vnd.github+json")
-                #expect(request.url?.absoluteString == UpdateCheckService.hermesDesktopLatestReleaseURL.absoluteString)
+                #expect(request.url?.absoluteString == UpdateCheckService.aresDesktopLatestReleaseURL.absoluteString)
                 return HTTPResult(statusCode: 200, data: data)
             }
         )

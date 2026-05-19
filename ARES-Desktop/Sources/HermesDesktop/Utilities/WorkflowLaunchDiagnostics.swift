@@ -76,7 +76,7 @@ actor WorkflowLaunchDiagnostics {
 
     init(logFileURL: URL, fileManager: FileManager = .default) {
         let diagnosticsDirectoryURL = logFileURL.deletingLastPathComponent()
-        let subsystem = Bundle.main.bundleIdentifier ?? "HermesDesktop"
+        let subsystem = Bundle.main.bundleIdentifier ?? "ARES"
 
         self.logFileURL = logFileURL
         self.fileManager = fileManager
@@ -91,7 +91,7 @@ actor WorkflowLaunchDiagnostics {
             dateFormatter: dateFormatter,
             event: "diagnostics_session_started",
             fields: [
-                "banner": "=== Hermes Desktop workflow launch diagnostics session started ===",
+                "banner": "=== ARES workflow launch diagnostics session started ===",
                 "log_path": logFileURL.path
             ]
         )

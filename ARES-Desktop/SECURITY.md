@@ -1,6 +1,6 @@
 # Security Model
 
-Hermes Desktop is a native macOS client for Hermes that talks directly to the
+ARES is a native macOS client for Hermes that talks directly to the
 selected host over SSH.
 
 The host stays the source of truth. The app does not introduce a gateway API,
@@ -11,7 +11,7 @@ not a promise about future packaging, signing, or infrastructure changes.
 
 ## What Executes Locally
 
-Hermes Desktop runs as a normal macOS app on your Mac.
+ARES runs as a normal macOS app on your Mac.
 
 Local execution includes:
 
@@ -19,14 +19,14 @@ Local execution includes:
 - `/usr/bin/ssh` for all host communication
 - a local embedded terminal session that opens an SSH shell to the selected
   host
-- the built-in update check, which requests the latest Hermes Desktop release
+- the built-in update check, which requests the latest ARES release
   metadata from the GitHub Releases API
 
 The app does not install a helper service on the host or on your Mac.
 
 ## What Executes Remotely Over SSH
 
-Hermes Desktop uses SSH to execute commands on the selected host.
+ARES uses SSH to execute commands on the selected host.
 
 Current remote execution includes:
 
@@ -44,9 +44,9 @@ The app therefore depends on the remote SSH environment you already trust:
 
 ## Local State Stored On Your Mac
 
-Hermes Desktop stores a small amount of local state under:
+ARES stores a small amount of local state under:
 
-`~/Library/Application Support/HermesDesktop`
+`~/Library/Application Support/ARES`
 
 Current files written there include:
 
@@ -71,7 +71,7 @@ That directory is also created with private directory permissions (`0700`).
 
 ## What Is Not Stored Locally
 
-Hermes Desktop does not maintain a local mirror of Hermes host state.
+ARES does not maintain a local mirror of Hermes host state.
 
 In the current implementation, it does not store these Hermes artifacts as a
 local source of truth:
@@ -92,7 +92,7 @@ mirror of remote Hermes state.
 
 ## Secrets And Credentials
 
-Hermes Desktop does not ask you to enter an SSH password into the app.
+ARES does not ask you to enter an SSH password into the app.
 
 Current connection profiles store routing details such as alias, host, user,
 port, and Hermes profile name. They do not contain SSH private keys, API keys,
@@ -103,14 +103,14 @@ and SSH setup.
 
 ## Network Calls
 
-Hermes Desktop keeps its network surface intentionally small.
+ARES keeps its network surface intentionally small.
 
 In the current implementation, network calls are:
 
 - SSH connections to the host you explicitly configure
 - an optional GitHub API request to
-  `https://api.github.com/repos/dodo-reach/hermes-desktop/releases/latest`
-  when checking whether a newer Hermes Desktop version exists
+  `https://api.github.com/repos/shuwalker/ares-autonomous-reasoning-execution-system/releases/latest`
+  when checking whether a newer ARES version exists
 
 The built-in update check does not update Hermes Agent, does not install
 anything automatically, and does not send your host, profile, session, file, or
@@ -123,9 +123,9 @@ If you want to validate the app before trusting it:
 - inspect this repository and build from source with
   `./scripts/build-macos-app.sh`
 - compare the published release checksum with
-  `shasum -a 256 HermesDesktop.app.zip`
+  `shasum -a 256 ARES.app.zip`
 - verify the installed bundle with
-  `codesign --verify --deep --strict /Applications/HermesDesktop.app`
+  `codesign --verify --deep --strict /Applications/ARES.app`
 - observe live connections with Little Snitch, LuLu, `lsof`, or `nettop`
 - compare this document with the current code, especially the SSH transport,
   local storage, update check, and packaging scripts

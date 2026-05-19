@@ -1,6 +1,6 @@
-# Hermes Desktop v0.5.0
+# ARES v0.5.0
 
-`v0.5.0` is the release where Hermes Desktop starts to feel like a complete
+`v0.5.0` is the release where ARES starts to feel like a complete
 native Mac workspace for Hermes Agent over SSH.
 
 Since `v0.4.1`, the app has grown from a strong SSH-first companion into a much
@@ -11,7 +11,7 @@ surface host-wide totals when more than one readable profile is available.
 
 Just as important, the broader Hermes ecosystem is clearer now. Nous Research
 ships the official Hermes web dashboard, and that makes the split cleaner:
-Hermes Desktop is not trying to replace the browser dashboard. It is the native
+ARES is not trying to replace the browser dashboard. It is the native
 Mac workspace for direct SSH-based daily use.
 
 ## Highlights
@@ -30,7 +30,7 @@ Mac workspace for direct SSH-based daily use.
 
 ## Still True
 
-- Hermes Desktop still connects directly over SSH
+- ARES still connects directly over SSH
 - the host remains the source of truth
 - there is no gateway API, remote daemon, local mirror, or shadow sync layer
 - the app stays focused on the real Hermes workflow instead of inventing a
