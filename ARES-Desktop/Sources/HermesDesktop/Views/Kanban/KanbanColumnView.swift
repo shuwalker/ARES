@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-private let kanbanInactiveThreshold: TimeInterval = 2 * 60 * 60 // 2 hours
+// Threshold is kept at module scope for use by both KanbanColumnView and KanbanTaskCard.
+private let inactiveThreshold: TimeInterval = 7200 // 2 hours
 
 struct KanbanColumnView: View {
     let status: KanbanTaskStatus

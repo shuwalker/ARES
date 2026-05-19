@@ -28,10 +28,11 @@ extension DashboardAPIService {
     }
 
     /// POST /api/swarm-dispatch — send work to a worker
-    func swarmDispatch(worker: String, prompt: String, missionId: String? = nil) async throws {
+    @discardableResult
+    func swarmDispatch(worker: String, prompt: String, missionId: String? = nil) async throws -> Data {
         let request = SwarmDispatchRequest(worker: worker, prompt: prompt, missionId: missionId)
         let payload = try JSONEncoder().encode(request)
-        _ = try await authenticatedPost(path: "api/swarm-dispatch", body: payload)
+        return try await authenticatedPost(path: "api/swarm-dispatch", body: payload)
     }
 
     /// GET /api/swarm-kanban — kanban cards

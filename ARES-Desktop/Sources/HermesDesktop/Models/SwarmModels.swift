@@ -1,12 +1,33 @@
 import Foundation
 
+// MARK: - Worker Status
+
+enum WorkerStatus: String, Codable, Sendable, Hashable {
+    case idle
+    case running
+    case error
+    case offline
+    // Legacy / server aliases
+    case active
+
+    /// Display label for UI
+    var displayName: String {
+        switch self {
+        case .idle: return "Idle"
+        case .running, .active: return "Active"
+        case .error: return "Error"
+        case .offline: return "Offline"
+        }
+    }
+}
+
 // MARK: - Worker
 
-struct SwarmWorker: Identifiable, Codable, Sendable, Equatable {
+struct SwarmWorker: Identifiable, Codable, Sendable, Equatable, Hashable {
     let id: String
     let name: String
     let role: String
-    var status: String          // "active" | "idle" | "offline"
+    var status: WorkerStatus
     var currentMission: String?
     var tokenCount: Int?
     var sessionId: String?
@@ -20,11 +41,36 @@ struct SwarmWorker: Identifiable, Codable, Sendable, Equatable {
         case tokenCount = "token_count"
         case sessionId = "session_id"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        role = try container.decode(String.self, forKey: .role)
+        // Gracefully fall back to .offline for unknown status strings
+        let rawStatus = try container.decodeIfPresent(String.self, forKey: .status) ?? "offline"
+        status = WorkerStatus(rawValue: rawStatus) ?? .offline
+        currentMission = try container.decodeIfPresent(String.self, forKey: .currentMission)
+        tokenCount = try container.decodeIfPresent(Int.self, forKey: .tokenCount)
+        sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+    }
+
+    // Memberwise init for local creation
+    init(id: String, name: String, role: String, status: WorkerStatus,
+         currentMission: String? = nil, tokenCount: Int? = nil, sessionId: String? = nil) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.status = status
+        self.currentMission = currentMission
+        self.tokenCount = tokenCount
+        self.sessionId = sessionId
+    }
 }
 
 // MARK: - Mission
 
-struct SwarmMission: Identifiable, Codable, Sendable {
+struct SwarmMission: Identifiable, Codable, Sendable, Hashable {
     let id: String
     let title: String
     let worker: String
@@ -60,7 +106,7 @@ struct SwarmHealth: Codable, Sendable {
 
 // MARK: - Kanban Card
 
-struct SwarmKanbanCard: Identifiable, Codable, Sendable {
+struct SwarmKanbanCard: Identifiable, Codable, Sendable, Hashable {
     let id: String
     var title: String
     var column: String          // "backlog" | "ready" | "running" | "review" | "blocked" | "done"
@@ -98,7 +144,7 @@ struct SwarmRuntime: Codable, Sendable {
 
 // MARK: - Report
 
-struct SwarmReport: Identifiable, Codable, Sendable {
+struct SwarmReport: Identifiable, Codable, Sendable, Hashable {
     let id: String
     let missionTitle: String
     let worker: String
@@ -118,7 +164,7 @@ struct SwarmReport: Identifiable, Codable, Sendable {
 
 // MARK: - Memory File
 
-struct SwarmMemoryFile: Identifiable, Codable, Sendable {
+struct SwarmMemoryFile: Identifiable, Codable, Sendable, Hashable {
     let id: String
     let worker: String
     let filename: String
@@ -151,6 +197,19 @@ struct SwarmDispatchRequest: Codable, Sendable {
 struct SwarmDirectChatRequest: Codable, Sendable {
     let worker: String
     let message: String
+}
+
+// MARK: - Chat Response
+
+struct SwarmDirectChatResponse: Codable, Sendable {
+    let reply: String?
+    let response: String?
+    let message: String?
+
+    /// Returns the best available reply string from the response.
+    var assistantReply: String {
+        reply ?? response ?? message ?? ""
+    }
 }
 
 // MARK: - Lifecycle Request
