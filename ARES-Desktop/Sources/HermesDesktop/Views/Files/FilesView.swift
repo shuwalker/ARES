@@ -10,7 +10,7 @@ struct FilesView: View {
     @State private var showDiscardFileAlert = false
     @State private var showReloadDiscardAlert = false
     @State private var showRemoveBookmarkAlert = false
-    @State private var showSaveConflictAlert = false
+    // Conflict is shown as an inline banner instead of a modal alert
     @State private var conflictFileID: String?
 
     var body: some View {
@@ -80,26 +80,12 @@ struct FilesView: View {
         } message: {
             Text(L10n.string("The remote file stays untouched."))
         }
-        .alert(L10n.string("File was modified on the remote host. Overwrite anyway?"), isPresented: $showSaveConflictAlert) {
-            Button(L10n.string("Overwrite"), role: .destructive) {
-                if let fileID = conflictFileID {
-                    Task {
-                        await appState.saveWorkspaceFile(fileID: fileID, forceOverwrite: true)
-                    }
-                }
-                conflictFileID = nil
-            }
-            Button(L10n.string("Cancel"), role: .cancel) {
-                conflictFileID = nil
-            }
-        } message: {
-            Text(L10n.string("The remote copy changed since this file was opened. Overwriting will replace the remote version with your local edits."))
-        }
         .onChange(of: appState.workspaceFileSaveConflictFileID) { _, newValue in
             guard let fileID = newValue else { return }
             appState.workspaceFileSaveConflictFileID = nil
-            conflictFileID = fileID
-            showSaveConflictAlert = true
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                conflictFileID = fileID
+            }
         }
     }
 
@@ -285,47 +271,61 @@ struct FilesView: View {
         }
     }
 
+    @ViewBuilder
     private var editorPane: some View {
-        Group {
-            if let selectedReference {
-                WorkspaceFileEditorPane(
-                    reference: selectedReference,
-                    document: currentDocument,
-                    text: editorBinding,
-                    onReload: {
-                        if currentDocument?.isDirty == true {
-                            showReloadDiscardAlert = true
-                        } else {
-                            Task {
-                                await appState.loadWorkspaceFile(selectedReference, forceReload: true)
-                            }
-                        }
-                    },
-                    onSave: {
+        if let selectedReference {
+            WorkspaceFileEditorPane(
+                reference: selectedReference,
+                document: currentDocument,
+                text: editorBinding,
+                conflictFileID: conflictFileID,
+                onReload: {
+                    if currentDocument?.isDirty == true {
+                        showReloadDiscardAlert = true
+                    } else {
                         Task {
-                            await appState.saveWorkspaceFile(fileID: selectedReference.id)
-                        }
-                    },
-                    onRemove: selectedReference.bookmarkID.map { bookmarkID in
-                        {
-                            bookmarkPendingRemoval = bookmarkID
-                            showRemoveBookmarkAlert = true
+                            await appState.loadWorkspaceFile(selectedReference, forceReload: true)
                         }
                     }
-                )
-            } else {
-                ScrollView {
-                    HermesSurfacePanel {
-                        ContentUnavailableView(
-                            L10n.string("No File Selected"),
-                            systemImage: "doc.text.magnifyingglass",
-                            description: Text(L10n.string("Choose a file from the library."))
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 320)
+                },
+                onSave: {
+                    Task {
+                        await appState.saveWorkspaceFile(fileID: selectedReference.id)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 22)
+                },
+                onForceOverwrite: {
+                    let fileID = conflictFileID ?? selectedReference.id
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        conflictFileID = nil
+                    }
+                    Task {
+                        await appState.saveWorkspaceFile(fileID: fileID, forceOverwrite: true)
+                    }
+                },
+                onDismissConflict: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        conflictFileID = nil
+                    }
+                },
+                onRemove: selectedReference.bookmarkID.map { bookmarkID in
+                    {
+                        bookmarkPendingRemoval = bookmarkID
+                        showRemoveBookmarkAlert = true
+                    }
                 }
+            )
+        } else {
+            ScrollView {
+                HermesSurfacePanel {
+                    ContentUnavailableView(
+                        L10n.string("No File Selected"),
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text(L10n.string("Choose a file from the library."))
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 320)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 22)
             }
         }
     }
@@ -440,8 +440,11 @@ private struct WorkspaceFileEditorPane: View {
     let reference: WorkspaceFileReference
     let document: FileEditorDocument?
     @Binding var text: String
+    let conflictFileID: String?
     let onReload: () -> Void
     let onSave: () -> Void
+    let onForceOverwrite: () -> Void
+    let onDismissConflict: () -> Void
     let onRemove: (() -> Void)?
 
     private var isDirty: Bool {
@@ -452,13 +455,27 @@ private struct WorkspaceFileEditorPane: View {
         document?.isLoading == true
     }
 
+    private var isSaving: Bool {
+        document?.isSaving == true
+    }
+
     private var hasLoaded: Bool {
         document?.hasLoaded == true
+    }
+
+    private var showConflictBanner: Bool {
+        conflictFileID == reference.id
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             headerPanel
+
+            // Conflict detection banner — shown inline so the file content remains visible
+            if showConflictBanner {
+                conflictBanner
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             if let errorMessage = document?.errorMessage {
                 HermesSurfacePanel {
@@ -475,6 +492,45 @@ private struct WorkspaceFileEditorPane: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: - Conflict banner
+
+    private var conflictBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.string("Remote file changed"))
+                    .font(.subheadline.weight(.semibold))
+
+                Text(L10n.string("The remote copy changed since this file was opened. Overwriting will replace the remote version with your local edits."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 8) {
+                Button(L10n.string("Cancel"), action: onDismissConflict)
+                    .controlSize(.small)
+
+                Button(L10n.string("Overwrite"), role: .destructive, action: onForceOverwrite)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(.red)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1)
+        }
     }
 
     private var headerPanel: some View {
@@ -527,15 +583,26 @@ private struct WorkspaceFileEditorPane: View {
     private var actionButtons: some View {
         Group {
             Button(L10n.string("Reload"), action: onReload)
-            .disabled(isLoading)
+                .disabled(isLoading || isSaving)
 
-            Button(L10n.string("Save"), action: onSave)
+            Button {
+                onSave()
+            } label: {
+                HStack(spacing: 6) {
+                    if isSaving {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.8)
+                    }
+                    Text(isSaving ? L10n.string("Saving…") : L10n.string("Save"))
+                }
+            }
             .buttonStyle(.borderedProminent)
-            .disabled(!isDirty || isLoading || !hasLoaded)
+            .disabled(!isDirty || isLoading || !hasLoaded || isSaving)
 
             if let onRemove {
                 Button(L10n.string("Remove Bookmark"), role: .destructive, action: onRemove)
-                .disabled(isLoading)
+                    .disabled(isLoading || isSaving)
             }
 
             if isLoading {
@@ -553,7 +620,7 @@ private struct WorkspaceFileEditorPane: View {
             ZStack {
                 TextEditor(text: $text)
                     .font(.system(.body, design: .monospaced))
-                    .disabled(isLoading || !hasLoaded)
+                    .disabled(isLoading || !hasLoaded || isSaving)
                     .scrollContentBackground(.hidden)
                     .padding(10)
                     .background(Color(NSColor.textBackgroundColor))

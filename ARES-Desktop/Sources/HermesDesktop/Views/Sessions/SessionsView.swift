@@ -179,9 +179,9 @@ struct SessionsView: View {
         } else if !hasVisibleSessions {
             HermesSurfacePanel {
                 ContentUnavailableView(
-                    L10n.string("No sessions found"),
-                    systemImage: "tray",
-                    description: Text(L10n.string("No readable Hermes sessions were discovered yet for this SSH target."))
+                    L10n.string("No sessions yet"),
+                    systemImage: "bubble.left.and.bubble.right",
+                    description: Text(L10n.string("No sessions yet. Start chatting to create your first session."))
                 )
                 .frame(maxWidth: .infinity, minHeight: 300)
             }
@@ -416,6 +416,7 @@ private struct SessionCardRow: View {
     @State private var isPulsing = false
     @State private var isComposerExpanded = false
     @State private var inlineDraft = ""
+    @FocusState private var isComposerFocused: Bool
 
     private var trimmedDraft: String {
         inlineDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -445,6 +446,7 @@ private struct SessionCardRow: View {
                 inlineComposer
                     .padding(.top, 6)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isComposerExpanded)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -475,10 +477,15 @@ private struct SessionCardRow: View {
 
     private var inlineComposerToggle: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 isComposerExpanded.toggle()
                 if !isComposerExpanded {
                     inlineDraft = ""
+                } else {
+                    // Focus the text field when expanding
+                    DispatchQueue.main.async {
+                        isComposerFocused = true
+                    }
                 }
             }
         } label: {
@@ -501,6 +508,7 @@ private struct SessionCardRow: View {
         HStack(spacing: 8) {
             TextField(L10n.string("Message…"), text: $inlineDraft)
                 .textFieldStyle(.roundedBorder)
+                .focused($isComposerFocused)
                 .onSubmit {
                     submitInlineDraft()
                 }
@@ -532,7 +540,8 @@ private struct SessionCardRow: View {
         let prompt = trimmedDraft
         guard !isSendingMessage, !prompt.isEmpty else { return }
         inlineDraft = ""
-        withAnimation(.easeInOut(duration: 0.16)) {
+        isComposerFocused = false
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             isComposerExpanded = false
         }
         onSendInline(prompt)
@@ -566,6 +575,12 @@ private struct SessionCardRow: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.leading)
+
+                        if isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.orange)
+                        }
 
                         sourceBadge
                     }
