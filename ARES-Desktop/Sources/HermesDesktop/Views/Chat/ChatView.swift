@@ -31,6 +31,18 @@ struct ChatView: View {
     @State private var micAuthDenied = false
     @StateObject private var speechService = SpeechRecognitionService()
 
+    // Input history
+    @State private var inputHistory: [String] = []
+    @State private var historyIndex: Int = -1
+    /// Draft text saved before the user navigates history
+    @State private var draftText: String = ""
+
+    // IME composition guard
+    @State private var isComposing: Bool = false
+
+    // Fast Mode toggle
+    @State private var fastMode: Bool = false
+
     // Filtered commands based on what follows the /
     private var filteredCommands: [SlashCommand] {
         guard inputText.hasPrefix("/") else { return [] }
@@ -96,6 +108,19 @@ struct ChatView: View {
                     .controlSize(.small)
                     .scaleEffect(0.8, anchor: .center)
             }
+
+            // Fast Mode toggle
+            Button {
+                fastMode.toggle()
+            } label: {
+                Image(systemName: fastMode ? "bolt.fill" : "bolt")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(fastMode ? Color.yellow : Color.secondary)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(fastMode ? .yellow : nil)
+            .help(fastMode ? L10n.string("Fast Mode is ON — disable fast mode") : L10n.string("Enable Fast Mode for quicker responses"))
 
             // Export conversation button
             Button {
@@ -243,8 +268,18 @@ struct ChatView: View {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
                         }
-                        .onSubmit { sendMessage() }
+                        .onSubmit {
+                            if !isComposing { sendMessage() }
+                        }
                         .onChange(of: inputText) { _, newValue in
+                            // Reset history navigation when user types fresh content
+                            if historyIndex != -1 {
+                                // Only reset if the text differs from what history would supply
+                                let historyText = historyIndex < inputHistory.count ? inputHistory[historyIndex] : ""
+                                if newValue != historyText {
+                                    historyIndex = -1
+                                }
+                            }
                             let shouldShow = newValue.hasPrefix("/") && !filteredCommands.isEmpty
                             if showSlashPopover != shouldShow {
                                 withAnimation(.easeInOut(duration: 0.15)) {
@@ -253,6 +288,31 @@ struct ChatView: View {
                             } else if showSlashPopover && filteredCommands.isEmpty {
                                 showSlashPopover = false
                             }
+                        }
+                        .onKeyPress(.upArrow) {
+                            guard !inputHistory.isEmpty else { return .ignored }
+                            let nextIndex = historyIndex + 1
+                            guard nextIndex < inputHistory.count else { return .handled }
+                            if historyIndex == -1 {
+                                // Save current draft before entering history navigation
+                                draftText = inputText
+                            }
+                            historyIndex = nextIndex
+                            inputText = inputHistory[historyIndex]
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            guard historyIndex != -1 else { return .ignored }
+                            let nextIndex = historyIndex - 1
+                            if nextIndex < 0 {
+                                // Restore draft
+                                historyIndex = -1
+                                inputText = draftText
+                            } else {
+                                historyIndex = nextIndex
+                                inputText = inputHistory[historyIndex]
+                            }
+                            return .handled
                         }
                         .overlay(alignment: .bottom) {
                             if showSlashPopover && !filteredCommands.isEmpty {
