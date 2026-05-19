@@ -23,8 +23,8 @@ mcp = FastMCP(
     port=9501,
 )
 
-NAS_ROOT = "/Volumes/Jenkins_Robotics"
-ARES_BRAIN = f"{NAS_ROOT}/ARES_Brain"
+NAS_ROOT = os.environ.get("ARES_NAS_ROOT", os.path.expanduser("~/ARES_Brain"))
+ARES_BRAIN = os.path.join(NAS_ROOT, "ARES_Brain")
 LOCAL_FALLBACK = os.path.expanduser("~/ARES_Brain_local")
 RELAY_LOG = os.path.expanduser("~/ares_relay.log")
 HERMES_CONFIG = os.path.expanduser("~/.hermes/config.yaml")

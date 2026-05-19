@@ -28,5 +28,11 @@ Package.resolved
 
 # ARES runtime state
 ~/.ares/
+
+# Secrets and credentials (NEVER commit)
+.env
+*.env
+**/.env
+~/.hermes/
 ares/__pycache__/
 .claude/

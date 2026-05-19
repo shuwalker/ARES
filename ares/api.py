@@ -138,6 +138,10 @@ def create_app(
         allow_headers=["*"],
     )
 
+    # Plugin routers
+    from ares.plugins.lifetrack.api import router as lifetrack_router
+    app.include_router(lifetrack_router)
+
     # ------------------------------------------------------------------
     # REST endpoints
     # ------------------------------------------------------------------

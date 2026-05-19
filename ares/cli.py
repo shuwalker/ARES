@@ -806,3 +806,35 @@ def doctor() -> None:
     console.print("\n[bold]Config[/bold]")
     cfg_marker = "[green]✓[/green]" if cfg_file.exists() else "[yellow]not written[/yellow]"
     console.print(f"  {cfg_file}: {cfg_marker}")
+
+    # Daemon socket
+    sock_path = ares_base / "ares.sock"
+    console.print(f"\n[bold]Daemon[/bold]")
+    console.print(f"  Socket: {'[green]✓[/green]' if sock_path.exists() else '[yellow]not running[/yellow]'}")
+
+
+# ---------------------------------------------------------------------------
+# ares mail (plugin subcommands)
+# ---------------------------------------------------------------------------
+
+from ares.plugins.mail.cli import mail_cli
+
+main.add_command(mail_cli)
+
+
+# ---------------------------------------------------------------------------
+# ares lifetrack (plugin subcommands)
+# ---------------------------------------------------------------------------
+
+from ares.plugins.lifetrack.cli import lifetrack_cli
+
+main.add_command(lifetrack_cli)
+
+
+# ---------------------------------------------------------------------------
+# ares youtube (plugin subcommands)
+# ---------------------------------------------------------------------------
+
+from ares.workflows.youtube_research_cli import yt_cli
+
+main.add_command(yt_cli)

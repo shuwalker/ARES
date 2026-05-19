@@ -13,5 +13,7 @@ memory:
   path: ~/.ares/memory.db
 
 nas:
-  obsidian: /Volumes/Jenkins_Robotics/03-KNOWLEDGE/Obsidian
-  brain: /Volumes/Jenkins_Robotics/ARES_Brain
+  # Defaults — override in ~/.ares/config.yaml or ARES_NAS_ROOT env var
+  root: ~/ARES_Brain         # Or /Volumes/Jenkins_Robotics for networked NAS
+  obsidian: ~/ARES_Brain/Obsidian
+  brain: ~/ARES_Brain
