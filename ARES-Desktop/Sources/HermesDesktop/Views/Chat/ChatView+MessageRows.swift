@@ -128,7 +128,7 @@ struct StreamingChatMessageRow: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header / toggle row
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     isThinkingExpanded.toggle()
                 }
             } label: {
@@ -290,7 +290,7 @@ struct ToolCallRow: View {
 
                         if !toolCall.input.isEmpty || toolCall.output != nil {
                             Button {
-                                withAnimation(.easeInOut(duration: 0.15)) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     isExpanded.toggle()
                                 }
                             } label: {

@@ -8,6 +8,7 @@ struct FileEditorDocument {
     var originalContent: String = ""
     var remoteContentHash: String?
     var isLoading = false
+    var isSaving = false
     var errorMessage: String?
     var lastSavedAt: Date?
     var hasLoaded = false

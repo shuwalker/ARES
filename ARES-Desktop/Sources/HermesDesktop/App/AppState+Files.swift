@@ -73,7 +73,7 @@ extension AppState {
             return false
         }
 
-        document.isLoading = true
+        document.isSaving = true
         document.errorMessage = nil
         setDocument(document)
 
@@ -91,17 +91,17 @@ extension AppState {
             document.remoteContentHash = saveResult.contentHash
             document.lastSavedAt = Date()
             document.hasLoaded = true
-            document.isLoading = false
+            document.isSaving = false
             setDocument(document)
             setStatusMessage(L10n.string("%@ saved", reference.title))
             return true
         } catch {
             guard isActiveWorkspace(profile) else { return false }
-            document.isLoading = false
+            document.isSaving = false
 
             // Detect a remote conflict: the server rejected the save because the file
             // was modified on the host after we loaded it. Surface this as a distinct
-            // flag so the UI can offer an "Overwrite anyway?" dialog.
+            // flag so the UI can offer an "Overwrite anyway?" banner.
             let errorMessage = error.localizedDescription
             if errorMessage.localizedCaseInsensitiveContains("changed on the active host") {
                 document.errorMessage = nil
