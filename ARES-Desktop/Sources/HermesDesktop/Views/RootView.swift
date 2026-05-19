@@ -327,7 +327,7 @@ struct RootView: View {
         case .sessions:
             EmptyView()
         case .workflows:
-            WorkflowsView(splitLayout: $workflowsSplitLayout)
+            WorkflowPresetsView()
         case .cronjobs:
             CronJobsView(splitLayout: $cronJobsSplitLayout)
         case .kanban:
