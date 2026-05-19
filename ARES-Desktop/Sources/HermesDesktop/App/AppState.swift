@@ -3391,6 +3391,56 @@ final class AppState: ObservableObject {
             toolsError = error.localizedDescription
         }
     }
+
+    // MARK: - Tool Approvals
+
+    private func startApprovalPolling() {
+        approvalPollingTask?.cancel()
+        approvalPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                if let self, self.dashboardAPIAvailable {
+                    await self.pollApprovals()
+                }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    private func stopApprovalPolling() {
+        approvalPollingTask?.cancel()
+        approvalPollingTask = nil
+        pendingApprovals = []
+    }
+
+    func pollApprovals() async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            let approvals = try await dashboardAPIService.fetchPendingApprovals()
+            pendingApprovals = approvals
+        } catch {
+            // Silently ignore polling errors — the approval UI will just stay hidden
+        }
+    }
+
+    func approveToolCall(_ approval: ToolApprovalRequest) async {
+        do {
+            try await dashboardAPIService.approveToolCall(id: approval.id)
+            pendingApprovals.removeAll { $0.id == approval.id }
+        } catch {
+            // Re-poll to get fresh state on failure
+            await pollApprovals()
+        }
+    }
+
+    func denyToolCall(_ approval: ToolApprovalRequest) async {
+        do {
+            try await dashboardAPIService.denyToolCall(id: approval.id)
+            pendingApprovals.removeAll { $0.id == approval.id }
+        } catch {
+            // Re-poll to get fresh state on failure
+            await pollApprovals()
+        }
+    }
 }
 
 private struct SessionMessageSignature: Equatable, Sendable {

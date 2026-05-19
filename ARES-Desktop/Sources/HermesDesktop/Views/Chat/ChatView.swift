@@ -53,9 +53,15 @@ struct ChatView: View {
 
             Divider().opacity(0.5)
 
+            if !appState.pendingApprovals.isEmpty {
+                approvalCards
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             inputArea
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.2), value: appState.pendingApprovals.count)
         .task(id: appState.activeConnectionID) {
             appState.chatMessages = []
             appState.chatSessionID = nil
@@ -72,11 +78,36 @@ struct ChatView: View {
 
             Spacer()
 
+            // Thinking level segmented control
+            Picker("", selection: $appState.thinkingLevel) {
+                ForEach(ThinkingLevel.allCases, id: \.self) { level in
+                    Text(level.rawValue).tag(level)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .font(.system(size: 11))
+            .frame(width: 168)
+            .help(L10n.string("Extended thinking level: Off / Low / Adaptive"))
+            .disabled(appState.isStreamingChat)
+
             if appState.isStreamingChat {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.8, anchor: .center)
             }
+
+            // Export conversation button
+            Button {
+                exportConversation()
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(appState.chatMessages.isEmpty)
+            .help(L10n.string("Export conversation as Markdown"))
 
             Button {
                 appState.chatMessages = []
@@ -94,6 +125,37 @@ struct ChatView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Color.secondary.opacity(0.05))
+    }
+
+    // MARK: - Export
+
+    private func exportConversation() {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: Date())
+
+        var markdown = ""
+        for message in appState.chatMessages {
+            switch message.role {
+            case .user:
+                markdown += "## User\n\n\(message.content)\n\n"
+            case .assistant:
+                if let thinking = message.thinkingContent, !thinking.isEmpty {
+                    markdown += "## Claude's Thinking\n\n\(thinking)\n\n"
+                }
+                markdown += "## Assistant\n\n\(message.content)\n\n"
+            }
+        }
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "chat-\(dateString).md"
+        panel.allowedContentTypes = [.init(filenameExtension: "md") ?? .plainText]
+        panel.canCreateDirectories = true
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            try? markdown.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 
     // MARK: - Empty state
@@ -263,6 +325,27 @@ struct ChatView: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         }
         .padding(.horizontal, 4)
+    }
+
+    // MARK: - Approval cards
+
+    private var approvalCards: some View {
+        VStack(spacing: 6) {
+            ForEach(appState.pendingApprovals) { approval in
+                ToolApprovalCard(approval: approval) { action in
+                    Task {
+                        if action == .approve {
+                            await appState.approveToolCall(approval)
+                        } else {
+                            await appState.denyToolCall(approval)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.03))
     }
 
     // MARK: - Actions
@@ -502,6 +585,88 @@ private struct ChatErrorRow: View {
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.orange.opacity(0.18), lineWidth: 1)
+        }
+    }
+}
+
+// MARK: - ToolApprovalCard
+
+private enum ApprovalAction {
+    case approve
+    case deny
+}
+
+private struct ToolApprovalCard: View {
+    let approval: ToolApprovalRequest
+    let onAction: (ApprovalAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header
+            HStack(spacing: 6) {
+                Image(systemName: "lock.shield")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.yellow)
+
+                Text("Approve tool call")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(approval.toolName)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.primary)
+            }
+
+            // Input preview
+            Text(approval.toolInput)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .truncationMode(.tail)
+                .textSelection(.enabled)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            // Action buttons
+            HStack(spacing: 8) {
+                Spacer()
+
+                Button {
+                    onAction(.deny)
+                } label: {
+                    Text("Deny")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .background(Color.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    onAction(.approve)
+                } label: {
+                    Text("Approve")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .background(Color.green.opacity(0.85), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(Color.yellow.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.yellow.opacity(0.25), lineWidth: 1)
         }
     }
 }
