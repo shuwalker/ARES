@@ -14,9 +14,10 @@ extension AppState {
             let response = try await kanbanBrowserService.loadBoards(connection: profile)
             guard isActiveWorkspace(profile) else { return }
 
-            kanbanBoards = response.boards.isEmpty
+            let activeBoards = response.boards.filter { !$0.archived }
+            kanbanBoards = activeBoards.isEmpty
                 ? [KanbanProject(slug: KanbanProject.defaultSlug)]
-                : response.boards
+                : activeBoards
             remoteCurrentKanbanBoardSlug = response.current
             supportsKanbanBoardManagement = response.supportsBoardManagement
 
