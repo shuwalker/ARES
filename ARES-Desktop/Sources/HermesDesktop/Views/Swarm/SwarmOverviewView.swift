@@ -20,16 +20,26 @@ struct SwarmOverviewView: View {
                     .buttonStyle(.borderedProminent)
                 }
 
+                // Error banner
+                if let error = appState.swarmError {
+                    SwarmErrorBanner(message: error) { appState.swarmError = nil }
+                }
+
                 healthBar
 
                 if appState.isLoadingSwarm && appState.swarmWorkers.isEmpty {
-                    ProgressView()
+                    ProgressView("Loading…")
                         .frame(maxWidth: .infinity, minHeight: 200)
+                } else if let error = appState.swarmError, appState.swarmWorkers.isEmpty {
+                    SwarmFeatureUnavailableView(
+                        message: error,
+                        onRetry: { Task { await appState.loadSwarm() } }
+                    )
                 } else if appState.swarmWorkers.isEmpty {
                     ContentUnavailableView(
-                        "No Workers Found",
+                        "No Workers Active",
                         systemImage: "person.3",
-                        description: Text("The swarm roster is empty or could not be loaded.")
+                        description: Text("Dispatch a mission to start the swarm. Workers will appear here once active.")
                     )
                 } else {
                     workerGrid
@@ -57,7 +67,7 @@ struct SwarmOverviewView: View {
             if let health = appState.swarmHealth {
                 SwarmHealthChip(
                     label: "\(health.workersOnline)/\(health.workersTotal) workers online",
-                    color: health.workersOnline == health.workersTotal ? .green : .yellow,
+                    color: health.workersOnline == health.workersTotal ? .green : .orange,
                     icon: "person.3.fill"
                 )
                 SwarmHealthChip(
@@ -93,6 +103,62 @@ struct SwarmOverviewView: View {
     }
 }
 
+// MARK: - Error Banner
+
+struct SwarmErrorBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.primary)
+            Spacer()
+            Button("Dismiss") { onDismiss() }
+                .font(.callout)
+        }
+        .padding()
+        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+// MARK: - Feature Unavailable View
+
+struct SwarmFeatureUnavailableView: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "server.rack")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            if message.contains("not yet available") || message.contains("v2.0") {
+                Text("Feature Requires Hermes v2.0+")
+                    .font(.headline)
+                Text("This feature requires Hermes server v2.0+. Update your Hermes installation to enable it.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Could not load data")
+                    .font(.headline)
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            Button("Retry") { onRetry() }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+}
+
 // MARK: - Health Chip
 
 struct SwarmHealthChip: View {
@@ -111,7 +177,7 @@ struct SwarmHealthChip: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -123,62 +189,60 @@ struct SwarmWorkerCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 9, height: 9)
-                    Text(worker.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(worker.role)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(HermesTheme.insetFill, in: RoundedRectangle(cornerRadius: 6))
-                }
-
-                if let mission = worker.currentMission {
-                    Text(mission)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                } else {
-                    Text(worker.status == "offline" ? "Offline" : "Idle")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-
-                if let tokens = worker.tokenCount {
-                    HStack(spacing: 4) {
-                        Image(systemName: "number")
-                            .font(.caption2)
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(statusColor)
+                            .frame(width: 9, height: 9)
+                        Text(worker.name)
+                            .font(.headline)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(worker.role)
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        Text(tokenCountLabel(tokens))
-                            .font(.caption2)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(HermesTheme.insetFill, in: RoundedRectangle(cornerRadius: 6))
+                    }
+
+                    if let mission = worker.currentMission {
+                        Text(mission)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                    } else {
+                        Text(worker.status == .offline ? "Offline" : "Idle")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    if let tokens = worker.tokenCount {
+                        HStack(spacing: 4) {
+                            Image(systemName: "number")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(tokenCountLabel(tokens))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(HermesTheme.panelFill, in: RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: HermesTheme.rowCornerRadius, style: .continuous)
-                    .strokeBorder(HermesTheme.subtleStroke)
-            )
+            .groupBoxStyle(.automatic)
         }
         .buttonStyle(.plain)
     }
 
     private var statusColor: Color {
         switch worker.status {
-        case "active": return .green
-        case "idle": return .yellow
-        default: return Color.secondary.opacity(0.5)
+        case .active, .running: return Color.green
+        case .idle: return Color.orange
+        case .error: return Color.red
+        case .offline: return Color.secondary.opacity(0.5)
         }
     }
 
@@ -260,6 +324,7 @@ struct SwarmWorkerDetailSheet: View {
     let worker: SwarmWorker
     @State private var chatMessage: String = ""
     @State private var isSending = false
+    @State private var lastReply: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -278,7 +343,7 @@ struct SwarmWorkerDetailSheet: View {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 12, height: 12)
-                Text(worker.status.capitalized)
+                Text(worker.status.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -323,6 +388,15 @@ struct SwarmWorkerDetailSheet: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
+                if !lastReply.isEmpty {
+                    Text(lastReply)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(HermesTheme.insetFill, in: RoundedRectangle(cornerRadius: 8))
+                }
+
                 HStack(spacing: 8) {
                     TextField("Send a message to \(worker.name)…", text: $chatMessage)
                         .textFieldStyle(.plain)
@@ -332,7 +406,11 @@ struct SwarmWorkerDetailSheet: View {
                     Button {
                         sendDirectChat()
                     } label: {
-                        Image(systemName: "paperplane.fill")
+                        if isSending {
+                            ProgressView().scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(chatMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
@@ -354,9 +432,10 @@ struct SwarmWorkerDetailSheet: View {
 
     private var statusColor: Color {
         switch worker.status {
-        case "active": return .green
-        case "idle": return .yellow
-        default: return Color.secondary.opacity(0.5)
+        case .active, .running: return Color.green
+        case .idle: return Color.orange
+        case .error: return Color.red
+        case .offline: return Color.secondary.opacity(0.5)
         }
     }
 
@@ -366,8 +445,11 @@ struct SwarmWorkerDetailSheet: View {
         isSending = true
         chatMessage = ""
         Task {
-            await appState.sendSwarmDirectChat(worker: worker.name, message: msg)
-            isSending = false
+            defer { isSending = false }
+            let reply = await appState.sendSwarmDirectChat(worker: worker.name, message: msg)
+            if !reply.isEmpty {
+                lastReply = reply
+            }
         }
     }
 }
