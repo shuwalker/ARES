@@ -325,21 +325,7 @@ struct RootView: View {
         case .profiles:
             ProfilesView()
         case .terminal:
-            TerminalWorkspaceView(
-                workspace: appState.terminalWorkspace,
-                context: TerminalWorkspaceContext(
-                    activeConnection: appState.activeConnection,
-                    activeWorkspaceScopeFingerprint: appState.activeConnection?.workspaceScopeFingerprint,
-                    isTerminalSectionActive: appState.selectedSection == .terminal,
-                    terminalTheme: appState.connectionStore.terminalTheme
-                ),
-                ensureTerminalSession: {
-                    appState.ensureTerminalSession()
-                },
-                updateTerminalTheme: { newValue in
-                    appState.connectionStore.terminalTheme = newValue
-                }
-            )
+            TerminalView()
         case .avatar:
             AvatarView()
         case .secondBrain:
