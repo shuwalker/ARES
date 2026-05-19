@@ -1,5 +1,10 @@
 import Foundation
 
+enum TransportMode: String, Codable, CaseIterable, Sendable {
+    case sshTunnel   // existing behavior — SSH port-forward
+    case directHTTP  // LAN direct, no SSH
+}
+
 struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
     var id: UUID
     var label: String
@@ -9,6 +14,9 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
     var sshUser: String
     var hermesProfile: String?
     var customHermesHomePath: String?
+    var transportMode: TransportMode
+    /// Dashboard port used only when transportMode == .directHTTP
+    var dashboardPort: Int?
     var createdAt: Date
     var updatedAt: Date
     var lastConnectedAt: Date?
@@ -22,6 +30,8 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
         sshUser: String = "",
         hermesProfile: String? = nil,
         customHermesHomePath: String? = nil,
+        transportMode: TransportMode = .sshTunnel,
+        dashboardPort: Int? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         lastConnectedAt: Date? = nil
@@ -34,6 +44,8 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
         self.sshUser = sshUser
         self.hermesProfile = hermesProfile
         self.customHermesHomePath = customHermesHomePath
+        self.transportMode = transportMode
+        self.dashboardPort = dashboardPort
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.lastConnectedAt = lastConnectedAt
@@ -242,7 +254,18 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
             return "Name is required."
         }
 
+        if transportMode == .directHTTP {
+            return directHTTPValidationError
+        }
+
         return sshValidationError
+    }
+
+    var directHTTPValidationError: String? {
+        guard !sshHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Host or IP address is required for Direct HTTP."
+        }
+        return nil
     }
 
     var sshValidationError: String? {
@@ -297,6 +320,9 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
         copy.customHermesHomePath = trimmedCustomHermesHomePath
         if let sshPort = sshPort, sshPort <= 0 {
             copy.sshPort = nil
+        }
+        if let dashboardPort = dashboardPort, dashboardPort <= 0 {
+            copy.dashboardPort = nil
         }
         copy.updatedAt = Date()
         return copy
