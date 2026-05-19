@@ -4004,7 +4004,7 @@ final class AppState: ObservableObject {
                 pollCount += 1
                 // Stop polling after 5 minutes (150 * 2s)
                 if pollCount > 150 {
-                    await MainActor.run { self?.conductorMissionActive = false }
+                    self?.conductorMissionActive = false
                     break
                 }
                 try? await Task.sleep(for: .seconds(2))
