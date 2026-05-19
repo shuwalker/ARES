@@ -10,6 +10,8 @@ struct FilesView: View {
     @State private var showDiscardFileAlert = false
     @State private var showReloadDiscardAlert = false
     @State private var showRemoveBookmarkAlert = false
+    @State private var showSaveConflictAlert = false
+    @State private var conflictFileID: String?
 
     var body: some View {
         HermesCollapsibleHSplitView(layout: $splitLayout, detailMinWidth: 460) {
