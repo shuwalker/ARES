@@ -1,474 +1,276 @@
-# ARES
+# ARES Desktop
 
-Native macOS companion for Hermes Agent over SSH.
+Native macOS SwiftUI client for the NousResearch Hermes Agent AI platform.
 
-It turns the daily Hermes loop into something you can actually live in on a
-Mac: sessions, workflows, Kanban, workspace files, usage, skills, cron jobs,
-and a real terminal in one focused window.
+ARES gives the real Hermes workflow a calm, fast, native Mac surface. It
+connects directly over SSH, keeps the Hermes host as the only source of truth,
+and does not add a gateway, daemon, or sync layer on the host side.
 
-If Hermes is already part of how you work, the app should feel immediately
-legible. Same host. Same files. Same profiles. Same source of truth.
+## What ARES is
 
-No browser wrapper. No gateway API. No daemon on the host. No local mirror. No
-extra sync layer slowly drifting away from the machine that actually matters.
+ARES (Autonomous Reasoning & Execution System) is a native macOS desktop app
+that lets you manage, monitor, and interact with Hermes AI agents running on
+local or remote hosts over SSH. It surfaces sessions, Kanban, files, skills,
+analytics, multi-agent swarm control, and a real embedded terminal in one
+focused window.
 
-That restraint is the point of the app.
+No browser wrapper. No gateway API. No local mirror slowly drifting from the
+machine that actually matters.
 
-ARES does not invent a softer second version of Hermes. It gives the
-real SSH-first workflow a calm, fast, native Mac surface while keeping the model
-visible. You always know which host you are on, which Hermes profile is active,
-which path the app is using, and where the work is happening.
+## Feature Tabs
 
-## Preview
+| Tab | Description |
+|-----|-------------|
+| Connections | Add and manage SSH connection profiles; test reachability and authentication |
+| Overview | Active host summary, discovered Hermes profiles, important paths, and gateway controls |
+| Sessions | Search and browse the remote session store, pin sessions, continue chat, or resume in terminal |
+| Chat | Streaming SSE chat with the active Hermes agent; supports configurable thinking levels |
+| Memory | View and manage the agent's memory entries via the Dashboard API |
+| Soul | Read and edit the agent's soul/persona file anchored to the remote host |
+| Tools | List available tools registered with the agent and review pending tool-approval requests |
+| Office | Embedded office/workspace panel for document and project context |
+| Kanban | Full Hermes Kanban workspace: boards, tasks, comments, dependencies, run history, and orchestration |
+| Terminal | Real SSH shell embedded in the app with tabs, theme presets, and multi-profile support |
+| Jobs | Dashboard-side cron jobs managed via the Dashboard API (port 9119) |
+| MCP | Model Context Protocol server management: install, enable/disable, marketplace discovery |
+| Analytics | Daily token charts, per-model breakdown, and skill usage statistics over configurable periods |
+| Swarm | Multi-agent swarm management: workers, missions, health, Kanban cards, and runtime output |
+| Conductor | High-level mission director: set a goal, dispatch workers, monitor conductor progress |
+| Operations | Operations agents view for managing multi-step autonomous operation runs |
+| Crew Status | Live status board for all active crew members and their current states |
+| Files | Browse and edit remote text files and canonical Hermes files with conflict checks before save |
+| Skills | Discover, read, create, and edit remote `SKILL.md` files in the Hermes skills store |
+| Config | Hermes configuration editor served by the Dashboard API |
+| Keys | API key management via the Dashboard API |
+| Models | Model configuration and selection via the Dashboard API |
+| Profiles | Hermes profile management via the Dashboard API |
+| Logs | Live log viewer streamed from the Dashboard API |
+| Plugins | Install, enable/disable, update, and remove agent plugins; manage memory providers |
+| Global Search | Full-text search across sessions, skills, files, and other content on the active host |
+| Workflows | Locally saved prompt presets scoped to the active host/profile; launches a fresh terminal tab |
+| Cron Jobs | Browse and manage the Hermes scheduler state: create, edit, pause, resume, run-now, delete |
+| Usage | Token totals, top sessions, top models, and profile breakdowns |
+| Second Brain | LanceDB embedding search across documents, sessions, and skills on the host |
+| Avatar | Embedded VTuber/avatar panel for local connections |
+| YouTube | Review, edit metadata, and approve/reject staged videos for publishing |
+| Documentation | In-app documentation viewer loading the Hermes docs site |
 
-<table>
-  <tr>
-    <td width="50%">
-      <img src="assets/sessions.png" alt="ARES Sessions view" />
-    </td>
-    <td width="50%">
-      <img src="assets/workflows.png" alt="ARES Workflows view" />
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="assets/kanban.png" alt="ARES Kanban view" />
-    </td>
-    <td width="50%">
-      <img src="assets/files.png" alt="ARES Files view" />
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="assets/USAGE.png" alt="ARES Usage view" />
-    </td>
-    <td width="50%">
-      <img src="assets/terminal.png" alt="ARES Terminal view" />
-    </td>
-  </tr>
-</table>
+## Architecture
 
-Six previewed views from the app: sessions, workflows, Kanban, workspace
-files, usage, and terminal.
+### Transport Layers
 
-## What ARES gives you
+ARES uses two complementary transports to communicate with the Hermes host.
 
-ARES is for people who want a native Mac workbench for the Hermes
-host they already use, without adding another layer to trust.
+#### 1. SSH Bridge (primary)
 
-- connects directly over SSH
-- keeps the Hermes host as the only source of truth
-- works with multiple Hermes profiles for a multi-agent workflow
-- reads the real remote sessions, Kanban, cron jobs, skills, files, and usage
-- saves reusable workflow presets locally on your Mac, then launches them
-  against the selected host/profile in a fresh Terminal tab
-- includes an embedded SSH terminal for the moments where the shell is still
-  the right tool
-- ships as a universal macOS app for Apple Silicon and Intel Macs
-- includes English, Simplified Chinese, and Russian localization resources
+A Python RPC bridge executed over SSH handles all operations that need direct
+filesystem access on the remote host:
 
-If Hermes runs there and SSH already works, ARES will usually meet
-you there. That includes a Raspberry Pi, another Mac, a VPS, a remote server,
-or the same Mac through `ssh localhost` or a local SSH alias.
+- **Sessions** — reads the remote session store and message transcripts
+- **Kanban** — opens the upstream Hermes Kanban workspace from the host filesystem
+- **Files** — browses remote directories and edits remote text files with conflict detection
+- **Skills** — discovers and edits remote `SKILL.md` files
+- **Soul** — reads and writes the agent soul/persona file
 
-## How the app is designed
+The bridge is a short Python script shipped inside the app bundle
+(`ARES_ARES.bundle`) and piped over stdin/stdout through a normal SSH
+connection. No daemon is installed on the host.
 
-The app talks to the selected host over SSH. Sessions come from the remote
-session store. Kanban comes from the upstream Hermes Kanban home. Cron jobs
-come from the remote scheduler state. Files and skills are edited on the host
-with conflict checks before save.
+#### 2. Dashboard API (HTTP via SSH tunnel)
 
-Workflow presets are the intentional local convenience layer in that model.
-They are small saved prompts with optional skill selections stored on your Mac,
-scoped to the active host/profile, and used only to open a fresh remote
-Terminal tab. They do not create a second copy of Hermes state on the host.
+Many features talk to the Hermes dashboard HTTP API, which listens on
+`localhost:9119` on the remote host. ARES port-forwards that port to a
+dynamically chosen local port via `SSHTunnelService` and sends requests
+through the tunnel.
 
-That makes the app easier to reason about. There is no hidden execution layer
-to audit, no shadow state to reconcile, and no ambiguity about which machine
-owns the work.
+Features powered by the Dashboard API:
 
-That restraint has a practical advantage: ARES can remain useful when
-higher-level surfaces are unavailable. If a dashboard, gateway, or agent
-configuration breaks, the app still has the direct SSH path: inspect the host,
-edit the relevant files, open a terminal, and repair the system from the place
-where the state actually lives.
+- **Config, Models, Logs, Keys, Profiles, Plugins** — full Hermes administration
+- **Chat** — SSE streaming chat turns
+- **Memory, Tools** — agent memory and tool registry
+- **Kanban plugin API** — board orchestration endpoints
+- **Jobs** — dashboard-side cron job management
+- **MCP** — Model Context Protocol server registry
+- **Analytics** — usage analytics endpoints
+- **Swarm, Conductor** — multi-agent coordination APIs
 
-### Desktop and web dashboard
+All Dashboard API calls are handled by `DashboardAPIService`.
 
-Hermes also has an official web dashboard. The two tools are complementary.
+#### 3. SSH Tunnel Service
 
-Use the dashboard when you want a browser-based management surface for the
-installation: configuration, API keys, logs, sessions, analytics, cron jobs,
-skills, and browser chat.
+`SSHTunnelService` auto-starts when ARES connects to a remote host. It spawns:
 
-Use ARES when you want to work close to the host from your Mac:
-sessions, workflows, Kanban, remote files, editable skills, usage, cron jobs,
-and a real terminal without adding another backend around Hermes.
-
-The boundary is simple: browser for administration, Mac app for direct host
-work.
-
-## Before you install
-
-Setup is intentionally lightweight. Before you install, make sure you have:
-
-- a Mac running macOS 14 or newer
-- SSH access from this Mac to the Hermes host
-- the SSH host key already accepted once in Terminal
-- authentication that works without interactive prompts
-- a normal network route to the host, such as LAN, DNS, public IP, VPN, or
-  Tailscale
-- `python3` available on the Hermes host
-- Hermes data under the remote user's `~/.hermes`
-
-For in-app chat and terminal resume workflows, the remote `hermes` CLI also
-needs to be available on the host's non-interactive SSH `PATH`.
-
-For the native Kanban workspace, the host needs a Hermes Agent build with
-upstream Kanban support. Newer Kanban features appear automatically when the
-host exposes them.
-
-Simple rule: if this works in Terminal from this Mac without asking for a
-password or host key confirmation, the app is usually ready too:
-
-```bash
-ssh your-host
+```
+ssh -N -L <localPort>:127.0.0.1:9119 [user@]host [-p sshPort]
 ```
 
-## Install the app
+and polls the forwarded port until it becomes reachable (up to 10 seconds),
+then keeps the tunnel alive with `ServerAliveInterval=30`. The tunnel tears
+down automatically on disconnect. This makes the Dashboard API available
+transparently without any manual setup on the host.
+
+### Key Services
+
+| Service | Transport | Responsibilities |
+|---------|-----------|-----------------|
+| `SessionBrowserService` | SSH bridge (Python RPC) | Sessions, cron jobs |
+| `KanbanBrowserService` | SSH bridge + Dashboard API | Kanban boards and tasks |
+| `SkillBrowserService` | SSH bridge (Python RPC) | Skills discovery and editing |
+| `FileEditorService` | SSH bridge (Python RPC) | Remote file browse and edit |
+| `SoulService` | SSH bridge (Python RPC) | Soul file read/write |
+| `DashboardAPIService` | HTTP via SSH tunnel | All Dashboard API calls |
+| `HermesChatService` | SSE via SSH tunnel | Streaming chat |
+| `UsageBrowserService` | HTTP via SSH tunnel | Usage and analytics |
+| `SSHTunnelService` | SSH process | Port-forward lifecycle |
+
+### AppState
+
+`AppState` is a `@MainActor` `ObservableObject` that owns all published UI
+state. Every view model property, loading flag, error string, and selection ID
+lives here. Navigation between sidebar sections is controlled by
+`selectedSection: AppSection`.
+
+`AppSection` is a `CaseIterable` enum that drives the sidebar. Adding a new tab
+requires adding a case to `AppSection` and a corresponding route in `RootView`.
+
+## Requirements
+
+- macOS 14.0 or later
+- A running Hermes Agent instance (local or SSH-accessible remote)
+- SSH access from this Mac to the Hermes host, working without interactive
+  prompts (key-based or SSH agent auth)
+- `python3` available in the remote SSH environment
+
+For local builds:
+
+- Xcode 16+ (Xcode 16.2 or 16.3 recommended)
+- Swift 5.10+ / Swift 6.1
+
+## Installation
+
+### Option 1: GitHub Releases (recommended)
 
 1. Download `ARES.app.zip` from the
    [latest GitHub Release](https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/latest).
-2. Double click the zip to extract `ARES.app`.
-3. Quit ARES if an older version is already running.
-4. Drag `ARES.app` into `Applications` and replace the old copy if
-   macOS asks.
-5. First launch: right click `ARES.app`, choose `Open`, then confirm
-   `Open`.
+2. Double-click the zip to extract `ARES.app`.
+3. Quit any older running copy of ARES.
+4. Drag `ARES.app` into `Applications`.
+5. First launch: right-click `ARES.app`, choose `Open`, then confirm `Open`.
 
-ARES is currently ad-hoc signed and not notarized by Apple. macOS may
-show a first-launch warning saying Apple cannot verify it for malware. That is
-expected for this distribution model and does not mean macOS found malware in
-ARES.
+ARES is currently ad-hoc signed and not notarized by Apple. macOS may show a
+first-launch warning. If macOS blocks the launch:
 
-If macOS blocks the first launch:
+1. Click `Done` (not `Move to Bin`).
+2. Right-click `ARES.app` and choose `Open`.
+3. If needed: `System Settings` > `Privacy & Security` > `Open Anyway`.
 
-1. Click `Done`, not `Move to Bin`.
-2. Right click `ARES.app` and choose `Open`.
-3. If needed, go to `System Settings` > `Privacy & Security` and click
-   `Open Anyway`.
+Do not disable Gatekeeper or use `sudo` to install ARES. See
+[docs/distribution.md](docs/distribution.md) for the full signing and checksum
+model.
 
-Do not disable Gatekeeper or run `sudo` commands to install ARES.
-
-For the exact distribution and verification details, read
-[docs/distribution.md](docs/distribution.md). If you prefer not to trust the
-release zip, build from source instead.
-
-## Connect a host
-
-Open the app, go to `Connections`, create a profile, then click `Test` and
-`Use Host`.
-
-You can connect with an SSH alias or with host details directly.
-
-### Use an SSH alias
-
-An SSH alias is the cleanest path for most people. It is the short name you
-already use in Terminal:
+### Option 2: Build from source
 
 ```bash
-ssh hermes-home
+cd ARES-Desktop
+swift build -c release
 ```
 
-That name usually comes from `~/.ssh/config`:
-
-```sshconfig
-Host hermes-home
-  HostName vps.example.com
-  User alex
-```
-
-In the app:
-
-- set `SSH alias` to `hermes-home`
-- leave `Host`, `User`, and `Port` empty unless you want explicit overrides
-
-### Use host details
-
-If you normally connect with:
+Or open in Xcode:
 
 ```bash
-ssh alex@vps.example.com
+open Package.swift
 ```
 
-then in the app:
-
-- `Host or IP`: `vps.example.com`
-- `User`: `alex`
-- `Port`: `22` or your real SSH port
-
-### Choose a Hermes profile
-
-ARES can target multiple profiles on the same SSH host.
-
-- leave `Hermes profile` empty to use `~/.hermes`; the app still discovers
-  other profiles available on the active host
-- set `Hermes profile` to `researcher` to use
-  `~/.hermes/profiles/researcher`
-
-The profile is not just a label. It flows through the app: Overview, Sessions,
-Workflows, Usage, Cron Jobs, Files, Skills, chat, and Terminal all stay
-aligned with the selected host and profile.
-
-### Connect to the same Mac
-
-If Hermes runs on the same Mac, the model stays the same: SSH.
-
-Use `localhost`, your local hostname, or a local SSH alias. ARES
-still connects over SSH and does not read those files directly from disk.
-
-### What `Test` checks
-
-`Test` is a preflight. It checks that the SSH target is reachable,
-authentication works without interactive prompts, and `python3` is available in
-the remote SSH environment used by the app.
-
-Feature-specific requirements, such as the remote `hermes` CLI path and Kanban
-support, are checked when those sections actually run.
-
-## What you can do in the app
-
-ARES is intentionally focused. It is not trying to become a cloud
-workspace, a remote IDE, or a generic SFTP client.
-
-It gives the real Hermes workflow a native workbench:
-
-- `Overview`
-  Confirms the active host, active Hermes profile, discovered profiles,
-  important paths, cron location, and session store source. Includes
-  gateway restart and update controls.
-- `Sessions`
-  Searches and reads the remote session store, including transcript content.
-  You can pin important sessions, continue a chat, resume in Terminal, and keep
-  the session history close while you work.
-- `Workflows`
-  Saves reusable prompt presets on your Mac, scoped to the active host/profile,
-  with optional skill selections. Running one opens a fresh Terminal tab and
-  seeds the first Hermes turn without adding any remote shadow state.
-- `Kanban`
-  Opens the upstream Hermes Kanban workspace from the host. Board management,
-  task editing, triage flows, comments, dependencies, run history, and recovery
-  actions appear when the host supports them.
-- `Files`
-  Edits canonical Hermes files and selected remote text files with conflict
-  checks before save.
-- `Cron Jobs`
-  Browses and manages the real Hermes scheduler state on the host, including
-  create, edit, pause, resume, run-now, and delete actions.
-- `Usage`
-  Shows token totals, top sessions, top models, recent trends, and profile
-  breakdowns when available. Includes analytics with daily token charts,
-  per-model breakdown, and skill usage statistics over configurable periods
-  (7d / 30d / 90d).
-- `Skills`
-  Discovers remote `SKILL.md` files, reads skill metadata, and lets you create
-  or edit skills anchored to the Hermes skills store.
-- `Plugins`
-  Installs, enables/disables, updates, and removes agent plugins. Configure
-  memory providers and context engines. Rescan for new plugins and discover
-  orphan dashboard plugins.
-- `Documentation`
-  In-app documentation viewer loading the Hermes docs site. Reload and open
-  in browser buttons.
-- `Terminal`
-  Opens a real SSH shell inside the app, with tabs, theme presets, color
-  controls, and enough room for multi-profile, multi-agent work.
-- `Avatar`
-  Embedded VTuber/avatar panel for local connections. Loads the avatar
-  server and provides reload controls.
-- `Second Brain`
-  Searches LanceDB embeddings for documents, sessions, and skills discovered
-  on the active host.
-- `YouTube Pipeline`
-  Reviews, edits metadata, and approves/rejects staged videos for publishing.
-
-## Which chat surface to use
-
-ARES does not replace the terminal surfaces Hermes already gives you.
-It lets you choose the right one for the job.
-
-- Use in-app chat in `Sessions` for quick turns, context checks, and continuing
-  a session while you are already in the app.
-- Use the embedded `Terminal` for heavier work where you want shell control,
-  command approvals, long-running output, or manual review close at hand.
-- Use `hermes --tui` in the terminal when you want Hermes Agent's richer TUI for
-  longer interactive sessions.
-
-All of these paths still run Hermes on the selected host. The choice is about
-surface area, not about creating a second source of truth.
-
-## Trust and verification
-
-If you are evaluating whether to trust ARES, start here:
-
-- read [SECURITY.md](SECURITY.md) for the current security model: what runs
-  locally, what runs remotely over SSH, what the app stores, and which network
-  calls it makes
-- read [docs/distribution.md](docs/distribution.md) for the release model,
-  including the limits of ad-hoc signing and what published checksums can and
-  cannot prove
-- build the app from source with `./scripts/build-macos-app.sh` if you prefer
-  the clearest trust path available in this repo today
-
-Current public releases include a SHA-256 checksum and a small JSON manifest
-for `ARES.app.zip`.
-
-After downloading:
-
-```bash
-shasum -a 256 ARES.app.zip
-```
-
-After installing:
-
-```bash
-codesign --verify --deep --strict /Applications/ARES.app
-```
-
-To verify a release zip against the published manifest from a repo checkout:
-
-```bash
-./scripts/verify-release.sh \
-  /path/to/ARES.app.zip \
-  /path/to/ARES.app.zip.manifest.json
-```
-
-Checksums are a useful integrity check, not a trust model. They tell you
-whether your download matches the published release asset. They do not replace
-source review, local builds, or understanding the current distribution model.
-
-## Build locally
-
-For cautious users, building from source is the clearest trust path available
-in this repo today. For local development, it is also the supported path for
-producing the app bundle directly:
+To produce the full app bundle and release archive:
 
 ```bash
 ./scripts/build-macos-app.sh
-```
-
-Then open:
-
-```bash
-dist/ARES.app
-```
-
-To run the release-support test suite:
-
-```bash
-./scripts/run-tests.sh
-```
-
-To create the GitHub Releases archive:
-
-```bash
 ./scripts/package-github-release.sh
 ```
 
-For release-candidate packaging, you can stamp an explicit version:
-
-```bash
-HERMES_VERSION=1.2.3 ./scripts/package-github-release.sh
-```
-
-Release artifacts:
+Artifacts land in `dist/`:
 
 - `dist/ARES.app.zip`
 - `dist/ARES.app.zip.sha256`
 - `dist/ARES.app.zip.manifest.json`
 
-## FAQ
+To verify a release zip against the published manifest:
 
-### Is it safe to install?
+```bash
+./scripts/verify-release.sh /path/to/ARES.app.zip /path/to/ARES.app.zip.manifest.json
+```
 
-That is the right question, and you should not rely on reassurance alone.
+## Connecting to Hermes
 
-ARES is open source, uses direct SSH to the host you choose, does not
-require a gateway API or helper service, and stores only a small amount of local
-app state on your Mac. The built-in update check calls GitHub Releases for the
-latest ARES app version only; it does not update Hermes Agent and
-does not send your host, profile, file, session, or Kanban content.
+1. Open ARES and go to the **Connections** tab.
+2. Click the `+` button to create a new connection profile.
+3. Choose **SSH** (for a remote host) or **Local** (for Hermes on this Mac via
+   `localhost`).
+4. Enter the connection details:
+   - **SSH alias** (recommended): the short name from `~/.ssh/config`, e.g.
+     `hermes-home`
+   - Or **Host / User / Port** explicitly, e.g. `vps.example.com` / `alex` / `22`
+5. Optionally set a **Hermes profile** (e.g. `researcher`) to target
+   `~/.hermes/profiles/researcher` instead of the default `~/.hermes`.
+6. Click **Test** to verify SSH reachability, authentication, and `python3`
+   availability.
+7. Click **Use Host** to activate the connection.
 
-The current public build is ad-hoc signed and not notarized by Apple, so
-macOS may show a first-launch warning. Cautious users should read
-[SECURITY.md](SECURITY.md), read [docs/distribution.md](docs/distribution.md),
-and consider building from source.
+When you connect to an SSH host, ARES automatically starts the SSH tunnel
+(`SSHTunnelService`) in the background, port-forwarding the Hermes dashboard
+(`localhost:9119` on the host) to a local port. Chat, Memory, Tools, Config,
+and all other Dashboard API features become available as soon as the tunnel is
+established — no manual setup required.
 
-### Where does state live?
+### Connect to the same Mac
 
-On the Hermes host.
+Hermes running on the same Mac is supported. Use `localhost`, your local
+hostname, or a local SSH alias. ARES still connects over SSH and does not read
+files directly from disk.
 
-Sessions, Kanban, cron jobs, files, skills, and usage are read from the
-selected host and profile. ARES does not maintain a local mirror of
-Hermes state.
+## CI/CD
 
-Some local app preferences and connection details are stored under
-`~/Library/Application Support/ARES`. That includes connection
-profiles, pinned sessions, bookmarked files, and workflow presets. The current
-local state is documented in [SECURITY.md](SECURITY.md).
+GitHub Actions runs on **macOS-15** with Xcode 16 on every push and pull
+request. The CI job:
 
-### Why do I still need SSH working in Terminal first?
+1. Runs the test suite (`./scripts/run-tests.sh`)
+2. Builds the app bundle (`./scripts/build-macos-app.sh`)
+3. Packages the release archive (`./scripts/package-github-release.sh`)
+4. Verifies the archive checksum (`./scripts/verify-release.sh`)
+5. Uploads `ARES.app.zip`, `ARES.app.zip.sha256`, and
+   `ARES.app.zip.manifest.json` as build artifacts
 
-Because the app uses the same SSH path your Mac already uses, but in a
-non-interactive way.
+Tagged releases (`v*`) trigger an additional job that runs the same pipeline
+and then publishes a **draft GitHub Release** with the three release artifacts
+attached and auto-generated release notes.
 
-If Terminal still needs password entry, host key confirmation, or other
-interactive setup for that target, the app will usually hit the same wall.
+## Package Structure
 
-### What does in-app chat do?
+```
+ARES-Desktop/
+├── Package.swift                    Swift package manifest (swift-tools-version 6.1)
+├── Sources/
+│   └── HermesDesktop/              Main executable target (named "ARES")
+│       ├── App/                    App entry point, AppState, lifecycle
+│       ├── Models/                 Data models and AppSection enum
+│       ├── Services/               Transport, SSH, API, and feature services
+│       │   ├── SSH/                SSHTunnelService, SSHTransport
+│       │   ├── Transport/          TransportProtocol, HTTP/SSH/WebSocket transports
+│       │   ├── Storage/            Local persistence
+│       │   └── *.swift             Feature services (Dashboard, Session, Kanban, …)
+│       ├── Views/                  SwiftUI views
+│       ├── Utilities/              Helpers, extensions, localization
+│       └── Resources/              Bundled assets and Python bridge scripts
+├── Tests/
+│   └── HermesDesktopTests/         Unit tests
+├── Vendor/
+│   └── SwiftTerm/                  Vendored terminal emulator library
+├── scripts/                        Build, package, verify, and test scripts
+├── dist/                           Release artifacts (gitignored)
+└── .github/workflows/              CI/CD (macos-ci.yml, deploy-pages.yml)
+```
 
-It runs Hermes on the selected host over SSH.
+## Localization
 
-Starting a new chat uses the remote `hermes chat` path. Continuing a session
-uses the remote resume path with the selected Hermes profile preserved when one
-is active.
-
-If Hermes requests command approval during a non-interactive chat turn, Hermes
-Desktop cannot collect a manual approval inside that chat surface. When you
-need to review or approve commands yourself, resume the session in Terminal.
-
-### Does ARES replace a remote file manager or IDE?
-
-No.
-
-It lets you browse remote directories and bookmark selected text files next to
-the canonical Hermes files. It is still a focused Hermes workspace, not a full
-SFTP client or remote IDE. Remote text files up to 10 MB are editable.
-
-### What happens if a remote file changed after I opened it?
-
-ARES will not blindly overwrite it.
-
-Before saving an edited workspace file or skill, the app checks whether the
-remote file still matches the version you opened. If it changed, save is
-blocked and your local edits stay intact until you reload intentionally.
-
-## Where ARES goes next
-
-Most of the original roadmap is now shipped.
-
-ARES has reached the shape it was aiming for: a calm, capable native
-macOS workspace for the real Hermes workflow, still anchored to SSH and the
-host as source of truth.
-
-From here, the work is not about adding novelty for its own sake. It is about:
-
-- polishing onboarding, diagnostics, Files ergonomics, terminal UX, and
-  multi-host details
-- tracking upstream Hermes Agent changes so the app stays close to the real
-  host workflow
-- keeping the trust story and release documentation aligned with the code and
-  actual distribution model
-
-Anything larger than that should be justified by Hermes itself, not added just
-because it is technically possible.
+ARES ships localization resources for English, Simplified Chinese, and Russian.
+All user-visible strings are routed through `L10n.string(…)`.
