@@ -38,6 +38,11 @@ struct ARESCommands: Commands {
             .keyboardShortcut("f", modifiers: [.command])
             .disabled(!appState.canFocusSearchCurrentSection)
 
+            Button(L10n.string("Search…")) {
+                appState.isSearchVisible = true
+            }
+            .keyboardShortcut("k", modifiers: .command)
+
             Button(L10n.string("Save Current File")) {
                 Task {
                     await appState.saveSelectedWorkspaceFile()

@@ -293,6 +293,47 @@ final class DashboardAPIService: @unchecked Sendable {
         _ = try await authenticatedPost(path: "api/model/set", body: payload)
     }
 
+    // MARK: - Dashboard Overview (Feature 1)
+
+    /// GET /api/dashboard/overview?period={n}
+    func fetchDashboardOverview(period: Int = 14) async throws -> DashboardOverview {
+        let path = "api/dashboard/overview?period=\(period)"
+        let data = try await authenticatedGet(path: path)
+        return try JSONDecoder().decode(DashboardOverview.self, from: data)
+    }
+
+    // MARK: - Session Status (Feature 2)
+
+    /// GET /api/session-status
+    func fetchSessionStatus() async throws -> SessionStatusResponse {
+        let data = try await authenticatedGet(path: "api/session-status")
+        return try JSONDecoder().decode(SessionStatusResponse.self, from: data)
+    }
+
+    // MARK: - Claude Config PATCH (Feature 3)
+
+    /// PATCH /api/claude-config — partial update of Claude config fields
+    func patchClaudeConfig(_ fields: [String: Any]) async throws {
+        let payload = try JSONSerialization.data(withJSONObject: fields)
+        try await ensureSessionToken()
+
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("api/claude-config"))
+        urlRequest.httpMethod = "PATCH"
+        urlRequest.httpBody = payload
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = sessionToken {
+            urlRequest.setValue(token, forHTTPHeaderField: "X-Hermes-Session-Token")
+        }
+
+        let (data, response) = try await httpTransport.session.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw TransportError.remoteFailure("HTTP \(statusCode): \(errorBody)")
+        }
+    }
+
     // MARK: - Analytics
 
     /// GET /api/analytics/usage?days={n}

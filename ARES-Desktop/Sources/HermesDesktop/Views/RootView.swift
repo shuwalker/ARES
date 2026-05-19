@@ -131,6 +131,9 @@ struct RootView: View {
                     }
                 )
             }
+            .sheet(isPresented: $appState.isSearchVisible) {
+                GlobalSearchView(isPresented: $appState.isSearchVisible)
+            }
             .task {
                 await appState.checkForUpdatesAtLaunch()
             }

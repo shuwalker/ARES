@@ -28,6 +28,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case soul
     case tools
     case office
+    case analytics
 
     var id: String { rawValue }
 
@@ -63,6 +64,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .soul: "Soul"
         case .tools: "Tools"
         case .office: "Office"
+        case .analytics: "Analytics"
         }
     }
 
@@ -94,6 +96,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .soul: "person.text.rectangle"
         case .tools: "wrench.and.screwdriver"
         case .office: "cube.transparent"
+        case .analytics: "chart.bar.xaxis"
         }
     }
 
@@ -116,6 +119,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .terminal: return "0"
         case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs: return nil
         case .chat, .memory, .soul, .tools, .office: return nil
+        case .analytics: return nil
         }
     }
 }

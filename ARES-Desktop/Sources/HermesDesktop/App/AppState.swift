@@ -136,6 +136,17 @@ final class AppState: ObservableObject {
     // MARK: - Tool Approvals
     @Published var pendingApprovals: [ToolApprovalRequest] = []
 
+    // MARK: - Dashboard Analytics (Feature 1)
+    @Published var dashboardOverview: DashboardOverview?
+    @Published var isLoadingDashboard = false
+    @Published var dashboardPeriod: Int = 14
+
+    // MARK: - Usage Meter / Session Context (Feature 2)
+    @Published var sessionContextUsed: Int = 0
+    @Published var sessionContextLimit: Int = 200_000
+    @Published var sessionDailyCost: Double = 0
+    @Published var contextAlertThreshold: Int? = nil
+
     let connectionStore: ConnectionStore
     let dashboardAPIService: DashboardAPIService
     let tunnelService = SSHTunnelService()
