@@ -402,7 +402,7 @@ final class AppState: ObservableObject {
         switch selectedSection {
         case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles, .plugins:
             return true
-        case .jobs, .mcp:
+        case .jobs, .mcp, .analytics:
             return false
         case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim, .docs, .chat, .memory, .soul, .tools, .office:
             return false
@@ -2954,10 +2954,6 @@ final class AppState: ObservableObject {
             Task { await loadDashboardCronJobs() }
         case .mcp:
             Task { await loadMCPServers() }
-        case .jobs:
-            Task { await loadDashboardCronJobs() }
-        case .mcp:
-            Task { await loadMCPServers() }
         case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
@@ -3074,6 +3070,8 @@ final class AppState: ObservableObject {
             await loadDashboardCronJobs()
         case .mcp:
             await loadMCPServers()
+        case .analytics:
+            break
         case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
@@ -3347,6 +3345,13 @@ final class AppState: ObservableObject {
             isOperatingOnKanbanBoard = false
             isDispatchingKanban = false
             includeArchivedKanbanTasks = false
+            dashboardCronJobs = []
+            dashboardCronJobsError = nil
+            isLoadingDashboardCronJobs = false
+            mcpServers = []
+            mcpMarketplaceItems = []
+            mcpError = nil
+            isLoadingMCP = false
             resetDocuments()
             return
         }
@@ -3436,6 +3441,13 @@ final class AppState: ObservableObject {
         isOperatingOnKanbanBoard = false
         isDispatchingKanban = false
         includeArchivedKanbanTasks = false
+        dashboardCronJobs = []
+        dashboardCronJobsError = nil
+        isLoadingDashboardCronJobs = false
+        mcpServers = []
+        mcpMarketplaceItems = []
+        mcpError = nil
+        isLoadingMCP = false
         resetDocuments()
         if closeTerminalTabs {
             terminalWorkspace.closeAllTabs()
