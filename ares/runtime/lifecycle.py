@@ -40,7 +40,7 @@ class Session:
 def prepare(config: Optional[AresConfig] = None) -> Session:
     """Resolve config, discover skills, validate. No processes started."""
     cfg = config or load_config()
-    backend = load_backend(cfg.agent.backend, cfg.agent_dict())
+    backend = load_backend(cfg.agent.backend, cfg.agent.agent_dict())
 
     # Ensure home directory exists
     cfg.home.mkdir(parents=True, exist_ok=True)
