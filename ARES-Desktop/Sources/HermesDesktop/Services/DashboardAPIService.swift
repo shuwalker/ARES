@@ -420,4 +420,38 @@ final class DashboardAPIService: @unchecked Sendable {
         let data = try await authenticatedGet(path: path)
         return try JSONDecoder().decode(ActionStatusResponse.self, from: data)
     }
+
+    // MARK: - Memory
+
+    /// GET /api/memory
+    func fetchMemory() async throws -> MemoryResponse {
+        let data = try await authenticatedGet(path: "api/memory")
+        return try JSONDecoder().decode(MemoryResponse.self, from: data)
+    }
+
+    /// DELETE /api/memory/{id}
+    func deleteMemoryEntry(id: String) async throws {
+        _ = try await authenticatedDelete(path: "api/memory/\(id)")
+    }
+
+    /// PUT /api/memory/{id}
+    func updateMemoryEntry(id: String, content: String) async throws {
+        let body: [String: String] = ["content": content]
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        _ = try await authenticatedPut(path: "api/memory/\(id)", body: payload)
+    }
+
+    // MARK: - Tools
+
+    /// GET /api/tools
+    func fetchTools() async throws -> ToolsResponse {
+        let data = try await authenticatedGet(path: "api/tools")
+        return try JSONDecoder().decode(ToolsResponse.self, from: data)
+    }
+
+    /// POST /api/tools/{name}/enable or /api/tools/{name}/disable
+    func setToolEnabled(name: String, enabled: Bool) async throws {
+        let action = enabled ? "enable" : "disable"
+        _ = try await authenticatedPost(path: "api/tools/\(name)/\(action)", body: Data())
+    }
 }

@@ -231,7 +231,7 @@ struct RootView: View {
             return $filesSplitLayout
         case .skills:
             return $skillsSplitLayout
-        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs:
+        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             return nil
         }
     }
@@ -254,7 +254,7 @@ struct RootView: View {
         if appState.activeConnection == nil {
             return [.connections]
         }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs]
+        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -352,6 +352,16 @@ struct RootView: View {
             PluginsView()
         case .docs:
             DocsView()
+        case .chat:
+            ChatView()
+        case .memory:
+            MemoryView()
+        case .soul:
+            SoulView()
+        case .tools:
+            ToolsView()
+        case .office:
+            OfficeView()
         }
     }
 }

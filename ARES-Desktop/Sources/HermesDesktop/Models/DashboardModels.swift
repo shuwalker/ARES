@@ -438,6 +438,38 @@ struct PlatformStatus: Decodable {
     }
 }
 
+// MARK: - Memory
+
+struct MemoryEntry: Identifiable, Codable, Sendable {
+    let id: String
+    let content: String
+    let createdAt: String?
+    let source: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, content, source
+        case createdAt = "created_at"
+    }
+}
+
+struct MemoryResponse: Codable, Sendable {
+    let entries: [MemoryEntry]
+}
+
+// MARK: - Tools
+
+struct ToolSummary: Identifiable, Codable, Sendable {
+    let name: String
+    var enabled: Bool
+    let description: String?
+
+    var id: String { name }
+}
+
+struct ToolsResponse: Codable, Sendable {
+    let tools: [ToolSummary]
+}
+
 // MARK: - System Controls
 
 /// Response from POST /api/gateway/restart and POST /api/hermes/update
