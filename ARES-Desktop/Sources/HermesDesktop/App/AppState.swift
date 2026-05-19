@@ -147,6 +147,38 @@ final class AppState: ObservableObject {
     @Published var isLoadingMCP = false
     @Published var mcpError: String?
 
+    // MARK: - Swarm
+    @Published var swarmWorkers: [SwarmWorker] = []
+    @Published var swarmMissions: [SwarmMission] = []
+    @Published var swarmHealth: SwarmHealth?
+    @Published var swarmKanbanCards: [SwarmKanbanCard] = []
+    @Published var swarmReports: [SwarmReport] = []
+    @Published var swarmMemoryFiles: [SwarmMemoryFile] = []
+    @Published var isLoadingSwarm = false
+    @Published var swarmError: String?
+    @Published var swarmSelectedWorker: SwarmWorker?
+    @Published var swarmRuntimeOutput: [String: String] = [:]   // workerId -> terminal text
+    private var swarmPollingTask: Task<Void, Never>?
+    private var swarmRuntimePollingTask: Task<Void, Never>?
+
+    // MARK: - Conductor
+    @Published var conductorGoal: String = ""
+    @Published var conductorMissionActive: Bool = false
+    @Published var conductorWorkerCards: [ConductorWorkerCard] = []
+    @Published var conductorSelectedModel: String = ""
+    private var conductorPollingTask: Task<Void, Never>?
+
+    // MARK: - Operations
+    @Published var operationsAgents: [OperationsAgent] = []
+    @Published var isLoadingOperations = false
+    @Published var operationsError: String?
+
+    // MARK: - Crew Status
+    @Published var crewStatusEntries: [CrewStatusEntry] = []
+    @Published var isLoadingCrewStatus = false
+    @Published var crewStatusError: String?
+    private var crewStatusPollingTask: Task<Void, Never>?
+
     // MARK: - Dashboard Analytics (Feature 1)
     @Published var dashboardOverview: DashboardOverview?
     @Published var isLoadingDashboard = false
@@ -385,6 +417,14 @@ final class AppState: ObservableObject {
             return !isLoadingDashboardCronJobs
         case .mcp:
             return !isLoadingMCP
+        case .swarm:
+            return !isLoadingSwarm
+        case .conductor:
+            return !conductorMissionActive
+        case .operations:
+            return !isLoadingOperations
+        case .crewStatus:
+            return !isLoadingCrewStatus
         case .connections, .files, .terminal, .avatar, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             return false
         }
@@ -402,7 +442,7 @@ final class AppState: ObservableObject {
         switch selectedSection {
         case .sessions, .workflows, .cronjobs, .kanban, .skills, .youtubePipeline, .models, .config, .logs, .keys, .profiles, .plugins:
             return true
-        case .jobs, .mcp, .analytics:
+        case .jobs, .mcp, .analytics, .swarm, .conductor, .operations, .crewStatus:
             return false
         case .connections, .overview, .files, .usage, .terminal, .avatar, .secondBrain, .physicsSim, .docs, .chat, .memory, .soul, .tools, .office:
             return false
@@ -496,6 +536,14 @@ final class AppState: ObservableObject {
             await loadMCPServers()
         case .analytics:
             await loadDashboardOverview()
+        case .swarm:
+            await loadSwarm()
+        case .conductor:
+            break
+        case .operations:
+            await loadOperations()
+        case .crewStatus:
+            await loadCrewStatus()
         case .secondBrain, .youtubePipeline, .physicsSim, .docs, .chat, .memory, .soul, .tools, .office:
             break
         case .connections, .files, .terminal, .avatar, .models, .config, .logs, .keys, .profiles, .plugins:
@@ -2954,6 +3002,14 @@ final class AppState: ObservableObject {
             Task { await loadDashboardCronJobs() }
         case .mcp:
             Task { await loadMCPServers() }
+        case .swarm:
+            Task { await loadSwarm() }
+        case .conductor:
+            break
+        case .operations:
+            Task { await loadOperations() }
+        case .crewStatus:
+            Task { await loadCrewStatus() }
         case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
@@ -3072,6 +3128,14 @@ final class AppState: ObservableObject {
             await loadMCPServers()
         case .analytics:
             break
+        case .swarm:
+            await loadSwarm()
+        case .conductor:
+            break
+        case .operations:
+            await loadOperations()
+        case .crewStatus:
+            await loadCrewStatus()
         case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
@@ -3682,6 +3746,170 @@ final class AppState: ObservableObject {
 
     func dismissContextAlert() {
         contextAlertThreshold = nil
+    }
+
+    // MARK: - Swarm
+
+    func loadSwarm() async {
+        guard dashboardAPIAvailable else { return }
+        guard !isLoadingSwarm else { return }
+        isLoadingSwarm = true
+        swarmError = nil
+
+        async let rosterResult: [SwarmWorker] = {
+            do { return try await dashboardAPIService.fetchSwarmRoster() } catch { return [] }
+        }()
+        async let missionsResult: [SwarmMission] = {
+            do { return try await dashboardAPIService.fetchSwarmMissions() } catch { return [] }
+        }()
+        async let healthResult: SwarmHealth? = {
+            do { return try await dashboardAPIService.fetchSwarmHealth() } catch { return nil }
+        }()
+
+        let (roster, missions, health) = await (rosterResult, missionsResult, healthResult)
+        swarmWorkers = roster
+        swarmMissions = missions
+        swarmHealth = health
+        isLoadingSwarm = false
+    }
+
+    func loadSwarmKanban() async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            swarmKanbanCards = try await dashboardAPIService.fetchSwarmKanban()
+        } catch {
+            // silently ignore
+        }
+    }
+
+    func loadSwarmReports() async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            swarmReports = try await dashboardAPIService.fetchSwarmReports()
+        } catch {
+            // silently ignore
+        }
+    }
+
+    func loadSwarmMemory() async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            swarmMemoryFiles = try await dashboardAPIService.fetchSwarmMemory()
+        } catch {
+            // silently ignore
+        }
+    }
+
+    func dispatchToSwarm(worker: String, prompt: String, missionId: String? = nil) async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            try await dashboardAPIService.swarmDispatch(worker: worker, prompt: prompt, missionId: missionId)
+            setStatusMessage(L10n.string("Dispatched to \(worker)"))
+            await loadSwarm()
+        } catch {
+            swarmError = error.localizedDescription
+            setStatusMessage(error.localizedDescription)
+        }
+    }
+
+    func sendSwarmDirectChat(worker: String, message: String) async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            try await dashboardAPIService.swarmDirectChat(worker: worker, message: message)
+            setStatusMessage(L10n.string("Message sent to \(worker)"))
+        } catch {
+            swarmError = error.localizedDescription
+        }
+    }
+
+    func moveSwarmKanbanCard(_ card: SwarmKanbanCard, toColumn column: String) async {
+        guard dashboardAPIAvailable else { return }
+        var updated = card
+        updated = SwarmKanbanCard(
+            id: card.id,
+            title: card.title,
+            column: column,
+            worker: card.worker,
+            priority: card.priority
+        )
+        if let idx = swarmKanbanCards.firstIndex(where: { $0.id == card.id }) {
+            swarmKanbanCards[idx] = updated
+        }
+        do {
+            try await dashboardAPIService.updateSwarmKanbanCard(updated)
+        } catch {
+            // revert on failure
+            await loadSwarmKanban()
+        }
+    }
+
+    func createSwarmKanbanCard(title: String, worker: String?, priority: String?) async {
+        guard dashboardAPIAvailable else { return }
+        let draft = SwarmKanbanCard(
+            id: UUID().uuidString,
+            title: title,
+            column: "backlog",
+            worker: worker,
+            priority: priority
+        )
+        do {
+            let created = try await dashboardAPIService.createSwarmKanbanCard(draft)
+            swarmKanbanCards.append(created)
+        } catch {
+            swarmError = error.localizedDescription
+        }
+    }
+
+    func startSwarmPolling() {
+        swarmPollingTask?.cancel()
+        swarmPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.loadSwarm()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    func stopSwarmPolling() {
+        swarmPollingTask?.cancel()
+        swarmPollingTask = nil
+    }
+
+    func startSwarmRuntimePolling() {
+        swarmRuntimePollingTask?.cancel()
+        swarmRuntimePollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.pollSwarmRuntime()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    func stopSwarmRuntimePolling() {
+        swarmRuntimePollingTask?.cancel()
+        swarmRuntimePollingTask = nil
+    }
+
+    private func pollSwarmRuntime() async {
+        guard dashboardAPIAvailable else { return }
+        do {
+            let data = try await dashboardAPIService.fetchSwarmRuntime()
+            if let decoded = try? JSONDecoder().decode(SwarmRuntime.self, from: data),
+               let workers = decoded.workers {
+                var outputMap: [String: String] = [:]
+                for w in workers {
+                    if let workerId = w.workerId, let output = w.sessionOutput {
+                        outputMap[workerId] = output
+                    }
+                }
+                swarmRuntimeOutput = outputMap
+            } else if let raw = String(data: data, encoding: .utf8) {
+                // fallback: store as single entry
+                swarmRuntimeOutput["default"] = raw
+            }
+        } catch {
+            // silently ignore polling errors
+        }
     }
 }
 

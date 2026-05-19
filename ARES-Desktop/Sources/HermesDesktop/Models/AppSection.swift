@@ -31,6 +31,10 @@ enum AppSection: String, CaseIterable, Identifiable {
     case analytics
     case jobs
     case mcp
+    case swarm
+    case conductor
+    case operations
+    case crewStatus
 
     var id: String { rawValue }
 
@@ -69,6 +73,10 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .analytics: "Analytics"
         case .jobs: "Jobs"
         case .mcp: "MCP"
+        case .swarm: "Swarm"
+        case .conductor: "Conductor"
+        case .operations: "Operations"
+        case .crewStatus: "Crew"
         }
     }
 
@@ -103,6 +111,10 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .analytics: "chart.bar.xaxis"
         case .jobs: "clock.badge.checkmark"
         case .mcp: "server.rack"
+        case .swarm: "person.3.fill"
+        case .conductor: "wand.and.stars"
+        case .operations: "building.2"
+        case .crewStatus: "person.badge.shield.checkmark"
         }
     }
 
@@ -126,7 +138,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs: return nil
         case .chat, .memory, .soul, .tools, .office: return nil
         case .analytics: return nil
-        case .jobs, .mcp: return nil
+        case .jobs, .mcp, .swarm: return nil
+        case .conductor, .operations, .crewStatus: return nil
         }
     }
 }

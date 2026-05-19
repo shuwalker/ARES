@@ -253,7 +253,7 @@ struct RootView: View {
             return $filesSplitLayout
         case .skills:
             return $skillsSplitLayout
-        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs, .chat, .memory, .soul, .tools, .office, .analytics, .jobs, .mcp:
+        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs, .chat, .memory, .soul, .tools, .office, .analytics, .jobs, .mcp, .swarm, .conductor, .operations, .crewStatus:
             return nil
         }
     }
@@ -276,7 +276,7 @@ struct RootView: View {
         if appState.activeConnection == nil {
             return [.connections]
         }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .analytics, .jobs, .mcp, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
+        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .swarm, .files, .usage, .analytics, .jobs, .mcp, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -376,6 +376,14 @@ struct RootView: View {
             JobsView()
         case .mcp:
             MCPView()
+        case .swarm:
+            SwarmView()
+        case .conductor:
+            EmptyView()
+        case .operations:
+            EmptyView()
+        case .crewStatus:
+            EmptyView()
         }
     }
 }
