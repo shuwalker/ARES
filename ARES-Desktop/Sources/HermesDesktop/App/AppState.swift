@@ -193,6 +193,8 @@ final class AppState: ObservableObject {
     private var statusTask: Task<Void, Never>?
     private var sessionTranscriptPollingTask: Task<Void, Never>?
     private var approvalPollingTask: Task<Void, Never>?
+    private var contextPollingTask: Task<Void, Never>?
+    private var firedContextThresholds: Set<Int> = []
     private var cancellables = Set<AnyCancellable>()
 
     convenience init(updateCheckService: UpdateCheckService = UpdateCheckService()) {

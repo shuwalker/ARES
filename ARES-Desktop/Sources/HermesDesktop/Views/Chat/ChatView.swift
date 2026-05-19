@@ -217,7 +217,16 @@ struct ChatView: View {
     // MARK: - Input area
 
     private var inputArea: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
+            if micAuthDenied {
+                Text(L10n.string("Microphone access required"))
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .transition(.opacity)
+            }
+
             HStack(alignment: .bottom, spacing: 10) {
                 ZStack(alignment: .bottom) {
                     TextEditor(text: $inputText)
@@ -252,9 +261,20 @@ struct ChatView: View {
                                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
                         }
-
                 }
 
+                // Microphone button
+                Button {
+                    toggleRecording()
+                } label: {
+                    Image(systemName: isRecording ? "mic.fill" : "mic")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(isRecording ? Color.red : Color.secondary.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+                .help(isRecording ? L10n.string("Stop recording") : L10n.string("Start voice input"))
+
+                // Send button
                 Button {
                     sendMessage()
                 } label: {
@@ -266,10 +286,41 @@ struct ChatView: View {
                 .disabled(!canSend)
                 .help(L10n.string("Send message"))
             }
+            .padding(.horizontal, 14)
         }
-        .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Color.secondary.opacity(0.03))
+    }
+
+    // MARK: - Voice input
+
+    private func toggleRecording() {
+        if isRecording {
+            speechService.stopRecording()
+            isRecording = false
+        } else {
+            Task {
+                let authorized = await speechService.requestAuthorization()
+                guard authorized else {
+                    withAnimation { micAuthDenied = true }
+                    Task {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        withAnimation { micAuthDenied = false }
+                    }
+                    return
+                }
+                micAuthDenied = false
+                speechService.onTranscriptionUpdate = { text in
+                    self.inputText = text
+                }
+                do {
+                    try speechService.startRecording()
+                    isRecording = true
+                } catch {
+                    isRecording = false
+                }
+            }
+        }
     }
 
     // MARK: - Slash command popover

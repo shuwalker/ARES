@@ -75,8 +75,11 @@ struct GlobalSearchView: View {
         .onAppear {
             isFieldFocused = true
         }
-        .onChange(of: query) { _, newValue in
-            scheduleDebouncedSearch(query: newValue)
+        .task(id: query) {
+            let current = query
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            debouncedQuery = current
         }
     }
 
@@ -324,17 +327,6 @@ struct GlobalSearchView: View {
         if query.isEmpty { dismiss() }
     }
 
-    // MARK: Debounce
-
-    private func scheduleDebouncedSearch(query: String) {
-        Task {
-            try? await Task.sleep(for: .milliseconds(200))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                debouncedQuery = query
-            }
-        }
-    }
 }
 
 // MARK: - Button style
