@@ -86,6 +86,12 @@ final class AppState: ObservableObject {
     @Published var isOperatingOnKanbanBoard = false
     @Published var isDispatchingKanban = false
     @Published var includeArchivedKanbanTasks = false
+    @Published var kanbanTaskLog: String? = nil
+    @Published var isLoadingKanbanLog = false
+    @Published var kanbanOrchestration: KanbanOrchestrationConfig? = nil
+    @Published var isLoadingKanbanOrchestration = false
+    @Published var kanbanOrchestrationError: String? = nil
+    @Published var kanbanSelectedTaskIDs: Set<String> = []
     @Published var secondBrainResults: [SecondBrainResult] = []
     @Published var selectedSecondBrainResultID: String?
     @Published var secondBrainError: String?
@@ -2285,6 +2291,52 @@ final class AppState: ObservableObject {
         }
     }
 
+    func moveKanbanTask(taskID: String, toStatus newStatus: KanbanTaskStatus) async {
+        guard dashboardAPIAvailable else { return }
+        let boardSlug = selectedKanbanBoardSlug
+
+        // Optimistic update
+        var revertTasks: [KanbanTask]?
+        if var board = kanbanBoard {
+            revertTasks = board.tasks
+            if let idx = board.tasks.firstIndex(where: { $0.id == taskID }) {
+                var updated = board.tasks[idx]
+                updated = KanbanTask(
+                    id: updated.id,
+                    title: updated.title,
+                    body: updated.body,
+                    status: newStatus,
+                    priority: updated.priority,
+                    assignee: updated.assignee,
+                    tenant: updated.tenant,
+                    skills: updated.skills,
+                    parentIDs: updated.parentIDs,
+                    childIDs: updated.childIDs,
+                    createdAt: updated.createdAt,
+                    updatedAt: updated.updatedAt
+                )
+                board.tasks[idx] = updated
+                kanbanBoard = board
+            }
+        }
+
+        do {
+            try await dashboardAPIService.kanbanMoveTask(
+                boardSlug: boardSlug,
+                taskID: taskID,
+                statusRawValue: newStatus.rawValue
+            )
+            await reloadKanbanAfterOperation(taskID: taskID, boardSlug: boardSlug)
+        } catch {
+            // Revert optimistic update on failure
+            if var board = kanbanBoard, let revert = revertTasks {
+                board.tasks = revert
+                kanbanBoard = board
+            }
+            kanbanError = error.localizedDescription
+        }
+    }
+
     func reclaimKanbanTask(taskID: String, reason: String?) async {
         await operateOnKanbanTask(
             taskID: taskID,
@@ -2440,6 +2492,158 @@ final class AppState: ObservableObject {
             kanbanError = error.localizedDescription
             setStatusMessage(L10n.string("Unable to update Kanban home channel"))
             return false
+        }
+    }
+
+    // MARK: - Kanban Plugin: Decompose, Log, Orchestration, Bulk
+
+    /// POST /api/plugins/kanban/tasks/{task_id}/decompose
+    /// Decomposes the selected task into subtasks via LLM. HTTP-only (requires dashboard access).
+    func decomposeKanbanTask(_ taskID: String) async {
+        guard dashboardAPIAvailable else {
+            kanbanError = L10n.string("Dashboard API is not available. Connect via SSH tunnel or local connection to use decompose.")
+            return
+        }
+        let boardSlug = selectedKanbanBoardSlug
+        isOperatingOnKanbanTask = true
+        operatingKanbanTaskID = taskID
+        kanbanError = nil
+        setStatusMessage(L10n.string("Decomposing task…"))
+
+        do {
+            try await dashboardAPIService.kanbanDecomposeTask(taskID: taskID, boardSlug: boardSlug)
+            await reloadKanbanAfterOperation(taskID: taskID, boardSlug: boardSlug)
+            isOperatingOnKanbanTask = false
+            operatingKanbanTaskID = nil
+            setStatusMessage(L10n.string("Task decomposed into subtasks"))
+        } catch {
+            isOperatingOnKanbanTask = false
+            operatingKanbanTaskID = nil
+            kanbanError = error.localizedDescription
+            setStatusMessage(L10n.string("Unable to decompose task"))
+        }
+    }
+
+    /// GET /api/plugins/kanban/tasks/{task_id}/log
+    /// Loads the worker stdout/stderr log for the given task. Prefers HTTP; falls back to the
+    /// workerLog field already present in task detail (SSH path).
+    func viewKanbanTaskLog(_ taskID: String) async {
+        guard !isLoadingKanbanLog else { return }
+        kanbanTaskLog = nil
+        isLoadingKanbanLog = true
+        kanbanError = nil
+
+        // Prefer HTTP API when dashboard is available
+        if dashboardAPIAvailable {
+            let boardSlug = selectedKanbanBoardSlug
+            do {
+                let log = try await dashboardAPIService.kanbanGetTaskLog(taskID: taskID, boardSlug: boardSlug)
+                isLoadingKanbanLog = false
+                kanbanTaskLog = log.isEmpty ? L10n.string("(No log output)") : log
+                return
+            } catch {
+                // Fall through to SSH path
+            }
+        }
+
+        // SSH fallback: use the workerLog already loaded in selectedKanbanTaskDetail
+        if let existingLog = selectedKanbanTaskDetail?.workerLog,
+           !existingLog.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            kanbanTaskLog = existingLog
+            isLoadingKanbanLog = false
+            return
+        }
+
+        // Try reloading task detail over SSH to pick up workerLog
+        if let profile = activeConnection {
+            let boardSlug = selectedKanbanBoardSlug
+            do {
+                let detail = try await kanbanBrowserService.loadTaskDetail(
+                    connection: profile,
+                    boardSlug: boardSlug,
+                    taskID: taskID
+                )
+                isLoadingKanbanLog = false
+                let trimmedLog = detail.workerLog?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                kanbanTaskLog = trimmedLog.isEmpty ? L10n.string("(No log output)") : trimmedLog
+                return
+            } catch {
+                isLoadingKanbanLog = false
+                kanbanTaskLog = nil
+                kanbanError = error.localizedDescription
+                return
+            }
+        }
+
+        isLoadingKanbanLog = false
+        kanbanTaskLog = L10n.string("(No log output)")
+    }
+
+    /// GET /api/plugins/kanban/orchestration
+    /// Loads orchestration config. Requires dashboard API access.
+    func loadKanbanOrchestration() async {
+        guard dashboardAPIAvailable else { return }
+        guard !isLoadingKanbanOrchestration else { return }
+
+        isLoadingKanbanOrchestration = true
+        kanbanOrchestrationError = nil
+
+        do {
+            let config = try await dashboardAPIService.kanbanGetOrchestration()
+            isLoadingKanbanOrchestration = false
+            kanbanOrchestration = config
+        } catch {
+            isLoadingKanbanOrchestration = false
+            kanbanOrchestrationError = error.localizedDescription
+        }
+    }
+
+    /// PUT /api/plugins/kanban/orchestration
+    /// Saves orchestration config. Requires dashboard API access.
+    func saveKanbanOrchestration(_ config: KanbanOrchestrationConfig) async {
+        guard dashboardAPIAvailable else { return }
+
+        isLoadingKanbanOrchestration = true
+        kanbanOrchestrationError = nil
+        setStatusMessage(L10n.string("Saving orchestration config…"))
+
+        do {
+            try await dashboardAPIService.kanbanUpdateOrchestration(config)
+            kanbanOrchestration = config
+            isLoadingKanbanOrchestration = false
+            setStatusMessage(L10n.string("Orchestration config saved"))
+        } catch {
+            isLoadingKanbanOrchestration = false
+            kanbanOrchestrationError = error.localizedDescription
+            setStatusMessage(L10n.string("Unable to save orchestration config"))
+        }
+    }
+
+    /// POST /api/plugins/kanban/tasks/bulk (HTTP) or individual SSH moves (fallback)
+    func bulkUpdateKanbanTasks(_ taskIDs: [String], status: KanbanTaskStatus) async {
+        guard !taskIDs.isEmpty else { return }
+        let boardSlug = selectedKanbanBoardSlug
+        kanbanError = nil
+
+        if dashboardAPIAvailable {
+            setStatusMessage(L10n.string("Updating %@ tasks…", "\(taskIDs.count)"))
+            do {
+                try await dashboardAPIService.kanbanBulkUpdateTasks(
+                    taskIDs: taskIDs,
+                    status: status,
+                    boardSlug: boardSlug
+                )
+                kanbanSelectedTaskIDs = []
+                await loadKanbanBoard(includeArchived: includeArchivedKanbanTasks)
+                setStatusMessage(L10n.string("Moved %@ tasks to %@", "\(taskIDs.count)", status.displayTitle))
+            } catch {
+                kanbanError = error.localizedDescription
+                setStatusMessage(L10n.string("Bulk update failed"))
+            }
+        } else {
+            // Bulk status change requires dashboard API. Show a helpful error.
+            kanbanError = L10n.string("Bulk status update requires dashboard API access. Enable SSH tunnel or use a local connection.")
+            setStatusMessage(L10n.string("Dashboard API required for bulk update"))
         }
     }
 

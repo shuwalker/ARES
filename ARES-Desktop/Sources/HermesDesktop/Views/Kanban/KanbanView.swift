@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
@@ -15,6 +16,8 @@ struct KanbanView: View {
     @State private var boardDraft = KanbanBoardDraft()
     @State private var boardPendingArchive: KanbanProject?
     @State private var showArchiveBoardConfirmation = false
+    @State private var showOrchestrationSheet = false
+    @State private var orchestrationDraft = KanbanOrchestrationDraft()
 
     var body: some View {
         HermesCollapsibleHSplitView(layout: $splitLayout, detailMinWidth: 420) {
@@ -38,13 +41,32 @@ struct KanbanView: View {
                 appState.includeArchivedKanbanTasks = true
             }
         }
-        .alert(L10n.string("Archive this Kanban board?"), isPresented: $showArchiveBoardConfirmation, presenting: boardPendingArchive) { board in
-            Button(L10n.string("Archive"), role: .destructive) {
+        .alert(L10n.string(“Archive this Kanban board?”), isPresented: $showArchiveBoardConfirmation, presenting: boardPendingArchive) { board in
+            Button(L10n.string(“Archive”), role: .destructive) {
                 Task { await appState.archiveKanbanBoard(board) }
             }
-            Button(L10n.string("Cancel"), role: .cancel) {}
+            Button(L10n.string(“Cancel”), role: .cancel) {}
         } message: { board in
-            Text(L10n.string("“%@” will be moved out of the active board list. Existing task data stays recoverable on the remote host.", board.resolvedName))
+            Text(L10n.string(“”%@” will be moved out of the active board list. Existing task data stays recoverable on the remote host.”, board.resolvedName))
+        }
+        .sheet(isPresented: $showOrchestrationSheet) {
+            KanbanOrchestrationSheet(
+                draft: $orchestrationDraft,
+                config: appState.kanbanOrchestration,
+                isLoading: appState.isLoadingKanbanOrchestration,
+                errorMessage: appState.kanbanOrchestrationError,
+                onSave: { draft in
+                    let config = draft.toConfig()
+                    Task { await appState.saveKanbanOrchestration(config) }
+                },
+                onDismiss: { showOrchestrationSheet = false }
+            )
+        }
+        .onChange(of: showOrchestrationSheet) { _, isShowing in
+            if isShowing {
+                orchestrationDraft = KanbanOrchestrationDraft(from: appState.kanbanOrchestration)
+                Task { await appState.loadKanbanOrchestration() }
+            }
         }
     }
 
@@ -83,10 +105,65 @@ struct KanbanView: View {
             HStack(spacing: 8) {
                 createTaskButton
                 dispatchButton
+                if appState.dashboardAPIAvailable {
+                    orchestrationButton
+                }
             }
             .fixedSize(horizontal: true, vertical: false)
+
+            if !appState.kanbanSelectedTaskIDs.isEmpty {
+                bulkActionBar
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var orchestrationButton: some View {
+        Button {
+            showOrchestrationSheet = true
+        } label: {
+            Label(L10n.string("Orchestration"), systemImage: "gearshape.2")
+                .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .help(L10n.string("Orchestration settings"))
+    }
+
+    private var bulkActionBar: some View {
+        HStack(spacing: 8) {
+            Text(L10n.string("%@ selected", "\(appState.kanbanSelectedTaskIDs.count)"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Menu {
+                Section {
+                    ForEach(KanbanTaskStatus.boardStatuses, id: \.rawValue) { status in
+                        Button(L10n.string(status.displayTitle)) {
+                            let ids = Array(appState.kanbanSelectedTaskIDs)
+                            Task { await appState.bulkUpdateKanbanTasks(ids, status: status) }
+                        }
+                    }
+                } header: {
+                    Text(L10n.string("Move to"))
+                }
+            } label: {
+                Label(L10n.string("Move to…"), systemImage: "arrow.right.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+
+            Button {
+                appState.kanbanSelectedTaskIDs = []
+            } label: {
+                Label(L10n.string("Clear"), systemImage: "xmark")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .help(L10n.string("Clear selection"))
+        }
     }
 
     private var boardPicker: some View {
@@ -395,7 +472,13 @@ struct KanbanView: View {
                         status: status,
                         tasks: filteredTasks(for: status),
                         selectedTaskID: appState.selectedKanbanTaskID,
-                        onSelect: selectTask
+                        onSelect: selectTask,
+                        onDrop: { taskID in
+                            guard appState.dashboardAPIAvailable else { return }
+                            let task = appState.kanbanBoard?.tasks.first(where: { $0.id == taskID })
+                            guard task?.status != status, status != .archived else { return }
+                            Task { await appState.moveKanbanTask(taskID: taskID, toStatus: status) }
+                        }
                     )
                     .frame(width: 250)
                 }
@@ -423,7 +506,15 @@ struct KanbanView: View {
                                 KanbanTaskCard(
                                     task: task,
                                     isSelected: task.id == appState.selectedKanbanTaskID,
-                                    onSelect: { selectTask(task) }
+                                    isChecked: appState.kanbanSelectedTaskIDs.contains(task.id),
+                                    onSelect: { selectTask(task) },
+                                    onToggleCheck: {
+                                        if appState.kanbanSelectedTaskIDs.contains(task.id) {
+                                            appState.kanbanSelectedTaskIDs.remove(task.id)
+                                        } else {
+                                            appState.kanbanSelectedTaskIDs.insert(task.id)
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -475,6 +566,9 @@ struct KanbanView: View {
                     appState.isOperatingOnKanbanTask && appState.operatingKanbanTaskID == task.id
                 } ?? false,
                 assignees: assigneeOptions,
+                dashboardAPIAvailable: appState.dashboardAPIAvailable,
+                isLoadingLog: appState.isLoadingKanbanLog,
+                taskLog: appState.kanbanTaskLog,
                 onCreate: {
                     taskDraft = KanbanTaskDraft()
                     isCreatingBoard = false
@@ -544,6 +638,12 @@ struct KanbanView: View {
                         homeChannel: homeChannel,
                         subscribed: subscribed
                     )
+                },
+                onDecompose: { taskID in
+                    await appState.decomposeKanbanTask(taskID)
+                },
+                onViewLog: { taskID in
+                    await appState.viewKanbanTaskLog(taskID)
                 }
             )
         }
@@ -838,6 +938,9 @@ private struct KanbanColumnView: View {
     let tasks: [KanbanTask]
     let selectedTaskID: String?
     let onSelect: (KanbanTask) -> Void
+    let onDrop: (String) -> Void
+
+    @State private var isDropTarget = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -859,11 +962,28 @@ private struct KanbanColumnView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.secondary.opacity(0.026), in: RoundedRectangle(cornerRadius: HermesTheme.panelCornerRadius, style: .continuous))
+        .background(
+            isDropTarget
+                ? KanbanColors.tint(for: status).opacity(0.08)
+                : Color.secondary.opacity(0.026),
+            in: RoundedRectangle(cornerRadius: HermesTheme.panelCornerRadius, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: HermesTheme.panelCornerRadius, style: .continuous)
-                .strokeBorder(HermesTheme.subtleStroke, lineWidth: 1)
+                .strokeBorder(
+                    isDropTarget ? KanbanColors.tint(for: status).opacity(0.6) : HermesTheme.subtleStroke,
+                    lineWidth: isDropTarget ? 2 : 1
+                )
         }
+        .onDrop(of: [UTType.plainText], isTargeted: $isDropTarget) { providers in
+            guard let provider = providers.first else { return false }
+            provider.loadObject(ofClass: String.self) { object, _ in
+                guard let taskID = object as? String else { return }
+                DispatchQueue.main.async { onDrop(taskID) }
+            }
+            return true
+        }
+        .animation(.easeInOut(duration: 0.15), value: isDropTarget)
     }
 
     private var header: some View {
@@ -902,7 +1022,23 @@ private struct KanbanColumnView: View {
 private struct KanbanTaskCard: View {
     let task: KanbanTask
     let isSelected: Bool
+    let isChecked: Bool
     let onSelect: () -> Void
+    let onToggleCheck: (() -> Void)?
+
+    init(
+        task: KanbanTask,
+        isSelected: Bool,
+        isChecked: Bool = false,
+        onSelect: @escaping () -> Void,
+        onToggleCheck: (() -> Void)? = nil
+    ) {
+        self.task = task
+        self.isSelected = isSelected
+        self.isChecked = isChecked
+        self.onSelect = onSelect
+        self.onToggleCheck = onToggleCheck
+    }
 
     @State private var isHovering = false
 
@@ -910,6 +1046,18 @@ private struct KanbanTaskCard: View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 8) {
+                    if let onToggleCheck {
+                        Button(action: onToggleCheck) {
+                            Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 15, weight: .regular))
+                                .foregroundStyle(isChecked ? Color.accentColor : Color.secondary.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .onTapGesture {
+                            onToggleCheck()
+                        }
+                    }
+
                     Text(task.resolvedTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
@@ -953,6 +1101,7 @@ private struct KanbanTaskCard: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .onDrag { NSItemProvider(object: task.id as NSString) }
         .contextMenu {
             Button(L10n.string("Copy Task ID")) {
                 NSPasteboard.general.clearContents()
@@ -1260,6 +1409,9 @@ private struct KanbanTaskDetailView: View {
     let isLoading: Bool
     let operationInFlight: Bool
     let assignees: [String]
+    let dashboardAPIAvailable: Bool
+    let isLoadingLog: Bool
+    let taskLog: String?
     let onCreate: () -> Void
     let onSpecify: (String) async -> Void
     let onAssign: (String, String?) async -> Void
@@ -1276,11 +1428,14 @@ private struct KanbanTaskDetailView: View {
     let onArchive: (String) async -> Void
     let onDelete: (String) async -> Void
     let onSetHomeSubscription: (String, KanbanHomeChannel, Bool) async -> Bool
+    let onDecompose: (String) async -> Void
+    let onViewLog: (String) async -> Void
 
     @State private var draft = KanbanActionDraft()
     @State private var showArchiveConfirmation = false
     @State private var showDeleteConfirmation = false
     @State private var expandedAction: KanbanActionKind?
+    @State private var showLogSheet = false
 
     var body: some View {
         ScrollView {
@@ -1372,21 +1527,29 @@ private struct KanbanTaskDetailView: View {
         .onAppear {
             resetDraft()
         }
-        .alert(L10n.string("Archive this task?"), isPresented: $showArchiveConfirmation, presenting: task) { task in
-            Button(L10n.string("Archive"), role: .destructive) {
+        .alert(L10n.string(“Archive this task?”), isPresented: $showArchiveConfirmation, presenting: task) { task in
+            Button(L10n.string(“Archive”), role: .destructive) {
                 Task { await onArchive(task.id) }
             }
-            Button(L10n.string("Cancel"), role: .cancel) {}
+            Button(L10n.string(“Cancel”), role: .cancel) {}
         } message: { task in
-            Text(L10n.string("“%@” will be hidden from the active board unless archived tasks are shown.", task.resolvedTitle))
+            Text(L10n.string(“”%@” will be hidden from the active board unless archived tasks are shown.”, task.resolvedTitle))
         }
-        .alert(L10n.string("Delete this task?"), isPresented: $showDeleteConfirmation, presenting: task) { task in
-            Button(L10n.string("Delete"), role: .destructive) {
+        .alert(L10n.string(“Delete this task?”), isPresented: $showDeleteConfirmation, presenting: task) { task in
+            Button(L10n.string(“Delete”), role: .destructive) {
                 Task { await onDelete(task.id) }
             }
-            Button(L10n.string("Cancel"), role: .cancel) {}
+            Button(L10n.string(“Cancel”), role: .cancel) {}
         } message: { task in
-            Text(L10n.string("“%@” will be permanently removed from the remote Kanban database, including comments, links, events, and run history. Remote workspace files are left untouched.", task.resolvedTitle))
+            Text(L10n.string(“”%@” will be permanently removed from the remote Kanban database, including comments, links, events, and run history. Remote workspace files are left untouched.”, task.resolvedTitle))
+        }
+        .sheet(isPresented: $showLogSheet) {
+            KanbanTaskLogSheet(
+                taskTitle: task?.resolvedTitle ?? “”,
+                log: taskLog,
+                isLoading: isLoadingLog,
+                onDismiss: { showLogSheet = false }
+            )
         }
     }
 
@@ -1496,6 +1659,36 @@ private struct KanbanTaskDetailView: View {
             .buttonStyle(.bordered)
             .fixedSize(horizontal: true, vertical: false)
             .disabled(operationInFlight)
+        }
+
+        Button {
+            showLogSheet = true
+            Task { await onViewLog(task.id) }
+        } label: {
+            if isLoadingLog {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 14, height: 14)
+            } else {
+                Label(L10n.string("View Log"), systemImage: "doc.text.magnifyingglass")
+                    .labelStyle(.iconOnly)
+            }
+        }
+        .buttonStyle(.bordered)
+        .fixedSize(horizontal: true, vertical: false)
+        .disabled(operationInFlight || isLoadingLog)
+        .help(L10n.string("View worker log"))
+
+        if dashboardAPIAvailable && (task.status == .triage || task.status == .todo) {
+            Button {
+                Task { await onDecompose(task.id) }
+            } label: {
+                Label(L10n.string("Decompose"), systemImage: "arrow.triangle.branch")
+            }
+            .buttonStyle(.bordered)
+            .fixedSize(horizontal: true, vertical: false)
+            .disabled(operationInFlight)
+            .help(L10n.string("LLM-decompose task into subtasks"))
         }
 
         Menu {
@@ -2588,5 +2781,183 @@ private struct KanbanEventRow: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Orchestration sheet helpers
+
+private struct KanbanOrchestrationDraft: Equatable {
+    var maxConcurrentTasksText: String = ""
+    var autoDispatch: Bool = false
+    var dispatchIntervalSecondsText: String = ""
+
+    init() {}
+
+    init(from config: KanbanOrchestrationConfig?) {
+        maxConcurrentTasksText = config?.maxConcurrentTasks.map(String.init) ?? ""
+        autoDispatch = config?.autoDispatch ?? false
+        dispatchIntervalSecondsText = config?.dispatchIntervalSeconds.map(String.init) ?? ""
+    }
+
+    func toConfig() -> KanbanOrchestrationConfig {
+        KanbanOrchestrationConfig(
+            maxConcurrentTasks: Int(maxConcurrentTasksText.trimmingCharacters(in: .whitespacesAndNewlines)),
+            autoDispatch: autoDispatch,
+            dispatchIntervalSeconds: Int(dispatchIntervalSecondsText.trimmingCharacters(in: .whitespacesAndNewlines))
+        )
+    }
+}
+
+private struct KanbanOrchestrationSheet: View {
+    @Binding var draft: KanbanOrchestrationDraft
+    let config: KanbanOrchestrationConfig?
+    let isLoading: Bool
+    let errorMessage: String?
+    let onSave: (KanbanOrchestrationDraft) -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Title bar
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.string("Orchestration"))
+                        .font(.title3.weight(.semibold))
+
+                    Text(L10n.string("Configure how agents dispatch and run Kanban tasks."))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 22)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            if isLoading && config == nil {
+                HermesLoadingState(label: "Loading orchestration config…", minHeight: 180)
+                    .padding(24)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if let errorMessage {
+                            KanbanWarningBanner(message: errorMessage)
+                        }
+
+                        HermesSurfacePanel(title: "Settings") {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Toggle(L10n.string("Auto-dispatch"), isOn: $draft.autoDispatch)
+                                    .toggleStyle(.switch)
+
+                                KanbanFormField(label: "Max concurrent tasks") {
+                                    TextField(L10n.string("e.g. 4"), text: $draft.maxConcurrentTasksText)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(maxWidth: 140)
+                                }
+
+                                KanbanFormField(label: "Dispatch interval (seconds)") {
+                                    TextField(L10n.string("e.g. 30"), text: $draft.dispatchIntervalSecondsText)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(maxWidth: 140)
+                                }
+                            }
+                        }
+
+                        HStack(spacing: 10) {
+                            Button(L10n.string("Save")) {
+                                onSave(draft)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isLoading)
+
+                            Button(L10n.string("Cancel"), action: onDismiss)
+                                .buttonStyle(.bordered)
+
+                            if isLoading {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                    .padding(24)
+                }
+            }
+        }
+        .frame(minWidth: 400, idealWidth: 460, maxWidth: 520, minHeight: 340)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+}
+
+// MARK: - Task log sheet
+
+private struct KanbanTaskLogSheet: View {
+    let taskTitle: String
+    let log: String?
+    let isLoading: Bool
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.string("Worker Log"))
+                        .font(.title3.weight(.semibold))
+
+                    Text(taskTitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 22)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            if isLoading && log == nil {
+                HermesLoadingState(label: "Loading log…", minHeight: 180)
+                    .padding(24)
+            } else {
+                ScrollView([.vertical, .horizontal]) {
+                    Text(log ?? L10n.string("(No log output)"))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(log == nil ? Color.secondary : Color.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(16)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color(NSColor.textBackgroundColor))
+
+                HStack {
+                    Spacer()
+                    Button(L10n.string("Close"), action: onDismiss)
+                        .buttonStyle(.bordered)
+                }
+                .padding(16)
+            }
+        }
+        .frame(minWidth: 560, idealWidth: 700, maxWidth: .infinity, minHeight: 400, idealHeight: 560)
+        .background(Color(NSColor.windowBackgroundColor))
     }
 }
