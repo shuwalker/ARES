@@ -10,6 +10,23 @@ struct KanbanColumnView: View {
     let selectedTaskID: String?
     let onSelect: (KanbanTask) -> Void
     let onDrop: (String) -> Void
+    let onNudge: ((KanbanTask) -> Void)?
+
+    init(
+        status: KanbanTaskStatus,
+        tasks: [KanbanTask],
+        selectedTaskID: String?,
+        onSelect: @escaping (KanbanTask) -> Void,
+        onDrop: @escaping (String) -> Void,
+        onNudge: ((KanbanTask) -> Void)? = nil
+    ) {
+        self.status = status
+        self.tasks = tasks
+        self.selectedTaskID = selectedTaskID
+        self.onSelect = onSelect
+        self.onDrop = onDrop
+        self.onNudge = onNudge
+    }
 
     @State private var isDropTarget = false
 
@@ -25,7 +42,8 @@ struct KanbanColumnView: View {
                         KanbanTaskCard(
                             task: task,
                             isSelected: task.id == selectedTaskID,
-                            onSelect: { onSelect(task) }
+                            onSelect: { onSelect(task) },
+                            onNudge: onNudge.map { handler in { handler(task) } }
                         )
                     }
                 }
@@ -160,6 +178,34 @@ struct KanbanTaskCard: View {
                 }
 
                 metadataStrip
+
+                if isInactive || onNudge != nil {
+                    HStack(spacing: 8) {
+                        if isInactive {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock.badge.exclamationmark")
+                                    .font(.caption2.weight(.semibold))
+                                Text(L10n.string("Inactive 2h+"))
+                                    .font(.caption2.weight(.semibold))
+                            }
+                            .foregroundStyle(Color.orange)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.12), in: Capsule())
+                        }
+
+                        if let onNudge {
+                            Button(action: onNudge) {
+                                Label(L10n.string("Nudge"), systemImage: "hand.point.right.fill")
+                                    .font(.caption2.weight(.semibold))
+                                    .labelStyle(.titleAndIcon)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .help(L10n.string("Nudge dispatcher for this task"))
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 11)

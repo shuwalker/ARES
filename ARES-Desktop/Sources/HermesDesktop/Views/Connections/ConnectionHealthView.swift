@@ -252,14 +252,16 @@ struct ConnectionHealthView: View {
     }
 
     private func runPythonBridgeCheck(hasConnection: Bool) async -> HealthStatus {
-        guard hasConnection else {
+        guard hasConnection, let connection = appState.activeConnection else {
             return .warn(L10n.string("Requires active connection"))
         }
         // Attempt a lightweight SSH list-sessions call to verify the bridge
         do {
             _ = try await appState.sessionBrowserService.listSessions(
-                hermesHome: appState.hermesHome,
-                limit: 1
+                connection: connection,
+                offset: 0,
+                limit: 1,
+                query: ""
             )
             return .pass(L10n.string("Bridge responding"))
         } catch {

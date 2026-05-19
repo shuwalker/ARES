@@ -478,6 +478,9 @@ struct KanbanView: View {
                             let task = appState.kanbanBoard?.tasks.first(where: { $0.id == taskID })
                             guard task?.status != status, status != .archived else { return }
                             Task { await appState.moveKanbanTask(taskID: taskID, toStatus: status) }
+                        },
+                        onNudge: { task in
+                            Task { await appState.nudgeKanbanTask(taskId: task.id) }
                         }
                     )
                     .frame(width: 250)
@@ -514,6 +517,9 @@ struct KanbanView: View {
                                         } else {
                                             appState.kanbanSelectedTaskIDs.insert(task.id)
                                         }
+                                    },
+                                    onNudge: {
+                                        Task { await appState.nudgeKanbanTask(taskId: task.id) }
                                     }
                                 )
                             }
