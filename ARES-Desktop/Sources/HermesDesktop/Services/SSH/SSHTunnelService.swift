@@ -101,17 +101,11 @@ final class SSHTunnelService: @unchecked Sendable {
         }
 
         arguments.append("--")
-        arguments.append(destination(for: connection))
+        let target = connection.effectiveTarget
+        let dest = connection.trimmedUser.map { "\($0)@\(target)" } ?? target
+        arguments.append(dest)
 
         return arguments
-    }
-
-    private func destination(for connection: ConnectionProfile) -> String {
-        let target = connection.effectiveTarget
-        guard let user = connection.trimmedUser else {
-            return target
-        }
-        return "\(user)@\(target)"
     }
 
     /// Attempts to connect a TCP socket to `127.0.0.1:port`.

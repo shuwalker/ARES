@@ -1,6 +1,4 @@
-import AVFoundation
 import AppKit
-import Speech
 import SwiftUI
 
 // MARK: - Slash command definitions
