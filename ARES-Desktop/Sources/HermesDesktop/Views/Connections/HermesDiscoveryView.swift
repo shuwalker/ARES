@@ -22,12 +22,20 @@ struct HermesDiscoveryView: View {
                         subtitle: "ARES scans for Hermes instances running on this Mac, your local network, and SSH hosts listed in your SSH config."
                     )
 
-                    // Scanning status
+                    // Scanning status / scan summary
                     if discovery.isScanning {
                         HStack(spacing: 10) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text(L10n.string("Scanning…"))
+                            Text(L10n.string("Scanning… (10 s timeout)"))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let summary = discovery.scanSummary {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle")
+                                .foregroundStyle(.secondary)
+                            Text(summary)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -122,11 +130,15 @@ struct HermesDiscoveryView: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        Task { await discovery.startScan() }
+                        Task {
+                            discovery.stopScan()
+                            await discovery.startScan()
+                        }
                     } label: {
-                        Label(L10n.string("Scan Again"), systemImage: "arrow.clockwise")
+                        Label(L10n.string("Rescan"), systemImage: "arrow.clockwise")
                     }
                     .disabled(discovery.isScanning)
+                    .help(L10n.string("Clear results and scan again"))
                 }
             }
         }
@@ -163,7 +175,7 @@ struct HermesDiscoveryView: View {
                 label: host.displayName,
                 sshHost: host.hostname,
                 transportMode: .directHTTP,
-                dashboardPort: host.port != 9119 ? host.port : nil
+                dashboardPort: host.port
             )
             appState.saveConnection(profile)
             appState.connect(to: profile)

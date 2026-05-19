@@ -267,10 +267,7 @@ private struct ConnectionCard: View {
                         if connection.transportMode == .directHTTP {
                             HermesBadge(text: "Direct HTTP", tint: .orange)
                         } else {
-                            HermesBadge(
-                                text: connection.trimmedAlias != nil ? "Alias" : "Direct host",
-                                tint: .secondary
-                            )
+                            HermesBadge(text: "SSH", tint: .secondary)
                         }
                     }
                 }

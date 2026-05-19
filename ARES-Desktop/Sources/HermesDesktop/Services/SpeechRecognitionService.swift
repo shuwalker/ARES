@@ -15,6 +15,9 @@ final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sen
     // Callback invoked with incremental transcription text
     var onTranscriptionUpdate: ((String) -> Void)?
 
+    // Callback invoked when an error prevents recording
+    var onRecordingError: ((String) -> Void)?
+
     // MARK: - Private
 
     private let audioEngine = AVAudioEngine()
@@ -25,6 +28,9 @@ final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sen
     // Timer used to auto-stop after silence
     private var silenceTimer: Timer?
     private let silenceThreshold: TimeInterval = 2.0
+
+    // Observer token for audio interruptions
+    private var interruptionObserver: NSObjectProtocol?
 
     // MARK: - Authorization
 
@@ -43,8 +49,36 @@ final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sen
     func startRecording() throws {
         guard !isRecording else { return }
 
+        // Verify permissions before attempting to start
+        guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
+            let message = "Speech recognition not authorized. Please grant permission in System Settings."
+            onRecordingError?(message)
+            return
+        }
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+            let message = "Microphone access not authorized. Please grant permission in System Settings."
+            onRecordingError?(message)
+            return
+        }
+
         // Reset any previous task
         stopRecording()
+
+        // Register for audio session interruptions (e.g. phone call, other app taking mic)
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let userInfo = notification.userInfo,
+                  let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+            if type == .began {
+                Task { @MainActor [weak self] in
+                    self?.stopRecording()
+                }
+            }
+        }
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -84,6 +118,11 @@ final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sen
     func stopRecording() {
         silenceTimer?.invalidate()
         silenceTimer = nil
+
+        if let observer = interruptionObserver {
+            NotificationCenter.default.removeObserver(observer)
+            interruptionObserver = nil
+        }
 
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)

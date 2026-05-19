@@ -1,4 +1,62 @@
+import Security
 import SwiftUI
+
+// MARK: - UserDefaults key constants
+
+private enum DefaultsKey {
+    static let memoryProviders = "memory_providers"
+}
+
+// MARK: - Keychain helpers
+
+private enum MemoryProviderKeychain {
+    private static let service = "com.ares.memory-providers"
+
+    static func saveAPIKey(_ key: String, for providerID: String) {
+        let account = "provider-\(providerID)"
+        let data = Data(key.utf8)
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account
+        ]
+        SecItemDelete(query as CFDictionary)
+        if !key.isEmpty {
+            var addQuery = query
+            addQuery[kSecValueData] = data
+            SecItemAdd(addQuery as CFDictionary, nil)
+        }
+    }
+
+    static func loadAPIKey(for providerID: String) -> String {
+        let account = "provider-\(providerID)"
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account,
+            kSecReturnData: true,
+            kSecMatchLimit: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let key = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return key
+    }
+
+    static func deleteAPIKey(for providerID: String) {
+        let account = "provider-\(providerID)"
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
 
 // MARK: - Model
 
@@ -8,8 +66,38 @@ struct MemoryProvider: Codable, Identifiable {
     let description: String
     let systemImage: String
     var isConfigured: Bool
+    /// API key is NOT stored in this model on disk — it is stored in Keychain.
+    /// This field is used only in-memory (the UI draft) and is not encoded to UserDefaults.
     var apiKey: String
     var endpoint: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, systemImage, isConfigured, endpoint
+        // apiKey intentionally excluded from persistence — stored in Keychain
+    }
+
+    init(id: String, name: String, description: String, systemImage: String,
+         isConfigured: Bool, apiKey: String, endpoint: String) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.systemImage = systemImage
+        self.isConfigured = isConfigured
+        self.apiKey = apiKey
+        self.endpoint = endpoint
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decode(String.self, forKey: .description)
+        systemImage = try container.decode(String.self, forKey: .systemImage)
+        isConfigured = try container.decode(Bool.self, forKey: .isConfigured)
+        endpoint = try container.decode(String.self, forKey: .endpoint)
+        // apiKey loaded from Keychain at the call site, not from disk
+        apiKey = ""
+    }
 }
 
 // MARK: - MemoryProvidersView
@@ -43,15 +131,16 @@ struct MemoryProvidersView: View {
     // MARK: - Persistence
 
     private func loadPersistedProviders() {
-        guard let data = UserDefaults.standard.data(forKey: "memory_providers"),
+        guard let data = UserDefaults.standard.data(forKey: DefaultsKey.memoryProviders),
               let saved = try? JSONDecoder().decode([MemoryProvider].self, from: data) else {
             return
         }
-        // Merge saved config (apiKey, endpoint, isConfigured) into the hardcoded list
+        // Merge saved config (endpoint, isConfigured) into the hardcoded list.
+        // API keys are loaded from Keychain, not from disk.
         providers = providers.map { base in
             if let match = saved.first(where: { $0.id == base.id }) {
                 var updated = base
-                updated.apiKey = match.apiKey
+                updated.apiKey = MemoryProviderKeychain.loadAPIKey(for: base.id)
                 updated.endpoint = match.endpoint
                 updated.isConfigured = match.isConfigured
                 return updated
@@ -61,13 +150,20 @@ struct MemoryProvidersView: View {
     }
 
     private func persistProviders() {
+        // Encode without API keys (excluded by CodingKeys)
         if let data = try? JSONEncoder().encode(providers) {
-            UserDefaults.standard.set(data, forKey: "memory_providers")
+            UserDefaults.standard.set(data, forKey: DefaultsKey.memoryProviders)
         }
     }
 
     private func applyUpdate(_ updated: MemoryProvider) {
         if let index = providers.firstIndex(where: { $0.id == updated.id }) {
+            // Persist API key to Keychain
+            if updated.isConfigured {
+                MemoryProviderKeychain.saveAPIKey(updated.apiKey, for: updated.id)
+            } else {
+                MemoryProviderKeychain.deleteAPIKey(for: updated.id)
+            }
             providers[index] = updated
             persistProviders()
         }

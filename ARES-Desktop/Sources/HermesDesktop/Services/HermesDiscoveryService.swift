@@ -24,17 +24,20 @@ final class HermesDiscoveryService: ObservableObject {
     @Published var discoveredHosts: [DiscoveredHermesHost] = []
     @Published var isScanning: Bool = false
     @Published var localHermesFound: Bool = false
+    @Published var scanSummary: String?
 
     private var netServiceBrowser: NetServiceBrowser?
-    private var resolvedServices: [NetService] = []
     private var bonjourDelegate: BonjourBrowserDelegate?
+    private var scanTimeoutTask: Task<Void, Never>?
 
     // MARK: - Public API
 
     func startScan() async {
+        stopScan()
         isScanning = true
         discoveredHosts = []
         localHermesFound = false
+        scanSummary = nil
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.checkLocalhost() }
@@ -43,14 +46,37 @@ final class HermesDiscoveryService: ObservableObject {
         }
 
         startBonjourBrowse()
+
+        // Auto-stop Bonjour after 10 seconds
+        scanTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            await self?.finishScan()
+        }
     }
 
     func stopScan() {
+        scanTimeoutTask?.cancel()
+        scanTimeoutTask = nil
         isScanning = false
         netServiceBrowser?.stop()
         netServiceBrowser = nil
         bonjourDelegate = nil
-        resolvedServices = []
+    }
+
+    private func finishScan() {
+        scanTimeoutTask?.cancel()
+        scanTimeoutTask = nil
+        isScanning = false
+        netServiceBrowser?.stop()
+        netServiceBrowser = nil
+        bonjourDelegate = nil
+        let count = discoveredHosts.count
+        if count == 0 {
+            scanSummary = L10n.string("Nothing found on this network")
+        } else {
+            scanSummary = L10n.string("Scan complete — %@ found", "\(count)")
+        }
     }
 
     // MARK: - Tier 1: localhost direct check
