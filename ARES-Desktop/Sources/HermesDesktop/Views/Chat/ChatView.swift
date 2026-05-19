@@ -5,7 +5,6 @@ import SwiftUI
 struct ChatView: View {
     @EnvironmentObject private var appState: AppState
     @State private var inputText = ""
-    @State private var autoApproveCommands = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,7 +12,7 @@ struct ChatView: View {
 
             Divider().opacity(0.5)
 
-            if appState.sessionMessages.isEmpty && appState.pendingSessionTurn == nil {
+            if appState.chatMessages.isEmpty {
                 emptyState
             } else {
                 messageList
@@ -24,6 +23,11 @@ struct ChatView: View {
             inputArea
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: appState.activeConnectionID) {
+            appState.chatMessages = []
+            appState.chatSessionID = nil
+            appState.chatError = nil
+        }
     }
 
     // MARK: - Toolbar
@@ -35,22 +39,23 @@ struct ChatView: View {
 
             Spacer()
 
-            if appState.isSendingSessionMessage {
+            if appState.isStreamingChat {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.8, anchor: .center)
             }
 
             Button {
-                appState.selectedSessionID = nil
-                appState.sessionConversationError = nil
+                appState.chatMessages = []
+                appState.chatSessionID = nil
+                appState.chatError = nil
             } label: {
                 Label(L10n.string("New Chat"), systemImage: "square.and.pencil")
                     .font(.system(size: 13, weight: .medium))
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .disabled(appState.isSendingSessionMessage)
+            .disabled(appState.isStreamingChat)
             .help(L10n.string("Start a new chat session"))
         }
         .padding(.horizontal, 14)
@@ -84,31 +89,31 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(appState.sessionMessages) { message in
-                        ChatMessageRow(message: message)
+                    ForEach(appState.chatMessages) { message in
+                        StreamingChatMessageRow(message: message)
                             .id(message.id)
                     }
 
-                    if let pending = appState.pendingSessionTurn {
-                        ChatPendingRow(turn: pending)
-                            .id("pending")
-                    }
-
-                    if let error = appState.sessionConversationError {
+                    if let error = appState.chatError {
                         ChatErrorRow(message: error)
-                            .id("error")
+                            .id("chat-error")
                     }
                 }
                 .padding(14)
             }
-            .onChange(of: appState.sessionMessages.count) { _, _ in
-                if let last = appState.sessionMessages.last {
+            .onChange(of: appState.chatMessages.count) { _, _ in
+                if let last = appState.chatMessages.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
-            .onChange(of: appState.pendingSessionTurn) { _, newValue in
+            .onChange(of: appState.chatMessages.last?.content) { _, _ in
+                if let last = appState.chatMessages.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+            .onChange(of: appState.chatError) { _, newValue in
                 if newValue != nil {
-                    withAnimation { proxy.scrollTo("pending", anchor: .bottom) }
+                    withAnimation { proxy.scrollTo("chat-error", anchor: .bottom) }
                 }
             }
         }
@@ -146,15 +151,6 @@ struct ChatView: View {
                 .disabled(!canSend)
                 .help(L10n.string("Send message"))
             }
-
-            HStack(spacing: 10) {
-                Toggle(L10n.string("Auto-approve commands"), isOn: $autoApproveCommands)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -163,37 +159,32 @@ struct ChatView: View {
 
     private var canSend: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !appState.isSendingSessionMessage
+            && !appState.isStreamingChat
     }
 
     private func sendMessage() {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !appState.isSendingSessionMessage else { return }
+        guard !trimmed.isEmpty, !appState.isStreamingChat else { return }
 
-        let text = trimmed
         inputText = ""
 
         Task {
-            if appState.selectedSessionID != nil {
-                _ = await appState.sendMessageToSelectedSession(text, autoApproveCommands: autoApproveCommands)
-            } else {
-                _ = await appState.startNewSession(with: text, autoApproveCommands: autoApproveCommands)
-            }
+            await appState.streamChatMessage(trimmed)
         }
     }
 }
 
-// MARK: - ChatMessageRow
+// MARK: - StreamingChatMessageRow
 
-private struct ChatMessageRow: View {
-    let message: SessionMessage
+private struct StreamingChatMessageRow: View {
+    let message: ChatMessage
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            if isUser {
+            if message.role == .user {
                 Spacer(minLength: 40)
 
-                Text(message.content ?? "")
+                Text(message.content)
                     .font(.body)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -204,21 +195,11 @@ private struct ChatMessageRow: View {
                     }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(message.role.displayTitle)
+                    Text(L10n.string("Hermes"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
 
-                    Text(message.content ?? "")
-                        .font(.body)
-                        .textSelection(.enabled)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
-                        }
+                    assistantBubble
                 }
 
                 Spacer(minLength: 40)
@@ -226,42 +207,19 @@ private struct ChatMessageRow: View {
         }
     }
 
-    private var isUser: Bool {
-        message.role == .user
-    }
-}
-
-// MARK: - ChatPendingRow
-
-private struct ChatPendingRow: View {
-    let turn: PendingSessionTurn
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 10) {
-                Spacer(minLength: 40)
-
-                Text(turn.prompt)
-                    .font(.body)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color.accentColor.opacity(0.2), lineWidth: 1)
-                    }
+    @ViewBuilder
+    private var assistantBubble: some View {
+        Text(message.content + (message.isStreaming ? "\u{258A}" : ""))
+            .font(.body)
+            .textSelection(.enabled)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
             }
-
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-
-                Text(L10n.string("Hermes is thinking…"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.leading, 4)
-        }
     }
 }
 

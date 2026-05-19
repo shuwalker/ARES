@@ -29,6 +29,11 @@ final class AppState: ObservableObject {
     @Published var isSendingSessionMessage = false
     @Published var sessionConversationError: String?
     @Published var pendingSessionTurn: PendingSessionTurn?
+    // Streaming chat state
+    @Published var chatMessages: [ChatMessage] = []
+    @Published var isStreamingChat = false
+    @Published var chatError: String?
+    @Published var chatSessionID: String?
     @Published var hasMoreSessions = false
     @Published var totalSessionsCount = 0
     @Published private(set) var sessionSearchQuery = ""
@@ -1268,6 +1273,96 @@ final class AppState: ObservableObject {
             sessionConversationError = message
             setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to send prompt to Hermes"))
             return false
+        }
+    }
+
+    // MARK: - Streaming chat
+
+    func streamChatMessage(_ prompt: String) async {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isStreamingChat else { return }
+
+        let baseURL = dashboardAPIService.baseURL
+
+        chatError = nil
+        isStreamingChat = true
+
+        // Append user message
+        chatMessages.append(ChatMessage(role: .user, content: trimmed))
+
+        // Append placeholder assistant message
+        let assistantID = UUID()
+        chatMessages.append(ChatMessage(
+            id: assistantID,
+            role: .assistant,
+            content: "",
+            isStreaming: true
+        ))
+
+        do {
+            _ = try await hermesChatService.streamMessage(
+                trimmed,
+                sessionID: chatSessionID,
+                baseURL: baseURL,
+                onChunk: { [weak self] delta in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if let idx = self.chatMessages.firstIndex(where: { $0.id == assistantID }) {
+                            self.chatMessages[idx].content += delta
+                        }
+                    }
+                },
+                onSessionID: { [weak self] sid in
+                    Task { @MainActor [weak self] in
+                        self?.chatSessionID = sid
+                    }
+                }
+            )
+            // Mark streaming complete
+            if let idx = chatMessages.firstIndex(where: { $0.id == assistantID }) {
+                chatMessages[idx].isStreaming = false
+            }
+            isStreamingChat = false
+        } catch {
+            // Streaming failed — try SSH fallback if we have an active connection
+            if let idx = chatMessages.firstIndex(where: { $0.id == assistantID }) {
+                chatMessages.remove(at: idx)
+            }
+            isStreamingChat = false
+
+            if let profile = activeConnection {
+                do {
+                    let result = try await hermesChatService.sendMessage(
+                        trimmed,
+                        sessionID: chatSessionID,
+                        connection: profile,
+                        autoApproveCommands: false
+                    )
+                    if let sid = result.sessionID {
+                        chatSessionID = sid
+                    }
+                    let responseText = [result.stdout, result.stderr]
+                        .compactMap { $0 }
+                        .filter { !$0.isEmpty }
+                        .joined(separator: "\n")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    chatMessages.append(ChatMessage(
+                        role: .assistant,
+                        content: responseText.isEmpty ? "(No response)" : responseText
+                    ))
+                } catch {
+                    chatError = error.localizedDescription
+                    // Remove the user message we already appended so the conversation is clean
+                    if let userIdx = chatMessages.lastIndex(where: { $0.role == .user && $0.content == trimmed }) {
+                        chatMessages.remove(at: userIdx)
+                    }
+                }
+            } else {
+                chatError = error.localizedDescription
+                if let userIdx = chatMessages.lastIndex(where: { $0.role == .user && $0.content == trimmed }) {
+                    chatMessages.remove(at: userIdx)
+                }
+            }
         }
     }
 
@@ -2789,6 +2884,10 @@ final class AppState: ObservableObject {
             sessionConversationError = nil
             pendingSessionTurn = nil
             stopSessionTranscriptPolling()
+            chatMessages = []
+            isStreamingChat = false
+            chatError = nil
+            chatSessionID = nil
             workflows = []
             selectedWorkflowID = nil
             usageSummary = nil
@@ -2862,6 +2961,10 @@ final class AppState: ObservableObject {
         sessionConversationError = nil
         pendingSessionTurn = nil
         stopSessionTranscriptPolling()
+        chatMessages = []
+        isStreamingChat = false
+        chatError = nil
+        chatSessionID = nil
         hasMoreSessions = false
         totalSessionsCount = 0
         selectedSessionID = nil

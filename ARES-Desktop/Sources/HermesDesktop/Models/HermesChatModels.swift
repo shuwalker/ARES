@@ -1,5 +1,54 @@
 import Foundation
 
+// MARK: - Streaming chat models
+
+struct ChatStreamChunk: Decodable, Sendable {
+    struct Choice: Decodable, Sendable {
+        struct Delta: Decodable, Sendable {
+            let content: String?
+        }
+        let delta: Delta
+    }
+    let choices: [Choice]?
+    let sessionID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case choices
+        case sessionID = "session_id"
+    }
+
+    var textDelta: String { choices?.first?.delta.content ?? "" }
+}
+
+enum ChatMessageRole: Equatable, Sendable {
+    case user
+    case assistant
+}
+
+struct ChatMessage: Identifiable, Sendable {
+    let id: UUID
+    let role: ChatMessageRole
+    var content: String
+    let timestamp: Date
+    var isStreaming: Bool
+
+    init(
+        id: UUID = UUID(),
+        role: ChatMessageRole,
+        content: String,
+        timestamp: Date = Date(),
+        isStreaming: Bool = false
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.timestamp = timestamp
+        self.isStreaming = isStreaming
+    }
+}
+
+// MARK: - Existing models
+
 struct HermesChatInvocation: Equatable, Sendable {
     let sessionID: String?
     let prompt: String
