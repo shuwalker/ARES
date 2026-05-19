@@ -401,6 +401,7 @@ private struct SessionCardRow: View {
     let onSelect: () -> Void
 
     @State private var isHovering = false
+    @State private var isPulsing = false
 
     var body: some View {
         Button(action: onSelect) {
@@ -460,10 +461,16 @@ private struct SessionCardRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(session.resolvedTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
+                    HStack(spacing: 6) {
+                        statusDot
+
+                        Text(session.resolvedTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+
+                        sourceBadge
+                    }
 
                     Text(session.id)
                         .font(.system(.caption2, design: .monospaced))
@@ -511,6 +518,55 @@ private struct SessionCardRow: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Status dot
+
+    @ViewBuilder
+    private var statusDot: some View {
+        if session.isRunning {
+            Circle()
+                .fill(Color.green)
+                .frame(width: 8, height: 8)
+                .scaleEffect(isPulsing ? 1.3 : 1.0)
+                .animation(
+                    .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+                    value: isPulsing
+                )
+                .onAppear { isPulsing = true }
+        } else {
+            Circle()
+                .fill(Color.secondary.opacity(0.35))
+                .frame(width: 8, height: 8)
+        }
+    }
+
+    // MARK: - Source badge
+
+    @ViewBuilder
+    private var sourceBadge: some View {
+        if let source = session.source?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !source.isEmpty {
+            let (label, tint) = Self.sourceAppearance(for: source)
+            HermesBadge(text: label, tint: tint)
+        }
+    }
+
+    private static func sourceAppearance(for source: String) -> (label: String, tint: Color) {
+        switch source {
+        case "cli":
+            return ("CLI", .secondary)
+        case "telegram":
+            return ("TG", .blue)
+        case "discord":
+            return ("DC", .purple)
+        case "cron":
+            return ("CRON", .orange)
+        case "api":
+            return ("API", .green)
+        default:
+            return (source.uppercased().prefix(6).description, .secondary)
         }
     }
 

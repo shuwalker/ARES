@@ -154,6 +154,9 @@ final class SessionBrowserService: @unchecked Sendable {
                     if context["session_model_column"]:
                         model = sanitize_model(record.get(context["session_model_column"]))
 
+                    source = sanitize_model(record.get(context.get("session_source_column"))) if context.get("session_source_column") else None
+                    status = sanitize_model(record.get(context.get("session_status_column"))) if context.get("session_status_column") else None
+
                     items.append({
                         "id": session_id,
                         "title": title,
@@ -162,6 +165,8 @@ final class SessionBrowserService: @unchecked Sendable {
                         "last_active": normalize_json_value(last_active),
                         "message_count": message_count,
                         "preview": preview,
+                        "source": source,
+                        "status": status,
                     })
 
                 items.sort(key=lambda item: sort_key(item.get("last_active") or item.get("started_at")), reverse=True)
@@ -766,6 +771,8 @@ final class SessionBrowserService: @unchecked Sendable {
             session_message_count_column = choose_column(session_columns, ["message_count"])
             session_model_column = choose_column(session_columns, ["model"])
             session_parent_column = choose_column(session_columns, ["parent_session_id", "parent_id"])
+            session_source_column = choose_column(session_columns, ["source", "origin", "channel"])
+            session_status_column = choose_column(session_columns, ["status", "state"])
 
             message_id_column = choose_column(message_columns, ["id", "message_id"])
             message_session_id_column = choose_column(message_columns, ["session_id", "conversation_id"])
@@ -805,6 +812,8 @@ final class SessionBrowserService: @unchecked Sendable {
                 "session_message_count_column": session_message_count_column,
                 "session_model_column": session_model_column,
                 "session_parent_column": session_parent_column,
+                "session_source_column": session_source_column,
+                "session_status_column": session_status_column,
                 "message_id_column": message_id_column,
                 "message_session_id_column": message_session_id_column,
                 "message_role_column": message_role_column,
@@ -885,6 +894,8 @@ final class SessionBrowserService: @unchecked Sendable {
                     "last_active": normalize_json_value(last_active or path.stat().st_mtime),
                     "message_count": message_count,
                     "preview": preview,
+                    "source": None,
+                    "status": None,
                 }
 
                 if best_match is not None:
