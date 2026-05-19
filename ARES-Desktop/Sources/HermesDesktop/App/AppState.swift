@@ -2948,6 +2948,16 @@ final class AppState: ObservableObject {
             ensureTerminalSession()
         case .connections:
             break
+        case .analytics:
+            Task { await loadDashboardOverview() }
+        case .jobs:
+            Task { await loadDashboardCronJobs() }
+        case .mcp:
+            Task { await loadMCPServers() }
+        case .jobs:
+            Task { await loadDashboardCronJobs() }
+        case .mcp:
+            Task { await loadMCPServers() }
         case .avatar, .youtubePipeline, .physicsSim, .secondBrain, .models, .config, .logs, .keys, .profiles, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
@@ -3060,6 +3070,10 @@ final class AppState: ObservableObject {
             await loadSkills(reset: true)
         case .terminal:
             ensureTerminalSession()
+        case .jobs:
+            await loadDashboardCronJobs()
+        case .mcp:
+            await loadMCPServers()
         case .avatar, .secondBrain, .youtubePipeline, .physicsSim, .models, .config, .logs, .keys, .profiles, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
             break
         }
@@ -3340,10 +3354,12 @@ final class AppState: ObservableObject {
         await ensureInitialFileLoads()
         await loadSessions(reset: true)
         startApprovalPolling()
+        startContextPolling()
     }
 
     private func resetWorkspaceStateForConnectionChange(closeTerminalTabs: Bool = true) {
         stopApprovalPolling()
+        stopContextPolling()
         tunnelService.stop()
         isBusy = false
         connectionTestRequestID = nil

@@ -105,6 +105,19 @@ struct RootView: View {
                     dismissButton: .default(Text(L10n.string("OK")))
                 )
             }
+            .alert(
+                L10n.string("Context Usage Warning"),
+                isPresented: Binding(
+                    get: { appState.contextAlertThreshold != nil },
+                    set: { if !$0 { appState.dismissContextAlert() } }
+                )
+            ) {
+                Button(L10n.string("OK")) { appState.dismissContextAlert() }
+            } message: {
+                if let threshold = appState.contextAlertThreshold {
+                    Text(L10n.string("Your context window is %d%% full. Consider starting a new session soon.", threshold))
+                }
+            }
             .alert(L10n.string("Discard unsaved changes?"), isPresented: $appState.showDiscardChangesAlert) {
                 Button(L10n.string("Discard"), role: .destructive) {
                     appState.discardChangesAndContinue()
@@ -175,21 +188,27 @@ struct RootView: View {
     }
 
     private var workspaceSidebar: some View {
-        List(selection: sectionSelection) {
-            if let activeConnection = appState.activeConnection {
-                Section(L10n.string("Workspace")) {
-                    WorkspaceSidebarCard(connection: activeConnection)
+        VStack(spacing: 0) {
+            List(selection: sectionSelection) {
+                if let activeConnection = appState.activeConnection {
+                    Section(L10n.string("Workspace")) {
+                        WorkspaceSidebarCard(connection: activeConnection)
+                    }
+                }
+
+                Section(L10n.string("Sections")) {
+                    ForEach(availableSections) { section in
+                        SidebarSectionRow(section: section)
+                            .tag(section)
+                    }
                 }
             }
+            .listStyle(.sidebar)
 
-            Section(L10n.string("Sections")) {
-                ForEach(availableSections) { section in
-                    SidebarSectionRow(section: section)
-                        .tag(section)
-                }
+            if appState.activeConnection != nil && appState.sessionContextLimit > 0 {
+                UsageMeterView()
             }
         }
-        .listStyle(.sidebar)
         .frame(minWidth: 160, idealWidth: 188, maxWidth: 220)
     }
 
@@ -234,7 +253,7 @@ struct RootView: View {
             return $filesSplitLayout
         case .skills:
             return $skillsSplitLayout
-        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs, .chat, .memory, .soul, .tools, .office:
+        case .connections, .overview, .usage, .models, .config, .logs, .keys, .profiles, .terminal, .avatar, .secondBrain, .youtubePipeline, .physicsSim, .plugins, .docs, .chat, .memory, .soul, .tools, .office, .analytics, .jobs, .mcp:
             return nil
         }
     }
@@ -257,7 +276,7 @@ struct RootView: View {
         if appState.activeConnection == nil {
             return [.connections]
         }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
+        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .files, .usage, .analytics, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -351,6 +370,10 @@ struct RootView: View {
             ToolsView()
         case .office:
             OfficeView()
+        case .analytics:
+            DashboardView()
+        case .jobs, .mcp:
+            EmptyView()
         }
     }
 }
