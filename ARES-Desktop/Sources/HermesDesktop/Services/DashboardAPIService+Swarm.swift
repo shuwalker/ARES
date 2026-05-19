@@ -89,17 +89,21 @@ extension DashboardAPIService {
         _ = try await authenticatedPost(path: "api/swarm-lifecycle", body: payload)
     }
 
-    /// POST /api/swarm-chat — chat with entire swarm
-    func swarmChat(message: String) async throws {
+    /// POST /api/swarm-chat — chat with entire swarm; returns assistant reply or empty string
+    func swarmChat(message: String) async throws -> String {
         let body: [String: String] = ["message": message]
         let payload = try JSONSerialization.data(withJSONObject: body)
-        _ = try await authenticatedPost(path: "api/swarm-chat", body: payload)
+        let data = try await authenticatedPost(path: "api/swarm-chat", body: payload)
+        let decoded = try? JSONDecoder().decode(SwarmDirectChatResponse.self, from: data)
+        return decoded?.assistantReply ?? String(data: data, encoding: .utf8) ?? ""
     }
 
-    /// POST /api/swarm-direct-chat — chat with a specific worker
-    func swarmDirectChat(worker: String, message: String) async throws {
+    /// POST /api/swarm-direct-chat — chat with a specific worker; returns assistant reply or empty string
+    func swarmDirectChat(worker: String, message: String) async throws -> String {
         let request = SwarmDirectChatRequest(worker: worker, message: message)
         let payload = try JSONEncoder().encode(request)
-        _ = try await authenticatedPost(path: "api/swarm-direct-chat", body: payload)
+        let data = try await authenticatedPost(path: "api/swarm-direct-chat", body: payload)
+        let decoded = try? JSONDecoder().decode(SwarmDirectChatResponse.self, from: data)
+        return decoded?.assistantReply ?? String(data: data, encoding: .utf8) ?? ""
     }
 }

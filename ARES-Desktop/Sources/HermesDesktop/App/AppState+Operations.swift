@@ -43,7 +43,7 @@ extension AppState {
             }
             operationsAgents = agents
         } catch {
-            operationsError = error.localizedDescription
+            operationsError = AppState.errorMessage(error, feature: "operations agents")
         }
         isLoadingOperations = false
     }
@@ -132,7 +132,7 @@ extension AppState {
             _ = now  // suppress unused warning
             crewStatusEntries = entries.sorted { $0.profileName < $1.profileName }
         } catch {
-            crewStatusError = error.localizedDescription
+            crewStatusError = AppState.errorMessage(error, feature: "crew status")
         }
         isLoadingCrewStatus = false
     }

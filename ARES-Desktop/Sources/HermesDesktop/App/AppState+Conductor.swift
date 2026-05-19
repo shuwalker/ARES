@@ -6,6 +6,7 @@ extension AppState {
     func launchConductorMission() async {
         guard dashboardAPIAvailable, !conductorGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         conductorMissionActive = true
+        conductorError = nil
         let missionId = UUID().uuidString
 
         // Determine workers based on goal keywords
@@ -38,6 +39,7 @@ extension AppState {
         }
 
         // Dispatch to each worker
+        var dispatchFailed = false
         for (index, worker) in workers.enumerated() {
             let prompt: String
             if worker.name == "Orchestrator" {
@@ -56,11 +58,18 @@ extension AppState {
                 updateConductorCardStatus(id: cardId, status: "Running")
             } catch {
                 updateConductorCardStatus(id: cardId, status: "Idle")
+                conductorError = AppState.errorMessage(error, feature: "dispatch to \(worker.name)")
+                dispatchFailed = true
             }
             // small stagger between dispatches
             if index < workers.count - 1 {
                 try? await Task.sleep(for: .milliseconds(200))
             }
+        }
+
+        if dispatchFailed {
+            conductorMissionActive = false
+            return
         }
 
         // Start polling runtime for output
@@ -127,7 +136,7 @@ extension AppState {
                 conductorPollingTask?.cancel()
             }
         } catch {
-            // silently ignore polling errors
+            // Polling errors are transient — only surface persistent failures
         }
     }
 }

@@ -35,6 +35,9 @@ struct KanbanTaskDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var expandedAction: KanbanActionKind?
     @State private var showLogSheet = false
+    @State private var showSavedBadge = false
+    @State private var isSavingFields = false
+    @FocusState private var focusedField: KanbanDetailFocusField?
 
     var body: some View {
         ScrollView {
@@ -512,20 +515,41 @@ struct KanbanTaskDetailView: View {
                                 .textFieldStyle(.roundedBorder)
                         }
 
-                        Button(L10n.string("Apply")) {
-                            Task {
-                                await onUpdateFields(
-                                    task.id,
-                                    draft.normalizedBodyForUpdate,
-                                    draft.normalizedTenantForUpdate,
-                                    draft.priority,
-                                    draft.skills
-                                )
-                                expandedAction = nil
+                        HStack(spacing: 8) {
+                            Button(L10n.string("Apply")) {
+                                guard !isSavingFields else { return }
+                                isSavingFields = true
+                                Task {
+                                    await onUpdateFields(
+                                        task.id,
+                                        draft.body.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        draft.tenant.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        draft.priority,
+                                        draft.skills
+                                    )
+                                    isSavingFields = false
+                                    expandedAction = nil
+                                    withAnimation { showSavedBadge = true }
+                                    Task {
+                                        try? await Task.sleep(for: .seconds(2))
+                                        withAnimation { showSavedBadge = false }
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(operationInFlight || isSavingFields || !detailsChanged(for: task))
+
+                            if isSavingFields {
+                                ProgressView().controlSize(.small)
+                            }
+
+                            if showSavedBadge {
+                                Label(L10n.string("Saved"), systemImage: "checkmark.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.green)
+                                    .transition(.opacity)
                             }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(operationInFlight || !detailsChanged(for: task))
                     }
                 }
 

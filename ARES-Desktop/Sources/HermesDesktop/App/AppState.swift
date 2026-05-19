@@ -171,6 +171,7 @@ final class AppState: ObservableObject {
     @Published var conductorMissionActive: Bool = false
     @Published var conductorWorkerCards: [ConductorWorkerCard] = []
     @Published var conductorSelectedModel: String = ""
+    @Published var conductorError: String?
     var conductorPollingTask: Task<Void, Never>?
 
     // MARK: - Operations
