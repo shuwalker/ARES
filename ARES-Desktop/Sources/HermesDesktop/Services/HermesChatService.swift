@@ -16,7 +16,9 @@ final class HermesChatService: @unchecked Sendable {
         sessionID: String?,
         baseURL: URL,
         onChunk: @escaping @Sendable (String) -> Void,
-        onSessionID: @escaping @Sendable (String) -> Void
+        onSessionID: @escaping @Sendable (String) -> Void,
+        onToolCall: (@escaping @Sendable (ChatToolCall) -> Void)? = nil,
+        onToolCallDone: (@escaping @Sendable (String) -> Void)? = nil
     ) async throws -> String {
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
         request.httpMethod = "POST"
@@ -54,6 +56,8 @@ final class HermesChatService: @unchecked Sendable {
 
         var accumulated = ""
         var sessionIDReported = false
+        // Accumulate tool call data across chunks: index -> (id, name, arguments)
+        var pendingToolCalls: [Int: (id: String, name: String, arguments: String)] = [:]
 
         for try await line in bytes.lines {
             // Skip empty lines and event: lines
@@ -71,6 +75,33 @@ final class HermesChatService: @unchecked Sendable {
             if !sessionIDReported, let sid = chunk.sessionID, !sid.isEmpty {
                 sessionIDReported = true
                 onSessionID(sid)
+            }
+
+            // Process tool call deltas
+            for tcDelta in chunk.toolCallDeltas {
+                let idx = tcDelta.index ?? 0
+                let callID = tcDelta.id ?? ""
+                let funcName = tcDelta.function?.name ?? ""
+                let funcArgs = tcDelta.function?.arguments ?? ""
+
+                if var existing = pendingToolCalls[idx] {
+                    if !funcArgs.isEmpty { existing.arguments += funcArgs }
+                    pendingToolCalls[idx] = existing
+                } else {
+                    let newID = callID.isEmpty ? "tool-\(idx)" : callID
+                    pendingToolCalls[idx] = (id: newID, name: funcName, arguments: funcArgs)
+                    // Emit a running tool call
+                    let toolCall = ChatToolCall(id: newID, name: funcName, input: funcArgs, output: nil, status: .running)
+                    onToolCall?(toolCall)
+                }
+            }
+
+            // When finish_reason indicates tool_calls are complete, mark them done
+            if chunk.finishReason == "tool_calls" {
+                for (_, tc) in pendingToolCalls {
+                    onToolCallDone?(tc.id)
+                }
+                pendingToolCalls.removeAll()
             }
 
             let delta = chunk.textDelta

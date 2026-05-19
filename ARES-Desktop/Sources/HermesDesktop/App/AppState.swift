@@ -1322,11 +1322,32 @@ final class AppState: ObservableObject {
                     Task { @MainActor [weak self] in
                         self?.chatSessionID = sid
                     }
+                },
+                onToolCall: { [weak self] toolCall in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if let idx = self.chatMessages.firstIndex(where: { $0.id == assistantID }) {
+                            self.chatMessages[idx].toolCalls.append(toolCall)
+                        }
+                    }
+                },
+                onToolCallDone: { [weak self] toolCallID in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if let msgIdx = self.chatMessages.firstIndex(where: { $0.id == assistantID }),
+                           let tcIdx = self.chatMessages[msgIdx].toolCalls.firstIndex(where: { $0.id == toolCallID }) {
+                            self.chatMessages[msgIdx].toolCalls[tcIdx].status = .done
+                        }
+                    }
                 }
             )
             // Mark streaming complete
             if let idx = chatMessages.firstIndex(where: { $0.id == assistantID }) {
                 chatMessages[idx].isStreaming = false
+                // Mark any still-running tool calls as done
+                for tcIdx in chatMessages[idx].toolCalls.indices where chatMessages[idx].toolCalls[tcIdx].status == .running {
+                    chatMessages[idx].toolCalls[tcIdx].status = .done
+                }
             }
             isStreamingChat = false
         } catch {

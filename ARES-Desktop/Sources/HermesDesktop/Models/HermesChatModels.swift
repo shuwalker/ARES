@@ -5,9 +5,35 @@ import Foundation
 struct ChatStreamChunk: Decodable, Sendable {
     struct Choice: Decodable, Sendable {
         struct Delta: Decodable, Sendable {
+            struct ToolCallDelta: Decodable, Sendable {
+                struct FunctionDelta: Decodable, Sendable {
+                    let name: String?
+                    let arguments: String?
+                }
+                let index: Int?
+                let id: String?
+                let function: FunctionDelta?
+            }
+            let content: String?
+            let toolCalls: [ToolCallDelta]?
+
+            enum CodingKeys: String, CodingKey {
+                case content
+                case toolCalls = "tool_calls"
+            }
+        }
+        struct Message: Decodable, Sendable {
             let content: String?
         }
         let delta: Delta
+        let finishReason: String?
+        let message: Message?
+
+        enum CodingKeys: String, CodingKey {
+            case delta
+            case finishReason = "finish_reason"
+            case message
+        }
     }
     let choices: [Choice]?
     let sessionID: String?
@@ -18,6 +44,24 @@ struct ChatStreamChunk: Decodable, Sendable {
     }
 
     var textDelta: String { choices?.first?.delta.content ?? "" }
+    var finishReason: String? { choices?.first?.finishReason }
+    var toolCallDeltas: [Choice.Delta.ToolCallDelta] { choices?.first?.delta.toolCalls ?? [] }
+}
+
+// MARK: - Tool call visualization models
+
+enum ToolCallStatus: Equatable, Sendable {
+    case running
+    case done
+    case failed
+}
+
+struct ChatToolCall: Identifiable, Sendable, Equatable {
+    let id: String
+    var name: String
+    var input: String
+    var output: String?
+    var status: ToolCallStatus
 }
 
 enum ChatMessageRole: Equatable, Sendable {
@@ -31,19 +75,22 @@ struct ChatMessage: Identifiable, Sendable {
     var content: String
     let timestamp: Date
     var isStreaming: Bool
+    var toolCalls: [ChatToolCall]
 
     init(
         id: UUID = UUID(),
         role: ChatMessageRole,
         content: String,
         timestamp: Date = Date(),
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        toolCalls: [ChatToolCall] = []
     ) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.isStreaming = isStreaming
+        self.toolCalls = toolCalls
     }
 }
 
