@@ -6171,17 +6171,15 @@ function renderMessages(options){
         if(!anchorRow) continue;
         const anchorParent=anchorRow.parentElement;
         let insertAfterNode = anchorInsertAfter.get(anchorRow) || anchorRow;
-        const thinkingText=assistantThinking.get(aIdx);
-        if(thinkingText){
-          const thinkingNode=_thinkingActivityNode(thinkingText, false);
-          anchorParent.insertBefore(thinkingNode, anchorRow);
-        }
-        if(!cards.length) continue;
         const group=ensureActivityGroup(anchorParent,{collapsed:true,anchor:insertAfterNode,activityKey:`assistant:${aIdx}`});
         const sourceMsg=S.messages[aIdx]||{};
         if(sourceMsg._turnDuration!==undefined) group.setAttribute('data-turn-duration', String(sourceMsg._turnDuration));
         const body=group&&group.querySelector('.tool-call-group-body');
         if(!body) continue;
+        const thinkingText=assistantThinking.get(aIdx);
+        if(thinkingText){
+          body.appendChild(_thinkingActivityNode(thinkingText, false));
+        }
         for(const tc of cards){
           body.appendChild(buildToolCard(tc));
         }
@@ -7330,25 +7328,28 @@ function appendThinking(text='', options){
     return;
   }
   const thinkingText=String(text||'').trim()||'Thinking…';
-  let row=blocks.querySelector('.agent-activity-thinking[data-thinking-active="1"]');
+  const allChildren=Array.from(blocks.children);
+  const anchor=allChildren.filter(el=>
+    el.id!=='toolRunningRow' &&
+    el.matches('[data-live-assistant="1"],.tool-call-group,.tool-card-row')
+  ).pop();
+  const group=ensureActivityGroup(blocks,{live:true,collapsed:true,anchor,activityKey:_activityKeyForLiveTurn()});
+  const body=group&&group.querySelector('.tool-call-group-body');
+  if(!body) return;
+  let row=body.querySelector('.agent-activity-thinking[data-thinking-active="1"]');
   if(!row){
-    const thinkingCards=Array.from(blocks.querySelectorAll('.agent-activity-thinking'));
-    row=thinkingCards.filter(el=>el.closest('.assistant-turn-blocks')===blocks).pop()||null;
+    const thinkingCards=Array.from(body.querySelectorAll('.agent-activity-thinking'));
+    row=thinkingCards.pop()||null;
     if(row) row.setAttribute('data-thinking-active','1');
   }
   if(!row){
     row=_thinkingActivityNode(thinkingText, false);
     row.setAttribute('data-thinking-active','1');
-    const allChildren=Array.from(blocks.children);
-    const anchor=allChildren.filter(el=>
-      el.id!=='toolRunningRow' &&
-      el.matches('[data-live-assistant="1"],.tool-call-group,.tool-card-row,.agent-activity-thinking')
-    ).pop();
-    if(anchor) anchor.insertAdjacentElement('afterend', row);
-    else blocks.appendChild(row);
+    body.appendChild(row);
   }else{
     _renderThinkingInto(row,thinkingText);
   }
+  _syncToolCallGroupSummary(group);
   scrollIfPinned();
   if(_scrollPinned){
     const body=row&&row.querySelector('.thinking-card-body');

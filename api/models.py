@@ -2578,7 +2578,8 @@ def merge_session_messages_append_only(sidecar_messages: list, state_messages: l
             and timestamp <= max_sidecar_timestamp
         ):
             continue
-        seen_message_keys.add(key)
+        if key[0] == "message_id":
+            seen_message_keys.add(key)
         merged_messages.append(msg)
     return merged_messages
 

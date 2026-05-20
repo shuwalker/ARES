@@ -1270,18 +1270,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     };
     step();
   }
-  function _closeCurrentLiveActivityGroup(){
-    const turn=$('liveAssistantTurn');
-    if(turn){
-      turn.querySelectorAll('.tool-call-group[data-live-tool-call-group="1"][data-live-activity-current="1"]').forEach(group=>{
-        group.removeAttribute('data-live-activity-current');
-      });
-    }
-  }
   function _resetAssistantSegment(){
-    const options=arguments[0]||{};
-    const closeActivity=!!(options&&options.closeActivity);
-    if(closeActivity) _closeCurrentLiveActivityGroup();
     assistantRow=null;
     assistantBody=null;
     segmentStart=assistantText.length;
@@ -1408,7 +1397,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       }
       if(alreadyStreamed){
         if(!S.session||S.session.session_id!==activeSid) return;
-        _resetAssistantSegment({closeActivity:true});
+        _resetAssistantSegment();
         return;
       }
       assistantText += assistantText ? `\n\n${visible}` : visible;
@@ -1420,7 +1409,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         else appendThinking(_liveThinkingText());
       }
       ensureAssistantRow(true);
-      _resetAssistantSegment({closeActivity:true});
+      _resetAssistantSegment();
       _scheduleRender();
     });
 
@@ -2434,6 +2423,7 @@ let _clarifyHideTimer = null;
 let _clarifyVisibleSince = 0;
 let _clarifySignature = '';
 let _clarifySessionId = null;
+let _clarifyId = null;
 let _clarifyMissingEndpointWarned = false;
 let _clarifyCountdownTimer = null;
 let _clarifyExpiresAt = 0;
@@ -2598,6 +2588,7 @@ function _resetClarifyCardState() {
   _clearClarifyCountdownTimer();
   _clarifyVisibleSince = 0;
   _clarifySignature = '';
+  _clarifyId = null;
 }
 
 function hideClarifyCard(force=false, reason="dismissed") {
@@ -2673,6 +2664,7 @@ function showClarifyCard(pending) {
   const input = $("clarifyInput");
   const sameClarify = card.classList.contains("visible") && _clarifySignature === sig;
   _clarifySessionId = sid;
+  _clarifyId = pending.clarify_id || null;
   _clarifySignature = sig;
   _startClarifyCountdown(pending);
   if (!sameClarify) {
@@ -2752,16 +2744,50 @@ async function respondClarify(response) {
     if (input) input.focus();
     return;
   }
-  _clarifySessionId = null;
-  _clearClarifyPendingForSession(sid);
+  const clarifyId = _clarifyId;
+  // Keep a draft copy so we can restore the input on failure (issue #2639).
+  const draft = value;
   _clarifySetControlsDisabled(true, true);
-  hideClarifyCard(true, 'sent');
   try {
-    await api("/api/clarify/respond", {
+    const result = await api("/api/clarify/respond", {
       method: "POST",
-      body: JSON.stringify({ session_id: sid, response: value })
+      body: JSON.stringify({ session_id: sid, response: value, clarify_id: clarifyId || "" })
     });
-  } catch(e) { setStatus(t("clarify_responding") + " " + e.message); }
+    if (result && result.ok) {
+      // Only clear/hide if the visible prompt still matches what was just
+      // submitted.  If a parallel SSE event already loaded the next queued
+      // prompt, erasing the session cache would leave the agent waiting
+      // until timeout (codex review P1, issue #2639).
+      if (_clarifyId === clarifyId) {
+        _clarifySessionId = null;
+        _clarifyId = null;
+        _clearClarifyPendingForSession(sid);
+        hideClarifyCard(true, 'sent');
+      }
+    } else {
+      // Stale / expired / wrong session — keep the card and draft visible.
+      _clarifySetControlsDisabled(false, false);
+      if (input) {
+        input.value = draft;
+        input.focus();
+      }
+      const errMsg = (result && result.error) || "Clarification response not accepted — the agent may have already proceeded.";
+      if (typeof showToast === "function") showToast(errMsg, 5000);
+      if (typeof setStatus === "function") setStatus(errMsg);
+    }
+  } catch(e) {
+    // Stale (409) or network error — keep the card and draft visible so the user can retry.
+    _clarifySetControlsDisabled(false, false);
+    if (input) {
+      input.value = draft;
+      input.focus();
+    }
+    const errMsg = (e && e.status === 409)
+      ? (e.message || "Clarification prompt expired or not found.")
+      : ((e && e.message) || "Failed to deliver clarification response.");
+    if (typeof setStatus === "function") setStatus("Clarify: " + errMsg);
+    if (typeof showToast === "function") showToast(errMsg, 5000);
+  }
 }
 
 var _clarifyEventSource = null;

@@ -306,6 +306,68 @@ def test_state_db_reconciliation_dedupes_numeric_equivalent_timestamps(monkeypat
     assert handler.response_json["session"]["message_count"] == 1
 
 
+def test_state_db_reconciliation_dedupes_same_second_state_rows(monkeypatch, tmp_path):
+    import api.routes as routes
+
+    sid = "webui_reconcile_fractional_state_timestamp"
+    _install_test_session(
+        monkeypatch,
+        tmp_path,
+        sid,
+        [
+            {"role": "user", "content": "hi", "timestamp": 1779300509},
+            {"role": "assistant", "content": "Hi there", "timestamp": 1779300509},
+        ],
+    )
+    _make_state_db(
+        tmp_path / "state.db",
+        sid,
+        [
+            {"role": "user", "content": "hi", "timestamp": 1779300509.52663},
+            {"role": "assistant", "content": "Hi there", "timestamp": 1779300509.52718},
+        ],
+    )
+
+    handler = _GetHandler(f"/api/session?session_id={sid}&messages=1&resolve_model=0")
+    routes.handle_get(handler, urlparse(handler.path))
+    assert handler.status == 200
+    session = handler.response_json["session"]
+    assert [m["role"] for m in session["messages"]] == ["user", "assistant"]
+    assert [m["content"] for m in session["messages"]] == ["hi", "Hi there"]
+    assert session["message_count"] == 2
+
+
+def test_state_db_reconciliation_preserves_same_second_state_repeats(monkeypatch, tmp_path):
+    import api.routes as routes
+
+    sid = "webui_reconcile_fractional_state_repeats"
+    _install_test_session(
+        monkeypatch,
+        tmp_path,
+        sid,
+        [{"role": "user", "content": "start", "timestamp": 1779300508}],
+    )
+    _make_state_db(
+        tmp_path / "state.db",
+        sid,
+        [
+            {"role": "assistant", "content": "Still working", "timestamp": 1779300509.12663},
+            {"role": "assistant", "content": "Still working", "timestamp": 1779300509.82718},
+        ],
+    )
+
+    handler = _GetHandler(f"/api/session?session_id={sid}&messages=1&resolve_model=0")
+    routes.handle_get(handler, urlparse(handler.path))
+    assert handler.status == 200
+    session = handler.response_json["session"]
+    assert [m["content"] for m in session["messages"]] == [
+        "start",
+        "Still working",
+        "Still working",
+    ]
+    assert session["message_count"] == 3
+
+
 def test_state_db_reconciliation_preserves_repeated_sidecar_rows(monkeypatch, tmp_path):
     import api.routes as routes
 

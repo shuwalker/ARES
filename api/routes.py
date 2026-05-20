@@ -2386,6 +2386,7 @@ try:
         submit_pending as submit_clarify_pending,
         get_pending as get_clarify_pending,
         resolve_clarify,
+        resolve_clarify_by_id,
         sse_subscribe as clarify_sse_subscribe,
         sse_unsubscribe as clarify_sse_unsubscribe,
     )
@@ -2394,6 +2395,7 @@ except ImportError:
     get_clarify_pending = lambda *a, **k: None
     clarify_sse_subscribe = None
     resolve_clarify = lambda *a, **k: 0
+    resolve_clarify_by_id = lambda *a, **k: False
 
 
 # ── Login page locale strings ─────────────────────────────────────────────────
@@ -9080,14 +9082,16 @@ def _handle_approval_respond(handler, body):
 
 def _resolve_clarify_legacy(sid: str, clarify_id: str, response: str) -> bool:
     """Resolve clarify through the existing callback path without new state."""
-    # The legacy clarify queue is FIFO and does not yet expose stable ids to the
-    # browser, so clarify_id is accepted by the adapter contract but not used to
-    # create a parallel callback registry in the WebUI process.
+    # When a stable clarify_id is provided, match the specific entry so stale
+    # or late responses from the frontend are reliably rejected (issue #2639).
+    if clarify_id:
+        from api.clarify import resolve_clarify_by_id
+        return resolve_clarify_by_id(sid, clarify_id, response)
+    # Legacy path: resolve the oldest pending entry.  Return the REAL result
+    # instead of the old unconditional True so the frontend can detect when
+    # there is no pending prompt to resolve.
     resolved = resolve_clarify(sid, response, resolve_all=False)
-    # Preserve the historical no-id response shape for old clients/tests: a
-    # plain /api/clarify/respond call returns ok even when no pending prompt is
-    # active. Explicit stale ids remain bounded as not-active under the adapter.
-    return bool(resolved) or not bool(clarify_id)
+    return bool(resolved)
 
 
 def _handle_clarify_respond(handler, body):
@@ -9111,7 +9115,18 @@ def _handle_clarify_respond(handler, body):
         ok = adapter.respond_clarify(sid, clarify_id, response).accepted
     else:
         ok = _resolve_clarify_legacy(sid, clarify_id, response)
-    return j(handler, {"ok": ok, "response": response})
+
+    if not ok:
+        # Both the runtime adapter and legacy paths set ok=False for
+        # stale/expired/wrong-session responses.  The 409 status applies
+        # uniformly regardless of which path resolved the clarify request.
+        return j(handler, {
+            "ok": False,
+            "error": "Clarification prompt expired or not found. The agent may have already proceeded.",
+            "stale": True,
+        }, status=409)
+
+    return j(handler, {"ok": True, "response": response})
 
 
 class _ManualCompressionMemoryHandler:

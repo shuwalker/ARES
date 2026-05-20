@@ -154,6 +154,98 @@ class TestGenerateTitleRawViaAuxTimeout(unittest.TestCase):
         self.assertEqual(captured.get('base_url'), 'https://openrouter.ai/api/v1')
         self.assertEqual(captured.get('timeout'), 22.0)
 
+    def test_configured_api_key_is_passed_to_aux_client(self):
+        """Regression: explicit title_generation api_key must be forwarded.
+
+        Hermes Agent does not fall back to auxiliary.title_generation.api_key
+        once WebUI passes explicit provider/model/base_url values, so WebUI
+        must forward the configured task api_key with the rest of the route.
+        """
+        from api.streaming import generate_title_raw_via_aux
+
+        mock_resp = types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(content='Configured Key Title'),
+                    finish_reason='stop',
+                )
+            ]
+        )
+        captured = {}
+
+        def fake_call_llm(**kwargs):
+            captured.update(kwargs)
+            return mock_resp
+
+        tg_config = {
+            'provider': '',
+            'model': 'gemma-4-31b-it',
+            'base_url': 'http://openrouter:4000/v1',
+            'api_key': 'test-title-api-key',
+        }
+        with _patch_tg_config(tg_config):
+            with patch('agent.auxiliary_client.call_llm', side_effect=fake_call_llm, create=True):
+                result, status = generate_title_raw_via_aux(
+                    user_text='Summarize this title routing bug.',
+                    assistant_text='The title model route needs its configured key.',
+                )
+
+        self.assertEqual(result, 'Configured Key Title')
+        self.assertEqual(status, 'llm_aux')
+        self.assertEqual(captured.get('task'), 'title_generation')
+        self.assertIsNone(captured.get('provider'))
+        self.assertEqual(captured.get('model'), 'gemma-4-31b-it')
+        self.assertEqual(captured.get('base_url'), 'http://openrouter:4000/v1')
+        self.assertEqual(captured.get('api_key'), 'test-title-api-key')
+
+    def test_configured_api_key_is_not_sent_to_caller_supplied_route(self):
+        """Regression: title task keys must not leak to explicit fallback routes.
+
+        Some callers pass the active agent route into title generation. In that
+        path WebUI should still use title-generation prompts/timeouts, but it
+        must not attach an unrelated auxiliary.title_generation api_key to the
+        caller-supplied provider/model/base_url.
+        """
+        from api.streaming import generate_title_raw_via_aux
+
+        mock_resp = types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(content='Agent Route Title'),
+                    finish_reason='stop',
+                )
+            ]
+        )
+        captured = {}
+
+        def fake_call_llm(**kwargs):
+            captured.update(kwargs)
+            return mock_resp
+
+        tg_config = {
+            'provider': '',
+            'model': 'gemma-4-31b-it',
+            'base_url': 'http://openrouter:4000/v1',
+            'api_key': 'test-title-api-key',
+        }
+        with _patch_tg_config(tg_config):
+            with patch('agent.auxiliary_client.call_llm', side_effect=fake_call_llm, create=True):
+                result, status = generate_title_raw_via_aux(
+                    user_text='Summarize this title routing bug.',
+                    assistant_text='The caller route should not receive the task key.',
+                    provider='custom:agent-route',
+                    model='agent-title-model',
+                    base_url='https://agent-route.example/v1',
+                )
+
+        self.assertEqual(result, 'Agent Route Title')
+        self.assertEqual(status, 'llm_aux')
+        self.assertEqual(captured.get('task'), 'title_generation')
+        self.assertEqual(captured.get('provider'), 'custom:agent-route')
+        self.assertEqual(captured.get('model'), 'agent-title-model')
+        self.assertEqual(captured.get('base_url'), 'https://agent-route.example/v1')
+        self.assertIsNone(captured.get('api_key'))
+
     def test_integer_timeout_from_config(self):
         """Config timeout as int is coerced to float."""
         self._run_with_config(
