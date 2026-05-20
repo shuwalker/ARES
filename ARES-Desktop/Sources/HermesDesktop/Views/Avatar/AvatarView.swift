@@ -93,29 +93,20 @@ struct AvatarView: View {
     }
 }
 
-// MARK: - Sprite Mode
+// MARK: - Sprite Mode (Pixel Office Scene)
 
 struct AvatarSpritesView: View {
     @EnvironmentObject private var appState: AppState
 
-    private let columns = [GridItem(.adaptive(minimum: 120, maximum: 160), spacing: 16)]
-
     var body: some View {
-        ScrollView {
+        ZStack {
             if appState.swarmWorkers.isEmpty {
                 emptyState
             } else {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(appState.swarmWorkers, id: \.id) { worker in
-                        AgentSpriteCard(worker: worker)
-                    }
-                }
-                .padding(20)
+                PixelOfficeView(workers: appState.swarmWorkers)
             }
         }
-        .task {
-            await appState.loadSwarm()
-        }
+        .task { await appState.loadSwarm() }
     }
 
     private var emptyState: some View {
@@ -137,145 +128,377 @@ struct AvatarSpritesView: View {
     }
 }
 
-// MARK: - Agent Sprite Card
+// MARK: - Pixel Office View
 
-private struct AgentSpriteCard: View {
-    let worker: SwarmWorker
+private struct PixelOfficeView: View {
+    let workers: [SwarmWorker]
 
-    @State private var animFrame = 0
-    private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+    // Per-agent animation state: walk position (0…1) and direction
+    @State private var walkPos:  [String: CGFloat] = [:]
+    @State private var walkDir:  [String: CGFloat] = [:]
+    @State private var tick: Int = 0
+
+    private let timer = Timer.publish(every: 0.28, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(statusColor.opacity(0.12))
-                    .frame(width: 80, height: 80)
-
-                spriteCanvas
-                    .frame(width: 64, height: 64)
-
-                if workerStatus == .active || workerStatus == .running {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(Color(NSColor.controlBackgroundColor), lineWidth: 1.5))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .padding(8)
-                }
+        GeometryReader { geo in
+            Canvas { ctx, size in
+                OfficeRenderer(
+                    workers: workers,
+                    walkPos: walkPos,
+                    walkDir: walkDir,
+                    tick: tick
+                ).draw(ctx: ctx, size: size)
             }
-
-            Text(worker.name)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-
-            Text(statusLabel)
-                .font(.caption2)
-                .foregroundStyle(statusColor)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(statusColor.opacity(0.12), in: Capsule())
+            .drawingGroup()
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .padding(12)
-        .background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(statusColor.opacity(0.3), lineWidth: 1)
-        )
         .onReceive(timer) { _ in
-            if workerStatus == .active || workerStatus == .running {
-                animFrame = (animFrame + 1) % 4
-            } else {
-                animFrame = 0
+            tick = (tick + 1) % 64
+            advanceWalkers()
+        }
+        .onAppear { seedWalkers() }
+        .onChange(of: workers.map(\.id)) { _, _ in seedWalkers() }
+    }
+
+    private func seedWalkers() {
+        for (i, w) in workers.enumerated() {
+            if WorkerKind(w) == .idle && walkPos[w.id] == nil {
+                walkPos[w.id] = CGFloat(i % 5) * 0.18 + 0.05
+                walkDir[w.id] = i % 2 == 0 ? 1 : -1
             }
         }
     }
 
-    // MARK: Pixel sprite canvas
-
-    private var spriteCanvas: some View {
-        Canvas { ctx, size in
-            let scale = size.width / 16
-            drawSprite(in: ctx, scale: scale)
-        }
-        .drawingGroup()
-    }
-
-    private func drawSprite(in ctx: GraphicsContext, scale: CGFloat) {
-        let s = scale
-        let status = workerStatus
-        let f = animFrame
-
-        // Body color by status
-        let bodyColor: Color = switch status {
-        case .active, .running:  .green
-        case .error:             .red
-        case .offline:           .gray
-        default:                 .blue
-        }
-
-        // Head (pixels 6-10, rows 1-4)
-        fill(ctx, x: 6, y: 1, w: 5, h: 4, color: .yellow, s: s)
-        // Eyes
-        fill(ctx, x: 7, y: 2, w: 1, h: 1, color: .black, s: s)
-        fill(ctx, x: 9, y: 2, w: 1, h: 1, color: .black, s: s)
-
-        // Body (rows 5-10)
-        fill(ctx, x: 5, y: 5, w: 7, h: 5, color: bodyColor, s: s)
-
-        // Arms — animate when active
-        let armOffset = (status == .active || status == .running) ? (f % 2 == 0 ? 1 : -1) : 0
-        fill(ctx, x: 3, y: 5 + armOffset, w: 2, h: 4, color: bodyColor, s: s)
-        fill(ctx, x: 12, y: 5 - armOffset, w: 2, h: 4, color: bodyColor, s: s)
-
-        // Legs — bob when active
-        let legY = (status == .active || status == .running) && f % 2 == 0 ? 1 : 0
-        fill(ctx, x: 5, y: 10 + legY, w: 3, h: 4, color: bodyColor.opacity(0.8), s: s)
-        fill(ctx, x: 9, y: 10 - legY, w: 3, h: 4, color: bodyColor.opacity(0.8), s: s)
-
-        // Laptop (idle/working)
-        if status != .offline {
-            fill(ctx, x: 4, y: 12, w: 9, h: 1, color: .gray.opacity(0.6), s: s)
-            fill(ctx, x: 5, y: 11, w: 7, h: 1, color: .cyan.opacity(0.7), s: s)
-        }
-    }
-
-    private func fill(_ ctx: GraphicsContext, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, color: Color, s: CGFloat) {
-        ctx.fill(
-            Path(CGRect(x: x * s, y: y * s, width: w * s, height: h * s)),
-            with: .color(color)
-        )
-    }
-
-    // MARK: Status helpers
-
-    private var workerStatus: WorkerStatus {
-        WorkerStatus(rawValue: worker.status.lowercased()) ?? .idle
-    }
-
-    private var statusLabel: String {
-        switch workerStatus {
-        case .active, .running: return L10n.string("Working")
-        case .idle:             return L10n.string("Idle")
-        case .error:            return L10n.string("Error")
-        case .offline:          return L10n.string("Offline")
-        }
-    }
-
-    private var statusColor: Color {
-        switch workerStatus {
-        case .active, .running: return .green
-        case .idle:             return .blue
-        case .error:            return .red
-        case .offline:          return .gray
+    private func advanceWalkers() {
+        for w in workers where WorkerKind(w) == .idle {
+            let speed: CGFloat = 0.006
+            let pos = (walkPos[w.id] ?? 0.1) + speed * (walkDir[w.id] ?? 1)
+            if pos > 0.88 {
+                walkPos[w.id]  = 0.88
+                walkDir[w.id]  = -1
+            } else if pos < 0.04 {
+                walkPos[w.id]  = 0.04
+                walkDir[w.id]  = 1
+            } else {
+                walkPos[w.id] = pos
+            }
         }
     }
 }
 
-// MARK: - WorkerStatus
+// MARK: - Status helpers
 
-private enum WorkerStatus: String {
-    case active, running, idle, error, offline
+private enum WorkerKind {
+    case working, idle, sleeping
+
+    init(_ w: SwarmWorker) {
+        switch w.status.lowercased() {
+        case "active", "running", "error": self = .working
+        case "offline":                    self = .sleeping
+        default:                           self = .idle
+        }
+    }
+}
+
+private func agentColor(_ w: SwarmWorker) -> Color {
+    switch w.status.lowercased() {
+    case "active", "running": return Color(hue: Double(abs(w.id.hashValue) % 6) / 6.0, saturation: 0.7, brightness: 0.8)
+    case "error":             return .red
+    case "offline":           return Color(white: 0.45)
+    default:                  return Color(hue: Double(abs(w.id.hashValue) % 8) / 8.0, saturation: 0.5, brightness: 0.75)
+    }
+}
+
+// MARK: - Office Renderer
+
+private struct OfficeRenderer {
+    let workers: [SwarmWorker]
+    let walkPos: [String: CGFloat]
+    let walkDir: [String: CGFloat]
+    let tick: Int
+
+    // Scene proportions
+    private let wallFrac:  CGFloat = 0.52  // top fraction = wall
+    private let px: CGFloat = 3            // 1 "pixel" in points
+
+    func draw(ctx: GraphicsContext, size: CGSize) {
+        let w = size.width, h = size.height
+        let floorY = h * wallFrac
+
+        drawBackground(ctx, w: w, h: h, floorY: floorY)
+        drawDesks(ctx, w: w, h: h, floorY: floorY)
+        drawSleepCorner(ctx, w: w, h: h)
+        drawAgents(ctx, w: w, h: h, floorY: floorY)
+        drawNameLabels(ctx, w: w, h: h, floorY: floorY)
+    }
+
+    // MARK: Background
+
+    private func drawBackground(_ ctx: GraphicsContext, w: CGFloat, h: CGFloat, floorY: CGFloat) {
+        // Wall
+        ctx.fill(rect(0, 0, w, floorY + px * 2),
+                 with: .color(Color(red: 0.14, green: 0.17, blue: 0.24)))
+        // Wall accent stripe
+        ctx.fill(rect(0, floorY - px * 6, w, px * 2),
+                 with: .color(Color(red: 0.20, green: 0.24, blue: 0.32)))
+        // Baseboard
+        ctx.fill(rect(0, floorY, w, px * 4),
+                 with: .color(Color(red: 0.55, green: 0.48, blue: 0.38)))
+        // Floor
+        ctx.fill(rect(0, floorY + px * 4, w, h - floorY - px * 4),
+                 with: .color(Color(red: 0.30, green: 0.24, blue: 0.19)))
+        // Floor highlight rows (perspective)
+        for row in stride(from: 0, to: Int((h - floorY) / (px * 8)), by: 1) {
+            let y = floorY + px * 4 + CGFloat(row) * px * 8
+            ctx.fill(rect(0, y, w, px),
+                     with: .color(Color(white: 1, opacity: 0.04)))
+        }
+        // Ceiling light strip
+        ctx.fill(rect(w * 0.3, 0, w * 0.4, px * 2),
+                 with: .color(Color(white: 1, opacity: 0.25)))
+    }
+
+    // MARK: Desks
+
+    private func drawDesks(_ ctx: GraphicsContext, w: CGFloat, h: CGFloat, floorY: CGFloat) {
+        let deskWorkers = workers.filter { WorkerKind($0) == .working }
+        guard !deskWorkers.isEmpty else { return }
+
+        let deskW: CGFloat = px * 22
+        let spacing = min((w - deskW) / CGFloat(deskWorkers.count), deskW + px * 10)
+        let startX = (w - spacing * CGFloat(deskWorkers.count - 1) - deskW) / 2
+
+        for (i, worker) in deskWorkers.enumerated() {
+            let x = startX + CGFloat(i) * spacing
+            let deskTopY = floorY - px * 14
+            drawDesk(ctx, x: x, y: deskTopY, worker: worker)
+        }
+    }
+
+    private func drawDesk(_ ctx: GraphicsContext, x: CGFloat, y: CGFloat, worker: SwarmWorker) {
+        let isError = worker.status.lowercased() == "error"
+
+        // Desk surface
+        ctx.fill(rect(x, y, px * 22, px * 3),
+                 with: .color(Color(red: 0.55, green: 0.42, blue: 0.30)))
+        ctx.fill(rect(x, y + px * 3, px * 22, px),
+                 with: .color(Color(red: 0.35, green: 0.26, blue: 0.18)))
+        // Desk legs
+        ctx.fill(rect(x + px,       y + px * 4, px * 2, px * 8),
+                 with: .color(Color(red: 0.40, green: 0.30, blue: 0.20)))
+        ctx.fill(rect(x + px * 19,  y + px * 4, px * 2, px * 8),
+                 with: .color(Color(red: 0.40, green: 0.30, blue: 0.20)))
+
+        // Monitor stand
+        ctx.fill(rect(x + px * 9, y - px * 2, px * 4, px * 2),
+                 with: .color(Color(white: 0.25)))
+        // Monitor bezel
+        ctx.fill(rect(x + px * 5, y - px * 12, px * 12, px * 10),
+                 with: .color(Color(white: 0.15)))
+        // Screen glow — cyan when working, red when error
+        let screenColor: Color = isError ? Color(red: 1, green: 0.2, blue: 0.2) : Color(red: 0.2, green: 0.9, blue: 0.8)
+        ctx.fill(rect(x + px * 6, y - px * 11, px * 10, px * 8),
+                 with: .color(screenColor.opacity(0.85)))
+        // Screen "code lines" animation
+        if !isError {
+            let lineOffset = tick % 4
+            for row in 0..<3 {
+                let lineW = px * CGFloat([5, 8, 3][row])
+                ctx.fill(rect(x + px * 7, y - px * 10 + CGFloat(row + lineOffset % 3) * px * 2, lineW, px),
+                         with: .color(Color(white: 1, opacity: 0.5)))
+            }
+        }
+
+        // Keyboard
+        ctx.fill(rect(x + px * 5, y + px * 1, px * 8, px * 2),
+                 with: .color(Color(white: 0.30)))
+
+        // Seated agent
+        drawSeatedAgent(ctx, deskX: x, deskY: y, worker: worker)
+    }
+
+    private func drawSeatedAgent(_ ctx: GraphicsContext, deskX: CGFloat, deskY: CGFloat, worker: SwarmWorker) {
+        let color = agentColor(worker)
+        let isError = worker.status.lowercased() == "error"
+
+        // Agent sits just in front of desk; chair seat at deskY + px*4
+        let ax = deskX + px * 8
+        let chairY = deskY + px * 4
+
+        // Chair seat
+        ctx.fill(rect(ax - px, chairY, px * 6, px * 2),
+                 with: .color(Color(white: 0.22)))
+        // Chair back
+        ctx.fill(rect(ax, chairY - px * 5, px * 4, px * 5),
+                 with: .color(Color(white: 0.20)))
+
+        // Body (torso)
+        ctx.fill(rect(ax, chairY - px * 9, px * 4, px * 4),
+                 with: .color(color))
+        // Head
+        ctx.fill(rect(ax + px, chairY - px * 13, px * 3, px * 3),
+                 with: .color(Color(red: 0.95, green: 0.82, blue: 0.65)))
+        // Eyes — blink every ~3s
+        let eyeOpen = tick % 22 != 0
+        if eyeOpen {
+            ctx.fill(rect(ax + px,         chairY - px * 12, px, px),
+                     with: .color(.black))
+            ctx.fill(rect(ax + px * 3 - px, chairY - px * 12, px, px),
+                     with: .color(.black))
+        }
+        // Error exclamation on head
+        if isError {
+            ctx.fill(rect(ax + px * 2, chairY - px * 16, px, px * 3),
+                     with: .color(.red))
+        }
+
+        // Arms — typing animation (alternate up/down)
+        let armY = tick % 2 == 0 ? chairY - px * 8 : chairY - px * 7
+        ctx.fill(rect(ax - px * 2, armY, px * 2, px * 2), with: .color(color))
+        ctx.fill(rect(ax + px * 4, armY, px * 2, px * 2), with: .color(color))
+
+        // Legs folded under chair
+        ctx.fill(rect(ax,          chairY, px * 2, px * 3), with: .color(color.opacity(0.8)))
+        ctx.fill(rect(ax + px * 2, chairY, px * 2, px * 3), with: .color(color.opacity(0.8)))
+    }
+
+    // MARK: Sleep Corner
+
+    private func drawSleepCorner(_ ctx: GraphicsContext, w: CGFloat, h: CGFloat) {
+        let sleepers = workers.filter { WorkerKind($0) == .sleeping }
+        guard !sleepers.isEmpty else { return }
+
+        let cornerX: CGFloat = px * 4
+        let cornerY = h - px * 18
+
+        // Sleep mat / couch base
+        ctx.fill(rect(cornerX, cornerY + px * 6, px * CGFloat(max(sleepers.count, 1)) * 14 + px * 4, px * 4),
+                 with: .color(Color(red: 0.28, green: 0.22, blue: 0.45)))
+        ctx.fill(rect(cornerX, cornerY + px * 5, px * CGFloat(max(sleepers.count, 1)) * 14 + px * 4, px),
+                 with: .color(Color(red: 0.38, green: 0.30, blue: 0.55)))
+
+        for (i, worker) in sleepers.enumerated() {
+            drawSleepingAgent(ctx, x: cornerX + px * 2 + CGFloat(i) * px * 14, y: cornerY, worker: worker)
+        }
+    }
+
+    private func drawSleepingAgent(_ ctx: GraphicsContext, x: CGFloat, y: CGFloat, worker: SwarmWorker) {
+        let color = agentColor(worker)
+
+        // Body horizontal
+        ctx.fill(rect(x, y + px * 6, px * 10, px * 3), with: .color(color))
+        // Head
+        ctx.fill(rect(x + px * 10, y + px * 5, px * 3, px * 3),
+                 with: .color(Color(red: 0.95, green: 0.82, blue: 0.65)))
+        // Closed eyes
+        ctx.fill(rect(x + px * 11, y + px * 6, px * 2, px),
+                 with: .color(Color(white: 0.1)))
+        // Pillow
+        ctx.fill(rect(x + px * 13, y + px * 5, px * 4, px * 4),
+                 with: .color(Color(white: 0.75)))
+
+        // ZZZ floating up (cycles through 3 positions)
+        let zzPhase = (tick / 5 + Int(x / 10)) % 9
+        let zzOpacity: [Double] = [0.9, 0.8, 0.65, 0.5, 0.35, 0.2, 0.1, 0.05, 0.0]
+        let zzYOffsets: [CGFloat] = [0, -px*2, -px*4, -px*6, -px*8, -px*10, -px*12, -px*14, -px*16]
+        for j in 0..<3 {
+            let phase = (zzPhase + j * 3) % 9
+            let zzX = x + px * 12 + CGFloat(j) * px * 2
+            let zzY = y + px * 2 + zzYOffsets[phase]
+            ctx.fill(rect(zzX, zzY, px * 2, px * 2),
+                     with: .color(Color(white: 0.85, opacity: zzOpacity[phase])))
+        }
+    }
+
+    // MARK: Walking Agents (Idle)
+
+    private func drawAgents(_ ctx: GraphicsContext, w: CGFloat, h: CGFloat, floorY: CGFloat) {
+        let idleWorkers = workers.filter { WorkerKind($0) == .idle }
+        let floorH = h - floorY - px * 4
+        let walkY = floorY + floorH * 0.35
+
+        for worker in idleWorkers {
+            let xFrac = walkPos[worker.id] ?? 0.5
+            let dir = walkDir[worker.id] ?? 1
+            let ax = w * xFrac
+            drawWalkingAgent(ctx, x: ax, y: walkY, dir: dir, worker: worker)
+        }
+    }
+
+    private func drawWalkingAgent(_ ctx: GraphicsContext, x: CGFloat, y: CGFloat, dir: CGFloat, worker: SwarmWorker) {
+        let color = agentColor(worker)
+        let walkFrame = tick % 4
+
+        // Head
+        ctx.fill(rect(x - px,     y - px * 12, px * 4, px * 3),
+                 with: .color(Color(red: 0.95, green: 0.82, blue: 0.65)))
+        // Eyes (face direction)
+        let eyeX = dir > 0 ? x + px : x - px
+        ctx.fill(rect(eyeX, y - px * 11, px, px), with: .color(.black))
+
+        // Body
+        ctx.fill(rect(x - px, y - px * 9, px * 4, px * 4), with: .color(color))
+
+        // Arms swing with walk
+        let armSwing: CGFloat = walkFrame < 2 ? -px : px
+        ctx.fill(rect(x - px * 3, y - px * 9 + armSwing, px * 2, px * 3), with: .color(color))
+        ctx.fill(rect(x + px * 3, y - px * 9 - armSwing, px * 2, px * 3), with: .color(color))
+
+        // Legs alternate
+        let leg1Y: CGFloat = walkFrame % 2 == 0 ? 0 : px * 2
+        let leg2Y: CGFloat = walkFrame % 2 == 0 ? px * 2 : 0
+        ctx.fill(rect(x - px,     y - px * 5 + leg1Y, px * 2, px * 4), with: .color(color.opacity(0.85)))
+        ctx.fill(rect(x + px,     y - px * 5 + leg2Y, px * 2, px * 4), with: .color(color.opacity(0.85)))
+
+        // Shadow
+        ctx.fill(rect(x - px * 2, y + px, px * 6, px),
+                 with: .color(Color(white: 0, opacity: 0.25)))
+    }
+
+    // MARK: Name Labels (overlay)
+
+    private func drawNameLabels(_ ctx: GraphicsContext, w: CGFloat, h: CGFloat, floorY: CGFloat) {
+        let deskWorkers = workers.filter { WorkerKind($0) == .working }
+        let deskW: CGFloat = px * 22
+        let spacing = min((w - deskW) / CGFloat(max(deskWorkers.count, 1)), deskW + px * 10)
+        let startX = (w - spacing * CGFloat(max(deskWorkers.count - 1, 0)) - deskW) / 2
+
+        for (i, worker) in deskWorkers.enumerated() {
+            let cx = startX + CGFloat(i) * spacing + deskW / 2
+            let labelY = floorY - px * 30
+            drawLabel(ctx, text: worker.name, cx: cx, y: labelY, color: agentColor(worker))
+        }
+
+        let idleWorkers = workers.filter { WorkerKind($0) == .idle }
+        let floorH = h - floorY - px * 4
+        let walkY = floorY + floorH * 0.35
+
+        for worker in idleWorkers {
+            let xFrac = walkPos[worker.id] ?? 0.5
+            let cx = w * xFrac + px
+            drawLabel(ctx, text: worker.name, cx: cx, y: walkY - px * 16, color: agentColor(worker))
+        }
+
+        let sleepers = workers.filter { WorkerKind($0) == .sleeping }
+        for (i, worker) in sleepers.enumerated() {
+            let cx = px * 4 + px * 2 + CGFloat(i) * px * 14 + px * 7
+            let labelY = h - px * 25
+            drawLabel(ctx, text: worker.name, cx: cx, y: labelY, color: agentColor(worker))
+        }
+    }
+
+    private func drawLabel(_ ctx: GraphicsContext, text: String, cx: CGFloat, y: CGFloat, color: Color) {
+        var resolved = ctx.resolve(Text(text).font(.system(size: 9, weight: .medium)).foregroundColor(color))
+        let size = resolved.measure(in: CGSize(width: 120, height: 20))
+        ctx.draw(resolved, at: CGPoint(x: cx - size.width / 2, y: y), anchor: .topLeading)
+    }
+
+    // MARK: Helper
+
+    private func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> Path {
+        Path(CGRect(x: x, y: y, width: max(w, 0), height: max(h, 0)))
+    }
 }
 
 // MARK: - Web Panel (Live2D / 3D)
