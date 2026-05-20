@@ -17,6 +17,34 @@ focused window.
 No browser wrapper. No gateway API. No local mirror slowly drifting from the
 machine that actually matters.
 
+## Getting Started (5 minutes)
+
+Any user can do this without changing code.
+
+1. **Install Hermes Agent** on the host you want ARES to talk to. Follow the
+   upstream instructions at
+   [nousresearch/hermes-agent](https://github.com/nousresearch/hermes-agent).
+   That host can be this Mac, another machine on your network, or a remote
+   server you reach over SSH.
+2. **Get ARES.** Either download `ARES.app.zip` from the
+   [latest GitHub Release](https://github.com/shuwalker/ares-autonomous-reasoning-execution-system/releases/latest)
+   and drag it into `/Applications`, or build from source with
+   `swift build -c release` from `ARES-Desktop/`.
+3. **Launch ARES.** On first launch it lands on the **Connections** tab and
+   **auto-discovers** Hermes via three tiers: a `localhost:9119` probe,
+   Bonjour/mDNS on your LAN, and entries in `~/.ssh/config`. Detected hosts
+   show up as one-click profiles — no configuration needed.
+4. **If nothing is auto-discovered**, click **Set Up Manually** to enter a
+   host explicitly, or **Paste Invite Code** if someone shared one with you.
+   ARES supports three transport modes: SSH tunnel (default, also works for
+   `localhost`), Direct HTTP (LAN/VPN/Tailscale), and WebSocket (for streaming
+   endpoints). Pick whichever fits your network.
+5. **Done.** Click **Connect** on the chosen profile. ARES sets up the tunnel
+   (if needed) and unlocks all feature tabs. For the full walkthrough,
+   transport-mode trade-offs, and instructions on sharing your connection with
+   a teammate, see [docs/CONNECTING.md](../docs/CONNECTING.md). For the
+   architecture diagrams, see [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+
 ## Feature Tabs
 
 | Tab | Description |
