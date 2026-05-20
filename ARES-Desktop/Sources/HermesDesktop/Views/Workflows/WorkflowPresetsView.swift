@@ -12,7 +12,7 @@ struct WorkflowPresetsView: View {
     @State private var presetToDelete: StoredWorkflowPreset?
     @State private var showDeleteConfirmation = false
 
-    private let store = WorkflowPresetStore()
+    @StateObject private var store = WorkflowPresetStore()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -45,6 +45,11 @@ struct WorkflowPresetsView: View {
                     presets = store.load()
                 }
             )
+            .task {
+                if appState.skills.isEmpty {
+                    await appState.loadSkills()
+                }
+            }
         }
         .alert(L10n.string("Delete preset?"), isPresented: $showDeleteConfirmation, presenting: presetToDelete) { preset in
             Button(L10n.string("Delete"), role: .destructive) {

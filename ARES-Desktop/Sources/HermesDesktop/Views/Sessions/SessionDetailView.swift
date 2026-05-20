@@ -1384,7 +1384,7 @@ private struct ToolMessageCard: View {
 
     private var toolHeader: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 isExpanded.toggle()
             }
         } label: {
@@ -1545,7 +1545,7 @@ private struct MetadataDisclosureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     isShowingMetadata.toggle()
                 }
             } label: {

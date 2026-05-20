@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-private let kanbanInactiveThreshold: TimeInterval = 2 * 60 * 60 // 2 hours
+// Threshold is kept at module scope for use by both KanbanColumnView and KanbanTaskCard.
+private let inactiveThreshold: TimeInterval = 7200 // 2 hours
 
 struct KanbanColumnView: View {
     let status: KanbanTaskStatus
@@ -133,13 +134,14 @@ struct KanbanTaskCard: View {
     }
 
     @State private var isHovering = false
+    @State private var isNudging = false
 
     private var isInactive: Bool {
         guard !task.isTerminal else { return false }
         let referenceDate = task.latestActivityDate
             ?? task.createdDate
             ?? Date.distantPast
-        return Date.now.timeIntervalSince(referenceDate) > kanbanInactiveThreshold
+        return Date.now.timeIntervalSince(referenceDate) > inactiveThreshold
     }
 
     var body: some View {
@@ -195,13 +197,27 @@ struct KanbanTaskCard: View {
                         }
 
                         if let onNudge {
-                            Button(action: onNudge) {
-                                Label(L10n.string("Nudge"), systemImage: "hand.point.right.fill")
-                                    .font(.caption2.weight(.semibold))
-                                    .labelStyle(.titleAndIcon)
+                            Button {
+                                guard !isNudging else { return }
+                                isNudging = true
+                                Task {
+                                    onNudge()
+                                    isNudging = false
+                                }
+                            } label: {
+                                if isNudging {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .frame(width: 14, height: 14)
+                                } else {
+                                    Label(L10n.string("Nudge"), systemImage: "hand.point.right.fill")
+                                        .font(.caption2.weight(.semibold))
+                                        .labelStyle(.titleAndIcon)
+                                }
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.mini)
+                            .disabled(isNudging)
                             .help(L10n.string("Nudge dispatcher for this task"))
                         }
                     }
@@ -228,6 +244,7 @@ struct KanbanTaskCard: View {
             }
         }
         .buttonStyle(.plain)
+        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onDrag { NSItemProvider(object: task.id as NSString) }
         .contextMenu {

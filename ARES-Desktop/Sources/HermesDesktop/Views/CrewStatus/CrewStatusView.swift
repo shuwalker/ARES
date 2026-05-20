@@ -20,10 +20,12 @@ struct CrewStatusView: View {
             }
             .task(id: appState.activeConnectionID) {
                 await appState.loadCrewStatus()
-                appState.startCrewStatusPolling()
-            }
-            .onDisappear {
-                appState.stopCrewStatusPolling()
+                // Polling loop: auto-cancels when the view disappears or connection changes
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(30))
+                    guard !Task.isCancelled else { break }
+                    await appState.loadCrewStatus()
+                }
             }
         }
     }

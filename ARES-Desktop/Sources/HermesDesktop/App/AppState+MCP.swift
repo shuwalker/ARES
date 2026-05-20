@@ -29,6 +29,7 @@ extension AppState {
             mcpMarketplaceItems = items
         } catch {
             mcpError = error.localizedDescription
+            setStatusMessage(L10n.string("MCP marketplace search failed: %@", error.localizedDescription))
         }
     }
 

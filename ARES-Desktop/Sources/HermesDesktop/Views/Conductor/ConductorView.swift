@@ -16,6 +16,22 @@ struct ConductorView: View {
             HermesPageContainer(width: .dashboard) {
                 VStack(alignment: .leading, spacing: 24) {
                     header
+
+                    // Error banner
+                    if let error = appState.conductorError {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text(error)
+                                .font(.callout)
+                            Spacer()
+                            Button("Dismiss") { appState.conductorError = nil }
+                                .font(.callout)
+                        }
+                        .padding()
+                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+
                     goalInputPanel
                     if !appState.conductorWorkerCards.isEmpty {
                         workersGrid
@@ -50,11 +66,16 @@ struct ConductorView: View {
                             .padding(.vertical, 12)
                             .allowsHitTesting(false)
                     }
-                    TextEditor(text: $appState.conductorGoal)
-                        .font(.body)
-                        .frame(minHeight: 90)
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
+                    TextEditor(text: Binding(
+                        get: { appState.conductorGoal },
+                        set: { newValue in
+                            appState.conductorGoal = String(newValue.prefix(1000))
+                        }
+                    ))
+                    .font(.body)
+                    .frame(minHeight: 90)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
                 }
                 .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
@@ -62,6 +83,13 @@ struct ConductorView: View {
                         .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
                 )
                 .disabled(appState.conductorMissionActive)
+
+                HStack {
+                    Spacer()
+                    Text("\(appState.conductorGoal.count)/1000")
+                        .font(.caption2)
+                        .foregroundStyle(appState.conductorGoal.count >= 950 ? .orange : .secondary)
+                }
 
                 modelPicker
 

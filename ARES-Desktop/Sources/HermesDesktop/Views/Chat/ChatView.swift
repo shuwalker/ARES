@@ -19,6 +19,164 @@ private let allSlashCommands: [SlashCommand] = [
     SlashCommand(id: "skill", name: "/skill", description: "Run a named skill", icon: "wand.and.stars", completion: "/skill "),
 ]
 
+// MARK: - ComposingAwareTextEditor
+
+/// NSViewRepresentable wrapping NSTextView that exposes both the text binding and an
+/// `isComposing` binding. `isComposing` is set to true while an IME composition session
+/// is in progress (marked text is non-nil) and back to false when composition ends.
+///
+/// Key actions (Return, UpArrow, DownArrow) are forwarded via closures so that SwiftUI
+/// `.onKeyPress` modifiers — which do not fire through NSTextView's responder chain —
+/// are not needed.
+struct ComposingAwareTextEditor: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var isComposing: Bool
+
+    var onReturn: (() -> Void)?
+    var onUpArrow: (() -> Bool)?  // return true if handled
+    var onDownArrow: (() -> Bool)?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasHorizontalScroller = false
+        scrollView.hasVerticalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = ComposingAwareNSTextView()
+        textView.delegate = context.coordinator
+        textView.keyDelegate = context.coordinator
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.allowsUndo = true
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .controlAccentColor
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: .greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
+        textView.string = text
+
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = scrollView.documentView as? ComposingAwareNSTextView else { return }
+        if textView.string != text {
+            let selectedRange = textView.selectedRange()
+            textView.string = text
+            // Restore selection clamped to the new length
+            let clampedLocation = min(selectedRange.location, textView.string.count)
+            textView.setSelectedRange(NSRange(location: clampedLocation, length: 0))
+        }
+        textView.needsDisplay = true
+    }
+
+    // MARK: - ComposingAwareNSTextView
+
+    /// Subclass of NSTextView that intercepts Return, UpArrow, DownArrow and forwards them
+    /// to the coordinator, which routes them to the SwiftUI closures.
+    final class ComposingAwareNSTextView: NSTextView {
+        weak var keyDelegate: ComposingAwareKeyDelegate?
+
+        override func keyDown(with event: NSEvent) {
+            switch event.keyCode {
+            case 36: // Return
+                if let delegate = keyDelegate, delegate.handleReturn() { return }
+            case 126: // UpArrow
+                if let delegate = keyDelegate, delegate.handleUpArrow() { return }
+            case 125: // DownArrow
+                if let delegate = keyDelegate, delegate.handleDownArrow() { return }
+            default:
+                break
+            }
+            super.keyDown(with: event)
+        }
+    }
+
+    // MARK: - Coordinator
+
+    final class Coordinator: NSObject, NSTextViewDelegate, ComposingAwareKeyDelegate {
+        var parent: ComposingAwareTextEditor
+        weak var textView: ComposingAwareNSTextView?
+
+        init(parent: ComposingAwareTextEditor) {
+            self.parent = parent
+        }
+
+        // MARK: ComposingAwareKeyDelegate
+
+        func handleReturn() -> Bool {
+            guard let action = parent.onReturn else { return false }
+            action()
+            return true
+        }
+
+        func handleUpArrow() -> Bool {
+            return parent.onUpArrow?() ?? false
+        }
+
+        func handleDownArrow() -> Bool {
+            return parent.onDownArrow?() ?? false
+        }
+
+        // MARK: NSTextViewDelegate
+
+        func textDidChange(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView else { return }
+            parent.text = tv.string
+            // Update composing state based on marked text
+            let hasMarkedText = tv.hasMarkedText()
+            if parent.isComposing != hasMarkedText {
+                parent.isComposing = hasMarkedText
+            }
+        }
+
+        func textView(
+            _ textView: NSTextView,
+            shouldChangeTextIn range: NSRange,
+            replacementString: String?
+        ) -> Bool {
+            // Set isComposing=true when markedText is active (nil replacementString indicates
+            // an IME composing operation rather than a finalised insert)
+            if textView.hasMarkedText() {
+                parent.isComposing = true
+            }
+            return true
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            parent.isComposing = false
+        }
+    }
+}
+
+// MARK: - ComposingAwareKeyDelegate
+
+protocol ComposingAwareKeyDelegate: AnyObject {
+    func handleReturn() -> Bool
+    func handleUpArrow() -> Bool
+    func handleDownArrow() -> Bool
+}
+
 // MARK: - ChatView
 
 struct ChatView: View {
@@ -35,11 +193,14 @@ struct ChatView: View {
     /// Draft text saved before the user navigates history
     @State private var draftText: String = ""
 
-    // IME composition guard
+    // IME composition guard — set by ComposingAwareTextEditor via its binding
     @State private var isComposing: Bool = false
 
     // Fast Mode toggle
     @State private var fastMode: Bool = false
+
+    // Auto-scroll: tracks whether user has scrolled away from the bottom
+    @State private var isAtBottom: Bool = true
 
     // Filtered commands based on what follows the /
     private var filteredCommands: [SlashCommand] {
@@ -71,7 +232,7 @@ struct ChatView: View {
             inputArea
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeInOut(duration: 0.2), value: appState.pendingApprovals.count)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: appState.pendingApprovals.count)
         .task(id: appState.activeConnectionID) {
             appState.chatMessages = []
             appState.chatSessionID = nil
@@ -130,7 +291,7 @@ struct ChatView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .tint(fastMode ? .yellow : nil)
-            .help(fastMode ? L10n.string("Fast Mode is ON — disable fast mode") : L10n.string("Enable Fast Mode for quicker responses"))
+            .help(L10n.string("fast-mode.tooltip"))
 
             // Export conversation button
             Button {
@@ -159,7 +320,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.secondary.opacity(0.05))
+        .background(Color(.windowBackgroundColor).opacity(0.6))
     }
 
     // MARK: - Export
@@ -217,35 +378,67 @@ struct ChatView: View {
 
     private var messageList: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(appState.chatMessages) { message in
-                        StreamingChatMessageRow(message: message)
-                            .id(message.id)
-                    }
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(appState.chatMessages) { message in
+                            StreamingChatMessageRow(message: message)
+                                .id(message.id)
+                        }
 
-                    if let error = appState.chatError {
-                        ChatErrorRow(message: error)
-                            .id("chat-error")
+                        if let error = appState.chatError {
+                            ChatErrorRow(message: error)
+                                .id("chat-error")
+                        }
+                    }
+                    .padding(14)
+                }
+                .onChange(of: appState.chatMessages.count) { _, _ in
+                    // Only auto-scroll if user is at the bottom
+                    if isAtBottom {
+                        if let last = appState.chatMessages.last {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
                     }
                 }
-                .padding(14)
-            }
-            .onChange(of: appState.chatMessages.count) { _, _ in
-                if let last = appState.chatMessages.last {
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                .onChange(of: appState.chatMessages.last?.content) { _, _ in
+                    if isAtBottom, let last = appState.chatMessages.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+                .onChange(of: appState.chatError) { _, newValue in
+                    if newValue != nil, isAtBottom {
+                        withAnimation { proxy.scrollTo("chat-error", anchor: .bottom) }
+                    }
+                }
+
+                // Jump-to-latest button — only shown when user has scrolled up
+                if !isAtBottom {
+                    Button {
+                        isAtBottom = true
+                        if let last = appState.chatMessages.last {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 30))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(16)
+                    .transition(.opacity.combined(with: .scale))
+                    .help(L10n.string("Jump to latest message"))
                 }
             }
-            .onChange(of: appState.chatMessages.last?.content) { _, _ in
-                if let last = appState.chatMessages.last {
-                    proxy.scrollTo(last.id, anchor: .bottom)
-                }
-            }
-            .onChange(of: appState.chatError) { _, newValue in
-                if newValue != nil {
-                    withAnimation { proxy.scrollTo("chat-error", anchor: .bottom) }
-                }
-            }
+            // Track scroll position via preference key to detect when user scrolls away from bottom
+            .background(
+                ChatScrollPositionTracker(isAtBottom: $isAtBottom)
+            )
         }
     }
 
@@ -264,73 +457,74 @@ struct ChatView: View {
 
             HStack(alignment: .bottom, spacing: 10) {
                 ZStack(alignment: .bottom) {
-                    TextEditor(text: $inputText)
-                        .font(.body)
-                        .frame(minHeight: 40, maxHeight: 120)
-                        .scrollContentBackground(.hidden)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.secondary.opacity(0.08))
-                        )
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                        }
-                        .onSubmit {
-                            if !isComposing { sendMessage() }
-                        }
-                        .onChange(of: inputText) { _, newValue in
-                            // Reset history navigation when user types fresh content
-                            if historyIndex != -1 {
-                                // Only reset if the text differs from what history would supply
-                                let historyText = historyIndex < inputHistory.count ? inputHistory[historyIndex] : ""
-                                if newValue != historyText {
-                                    historyIndex = -1
-                                }
-                            }
-                            let shouldShow = newValue.hasPrefix("/") && !filteredCommands.isEmpty
-                            if showSlashPopover != shouldShow {
-                                withAnimation(.easeInOut(duration: 0.15)) {
-                                    showSlashPopover = shouldShow
-                                }
-                            } else if showSlashPopover && filteredCommands.isEmpty {
-                                showSlashPopover = false
-                            }
-                        }
-                        .onKeyPress(.upArrow) {
-                            guard !inputHistory.isEmpty else { return .ignored }
+                    ComposingAwareTextEditor(
+                        text: $inputText,
+                        isComposing: $isComposing,
+                        onReturn: {
+                            guard !isComposing else { return }
+                            sendMessage()
+                        },
+                        onUpArrow: {
+                            guard !inputHistory.isEmpty else { return false }
                             let nextIndex = historyIndex + 1
-                            guard nextIndex < inputHistory.count else { return .handled }
+                            guard nextIndex < inputHistory.count else { return true }
                             if historyIndex == -1 {
-                                // Save current draft before entering history navigation
                                 draftText = inputText
                             }
                             historyIndex = nextIndex
                             inputText = inputHistory[historyIndex]
-                            return .handled
-                        }
-                        .onKeyPress(.downArrow) {
-                            guard historyIndex != -1 else { return .ignored }
+                            return true
+                        },
+                        onDownArrow: {
+                            guard historyIndex != -1 else { return false }
                             let nextIndex = historyIndex - 1
                             if nextIndex < 0 {
-                                // Restore draft
                                 historyIndex = -1
                                 inputText = draftText
                             } else {
                                 historyIndex = nextIndex
                                 inputText = inputHistory[historyIndex]
                             }
-                            return .handled
+                            return true
                         }
-                        .overlay(alignment: .bottom) {
-                            if showSlashPopover && !filteredCommands.isEmpty {
-                                slashCommandPopover
-                                    .offset(y: -48) // position above the text editor
-                                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    )
+                    .frame(minHeight: 40, maxHeight: 120)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.secondary.opacity(0.08))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                    }
+                    // Animate text changes from history recall
+                    .animation(.easeInOut(duration: 0.15), value: inputText)
+                    .onChange(of: inputText) { _, newValue in
+                        // Reset history navigation when user types fresh content
+                        if historyIndex != -1 {
+                            let historyText = historyIndex < inputHistory.count ? inputHistory[historyIndex] : ""
+                            if newValue != historyText {
+                                historyIndex = -1
                             }
                         }
+                        let shouldShow = newValue.hasPrefix("/") && !filteredCommands.isEmpty
+                        if showSlashPopover != shouldShow {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                showSlashPopover = shouldShow
+                            }
+                        } else if showSlashPopover && filteredCommands.isEmpty {
+                            showSlashPopover = false
+                        }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if showSlashPopover && !filteredCommands.isEmpty {
+                            slashCommandPopover
+                                .offset(y: -48)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        }
+                    }
                 }
 
                 // Microphone button
@@ -359,7 +553,7 @@ struct ChatView: View {
             .padding(.horizontal, 14)
         }
         .padding(.vertical, 10)
-        .background(Color.secondary.opacity(0.03))
+        .background(Color(.windowBackgroundColor).opacity(0.4))
     }
 
     // MARK: - Voice input
@@ -423,11 +617,8 @@ struct ChatView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .background(Color.clear)
-                .onHover { inside in
-                    // highlight handled by macOS default hover feedback via .plain style
-                    _ = inside
-                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
                 if command.id != filteredCommands.last?.id {
                     Divider().opacity(0.4)
@@ -438,7 +629,7 @@ struct ChatView: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor))
+                .fill(Color(.windowBackgroundColor))
                 .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: -3)
         )
         .overlay {
@@ -466,7 +657,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color.secondary.opacity(0.03))
+        .background(Color(.windowBackgroundColor).opacity(0.4))
     }
 
     // MARK: - Actions
@@ -476,8 +667,6 @@ struct ChatView: View {
             showSlashPopover = false
         }
         inputText = command.completion
-        // If the command ends with a space it expects additional text — leave cursor at end.
-        // If it's a standalone command, send immediately.
         if !command.completion.hasSuffix(" ") {
             sendMessage()
         }
@@ -525,10 +714,42 @@ struct ChatView: View {
         inputText = ""
         showSlashPopover = false
 
+        // When the user sends, jump back to the bottom
+        isAtBottom = true
+
         let currentFastMode = fastMode
         Task {
             await appState.streamChatMessage(trimmed, fastMode: currentFastMode)
         }
+    }
+}
+
+// MARK: - ChatScrollPositionTracker
+
+/// Hidden view that detects whether the scroll view is near the bottom.
+/// Uses a GeometryReader inside a background to observe the scroll position.
+private struct ChatScrollPositionTracker: View {
+    @Binding var isAtBottom: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            Color.clear
+                .preference(
+                    key: ChatScrollOffsetKey.self,
+                    value: geo.frame(in: .named("ChatScrollViewSpace")).maxY
+                )
+        }
+        .onPreferenceChange(ChatScrollOffsetKey.self) { maxY in
+            // If the bottom of the content is within 80pt of the visible bottom, consider at-bottom
+            isAtBottom = maxY >= -80
+        }
+    }
+}
+
+private struct ChatScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

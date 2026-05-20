@@ -1,6 +1,23 @@
 import AppKit
 import SwiftUI
 
+// MARK: - Focus field enum for KanbanTaskDetailView
+
+enum KanbanDetailFocusField: Hashable {
+    case body
+    case tenant
+    case skills
+    case comment
+    case assignee
+    case blockReason
+    case result
+    case parentIDs
+    case childIDs
+    case recoveryReason
+    case recoverySummary
+    case recoveryMetadata
+}
+
 struct KanbanFormField<Content: View>: View {
     let label: String
     let content: Content

@@ -47,6 +47,20 @@ struct SwarmKanbanView: View {
             }
             .padding(.vertical, 14)
 
+            // Error banner
+            if let error = appState.swarmError {
+                SwarmErrorBanner(message: error) { appState.swarmError = nil }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+            }
+
+            if appState.swarmKanbanCards.isEmpty && appState.swarmError != nil {
+                SwarmFeatureUnavailableView(
+                    message: appState.swarmError ?? "",
+                    onRetry: { Task { await appState.loadSwarmKanban() } }
+                )
+                .padding(.horizontal, 20)
+            } else {
             ScrollView(.horizontal, showsIndicators: true) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(SwarmKanbanColumn.allCases, id: \.rawValue) { col in
@@ -63,6 +77,7 @@ struct SwarmKanbanView: View {
                 .padding(.bottom, 20)
             }
             .frame(maxHeight: .infinity)
+            } // end else
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task(id: appState.activeConnectionID) {

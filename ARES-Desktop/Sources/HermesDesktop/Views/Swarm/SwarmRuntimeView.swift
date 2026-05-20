@@ -4,12 +4,21 @@ struct SwarmRuntimeView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        HSplitView {
-            workerList
-                .frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
+        VStack(spacing: 0) {
+            // Error banner at top
+            if let error = appState.swarmError {
+                SwarmErrorBanner(message: error) { appState.swarmError = nil }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+            }
 
-            terminalPane
-                .frame(minWidth: 320, maxWidth: .infinity)
+            HSplitView {
+                workerList
+                    .frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
+
+                terminalPane
+                    .frame(minWidth: 320, maxWidth: .infinity)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { appState.startSwarmRuntimePolling() }

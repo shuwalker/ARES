@@ -14,12 +14,21 @@ struct ConnectionEditorSheet: View {
         case customHermesHome
     }
 
+    private enum TestState: Equatable {
+        case idle
+        case testing
+        case success
+        case failure(String)
+    }
+
     @State private var draft: ConnectionProfile
     @State private var portText: String
     @State private var dashboardPortText: String
     @State private var showsCustomHermesHomeOptions: Bool
     @State private var inviteBannerVisible: Bool = false
     @State private var inviteBannerError: String? = nil
+    @State private var testState: TestState = .idle
+    @State private var showPasswordField: Bool = false
     @FocusState private var focusedField: Field?
     let isEditing: Bool
     let onSave: (ConnectionProfile) -> Void
@@ -210,6 +219,29 @@ struct ConnectionEditorSheet: View {
                             if let validationMessage {
                                 HermesValidationMessage(text: validationMessage)
                             }
+
+                            if case .failure(let reason) = testState {
+                                HermesInsetSurface {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundStyle(.red)
+                                        Text(L10n.string("Connection test failed: %@", reason))
+                                            .font(.subheadline)
+                                            .foregroundStyle(.primary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            } else if case .success = testState {
+                                HermesInsetSurface {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                        Text(L10n.string("Connection test succeeded."))
+                                            .font(.subheadline)
+                                            .foregroundStyle(.primary)
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -302,6 +334,27 @@ struct ConnectionEditorSheet: View {
                         dismiss()
                     }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    HStack(spacing: 8) {
+                        // Test connection button with state indicator
+                        if case .testing = testState {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else if case .success = testState {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else if case .failure = testState {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+
+                        Button(L10n.string("Test")) {
+                            Task { await runTestConnection() }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(testState == .testing || !isDraftValid)
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.string("Save")) {
                         var updatedDraft = draft
@@ -316,7 +369,7 @@ struct ConnectionEditorSheet: View {
         }
         .frame(minWidth: 620, minHeight: 560)
         .onAppear {
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.activate()
             DispatchQueue.main.async {
                 focusedField = .label
             }
@@ -423,6 +476,39 @@ struct ConnectionEditorSheet: View {
         }
 
         return candidate.validationError
+    }
+
+    // MARK: - Test connection
+
+    private func runTestConnection() async {
+        testState = .testing
+        var candidate = draft
+        candidate.sshPort = parsedPort
+        candidate.dashboardPort = parsedDashboardPort
+        let urlString: String
+        if candidate.transportMode == .directHTTP {
+            let port = candidate.dashboardPort ?? 9119
+            urlString = "http://\(candidate.sshHost):\(port)/api/status"
+        } else {
+            let port = candidate.dashboardPort ?? 9119
+            urlString = "http://localhost:\(port)/api/status"
+        }
+        guard let url = URL(string: urlString) else {
+            testState = .failure(L10n.string("Invalid host or port"))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                testState = .success
+            } else {
+                testState = .failure(L10n.string("Unexpected server response"))
+            }
+        } catch {
+            testState = .failure(error.localizedDescription)
+        }
     }
 
     private var hermesProfileBinding: Binding<String> {

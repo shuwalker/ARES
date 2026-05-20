@@ -46,15 +46,19 @@ extension AppState {
 
         do {
             try await tunnelService.start(connection: profile)
-            if let port = tunnelService.localPort {
-                dashboardAPIService.baseURL = profile.tunneledDashboardURL(localPort: port)
-            } else {
-                // Fallback: tunnel started but port not captured — use direct URL.
-                dashboardAPIService.baseURL = profile.dashboardURL
+            // Read localPort exactly once to avoid TOCTOU race between the
+            // nil-check and the dereference.
+            let port = tunnelService.localPort
+            guard let port else {
+                // Tunnel started but port was not captured — treat as failure.
+                setStatusMessage(L10n.string("SSH tunnel started but local port was not assigned"))
+                return
             }
+            dashboardAPIService.baseURL = profile.tunneledDashboardURL(localPort: port)
         } catch {
-            // Tunnel failed — fall back to direct dashboard URL (will only work if not firewalled).
-            dashboardAPIService.baseURL = profile.dashboardURL
+            // Tunnel failed — surface the error and do NOT mark as connected.
+            setStatusMessage(L10n.string("SSH tunnel failed: %@", error.localizedDescription))
+            return
         }
     }
 

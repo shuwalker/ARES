@@ -2,6 +2,11 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum KanbanDisplayMode: String, CaseIterable {
+    case board = "Board"
+    case list = "List"
+}
+
 struct KanbanView: View {
     @EnvironmentObject private var appState: AppState
     @Binding var splitLayout: HermesSplitLayout
@@ -18,6 +23,7 @@ struct KanbanView: View {
     @State private var showArchiveBoardConfirmation = false
     @State private var showOrchestrationSheet = false
     @State private var orchestrationDraft = KanbanOrchestrationDraft()
+    @State private var displayMode: KanbanDisplayMode = .board
 
     var body: some View {
         HermesCollapsibleHSplitView(layout: $splitLayout, detailMinWidth: 420) {
@@ -99,6 +105,18 @@ struct KanbanView: View {
                 boardPicker
                 statusPicker
                 advancedFilterMenu
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            HStack(spacing: 8) {
+                Picker("", selection: $displayMode) {
+                    ForEach(KanbanDisplayMode.allCases, id: \.self) { mode in
+                        Text(L10n.string(mode.rawValue)).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize(horizontal: true, vertical: false)
+                .help(L10n.string("Switch between Board and List view"))
             }
             .fixedSize(horizontal: true, vertical: false)
 
@@ -447,10 +465,25 @@ struct KanbanView: View {
                             onCreate: startCreatingTask
                         )
                     } else {
-                        ScrollView {
-                            kanbanGroupedList(board)
+                        Group {
+                            if displayMode == .board {
+                                kanbanBoardLayout(board)
+                                    .transition(.asymmetric(
+                                        insertion: .push(from: .leading),
+                                        removal: .push(from: .trailing)
+                                    ))
+                            } else {
+                                ScrollView {
+                                    kanbanGroupedList(board)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .transition(.asymmetric(
+                                    insertion: .push(from: .trailing),
+                                    removal: .push(from: .leading)
+                                ))
+                            }
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .animation(.easeInOut(duration: 0.22), value: displayMode)
                     }
                 }
             }

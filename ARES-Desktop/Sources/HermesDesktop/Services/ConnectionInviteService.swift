@@ -95,7 +95,7 @@ struct ConnectionInviteService {
         }
 
         let mode = TransportMode(rawValue: invite.transportMode) ?? .sshTunnel
-        let port = invite.port != 9119 ? invite.port : nil
+        let port: Int? = invite.port
 
         let profile = ConnectionProfile(
             label: invite.displayName,

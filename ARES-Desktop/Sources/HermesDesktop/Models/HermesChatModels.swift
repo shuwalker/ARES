@@ -87,6 +87,20 @@ enum ThinkingLevel: String, CaseIterable, Sendable {
 }
 
 struct ChatMessage: Identifiable, Sendable {
+    /// Shared ISO-8601 decoder for Codable conformances that include `Date` fields.
+    static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
+    private static let timestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
+
     let id: UUID
     let role: ChatMessageRole
     var content: String
@@ -97,6 +111,11 @@ struct ChatMessage: Identifiable, Sendable {
     var thinkingContent: String?
     /// Whether the thinking disclosure group is expanded
     var isThinkingExpanded: Bool
+
+    /// Human-readable time string for this message (e.g. "3:42 PM").
+    var formattedTimestamp: String {
+        Self.timestampFormatter.string(from: timestamp)
+    }
 
     init(
         id: UUID = UUID(),

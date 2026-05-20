@@ -377,47 +377,9 @@ struct ConfigView: View {
     }
 
     private func providerRow(provider: Binding<ProviderEntry>) -> some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: 8) {
-                if let baseURL = provider.wrappedValue.baseURL {
-                    HStack {
-                        Text("Base URL")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(baseURL)
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(1)
-                    }
-                }
-                HStack {
-                    Text("API Key")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    SecureField("Enter API key…", text: provider.apiKey)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: 240)
-                }
-                Button("Save Key") {
-                    Task { await saveProviderKey(provider.wrappedValue) }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 4)
-        } label: {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(provider.wrappedValue.hasKey ? Color.green : Color.secondary.opacity(0.4))
-                    .frame(width: 8, height: 8)
-                Text(provider.wrappedValue.name)
-                    .font(.subheadline.weight(.medium))
-            }
-            .padding(.vertical, 6)
+        ProviderRowView(provider: provider) { entry in
+            Task { await saveProviderKey(entry) }
         }
-        .padding(.horizontal, 12)
     }
 
     private func saveProviderKey(_ provider: ProviderEntry) async {
@@ -499,7 +461,7 @@ struct ConfigView: View {
                                 fallbackChain.move(fromOffsets: from, toOffset: to)
                             }
                         }
-                        .listStyle(.plain)
+                        .listStyle(.inset)
                         .frame(minHeight: 80, maxHeight: 200)
                     }
 
@@ -601,6 +563,58 @@ struct ConfigView: View {
             saveMessage = "Failed: \(error.localizedDescription)"
         }
         isSaving = false
+    }
+}
+
+// MARK: - ProviderRowView
+
+private struct ProviderRowView: View {
+    @Binding var provider: ProviderEntry
+    let onSave: (ProviderEntry) -> Void
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+                if let baseURL = provider.baseURL {
+                    HStack {
+                        Text("Base URL")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(baseURL)
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(1)
+                            .textSelection(.enabled)
+                    }
+                }
+                HStack {
+                    Text("API Key")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    SecureField("Enter API key…", text: $provider.apiKey)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(maxWidth: 240)
+                }
+                Button("Save Key") {
+                    onSave(provider)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
+        } label: {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(provider.hasKey ? Color.green : Color.secondary.opacity(0.4))
+                    .frame(width: 8, height: 8)
+                Text(provider.name)
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(.vertical, 6)
+        }
+        .padding(.horizontal, 12)
     }
 }
 

@@ -59,8 +59,14 @@ struct UpdateCheckService: Sendable {
     }
 
     static func isVersion(_ candidate: String, newerThan current: String) -> Bool {
-        let candidateComponents = numericVersionComponents(from: candidate)
-        let currentComponents = numericVersionComponents(from: current)
+        let candidateNormalized = normalizedDisplayVersion(candidate)
+        let currentNormalized = normalizedDisplayVersion(current)
+
+        let candidateHasPreRelease = hasPreReleaseSuffix(candidateNormalized)
+        let currentHasPreRelease = hasPreReleaseSuffix(currentNormalized)
+
+        let candidateComponents = numericVersionComponents(from: candidateNormalized)
+        let currentComponents = numericVersionComponents(from: currentNormalized)
         let componentCount = max(candidateComponents.count, currentComponents.count)
 
         for index in 0..<componentCount {
@@ -75,7 +81,27 @@ struct UpdateCheckService: Sendable {
             }
         }
 
+        // Numeric components are equal. Apply pre-release rules:
+        // - Stable server vs pre-release local → server is newer (prompt update)
+        // - Pre-release server vs stable local → don't prompt (server is not considered newer)
+        // - Both have pre-release or both are stable → not newer
+        if currentHasPreRelease && !candidateHasPreRelease {
+            return true
+        }
+
         return false
+    }
+
+    private static func hasPreReleaseSuffix(_ version: String) -> Bool {
+        // After stripping a leading v, a pre-release tag contains a dash or a letter after digits
+        // e.g. "1.2.3-beta", "1.2.3-rc.1", "1.2.3.alpha"
+        let stripped = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let dashRange = stripped.range(of: "-") else {
+            // No dash — check if there's a non-numeric, non-dot character after the first digit
+            return stripped.contains(where: { $0.isLetter })
+        }
+        _ = dashRange
+        return true
     }
 
     private static func normalizedDisplayVersion(_ value: String) -> String {

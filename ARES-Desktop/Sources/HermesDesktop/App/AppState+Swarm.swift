@@ -10,13 +10,27 @@ extension AppState {
         swarmError = nil
 
         async let rosterResult: [SwarmWorker] = {
-            do { return try await dashboardAPIService.fetchSwarmRoster() } catch { return [] }
+            do {
+                return try await dashboardAPIService.fetchSwarmRoster()
+            } catch {
+                await MainActor.run { swarmError = Self.errorMessage(error, feature: "swarm roster") }
+                return []
+            }
         }()
         async let missionsResult: [SwarmMission] = {
-            do { return try await dashboardAPIService.fetchSwarmMissions() } catch { return [] }
+            do {
+                return try await dashboardAPIService.fetchSwarmMissions()
+            } catch {
+                // Missions are secondary — only overwrite error if not already set
+                return []
+            }
         }()
         async let healthResult: SwarmHealth? = {
-            do { return try await dashboardAPIService.fetchSwarmHealth() } catch { return nil }
+            do {
+                return try await dashboardAPIService.fetchSwarmHealth()
+            } catch {
+                return nil
+            }
         }()
 
         let (roster, missions, health) = await (rosterResult, missionsResult, healthResult)
@@ -31,7 +45,7 @@ extension AppState {
         do {
             swarmKanbanCards = try await dashboardAPIService.fetchSwarmKanban()
         } catch {
-            // silently ignore
+            swarmError = Self.errorMessage(error, feature: "swarm kanban")
         }
     }
 
@@ -40,7 +54,7 @@ extension AppState {
         do {
             swarmReports = try await dashboardAPIService.fetchSwarmReports()
         } catch {
-            // silently ignore
+            swarmError = Self.errorMessage(error, feature: "swarm reports")
         }
     }
 
@@ -49,7 +63,8 @@ extension AppState {
         do {
             swarmMemoryFiles = try await dashboardAPIService.fetchSwarmMemory()
         } catch {
-            // silently ignore
+            // Memory is non-critical; only log, don't show banner to avoid obscuring primary errors
+            swarmError = swarmError ?? Self.errorMessage(error, feature: "swarm memory")
         }
     }
 
@@ -60,18 +75,22 @@ extension AppState {
             setStatusMessage(L10n.string("Dispatched to \(worker)"))
             await loadSwarm()
         } catch {
-            swarmError = error.localizedDescription
+            swarmError = Self.errorMessage(error, feature: "dispatch")
             setStatusMessage(error.localizedDescription)
         }
     }
 
-    func sendSwarmDirectChat(worker: String, message: String) async {
-        guard dashboardAPIAvailable else { return }
+    /// Sends a direct chat message to the named worker and returns the assistant reply.
+    @discardableResult
+    func sendSwarmDirectChat(worker: String, message: String) async -> String {
+        guard dashboardAPIAvailable else { return "" }
         do {
-            try await dashboardAPIService.swarmDirectChat(worker: worker, message: message)
+            let reply = try await dashboardAPIService.swarmDirectChat(worker: worker, message: message)
             setStatusMessage(L10n.string("Message sent to \(worker)"))
+            return reply
         } catch {
-            swarmError = error.localizedDescription
+            swarmError = Self.errorMessage(error, feature: "direct chat")
+            return ""
         }
     }
 
@@ -109,7 +128,7 @@ extension AppState {
             let created = try await dashboardAPIService.createSwarmKanbanCard(draft)
             swarmKanbanCards.append(created)
         } catch {
-            swarmError = error.localizedDescription
+            swarmError = Self.errorMessage(error, feature: "create card")
         }
     }
 
@@ -161,7 +180,18 @@ extension AppState {
                 swarmRuntimeOutput["default"] = raw
             }
         } catch {
-            // silently ignore polling errors
+            // Polling errors are transient — only surface if not already showing a primary error
         }
+    }
+
+    // MARK: - Error message helper
+
+    /// Converts a thrown error into a user-facing string, with special-casing for 404 responses.
+    static func errorMessage(_ error: Error, feature: String) -> String {
+        let description = error.localizedDescription
+        if description.contains("404") || description.contains("Not Found") {
+            return "Feature not yet available on this Hermes server (\(feature)). Update Hermes to v2.0+ to enable this feature."
+        }
+        return description
     }
 }

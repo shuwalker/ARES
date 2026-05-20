@@ -2,6 +2,39 @@ import Foundation
 
 extension DashboardAPIService {
 
+    // MARK: - Analytics
+
+    /// GET /api/analytics/usage?days={n}
+    func fetchAnalyticsUsage(days: Int = 30) async throws -> AnalyticsResponse {
+        let path = "api/analytics/usage?days=\(days)"
+        let data = try await authenticatedGet(path: path)
+        return try JSONDecoder().decode(AnalyticsResponse.self, from: data)
+    }
+
+    /// GET /api/analytics/models?days=7
+    func fetchModelsAnalytics(days: Int = 30) async throws -> ModelsAnalyticsResponse {
+        let path = "api/analytics/models?days=\(days)"
+        let data = try await authenticatedGet(path: path)
+        return try JSONDecoder().decode(ModelsAnalyticsResponse.self, from: data)
+    }
+
+    // MARK: - Dashboard
+
+    /// GET /api/dashboard/overview?period={n}
+    func fetchDashboardOverview(period: Int = 14) async throws -> DashboardOverview {
+        let path = "api/dashboard/overview?period=\(period)"
+        let data = try await authenticatedGet(path: path)
+        return try JSONDecoder().decode(DashboardOverview.self, from: data)
+    }
+
+    // MARK: - Session Status
+
+    /// GET /api/session-status
+    func fetchSessionStatus() async throws -> SessionStatusResponse {
+        let data = try await authenticatedGet(path: "api/session-status")
+        return try JSONDecoder().decode(SessionStatusResponse.self, from: data)
+    }
+
     // MARK: - Config
 
     /// GET /api/config — returns flat config dict
@@ -60,5 +93,32 @@ extension DashboardAPIService {
         struct RevealResponse: Decodable { let value: String }
         let response = try JSONDecoder().decode(RevealResponse.self, from: data)
         return response.value
+    }
+
+    // MARK: - Models
+
+    /// GET /api/model/info — current active model
+    func fetchModelInfo() async throws -> ModelInfoResponse {
+        let data = try await authenticatedGet(path: "api/model/info")
+        return try JSONDecoder().decode(ModelInfoResponse.self, from: data)
+    }
+
+    /// GET /api/model/options — all providers and models
+    func fetchModelOptions() async throws -> ModelOptionsResponse {
+        let data = try await authenticatedGet(path: "api/model/options")
+        return try JSONDecoder().decode(ModelOptionsResponse.self, from: data)
+    }
+
+    /// GET /api/model/auxiliary — auxiliary model assignments
+    func fetchAuxiliaryModels() async throws -> AuxiliaryModelsResponse {
+        let data = try await authenticatedGet(path: "api/model/auxiliary")
+        return try JSONDecoder().decode(AuxiliaryModelsResponse.self, from: data)
+    }
+
+    /// POST /api/model/set — switch the active model
+    func setModel(model: String, provider: String? = nil) async throws {
+        let request = ModelSetRequest(model: model, provider: provider)
+        let payload = try JSONEncoder().encode(request)
+        _ = try await authenticatedPost(path: "api/model/set", body: payload)
     }
 }

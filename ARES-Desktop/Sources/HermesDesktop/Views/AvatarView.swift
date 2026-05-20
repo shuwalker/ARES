@@ -16,7 +16,10 @@ final class AvatarPanelViewModel: ObservableObject {
         webView.load(URLRequest(url: AvatarPanelViewModel.vtuberURL))
     }
 
-    static let vtuberURL = URL(string: "http://localhost:12393")!
+    private enum Constants {
+        static let vtuberURL = URL(string: "http://localhost:12393")!
+    }
+    static var vtuberURL: URL { Constants.vtuberURL }
 }
 
 // MARK: - Coordinator
@@ -139,13 +142,19 @@ struct AvatarView: View {
                 .font(.system(size: 32))
                 .foregroundStyle(.orange)
 
-            Text(L10n.string("Unable to load Avatar"))
+            Text(L10n.string("Avatar service not running"))
                 .font(.headline)
+
+            Text(L10n.string("Start the VTuber avatar service on localhost:12393 to use this panel."))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
 
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
             }

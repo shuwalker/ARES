@@ -171,6 +171,7 @@ final class AppState: ObservableObject {
     @Published var conductorMissionActive: Bool = false
     @Published var conductorWorkerCards: [ConductorWorkerCard] = []
     @Published var conductorSelectedModel: String = ""
+    @Published var conductorError: String?
     var conductorPollingTask: Task<Void, Never>?
 
     // MARK: - Operations
@@ -293,10 +294,14 @@ final class AppState: ObservableObject {
 
         connectionStore.objectWillChange
             .sink { [weak self] _ in
-                self?.objectWillChange.send()
-                if let self, let active = self.activeConnection {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.objectWillChange.send()
+                    guard let active = self.activeConnection else { return }
                     // If an SSH tunnel is active, keep using the tunneled URL.
-                    if let tunnelPort = self.tunnelService.localPort {
+                    // Read localPort once to avoid TOCTOU race.
+                    let tunnelPort = self.tunnelService.localPort
+                    if let tunnelPort {
                         self.dashboardAPIService.baseURL = active.tunneledDashboardURL(localPort: tunnelPort)
                     } else {
                         self.dashboardAPIService.baseURL = active.dashboardURL
@@ -308,11 +313,14 @@ final class AppState: ObservableObject {
         connectionStore.$persistenceError
             .compactMap { $0 }
             .sink { [weak self] message in
-                self?.activeAlert = AppAlert(
-                    title: L10n.string("Local storage error"),
-                    message: message
-                )
-                self?.setStatusMessage(L10n.string("Local storage error"))
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.activeAlert = AppAlert(
+                        title: L10n.string("Local storage error"),
+                        message: message
+                    )
+                    self.setStatusMessage(L10n.string("Local storage error"))
+                }
             }
             .store(in: &cancellables)
 

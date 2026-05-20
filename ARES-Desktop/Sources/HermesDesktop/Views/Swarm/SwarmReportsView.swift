@@ -33,6 +33,11 @@ struct SwarmReportsView: View {
                     subtitle: "Aggregated mission results from all swarm workers."
                 )
 
+                // Error banner
+                if let error = appState.swarmError {
+                    SwarmErrorBanner(message: error) { appState.swarmError = nil }
+                }
+
                 Picker("Filter", selection: $filter) {
                     ForEach(SwarmReportFilter.allCases) { f in
                         Text(f.rawValue).tag(f)
@@ -41,9 +46,14 @@ struct SwarmReportsView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 480)
 
-                if appState.swarmReports.isEmpty {
+                if appState.swarmError != nil && appState.swarmReports.isEmpty {
+                    SwarmFeatureUnavailableView(
+                        message: appState.swarmError ?? "",
+                        onRetry: { Task { await appState.loadSwarmReports() } }
+                    )
+                } else if appState.swarmReports.isEmpty {
                     ContentUnavailableView(
-                        "No Reports",
+                        "No Reports Yet",
                         systemImage: "doc.text",
                         description: Text("Mission reports will appear here when workers complete tasks.")
                     )
