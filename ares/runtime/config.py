@@ -131,12 +131,21 @@ class FaceConfig:
 
 
 @dataclass
+class SyncConfig:
+    """iCloud Drive sync settings."""
+
+    enabled: bool = True
+    icloud_path: str = ""  # Auto-detect if empty
+
+
+@dataclass
 class AresConfig:
     """Top-level ARES configuration."""
 
     home: Path = field(default_factory=_get_ares_home)
     agent: AgentConfig = field(default_factory=AgentConfig)
     face: FaceConfig = field(default_factory=FaceConfig)
+    sync: SyncConfig = field(default_factory=SyncConfig)
 
     # Gateway
     gateway_host: str = "127.0.0.1"
