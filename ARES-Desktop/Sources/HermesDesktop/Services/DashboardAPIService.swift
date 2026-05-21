@@ -65,7 +65,7 @@ final class DashboardAPIService: @unchecked Sendable {
             } catch let error as TransportError {
                 // If we get 401, the token may have expired (server restart).
                 // Clear it and retry.
-                if error.localizedDescription.contains("401") || error.localizedDescription.contains("Unauthorized") {
+                if error.httpStatusCode == 401 {
                     sessionToken = nil
                     try await ensureSessionToken()
                     if let newToken = sessionToken {
@@ -96,7 +96,7 @@ final class DashboardAPIService: @unchecked Sendable {
                     headers: ["X-Hermes-Session-Token": token]
                 )
             } catch let error as TransportError {
-                if error.localizedDescription.contains("401") || error.localizedDescription.contains("Unauthorized") {
+                if error.httpStatusCode == 401 {
                     sessionToken = nil
                     try await ensureSessionToken()
                     if let newToken = sessionToken {
@@ -127,7 +127,7 @@ final class DashboardAPIService: @unchecked Sendable {
                     headers: ["X-Hermes-Session-Token": token]
                 )
             } catch let error as TransportError {
-                if error.localizedDescription.contains("401") || error.localizedDescription.contains("Unauthorized") {
+                if error.httpStatusCode == 401 {
                     sessionToken = nil
                     try await ensureSessionToken()
                     if let newToken = sessionToken {
@@ -157,7 +157,7 @@ final class DashboardAPIService: @unchecked Sendable {
                     headers: ["X-Hermes-Session-Token": token]
                 )
             } catch let error as TransportError {
-                if error.localizedDescription.contains("401") || error.localizedDescription.contains("Unauthorized") {
+                if error.httpStatusCode == 401 {
                     sessionToken = nil
                     try await ensureSessionToken()
                     if let newToken = sessionToken {

@@ -85,7 +85,14 @@ final class WebSocketTransport: @unchecked Sendable {
 
     /// Connect to Hermes WebSocket for bidirectional communication.
     func connectWebSocket(baseURL: URL, apiKey: String?) async throws -> URLSessionWebSocketTask {
-        let wsURL = URL(string: "ws://\(baseURL.host ?? "localhost"):\(baseURL.port ?? 8642)/ws")!
+        var components = URLComponents()
+        components.scheme = (baseURL.scheme?.lowercased() == "https") ? "wss" : "ws"
+        components.host = baseURL.host ?? "localhost"
+        components.port = baseURL.port ?? 8642
+        components.path = "/ws"
+        guard let wsURL = components.url else {
+            throw TransportError.invalidConnection("Could not build WebSocket URL from \(baseURL)")
+        }
         var request = URLRequest(url: wsURL)
         if let apiKey { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
         let task = session.webSocketTask(with: request)

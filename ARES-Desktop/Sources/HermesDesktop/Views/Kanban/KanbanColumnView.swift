@@ -67,8 +67,8 @@ struct KanbanColumnView: View {
         }
         .onDrop(of: [UTType.plainText], isTargeted: $isDropTarget) { providers in
             guard let provider = providers.first else { return false }
-            provider.loadObject(ofClass: String.self) { object, _ in
-                guard let taskID = object as? String else { return }
+            _ = provider.loadObject(ofClass: String.self) { object, _ in
+                guard let taskID = object else { return }
                 DispatchQueue.main.async { onDrop(taskID) }
             }
             return true

@@ -25,6 +25,15 @@ enum TransportError: LocalizedError, Equatable {
             msg
         }
     }
+
+    /// Extracts the HTTP status code from a `.remoteFailure("HTTP NNN: ...")` message
+    /// produced by the transport layer. Returns nil for non-HTTP failures.
+    var httpStatusCode: Int? {
+        guard case .remoteFailure(let message) = self,
+              message.hasPrefix("HTTP ") else { return nil }
+        let digits = message.dropFirst("HTTP ".count).prefix(while: { $0.isNumber })
+        return Int(digits)
+    }
 }
 
 /// Transport kind discriminator for connection profiles

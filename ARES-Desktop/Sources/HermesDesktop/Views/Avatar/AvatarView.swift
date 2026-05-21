@@ -489,7 +489,7 @@ private struct OfficeRenderer {
     }
 
     private func drawLabel(_ ctx: GraphicsContext, text: String, cx: CGFloat, y: CGFloat, color: Color) {
-        var resolved = ctx.resolve(Text(text).font(.system(size: 9, weight: .medium)).foregroundColor(color))
+        let resolved = ctx.resolve(Text(text).font(.system(size: 9, weight: .medium)).foregroundColor(color))
         let size = resolved.measure(in: CGSize(width: 120, height: 20))
         ctx.draw(resolved, at: CGPoint(x: cx - size.width / 2, y: y), anchor: .topLeading)
     }

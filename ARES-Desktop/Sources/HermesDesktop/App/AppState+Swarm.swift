@@ -188,10 +188,9 @@ extension AppState {
 
     /// Converts a thrown error into a user-facing string, with special-casing for 404 responses.
     static func errorMessage(_ error: Error, feature: String) -> String {
-        let description = error.localizedDescription
-        if description.contains("404") || description.contains("Not Found") {
+        if (error as? TransportError)?.httpStatusCode == 404 {
             return "Feature not yet available on this Hermes server (\(feature)). Update Hermes to v2.0+ to enable this feature."
         }
-        return description
+        return error.localizedDescription
     }
 }

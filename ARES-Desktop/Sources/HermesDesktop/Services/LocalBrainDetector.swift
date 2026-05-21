@@ -109,7 +109,7 @@ enum LocalBrainDetector {
     
     private static func isPortOpen(port: Int) async -> Bool {
         await withCheckedContinuation { continuation in
-            let task = Task.detached {
+            Task.detached {
                 let sock = socket(AF_INET, SOCK_STREAM, 0)
                 guard sock >= 0 else {
                     continuation.resume(returning: false)

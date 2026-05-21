@@ -304,7 +304,7 @@ private struct HFlow: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 600
         var rowX: CGFloat = 0
-        var rowY: CGFloat = 0
+        let rowY: CGFloat = 0
         var maxRowH: CGFloat = 0
         var totalH: CGFloat = 0
 

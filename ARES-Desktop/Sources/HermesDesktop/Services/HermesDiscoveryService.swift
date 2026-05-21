@@ -51,7 +51,7 @@ final class HermesDiscoveryService: ObservableObject {
         scanTimeoutTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(10))
             guard !Task.isCancelled else { return }
-            await self?.finishScan()
+            self?.finishScan()
         }
     }
 

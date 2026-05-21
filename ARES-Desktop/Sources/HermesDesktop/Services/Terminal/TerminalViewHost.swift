@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 @preconcurrency import SwiftTerm
 
-final class TerminalViewHost: NSObject, @preconcurrency LocalProcessTerminalViewDelegate {
+final class TerminalViewHost: NSObject, LocalProcessTerminalViewDelegate {
     private static let bracketedPasteReadinessTimeout: TimeInterval = 60
     private lazy var hostView: TerminalHostView = TerminalHostView()
     private var startedLaunchToken: UUID?

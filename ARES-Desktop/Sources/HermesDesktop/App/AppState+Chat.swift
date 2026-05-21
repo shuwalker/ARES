@@ -15,9 +15,25 @@ extension AppState {
         let baseURL: URL
         if connection.transportMode == .directHTTP {
             let host = connection.sshHost.isEmpty ? "localhost" : connection.sshHost
-            baseURL = URL(string: "http://\(host):8642")!
+            var components = URLComponents()
+            components.scheme = "http"
+            components.host = host
+            components.port = 8642
+            guard let url = components.url else {
+                chatError = "Invalid host: \(host)"
+                return
+            }
+            baseURL = url
         } else if connection.transportKind == .local {
-            baseURL = URL(string: "http://localhost:8642")!
+            var components = URLComponents()
+            components.scheme = "http"
+            components.host = "localhost"
+            components.port = 8642
+            guard let url = components.url else {
+                chatError = "Could not build local chat URL."
+                return
+            }
+            baseURL = url
         } else {
             chatError = "Chat requires a local or direct HTTP connection."
             return
