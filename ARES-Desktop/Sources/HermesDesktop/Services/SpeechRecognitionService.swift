@@ -64,7 +64,10 @@ final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sen
         // Reset any previous task
         stopRecording()
 
-        // Register for audio session interruptions (e.g. phone call, other app taking mic)
+        // Register for audio session interruptions.
+        // AVAudioSession interruption notifications are iOS/tvOS only;
+        // macOS handles audio preemption at the engine level automatically.
+        #if os(iOS) || os(tvOS)
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
@@ -79,6 +82,7 @@ final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sen
                 }
             }
         }
+        #endif
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true

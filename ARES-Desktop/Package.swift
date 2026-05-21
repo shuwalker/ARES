@@ -26,6 +26,11 @@ let package = Package(
             path: "Sources/HermesDesktop",
             resources: [
                 .process("Resources")
+            ],
+            swiftSettings: [
+                // Swift 5 language mode while codebase is audited for Swift 6 concurrency.
+                // Remove this line once all Sendable / actor-isolation warnings are resolved.
+                .swiftLanguageVersion(.v5)
             ]
         ),
         .testTarget(
