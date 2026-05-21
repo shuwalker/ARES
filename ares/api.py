@@ -599,9 +599,178 @@ def create_app(
         """Alias endpoint for BrainConnection.swift compatibility."""
         await websocket_endpoint(websocket)
 
+    # ------------------------------------------------------------------
+    # Collaboration Hub — Claude + Hermes bidirectional coordination
+    # ------------------------------------------------------------------
+
+    from ares.runtime.collaboration import get_hub, AgentStatus
+
+    hub = get_hub()
+    collab_clients: set = set()
+
+    @app.post("/api/collaboration/session")
+    async def create_collab_session(body: dict):
+        """Create a new collaboration session."""
+        session_id = body.get("session_id", "session_" + str(int(time.time())))
+        goal = body.get("goal", "Collaborative work")
+        session = hub.create_session(session_id, goal)
+        await _broadcast_collab({"type": "session_created", "session": session.to_dict()})
+        return session.to_dict()
+
+    @app.get("/api/collaboration/session")
+    async def get_collab_session(session_id: Optional[str] = None):
+        """Get collaboration session state."""
+        session = hub.get_session(session_id)
+        if not session:
+            raise HTTPException(404, "Session not found")
+        return session.to_dict()
+
+    @app.post("/api/collaboration/request")
+    async def request_agent_help(body: dict):
+        """Request help from another agent."""
+        session_id = body.get("session_id")
+        from_agent = body.get("from_agent")
+        to_agent = body.get("to_agent")
+        task = body.get("task")
+        context = body.get("context", {})
+
+        session = hub.get_session(session_id)
+        if not session:
+            raise HTTPException(404, "Session not found")
+
+        task_id = session.queue_task(from_agent, to_agent, task, context)
+        session.update_agent_status(from_agent, AgentStatus.WORKING, task)
+
+        await _broadcast_collab({
+            "type": "task_request",
+            "from_agent": from_agent,
+            "to_agent": to_agent,
+            "task_id": task_id,
+            "task": task,
+            "context": context,
+            "session": session.to_dict()
+        })
+
+        return {"task_id": task_id, "status": "queued"}
+
+    @app.post("/api/collaboration/complete")
+    async def complete_agent_task(body: dict):
+        """Report task completion."""
+        session_id = body.get("session_id")
+        task_id = body.get("task_id")
+        agent_name = body.get("agent")
+        result = body.get("result")
+
+        session = hub.get_session(session_id)
+        if not session:
+            raise HTTPException(404, "Session not found")
+
+        session.complete_task(task_id, result)
+        session.update_agent_status(agent_name, AgentStatus.IDLE)
+
+        await _broadcast_collab({
+            "type": "task_completed",
+            "task_id": task_id,
+            "agent": agent_name,
+            "result": result,
+            "session": session.to_dict()
+        })
+
+        return {"status": "completed"}
+
+    @app.post("/api/collaboration/status")
+    async def update_agent_status(body: dict):
+        """Update agent status."""
+        session_id = body.get("session_id")
+        agent_name = body.get("agent")
+        status = body.get("status")
+        task = body.get("task")
+
+        session = hub.get_session(session_id)
+        if not session:
+            raise HTTPException(404, "Session not found")
+
+        session.update_agent_status(agent_name, AgentStatus(status), task)
+
+        await _broadcast_collab({
+            "type": "status_update",
+            "agent": agent_name,
+            "status": status,
+            "session": session.to_dict()
+        })
+
+        return {"status": "updated"}
+
+    @app.websocket("/ws/collaborate")
+    async def websocket_collaborate(websocket: WebSocket):
+        """WebSocket endpoint for real-time agent collaboration."""
+        await websocket.accept()
+        collab_clients.add(websocket)
+        logger.info("Collaboration client connected")
+
+        try:
+            while True:
+                data = await websocket.receive_json()
+                msg_type = data.get("type")
+                session_id = data.get("session_id")
+                agent = data.get("agent")
+
+                session = hub.get_session(session_id)
+                if not session:
+                    await websocket.send_json({"error": "Session not found"})
+                    continue
+
+                if msg_type == "heartbeat":
+                    session.update_agent_status(agent, AgentStatus.WORKING)
+                    await websocket.send_json({"type": "heartbeat_ack", "timestamp": time.time()})
+
+                elif msg_type == "request_task":
+                    # Agent is requesting work
+                    task = data.get("task")
+                    to_agent = data.get("to_agent")
+                    context = data.get("context", {})
+                    task_id = session.queue_task(agent, to_agent, task, context)
+                    await _broadcast_collab({
+                        "type": "task_request",
+                        "task_id": task_id,
+                        "from_agent": agent,
+                        "to_agent": to_agent,
+                        "task": task,
+                        "session": session.to_dict()
+                    })
+
+                elif msg_type == "task_completed":
+                    # Agent completed a task
+                    task_id = data.get("task_id")
+                    result = data.get("result")
+                    session.complete_task(task_id, result)
+                    session.update_agent_status(agent, AgentStatus.IDLE)
+                    await _broadcast_collab({
+                        "type": "task_completed",
+                        "task_id": task_id,
+                        "agent": agent,
+                        "result": result,
+                        "session": session.to_dict()
+                    })
+
+        except WebSocketDisconnect:
+            collab_clients.discard(websocket)
+            logger.info(f"Collaboration client disconnected")
+
+    async def _broadcast_collab(message: dict) -> None:
+        """Broadcast collaboration message to all connected agents."""
+        disconnected = set()
+        for ws in collab_clients:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                disconnected.add(ws)
+        collab_clients -= disconnected
+
     # Store app state
     app.state.start_time = time.time()
     app.state.websocket_clients = websocket_clients
+    app.state.collab_clients = collab_clients
 
     return app
 
