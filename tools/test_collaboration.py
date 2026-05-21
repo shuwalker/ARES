@@ -1,77 +1,86 @@
 #!/usr/bin/env python3
 """
-Quick test: Claude requests help from Hermes via collaboration hub.
-Run from ARES repo: python tools/test_collaboration.py
+Integration test: Claude requests tasks from Hermes via ARES collaboration hub.
+
+Run from ARES repo:
+  python tools/test_collaboration.py
 """
 
 import asyncio
 import sys
 import os
 
-# Add tools directory to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
-
 from collaboration_client import init_collaboration
 
 
 async def main():
     print("\n" + "="*60)
-    print("CLAUDE CODE ↔ HERMES COLLABORATION TEST")
+    print("CLAUDE ↔ HERMES COLLABORATION TEST")
     print("="*60)
 
-    # Initialize collaboration with Hermes
-    print("\n[1] Initializing collaboration session...")
-    client = await init_collaboration(
-        agent_name="claude",
-        goal="Test bidirectional agent coordination"
-    )
-    print(f"✓ Session created: {client.session_id}")
+    try:
+        # Connect to hub
+        print("\n[1] Connecting to hub...")
+        client = await init_collaboration("claude")
 
-    # Register handler for when Hermes sends work to Claude
-    async def handle_hermes_request(task: str, context: dict, from_agent: str) -> str:
-        print(f"\n[3] 🔔 Hermes asked Claude: {task}")
-        # Simulate Claude doing work
-        await asyncio.sleep(0.5)
-        result = f"Claude reviewed and validated: {task[:40]}..."
-        print(f"[3] ✓ Claude response: {result}")
-        return result
+        # Test 1: Echo (simplest test)
+        print("\n[2] Test 1: Echo")
+        result = await client.request_task(
+            action="echo",
+            params={"message": "Hello from Claude!"},
+            target="hermes",
+            timeout=10.0
+        )
+        print(f"    Result: {result}")
+        assert "output" in result, "Echo should return output"
+        print("    ✓ PASSED")
 
-    client.on("task_request", handle_hermes_request)
+        # Test 2: Terminal (run a command)
+        print("\n[3] Test 2: Terminal Command")
+        result = await client.request_task(
+            action="terminal",
+            params={"command": "echo 'Hermes executed this'"},
+            target="hermes",
+            timeout=10.0
+        )
+        print(f"    Result: {result}")
+        assert "output" in result, "Terminal should return output"
+        print("    ✓ PASSED")
 
-    # Claude asks Hermes to do something
-    print("\n[2] Claude requesting help from Hermes...")
-    task_id = await client.request_help(
-        "Run pytest on tests/unit/ and report pass/fail count",
-        to_agent="hermes",
-        context={
-            "test_dir": "tests/unit/",
-            "verbose": True
-        }
-    )
-    print(f"✓ Task queued: {task_id}")
+        # Test 3: File read
+        print("\n[4] Test 3: File Read")
+        result = await client.request_task(
+            action="file_read",
+            params={"path": "/etc/hostname"},
+            target="hermes",
+            timeout=10.0
+        )
+        print(f"    Result: {result}")
+        assert "output" in result, "File read should return output"
+        print("    ✓ PASSED")
 
-    # Get current state
-    print("\n[2.5] Checking collaboration state...")
-    session = await client.get_session()
-    print(f"Agents: {[a for a in session['agents'].keys()]}")
-    print(f"Pending tasks: {len([t for t in session['task_queue'] if t['status']=='pending'])}")
+        # All tests passed
+        print("\n" + "="*60)
+        print("✅ ALL TESTS PASSED")
+        print("="*60)
+        print("\nBidirectional Claude ↔ Hermes collaboration is working!")
+        print("Hub is routing tasks correctly.")
 
-    # Wait for Hermes to respond
-    print("\n[4] Waiting for Hermes to execute task (30 seconds timeout)...")
-    for i in range(30):
-        await asyncio.sleep(1)
-        session = await client.get_session()
-        # Check if task completed
-        for task in session['task_queue']:
-            if task['id'] == task_id and task['status'] == 'completed':
-                print(f"\n✓ SUCCESS: Hermes completed task")
-                print(f"   Result: {task['result'][:100]}...")
-                await client.disconnect()
-                return
+    except asyncio.TimeoutError as e:
+        print(f"\n❌ TIMEOUT: {e}")
+        print("   Hermes worker may not be connected to hub")
+        sys.exit(1)
 
-    print("\n⏱ Timeout waiting for Hermes response")
-    print("  (Hermes listener skill may not be running yet)")
-    await client.disconnect()
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+    finally:
+        if 'client' in locals():
+            await client.disconnect()
 
 
 if __name__ == "__main__":

@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 """
-Claude Code Collaboration Client — connect to ARES collaboration hub.
+Claude Code Collaboration Client — connect to ARES hub via Hermes protocol.
 
-Enables Claude Code to:
-- Request work from Hermes
-- Receive requests from Hermes
-- Share context and task coordination
-- See agent status in real-time
+Enables Claude to request work from Hermes and receive results.
 """
 
 import asyncio
 import json
 import logging
 import websockets
-from datetime import datetime
-from typing import Callable, Optional, Dict, Any
-import httpx
+from typing import Optional, Any, Dict
+import uuid
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("claude.collaboration")
@@ -26,26 +21,39 @@ class CollaborationClient:
 
     def __init__(
         self,
-        agent_name: str = "claude",
-        hub_url: str = "http://localhost:8000",
-        ws_url: str = "ws://localhost:8000/ws/collaborate",
+        agent_id: str = "claude",
+        hub_url: str = "ws://localhost:8000/ws/collaborate",
     ):
-        self.agent = agent_name
+        self.agent_id = agent_id
         self.hub_url = hub_url
-        self.ws_url = ws_url
         self.ws = None
-        self.session_id = None
-        self.request_handlers: Dict[str, Callable] = {}
+        self.pending_tasks: Dict[str, asyncio.Event] = {}
+        self.task_results: Dict[str, Any] = {}
         self._running = False
 
     async def connect(self) -> None:
-        """Connect to collaboration hub."""
+        """Connect to collaboration hub and register."""
         try:
-            self.ws = await websockets.connect(self.ws_url)
+            self.ws = await websockets.connect(self.hub_url)
             self._running = True
-            logger.info(f"✓ {self.agent} connected to hub")
-            # Start listening in background
+            logger.info(f"✓ {self.agent_id} connected to hub")
+
+            # Register with hub
+            await self.ws.send_json({
+                "type": "register",
+                "agent_id": self.agent_id,
+                "capabilities": ["chat", "reasoning", "code_review"]
+            })
+
+            # Wait for registration confirmation
+            response = await self.ws.recv()
+            data = json.loads(response)
+            if data.get("type") == "registered":
+                logger.info(f"✓ {self.agent_id} registered with hub")
+
+            # Start listener in background
             asyncio.create_task(self._listen())
+
         except Exception as e:
             logger.error(f"Failed to connect: {e}")
             raise
@@ -55,107 +63,67 @@ class CollaborationClient:
         self._running = False
         if self.ws:
             await self.ws.close()
-            logger.info(f"✓ {self.agent} disconnected from hub")
+            logger.info(f"✓ {self.agent_id} disconnected")
 
-    async def create_session(self, goal: str, session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Create a new collaboration session."""
-        import time
-        sid = session_id or f"session_{int(time.time())}"
-        self.session_id = sid
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self.hub_url}/api/collaboration/session",
-                json={"session_id": sid, "goal": goal}
-            )
-            resp.raise_for_status()
-            return resp.json()
-
-    async def get_session(self) -> Dict[str, Any]:
-        """Get current session state."""
-        if not self.session_id:
-            raise ValueError("No active session")
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.hub_url}/api/collaboration/session",
-                params={"session_id": self.session_id}
-            )
-            resp.raise_for_status()
-            return resp.json()
-
-    async def request_help(
+    async def request_task(
         self,
-        task: str,
-        to_agent: str = "hermes",
-        context: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Request help from another agent."""
-        if not self.session_id:
-            raise ValueError("No active session")
+        action: str,
+        params: dict,
+        target: str = "hermes",
+        timeout: float = 60.0,
+    ) -> Any:
+        """
+        Request a task from a worker agent.
 
-        logger.info(f"📤 {self.agent} requesting: {task[:60]}...")
+        Args:
+            action: What to do (echo, terminal, file_read, file_write, code)
+            params: Task parameters (depends on action)
+            target: Which agent to target ("hermes" or None for any)
+            timeout: How long to wait for response
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self.hub_url}/api/collaboration/request",
-                json={
-                    "session_id": self.session_id,
-                    "from_agent": self.agent,
-                    "to_agent": to_agent,
-                    "task": task,
-                    "context": context or {},
-                }
+        Returns:
+            Task result dict
+        """
+        if not self.ws:
+            raise RuntimeError("Not connected to hub")
+
+        task_id = str(uuid.uuid4())[:8]
+        logger.info(f"📤 Requesting {action} from {target} (task: {task_id})")
+
+        # Create event to wait for response
+        self.pending_tasks[task_id] = asyncio.Event()
+
+        try:
+            # Wait for response
+            await asyncio.wait_for(
+                self.pending_tasks[task_id].wait(),
+                timeout=timeout
             )
-            resp.raise_for_status()
-            result = resp.json()
-            return result.get("task_id")
+            result = self.task_results.get(task_id)
+            logger.info(f"✓ Task {task_id} completed")
+            return result
 
-    async def report_completion(
+        except asyncio.TimeoutError:
+            logger.error(f"✗ Task {task_id} timed out after {timeout}s")
+            raise TimeoutError(f"Task {task_id} timed out")
+
+        finally:
+            # Cleanup
+            self.pending_tasks.pop(task_id, None)
+            self.task_results.pop(task_id, None)
+
+    async def submit_task(
         self,
-        task_id: str,
-        result: str,
-    ) -> None:
-        """Report that this agent completed a task."""
-        if not self.session_id:
-            raise ValueError("No active session")
-
-        logger.info(f"✅ {self.agent} completed task {task_id[:8]}")
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{self.hub_url}/api/collaboration/complete",
-                json={
-                    "session_id": self.session_id,
-                    "task_id": task_id,
-                    "agent": self.agent,
-                    "result": result,
-                }
-            )
-            resp.raise_for_status()
-
-    async def set_status(
-        self,
-        status: str,
-        current_task: Optional[str] = None,
-    ) -> None:
-        """Update agent status."""
-        if not self.session_id:
-            return
-
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"{self.hub_url}/api/collaboration/status",
-                json={
-                    "session_id": self.session_id,
-                    "agent": self.agent,
-                    "status": status,
-                    "task": current_task,
-                }
-            )
+        action: str,
+        params: dict,
+        target: str = "hermes",
+        timeout: float = 60.0,
+    ) -> Any:
+        """Alias for request_task for clarity."""
+        return await self.request_task(action, params, target, timeout)
 
     async def _listen(self) -> None:
-        """Listen for incoming messages from hub."""
+        """Listen for responses from hub."""
         try:
             async for message in self.ws:
                 data = json.loads(message)
@@ -168,109 +136,39 @@ class CollaborationClient:
         """Handle incoming message from hub."""
         msg_type = data.get("type")
 
-        if msg_type == "task_request":
-            from_agent = data.get("from_agent")
-            to_agent = data.get("to_agent")
-            task_id = data.get("task_id")
-            task = data.get("task")
-            context = data.get("context", {})
-
-            if to_agent == self.agent:
-                logger.info(f"\n🔔 {from_agent.upper()} requested: {task[:60]}...")
-                # Call registered handler
-                if "task_request" in self.request_handlers:
-                    try:
-                        result = await self.request_handlers["task_request"](
-                            task, context, from_agent
-                        )
-                        await self.report_completion(task_id, result)
-                    except Exception as e:
-                        logger.error(f"Handler error: {e}")
-                        await self.report_completion(task_id, f"Error: {e}")
-
-        elif msg_type == "task_completed":
-            agent = data.get("agent")
+        if msg_type == "task_completed":
             task_id = data.get("task_id")
             result = data.get("result")
-            logger.info(f"✓ {agent} completed {task_id[:8]}: {result[:50]}...")
-            if "task_completed" in self.request_handlers:
-                await self.request_handlers["task_completed"](task_id, result, agent)
 
-        elif msg_type == "status_update":
-            agent = data.get("agent")
-            status = data.get("status")
-            logger.info(f"📍 {agent} → {status}")
-            if "status_update" in self.request_handlers:
-                await self.request_handlers["status_update"](agent, status)
+            if task_id in self.pending_tasks:
+                self.task_results[task_id] = result
+                self.pending_tasks[task_id].set()
+                logger.info(f"✓ Task {task_id} result received")
 
-        elif msg_type == "session_created":
-            logger.info(f"✓ Session created: {data.get('session', {}).get('session_id')}")
+        elif msg_type == "task_failed":
+            task_id = data.get("task_id")
+            error = data.get("error")
 
-    def on(self, event: str, callback: Callable) -> None:
-        """Register an event handler."""
-        self.request_handlers[event] = callback
+            if task_id in self.pending_tasks:
+                self.task_results[task_id] = {"error": error}
+                self.pending_tasks[task_id].set()
+                logger.error(f"✗ Task {task_id} failed: {error}")
 
 
 # Global client instance
 _client: Optional[CollaborationClient] = None
 
 
-async def init_collaboration(
-    agent_name: str = "claude",
-    goal: str = "Collaborative work",
-) -> CollaborationClient:
-    """Initialize collaboration session."""
+async def init_collaboration(agent_id: str = "claude") -> CollaborationClient:
+    """Initialize collaboration client."""
     global _client
-    _client = CollaborationClient(agent_name)
+    _client = CollaborationClient(agent_id)
     await _client.connect()
-    await _client.create_session(goal)
     return _client
 
 
 def get_client() -> CollaborationClient:
     """Get the global client instance."""
     if not _client:
-        raise RuntimeError("Collaboration client not initialized. Call init_collaboration() first.")
+        raise RuntimeError("Collaboration client not initialized.")
     return _client
-
-
-# Example usage
-async def example():
-    """Example: Claude requests help from Hermes."""
-    # Initialize
-    client = await init_collaboration("claude", goal="Fix ARES auth, write tests")
-
-    # Register handler for when Hermes asks Claude to do something
-    async def handle_hermes_request(task: str, context: dict, from_agent: str) -> str:
-        logger.info(f"Claude processing: {task}")
-        # Simulate Claude doing work
-        await asyncio.sleep(1)
-        return f"Claude completed: {task}"
-
-    client.on("task_request", handle_hermes_request)
-
-    # Claude requests help from Hermes
-    logger.info("\n=== Claude → Hermes ===")
-    task_id = await client.request_help(
-        "Run pytest on ares/tests/ and report results",
-        to_agent="hermes",
-        context={"test_dir": "tests/"}
-    )
-    logger.info(f"Task queued: {task_id}")
-
-    # Get session state
-    await asyncio.sleep(0.5)
-    session = await client.get_session()
-    logger.info(f"\nSession state: {json.dumps(session, indent=2)[:200]}...")
-
-    # Keep listening for responses
-    logger.info("\nListening for responses (press Ctrl+C to exit)...")
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        await client.disconnect()
-
-
-if __name__ == "__main__":
-    asyncio.run(example())

@@ -1,7 +1,7 @@
-"""ARES Collaboration Hub — bidirectional agent coordination.
+"""ARES Collaboration Hub — bidirectional Claude + Hermes agent coordination.
 
-Enables Claude Code and Hermes to work together on shared goals.
-Central state store, real-time updates, task coordination.
+Protocol: WebSocket message-passing between Claude and Hermes workers.
+Hub routes tasks to agents and responses back to requesters.
 """
 
 from __future__ import annotations
@@ -9,166 +9,235 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, asdict, field
+import uuid
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Callable, Any
-from enum import Enum
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger("ares.collaboration")
 
 
-class AgentStatus(str, Enum):
-    """Agent operational status."""
-    IDLE = "idle"
-    WORKING = "working"
-    WAITING = "waiting"
-    OFFLINE = "offline"
+@dataclass
+class AgentConnection:
+    """Track a connected agent."""
+    agent_id: str
+    websocket: Any
+    capabilities: list[str]
+    connected_at: str = None
+
+    def __post_init__(self):
+        if self.connected_at is None:
+            self.connected_at = datetime.now().isoformat()
 
 
 @dataclass
-class AgentState:
-    """State of a single agent."""
-    name: str
-    status: AgentStatus = AgentStatus.OFFLINE
-    current_task: Optional[str] = None
-    last_seen: Optional[str] = None
+class Task:
+    """Represent a task in the queue."""
+    task_id: str
+    requester: str
+    target: Optional[str]
+    action: str
+    params: dict
+    created_at: str = None
+    status: str = "pending"  # pending, assigned, completed, failed
+    result: Optional[dict] = None
+    error: Optional[str] = None
 
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "status": self.status.value,
-            "current_task": self.current_task,
-            "last_seen": self.last_seen
-        }
-
-
-@dataclass
-class TaskRequest:
-    """A request from one agent to another."""
-    id: str
-    from_agent: str
-    to_agent: str
-    task: str
-    context: dict = field(default_factory=dict)
-    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    status: str = "pending"  # pending, executing, completed, failed
-    result: Optional[str] = None
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-@dataclass
-class CollaborationSession:
-    """A collaboration session between agents."""
-    session_id: str
-    goal: str
-    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    context: dict = field(default_factory=dict)
-    agents: dict[str, AgentState] = field(default_factory=dict)
-    task_queue: list[TaskRequest] = field(default_factory=list)
-    history: list[dict] = field(default_factory=list)
-
-    def add_agent(self, agent_name: str):
-        """Register an agent."""
-        self.agents[agent_name] = AgentState(name=agent_name)
-
-    def update_agent_status(self, agent_name: str, status: AgentStatus, task: Optional[str] = None):
-        """Update agent status."""
-        if agent_name in self.agents:
-            self.agents[agent_name].status = status
-            self.agents[agent_name].current_task = task
-            self.agents[agent_name].last_seen = datetime.now().isoformat()
-
-    def queue_task(self, from_agent: str, to_agent: str, task: str, context: dict = None) -> str:
-        """Add a task to the queue."""
-        import uuid
-        task_id = str(uuid.uuid4())[:8]
-        request = TaskRequest(
-            id=task_id,
-            from_agent=from_agent,
-            to_agent=to_agent,
-            task=task,
-            context=context or {}
-        )
-        self.task_queue.append(request)
-        self._log_action(f"{from_agent} requested: {task}")
-        return task_id
-
-    def complete_task(self, task_id: str, result: str):
-        """Mark a task as complete."""
-        for req in self.task_queue:
-            if req.id == task_id:
-                req.status = "completed"
-                req.result = result
-                self._log_action(f"{req.from_agent} <- {req.to_agent}: {task_id[:8]} completed")
-                break
-
-    def _log_action(self, action: str):
-        """Log an action to history."""
-        self.history.append({
-            "timestamp": datetime.now().isoformat(),
-            "action": action
-        })
-
-    def to_dict(self) -> dict:
-        return {
-            "session_id": self.session_id,
-            "goal": self.goal,
-            "created_at": self.created_at,
-            "context": self.context,
-            "agents": {name: agent.to_dict() for name, agent in self.agents.items()},
-            "task_queue": [t.to_dict() for t in self.task_queue],
-            "history": self.history
-        }
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.now().isoformat()
 
 
 class CollaborationHub:
-    """Central coordination hub for Claude + Hermes collaboration."""
+    """
+    Central hub for Claude + Hermes task coordination.
+
+    Handles:
+    - Agent registration and discovery
+    - Task routing to specific agents
+    - Response routing back to requesters
+    - Bidirectional WebSocket communication
+    """
 
     def __init__(self):
-        self.sessions: dict[str, CollaborationSession] = {}
-        self.active_connections: list[Any] = []  # WebSocket connections
-        self.message_callbacks: list[Callable] = []
-        self.current_session: Optional[str] = None
+        self.agents: Dict[str, AgentConnection] = {}  # agent_id → connection
+        self.tasks: Dict[str, Task] = {}  # task_id → task
+        self.pending_responses: Dict[str, asyncio.Event] = {}  # task_id → event
+        self.responses: Dict[str, Any] = {}  # task_id → response
 
-    def create_session(self, session_id: str, goal: str) -> CollaborationSession:
-        """Create a new collaboration session."""
-        session = CollaborationSession(session_id=session_id, goal=goal)
-        session.add_agent("claude")
-        session.add_agent("hermes")
-        self.sessions[session_id] = session
-        self.current_session = session_id
-        logger.info(f"Created collaboration session: {session_id}")
-        return session
+    async def register_agent(
+        self,
+        agent_id: str,
+        websocket: Any,
+        capabilities: list[str],
+    ) -> None:
+        """Register an agent (Claude or Hermes)."""
+        conn = AgentConnection(
+            agent_id=agent_id,
+            websocket=websocket,
+            capabilities=capabilities
+        )
+        self.agents[agent_id] = conn
+        logger.info(f"✓ Agent registered: {agent_id} (capabilities: {capabilities})")
 
-    def get_session(self, session_id: Optional[str] = None) -> Optional[CollaborationSession]:
-        """Get a session by ID or the current one."""
-        sid = session_id or self.current_session
-        return self.sessions.get(sid)
+    async def unregister_agent(self, agent_id: str) -> None:
+        """Unregister an agent (disconnect)."""
+        if agent_id in self.agents:
+            del self.agents[agent_id]
+            logger.info(f"✓ Agent unregistered: {agent_id}")
 
-    async def broadcast(self, message: dict):
-        """Send a message to all connected agents."""
-        for callback in self.message_callbacks:
-            try:
-                await callback(message)
-            except Exception as e:
-                logger.error(f"Broadcast error: {e}")
+    async def submit_task(
+        self,
+        requester: str,
+        action: str,
+        params: dict,
+        target: Optional[str] = None,
+    ) -> str:
+        """Submit a task from Claude to a worker."""
+        task_id = str(uuid.uuid4())[:8]
+        task = Task(
+            task_id=task_id,
+            requester=requester,
+            target=target,
+            action=action,
+            params=params,
+        )
+        self.tasks[task_id] = task
+        self.pending_responses[task_id] = asyncio.Event()
 
-    def register_connection(self, ws_send_callback: Callable):
-        """Register a WebSocket connection."""
-        self.message_callbacks.append(ws_send_callback)
+        # Route to target agent
+        if target:
+            if target not in self.agents:
+                raise ValueError(f"Target agent '{target}' not connected")
+            worker = self.agents[target]
+        else:
+            # Route to any available worker
+            available = [a for a in self.agents.values() if a.agent_id != requester]
+            if not available:
+                raise ValueError("No workers available")
+            worker = available[0]
 
-    def unregister_connection(self, ws_send_callback: Callable):
-        """Unregister a WebSocket connection."""
-        if ws_send_callback in self.message_callbacks:
-            self.message_callbacks.remove(ws_send_callback)
+        # Send task to worker
+        await worker.websocket.send_json({
+            "type": "task_assigned",
+            "task_id": task_id,
+            "requester": requester,
+            "action": action,
+            "params": params,
+        })
+        logger.info(f"→ Task {task_id[:8]} assigned to {worker.agent_id}")
+        return task_id
+
+    async def complete_task(
+        self,
+        task_id: str,
+        result: dict,
+    ) -> None:
+        """Mark a task complete and route result to requester."""
+        if task_id not in self.tasks:
+            logger.warning(f"Task {task_id} not found")
+            return
+
+        task = self.tasks[task_id]
+        task.status = "completed"
+        task.result = result
+
+        # Route response to requester
+        if task.requester in self.agents:
+            requester_ws = self.agents[task.requester].websocket
+            await requester_ws.send_json({
+                "type": "task_completed",
+                "task_id": task_id,
+                "result": result,
+            })
+            logger.info(f"← Task {task_id[:8]} result sent to {task.requester}")
+
+        # Signal waiting coroutine
+        if task_id in self.pending_responses:
+            self.responses[task_id] = result
+            self.pending_responses[task_id].set()
+
+    async def fail_task(
+        self,
+        task_id: str,
+        error: str,
+    ) -> None:
+        """Mark a task failed and route error to requester."""
+        if task_id not in self.tasks:
+            logger.warning(f"Task {task_id} not found")
+            return
+
+        task = self.tasks[task_id]
+        task.status = "failed"
+        task.error = error
+
+        # Route error to requester
+        if task.requester in self.agents:
+            requester_ws = self.agents[task.requester].websocket
+            await requester_ws.send_json({
+                "type": "task_failed",
+                "task_id": task_id,
+                "error": error,
+            })
+            logger.info(f"✗ Task {task_id[:8]} error sent to {task.requester}: {error}")
+
+        # Signal waiting coroutine
+        if task_id in self.pending_responses:
+            self.responses[task_id] = {"error": error}
+            self.pending_responses[task_id].set()
+
+    async def wait_for_response(
+        self,
+        task_id: str,
+        timeout: float = 60.0,
+    ) -> Any:
+        """Wait for a task to complete and return result."""
+        if task_id not in self.pending_responses:
+            raise ValueError(f"Task {task_id} not found")
+
+        try:
+            await asyncio.wait_for(
+                self.pending_responses[task_id].wait(),
+                timeout=timeout
+            )
+            return self.responses.get(task_id)
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Task {task_id} timed out after {timeout}s")
+        finally:
+            # Cleanup
+            self.pending_responses.pop(task_id, None)
+            self.responses.pop(task_id, None)
+
+    def get_status(self) -> dict:
+        """Get hub status."""
+        return {
+            "agents": {
+                agent_id: {
+                    "capabilities": conn.capabilities,
+                    "connected_at": conn.connected_at,
+                }
+                for agent_id, conn in self.agents.items()
+            },
+            "tasks": {
+                task_id: {
+                    "requester": task.requester,
+                    "target": task.target,
+                    "action": task.action,
+                    "status": task.status,
+                    "created_at": task.created_at,
+                }
+                for task_id, task in self.tasks.items()
+            },
+        }
 
 
-# Global hub
-_hub = CollaborationHub()
+# Global hub instance
+_hub: Optional[CollaborationHub] = None
 
 
 def get_hub() -> CollaborationHub:
-    """Get the global collaboration hub."""
+    """Get or create the global collaboration hub."""
+    global _hub
+    if _hub is None:
+        _hub = CollaborationHub()
     return _hub
