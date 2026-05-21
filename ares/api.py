@@ -679,7 +679,6 @@ def create_app(
     # Store app state
     app.state.start_time = time.time()
     app.state.websocket_clients = websocket_clients
-    app.state.collab_clients = collab_clients
 
     return app
 
