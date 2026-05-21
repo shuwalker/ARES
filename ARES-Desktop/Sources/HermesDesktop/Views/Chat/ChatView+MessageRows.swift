@@ -278,9 +278,14 @@ struct ToolCallRow: View {
 
                 switch toolCall.status {
                 case .running:
-                    ProgressView()
-                        .controlSize(.mini)
-                        .scaleEffect(0.75)
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .scaleEffect(0.75)
+                        Text("Running")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
 
                 case .done:
                     HStack(spacing: 4) {
@@ -311,8 +316,8 @@ struct ToolCallRow: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
 
-            // Expanded detail
-            if isExpanded && toolCall.status == .done {
+            // Expanded detail — visible while running (auto-expanded) or when user toggles done calls
+            if isExpanded || toolCall.status == .running {
                 VStack(alignment: .leading, spacing: 4) {
                     if !toolCall.input.isEmpty {
                         Group {
@@ -332,7 +337,7 @@ struct ToolCallRow: View {
                         }
                     }
 
-                    if let output = toolCall.output, !output.isEmpty {
+                    if toolCall.status == .done, let output = toolCall.output, !output.isEmpty {
                         Group {
                             Text("Output")
                                 .font(.system(size: 10, weight: .semibold))
@@ -358,6 +363,11 @@ struct ToolCallRow: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        }
+        .onAppear {
+            if toolCall.status == .running {
+                isExpanded = true
+            }
         }
     }
 }

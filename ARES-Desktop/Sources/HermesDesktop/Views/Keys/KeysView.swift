@@ -170,7 +170,7 @@ struct KeysView: View {
 
     private func loadEnv() async {
         guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
-            errorMessage = "Keys management requires a local Hermes connection or an active SSH tunnel."
+            errorMessage = "Keys management requires an active connection."
             return
         }
 

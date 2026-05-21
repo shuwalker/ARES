@@ -90,7 +90,7 @@ struct MCPView: View {
             ContentUnavailableView(
                 L10n.string("Dashboard API Unavailable"),
                 systemImage: "server.rack",
-                description: Text(L10n.string("MCP server management requires a local Hermes connection or an active SSH tunnel."))
+                description: Text(L10n.string("MCP server management requires an active connection."))
             )
             .frame(maxWidth: .infinity, minHeight: 300)
         }

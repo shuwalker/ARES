@@ -103,7 +103,7 @@ struct JobsView: View {
             ContentUnavailableView(
                 L10n.string("Dashboard API Unavailable"),
                 systemImage: "clock.badge.checkmark",
-                description: Text(L10n.string("Jobs management requires a local Hermes connection or an active SSH tunnel."))
+                description: Text(L10n.string("Jobs management requires an active connection."))
             )
             .frame(maxWidth: .infinity, minHeight: 300)
         }

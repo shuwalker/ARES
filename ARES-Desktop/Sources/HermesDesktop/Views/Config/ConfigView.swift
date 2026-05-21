@@ -297,7 +297,7 @@ struct ConfigView: View {
 
     private func loadConfig() async {
         guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
-            errorMessage = "Config editing requires a local Hermes connection or an active SSH tunnel."
+            errorMessage = "Config editing requires an active connection."
             return
         }
 

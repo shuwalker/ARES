@@ -326,6 +326,14 @@ final class AppState: ObservableObject {
 
         self.activeConnectionID = connectionStore.lastConnectionID
 
+        if let lastID = activeConnectionID,
+           let profile = connectionStore.connections.first(where: { $0.id == lastID }) {
+            // Auto-reconnect the tunnel / direct HTTP on launch without switching sections
+            Task {
+                await startTunnelIfNeeded(for: profile)
+            }
+        }
+
         if activeConnectionID != nil {
             selectedSection = .overview
         }

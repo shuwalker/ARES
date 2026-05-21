@@ -7,13 +7,26 @@ struct TerminalView: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        if appState.dashboardAPIAvailable, let port = appState.tunnelService.localPort {
-            TerminalWebView(baseURL: URL(string: "http://localhost:\(port)")!)
+        if appState.dashboardAPIAvailable,
+           let port = appState.tunnelService.localPort {
+            TerminalWebView(
+                baseURL: URL(string: "http://localhost:\(port)")!,
+                sessionToken: appState.dashboardAPIService.sessionToken
+            )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let connection = appState.activeConnection,
+                  connection.transportMode == .directHTTP {
+            TerminalWebView(
+                baseURL: connection.directHTTPBaseURL,
+                sessionToken: appState.dashboardAPIService.sessionToken
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if appState.activeConnection?.transportKind == .local,
                   let connection = appState.activeConnection {
-            // Local transport: talk to the dashboard API at the connection's dashboard URL
-            TerminalWebView(baseURL: connection.dashboardURL)
+            TerminalWebView(
+                baseURL: connection.dashboardURL,
+                sessionToken: appState.dashboardAPIService.sessionToken
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ContentUnavailableView(
@@ -31,48 +44,56 @@ struct TerminalView: View {
 
 struct TerminalWebView: NSViewRepresentable {
     let baseURL: URL
+    let sessionToken: String?
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        // Allow the web content to make requests back to the same origin
         configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        // Transparent background so the macOS window background shows until the page loads
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = context.coordinator
 
-        webView.loadHTMLString(terminalHTML(baseURL: baseURL), baseURL: baseURL)
+        webView.loadHTMLString(terminalHTML(baseURL: baseURL, sessionToken: sessionToken), baseURL: baseURL)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Re-load only when baseURL changes (coordinator tracks this)
-        if context.coordinator.lastBaseURL != baseURL {
+        if context.coordinator.lastBaseURL != baseURL || context.coordinator.lastToken != sessionToken {
             context.coordinator.lastBaseURL = baseURL
-            webView.loadHTMLString(terminalHTML(baseURL: baseURL), baseURL: baseURL)
+            context.coordinator.lastToken = sessionToken
+            webView.loadHTMLString(terminalHTML(baseURL: baseURL, sessionToken: sessionToken), baseURL: baseURL)
         }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(baseURL: baseURL)
+        Coordinator(baseURL: baseURL, sessionToken: sessionToken)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastBaseURL: URL
+        var lastToken: String?
 
-        init(baseURL: URL) {
+        init(baseURL: URL, sessionToken: String?) {
             self.lastBaseURL = baseURL
+            self.lastToken = sessionToken
         }
     }
 }
 
 // MARK: - HTML generation
 
-private func terminalHTML(baseURL: URL) -> String {
+private func terminalHTML(baseURL: URL, sessionToken: String?) -> String {
     let base = baseURL.absoluteString.hasSuffix("/")
         ? String(baseURL.absoluteString.dropLast())
         : baseURL.absoluteString
+
+    let jsToken: String
+    if let token = sessionToken, !token.isEmpty {
+        jsToken = "var SESSION_TOKEN = \"\(token)\";"
+    } else {
+        jsToken = "var SESSION_TOKEN = null;"
+    }
 
     // NOTE: backtick characters inside a Swift multiline string literal are fine;
     // only \( must be escaped as \( for Swift interpolation. JavaScript template
@@ -180,6 +201,18 @@ private func terminalHTML(baseURL: URL) -> String {
           'use strict';
 
           var BASE_URL = '\(base)';
+          \(jsToken)
+
+          // Helper: wraps fetch with auth header when token is available
+          function authFetch(url, options) {
+            options = options || {};
+            var headers = options.headers || {};
+            if (SESSION_TOKEN) {
+              headers['X-Hermes-Session-Token'] = SESSION_TOKEN;
+            }
+            options.headers = headers;
+            return fetch(url, options);
+          }
           var sessionId = null;
           var term = null;
           var fitAddon = null;
@@ -218,7 +251,7 @@ private func terminalHTML(baseURL: URL) -> String {
             // Keystroke input
             term.onData(function (data) {
               if (!sessionId) return;
-              fetch(BASE_URL + '/api/terminal-input', {
+              authFetch(BASE_URL + '/api/terminal-input', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sessionId: sessionId, data: data })
@@ -244,7 +277,7 @@ private func terminalHTML(baseURL: URL) -> String {
             var resizeObserver = new ResizeObserver(function () {
               fitAddon.fit();
               if (sessionId) {
-                fetch(BASE_URL + '/api/terminal-resize', {
+                authFetch(BASE_URL + '/api/terminal-resize', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -266,7 +299,7 @@ private func terminalHTML(baseURL: URL) -> String {
           function connectStream() {
             term.write('\\x1b[33mConnecting to terminal…\\x1b[0m\\r\\n');
 
-            fetch(BASE_URL + '/api/terminal-stream', {
+            authFetch(BASE_URL + '/api/terminal-stream', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ cols: term.cols, rows: term.rows })
@@ -332,7 +365,7 @@ private func terminalHTML(baseURL: URL) -> String {
             overlay.classList.add('visible');
             debugBtn.disabled = true;
 
-            fetch(BASE_URL + '/api/debug-analyze', {
+            authFetch(BASE_URL + '/api/debug-analyze', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ output: recentLines })

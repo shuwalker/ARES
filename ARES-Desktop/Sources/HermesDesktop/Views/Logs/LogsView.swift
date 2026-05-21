@@ -173,7 +173,7 @@ struct LogsView: View {
 
     private func loadLogs() async {
         guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
-            errorMessage = "Logs require a local Hermes connection or an active SSH tunnel."
+            errorMessage = "Logs require an active connection."
             return
         }
 

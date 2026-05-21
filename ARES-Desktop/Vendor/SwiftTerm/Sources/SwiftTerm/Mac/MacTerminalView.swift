@@ -38,7 +38,7 @@ import MetalKit
  * Use the `configureNativeColors()` to set the defaults colors for the view to match the OS
  * defaults, otherwise, this uses its own set of defaults colors.
  */
-open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, TerminalDelegate {
+@preconcurrency open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, TerminalDelegate {
 #if canImport(MetalKit)
     // Default to throttling Metal redraws during live-resize; set SWIFTTERM_METAL_LIVE_RESIZE_THROTTLE=0 to disable.
     private static let metalLiveResizeThrottleEnabled: Bool = {

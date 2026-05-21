@@ -193,7 +193,7 @@ private enum WorkerKind {
     case working, idle, sleeping
 
     init(_ w: SwarmWorker) {
-        switch w.status.lowercased() {
+        switch w.status.rawValue.lowercased() {
         case "active", "running", "error": self = .working
         case "offline":                    self = .sleeping
         default:                           self = .idle
@@ -202,7 +202,7 @@ private enum WorkerKind {
 }
 
 private func agentColor(_ w: SwarmWorker) -> Color {
-    switch w.status.lowercased() {
+    switch w.status.rawValue.lowercased() {
     case "active", "running": return Color(hue: Double(abs(w.id.hashValue) % 6) / 6.0, saturation: 0.7, brightness: 0.8)
     case "error":             return .red
     case "offline":           return Color(white: 0.45)
@@ -277,7 +277,7 @@ private struct OfficeRenderer {
     }
 
     private func drawDesk(_ ctx: GraphicsContext, x: CGFloat, y: CGFloat, worker: SwarmWorker) {
-        let isError = worker.status.lowercased() == "error"
+        let isError = worker.status.rawValue.lowercased() == "error"
 
         // Desk surface
         ctx.fill(rect(x, y, px * 22, px * 3),
@@ -320,7 +320,7 @@ private struct OfficeRenderer {
 
     private func drawSeatedAgent(_ ctx: GraphicsContext, deskX: CGFloat, deskY: CGFloat, worker: SwarmWorker) {
         let color = agentColor(worker)
-        let isError = worker.status.lowercased() == "error"
+        let isError = worker.status.rawValue.lowercased() == "error"
 
         // Agent sits just in front of desk; chair seat at deskY + px*4
         let ax = deskX + px * 8

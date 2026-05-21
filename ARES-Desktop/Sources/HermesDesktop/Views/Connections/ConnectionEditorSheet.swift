@@ -56,7 +56,7 @@ struct ConnectionEditorSheet: View {
                         HermesInsetSurface {
                             HStack(spacing: 10) {
                                 Image(systemName: "info.circle")
-                                    .foregroundStyle(.accentColor)
+                                    .foregroundStyle(Color.accentColor)
                                 Text(L10n.string("Connection details filled from invite code. Add your SSH credentials to connect."))
                                     .font(.subheadline)
                                     .foregroundStyle(.primary)

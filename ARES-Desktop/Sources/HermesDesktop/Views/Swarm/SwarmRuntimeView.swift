@@ -73,9 +73,11 @@ struct SwarmRuntimeView: View {
 
     private func workerStatusColor(_ worker: SwarmWorker) -> Color {
         switch worker.status {
-        case "active": return .green
-        case "idle": return .yellow
-        default: return Color.secondary.opacity(0.4)
+        case .active: return .green
+        case .idle: return .yellow
+        case .running: return .blue
+        case .error: return .red
+        case .offline: return Color.secondary.opacity(0.4)
         }
     }
 }

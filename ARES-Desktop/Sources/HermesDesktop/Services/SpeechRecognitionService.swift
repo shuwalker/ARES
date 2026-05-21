@@ -64,21 +64,8 @@ final class SpeechRecognitionService: NSObject, ObservableObject, @unchecked Sen
         // Reset any previous task
         stopRecording()
 
-        // Register for audio session interruptions (e.g. phone call, other app taking mic)
-        interruptionObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let userInfo = notification.userInfo,
-                  let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-            if type == .began {
-                Task { @MainActor [weak self] in
-                    self?.stopRecording()
-                }
-            }
-        }
+        // AVAudioSession interruption notification is iOS-only; on macOS we skip it.
+        // Interruptions on macOS are handled by the audio engine stopping naturally.
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true

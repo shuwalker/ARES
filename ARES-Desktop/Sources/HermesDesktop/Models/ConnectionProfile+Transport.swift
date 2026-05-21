@@ -2,7 +2,8 @@ import Foundation
 
 extension ConnectionProfile {
     var transportKind: TransportKind {
-        sshHost.isEmpty && sshAlias.isEmpty ? .local : .ssh
+        if transportMode == .directHTTP { return .local }
+        return sshHost.isEmpty && sshAlias.isEmpty ? .local : .ssh
     }
 
     var httpBaseURL: URL {

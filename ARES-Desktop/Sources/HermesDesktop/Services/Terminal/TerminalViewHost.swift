@@ -2,10 +2,9 @@ import AppKit
 import Foundation
 @preconcurrency import SwiftTerm
 
-@MainActor
-final class TerminalViewHost: NSObject, LocalProcessTerminalViewDelegate {
+final class TerminalViewHost: NSObject, @preconcurrency LocalProcessTerminalViewDelegate {
     private static let bracketedPasteReadinessTimeout: TimeInterval = 60
-    private let hostView = TerminalHostView()
+    private lazy var hostView: TerminalHostView = TerminalHostView()
     private var startedLaunchToken: UUID?
     private var scheduledLaunchToken: UUID?
     private var initialInputTask: Task<Void, Never>?
@@ -48,25 +47,31 @@ final class TerminalViewHost: NSObject, LocalProcessTerminalViewDelegate {
         container.unmountHostedView()
     }
 
-    nonisolated func terminate() {
-        performSelector(onMainThread: #selector(terminateOnMainThread), with: nil, waitUntilDone: false)
+    func terminate() {
+        scheduledLaunchToken = nil
+        startedLaunchToken = nil
+        initialInputTask?.cancel()
+        initialInputTask = nil
+        hostView.terminalView.terminate()
     }
 
-    nonisolated func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+    // MARK: - LocalProcessTerminalViewDelegate
 
-    nonisolated func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+
+    func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
         Task { @MainActor [weak self] in
             self?.onTitleChange?(title)
         }
     }
 
-    nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+    func hostCurrentDirectoryUpdate(source: AnyObject, directory: String?) {
         Task { @MainActor [weak self] in
             self?.onDirectoryChange?(directory)
         }
     }
 
-    nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {
+    func processTerminated(source: AnyObject, exitCode: Int32?) {
         Task { @MainActor [weak self] in
             self?.onProcessExit?(exitCode)
         }
@@ -119,20 +124,10 @@ final class TerminalViewHost: NSObject, LocalProcessTerminalViewDelegate {
     private func setActive(_ isActive: Bool) {
         hostView.isHidden = !isActive
         if !isActive {
-            hostView.window?.makeFirstResponder(nil)
+            hostView.window?.makeFirstResponder(nil as NSResponder?)
         } else {
             hostView.window?.makeFirstResponder(hostView.terminalView)
         }
-    }
-
-    @MainActor
-    @objc
-    private func terminateOnMainThread() {
-        scheduledLaunchToken = nil
-        startedLaunchToken = nil
-        initialInputTask?.cancel()
-        initialInputTask = nil
-        hostView.terminalView.terminate()
     }
 
     private func deliverInitialInputIfNeeded(for request: TerminalLaunchRequest) {
@@ -218,7 +213,6 @@ final class TerminalViewHost: NSObject, LocalProcessTerminalViewDelegate {
             }
 
             self.hostView.submit(initialInput)
-            hostView.submit(initialInput)
         }
     }
 }

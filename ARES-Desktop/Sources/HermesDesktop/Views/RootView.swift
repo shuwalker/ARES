@@ -33,6 +33,21 @@ struct RootView: View {
         defaultPrimaryWidth: workbenchPrimaryColumnWidth
     )
 
+    /// Tracks which section groups are expanded in the sidebar.
+    @State private var collapsedGroups: Set<SectionGroup> = []
+
+    private func groupBinding(for group: SectionGroup) -> Binding<Bool> {
+        Binding {
+            !collapsedGroups.contains(group)
+        } set: { expanded in
+            if expanded {
+                collapsedGroups.remove(group)
+            } else {
+                collapsedGroups.insert(group)
+            }
+        }
+    }
+
     var body: some View {
         rootContent
             .toolbar {
@@ -196,10 +211,14 @@ struct RootView: View {
                     }
                 }
 
-                Section(L10n.string("Sections")) {
-                    ForEach(availableSections) { section in
-                        SidebarSectionRow(section: section)
-                            .tag(section)
+                ForEach(SectionGroup.allCases) { group in
+                    Section(isExpanded: groupBinding(for: group)) {
+                        ForEach(SectionGroup.sections(in: group)) { section in
+                            GroupedSidebarRow(section: section)
+                                .tag(section)
+                        }
+                    } header: {
+                        GroupHeaderView(group: group, isExpanded: groupBinding(for: group))
                     }
                 }
             }
@@ -270,13 +289,6 @@ struct RootView: View {
     private func ensureWorkspaceSidebarVisibleForCurrentSection() {
         guard !isWorkspaceSidebarCollapseEnabled, isWorkspaceSidebarCollapsed else { return }
         workspaceSidebarSplitLayout.wrappedValue.isPrimaryCollapsed = false
-    }
-
-    private var availableSections: [AppSection] {
-        if appState.activeConnection == nil {
-            return [.connections]
-        }
-        return [.connections, .overview, .sessions, .workflows, .cronjobs, .kanban, .swarm, .conductor, .operations, .crewStatus, .files, .usage, .analytics, .jobs, .mcp, .skills, .config, .logs, .models, .keys, .profiles, .terminal, .avatar, .plugins, .docs, .chat, .memory, .soul, .tools, .office]
     }
 
     private var sectionSelection: Binding<AppSection?> {
@@ -468,23 +480,66 @@ private struct UpdateAvailableSheet: View {
     }
 }
 
-private struct SidebarSectionRow: View {
+private struct GroupedSidebarRow: View {
     let section: AppSection
 
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: section.systemImage)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(section.status == .comingSoon ? .tertiary : .secondary)
                 .frame(width: 18)
 
             Text(section.title)
                 .font(.body)
                 .lineLimit(1)
+                .foregroundStyle(section.status == .comingSoon ? .secondary : .primary)
+
+            if section.status == .comingSoon {
+                Spacer(minLength: 4)
+                Text("Soon")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
+            }
         }
         .padding(.vertical, 1)
-        .help(section.title)
+        .help(section.status == .comingSoon ? "\(section.title) — Coming soon" : section.title)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct GroupHeaderView: View {
+    let group: SectionGroup
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: group.systemImage)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                Text(group.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isExpanded ? [] : .isHeader)
     }
 }
 

@@ -182,14 +182,13 @@ struct ConnectionHealthView: View {
         }
 
         let tunnelPort = appState.tunnelService.localPort
-        let hasTunnel = tunnelPort != nil
         let hasConnection = appState.activeConnection != nil
 
         // 1. SSH Reachability
         setStatus(for: "ssh_reachability", status: runSSHReachabilityCheck())
 
         // 2. Dashboard API
-        setStatus(for: "dashboard_api", status: await runDashboardAPICheck(hasTunnel: hasTunnel))
+        setStatus(for: "dashboard_api", status: await runDashboardAPICheck())
 
         // 3. Port 9119 Tunnel
         setStatus(for: "port_tunnel", status: runTunnelCheck(tunnelPort: tunnelPort))
@@ -199,7 +198,7 @@ struct ConnectionHealthView: View {
 
         // 5. Disk Space — parsed from /api/status response
         // 6. Hermes Version — parsed from /api/status response
-        let (diskStatus, versionStatus) = await runStatusChecks(hasTunnel: hasTunnel)
+        let (diskStatus, versionStatus) = await runStatusChecks()
         setStatus(for: "disk_space", status: diskStatus)
         setStatus(for: "hermes_version", status: versionStatus)
     }
@@ -214,21 +213,23 @@ struct ConnectionHealthView: View {
         guard let connection = appState.activeConnection else {
             return .fail(L10n.string("No active connection"))
         }
-        // Use the effective SSH target to determine reachability
+        // For local/directHTTP, there's no SSH target — that's expected
+        if connection.transportMode == .directHTTP || connection.transportKind == .local {
+            return .pass(L10n.string("Direct HTTP (no SSH needed)"))
+        }
         let target = connection.effectiveTarget
         if target.isEmpty {
             return .fail(L10n.string("No SSH target configured"))
         }
-        // If we have an active connection record, consider SSH reachable if we got this far
         if appState.activeConnectionID != nil {
             return .pass(L10n.string("Host: %@", target))
         }
         return .warn(L10n.string("Not connected to %@", target))
     }
 
-    private func runDashboardAPICheck(hasTunnel: Bool) async -> HealthStatus {
-        guard hasTunnel else {
-            return .warn(L10n.string("Requires tunnel connection"))
+    private func runDashboardAPICheck() async -> HealthStatus {
+        guard appState.dashboardAPIAvailable else {
+            return .warn(L10n.string("Connection not ready"))
         }
         do {
             let status = try await appState.dashboardAPIService.fetchStatus()
@@ -269,11 +270,11 @@ struct ConnectionHealthView: View {
         }
     }
 
-    private func runStatusChecks(hasTunnel: Bool) async -> (HealthStatus, HealthStatus) {
-        guard hasTunnel else {
+    private func runStatusChecks() async -> (HealthStatus, HealthStatus) {
+        guard appState.dashboardAPIAvailable else {
             return (
-                .warn(L10n.string("Requires tunnel connection")),
-                .warn(L10n.string("Requires tunnel connection"))
+                .warn(L10n.string("Connection not ready")),
+                .warn(L10n.string("Connection not ready"))
             )
         }
         do {

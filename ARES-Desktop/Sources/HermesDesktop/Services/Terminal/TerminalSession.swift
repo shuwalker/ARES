@@ -50,7 +50,11 @@ final class TerminalSession: ObservableObject, @unchecked Sendable {
     }
 
     deinit {
-        viewHost.terminate()
+        // viewHost is @MainActor; deinit is nonisolated. Since TerminalSession
+        // is @MainActor itself, deinit always runs on the main thread.
+        MainActor.assumeIsolated {
+            viewHost.terminate()
+        }
     }
 
     func markStarted() {

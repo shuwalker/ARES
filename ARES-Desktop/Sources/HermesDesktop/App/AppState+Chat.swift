@@ -7,7 +7,21 @@ extension AppState {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isStreamingChat else { return }
 
-        let baseURL = dashboardAPIService.baseURL
+        guard let connection = activeConnection else {
+            chatError = "No active connection. Select a connection in the Connections tab first."
+            return
+        }
+
+        let baseURL: URL
+        if connection.transportMode == .directHTTP {
+            let host = connection.sshHost.isEmpty ? "localhost" : connection.sshHost
+            baseURL = URL(string: "http://\(host):8642")!
+        } else if connection.transportKind == .local {
+            baseURL = URL(string: "http://localhost:8642")!
+        } else {
+            chatError = "Chat requires a local or direct HTTP connection."
+            return
+        }
 
         chatError = nil
         isStreamingChat = true

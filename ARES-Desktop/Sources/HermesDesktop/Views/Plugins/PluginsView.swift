@@ -295,7 +295,7 @@ struct PluginsView: View {
 
     private func loadPlugins() async {
         guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
-            errorMessage = L10n.string("Plugin management requires a local Hermes connection or an active SSH tunnel.")
+            errorMessage = L10n.string("Plugin management requires an active connection.")
             return
         }
 

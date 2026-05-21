@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ARES Deck</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #222;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 48px;
+  }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+  #statusDot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #333; transition: background 0.3s;
+  }
+  #statusDot.online { background: #0f0; box-shadow: 0 0 8px #0f0; }
+  #statusDot.error { background: #f44; box-shadow: 0 0 8px #f44; }
+
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    align-content: start;
+  }
+  .btn {
+    position: relative;
+    border: none;
+    border-radius: 16px;
+    padding: 20px 12px;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn .icon { font-size: 36px; line-height: 1; }
+  .btn .label { text-align: center; line-height: 1.2; }
+  .btn .spinner {
+    display: none;
+    width: 24px; height: 24px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .btn.running .icon { display: none; }
+  .btn.running .spinner { display: block; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Colors */
+  .blue   { background: linear-gradient(135deg, #0066cc, #004499); }
+  .green  { background: linear-gradient(135deg, #00aa44, #007733); }
+  .red    { background: linear-gradient(135deg, #cc2200, #991100); }
+  .purple { background: linear-gradient(135deg, #8833cc, #6622aa); }
+  .orange { background: linear-gradient(135deg, #dd7700, #bb5500); }
+  .cyan   { background: linear-gradient(135deg, #00aabb, #008899); }
+  .gray   { background: linear-gradient(135deg, #555, #333); }
+  .yellow { background: linear-gradient(135deg, #ccaa00, #998800); color: #111; }
+
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #222;
+    color: #fff;
+    padding: 14px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0;
+    transition: all 0.3s ease;
+    z-index: 1000;
+    max-width: 90vw;
+    text-align: center;
+    border: 1px solid #444;
+  }
+  #toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+  #toast.success { border-color: #0f0; background: #052; }
+  #toast.error  { border-color: #f44; background: #522; }
+
+  .output-panel {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    max-height: 50vh;
+    background: #111;
+    border-top: 2px solid #333;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+  }
+  .output-panel.open { transform: translateY(0); }
+  .output-header {
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #222;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .output-header button {
+    background: #333; border: none; color: #fff;
+    padding: 6px 14px; border-radius: 8px;
+    font-size: 13px; cursor: pointer;
+  }
+  #outputBody {
+    flex: 1;
+    overflow: auto;
+    padding: 12px 16px;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #ccc;
+  }
+  #outputBody .stdout { color: #ccc; }
+  #outputBody .stderr { color: #f88; }
+
+  @media (min-width: 800px) {
+    main { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>ARES Deck</h1>
+    <div id="statusDot"></div>
+  </header>
+  <main id="grid"></main>
+  <div id="toast"></div>
+  <div class="output-panel" id="outputPanel">
+    <div class="output-header">
+      <span id="outputTitle">Output</span>
+      <button onclick="closeOutput()">Close</button>
+    </div>
+    <div id="outputBody"></div>
+  </div>
+
+<script>
+  const API = window.location.origin;
+
+  const BUTTONS = [
+    { id: "build-debug",  icon: "🔨", label: "Build ARES Debug",   color: "blue",   cmd: "swift_build_debug" },
+    { id: "build-rel",    icon: "📦", label: "Build ARES Release", color: "purple", cmd: "swift_build_release" },
+    { id: "deploy",       icon: "🚀", label: "Deploy to Apps",     color: "green",  cmd: "deploy_ares" },
+    { id: "hermes-up",    icon: "▶️", label: "Start Hermes",       color: "green",  cmd: "start_hermes" },
+    { id: "hermes-down",  icon: "⏹️", label: "Kill Hermes",        color: "red",    cmd: "kill_hermes" },
+    { id: "ares-kill",    icon: "💀", label: "Kill ARES App",      color: "red",    cmd: "kill_ares" },
+    { id: "ares-relaunch",icon: "🔄", label: "Relaunch ARES",      color: "orange", cmd: "relaunch_ares" },
+    { id: "health",       icon: "❤️", label: "Health Check",       color: "cyan",   cmd: "health_check" },
+    { id: "git-status",   icon: "📋", label: "Git Status",         color: "gray",   cmd: "git_status" },
+    { id: "clean-build",  icon: "🧹", label: "Clean Build",        color: "yellow", cmd: "clean_build" },
+    { id: "tail-logs",    icon: "📜", label: "Tail Logs 50",       color: "gray",   cmd: "tail_logs" },
+    { id: "disk-space",   icon: "💾", label: "Disk Space",         color: "blue",   cmd: "disk_space" },
+  ];
+
+  function renderGrid() {
+    const grid = document.getElementById('grid');
+    grid.innerHTML = BUTTONS.map(b => `
+      <button class="btn ${b.color}" id="btn-${b.id}" onclick="run('${b.id}')">
+        <span class="icon">${b.icon}</span>
+        <div class="spinner"></div>
+        <span class="label">${b.label}</span>
+      </button>
+    `).join('');
+  }
+
+  async function run(id) {
+    const btn = document.getElementById(`btn-${id}`);
+    const cfg = BUTTONS.find(b => b.id === id);
+    if (!btn || !cfg) return;
+    if (btn.disabled) return;
+
+    btn.disabled = true;
+    btn.classList.add('running');
+
+    try {
+      const res = await fetch(`${API}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cfg.cmd })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        toast(`${cfg.label}: OK`, 'success');
+      } else {
+        toast(`${cfg.label}: FAIL`, 'error');
+      }
+
+      if (data.stdout || data.stderr) {
+        showOutput(cfg.label, data.stdout || '', data.stderr || '');
+      }
+    } catch (e) {
+      toast(`${cfg.label}: ERR — ${e.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('running');
+    }
+  }
+
+  function toast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = type ? `show ${type}` : 'show';
+    setTimeout(() => t.className = '', 3000);
+  }
+
+  function showOutput(title, stdout, stderr) {
+    document.getElementById('outputTitle').textContent = title;
+    const body = document.getElementById('outputBody');
+    body.innerHTML = '';
+    if (stdout) body.innerHTML += `<div class="stdout">${esc(stdout)}</div>`;
+    if (stderr) body.innerHTML += `<div class="stderr">${esc(stderr)}</div>`;
+    document.getElementById('outputPanel').classList.add('open');
+  }
+
+  function closeOutput() {
+    document.getElementById('outputPanel').classList.remove('open');
+  }
+
+  function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  async function checkStatus() {
+    try {
+      const res = await fetch(`${API}/api/status`, { method: 'GET' });
+      const dot = document.getElementById('statusDot');
+      if (res.ok) {
+        dot.className = 'online';
+      } else {
+        dot.className = 'error';
+      }
+    } catch {
+      document.getElementById('statusDot').className = 'error';
+    }
+  }
+
+  renderGrid();
+  checkStatus();
+  setInterval(checkStatus, 10000);
+</script>
+</body>
+</html>

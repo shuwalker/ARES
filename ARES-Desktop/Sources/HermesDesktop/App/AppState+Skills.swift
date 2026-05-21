@@ -172,7 +172,14 @@ extension AppState {
         }
 
         let previousSelectedWorkflowID = selectedWorkflowID
-        workflows = connectionStore.workflows(for: profile.workspaceScopeFingerprint)
+        var loadedWorkflows = connectionStore.workflows(for: profile.workspaceScopeFingerprint)
+        if loadedWorkflows.isEmpty {
+            // Seed default workflows for first-time use
+            let defaults = seedDefaultWorkflows(for: profile.workspaceScopeFingerprint)
+            for w in defaults { connectionStore.upsertWorkflow(w) }
+            loadedWorkflows = defaults
+        }
+        workflows = loadedWorkflows
 
         guard reset else { return }
 
@@ -182,6 +189,41 @@ extension AppState {
         } else {
             selectedWorkflowID = workflows.first?.id
         }
+    }
+
+    private func seedDefaultWorkflows(for fingerprint: String) -> [WorkflowPreset] {
+        [
+            WorkflowPreset(
+                workspaceScopeFingerprint: fingerprint,
+                name: "Research & Summarize",
+                prompt: "Research the following topic thoroughly. Search the web, read sources, and produce a concise summary with key findings, citations, and actionable takeaways. Topic:",
+                assignedSkills: []
+            ),
+            WorkflowPreset(
+                workspaceScopeFingerprint: fingerprint,
+                name: "Code Review",
+                prompt: "Review the provided code for bugs, security issues, performance problems, and style violations. Give specific line-by-line feedback with suggested fixes. Code:",
+                assignedSkills: []
+            ),
+            WorkflowPreset(
+                workspaceScopeFingerprint: fingerprint,
+                name: "Content Creation",
+                prompt: "Draft a blog post or video script based on the following outline. Write in an engaging, first-principles style. Target audience: technical builders and founders. Outline:",
+                assignedSkills: []
+            ),
+            WorkflowPreset(
+                workspaceScopeFingerprint: fingerprint,
+                name: "System Debug",
+                prompt: "Analyze the following logs, errors, or system output. Identify root causes, suggest fixes, and recommend preventive measures. Output:",
+                assignedSkills: []
+            ),
+            WorkflowPreset(
+                workspaceScopeFingerprint: fingerprint,
+                name: "Plan & Execute",
+                prompt: "Break the following goal into actionable steps, estimate effort, identify risks, and produce a checklist-style execution plan. Goal:",
+                assignedSkills: []
+            )
+        ]
     }
 
     func createWorkflow(_ draft: WorkflowDraft) -> Bool {

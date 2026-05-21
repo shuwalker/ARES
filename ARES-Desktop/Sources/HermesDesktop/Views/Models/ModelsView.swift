@@ -277,7 +277,7 @@ struct ModelsView: View {
 
     private func loadModels() async {
         guard appState.activeConnection != nil, appState.dashboardAPIAvailable else {
-            errorMessage = "Models management requires a local Hermes connection or an active SSH tunnel."
+            errorMessage = "Models management requires an active connection."
             return
         }
 

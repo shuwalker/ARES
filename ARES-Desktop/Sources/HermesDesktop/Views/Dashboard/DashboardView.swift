@@ -52,7 +52,7 @@ struct DashboardView: View {
                 ContentUnavailableView(
                     "Dashboard Analytics Unavailable",
                     systemImage: "chart.bar.xaxis",
-                    description: Text("Analytics requires a local Hermes connection or an active SSH tunnel.")
+                    description: Text("Analytics requires an active connection.")
                 )
                 .frame(maxWidth: .infinity, minHeight: 320)
             }
