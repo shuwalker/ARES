@@ -165,7 +165,7 @@ def _register_launchd() -> None:
     ares_bin = sys.argv[0]
     log_dir = ares_paths()["logs"]
     cfg = get_config()
-    key = cfg.llm.cloud_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     content = LAUNCHD_PLIST_TEMPLATE.format(
         ares_bin=ares_bin,
@@ -808,9 +808,9 @@ def doctor() -> None:
     console.print(f"  {cfg_file}: {cfg_marker}")
 
     # Daemon socket
-    sock_path = ares_base / "ares.sock"
+    sock_path = paths["socket"]
     console.print(f"\n[bold]Daemon[/bold]")
-    console.print(f"  Socket: {'[green]✓[/green]' if sock_path.exists() else '[yellow]not running[/yellow]'}")
+    console.print(f"  Socket: {'[green]✓[/green]' if os.path.exists(sock_path) else '[yellow]not running[/yellow]'}")
 
 
 # ---------------------------------------------------------------------------
