@@ -58,6 +58,7 @@ extension AppState {
         ))
 
         let budgetTokens = thinkingLevel.budgetTokens
+        let key = connection.apiKey
         do {
             _ = try await hermesChatService.streamMessage(
                 trimmed,
@@ -65,6 +66,7 @@ extension AppState {
                 baseURL: baseURL,
                 thinkingBudgetTokens: budgetTokens,
                 fastMode: fastMode,
+                apiKey: key,
                 onChunk: { [weak self] delta in
                     Task { @MainActor [weak self] in
                         guard let self else { return }

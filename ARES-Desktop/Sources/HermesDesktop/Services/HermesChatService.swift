@@ -17,6 +17,7 @@ final class HermesChatService: @unchecked Sendable {
         baseURL: URL,
         thinkingBudgetTokens: Int? = nil,
         fastMode: Bool = false,
+        apiKey: String? = nil,
         onChunk: @escaping @Sendable (String) -> Void,
         onSessionID: @escaping @Sendable (String) -> Void,
         onToolCall: ((@Sendable (ChatToolCall) -> Void)?) = nil,
@@ -27,6 +28,9 @@ final class HermesChatService: @unchecked Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        if let apiKey = apiKey, !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         if fastMode {
             request.setValue("true", forHTTPHeaderField: "X-Fast-Mode")
         }

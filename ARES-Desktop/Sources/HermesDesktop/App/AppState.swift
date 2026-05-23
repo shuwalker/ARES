@@ -292,6 +292,11 @@ final class AppState: ObservableObject {
             workflowLaunchDiagnostics: workflowLaunchDiagnostics
         )
 
+        // Fetch the session token immediately so it's ready when any tab loads
+        Task {
+            try? await dashboardAPIService.ensureSessionToken()
+        }
+
         connectionStore.objectWillChange
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in

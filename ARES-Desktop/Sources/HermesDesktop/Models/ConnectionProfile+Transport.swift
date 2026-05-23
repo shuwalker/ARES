@@ -31,6 +31,6 @@ extension ConnectionProfile {
     }
 
     var apiKey: String? {
-        return nil
+        hermesApiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

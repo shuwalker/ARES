@@ -5,37 +5,63 @@ import WebKit
 
 struct TerminalView: View {
     @EnvironmentObject var appState: AppState
+    @State private var tokenReady = false
+
+    private var loadingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(0.8)
+            Text("Connecting to Hermes…")
+                .font(.body)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
     var body: some View {
-        if appState.dashboardAPIAvailable,
-           let port = appState.tunnelService.localPort {
-            TerminalWebView(
-                baseURL: URL(string: "http://localhost:\(port)")!,
-                sessionToken: appState.dashboardAPIService.sessionToken
-            )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let connection = appState.activeConnection,
-                  connection.transportMode == .directHTTP {
-            TerminalWebView(
-                baseURL: connection.directHTTPBaseURL,
-                sessionToken: appState.dashboardAPIService.sessionToken
-            )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if appState.activeConnection?.transportKind == .local,
-                  let connection = appState.activeConnection {
-            TerminalWebView(
-                baseURL: connection.dashboardURL,
-                sessionToken: appState.dashboardAPIService.sessionToken
-            )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ContentUnavailableView(
-                "Terminal requires a connection",
-                systemImage: "terminal",
-                description: Text(
-                    "Connect to a remote host (or start the local Hermes agent) to use the terminal."
+        Group {
+            if appState.dashboardAPIAvailable,
+               let port = appState.tunnelService.localPort {
+                if tokenReady {
+                    TerminalWebView(
+                        baseURL: URL(string: "http://localhost:\(port)")!,
+                        sessionToken: appState.dashboardAPIService.sessionToken
+                    )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    loadingView
+                }
+            } else if let connection = appState.activeConnection,
+                      connection.transportMode == .directHTTP {
+                if tokenReady {
+                    TerminalWebView(
+                        baseURL: connection.directHTTPBaseURL,
+                        sessionToken: appState.dashboardAPIService.sessionToken
+                    )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    loadingView
+                }
+            } else if appState.activeConnection?.transportKind == .local,
+                      let connection = appState.activeConnection {
+                TerminalWebView(
+                    baseURL: connection.dashboardURL,
+                    sessionToken: appState.dashboardAPIService.sessionToken
                 )
-            )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView(
+                    "Terminal requires a connection",
+                    systemImage: "terminal",
+                    description: Text(
+                        "Connect to a remote host (or start the local Hermes agent) to use the terminal."
+                    )
+                )
+            }
+        }
+        .task {
+            try? await appState.dashboardAPIService.ensureSessionToken()
+            tokenReady = true
         }
     }
 }
@@ -299,11 +325,7 @@ private func terminalHTML(baseURL: URL, sessionToken: String?) -> String {
           function connectStream() {
             term.write('\\x1b[33mConnecting to terminal…\\x1b[0m\\r\\n');
 
-            authFetch(BASE_URL + '/api/terminal-stream', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ cols: term.cols, rows: term.rows })
-            }).then(function (response) {
+            authFetch(BASE_URL + '/api/terminal-stream?' + new URLSearchParams({ cols: term.cols, rows: term.rows }).toString()).then(function (response) {
               if (!response.ok || !response.body) {
                 throw new Error('HTTP ' + response.status);
               }

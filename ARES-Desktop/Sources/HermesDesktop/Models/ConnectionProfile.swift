@@ -17,6 +17,8 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
     var transportMode: TransportMode
     /// Dashboard port used only when transportMode == .directHTTP
     var dashboardPort: Int?
+    /// Hermes API server key for local HTTP connections (maps to JSON "apiKey")
+    var hermesApiKey: String?
     var createdAt: Date
     var updatedAt: Date
     var lastConnectedAt: Date?
@@ -32,6 +34,7 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
         customHermesHomePath: String? = nil,
         transportMode: TransportMode = .sshTunnel,
         dashboardPort: Int? = nil,
+        hermesApiKey: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         lastConnectedAt: Date? = nil
@@ -46,6 +49,7 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
         self.customHermesHomePath = customHermesHomePath
         self.transportMode = transportMode
         self.dashboardPort = dashboardPort
+        self.hermesApiKey = hermesApiKey
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.lastConnectedAt = lastConnectedAt
@@ -236,6 +240,17 @@ struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable {
             return nil
         }
         return sshPort
+    }
+
+    // MARK: - Codable
+
+    enum CodingKeys: String, CodingKey {
+        case id, label
+        case sshAlias, sshHost, sshPort, sshUser
+        case hermesProfile, customHermesHomePath
+        case transportMode, dashboardPort
+        case hermesApiKey = "apiKey"
+        case createdAt, updatedAt, lastConnectedAt
     }
 
     var displayDestination: String {

@@ -39,7 +39,7 @@ final class DashboardAPIService: @unchecked Sendable {
         }
 
         // Extract: window.__HERMES_SESSION_TOKEN__="...value...";
-        let pattern = #"__HERMES_SESSION_TOKEN__=\\"([^"]+)\\""#
+        let pattern = #"__HERMES_SESSION_TOKEN__="([^"]+)""#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
               let tokenRange = Range(match.range(at: 1), in: html) else {
