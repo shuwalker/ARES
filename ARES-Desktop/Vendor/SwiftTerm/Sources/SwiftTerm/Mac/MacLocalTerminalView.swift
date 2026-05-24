@@ -11,7 +11,7 @@ import AppKit
 
 /// Delegate for the ``LocalProcessTerminalView`` class that is used to
 /// notify the user of process-related changes.
-@preconcurrency public protocol LocalProcessTerminalViewDelegate: AnyObject {
+public protocol LocalProcessTerminalViewDelegate: AnyObject {
     /**
      * This method is invoked to notify that the terminal has been resized to the specified number of columns and rows
      * the user interface code might try to adjut the containing scroll view, or if it is a toplevel window, the window itself
@@ -33,14 +33,14 @@ import AppKit
      * - Parameter source: the sending instance
      * - Parameter directory: the new working directory
      */
-    func hostCurrentDirectoryUpdate (source: AnyObject, directory: String?)
+    func hostCurrentDirectoryUpdate (source: TerminalView, directory: String?)
 
     /**
      * This method will be invoked when the child process started by `startProcess` has terminated.
      * - Parameter source: the local process that terminated
      * - Parameter exitCode: the exit code returned by the process, or nil if this was an error caused during the IO reading/writing
      */
-    func processTerminated (source: AnyObject, exitCode: Int32?)
+    func processTerminated (source: TerminalView, exitCode: Int32?)
 }
 
 /**
@@ -120,7 +120,7 @@ open class LocalProcessTerminalView: TerminalView, TerminalViewDelegate, LocalPr
     }
 
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
-        processDelegate?.hostCurrentDirectoryUpdate(source: source as AnyObject, directory: directory)
+        processDelegate?.hostCurrentDirectoryUpdate(source: source, directory: directory)
     }
     
 
@@ -174,7 +174,7 @@ open class LocalProcessTerminalView: TerminalView, TerminalViewDelegate, LocalPr
      * Implements the LocalProcessDelegate method.
      */
     open func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-        processDelegate?.processTerminated(source: self as AnyObject, exitCode: exitCode)
+        processDelegate?.processTerminated(source: self, exitCode: exitCode)
     }
     
     /**

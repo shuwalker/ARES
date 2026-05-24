@@ -15,7 +15,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "Vendor/SwiftTerm")
+        .package(path: "../hermes-desktop/Vendor/SwiftTerm")
     ],
     targets: [
         .executableTarget(
