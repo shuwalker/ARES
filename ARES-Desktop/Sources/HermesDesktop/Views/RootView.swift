@@ -310,20 +310,13 @@ struct RootView: View {
     private var activeDetailContent: some View {
         if appState.activeConnection == nil {
             ConnectionsView()
+        } else if appState.selectedSection == .sessions {
+            SessionsView(
+                splitLayout: $sessionsSplitLayout,
+                isActive: true
+            )
         } else {
-            ZStack {
-                SessionsView(
-                    splitLayout: $sessionsSplitLayout,
-                    isActive: appState.selectedSection == .sessions
-                )
-                .opacity(appState.selectedSection == .sessions ? 1 : 0)
-                .allowsHitTesting(appState.selectedSection == .sessions)
-                .accessibilityHidden(appState.selectedSection != .sessions)
-
-                if appState.selectedSection != .sessions {
-                    nonSessionDetailContent
-                }
-            }
+            nonSessionDetailContent
         }
     }
 

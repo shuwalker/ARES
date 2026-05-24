@@ -60,9 +60,11 @@ These live outside the repo but are part of the operational stack:
 | HyperFrames | `~/hyperframes/` | HTML→MP4 renderer (HeyGen open-source) |
 | HyperDirector | `~/.hermes/skills/hyperdirector` | Hermes skill for video production workflow |
 | ARES Dashboard | `~/hyperframes/ares-dashboard/index.html` | Live status dashboard for the stack |
-| Obsidian KB | `/Volumes/Jenkins_Robotics/03_Knowledge/Obsidian/ARES_Brain/` | Knowledge base, memory vault |
+| Obsidian KB | `/Volumes/Jenkins_Robotics/03_Knowledge/YouTube/` | Pipeline output: video_index + 7-axis entries |
 | NAS | `/Volumes/Jenkins_Robotics/` | Network storage for media, renders, backups |
 | RackPC | `100.85.249.11` (Tailscale) | Homelab server for CI/batch compute |
+| Hermes Self-Reflection | `~/.hermes/skills/hermes-self-reflection/` | Weekly cron skill — reads vault + sessions, writes evolving self-model |
+| SearXNG | Docker `searxng:8080` | Self-hosted search — free, no API keys, no rate limits |
 
 ## Development Setup
 

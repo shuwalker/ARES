@@ -1,0 +1,226 @@
+# ARES Governance Policy: Publishing & Content Distribution
+# Risk profile: HIGH — reputation damage, IP leakage, platform bans, legal liability
+# This policy governs all publishing and content distribution actions on the
+# ARES robotics platform. NO autonomous YouTube uploads, social media posts,
+# or public content distribution is permitted. All publishing requires explicit
+# human approval and review.
+
+version: "1.0"
+name: ares-publishing
+description: >
+  Publishing and content distribution governance for the ARES robotics platform.
+  No autonomous publishing to any public platform. All YouTube uploads, social
+  media posts, blog publications, and content distribution require explicit
+  human approval and content review. Local draft/save/preview operations are
+  permitted for content creation workflows.
+
+rules:
+  # --- BLOCK: All YouTube publishing actions ---
+  - name: block-youtube-upload
+    condition: {field: action, operator: eq, value: youtube_upload}
+    action: deny
+    priority: 100
+    message: "YouTube upload blocked: requires explicit human approval and content review"
+
+  - name: block-youtube-publish
+    condition: {field: action, operator: eq, value: youtube_publish}
+    action: deny
+    priority: 100
+    message: "YouTube publish blocked: requires explicit human approval"
+
+  - name: block-youtube-set-public
+    condition: {field: action, operator: eq, value: youtube_set_public}
+    action: deny
+    priority: 100
+    message: "YouTube visibility change blocked: requires explicit human approval"
+
+  - name: block-youtube-livestream-start
+    condition: {field: action, operator: eq, value: youtube_livestream_start}
+    action: deny
+    priority: 100
+    message: "YouTube livestream blocked: requires explicit human approval"
+
+  - name: block-youtube-comment
+    condition: {field: action, operator: eq, value: youtube_comment}
+    action: deny
+    priority: 100
+    message: "YouTube comment blocked: requires explicit human approval"
+
+  - name: block-youtube-thumbnail-set
+    condition: {field: action, operator: eq, value: youtube_thumbnail_set}
+    action: deny
+    priority: 100
+    message: "YouTube thumbnail set blocked: requires explicit human approval"
+
+  - name: block-youtube-playlist-modify
+    condition: {field: action, operator: eq, value: youtube_playlist_modify}
+    action: deny
+    priority: 100
+    message: "YouTube playlist modification blocked: requires explicit human approval"
+
+  # --- BLOCK: All social media publishing ---
+  - name: block-twitter-post
+    condition: {field: action, operator: eq, value: twitter_post}
+    action: deny
+    priority: 100
+    message: "Twitter/X post blocked: requires explicit human approval"
+
+  - name: block-twitter-reply
+    condition: {field: action, operator: eq, value: twitter_reply}
+    action: deny
+    priority: 100
+    message: "Twitter/X reply blocked: requires explicit human approval"
+
+  - name: block-instagram-post
+    condition: {field: action, operator: eq, value: instagram_post}
+    action: deny
+    priority: 100
+    message: "Instagram post blocked: requires explicit human approval"
+
+  - name: block-tiktok-post
+    condition: {field: action, operator: eq, value: tiktok_post}
+    action: deny
+    priority: 100
+    message: "TikTok post blocked: requires explicit human approval"
+
+  - name: block-linkedin-post
+    condition: {field: action, operator: eq, value: linkedin_post}
+    action: deny
+    priority: 100
+    message: "LinkedIn post blocked: requires explicit human approval"
+
+  - name: block-discord-message
+    condition: {field: action, operator: eq, value: discord_message}
+    action: deny
+    priority: 100
+    message: "Discord public message blocked: requires explicit human approval"
+
+  - name: block-reddit-post
+    condition: {field: action, operator: eq, value: reddit_post}
+    action: deny
+    priority: 100
+    message: "Reddit post blocked: requires explicit human approval"
+
+  # --- BLOCK: Blog/CMS publishing ---
+  - name: block-blog-publish
+    condition: {field: action, operator: eq, value: blog_publish}
+    action: deny
+    priority: 100
+    message: "Blog publish blocked: requires explicit human approval and content review"
+
+  - name: block-cms-publish
+    condition: {field: action, operator: eq, value: cms_publish}
+    action: deny
+    priority: 100
+    message: "CMS publish blocked: requires explicit human approval"
+
+  - name: block-github-release
+    condition: {field: action, operator: eq, value: github_release}
+    action: deny
+    priority: 100
+    message: "GitHub release blocked: requires explicit human approval"
+
+  # --- ESCALATE: Publishing actions needing human gate ---
+  - name: escalate-youtube-upload
+    condition: {field: action, operator: eq, value: youtube_upload}
+    action: escalate
+    priority: 95
+    message: "YouTube upload requires: (1) human content review, (2) approval of title/description/tags, (3) thumbnail approval"
+
+  - name: escalate-social-post
+    condition: {field: action, operator: matches, value: "^(twitter_|instagram_|tiktok_|linkedin_|reddit_)"}
+    action: escalate
+    priority: 95
+    message: "Social media post requires human content review and approval"
+
+  - name: escalate-blog-publish
+    condition: {field: action, operator: eq, value: blog_publish}
+    action: escalate
+    priority: 95
+    message: "Blog publication requires human content review and approval"
+
+  # --- ALLOW: Local content creation (drafts, saves, previews) ---
+  - name: allow-content-draft
+    condition: {field: action, operator: eq, value: content_draft}
+    action: allow
+    priority: 50
+    message: "Content drafting permitted (local only)"
+
+  - name: allow-content-save-local
+    condition: {field: action, operator: eq, value: content_save_local}
+    action: allow
+    priority: 50
+    message: "Local content save permitted"
+
+  - name: allow-content-preview
+    condition: {field: action, operator: eq, value: content_preview}
+    action: allow
+    priority: 50
+    message: "Content preview permitted (local only)"
+
+  - name: allow-content-render
+    condition: {field: action, operator: eq, value: content_render}
+    action: allow
+    priority: 50
+    message: "Content rendering permitted (local only)"
+
+  - name: allow-thumbnail-generate
+    condition: {field: action, operator: eq, value: thumbnail_generate}
+    action: allow
+    priority: 50
+    message: "Thumbnail generation permitted (local only)"
+
+  - name: allow-metadata-draft
+    condition: {field: action, operator: eq, value: metadata_draft}
+    action: allow
+    priority: 50
+    message: "Metadata drafting permitted (local only)"
+
+  - name: allow-youtube-draft
+    condition: {field: action, operator: eq, value: youtube_draft}
+    action: allow
+    priority: 50
+    message: "YouTube draft creation permitted (unlisted/private only, not published)"
+
+  # --- ALLOW: Read-only platform queries ---
+  - name: allow-youtube-analytics
+    condition: {field: action, operator: eq, value: youtube_analytics}
+    action: allow
+    priority: 50
+    message: "YouTube analytics read permitted"
+
+  - name: allow-channel-stats
+    condition: {field: action, operator: eq, value: channel_stats}
+    action: allow
+    priority: 50
+    message: "Channel statistics read permitted"
+
+  - name: allow-social-analytics
+    condition: {field: action, operator: eq, value: social_analytics}
+    action: allow
+    priority: 50
+    message: "Social media analytics read permitted"
+
+  # --- BLOCK: Any publishing pattern ---
+  - name: block-publishing-pattern
+    condition: {field: action, operator: matches, value: "^(youtube_|twitter_|instagram_|tiktok_|linkedin_|reddit_|blog_|cms_|publish_|post_)"}
+    action: deny
+    priority: 90
+    message: "Publishing action blocked: all public content distribution requires explicit human approval"
+
+  # --- BLOCK: Bulk publishing / scheduling ---
+  - name: block-bulk-publish
+    condition: {field: action, operator: eq, value: bulk_publish}
+    action: deny
+    priority: 100
+    message: "Bulk publishing blocked: requires explicit human approval"
+
+  - name: block-schedule-publish
+    condition: {field: action, operator: eq, value: schedule_publish}
+    action: deny
+    priority: 100
+    message: "Scheduled publishing blocked: requires explicit human approval"
+
+defaults:
+  action: deny
+  max_tool_calls: 30
