@@ -3,6 +3,8 @@ import SwiftUI
 private let workbenchPrimaryColumnWidth: CGFloat = 460
 
 struct RootView: View {
+    var isEmbedded: Bool = false
+
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var appState: AppState
     @SceneStorage("RootView.isWorkspaceSidebarCollapsed") private var isWorkspaceSidebarCollapsed = false
@@ -33,50 +35,59 @@ struct RootView: View {
         defaultPrimaryWidth: workbenchPrimaryColumnWidth
     )
 
+    @ViewBuilder
     var body: some View {
+        if isEmbedded {
+            bodyWithoutToolbar
+        } else {
+            bodyWithoutToolbar
+                .toolbar {
+                    ToolbarItemGroup(placement: .navigation) {
+                        HermesToolbarControlCluster {
+                            HermesCollapseToolbarButton(
+                                systemImage: "sidebar.left",
+                                isActive: isWorkspaceSidebarCollapsed,
+                                isEnabled: isWorkspaceSidebarCollapseEnabled,
+                                help: workspaceSidebarCollapseHelp
+                            ) {
+                                guard isWorkspaceSidebarCollapseEnabled else { return }
+                                workspaceSidebarSplitLayout.wrappedValue.isPrimaryCollapsed.toggle()
+                            }
+
+                            HermesCollapseToolbarButton(
+                                systemImage: "rectangle.leftthird.inset.filled",
+                                isActive: currentWorkbenchPrimaryColumnCollapsed,
+                                isEnabled: currentWorkbenchPrimaryColumnLayout != nil,
+                                help: currentWorkbenchPrimaryColumnCollapsed
+                                    ? L10n.string("Show Section Browser")
+                                    : L10n.string("Hide Section Browser")
+                            ) {
+                                toggleCurrentWorkbenchPrimaryColumn()
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .principal) {
+                        HermesToolbarPrincipalTitle(title: "Hermes Desktop")
+                    }
+
+                    ToolbarItemGroup(placement: .automatic) {
+                        Button {
+                            Task {
+                                await appState.refreshCurrentSectionFromCommand()
+                            }
+                        } label: {
+                            Label(L10n.string("Refresh"), systemImage: "arrow.clockwise")
+                        }
+                        .disabled(!appState.canRefreshCurrentSection)
+                        .help(L10n.string("Refresh Current Section"))
+                    }
+                }
+        }
+    }
+
+    private var bodyWithoutToolbar: some View {
         rootContent
-            .toolbar {
-                ToolbarItemGroup(placement: .navigation) {
-                    HermesToolbarControlCluster {
-                        HermesCollapseToolbarButton(
-                            systemImage: "sidebar.left",
-                            isActive: isWorkspaceSidebarCollapsed,
-                            isEnabled: isWorkspaceSidebarCollapseEnabled,
-                            help: workspaceSidebarCollapseHelp
-                        ) {
-                            guard isWorkspaceSidebarCollapseEnabled else { return }
-                            workspaceSidebarSplitLayout.wrappedValue.isPrimaryCollapsed.toggle()
-                        }
-
-                        HermesCollapseToolbarButton(
-                            systemImage: "rectangle.leftthird.inset.filled",
-                            isActive: currentWorkbenchPrimaryColumnCollapsed,
-                            isEnabled: currentWorkbenchPrimaryColumnLayout != nil,
-                            help: currentWorkbenchPrimaryColumnCollapsed
-                                ? L10n.string("Show Section Browser")
-                                : L10n.string("Hide Section Browser")
-                        ) {
-                            toggleCurrentWorkbenchPrimaryColumn()
-                        }
-                    }
-                }
-
-                ToolbarItem(placement: .principal) {
-                    HermesToolbarPrincipalTitle(title: "Hermes Desktop")
-                }
-
-                ToolbarItemGroup(placement: .automatic) {
-                    Button {
-                        Task {
-                            await appState.refreshCurrentSectionFromCommand()
-                        }
-                    } label: {
-                        Label(L10n.string("Refresh"), systemImage: "arrow.clockwise")
-                    }
-                    .disabled(!appState.canRefreshCurrentSection)
-                    .help(L10n.string("Refresh Current Section"))
-                }
-            }
             .overlay(alignment: .bottom) {
                 if let statusMessage = appState.statusMessage {
                     Text(statusMessage)

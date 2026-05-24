@@ -54,7 +54,7 @@ struct NativeGuestHost: NSViewRepresentable {
     @ObservedObject var state: AppState
 
     func makeNSView(context: Context) -> NSView {
-        let rootView = RootView().environmentObject(state)
+        let rootView = RootView(isEmbedded: true).environmentObject(state)
         let controller = NSHostingController(rootView: rootView)
         
         // Retain the controller so it doesn't get deallocated
