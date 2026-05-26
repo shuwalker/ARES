@@ -1,0 +1,3 @@
+[submodule "ARES-Desktop/Vendor/SAM"]
+	path = ARES-Desktop/Vendor/SAM
+	url = https://github.com/SyntheticAutonomicMind/SAM.git

@@ -16,7 +16,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "Vendor/SwiftTerm"),
-        .package(path: "../SAM")
+        .package(path: "Vendor/SAM")
     ],
     targets: [
         .executableTarget(
