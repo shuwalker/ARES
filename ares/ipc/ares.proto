@@ -1,0 +1,56 @@
+// ARES daemon ↔ ARES-Desktop IPC contract.
+//
+// Wire: ZeroMQ ROUTER on a Unix domain socket (default
+//   ipc:///tmp/ares_ipc.sock). Each frame is a serialized Envelope.
+//
+// Generate Python bindings with scripts/build_proto.sh.
+
+syntax = "proto3";
+
+package ares.ipc;
+
+// Free-form structured log line emitted by the daemon for the desktop UI.
+message LogTrace {
+  string level = 1;       // "debug" | "info" | "warning" | "error" | "critical"
+  string message = 2;
+  int64  timestamp = 3;   // unix epoch milliseconds
+  string module = 4;      // python module name
+}
+
+// Daemon asks the desktop app for explicit user approval.
+message ApprovalRequest {
+  string id = 1;          // correlation id echoed in ApprovalResponse
+  string description = 2;
+  repeated string options = 3;
+  int32  timeout_seconds = 4;
+}
+
+// Desktop app's reply to an ApprovalRequest.
+message ApprovalResponse {
+  string id = 1;
+  string choice = 2;      // one of the options, or "" on timeout / dismiss
+}
+
+// Daemon broadcasts a state transition (voice state, presence, etc).
+message StateChange {
+  string key = 1;
+  string value = 2;
+  int64  timestamp = 3;
+}
+
+// Config update from either side. Values are stringified TOML values.
+message ConfigUpdate {
+  string key = 1;
+  string value = 2;
+}
+
+// All messages flow through this oneof so a single dispatcher can route.
+message Envelope {
+  oneof payload {
+    LogTrace         log_trace         = 1;
+    ApprovalRequest  approval_request  = 2;
+    ApprovalResponse approval_response = 3;
+    StateChange      state_change      = 4;
+    ConfigUpdate     config_update     = 5;
+  }
+}
