@@ -14,6 +14,17 @@ memory:
 
 nas:
   # Defaults — override in ~/.ares/config.yaml or ARES_NAS_ROOT env var
-  root: ~/ARES_Brain         # Or /Volumes/Jenkins_Robotics for networked NAS
+  root: ~/ARES_Brain         # Or any mounted volume for networked NAS
   obsidian: ~/ARES_Brain/Obsidian
   brain: ~/ARES_Brain
+
+# Telemetry (OSC) and IPC settings live in ~/.ares/config/ares.toml.
+# Example:
+#
+#   [telemetry.osc]
+#   enabled = false
+#   host = "127.0.0.1"   # render node IP
+#   port = 9000
+#
+#   [ipc]
+#   socket_path = "/tmp/ares_ipc.sock"

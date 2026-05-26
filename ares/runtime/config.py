@@ -139,6 +139,22 @@ class SyncConfig:
 
 
 @dataclass
+class TelemetryConfig:
+    """OSC telemetry to an avatar / render node."""
+
+    osc_enabled: bool = False
+    osc_host: str = "127.0.0.1"
+    osc_port: int = 9000
+
+
+@dataclass
+class IPCConfig:
+    """ZeroMQ IPC between the Python daemon and the desktop app."""
+
+    socket_path: str = "/tmp/ares_ipc.sock"
+
+
+@dataclass
 class AresConfig:
     """Top-level ARES configuration."""
 
@@ -146,6 +162,8 @@ class AresConfig:
     agent: AgentConfig = field(default_factory=AgentConfig)
     face: FaceConfig = field(default_factory=FaceConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)
+    ipc: IPCConfig = field(default_factory=IPCConfig)
 
     # Gateway
     gateway_host: str = "127.0.0.1"
@@ -255,6 +273,21 @@ def _apply_toml(config: AresConfig, path: Path) -> None:
         config.gateway_host = gateway["host"]
     if "port" in gateway:
         config.gateway_port = int(gateway["port"])
+
+    # Telemetry section
+    telemetry = data.get("telemetry", {})
+    osc = telemetry.get("osc", {})
+    if "enabled" in osc:
+        config.telemetry.osc_enabled = bool(osc["enabled"])
+    if "host" in osc:
+        config.telemetry.osc_host = osc["host"]
+    if "port" in osc:
+        config.telemetry.osc_port = int(osc["port"])
+
+    # IPC section
+    ipc = data.get("ipc", {})
+    if "socket_path" in ipc:
+        config.ipc.socket_path = ipc["socket_path"]
 
 
 def write_default_config() -> Path:
