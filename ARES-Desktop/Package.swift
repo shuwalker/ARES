@@ -15,13 +15,18 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "Vendor/SwiftTerm")
+        .package(path: "Vendor/SwiftTerm"),
+        .package(path: "../SAM")
     ],
     targets: [
         .executableTarget(
             name: "ARES",
             dependencies: [
-                .product(name: "SwiftTerm", package: "SwiftTerm")
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "UserInterface", package: "SAM"),
+                .product(name: "APIFramework", package: "SAM"),
+                .product(name: "ConfigurationSystem", package: "SAM"),
+                .product(name: "ConversationEngine", package: "SAM")
             ],
             path: "Sources/ARES",
             exclude: [],
