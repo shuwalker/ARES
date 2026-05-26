@@ -223,7 +223,9 @@ class MemoryStore:
         self.vectors = vectors
         self.embedder = embedder
 
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        from ares.core.db import connect_sqlite
+
+        self._conn = connect_sqlite(self.db_path, check_same_thread=False)
         self._conn.execute(_EPISODIC_DDL)
         self._conn.execute(_FACTS_DDL)
         self._conn.commit()

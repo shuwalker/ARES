@@ -98,7 +98,9 @@ class ThoughtDAG:
     # -- internals -----------------------------------------------------------
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path))
+        from ares.core.db import connect_sqlite
+
+        conn = connect_sqlite(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 

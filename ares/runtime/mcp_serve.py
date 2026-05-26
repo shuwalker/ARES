@@ -200,7 +200,9 @@ def _query_memory(query: str, tag: Optional[str] = None, limit: int = 10) -> lis
     if not ares_db.exists():
         return []
     try:
-        conn = sqlite3.connect(str(ares_db))
+        from ares.core.db import connect_sqlite
+
+        conn = connect_sqlite(ares_db)
         conn.row_factory = sqlite3.Row
         tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         if "facts" not in tables:
@@ -241,7 +243,9 @@ def _store_memory(content: str, tags: Optional[str] = None, source: str = "mcp")
         mem.close()
         return {"stored": True, "id": fact_id, "content": content, "tags": tag_list}
     except ImportError:
-        conn = sqlite3.connect(str(ares_db))
+        from ares.core.db import connect_sqlite
+
+        conn = connect_sqlite(ares_db)
         conn.execute(
             "CREATE TABLE IF NOT EXISTS facts "
             "(id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, "

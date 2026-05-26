@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+from ares.core.db import connect_sqlite
+
 from .models import (
     ActivityBlock, ActivityCategory, DailyPlan, DailyReality,
     DailyReconciliation, WeeklyReport, CalendarEvent
@@ -27,7 +29,7 @@ def init_db():
     """Initialize the LifeTrack database schema."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     # Activity blocks table
@@ -96,7 +98,7 @@ def init_db():
 
 def save_activity_blocks(blocks: list[ActivityBlock], date: datetime):
     """Save activity blocks for a specific date."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     date_str = date.strftime("%Y-%m-%d")
@@ -126,7 +128,7 @@ def save_activity_blocks(blocks: list[ActivityBlock], date: datetime):
 
 def load_activity_blocks(date: datetime) -> list[ActivityBlock]:
     """Load activity blocks for a specific date."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     date_str = date.strftime("%Y-%m-%d")
@@ -157,7 +159,7 @@ def load_activity_blocks(date: datetime) -> list[ActivityBlock]:
 
 def save_daily_reconciliation(reconciliation: DailyReconciliation):
     """Save a daily reconciliation record."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     date_str = reconciliation.date.strftime("%Y-%m-%d")
@@ -183,7 +185,7 @@ def save_daily_reconciliation(reconciliation: DailyReconciliation):
 
 def load_daily_reconciliation(date: datetime) -> Optional[DailyReconciliation]:
     """Load a daily reconciliation record."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     date_str = date.strftime("%Y-%m-%d")
@@ -204,7 +206,7 @@ def load_daily_reconciliation(date: datetime) -> Optional[DailyReconciliation]:
 
 def load_weekly_report(start_date: datetime, end_date: datetime) -> Optional[WeeklyReport]:
     """Load or build a weekly report from daily reconciliations."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     start_str = start_date.strftime("%Y-%m-%d")
@@ -238,7 +240,7 @@ def load_weekly_report(start_date: datetime, end_date: datetime) -> Optional[Wee
 
 def save_app_override(bundle_id: str, app_name: str, category: ActivityCategory):
     """Save a user-defined app category override."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -252,7 +254,7 @@ def save_app_override(bundle_id: str, app_name: str, category: ActivityCategory)
 
 def load_app_overrides() -> dict[str, ActivityCategory]:
     """Load all user-defined app category overrides."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute("SELECT bundle_id, category FROM app_overrides")
@@ -264,7 +266,7 @@ def load_app_overrides() -> dict[str, ActivityCategory]:
 
 def get_stats() -> dict:
     """Get basic LifeTrack statistics."""
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = connect_sqlite(DB_PATH)
     cursor = conn.cursor()
     
     # Count days tracked

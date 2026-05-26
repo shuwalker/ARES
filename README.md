@@ -51,6 +51,13 @@ ares init
 # 1. Set API key
 export ANTHROPIC_API_KEY=sk-ant-...
 
+# (Optional) Hermes provider settings — picked up by ARES-Desktop
+# at launch. Leave ARES_HERMES_API_KEY empty for unauthenticated
+# requests against a local trusted Hermes.
+export ARES_HERMES_URL="http://localhost:8642/v1"
+export ARES_HERMES_API_KEY=""
+export ARES_HERMES_MODEL="hermes-agent"
+
 # 2. First-time setup (discovery conversation)
 ares setup
 

@@ -78,7 +78,9 @@ def _query_screentime_db(start: datetime, end: datetime) -> list[AppUsage]:
         return []
     
     try:
-        conn = sqlite3.connect(str(db_path))
+        from ares.core.db import connect_sqlite
+
+        conn = connect_sqlite(db_path)
         cursor = conn.cursor()
         
         # ScreenTime schema varies by macOS version

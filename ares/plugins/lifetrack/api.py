@@ -113,9 +113,9 @@ async def list_overrides():
 @router.delete("/override/{bundle_id}")
 async def delete_override(bundle_id: str):
     """Delete a custom app category override."""
-    import sqlite3
-    
-    conn = sqlite3.connect(str(db.DB_PATH))
+    from ares.core.db import connect_sqlite
+
+    conn = connect_sqlite(db.DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM app_overrides WHERE bundle_id = ?", (bundle_id,))
     conn.commit()

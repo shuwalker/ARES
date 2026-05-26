@@ -120,8 +120,9 @@ class Memory:
         self._conn: sqlite3.Connection | None = None
 
     def open(self):
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        from ares.core.db import connect_sqlite
+
+        self._conn = connect_sqlite(self.path, check_same_thread=False)
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._apply_migrations()
         return self

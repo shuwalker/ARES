@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ares.core.db import connect_sqlite
+
 if TYPE_CHECKING:
     from .models import EmailMessage, SenderRecord, KeepRecord
 
@@ -29,7 +31,7 @@ def _ensure_dir():
 def init_db():
     _ensure_dir()
     db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
+    conn = connect_sqlite(db_path)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -63,7 +65,7 @@ def load_junk_addresses() -> set[str]:
     if not os.path.exists(db_path):
         return set()
     try:
-        conn = sqlite3.connect(db_path)
+        conn = connect_sqlite(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT address FROM junk_senders")
         addresses = {row[0].lower() for row in cursor.fetchall()}
@@ -80,7 +82,7 @@ def load_junk_domains(threshold: int = 3) -> set[str]:
     if not os.path.exists(db_path):
         return set()
     try:
-        conn = sqlite3.connect(db_path)
+        conn = connect_sqlite(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT domain FROM junk_senders WHERE count >= ?", (threshold,))
         domains = {row[0].lower() for row in cursor.fetchall()}
@@ -97,7 +99,7 @@ def load_keep_addresses() -> set[str]:
     if not os.path.exists(db_path):
         return set()
     try:
-        conn = sqlite3.connect(db_path)
+        conn = connect_sqlite(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT address FROM keep_senders")
         addresses = {row[0].lower() for row in cursor.fetchall()}
@@ -117,7 +119,7 @@ def record_junked(msgs: list[EmailMessage]) -> None:
 
     _ensure_dir()
     db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
+    conn = connect_sqlite(db_path)
     cursor = conn.cursor()
     now = _now()
 
@@ -149,7 +151,7 @@ def record_rescued(msgs: list[EmailMessage]) -> None:
 
     _ensure_dir()
     db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
+    conn = connect_sqlite(db_path)
     cursor = conn.cursor()
     now = _now()
 
@@ -180,7 +182,7 @@ def fix_db() -> None:
     db_path = get_db_path()
     if not os.path.exists(db_path):
         return
-    conn = sqlite3.connect(db_path)
+    conn = connect_sqlite(db_path)
     cursor = conn.cursor()
     fixed = 0
 
@@ -237,7 +239,7 @@ def get_stats() -> dict:
     db_path = get_db_path()
     if not os.path.exists(db_path):
         return {"junk_senders": 0, "keep_senders": 0, "junk_domains": 0}
-    conn = sqlite3.connect(db_path)
+    conn = connect_sqlite(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM junk_senders")
     jnk = cursor.fetchone()[0]
