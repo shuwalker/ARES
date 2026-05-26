@@ -7,6 +7,7 @@ struct ConnectionsView: View {
     @State private var editorPresentationID = UUID()
     @State private var isPresentingEditor = false
     @State private var editingExistingConnection = false
+    @State private var isPresentingDiscoverDevices = false
 
     var body: some View {
         HermesPageContainer(width: .standard) {
@@ -16,11 +17,18 @@ struct ConnectionsView: View {
                     subtitle: "Alias-first SSH profiles for every Hermes workspace, from a Raspberry Pi to another Mac or a remote VPS."
                 ) {
                     Button {
+                        isPresentingDiscoverDevices = true
+                    } label: {
+                        Label(L10n.string("Add Device"), systemImage: "desktopcomputer.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
                         presentEditor(for: ConnectionProfile(), isEditing: false)
                     } label: {
                         Label(L10n.string("Add Host"), systemImage: "plus")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                 }
 
                 if appState.connectionStore.connections.isEmpty {
@@ -68,6 +76,13 @@ struct ConnectionsView: View {
                 appState.saveConnection(updatedConnection)
             }
             .id(editorPresentationID)
+        }
+        .sheet(isPresented: $isPresentingDiscoverDevices) {
+            DiscoverDevicesView { connection in
+                appState.saveConnection(connection)
+                appState.connect(to: connection)
+                isPresentingDiscoverDevices = false
+            }
         }
         .onAppear {
             presentPendingNewConnectionEditorIfNeeded()
