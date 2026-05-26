@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ares-system"
+version = "0.2.0"
+description = "ARES — Autonomous Reasoning & Execution System"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40.0",
+    "httpx>=0.27.0",
+    "click>=8.1.0",
+    "tomli-w>=1.0.0",
+    "rich>=13.0.0",
+    "anyio>=4.0.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyyaml>=6.0",
+    "questionary>=2.0",
+    "mcp>=1.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.30.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+bus = [
+    "pyzmq>=25.0",
+]
+screen = [
+    "pyautogui>=0.9.54",
+    "mss>=9.0.0",
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0.0",
+]
+dev = [
+    "ares-system[bus]",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "black>=24.0",
+    "ruff>=0.4",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+ares = "ares.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ares*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: fast in-process tests, no network/services required",
+    "integration: requires running ARES services (auto-skipped if unreachable)",
+    "slow: long-running tests",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["ares"]
+omit = [
+    "ares/reference/*",
+    "ares/__main__.py",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+extend-exclude = [
+    "ares/reference",
+]
+line-length = 120
+
+[tool.ruff.lint.per-file-ignores]
+# Package __init__.py files re-export public API; F401 is intentional.
+"__init__.py" = ["F401"]
+# Test conftest helpers are imported by tests; ruff can't see the linkage
+# across modules.
+"tests/integration/test_services.py" = ["F401"]
+
+[tool.black]
+extend-exclude = "ares/reference"
+line-length = 120

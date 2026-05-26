@@ -1,0 +1,16 @@
+daemon:
+  host: 127.0.0.1
+  port: 7900
+  url: http://127.0.0.1:7900
+llm:
+  - model_name: local
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://localhost:11434/v1
+      api_key: ollama
+orchestrator:
+  db_path: /Users/matthewjenkins/.ares/data/ares.db
+  log_level: INFO
+  max_retries: 3
+  security_enabled: true
+  agentic_execution: true

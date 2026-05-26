@@ -1,0 +1,19 @@
+# ARES default config — bundled with distribution
+# These are copied to ~/.ares/ on first run, never overwritten.
+
+model:
+  backend: mlx               # mlx | llama_cpp
+  base_url: http://127.0.0.1:8080/v1
+
+agent:
+  name: ARES
+  mode: local                # local | cloud (local-first non-negotiable)
+
+memory:
+  path: ~/.ares/memory.db
+
+nas:
+  # Defaults — override in ~/.ares/config.yaml or ARES_NAS_ROOT env var
+  root: ~/ARES_Brain         # Or /Volumes/Jenkins_Robotics for networked NAS
+  obsidian: ~/ARES_Brain/Obsidian
+  brain: ~/ARES_Brain

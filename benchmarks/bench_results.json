@@ -1,0 +1,124 @@
+{
+  "system": {
+    "cpu": "M1 Max",
+    "macos": "26.3.1",
+    "python": "3.11.15"
+  },
+  "theoretical": {
+    "cpu_gflops": 320,
+    "mem_gbs": 400,
+    "nvme_r": 7.0,
+    "nvme_w": 5.5
+  },
+  "results": [
+    {
+      "name": "10M int adds",
+      "value": 216.6143414011458,
+      "unit": "ms",
+      "ops": 46164995.05672667,
+      "theo": 0,
+      "eff": 0,
+      "note": "std=2.5ms n=5"
+    },
+    {
+      "name": "5M fp mul+add",
+      "value": 134.81669999600854,
+      "unit": "ms",
+      "ops": 37087393.47683212,
+      "theo": 0,
+      "eff": 0,
+      "note": "std=4.8ms n=5"
+    },
+    {
+      "name": "1Kx1K matmul FP32",
+      "value": 1.0011667938670143,
+      "unit": "ms",
+      "ops": 998.8345659542825,
+      "theo": 0,
+      "eff": 0,
+      "note": "std=0.0ms n=5"
+    },
+    {
+      "name": "10000 JSON serializes",
+      "value": 58.88535020058043,
+      "unit": "ms",
+      "ops": 169821.52548871876,
+      "theo": 0,
+      "eff": 0,
+      "note": "std=2.2ms n=5"
+    },
+    {
+      "name": "50MB write",
+      "value": 1171.0602916049538,
+      "unit": "ms",
+      "ops": 42696349.93043299,
+      "theo": 400000000000.0,
+      "eff": 0.010674087482608247,
+      "note": "std=7.6ms n=5"
+    },
+    {
+      "name": "50MB read",
+      "value": 1310.3543751960387,
+      "unit": "ms",
+      "ops": 38157616.70770904,
+      "theo": 400000000000.0,
+      "eff": 0.009539404176927259,
+      "note": "std=6.2ms n=5"
+    },
+    {
+      "name": "200MB write (dd)",
+      "value": 105.0493916060077,
+      "unit": "ms",
+      "ops": 1996348544.183349,
+      "theo": 5500000000.0,
+      "eff": 36.297246257879074,
+      "note": "std=7.6ms n=5"
+    },
+    {
+      "name": "200MB read (dd)",
+      "value": 17.34564999351278,
+      "unit": "ms",
+      "ops": 12090362717.93982,
+      "theo": 7000000000.0,
+      "eff": 100,
+      "note": "std=0.2ms n=5"
+    },
+    {
+      "name": "10MB TCP loopback",
+      "value": 34.516541796620004,
+      "unit": "ms",
+      "ops": 289716161.57037026,
+      "theo": 400000000000.0,
+      "eff": 0.07242904039259257,
+      "note": "std=10.5ms n=5"
+    },
+    {
+      "name": "10000 personality prompts",
+      "value": 77.66699200146832,
+      "unit": "ms",
+      "ops": 128754.82547091495,
+      "theo": 0,
+      "eff": 0,
+      "note": "std=1.6ms n=5"
+    },
+    {
+      "name": "50000 face state transitions",
+      "value": 7.078808397636749,
+      "unit": "ms",
+      "ops": 7063335.690325004,
+      "theo": 0,
+      "eff": 0,
+      "note": "std=0.1ms n=5"
+    },
+    {
+      "name": "5000 bus msg roundtrips",
+      "value": 18.108750000828877,
+      "unit": "ms",
+      "ops": 276109.6155047222,
+      "theo": 0,
+      "eff": 0,
+      "note": "std=0.1ms n=5"
+    }
+  ],
+  "timestamp": 1778664287.7436318
+}
