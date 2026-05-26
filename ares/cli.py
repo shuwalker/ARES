@@ -808,9 +808,9 @@ def doctor() -> None:
     console.print(f"  {cfg_file}: {cfg_marker}")
 
     # Daemon socket
-    sock_path = ares_base / "ares.sock"
-    console.print(f"\n[bold]Daemon[/bold]")
-    console.print(f"  Socket: {'[green]✓[/green]' if sock_path.exists() else '[yellow]not running[/yellow]'}")
+    sock_path = paths["socket"]
+    console.print("\n[bold]Daemon socket[/bold]")
+    console.print(f"  {sock_path}: {'[green]✓[/green]' if sock_path.exists() else '[yellow]not found[/yellow]'}")
 
 
 # ---------------------------------------------------------------------------
