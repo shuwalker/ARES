@@ -123,6 +123,7 @@ struct HermesWebUIView: NSViewRepresentable {
 struct HubSettingsView: View {
     @EnvironmentObject private var appState: ARESAppState
     @State private var statuses: [ARESDependency: DependencyStatus] = [:]
+    @AppStorage("ares_fast_path_enabled") private var fastPathEnabled = false
 
     var body: some View {
         ScrollView {
@@ -203,6 +204,11 @@ struct HubSettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(.caption, design: .monospaced))
                         }
+                        Toggle("Fast-path routing (experimental)", isOn: $fastPathEnabled)
+                            .toggleStyle(.switch)
+                            .font(.subheadline)
+                            .foregroundStyle(ARESColors.textSecondary)
+                            .help("Routes simple turns through a lightweight model before engaging the full agent. Reduces latency for short replies.")
                     }
                     .padding(10)
                 } label: {

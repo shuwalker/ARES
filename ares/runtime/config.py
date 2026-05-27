@@ -109,6 +109,11 @@ class AgentConfig:
     local_model: str = "gemma3:12b"
     local_ollama_url: str = "http://localhost:11434"
 
+    # Fast-path routing (Lilith pattern) — gate that short-circuits simple turns
+    # through a lightweight model before engaging the full agent. Surface only;
+    # interception is not yet implemented in the LLM call sites.
+    fast_path_enabled: bool = False
+
     def agent_dict(self) -> dict:
         """Return config as a dict suitable for load_backend()."""
         return {
@@ -242,6 +247,8 @@ def _apply_toml(config: AresConfig, path: Path) -> None:
     agent = data.get("agent", {})
     if "backend" in agent:
         config.agent.backend = agent["backend"]
+    if "fast_path_enabled" in agent:
+        config.agent.fast_path_enabled = bool(agent["fast_path_enabled"])
     hermes = agent.get("hermes", {})
     if "api_url" in hermes:
         config.agent.hermes_api_url = hermes["api_url"]

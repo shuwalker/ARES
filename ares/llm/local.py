@@ -50,6 +50,10 @@ async def complete(
         "stream": False,
     }
 
+    # Fast-path gate (Lilith pattern) — placeholder.
+    # If cfg.agent.fast_path_enabled, a lightweight model (llama3.2:3b)
+    # would intercept short/simple turns here and short-circuit the call,
+    # returning early before engaging the full agent. Not yet implemented.
     try:
         client = _get_client()
         response = await client.post(
