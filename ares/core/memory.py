@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS skill_outcomes (
 );
 """
 
-CURRENT_SCHEMA = 2
+CURRENT_SCHEMA = 3
 
 
 class Memory:
@@ -144,6 +144,26 @@ class Memory:
                         self._conn.execute(f"ALTER TABLE facts ADD COLUMN {col_def}")
                     except sqlite3.OperationalError:
                         pass
+
+                # v3: replace legacy triple-shaped facts table (subject/predicate/object)
+                # left over from pre-rebuild DBs. CREATE TABLE IF NOT EXISTS is a no-op
+                # when the table exists with the wrong columns, so detect explicitly.
+                cols = {row[1] for row in self._conn.execute("PRAGMA table_info(facts)")}
+                if "content" not in cols:
+                    self._conn.execute("DROP TABLE IF EXISTS facts")
+                    self._conn.execute(
+                        "CREATE TABLE facts ("
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                        "content TEXT NOT NULL,"
+                        "tags TEXT NOT NULL DEFAULT '[]',"
+                        "source TEXT NOT NULL DEFAULT 'main',"
+                        "learned_at REAL NOT NULL,"
+                        "importance REAL NOT NULL DEFAULT 0.5,"
+                        "recall_count INTEGER NOT NULL DEFAULT 0,"
+                        "last_recalled_at REAL"
+                        ")"
+                    )
+
                 self._conn.execute(
                     "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                     (CURRENT_SCHEMA, time.time()),
