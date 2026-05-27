@@ -285,10 +285,16 @@ final class ARESAppState: ObservableObject {
 
         do {
             try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            var output = ""
+            for try await line in pipe.fileHandleForReading.bytes.lines {
+                output.append(line)
+                output.append("
+")
+            }
             process.waitUntilExit()
-            if let output = String(data: data, encoding: .utf8), !output.isEmpty {
-                return output.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
             }
         } catch {
             return "Hermes unreachable: \(error.localizedDescription)"

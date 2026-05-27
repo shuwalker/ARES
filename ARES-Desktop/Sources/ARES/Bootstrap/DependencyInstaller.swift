@@ -43,33 +43,47 @@ struct DependencyInstaller {
 
     private func runWithTimeout(_ process: Process, seconds: Int) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            final class Box: @unchecked Sendable { var done = false }
-            let box = Box()
+            final class State: @unchecked Sendable {
+                var done = false
+                var resumed = false
+            }
+            let state = State()
+            let lock = NSLock()
             let semaphore = DispatchSemaphore(value: 0)
 
-            process.terminationHandler = { proc in
-                box.done = true
+            func resumeOnce(_ block: () -> Void) {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !state.resumed else { return }
+                state.resumed = true
+                block()
+            }
+
+            process.terminationHandler = { _ in
+                state.done = true
                 semaphore.signal()
             }
 
             do {
                 try process.run()
             } catch {
-                continuation.resume(throwing: error)
+                resumeOnce { continuation.resume(throwing: error) }
                 return
             }
 
             DispatchQueue.global().async {
                 let result = semaphore.wait(timeout: .now() + .seconds(seconds))
-                if result == .timedOut, !box.done {
+                if result == .timedOut, !state.done {
                     process.terminate()
                 }
                 if process.terminationStatus == 0 {
-                    continuation.resume()
+                    resumeOnce { continuation.resume() }
                 } else {
-                    continuation.resume(throwing: InstallError.processFailed(
-                        process.terminationStatus
-                    ))
+                    resumeOnce {
+                        continuation.resume(
+                            throwing: InstallError.processFailed(process.terminationStatus)
+                        )
+                    }
                 }
             }
         }
