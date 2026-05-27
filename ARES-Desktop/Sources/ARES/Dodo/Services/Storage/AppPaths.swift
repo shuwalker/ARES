@@ -9,6 +9,8 @@ struct AppPaths {
     let preferencesURL: URL
     let controlSocketDirectoryURL: URL
 
+    var sshDirectory: String { "\(NSHomeDirectory())/.ssh" }
+
     private static let privateDirectoryPermissions = NSNumber(value: Int16(0o700))
 
     init(fileManager: FileManager = .default) {

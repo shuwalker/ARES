@@ -282,6 +282,6 @@ struct RemoteBootstrapSheet: View {
     }
     
     private func verifyOnly() async {
-        _ = await bootstrap.verify()
+        _ = try? await bootstrap.verify()
     }
 }

@@ -1,10 +1,15 @@
 import Foundation
 
+private struct UncheckedSendableBox<T>: @unchecked Sendable {
+    let value: T
+    init(_ value: T) { self.value = value }
+}
+
 /// Discovers Macs on the local network that advertise SSH access via Bonjour.
 /// Uses NetServiceBrowser to find `_ssh._tcp.` services, which every Mac with
 /// Remote Login enabled broadcasts automatically — no custom service needed.
 @MainActor
-final class BonjourBrowser: ObservableObject {
+final class BonjourBrowser: NSObject, ObservableObject {
     
     struct DiscoveredDevice: Identifiable, Hashable {
         let id = UUID()
@@ -41,7 +46,7 @@ final class BonjourBrowser: ObservableObject {
         
         let browser = NetServiceBrowser()
         browser.delegate = self
-        browser.searchForServices(ofType: "_ssh._tcp.", in: .local)
+        browser.searchForServices(ofType: "_ssh._tcp.", inDomain: "local.")
         self.browser = browser
     }
     
@@ -72,21 +77,24 @@ extension BonjourBrowser: NetServiceBrowserDelegate {
     ) {
         service.delegate = self
         service.resolve(withTimeout: 5.0)
+        let name = service.name
+        let serviceBox = UncheckedSendableBox(service)
         Task { @MainActor in
-            if !resolvedServices.contains(where: { $0.name == service.name }) {
-                resolvedServices.append(service)
+            if !resolvedServices.contains(where: { $0.name == name }) {
+                resolvedServices.append(serviceBox.value)
             }
         }
     }
-    
+
     nonisolated func netServiceBrowser(
         _ browser: NetServiceBrowser,
         didRemove service: NetService,
         moreComing: Bool
     ) {
+        let name = service.name
         Task { @MainActor in
-            devices.removeAll { $0.serviceName == service.name }
-            resolvedServices.removeAll { $0.name == service.name }
+            devices.removeAll { $0.serviceName == name }
+            resolvedServices.removeAll { $0.name == name }
         }
     }
     
@@ -135,10 +143,11 @@ extension BonjourBrowser: NetServiceDelegate {
             port: Int(port),
             txtRecord: txtRecord
         )
-        
+        let serviceName = sender.name
+
         Task { @MainActor in
             // Update or add
-            if let idx = devices.firstIndex(where: { $0.serviceName == sender.name }) {
+            if let idx = devices.firstIndex(where: { $0.serviceName == serviceName }) {
                 devices[idx] = device
             } else {
                 devices.append(device)

@@ -33,7 +33,6 @@ struct DiscoverDevicesView: View {
                 }
             }
             .navigationTitle("Add Remote Mac")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { /* dismiss */ }
