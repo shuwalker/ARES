@@ -38,11 +38,6 @@ final class ARESAppState: ObservableObject {
     }
     @Published var activeOfficeAgents: Int = 0
 
-    // MARK: - Chat state
-    @Published var chatMessages: [ChatBubble] = []
-    @Published var chatInput: String = ""
-    @Published var isChatProcessing: Bool = false
-
     // MARK: - Office state
     @Published var officeAgents: [AgentCard] = []
     @Published var officeAgentCount: Int = 0
@@ -251,57 +246,6 @@ final class ARESAppState: ObservableObject {
         }
     }
 
-    // MARK: - Chat
-
-    func sendChat() {
-        let text = chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isChatProcessing else { return }
-
-        chatMessages.append(ChatBubble(role: .user, content: text))
-        let prompt = text
-        chatInput = ""
-        isChatProcessing = true
-        voiceState = .thinking
-
-        Task {
-            let response = await runHermesChat(prompt)
-            await MainActor.run {
-                chatMessages.append(ChatBubble(role: .assistant, content: response))
-                isChatProcessing = false
-                voiceState = .idle
-            }
-        }
-    }
-
-    nonisolated private func runHermesChat(_ prompt: String) async -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["hermes", "-z", prompt, "--yolo"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        process.environment = ProcessInfo.processInfo.environment
-
-        do {
-            try process.run()
-            var output = ""
-            for try await line in pipe.fileHandleForReading.bytes.lines {
-                output.append(line)
-                output.append("
-")
-            }
-            process.waitUntilExit()
-            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                return trimmed
-            }
-        } catch {
-            return "Hermes unreachable: \(error.localizedDescription)"
-        }
-        return "No response from Hermes."
-    }
-
     // MARK: - Companion helpers
 
     func loadSelfModel() {
@@ -392,20 +336,6 @@ struct AgentCard: Identifiable, Equatable {
     let role: String
     let status: AgentStatus
     let detail: String
-}
-
-// MARK: - Chat bubble model
-
-struct ChatBubble: Identifiable, Equatable {
-    let id = UUID()
-    let role: BubbleRole
-    let content: String
-    let timestamp: Date = Date()
-}
-
-enum BubbleRole {
-    case user
-    case assistant
 }
 
 enum AgentStatus {

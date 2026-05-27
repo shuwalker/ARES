@@ -29,7 +29,7 @@ struct ARESApp: App {
                     }
                 }
         }
-        .defaultSize(width: 1440, height: 900)
+        .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentSize)
         .windowStyle(.titleBar)
         .commands {

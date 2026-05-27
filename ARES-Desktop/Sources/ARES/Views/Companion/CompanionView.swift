@@ -13,8 +13,6 @@ struct CompanionView: View {
     @State private var avatarPulse = false
     @State private var showStats = false
     @State private var showingMiniPrompts = false
-    @State private var activeMessageBus: ConversationMessageBus?
-    @State private var hasCreatedConversation = false
     @State private var isGeneratingAvatar = false
     @State private var avatarGenerationError: String? = nil
 
@@ -180,7 +178,7 @@ struct CompanionView: View {
             // Content: SAM Chat or stats
             if showStats {
                 statsGrid
-            } else if let messageBus = activeMessageBus {
+            } else if let messageBus = samRuntime.companionMessageBus {
                 ChatWidget(
                     activeConversation: conversationManager.activeConversation,
                     messageBus: messageBus,
@@ -203,12 +201,13 @@ struct CompanionView: View {
             }
         }
         .background(ARESColors.surface)
+        .task {
+            // Idempotent — the conversation lives on SAMRuntime now, so it
+            // survives tab switches and only the first appearance creates it.
+            samRuntime.ensureCompanionConversation()
+        }
         .onAppear {
-            if !hasCreatedConversation {
-                activeMessageBus = samRuntime.createConversation()
-                hasCreatedConversation = true
-            }
-            // Fix: ensure chat input receives keyboard focus after ChatWidget renders.
+            // Ensure chat input receives keyboard focus after ChatWidget renders.
             // ChatWidget sets isInputFocused=true internally but the window may not yet
             // be key when CompanionView first appears. We resign first responder and then
             // re-trigger focus after a brief layout pass so the TextEditor wins it.
@@ -216,8 +215,6 @@ struct CompanionView: View {
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     NSApp.activate(ignoringOtherApps: true)
-                    // Post a notification that ChatWidget listens for, or rely on
-                    // its own performMainChatViewAppear re-triggering via window activation.
                     NSApp.keyWindow?.makeFirstResponder(NSApp.keyWindow?.firstResponder)
                 }
             }

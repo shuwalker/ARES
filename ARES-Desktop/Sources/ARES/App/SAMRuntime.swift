@@ -12,17 +12,19 @@ final class SAMRuntime: ObservableObject {
     @Published var endpointManager: EndpointManager
     @Published var sharedConversationService: SharedConversationService
 
-    // Hermes provider connection.
-    // Priority order: ARESAppState (user-configurable) → env var → hardcoded default.
-    // ARES_HERMES_API_KEY must be supplied at launch; empty default means
-    // requests go without auth (only valid against a local trusted Hermes).
-    private static let hermesAPIKey = ProcessInfo.processInfo
-        .environment["ARES_HERMES_API_KEY"] ?? ""
+    /// Persistent Companion-tab conversation. Lives on SAMRuntime so it survives
+    /// tab switches (CompanionView gets torn down and recreated when the user
+    /// switches tabs in ARESRootView).
+    @Published var companionMessageBus: ConversationMessageBus?
 
-    /// Resolved at init-time from appState, which has already seeded UserDefaults
-    /// before this object is constructed. This eliminates the gpt-4 race condition.
+    // Hermes provider connection. Resolved at init-time from appState/UserDefaults
+    // so the gpt-4 race condition is eliminated. API key fallback chain:
+    //   ARES_HERMES_API_KEY env var → UserDefaults["ARES.hermesAPIKey"] → empty
+    // The Settings tab exposes the UserDefaults entry so the user can paste a key
+    // without relaunching from a shell.
     private let resolvedBaseURL: String
     private let resolvedModel: String
+    private let resolvedAPIKey: String
 
     init(appState: ARESAppState? = nil) {
         // Resolve the gateway URL and model from appState first, then fall back
@@ -32,11 +34,13 @@ final class SAMRuntime: ObservableObject {
         // @AppStorage("defaultModel") will never see "gpt-4" on a fresh launch.
         let envURL = ProcessInfo.processInfo.environment["ARES_HERMES_URL"]
         let envModel = ProcessInfo.processInfo.environment["ARES_HERMES_MODEL"]
+        let envKey = ProcessInfo.processInfo.environment["ARES_HERMES_API_KEY"]
 
         // Also check UserDefaults: ARESAppState.init() writes these before SAMRuntime
         // is constructed, so UserDefaults is a reliable pre-populated source.
         let udURL = UserDefaults.standard.string(forKey: "ARES.hermesGatewayURL")
         let udModel = UserDefaults.standard.string(forKey: "ARES.selectedModel")
+        let udKey = UserDefaults.standard.string(forKey: "ARES.hermesAPIKey")
 
         self.resolvedBaseURL = appState.map { "\($0.hermesGatewayURL)/v1" }
             ?? udURL.map { "\($0)/v1" }
@@ -47,6 +51,8 @@ final class SAMRuntime: ObservableObject {
             ?? udModel
             ?? envModel
             ?? "hermes-agent"
+
+        self.resolvedAPIKey = envKey ?? udKey ?? ""
 
         let cm = ConversationManager()
         self.conversationManager = cm
@@ -74,7 +80,7 @@ final class SAMRuntime: ObservableObject {
             providerId: "hermes-agent",
             providerType: .custom,
             isEnabled: true,
-            apiKey: Self.hermesAPIKey,
+            apiKey: resolvedAPIKey,
             baseURL: resolvedBaseURL,
             models: [resolvedModel],
             maxTokens: 8192,
@@ -89,6 +95,16 @@ final class SAMRuntime: ObservableObject {
             UserDefaults.standard.set(data, forKey: "provider_config_hermes-agent")
         } catch {
             print("[SAMRuntime] Failed to encode Hermes provider config: \(error)")
+        }
+
+        // SAM's EndpointManager only loads custom providers whose ID appears in
+        // UserDefaults["saved_provider_ids"]. Without this, the provider_config_
+        // entry above is written but never instantiated, and ChatWidget has no
+        // provider to route to — messages go nowhere.
+        var savedIds = UserDefaults.standard.stringArray(forKey: "saved_provider_ids") ?? []
+        if !savedIds.contains("hermes-agent") {
+            savedIds.append("hermes-agent")
+            UserDefaults.standard.set(savedIds, forKey: "saved_provider_ids")
         }
 
         endpointManager.reloadProviderConfigurations()
@@ -108,5 +124,14 @@ final class SAMRuntime: ObservableObject {
             return nil
         }
         return conv.messageBus
+    }
+
+    /// Idempotent: lazily creates the Companion tab's conversation the first time
+    /// the tab appears, and reuses it on every subsequent appearance so message
+    /// history survives tab switches.
+    func ensureCompanionConversation() {
+        if companionMessageBus == nil {
+            companionMessageBus = createConversation()
+        }
     }
 }
