@@ -100,13 +100,13 @@ final class ARESAppState: ObservableObject {
                    let pct = Int(pctStr.trimmingCharacters(in: .whitespaces)) {
                     memoryPercent = pct
                 } else {
-                    memoryPercent = 94
+                    memoryPercent = 0
                 }
             } else {
-                memoryPercent = 94
+                memoryPercent = 0
             }
         } else {
-            memoryPercent = 94
+            memoryPercent = 0
         }
 
         // Hermes health check via HTTP
