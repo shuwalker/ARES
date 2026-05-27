@@ -158,8 +158,9 @@ This takes about 2 minutes.
 
     n8n_key = (await _input_async("n8n API key (if running locally with auth, leave blank to skip): ")).strip()
 
-    # Write config
-    cfg_data.setdefault("llm", {})["cloud_api_key"] = anthropic_key
+    # Write config — keys must match the sections _apply_toml reads.
+    # Cloud API key lives under [agent.cloud] so load_config() picks it up.
+    cfg_data.setdefault("agent", {}).setdefault("cloud", {})["api_key"] = anthropic_key
     cfg_data.setdefault("elevenlabs", {})["api_key"] = elevenlabs_key
     cfg_data.setdefault("n8n", {})["api_key"] = n8n_key
 

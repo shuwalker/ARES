@@ -48,6 +48,7 @@ async def complete(
         "messages": [{"role": "system", "content": system}] + messages,
         "max_tokens": max_tokens,
         "stream": False,
+        "options": {"num_ctx": 65536},
     }
 
     try:
