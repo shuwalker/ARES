@@ -1,0 +1,59 @@
+# ARES configuration — example file.
+#
+# Copy to ~/.ares/config/ares.toml and edit. Keys here match
+# ares/runtime/config.py::_apply_toml(). Anything you omit
+# falls back to the dataclass default in config.py.
+#
+# Resolution order: this file → ~/.ares/.env → ARES_* env vars → defaults.
+
+[agent]
+# Which reasoning backend ARES routes through.
+backend = "hermes"          # "hermes" | "lilith" | "local" | "cloud"
+
+# Fast-path gate (Lilith pattern) — short-circuit simple turns through a
+# lightweight model before engaging the full agent. Surface only today;
+# interception is not yet wired into the LLM call sites.
+fast_path_enabled = false
+
+[agent.hermes]
+# Hermes gateway URL and API key. Override via ARES_HERMES_URL /
+# ARES_HERMES_API_KEY env vars (preferred for the key).
+api_url = "http://localhost:8321"
+api_key = ""
+
+[agent.lilith]
+# ZeroMQ endpoints for the Lilith backend.
+zmq_host = "127.0.0.1"
+input_port = 5571
+output_port = 5572
+
+[agent.local]
+# Ollama backend — model tag and server URL.
+model = "gemma3:12b"
+ollama_url = "http://localhost:11434"
+num_ctx = 65536             # Context window per request
+
+[agent.cloud]
+# Anthropic Claude backend. api_key falls back to ANTHROPIC_API_KEY env var.
+model = "claude-sonnet-4-6"
+api_key = ""
+
+[face]
+# Avatar / face renderer defaults.
+default_style = "blackfire"
+intensity = 0.60
+
+[gateway]
+# ARES gateway bind address. Override via ARES_GATEWAY_HOST / ARES_GATEWAY_PORT.
+host = "127.0.0.1"
+port = 7860
+
+[telemetry.osc]
+# OSC telemetry stream to an external avatar / render node.
+enabled = false
+host = "127.0.0.1"
+port = 9000
+
+[ipc]
+# ZeroMQ IPC socket between the Python daemon and the desktop app.
+socket_path = "/tmp/ares_ipc.sock"

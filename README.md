@@ -28,7 +28,7 @@ ARES (macOS app)
 - Python 3.11+
 - [Ollama](https://ollama.ai) with models pulled: `hermes-3`, `llama3.2:3b`
 - Hermes Agent running and accessible (default: `http://localhost:8642`)
-- Xcode 15+ (to build the Swift app)
+- Xcode 15+ command-line tools (for SwiftPM)
 
 ## Quick Start
 
@@ -43,36 +43,47 @@ pip install -e .
 # 3. Start the daemon
 ares start
 
-# 4. Build the macOS app
-open ARES-Desktop/Package.swift   # Opens in Xcode
-# Press ⌘B to build, then ⌘R to run
+# 4. Build the macOS app bundle
+cd ARES-Desktop && ./build-app.sh
+# Produces ARES-Desktop/ARES.app — open it or drag to /Applications.
+# For Xcode iteration: open ARES-Desktop/Package.swift, select the ARES scheme, ⌘B.
 ```
 
 ## Configuration
 
-ARES reads from `~/.ares/ares.toml` on first run. Key fields:
+ARES reads from `~/.ares/config/ares.toml` on first run. A complete annotated example lives at `ares.toml.example` in the repo root — copy it into place and edit. Key fields:
 
 ```toml
 [agent]
-hermes_url = "http://localhost:8642"   # Your Hermes gateway URL
-model = "hermes-agent"                  # Default model
-api_key = ""                            # Set via env var instead
+backend = "hermes"          # "hermes" | "lilith" | "local" | "cloud"
+fast_path_enabled = false
 
-[ollama]
-base_url = "http://localhost:11434"
-num_ctx = 65536                         # Context window for reasoning model
-keep_alive = "5m"
+[agent.hermes]
+api_url = "http://localhost:8321"
+api_key = ""                # Prefer ARES_HERMES_API_KEY env var
 
-[telemetry]
-osc_enabled = false                     # Enable OSC avatar control
-osc_host = "127.0.0.1"
-osc_port = 9000
+[agent.local]
+model = "gemma3:12b"
+ollama_url = "http://localhost:11434"
+num_ctx = 65536
+
+[gateway]
+host = "127.0.0.1"
+port = 7860
+
+[telemetry.osc]
+enabled = false
+host = "127.0.0.1"
+port = 9000
 ```
 
-Environment variable overrides:
-- `ARES_HERMES_URL` — Hermes gateway URL
-- `ARES_HERMES_MODEL` — Model identifier
-- `ARES_HERMES_API_KEY` — API key (preferred over config file)
+Environment variable overrides (read by `ares/runtime/config.py`):
+- `ARES_HOME` — Override `~/.ares` location
+- `ARES_GATEWAY_HOST`, `ARES_GATEWAY_PORT` — Gateway bind address
+- `ARES_AGENT_BACKEND` — Which brain (`hermes` / `lilith` / `local` / `cloud`)
+- `ARES_HERMES_URL`, `ARES_HERMES_API_KEY` — Hermes gateway + key
+- `ARES_LOCAL_MODEL`, `ARES_OLLAMA_URL` — Local backend settings
+- `OLLAMA_NUM_CTX` — Override Ollama context window
 
 ## Diagnostics
 
