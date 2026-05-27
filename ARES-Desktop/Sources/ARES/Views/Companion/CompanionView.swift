@@ -161,6 +161,19 @@ struct CompanionView: View {
                 activeMessageBus = samRuntime.createConversation()
                 hasCreatedConversation = true
             }
+            // Fix: ensure chat input receives keyboard focus after ChatWidget renders.
+            // ChatWidget sets isInputFocused=true internally but the window may not yet
+            // be key when CompanionView first appears. We resign first responder and then
+            // re-trigger focus after a brief layout pass so the TextEditor wins it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    NSApp.activate(ignoringOtherApps: true)
+                    // Post a notification that ChatWidget listens for, or rely on
+                    // its own performMainChatViewAppear re-triggering via window activation.
+                    NSApp.keyWindow?.makeFirstResponder(NSApp.keyWindow?.firstResponder)
+                }
+            }
         }
     }
 

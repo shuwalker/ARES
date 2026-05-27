@@ -165,7 +165,7 @@ def _register_launchd() -> None:
     ares_bin = sys.argv[0]
     log_dir = ares_paths()["logs"]
     cfg = get_config()
-    key = cfg.agent.cloud_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    key = cfg.llm.cloud_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
 
     content = LAUNCHD_PLIST_TEMPLATE.format(
         ares_bin=ares_bin,

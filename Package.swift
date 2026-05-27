@@ -15,7 +15,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "../hermes-desktop/Vendor/SwiftTerm")
+        .package(path: "ARES-Desktop/Vendor/SwiftTerm")
     ],
     targets: [
         .executableTarget(
@@ -23,7 +23,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
-            path: "Sources/ARES",
+            path: "ARES-Desktop/Sources/ARES",
             exclude: [],
             sources: nil,
             resources: [
@@ -33,7 +33,7 @@ let package = Package(
         .testTarget(
             name: "ARESTests",
             dependencies: ["ARES"],
-            path: "Tests/ARESTests"
+            path: "ARES-Desktop/Tests/ARESTests"
         )
     ]
 )

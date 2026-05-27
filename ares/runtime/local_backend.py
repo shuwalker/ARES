@@ -26,13 +26,11 @@ class LocalBackend(AgentInterface):
         model: str = "gemma3:12b",
         ollama_url: str = "http://localhost:11434",
         timeout: float = 300.0,
-        num_ctx: int = 65536,
         **kwargs,
     ):
         self.model = model
         self.ollama_url = ollama_url.rstrip("/")
         self.timeout = timeout
-        self.num_ctx = num_ctx
         self._client: Optional[httpx.Client] = None
 
     def send(self, message: str, context: Optional[dict] = None) -> AgentResponse:
@@ -50,7 +48,6 @@ class LocalBackend(AgentInterface):
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "options": {"num_ctx": self.num_ctx},
         }
 
         try:

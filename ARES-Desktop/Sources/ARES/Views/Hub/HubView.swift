@@ -182,6 +182,38 @@ struct HubSettingsView: View {
                 }
                 .groupBoxStyle(SpartanGroupBoxStyle())
 
+                // AI Configuration
+                GroupBox {
+                    VStack(spacing: 12) {
+                        HStack {
+                            Text("Gateway URL")
+                                .font(.subheadline)
+                                .foregroundStyle(ARESColors.textSecondary)
+                                .frame(width: 120, alignment: .leading)
+                            TextField("http://localhost:8642", text: $appState.hermesGatewayURL)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.caption, design: .monospaced))
+                        }
+                        HStack {
+                            Text("Model")
+                                .font(.subheadline)
+                                .foregroundStyle(ARESColors.textSecondary)
+                                .frame(width: 120, alignment: .leading)
+                            TextField("hermes-agent", text: $appState.selectedModel)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.caption, design: .monospaced))
+                        }
+                    }
+                    .padding(10)
+                } label: {
+                    Text("AI CONFIGURATION")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .tracking(2)
+                        .foregroundStyle(ARESColors.textSecondary)
+                }
+                .groupBoxStyle(SpartanGroupBoxStyle())
+
                 // Quick Launch
                 GroupBox {
                     VStack(spacing: 0) {

@@ -12,17 +12,42 @@ final class SAMRuntime: ObservableObject {
     @Published var endpointManager: EndpointManager
     @Published var sharedConversationService: SharedConversationService
 
-    // Hermes provider connection — configurable via environment variables.
+    // Hermes provider connection.
+    // Priority order: ARESAppState (user-configurable) → env var → hardcoded default.
     // ARES_HERMES_API_KEY must be supplied at launch; empty default means
     // requests go without auth (only valid against a local trusted Hermes).
-    private static let hermesBaseURL = ProcessInfo.processInfo
-        .environment["ARES_HERMES_URL"] ?? "http://localhost:8642/v1"
     private static let hermesAPIKey = ProcessInfo.processInfo
         .environment["ARES_HERMES_API_KEY"] ?? ""
-    private static let hermesModel = ProcessInfo.processInfo
-        .environment["ARES_HERMES_MODEL"] ?? "hermes-agent"
 
-    init() {
+    /// Resolved at init-time from appState, which has already seeded UserDefaults
+    /// before this object is constructed. This eliminates the gpt-4 race condition.
+    private let resolvedBaseURL: String
+    private let resolvedModel: String
+
+    init(appState: ARESAppState? = nil) {
+        // Resolve the gateway URL and model from appState first, then fall back
+        // to env vars, then to hardcoded defaults.  appState.init() guarantees
+        // UserDefaults["defaultModel"] is already written to "hermes-agent" (or the
+        // user's persisted choice) before SAMRuntime is constructed, so ChatWidget's
+        // @AppStorage("defaultModel") will never see "gpt-4" on a fresh launch.
+        let envURL = ProcessInfo.processInfo.environment["ARES_HERMES_URL"]
+        let envModel = ProcessInfo.processInfo.environment["ARES_HERMES_MODEL"]
+
+        // Also check UserDefaults: ARESAppState.init() writes these before SAMRuntime
+        // is constructed, so UserDefaults is a reliable pre-populated source.
+        let udURL = UserDefaults.standard.string(forKey: "ARES.hermesGatewayURL")
+        let udModel = UserDefaults.standard.string(forKey: "ARES.selectedModel")
+
+        self.resolvedBaseURL = appState.map { "\($0.hermesGatewayURL)/v1" }
+            ?? udURL.map { "\($0)/v1" }
+            ?? envURL
+            ?? "http://localhost:8642/v1"
+
+        self.resolvedModel = appState?.selectedModel
+            ?? udModel
+            ?? envModel
+            ?? "hermes-agent"
+
         let cm = ConversationManager()
         self.conversationManager = cm
 
@@ -46,8 +71,8 @@ final class SAMRuntime: ObservableObject {
             providerType: .custom,
             isEnabled: true,
             apiKey: Self.hermesAPIKey,
-            baseURL: Self.hermesBaseURL,
-            models: [Self.hermesModel],
+            baseURL: resolvedBaseURL,
+            models: [resolvedModel],
             maxTokens: 8192,
             temperature: 0.7,
             customHeaders: nil,
@@ -63,11 +88,12 @@ final class SAMRuntime: ObservableObject {
         }
 
         endpointManager.reloadProviderConfigurations()
-        
-        // Default ChatWidget to Hermes — prevents it trying gpt-4
-        UserDefaults.standard.set(Self.hermesModel, forKey: "defaultModel")
-        
-        print("[SAMRuntime] Hermes provider configured — \(Self.hermesBaseURL)")
+
+        // Ensure defaultModel is set to the resolved model (belt-and-suspenders;
+        // ARESAppState.init() already wrote this before we were constructed).
+        UserDefaults.standard.set(resolvedModel, forKey: "defaultModel")
+
+        print("[SAMRuntime] Hermes provider configured — \(resolvedBaseURL) model=\(resolvedModel)")
     }
 
     /// Create a new conversation with Hermes ready to go.

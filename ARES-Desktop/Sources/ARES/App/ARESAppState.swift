@@ -24,7 +24,17 @@ final class ARESAppState: ObservableObject {
     @Published var sessionCount: Int = 0
     @Published var memoryPercent: Int = 0
     @Published var hermesRunning: Bool = false
-    @Published var hermesGatewayURL: String = "http://localhost:8642"
+    @Published var hermesGatewayURL: String {
+        didSet { UserDefaults.standard.set(hermesGatewayURL, forKey: "ARES.hermesGatewayURL") }
+    }
+    @Published var selectedModel: String {
+        didSet {
+            UserDefaults.standard.set(selectedModel, forKey: "ARES.selectedModel")
+            // Keep ChatWidget's AppStorage("defaultModel") in sync so it always
+            // picks up the correct model and never falls back to "gpt-4".
+            UserDefaults.standard.set(selectedModel, forKey: "defaultModel")
+        }
+    }
     @Published var activeOfficeAgents: Int = 0
 
     // MARK: - Chat state
@@ -42,6 +52,21 @@ final class ARESAppState: ObservableObject {
 
     init() {
         self.hasBootstrapped = UserDefaults.standard.bool(forKey: "ARES.hasBootstrapped")
+
+        // Restore persisted gateway URL, defaulting to the local Hermes port.
+        self.hermesGatewayURL = UserDefaults.standard.string(forKey: "ARES.hermesGatewayURL")
+            ?? "http://localhost:8642"
+
+        // Restore persisted model selection, defaulting to hermes-agent.
+        let restoredModel = UserDefaults.standard.string(forKey: "ARES.selectedModel")
+            ?? "hermes-agent"
+        self.selectedModel = restoredModel
+
+        // Fix race: write "defaultModel" NOW — before SAMRuntime (and ChatWidget) initialize —
+        // so that ChatWidget's @AppStorage("defaultModel") reads "hermes-agent" from the start
+        // instead of its hardcoded "gpt-4" fallback.
+        UserDefaults.standard.set(restoredModel, forKey: "defaultModel")
+
         refreshLiveStats()
     }
 

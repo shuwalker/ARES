@@ -131,6 +131,13 @@ PLIST
 # Step 6: Create PkgInfo
 echo "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
+# Step 6.5: Add @executable_path/../Frameworks to the binary's rpath. SPM
+# only emits @loader_path, so dyld can't find Contents/Frameworks/*.framework
+# at runtime without this. Mirrors SAM's Makefile.
+echo "Fixing framework rpath..."
+install_name_tool -add_rpath "@executable_path/../Frameworks" \
+    "$APP_BUNDLE/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+
 # Step 7: Codesign (ad-hoc, no Developer ID needed for local use)
 echo "Codesigning..."
 codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || {

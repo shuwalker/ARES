@@ -108,11 +108,6 @@ class AgentConfig:
     # Local / Ollama settings
     local_model: str = "gemma3:12b"
     local_ollama_url: str = "http://localhost:11434"
-    ollama_num_ctx: int = 65536  # Context window for Ollama requests
-
-    # Cloud LLM settings (Anthropic)
-    cloud_model: str = "claude-sonnet-4-6"
-    cloud_api_key: str = ""  # Falls back to ANTHROPIC_API_KEY env var if empty
 
     def agent_dict(self) -> dict:
         """Return config as a dict suitable for load_backend()."""
@@ -200,9 +195,6 @@ def load_config(path: Optional[Path] = None) -> AresConfig:
     config.agent.hermes_api_key = _env_str("ARES_HERMES_API_KEY", config.agent.hermes_api_key)
     config.agent.local_model = _env_str("ARES_LOCAL_MODEL", config.agent.local_model)
     config.agent.local_ollama_url = _env_str("ARES_OLLAMA_URL", config.agent.local_ollama_url)
-    _ollama_num_ctx = _env_str("OLLAMA_NUM_CTX", "")
-    if _ollama_num_ctx:
-        config.agent.ollama_num_ctx = int(_ollama_num_ctx)
 
     # Load .env secrets if present
     env_file = home / ".env"
@@ -267,13 +259,6 @@ def _apply_toml(config: AresConfig, path: Path) -> None:
         config.agent.local_model = local["model"]
     if "ollama_url" in local:
         config.agent.local_ollama_url = local["ollama_url"]
-    if "num_ctx" in local:
-        config.agent.ollama_num_ctx = int(local["num_ctx"])
-    cloud = agent.get("cloud", {})
-    if "model" in cloud:
-        config.agent.cloud_model = cloud["model"]
-    if "api_key" in cloud:
-        config.agent.cloud_api_key = cloud["api_key"]
 
     # Face section
     face = data.get("face", {})
@@ -322,7 +307,7 @@ def write_default_config() -> Path:
             "backend": "hermes",
             "hermes": {"api_url": "http://localhost:8321", "api_key": ""},
             "lilith": {"zmq_host": "127.0.0.1", "input_port": 5571, "output_port": 5572},
-            "local": {"model": "gemma3:12b", "ollama_url": "http://localhost:11434", "num_ctx": 65536},
+            "local": {"model": "gemma3:12b", "ollama_url": "http://localhost:11434"},
         },
         "face": {"default_style": "blackfire", "intensity": 0.60},
         "gateway": {"host": "127.0.0.1", "port": 7860},

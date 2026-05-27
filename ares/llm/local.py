@@ -32,8 +32,8 @@ async def complete(
 ) -> str:
     """Call the local LM Studio model and return the text response."""
     cfg = get_config()
-    base_url = cfg.agent.local_ollama_url
-    model = model or cfg.agent.local_model
+    base_url = cfg.llm.local_url
+    model = model or cfg.llm.local_model
 
     await log(
         task_id=task_id,
@@ -48,7 +48,6 @@ async def complete(
         "messages": [{"role": "system", "content": system}] + messages,
         "max_tokens": max_tokens,
         "stream": False,
-        "options": {"num_ctx": 65536},
     }
 
     try:
@@ -83,7 +82,7 @@ async def complete(
 async def is_available() -> bool:
     """Check if LM Studio is running."""
     cfg = get_config()
-    base_url = cfg.agent.local_ollama_url
+    base_url = cfg.llm.local_url
     try:
         client = _get_client()
         response = await client.get(f"{base_url}/models", timeout=5.0)
