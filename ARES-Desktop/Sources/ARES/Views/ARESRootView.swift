@@ -1,7 +1,9 @@
 import SwiftUI
+import UserInterface
 
 struct ARESRootView: View {
     @EnvironmentObject private var appState: ARESAppState
+    @EnvironmentObject private var samRuntime: SAMRuntime
 
     var body: some View {
         NavigationSplitView {
@@ -16,6 +18,9 @@ struct ARESRootView: View {
                 OfficeView()
             case .hub:
                 HubView()
+            case .settings:
+                SAMSettingsView()
+                    .environmentObject(samRuntime)
             }
         }
         .background(ARESColors.background)

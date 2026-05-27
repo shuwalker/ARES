@@ -61,6 +61,10 @@ final class SAMRuntime: ObservableObject {
         cm.injectSystemPromptManager(SystemPromptManager.shared)
         scs.injectEndpointManager(em)
 
+        // Wire ALICE image generation service into MCP tool layer
+        let aliceService = ALICEImageGenerationService()
+        cm.mcpManager.setImageGenerationService(aliceService)
+
         // Configure Hermes as the custom provider
         configureHermesProvider()
     }

@@ -20,6 +20,7 @@ final class ARESAppState: ObservableObject {
     @Published var companionGreeting: String = ""
     @Published var selfModelContent: String = ""
     @Published var voiceState: VoiceState = .idle
+    @Published var avatarImagePath: String? = UserDefaults.standard.string(forKey: "ares_avatar_image_path")
     @Published var skillCount: Int = 0
     @Published var sessionCount: Int = 0
     @Published var memoryPercent: Int = 0
@@ -324,6 +325,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
     case companion
     case office
     case hub
+    case settings
 
     var id: String { rawValue }
 
@@ -332,6 +334,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
         case .companion: return "Companion"
         case .office:    return "Office"
         case .hub:       return "Hub"
+        case .settings:  return "Settings"
         }
     }
 
@@ -340,6 +343,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
         case .companion: return "person.fill.viewfinder"
         case .office:    return "building.2.fill"
         case .hub:       return "square.grid.2x2.fill"
+        case .settings:  return "gearshape.fill"
         }
     }
 }

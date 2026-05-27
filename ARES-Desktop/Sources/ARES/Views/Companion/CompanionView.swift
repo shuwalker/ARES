@@ -15,6 +15,8 @@ struct CompanionView: View {
     @State private var showingMiniPrompts = false
     @State private var activeMessageBus: ConversationMessageBus?
     @State private var hasCreatedConversation = false
+    @State private var isGeneratingAvatar = false
+    @State private var avatarGenerationError: String? = nil
 
     var body: some View {
         HSplitView {
@@ -48,19 +50,35 @@ struct CompanionView: View {
                     .fill(ARESColors.background)
                     .frame(width: 180, height: 180)
 
-                Circle()
-                    .fill(ARESColors.gradient)
-                    .frame(width: 160, height: 160)
+                if isGeneratingAvatar {
+                    Circle()
+                        .fill(ARESColors.gradient)
+                        .frame(width: 160, height: 160)
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .tint(.white)
+                } else if let imagePath = appState.avatarImagePath,
+                          let nsImage = NSImage(contentsOfFile: imagePath) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 160, height: 160)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(ARESColors.gradient)
+                        .frame(width: 160, height: 160)
 
-                Image(systemName: "shield.righthalf.filled")
-                    .font(.system(size: 64))
-                    .foregroundStyle(
-                        .linearGradient(
-                            colors: [.white.opacity(0.9), .white.opacity(0.3)],
-                            startPoint: .top,
-                            endPoint: .bottom
+                    Image(systemName: "shield.righthalf.filled")
+                        .font(.system(size: 64))
+                        .foregroundStyle(
+                            .linearGradient(
+                                colors: [.white.opacity(0.9), .white.opacity(0.3)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                    )
+                }
             }
 
             // Voice state label
@@ -69,6 +87,35 @@ struct CompanionView: View {
                 .fontWeight(.bold)
                 .tracking(3)
                 .foregroundStyle(appState.voiceState.color)
+
+            // Generate Avatar button
+            Button(action: generateAvatar) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                    Text("GENERATE AVATAR")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .tracking(1)
+                }
+                .frame(height: 28)
+            }
+            .buttonStyle(.bordered)
+            .tint(ARESColors.gold)
+            .disabled(isGeneratingAvatar)
+
+            if let errorMsg = avatarGenerationError {
+                Text(errorMsg)
+                    .font(.caption2)
+                    .foregroundStyle(ARESColors.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+                    .onAppear {
+                        Task {
+                            try? await Task.sleep(nanoseconds: 4_000_000_000)
+                            avatarGenerationError = nil
+                        }
+                    }
+            }
 
             Spacer()
 
@@ -174,6 +221,37 @@ struct CompanionView: View {
                     NSApp.keyWindow?.makeFirstResponder(NSApp.keyWindow?.firstResponder)
                 }
             }
+        }
+    }
+
+    // MARK: - Avatar Generation
+
+    private func generateAvatar() {
+        isGeneratingAvatar = true
+        avatarGenerationError = nil
+
+        Task { @MainActor in
+            do {
+                let service = ALICEImageGenerationService()
+                let result = try await service.generate(
+                    prompt: "anime sci-fi AI companion, silver hair, glowing orange eyes, white tech-wear spacesuit, helmet visor, NPR cel-shaded illustration, clean background",
+                    negativePrompt: "realistic, photo, blur, watermark, text",
+                    model: nil,
+                    steps: 20,
+                    guidanceScale: 7.5,
+                    scheduler: "euler_a",
+                    seed: nil,
+                    width: 512,
+                    height: 512
+                )
+                if let firstPath = result.localPaths.first {
+                    appState.avatarImagePath = firstPath
+                    UserDefaults.standard.set(firstPath, forKey: "ares_avatar_image_path")
+                }
+            } catch {
+                avatarGenerationError = "Avatar generation failed: \(error.localizedDescription)"
+            }
+            isGeneratingAvatar = false
         }
     }
 
