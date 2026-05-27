@@ -8,6 +8,8 @@ from __future__ import annotations
 import anthropic
 from typing import Any
 
+import os
+
 from ares.runtime.config import get_config
 from ares.runtime.audit import log
 
@@ -22,7 +24,7 @@ def get_client() -> anthropic.AsyncAnthropic:
     global _client
     if _client is None:
         cfg = get_config()
-        api_key = cfg.llm.cloud_api_key
+        api_key = cfg.agent.cloud_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         if api_key:
             _client = anthropic.AsyncAnthropic(api_key=api_key)
         else:
@@ -45,7 +47,7 @@ async def complete(
 ) -> str:
     """Call the cloud LLM and return the text response."""
     cfg = get_config()
-    model = model or cfg.llm.cloud_model
+    model = model or cfg.agent.cloud_model
 
     client = get_client()
 
@@ -88,7 +90,7 @@ async def complete_with_usage(
 ) -> tuple[str, dict[str, Any]]:
     """Call cloud LLM and return (text, usage_dict)."""
     cfg = get_config()
-    model = model or cfg.llm.cloud_model
+    model = model or cfg.agent.cloud_model
     client = get_client()
 
     await log(task_id=task_id, action="llm_call", backend="cloud", model=model)

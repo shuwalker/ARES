@@ -109,6 +109,10 @@ class AgentConfig:
     local_model: str = "gemma3:12b"
     local_ollama_url: str = "http://localhost:11434"
 
+    # Cloud LLM settings (Anthropic)
+    cloud_model: str = "claude-sonnet-4-6"
+    cloud_api_key: str = ""  # Falls back to ANTHROPIC_API_KEY env var if empty
+
     def agent_dict(self) -> dict:
         """Return config as a dict suitable for load_backend()."""
         return {
@@ -259,6 +263,11 @@ def _apply_toml(config: AresConfig, path: Path) -> None:
         config.agent.local_model = local["model"]
     if "ollama_url" in local:
         config.agent.local_ollama_url = local["ollama_url"]
+    cloud = agent.get("cloud", {})
+    if "model" in cloud:
+        config.agent.cloud_model = cloud["model"]
+    if "api_key" in cloud:
+        config.agent.cloud_api_key = cloud["api_key"]
 
     # Face section
     face = data.get("face", {})
