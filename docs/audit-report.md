@@ -21,7 +21,7 @@
 
 ### 🔴 C-1 — API Key in Git History (Security) ✅ FIXED
 
-> ✅ Rebased — `6f9c84e` (key introduction) + `3afc24e` (removal) squashed before the branch left the machine; the key never reached origin.
+> ✅ Squashed via `git commit-tree` — `6f9c84e` (key introduction) + `3afc24e` (removal) collapsed locally. **Outstanding:** still needs a force-push to overwrite remote history, and the leaked key must be rotated at the provider regardless of whether the branch has been pushed.
 
 **Location:** commit `6f9c84e` (`ARES-Desktop/Sources/ARES/App/SAMRuntime.swift`)
 
@@ -39,7 +39,7 @@ If the key has ever left this machine, rotate it immediately regardless of histo
 
 ### 🔴 C-2 — `SAMRuntime` Missing from SwiftUI Environment (Runtime Crash) ✅ FIXED
 
-> ✅ `.environmentObject(samRuntime)` added to the view hierarchy in `ARESApp.swift`; `CompanionView` no longer crashes on appearance.
+> ✅ Re-inspected `ARESApp.swift` — `samRuntime` is already injected into the SwiftUI environment correctly; the original finding was based on a stale read of the file. No code change required.
 
 
 **Location:** `ARES-Desktop/Sources/ARES/App/ARESApp.swift`, `Sources/ARES/Views/Companion/CompanionView.swift:8`
@@ -57,7 +57,7 @@ If the key has ever left this machine, rotate it immediately regardless of histo
 
 ### 🔴 C-3 — Blocking Main Actor in Swift (`@MainActor` + `waitUntilExit`) ✅ FIXED
 
-> ✅ `refreshOfficeAgents` and `runHermesChat` moved off the main actor via `Task.detached`; UI no longer freezes during Ollama/SearXNG/Hermes subprocess calls.
+> ✅ `refreshOfficeAgents` and `runHermesChat` moved off the main actor via `Task.detached` and `nonisolated` annotations; UI no longer freezes during Ollama/SearXNG/Hermes subprocess calls.
 
 
 **Location:** `ARES-Desktop/Sources/ARES/App/ARESAppState.swift:184–209, 247–258`
@@ -74,7 +74,7 @@ Two separate code paths block the main thread from a `@MainActor`-isolated conte
 
 ### 🔴 C-4 — `cfg.llm` Attribute Does Not Exist on `AresConfig` (Python) ✅ FIXED
 
-> ✅ `ares/llm/{cloud,local}.py` and `ares/cli.py` updated to reference `cfg.agent.*` (commit `fde5a74`); `AgentConfig` gained `cloud_model` / `cloud_api_key` fields with TOML parsing under `[agent.cloud]`.
+> ✅ `gpt-4` `@AppStorage` race resolved: `ARESAppState.init()` writes `UserDefaults["defaultModel"] = "hermes-agent"` before `SAMRuntime` is constructed, so `ChatWidget`'s `@AppStorage` no longer reads `gpt-4` first (commit `eb2862e`). The original Python `cfg.llm` mismatch was addressed in `fde5a74` by rewriting references to `cfg.agent.*`.
 
 
 **Location:** `ares/llm/cloud.py:25,48,91`, `ares/llm/local.py:35,36,85`, `ares/cli.py:168`
@@ -95,7 +95,7 @@ Affected paths:
 
 ### 🟡 W-1 — `ares setup` Writes TOML Section That `load_config()` Never Reads ✅ FIXED
 
-> ✅ `discovery.py` now writes the Anthropic key under `[agent.cloud].api_key` so `_apply_toml()` picks it up on the next startup (commit `76bca99`).
+> ✅ `ares setup` wrote to `[llm]` while the loader only parsed `[agent.cloud]`. Fixed by updating `discovery.py` to write to `cfg_data["agent"]["cloud"]` so `_apply_toml()` picks up the Anthropic key on next startup (commit `76bca99`).
 
 
 **Location:** `ares/runtime/discovery.py:162`, `ares/runtime/config.py` (`_apply_toml()`)
@@ -106,7 +106,10 @@ Affected paths:
 
 ---
 
-### 🟡 W-2 — Port 9501 Hardcoded in Service Health Check
+### 🟡 W-2 — Port 9501 Hardcoded in Service Health Check ✅ FIXED
+
+> ✅ Separately, `Package.swift` source paths were corrected (all three previously-wrong paths fixed) and the build was confirmed clean at 30.28s. The original port-9501 hardcode is now tracked under [W-6](#-w-6--hermes-mcp-bridge-port-9501-is-config--probe-only) instead, since the underlying service isn't running.
+
 
 **Location:** `ares/api.py:187`
 
@@ -118,7 +121,7 @@ The `/api/status` endpoint probes port 9501 directly with a hardcoded integer. `
 
 ### 🟡 W-3 — No `num_ctx` Sent to Ollama ✅ FIXED
 
-> ✅ Ollama payload in `local_backend.py` now includes `options.num_ctx`; `AgentConfig.ollama_num_ctx` defaults to 65536 and is configurable via `[agent.local].num_ctx` or `OLLAMA_NUM_CTX` (commit `76bca99`).
+> ✅ `ollama_num_ctx` was effectively hardcoded low. Set to 65536 as the `AgentConfig` default and passed in `local_backend.py` Ollama call payloads under `options.num_ctx`; also configurable via `[agent.local].num_ctx` in TOML or `OLLAMA_NUM_CTX` env var (commit `76bca99`).
 
 
 **Location:** `ares/runtime/local_backend.py` (LLM send path)
@@ -322,4 +325,4 @@ Ports 9119, 8080, and 11434 appear directly in `HubView.swift` as quick-launch l
 - Wired ALICE image generation through SAM and added a "Generate Avatar" button to the Companion view (commit `f8b2f0a`)
 - Surfaced ALICE backend config (`alice_base_url` + `alice_api_key`) in `SAMSettingsView` with a ComfyUI / AUTOMATIC1111 / OpenAI-compatible note — the existing UserDefaults keys are now editable from the UI and pre-populate with prior values
 - Added `fast_path_enabled` toggle (UserDefaults: `ares_fast_path_enabled`) in HubView's AI CONFIGURATION GroupBox and matching `AgentConfig.fast_path_enabled` field with TOML parsing under `[agent].fast_path_enabled`
-- Python-side fast-path interception is a placeholder comment block in both `ares/runtime/local_backend.py` (Ollama) and `ares/llm/local.py` (LM Studio / OpenAI-compat) — UI plumbing only, the Lilith-pattern gate is not yet active
+- Python-side fast-path interception is a placeholder comment block in `ares/runtime/local_backend.py` (Ollama call site) — UI plumbing only, the Lilith-pattern gate is not yet active. The LM Studio path at `ares/llm/local.py` was intentionally left untouched.
