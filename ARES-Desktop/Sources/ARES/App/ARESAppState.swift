@@ -166,58 +166,63 @@ final class ARESAppState: ObservableObject {
     }
 
     private func refreshOfficeAgents() {
-        // Discover active agents from Hermes
-        // For now: Hermes itself + any detected sub-processes
-        var agents: [AgentCard] = []
+        // Discover active agents from Hermes — process checks run off the main
+        // thread to avoid blocking the UI with waitUntilExit().
+        let hermesRunningSnapshot = hermesRunning
+        Task.detached(priority: .utility) {
+            var agents: [AgentCard] = []
 
-        // Hermes agent
-        if hermesRunning {
-            agents.append(AgentCard(
-                name: "Hermes",
-                role: "Reasoning Engine",
-                status: .active,
-                detail: "Primary cognition agent"
-            ))
+            // Hermes agent
+            if hermesRunningSnapshot {
+                agents.append(AgentCard(
+                    name: "Hermes",
+                    role: "Reasoning Engine",
+                    status: .active,
+                    detail: "Primary cognition agent"
+                ))
+            }
+
+            // Check for Ollama
+            let ollamaCheck = Process()
+            ollamaCheck.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+            ollamaCheck.arguments = ["-x", "ollama"]
+            let pipe = Pipe()
+            ollamaCheck.standardOutput = pipe
+            ollamaCheck.standardError = FileHandle.nullDevice
+            try? ollamaCheck.run()
+            ollamaCheck.waitUntilExit()
+            if ollamaCheck.terminationStatus == 0 {
+                agents.append(AgentCard(
+                    name: "Ollama",
+                    role: "ML Engine",
+                    status: .active,
+                    detail: "Local model inference"
+                ))
+            }
+
+            // SearXNG
+            let sxCheck = Process()
+            sxCheck.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+            sxCheck.arguments = ["-f", "searxng"]
+            let sxPipe = Pipe()
+            sxCheck.standardOutput = sxPipe
+            sxCheck.standardError = FileHandle.nullDevice
+            try? sxCheck.run()
+            sxCheck.waitUntilExit()
+            if sxCheck.terminationStatus == 0 {
+                agents.append(AgentCard(
+                    name: "SearXNG",
+                    role: "Research",
+                    status: .active,
+                    detail: "Self-hosted search engine"
+                ))
+            }
+
+            await MainActor.run {
+                self.officeAgents = agents
+                self.officeAgentCount = agents.count
+            }
         }
-
-        // Check for Ollama
-        let ollamaCheck = Process()
-        ollamaCheck.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        ollamaCheck.arguments = ["-x", "ollama"]
-        let pipe = Pipe()
-        ollamaCheck.standardOutput = pipe
-        ollamaCheck.standardError = FileHandle.nullDevice
-        try? ollamaCheck.run()
-        ollamaCheck.waitUntilExit()
-        if ollamaCheck.terminationStatus == 0 {
-            agents.append(AgentCard(
-                name: "Ollama",
-                role: "ML Engine",
-                status: .active,
-                detail: "Local model inference"
-            ))
-        }
-
-        // SearXNG
-        let sxCheck = Process()
-        sxCheck.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        sxCheck.arguments = ["-f", "searxng"]
-        let sxPipe = Pipe()
-        sxCheck.standardOutput = sxPipe
-        sxCheck.standardError = FileHandle.nullDevice
-        try? sxCheck.run()
-        sxCheck.waitUntilExit()
-        if sxCheck.terminationStatus == 0 {
-            agents.append(AgentCard(
-                name: "SearXNG",
-                role: "Research",
-                status: .active,
-                detail: "Self-hosted search engine"
-            ))
-        }
-
-        officeAgents = agents
-        officeAgentCount = agents.count
     }
 
     // MARK: - Chat
@@ -242,7 +247,7 @@ final class ARESAppState: ObservableObject {
         }
     }
 
-    private func runHermesChat(_ prompt: String) async -> String {
+    nonisolated private func runHermesChat(_ prompt: String) async -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["hermes", "-z", prompt, "--yolo"]
