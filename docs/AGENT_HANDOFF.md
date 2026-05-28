@@ -114,6 +114,7 @@ Sourced from `docs/audit-report.md` open items, in rough priority order:
 4. **Read files before editing.** Especially `ARESAppState.swift` and `SAMRuntime.swift` — they're load-bearing and easy to break.
 5. **Use the `commit-tree` bypass when `.git/index.lock` is present.** Don't `rm` lock files reflexively; investigate first (another process or Xcode may hold them).
 6. **Don't add Swift Package dependencies casually.** `Package.resolved` is pinned by SHA for two packages already (W-12); adding more without version tags compounds the brittleness.
+7. **Never edit `~/.hermes/config.yaml` without:** (1) making a timestamped backup first, (2) running the Hermes config validator before AND after the edit. The normalizer silently drops malformed providers — always verify provider count after any change.
 
 ## v1 Completion Checklist
 
