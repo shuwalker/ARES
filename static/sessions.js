@@ -1321,10 +1321,14 @@ async function _ensureMessagesLoaded(sid) {
   if (!data || !data.session) return;
   _messagesTruncated = !!data.session._messages_truncated;
   _oldestIdx = data.session._messages_offset || 0;
-  const msgs = (data.session.messages || []).filter(m => m && m.role);
+  // #3162: `msgs` is reassigned below by the #3018 ephemeral-field carry-forward,
+  // so it must be `let`, not `const`. The `const` form threw a TypeError inside
+  // _ensureMessagesLoaded() that surfaced as a "Failed to load conversation messages"
+  // toast on every mobile message (SSE/visibility events trigger this reload path
+  // more aggressively on mobile).
+  let msgs = (data.session.messages || []).filter(m => m && m.role);
   // Check for tool-call metadata on messages (for tool-call card rendering)
   const hasMessageToolMetadata = msgs.some(m => {
-    if (!m || m.role !== 'assistant') return false;
     const hasTc = Array.isArray(m.tool_calls) && m.tool_calls.length > 0;
     const hasTu = Array.isArray(m.content) && m.content.some(p => p && p.type === 'tool_use');
     return hasTc || hasTu;
