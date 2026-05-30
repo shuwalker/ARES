@@ -3,6 +3,16 @@
 
 ## [Unreleased]
 
+## [v0.51.161] — 2026-05-29 — Release EG (stage-batch43 — 3-PR live-display fixes: jump-to-question on intermediate assistant messages + per-turn usage badge persistence + stale unread/compression-timer/tool-card dedup)
+
+### Fixed
+
+- The jump-to-question button now appears on every assistant message that has a resolvable question target, not only the turn-final one. Multi-step turns (tool call → assistant → tool call → assistant) previously stripped the navigation affordance from intermediate assistant bubbles.
+- Per-turn ephemeral fields (`_turnUsage`, `_turnDuration`, `_turnTps`, `_gatewayRouting`) are now carried forward when a session refresh replaces the in-memory message list with fresh server data, so the usage badge / duration / gateway-routing pill no longer flash and disappear after a compaction restore, external active-session poll, or SSE error recovery (#3018).
+- The sidebar unread dot no longer sticks on a session after it has been viewed: syncing the viewed count now clears any stale completion-unread marker, and an actively-viewed session syncs its count instead of being flagged unread on tab switch (#3020).
+- The auto-compression card's elapsed timer is now cleared on completion/error, so a replaced card is no longer treated as a still-running compression; a background-session completion no longer kills the active session's compression timer (#2973).
+- Tool cards no longer duplicate the result text in both the header and the detail row: the completed tool result is routed to the detail snippet (falling back to the header only when no progress text was streamed), and the detail row is suppressed when the snippet equals the header preview.
+
 ## [v0.51.160] — 2026-05-29 — Release EF (stage-batch42 — 3-PR low-risk cleanup: OpenCode shared-key detection + skills-panel profile-aware disabled read + session-index metadata refresh perf)
 
 ### Fixed

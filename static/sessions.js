@@ -142,6 +142,9 @@ function _setSessionViewedCount(sid, messageCount = 0) {
   const next = Number.isFinite(messageCount) ? Number(messageCount) : 0;
   counts[sid] = next;
   _saveSessionViewedCounts();
+  // If the viewed count is now current, any prior completion-unread marker is
+  // stale — clear it so _hasUnreadForSession doesn't short-circuit (#3020).
+  _clearSessionCompletionUnread(sid);
 }
 
 function _getSessionCompletionUnread() {
@@ -407,8 +410,13 @@ function _markPollingCompletionUnreadTransitions(sessions) {
       )
     );
     const completedPersistedObservedStream = Boolean(observedStreaming && !isStreaming);
-    if ((completedObservedStream || completedPersistedObservedStream || completedWithNewMessages) && !_isSessionActivelyViewedForList(sid)) {
-      _markSessionCompletionUnread(sid, s.message_count);
+    if (completedObservedStream || completedPersistedObservedStream || completedWithNewMessages) {
+      if (!_isSessionActivelyViewedForList(sid)) {
+        _markSessionCompletionUnread(sid, s.message_count);
+      } else {
+        // Sync viewed count so we don't flag stale unread on tab switch (#3020)
+        _setSessionViewedCount(sid, messageCount);
+      }
     }
     _sessionStreamingById.set(sid, isStreaming);
     if (isStreaming) {
@@ -1319,6 +1327,11 @@ async function _ensureMessagesLoaded(sid) {
     S.toolCalls = [];
   }
   clearLiveToolCards();
+  // #3018: preserve client-side ephemeral turn fields (_turnUsage, _turnDuration,
+  // _turnTps, _gatewayRouting, _statusCard) across the loadSession replace.
+  if(typeof window._carryForwardEphemeralTurnFields==='function'){
+    msgs=window._carryForwardEphemeralTurnFields(S.messages||[], msgs);
+  }
   S.messages = msgs;
   if(S.session&&S.session.session_id===sid){
     S.session.message_count=Number(data.session.message_count || msgs.length);
