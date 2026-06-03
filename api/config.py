@@ -679,6 +679,7 @@ _FALLBACK_MODELS = [
     # Mistral
     {"provider": "Mistral",   "id": "mistralai/mistral-large-latest",     "label": "Mistral Large"},
     # MiniMax
+    {"provider": "MiniMax",   "id": "minimax/MiniMax-M3",               "label": "MiniMax M3"},
     {"provider": "MiniMax",   "id": "minimax/MiniMax-M2.7",             "label": "MiniMax M2.7"},
     {"provider": "MiniMax",   "id": "minimax/MiniMax-M2.7-highspeed",   "label": "MiniMax M2.7 Highspeed"},
     # Z.AI / GLM
@@ -704,6 +705,7 @@ _PROVIDER_DISPLAY = {
     "openrouter": "OpenRouter",
     "anthropic": "Anthropic",
     "openai": "OpenAI",
+    "openai-api": "OpenAI API",
     "openai-codex": "OpenAI Codex",
     "xai-oauth": "xAI Grok OAuth",
     "copilot": "GitHub Copilot",
@@ -1061,6 +1063,12 @@ _PROVIDER_MODELS = {
         {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini"},
         {"id": "gpt-5.4",      "label": "GPT-5.4"},
     ],
+    "openai-api": [
+        {"id": "gpt-5.5",      "label": "GPT-5.5"},
+        {"id": "gpt-5.5-mini", "label": "GPT-5.5 Mini"},
+        {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini"},
+        {"id": "gpt-5.4",      "label": "GPT-5.4"},
+    ],
     "openai-codex": [
         {"id": "gpt-5.5", "label": "GPT-5.5"},
         {"id": "gpt-5.5-mini", "label": "GPT-5.5 Mini"},
@@ -1107,17 +1115,13 @@ _PROVIDER_MODELS = {
         {"id": "kimi-k2.5", "label": "Kimi K2.5"},
     ],
     "minimax": [
+        {"id": "MiniMax-M3", "label": "MiniMax M3"},
         {"id": "MiniMax-M2.7", "label": "MiniMax M2.7"},
         {"id": "MiniMax-M2.7-highspeed", "label": "MiniMax M2.7 Highspeed"},
-        {"id": "MiniMax-M2.5", "label": "MiniMax M2.5"},
-        {"id": "MiniMax-M2.5-highspeed", "label": "MiniMax M2.5 Highspeed"},
-        {"id": "MiniMax-M2.1", "label": "MiniMax M2.1"},
     ],
     "minimax-cn": [
+        {"id": "MiniMax-M3", "label": "MiniMax M3"},
         {"id": "MiniMax-M2.7", "label": "MiniMax M2.7"},
-        {"id": "MiniMax-M2.5", "label": "MiniMax M2.5"},
-        {"id": "MiniMax-M2.1", "label": "MiniMax M2.1"},
-        {"id": "MiniMax-M2", "label": "MiniMax M2"},
     ],
     # GitHub Copilot — model IDs served via the Copilot API
     "copilot": [
@@ -3558,7 +3562,12 @@ def get_available_models() -> dict:
             if all_env.get("ANTHROPIC_API_KEY"):
                 detected_providers.add("anthropic")
             if all_env.get("OPENAI_API_KEY"):
-                detected_providers.add("openai")
+                # hermes-agent registers its OPENAI_API_KEY/OPENAI_BASE_URL provider
+                # under the slug `openai-api` (there is no bare `openai` in the agent
+                # registry — only `openai-api` and `openai-codex`). Detecting `openai`
+                # here would emit `@openai:` picker entries the agent can't resolve on
+                # the send path, so detect `openai-api` to match the registry (#3443).
+                detected_providers.add("openai-api")
                 # openai-codex uses ChatGPT OAuth (not OPENAI_API_KEY) for its default endpoint.
                 # Detecting it here lets users who have both credentials configured find it in the
                 # picker without a manual config.yaml edit. Users without Codex OAuth will see
