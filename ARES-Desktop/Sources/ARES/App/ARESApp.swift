@@ -11,7 +11,7 @@ struct ARESApp: App {
     init() {
         let state = ARESAppState()
         _appState = StateObject(wrappedValue: state)
-        _samRuntime = StateObject(wrappedValue: SAMRuntime(appState: state))
+        _samRuntime = StateObject(wrappedValue: SAMRuntime())
     }
 
     var body: some Scene {

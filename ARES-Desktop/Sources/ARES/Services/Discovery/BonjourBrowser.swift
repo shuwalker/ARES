@@ -4,14 +4,14 @@ import Foundation
 /// Uses NetServiceBrowser to find `_ssh._tcp.` services, which every Mac with
 /// Remote Login enabled broadcasts automatically — no custom service needed.
 @MainActor
-final class BonjourBrowser: ObservableObject {
+final class BonjourBrowser: NSObject, ObservableObject {
     
-    struct DiscoveredDevice: Identifiable, Hashable {
+    struct DiscoveredDevice: Identifiable, Hashable, Sendable {
         let id = UUID()
         let name: String           // e.g. "Matthews-MacBook-Pro"
         let serviceName: String    // NetService name
         let hostName: String?      // e.g. "matthews-macbook-pro.local."
-        let addresses: [String]     // IP addresses
+        let addresses: [String]    // IP addresses
         let port: Int
         let txtRecord: [String: String]
         
@@ -29,8 +29,12 @@ final class BonjourBrowser: ObservableObject {
     @Published var error: String?
     
     private var browser: NetServiceBrowser?
-    private var resolvedServices: [NetService] = []
+    private nonisolated(unsafe) var resolvedServices: [NetService] = []
     private let queue = DispatchQueue(label: "com.ares.bonjour", qos: .userInitiated)
+    
+    override init() {
+        super.init()
+    }
     
     func startScanning() {
         guard !isScanning else { return }
@@ -41,7 +45,7 @@ final class BonjourBrowser: ObservableObject {
         
         let browser = NetServiceBrowser()
         browser.delegate = self
-        browser.searchForServices(ofType: "_ssh._tcp.", in: .local)
+        browser.searchForServices(ofType: "_ssh._tcp.", inDomain: "local.")
         self.browser = browser
     }
     
@@ -72,8 +76,9 @@ extension BonjourBrowser: NetServiceBrowserDelegate {
     ) {
         service.delegate = self
         service.resolve(withTimeout: 5.0)
+        let serviceName = service.name
         Task { @MainActor in
-            if !resolvedServices.contains(where: { $0.name == service.name }) {
+            if !resolvedServices.contains(where: { $0.name == serviceName }) {
                 resolvedServices.append(service)
             }
         }
@@ -84,9 +89,10 @@ extension BonjourBrowser: NetServiceBrowserDelegate {
         didRemove service: NetService,
         moreComing: Bool
     ) {
+        let serviceName = service.name
         Task { @MainActor in
-            devices.removeAll { $0.serviceName == service.name }
-            resolvedServices.removeAll { $0.name == service.name }
+            devices.removeAll { $0.serviceName == serviceName }
+            resolvedServices.removeAll { $0.name == serviceName }
         }
     }
     
@@ -127,10 +133,13 @@ extension BonjourBrowser: NetServiceDelegate {
             txtRecord = [:]
         }
         
+        let senderName = sender.name
+        let senderHostName = sender.hostName
+        
         let device = DiscoveredDevice(
-            name: sender.name.replacingOccurrences(of: "._ssh._tcp.", with: ""),
-            serviceName: sender.name,
-            hostName: sender.hostName,
+            name: senderName.replacingOccurrences(of: "._ssh._tcp.", with: ""),
+            serviceName: senderName,
+            hostName: senderHostName,
             addresses: addresses,
             port: Int(port),
             txtRecord: txtRecord
@@ -138,7 +147,7 @@ extension BonjourBrowser: NetServiceDelegate {
         
         Task { @MainActor in
             // Update or add
-            if let idx = devices.firstIndex(where: { $0.serviceName == sender.name }) {
+            if let idx = devices.firstIndex(where: { $0.serviceName == device.serviceName }) {
                 devices[idx] = device
             } else {
                 devices.append(device)

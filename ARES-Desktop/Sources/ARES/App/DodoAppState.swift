@@ -32,10 +32,10 @@ final class DodoAppState: ObservableObject {
     @Published var sessionConversationError: String?
     @Published var pendingSessionTurn: PendingSessionTurn?
     @Published var liveSessionMessageDisplays: [SessionMessageDisplay] = []
-    @Published var liveToolActivityCards: [HermesToolActivityCard] = []
-    @Published var sessionPromptCards: [HermesPromptCard] = []
+    @Published var liveToolActivityCards: [ARESToolActivityCard] = []
+    @Published var sessionPromptCards: [ARESPromptCard] = []
     @Published var sessionCompactionNotice: SessionCompactionNotice?
-    @Published private(set) var nativeChatBootstrapStatus: HermesChatBootstrapStatus?
+    @Published private(set) var nativeChatBootstrapStatus: ARESChatBootstrapStatus?
     @Published var hasMoreSessions = false
     @Published var totalSessionsCount = 0
     @Published private(set) var sessionSearchQuery = ""
@@ -96,10 +96,10 @@ final class DodoAppState: ObservableObject {
 
     let connectionStore: ConnectionStore
     let sshTransport: SSHTransport
-    let remoteHermesService: RemoteHermesService
+    let remoteARESService: RemoteARESService
     let fileEditorService: FileEditorService
     let sessionBrowserService: SessionBrowserService
-    let hermesChatService: HermesChatService
+    let aresChatService: ARESChatService
     let usageBrowserService: UsageBrowserService
     let skillBrowserService: SkillBrowserService
     let cronBrowserService: CronBrowserService
@@ -109,7 +109,7 @@ final class DodoAppState: ObservableObject {
     let workflowLaunchDiagnostics: WorkflowLaunchDiagnostics
 
     private let sessionPageSize = 50
-    private let approvalNeededMessage = "Hermes requested command approval, but this chat turn cannot collect manual approvals. Retry this turn with Auto-approve enabled, or resume the session in Terminal to review the command yourself."
+    private let approvalNeededMessage = "ARES requested command approval, but this chat turn cannot collect manual approvals. Retry this turn with Auto-approve enabled, or resume the session in Terminal to review the command yourself."
     private var sessionOffset = 0
     private var pendingSessionReloadQuery: String?
     private var pendingSectionEntryAction: PendingSectionEntryAction?
@@ -121,7 +121,7 @@ final class DodoAppState: ObservableObject {
     private let automaticUpdateCheckInterval: TimeInterval = 24 * 60 * 60
     private var statusTask: Task<Void, Never>?
     private var sessionTranscriptPollingTask: Task<Void, Never>?
-    private var gatewayChatService: HermesGatewayChatService?
+    private var gatewayChatService: ARESGatewayChatService?
     private var gatewayEventsTask: Task<Void, Never>?
     private var nativeChatStatusWorkspaceScopeFingerprint: String?
     private var gatewayWorkspaceScopeFingerprint: String?
@@ -145,10 +145,10 @@ final class DodoAppState: ObservableObject {
 
         self.connectionStore = connectionStore
         self.sshTransport = sshTransport
-        self.remoteHermesService = RemoteHermesService(sshTransport: sshTransport)
+        self.remoteARESService = RemoteARESService(sshTransport: sshTransport)
         self.fileEditorService = FileEditorService(sshTransport: sshTransport)
         self.sessionBrowserService = SessionBrowserService(sshTransport: sshTransport)
-        self.hermesChatService = HermesChatService(sshTransport: sshTransport)
+        self.aresChatService = ARESChatService(sshTransport: sshTransport)
         self.usageBrowserService = UsageBrowserService(sshTransport: sshTransport)
         self.skillBrowserService = SkillBrowserService(sshTransport: sshTransport)
         self.cronBrowserService = CronBrowserService(sshTransport: sshTransport)
@@ -250,7 +250,7 @@ final class DodoAppState: ObservableObject {
     }
 
     var workspaceFileBrowserDefaultPath: String {
-        overview?.hermesHome ?? activeConnection?.remoteHermesHomePath ?? "~"
+        overview?.hermesHome ?? activeConnection?.remoteARESHomePath ?? "~"
     }
 
     var hasUnsavedFileChanges: Bool {
@@ -472,7 +472,7 @@ final class DodoAppState: ObservableObject {
         if isActiveConnection && isChangingWorkspaceScope && hasUnsavedFileChanges {
             activeAlert = AppAlert(
                 title: L10n.string("Unsaved file edits"),
-                message: L10n.string("Save or discard Workspace Files edits before switching the Hermes profile for the active host.")
+                message: L10n.string("Save or discard Workspace Files edits before switching the ARES profile for the active host.")
             )
             return
         }
@@ -491,19 +491,19 @@ final class DodoAppState: ObservableObject {
         }
     }
 
-    func switchHermesProfile(to profileName: String) async {
+    func switchARESProfile(to profileName: String) async {
         guard let activeConnection else { return }
-        guard activeConnection.resolvedHermesProfileName != profileName else { return }
+        guard activeConnection.resolvedARESProfileName != profileName else { return }
 
         if hasUnsavedFileChanges {
             activeAlert = AppAlert(
                 title: L10n.string("Unsaved file edits"),
-                message: L10n.string("Save or discard Workspace Files edits before switching Hermes profiles.")
+                message: L10n.string("Save or discard Workspace Files edits before switching ARES profiles.")
             )
             return
         }
 
-        let updatedConnection = activeConnection.applyingHermesProfile(named: profileName)
+        let updatedConnection = activeConnection.applyingARESProfile(named: profileName)
         let shouldCarryTerminalWorkspace = selectedSection == .terminal || terminalWorkspace.hasTabs
 
         if shouldCarryTerminalWorkspace {
@@ -552,7 +552,7 @@ final class DodoAppState: ObservableObject {
                 let home = response.remoteHome.trimmingCharacters(in: .whitespacesAndNewlines)
                 setStatusMessage(L10n.string("SSH and python3 OK for %@", profile.label))
                 let messageLines = [
-                    L10n.string("SSH and python3 are available for this Hermes host."),
+                    L10n.string("SSH and python3 are available for this ARES host."),
                     home.isEmpty ? nil : L10n.string("Remote HOME: %@", home)
                 ].compactMap { $0 }
                 activeAlert = AppAlert(
@@ -580,7 +580,7 @@ final class DodoAppState: ObservableObject {
         do {
             isBusy = true
             overviewError = nil
-            let discovery = try await remoteHermesService.discover(connection: profile)
+            let discovery = try await remoteARESService.discover(connection: profile)
             guard isActiveWorkspace(profile) else { return }
             overview = discovery
             _ = await refreshNativeChatBootstrapStatus(for: profile, force: manual)
@@ -834,7 +834,7 @@ final class DodoAppState: ObservableObject {
         do {
             let listing = try await fileEditorService.listDirectory(
                 remotePath: browsePath,
-                hermesHome: overview?.hermesHome ?? profile.remoteHermesHomePath,
+                hermesHome: overview?.hermesHome ?? profile.remoteARESHomePath,
                 connection: profile
             )
             guard isActiveWorkspace(profile) else { return }
@@ -1062,8 +1062,8 @@ final class DodoAppState: ObservableObject {
         sessionsError = nil
         setStatusMessage(
             sessionID == nil
-                ? L10n.string("Starting Hermes TUI…")
-                : L10n.string("Resuming session in Hermes TUI…")
+                ? L10n.string("Starting ARES TUI…")
+                : L10n.string("Resuming session in ARES TUI…")
         )
     }
 
@@ -1108,7 +1108,7 @@ final class DodoAppState: ObservableObject {
         sessionsError = nil
 
         do {
-            let turnResult = try await hermesChatService.sendMessage(
+            let turnResult = try await aresChatService.sendMessage(
                 trimmedPrompt,
                 sessionID: nil,
                 connection: profile,
@@ -1143,7 +1143,7 @@ final class DodoAppState: ObservableObject {
             pendingSessionTurn = nil
             let message = error.localizedDescription
             sessionConversationError = message
-            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to start Hermes session"))
+            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to start ARES session"))
             return false
         }
     }
@@ -1335,7 +1335,7 @@ final class DodoAppState: ObservableObject {
         startSessionTranscriptPolling(sessionID: selectedSessionID, connection: profile)
 
         do {
-            _ = try await hermesChatService.sendMessage(
+            _ = try await aresChatService.sendMessage(
                 trimmedPrompt,
                 sessionID: selectedSessionID,
                 connection: profile,
@@ -1358,12 +1358,12 @@ final class DodoAppState: ObservableObject {
             pendingSessionTurn = nil
             let message = error.localizedDescription
             sessionConversationError = message
-            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to send prompt to Hermes"))
+            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to send prompt to ARES"))
             return false
         }
     }
 
-    func respondToSessionPrompt(_ card: HermesPromptCard, response: HermesPromptResponse) async {
+    func respondToSessionPrompt(_ card: ARESPromptCard, response: ARESPromptResponse) async {
         guard let gatewayChatService else { return }
 
         let method: String
@@ -1524,7 +1524,7 @@ final class DodoAppState: ObservableObject {
             clearNativeTurnUIState()
             let message = sessionConversationError ?? "Native chat did not complete successfully."
             sessionConversationError = message
-            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to send prompt to Hermes"))
+            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to send prompt to ARES"))
             return false
         } catch {
             guard isActiveWorkspace(profile) else { return false }
@@ -1533,7 +1533,7 @@ final class DodoAppState: ObservableObject {
             clearNativeTurnUIState()
             let message = error.localizedDescription
             sessionConversationError = message
-            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to send prompt to Hermes"))
+            setStatusMessage(sessionStatusMessage(forConversationError: message, fallback: "Unable to send prompt to ARES"))
             completeActiveNativeTurn(success: false)
             return false
         }
@@ -1557,7 +1557,7 @@ final class DodoAppState: ObservableObject {
             await loadSessions(reset: true)
             await loadUsage(forceRefresh: true)
             isDeletingSession = false
-            setStatusMessage(L10n.string("Session deleted locally and on the remote Hermes host"))
+            setStatusMessage(L10n.string("Session deleted locally and on the remote ARES host"))
         } catch {
             guard isActiveWorkspace(profile) else { return }
             isDeletingSession = false
@@ -2688,7 +2688,7 @@ final class DodoAppState: ObservableObject {
             return
         }
 
-        let invocation = HermesSessionResumeInvocation(sessionID: session.id, connection: profile)
+        let invocation = ARESSessionResumeInvocation(sessionID: session.id, connection: profile)
         terminalWorkspace.addCommandTab(
             for: profile.updated(),
             commandLine: invocation.startupCommandLine
@@ -2939,7 +2939,7 @@ final class DodoAppState: ObservableObject {
 
     private func hydrateSessionHistoryFromGateway(
         sessionID: String,
-        using gatewayChatService: HermesGatewayChatService,
+        using gatewayChatService: ARESGatewayChatService,
         profile: ConnectionProfile,
         updatesSelection: Bool = true
     ) async -> Bool {
@@ -2987,7 +2987,7 @@ final class DodoAppState: ObservableObject {
 
     private func gatewaySessionHistory(
         sessionID: String,
-        using gatewayChatService: HermesGatewayChatService
+        using gatewayChatService: ARESGatewayChatService
     ) async throws -> [SessionMessage]? {
         let result = try await gatewayChatService.request(
             method: "session.history",
@@ -2997,11 +2997,11 @@ final class DodoAppState: ObservableObject {
             ],
             timeout: 60
         )
-        let messages = HermesGatewayHistoryDecoder.sessionMessages(from: result)
+        let messages = ARESGatewayHistoryDecoder.sessionMessages(from: result)
         return messages.isEmpty ? nil : messages
     }
 
-    private func preferredChatTransport(for connection: ConnectionProfile) async -> HermesChatTransportMode {
+    private func preferredChatTransport(for connection: ConnectionProfile) async -> ARESChatTransportMode {
         let status = await refreshNativeChatBootstrapStatus(for: connection)
         return status.preferredTransportMode
     }
@@ -3010,7 +3010,7 @@ final class DodoAppState: ObservableObject {
     private func refreshNativeChatBootstrapStatus(
         for connection: ConnectionProfile,
         force: Bool = false
-    ) async -> HermesChatBootstrapStatus {
+    ) async -> ARESChatBootstrapStatus {
         let workspaceScopeFingerprint = connection.workspaceScopeFingerprint
 
         if !force,
@@ -3028,11 +3028,11 @@ final class DodoAppState: ObservableObject {
 
     private func ensureGatewayChatService(
         for connection: ConnectionProfile
-    ) async throws -> HermesGatewayChatService {
+    ) async throws -> ARESGatewayChatService {
         let workspaceScopeFingerprint = connection.workspaceScopeFingerprint
         let status = await refreshNativeChatBootstrapStatus(for: connection)
         guard status.canUseNativeChat else {
-            throw HermesGatewayError.remote(
+            throw ARESGatewayError.remote(
                 1,
                 status.fallbackReason ?? "Native chat is unavailable for this host."
             )
@@ -3045,7 +3045,7 @@ final class DodoAppState: ObservableObject {
 
         await closeGatewayChatSession(clearBootstrapStatus: false)
 
-        let gatewayChatService = HermesGatewayChatService(
+        let gatewayChatService = ARESGatewayChatService(
             connection: connection,
             sshTransport: sshTransport
         )
@@ -3097,7 +3097,7 @@ final class DodoAppState: ObservableObject {
     }
 
     private func prepareGatewaySession(
-        using gatewayChatService: HermesGatewayChatService,
+        using gatewayChatService: ARESGatewayChatService,
         sessionID: String?
     ) async throws -> String {
         if let sessionID,
@@ -3131,7 +3131,7 @@ final class DodoAppState: ObservableObject {
         if let gatewaySessionID {
             return gatewaySessionID
         }
-        throw HermesGatewayError.invalidFrame("session.create did not return a session identifier")
+        throw ARESGatewayError.invalidFrame("session.create did not return a session identifier")
     }
 
     private func prepareActiveNativeTurnWait() {
@@ -3164,7 +3164,7 @@ final class DodoAppState: ObservableObject {
     }
 
     private func applyGatewayEvent(
-        _ event: HermesGatewayEvent,
+        _ event: ARESGatewayEvent,
         workspaceScopeFingerprint: String
     ) {
         guard activeConnection?.workspaceScopeFingerprint == workspaceScopeFingerprint else {
@@ -3232,7 +3232,7 @@ final class DodoAppState: ObservableObject {
         }
     }
 
-    private func registerGatewaySessionID(from event: HermesGatewayEvent) {
+    private func registerGatewaySessionID(from event: ARESGatewayEvent) {
         let candidateSessionID: String?
         if event.type == "session.info" {
             candidateSessionID = event.sessionID ?? gatewayValue(in: event.payload, keys: ["session_id", "id"])
@@ -3366,7 +3366,7 @@ final class DodoAppState: ObservableObject {
             liveToolActivityCards[index].updatedAt = updatedAt
         } else {
             liveToolActivityCards.append(
-                HermesToolActivityCard(
+                ARESToolActivityCard(
                     id: toolID,
                     title: title,
                     status: status,
@@ -3383,7 +3383,7 @@ final class DodoAppState: ObservableObject {
     }
 
     private func upsertPromptCard(
-        kind: HermesPromptKind,
+        kind: ARESPromptKind,
         payload: [String: JSONValue],
         fallbackSessionID: String?
     ) {
@@ -3405,7 +3405,7 @@ final class DodoAppState: ObservableObject {
             maximumLength: 600
         )
 
-        let card = HermesPromptCard(
+        let card = ARESPromptCard(
             id: "\(kind.rawValue)-\(requestID)",
             sessionID: sessionID,
             requestID: requestID,
@@ -3522,10 +3522,10 @@ final class DodoAppState: ObservableObject {
     private func loadUsageProfileBreakdown(
         using connection: ConnectionProfile,
         activeSummary: UsageSummary,
-        discoveredProfiles: [RemoteHermesProfile]
+        discoveredProfiles: [RemoteARESProfile]
     ) async -> UsageProfileBreakdown {
         var slices: [UsageProfileSlice] = []
-        let activeProfileName = connection.resolvedHermesProfileName
+        let activeProfileName = connection.resolvedARESProfileName
 
         for discoveredProfile in discoveredProfiles {
             if discoveredProfile.name == activeProfileName {
@@ -3539,7 +3539,7 @@ final class DodoAppState: ObservableObject {
                 continue
             }
 
-            let scopedConnection = connection.applyingHermesProfile(named: discoveredProfile.name)
+            let scopedConnection = connection.applyingARESProfile(named: discoveredProfile.name)
 
             do {
                 let summary = try await usageBrowserService.loadUsage(
@@ -3578,7 +3578,7 @@ final class DodoAppState: ObservableObject {
     }
 
     private func usageProfileSlice(
-        for discoveredProfile: RemoteHermesProfile,
+        for discoveredProfile: RemoteARESProfile,
         summary: UsageSummary,
         activeProfileName: String
     ) -> UsageProfileSlice {
