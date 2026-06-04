@@ -2,8 +2,8 @@ import SwiftUI
 import WebKit
 
 struct HubView: View {
-    @StateObject private var dodoState = AppState()
-    @State private var hubSection: HubSection = .hermesDesktop
+    @EnvironmentObject private var appState: ARESAppState
+    @State private var hubSection: HubSection = .desktop
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,10 +51,10 @@ struct HubView: View {
             // Content
             ZStack {
                 switch hubSection {
-                case .hermesDesktop:
-                    NativeGuestHost(state: dodoState)
+                case .desktop:
+                    BackendWebView(state: appState)
                 case .webUI:
-                    HermesWebUIView()
+                    WebUIView()
                 case .settings:
                     HubSettingsView()
                 }
@@ -65,13 +65,13 @@ struct HubView: View {
     }
 }
 
-// MARK: - Dodo embed (contained NSHostingController)
+// MARK: - Backend embed (contained NSHostingController)
 
-struct NativeGuestHost: NSViewRepresentable {
-    @ObservedObject var state: AppState
+struct BackendWebView: NSViewRepresentable {
+    @ObservedObject var state: ARESAppState
 
     func makeNSView(context: Context) -> NSView {
-        let rootView = RootView().environmentObject(state)
+        let rootView = ARESRootView().environmentObject(state)
         let controller = NSHostingController(rootView: rootView)
         context.coordinator.controller = controller
 
@@ -103,9 +103,9 @@ struct NativeGuestHost: NSViewRepresentable {
     }
 }
 
-// MARK: - Hermes WebUI view
+// MARK: - Backend WebUI view
 
-struct HermesWebUIView: NSViewRepresentable {
+struct WebUIView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -185,7 +185,7 @@ struct HubSettingsView: View {
                 // Quick Launch
                 GroupBox {
                     VStack(spacing: 0) {
-                        appLinkRow("Hermes Dashboard", url: "http://localhost:9119", icon: "globe")
+                        appLinkRow("ARES Dashboard", url: "http://localhost:9119", icon: "globe")
                         Divider().background(ARESColors.divider)
                         appLinkRow("SearXNG", url: "http://localhost:8080", icon: "magnifyingglass")
                         Divider().background(ARESColors.divider)
@@ -205,7 +205,7 @@ struct HubSettingsView: View {
                 // Status
                 GroupBox {
                     VStack(spacing: 8) {
-                        statusRow("Hermes", status: appState.hermesRunning)
+                        statusRow("Backend", status: appState.hermesRunning)
                         statusRow("Skills", value: "\(appState.skillCount)")
                         statusRow("Sessions", value: "\(appState.sessionCount)")
                         statusRow("Memory", value: "\(appState.memoryPercent)%")
@@ -299,7 +299,6 @@ struct HubSettingsView: View {
 
     private func iconFor(_ dep: ARESDependency) -> String {
         switch dep {
-        case .dodoRepo: return "square.grid.2x2"
         case .hermesAgent: return "brain.fill"
         case .ollama: return "cpu.fill"
         case .searxng: return "magnifyingglass"
@@ -347,13 +346,13 @@ struct SpartanGroupBoxStyle: GroupBoxStyle {
 // MARK: - Hub section enum
 
 enum HubSection: String, CaseIterable, Identifiable {
-    case hermesDesktop, webUI, settings
+    case desktop, webUI, settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .hermesDesktop: return "Desktop"
+        case .desktop: return "Desktop"
         case .webUI: return "WebUI"
         case .settings: return "Settings"
         }
@@ -361,7 +360,7 @@ enum HubSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .hermesDesktop: return "square.grid.2x2"
+        case .desktop: return "square.grid.2x2"
         case .webUI: return "globe"
         case .settings: return "gearshape"
         }

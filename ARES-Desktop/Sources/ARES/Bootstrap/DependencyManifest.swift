@@ -4,7 +4,6 @@ import SwiftUI
 // MARK: - ARES Dependency Manifest
 
 enum ARESDependency: String, CaseIterable, Identifiable {
-    case dodoRepo
     case hermesAgent
     case ollama
     case searxng
@@ -13,7 +12,6 @@ enum ARESDependency: String, CaseIterable, Identifiable {
 
     var name: String {
         switch self {
-        case .dodoRepo:    return "Hermes Agent (Dodo repo)"
         case .hermesAgent: return "Hermes Agent"
         case .ollama:      return "Ollama"
         case .searxng:     return "SearXNG"
@@ -22,11 +20,6 @@ enum ARESDependency: String, CaseIterable, Identifiable {
 
     var installMethod: InstallMethod {
         switch self {
-        case .dodoRepo:
-            return .gitClone(
-                url: "https://github.com/dodo-reach/hermes-desktop.git",
-                path: "~/GitHub/hermes-desktop"
-            )
         case .hermesAgent:
             return .manual(message: "Run hermes setup to install.")
         case .ollama:

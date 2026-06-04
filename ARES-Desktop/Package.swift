@@ -15,8 +15,14 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "Vendor/SwiftTerm"),
-        .package(path: "../SAM")
+        // SAM — local path dependency
+        // Development: reference copy at ~/Desktop/reference/SAM
+        // Production: switch to Git URL dependency once SAM publishes version tags
+        .package(path: "../SAM"),
+        // SwiftTerm — local path dependency  
+        // Reference copy at ~/Desktop/reference/SwiftTerm
+        // Symlink or copy to Vendor/SwiftTerm for builds
+        .package(path: "Vendor/SwiftTerm")
     ],
     targets: [
         .executableTarget(

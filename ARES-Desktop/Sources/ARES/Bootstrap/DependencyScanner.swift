@@ -17,8 +17,6 @@ struct DependencyScanner {
 
     private func check(_ dep: ARESDependency) async -> DependencyStatus {
         switch dep {
-        case .dodoRepo:
-            return checkRepo("~/GitHub/hermes-desktop")
         case .hermesAgent:
             // Hermes Agent = process running + port 9119 (dashboard)
             let proc = runAndCheck("/bin/sh", args: ["-c", "ps -ax | grep -i hermes | grep -v grep"])
