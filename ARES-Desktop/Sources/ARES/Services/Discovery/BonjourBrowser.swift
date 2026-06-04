@@ -77,9 +77,10 @@ extension BonjourBrowser: NetServiceBrowserDelegate {
         service.delegate = self
         service.resolve(withTimeout: 5.0)
         let serviceName = service.name
+        nonisolated(unsafe) let capturedService = service
         Task { @MainActor in
             if !resolvedServices.contains(where: { $0.name == serviceName }) {
-                resolvedServices.append(service)
+                resolvedServices.append(capturedService)
             }
         }
     }
