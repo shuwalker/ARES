@@ -3,11 +3,19 @@ import AppKit
 
 @main
 struct ARESApp: App {
-    @StateObject private var appState = ARESAppState()
-    @StateObject private var samRuntime = SAMRuntime()
+    @NSApplicationDelegateAdaptor(ARESAppDelegate.self) var appDelegate
+
+    @StateObject private var appState: ARESAppState
+    @StateObject private var samRuntime: SAMRuntime
+
+    init() {
+        let state = ARESAppState()
+        _appState = StateObject(wrappedValue: state)
+        _samRuntime = StateObject(wrappedValue: SAMRuntime(appState: state))
+    }
 
     var body: some Scene {
-        WindowGroup("ARES") {
+        WindowGroup {
             ARESRootView()
                 .environmentObject(appState)
                 .environmentObject(samRuntime)
@@ -23,9 +31,7 @@ struct ARESApp: App {
                     }
                 }
         }
-        .defaultSize(width: 1440, height: 900)
-        .windowResizability(.contentSize)
-        .windowStyle(.titleBar)
+        .defaultSize(width: 1200, height: 800)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About ARES") {}

@@ -15,15 +15,20 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "../hermes-desktop/Vendor/SwiftTerm")
+        .package(path: "ARES-Desktop/Vendor/SwiftTerm"),
+        .package(path: "ARES-Desktop/Vendor/SAM")
     ],
     targets: [
         .executableTarget(
             name: "ARES",
             dependencies: [
-                .product(name: "SwiftTerm", package: "SwiftTerm")
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "UserInterface", package: "SAM"),
+                .product(name: "APIFramework", package: "SAM"),
+                .product(name: "ConfigurationSystem", package: "SAM"),
+                .product(name: "ConversationEngine", package: "SAM")
             ],
-            path: "Sources/ARES",
+            path: "ARES-Desktop/Sources/ARES",
             exclude: [],
             sources: nil,
             resources: [
@@ -33,7 +38,7 @@ let package = Package(
         .testTarget(
             name: "ARESTests",
             dependencies: ["ARES"],
-            path: "Tests/ARESTests"
+            path: "ARES-Desktop/Tests/ARESTests"
         )
     ]
 )
