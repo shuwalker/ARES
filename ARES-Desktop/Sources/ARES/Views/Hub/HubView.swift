@@ -52,7 +52,15 @@ struct HubView: View {
             ZStack {
                 switch hubSection {
                 case .desktop:
-                    BackendWebView(state: appState)
+                    // .desktop previously embedded ARESRootView() recursively, which
+                    // would re-render the entire app shell (sidebar + Hub tab) inside
+                    // the Hub. Commented out per the Companion/Hub model: the Hub is
+                    // the user's desk for other tools, not a wrapper around ARES itself.
+                    // Block 0 hygiene, June 2026 — see docs/COMPANION_AND_HUB.md.
+                    HubEmptyState(
+                        title: "Companion has its own tab",
+                        message: "ARES itself lives in the Companion tab. The Hub is for the other tools you use alongside ARES."
+                    )
                 case .webUI:
                     WebUIView()
                 case .settings:
@@ -65,8 +73,34 @@ struct HubView: View {
     }
 }
 
-// MARK: - Backend embed (contained NSHostingController)
+// MARK: - Hub empty state (used by .desktop section)
 
+struct HubEmptyState: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 36))
+                .foregroundStyle(ARESColors.gold.opacity(0.6))
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(ARESColors.textPrimary)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(ARESColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 480)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
+    }
+}
+
+// MARK: - Backend embed (DISABLED: would re-render ARESRootView recursively)
+
+/*
 struct BackendWebView: NSViewRepresentable {
     @ObservedObject var state: ARESAppState
 
@@ -102,6 +136,7 @@ struct BackendWebView: NSViewRepresentable {
         var controller: AnyObject?
     }
 }
+*/
 
 // MARK: - Backend WebUI view
 
