@@ -455,25 +455,76 @@ struct CompanionView: View {
     /// messages get Markdown rendering (bold, code, lists, links).
     /// Streaming bubbles show a blinking cursor.
     private func messageBubble(_ bubble: ChatBubble) -> some View {
-        Group {
-            if bubble.role == .assistant, let attributed = try? AttributedString(
-                markdown: bubble.content,
-                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-            ) {
-                Text(attributed) + (bubble.isStreaming ? Text("▊").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
-            } else {
-                Text(bubble.content) + (bubble.isStreaming ? Text("▊").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
+        VStack(alignment: .leading, spacing: 4) {
+            Group {
+                if bubble.role == .assistant, let attributed = try? AttributedString(
+                    markdown: bubble.content,
+                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+                ) {
+                    Text(attributed) + (bubble.isStreaming ? Text("\u{258A}").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
+                } else {
+                    Text(bubble.content) + (bubble.isStreaming ? Text("\u{258A}").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
+                }
+            }
+            .textSelection(.enabled)
+            .padding(10)
+            .background(bubble.role == .user
+                        ? ARESColors.accent.opacity(0.25)
+                        : ARESColors.surfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(ARESColors.textPrimary)
+            .frame(maxWidth: .infinity, alignment: bubble.role == .user ? .trailing : .leading)
+            .textSelection(.enabled)
+
+            // Stats footer — only for assistant bubbles after streaming completes
+            if bubble.role == .assistant && !bubble.isStreaming && hasAnyStats(bubble) {
+                statsFooter(bubble)
             }
         }
-        .textSelection(.enabled)
-        .padding(10)
-        .background(bubble.role == .user
-                    ? ARESColors.accent.opacity(0.25)
-                    : ARESColors.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .foregroundStyle(ARESColors.textPrimary)
-        .frame(maxWidth: .infinity, alignment: bubble.role == .user ? .trailing : .leading)
-        .textSelection(.enabled)
+    }
+
+    /// Returns true if any stats value is present on this bubble.
+    private func hasAnyStats(_ bubble: ChatBubble) -> Bool {
+        bubble.tokenCount != nil || bubble.latencySeconds != nil || bubble.costUSD != nil
+    }
+
+    /// Small footer showing per-message token / latency / cost stats.
+    private func statsFooter(_ bubble: ChatBubble) -> some View {
+        HStack(spacing: 4) {
+            Text(formattedTokens(bubble.tokenCount))
+            if bubble.latencySeconds != nil || bubble.tokenCount != nil {
+                Text("\u{00B7}")
+            }
+            Text(formattedLatency(bubble.latencySeconds))
+            if bubble.costUSD != nil {
+                Text("\u{00B7}")
+                Text(formattedCost(bubble.costUSD))
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(ARESColors.textTertiary)
+        .padding(.leading, 10)
+    }
+
+    /// Format token count: "1.2k" for >= 1000, else plain integer.
+    private func formattedTokens(_ count: Int?) -> String {
+        guard let count else { return "\u{2014}" }
+        if count >= 1000 {
+            let k = Double(count) / 1000.0
+            return String(format: "%.1f", k) + "k tokens"
+        }
+        return "\(count) tokens"
+    }
+
+    /// Format latency: "4.3s" with one decimal.
+    private func formattedLatency(_ seconds: Double?) -> String {
+        guard let seconds else { return "\u{2014}" }
+        return String(format: "%.1f", seconds) + "s"
+    }
+
+    /// Format cost (v1: always "—").
+    private func formattedCost(_ usd: Double?) -> String {
+        "\u{2014}"
     }
 
     /// Format a message for clipboard as Markdown. Assistant messages
@@ -590,6 +641,7 @@ struct CompanionView: View {
                 StatCard(title: "SKILLS",   value: "\(appState.skillCount)",   icon: "book.closed",              color: ARESColors.accent)
                 StatCard(title: "MEMORY",   value: "\(appState.memoryPercent)%", icon: "brain.head.profile",      color: ARESColors.green)
                 StatCard(title: "AGENTS",   value: "\(appState.activeOfficeAgents)", icon: "person.3",            color: ARESColors.purple)
+                StatCard(title: "24H COST", value: "$\(appState.formatted24hCost)", icon: "dollarsign.circle",      color: ARESColors.gold)
             }
             .padding(16)
         }

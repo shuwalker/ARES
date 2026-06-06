@@ -16,6 +16,7 @@ import ARESCore
 struct CompanionChatTurnResult: Sendable {
     let responseText: String
     let sessionID: String
+    let tokenCount: Int?
 }
 
 typealias StreamingTokenCallback = (_ partial: String, _ isFinished: Bool) -> Void
@@ -127,6 +128,7 @@ final class CompanionChatService: @unchecked Sendable {
         final class StreamState: @unchecked Sendable {
             var accumulated: String = ""
             var resolvedSessionID: String
+            var tokenCount: Int?
             init(sessionID: String) { self.resolvedSessionID = sessionID }
         }
         let state = StreamState(sessionID: sessionID ?? "ares-gw-\(UUID().uuidString.prefix(8))")
@@ -145,6 +147,9 @@ final class CompanionChatService: @unchecked Sendable {
                         if let sid = token.sessionID {
                             state.resolvedSessionID = sid
                         }
+                        if let usage = token.usage {
+                            state.tokenCount = usage.totalTokens
+                        }
                         break
                     }
                 }
@@ -162,7 +167,7 @@ final class CompanionChatService: @unchecked Sendable {
         activeStreamTask = nil
 
         let finalText = state.accumulated.isEmpty ? "No response from ARES." : state.accumulated
-        return CompanionChatTurnResult(responseText: finalText, sessionID: state.resolvedSessionID)
+        return CompanionChatTurnResult(responseText: finalText, sessionID: state.resolvedSessionID, tokenCount: state.tokenCount)
     }
 
     /// Cancels the active streaming request.
@@ -222,7 +227,7 @@ final class CompanionChatService: @unchecked Sendable {
             responseText = output
         }
 
-        return CompanionChatTurnResult(responseText: responseText, sessionID: resolvedSessionID)
+        return CompanionChatTurnResult(responseText: responseText, sessionID: resolvedSessionID, tokenCount: nil)
     }
 
     // MARK: - Session Persistence
