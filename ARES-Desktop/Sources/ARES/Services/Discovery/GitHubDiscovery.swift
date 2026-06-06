@@ -53,13 +53,25 @@ final class GitHubDiscovery: ObservableObject {
     /// Default location to scan for clones. User can override later.
     var scanPaths: [String] = ["~/GitHub"]
 
-    func scan() {
-        ghAvailable = checkGhAvailable()
+    func scan() async {
+        let available = checkGhAvailable()
+        let scanPathsCopy = self.scanPaths
+        
+        let foundRepos = await Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return [GitHubRepo]() }
+            return self.performScan(ghAvailable: available, scanPaths: scanPathsCopy)
+        }.value
+        
+        self.ghAvailable = available
+        self.repos = foundRepos
+        self.lastScanDate = Date()
+    }
 
+    nonisolated private func performScan(ghAvailable: Bool, scanPaths: [String]) -> [GitHubRepo] {
         var found: [GitHubRepo] = []
 
         // 1. Walk scan paths, find git repos
-        let localRepos = scanLocalClones()
+        let localRepos = scanLocalClones(scanPaths: scanPaths)
         for clone in localRepos {
             let owner = clone.owner ?? "local"
             let name = clone.name
@@ -84,8 +96,7 @@ final class GitHubDiscovery: ObservableObject {
             return (lhs.lastActivity ?? .distantPast) > (rhs.lastActivity ?? .distantPast)
         }
 
-        repos = found
-        lastScanDate = Date()
+        return found
     }
 
     // MARK: - Local clone scan
@@ -98,7 +109,7 @@ final class GitHubDiscovery: ObservableObject {
         let lastMtime: Date?
     }
 
-    private func scanLocalClones() -> [LocalClone] {
+    nonisolated private func scanLocalClones(scanPaths: [String]) -> [LocalClone] {
         var found: [LocalClone] = []
 
         for scanPath in scanPaths {
@@ -135,7 +146,7 @@ final class GitHubDiscovery: ObservableObject {
         return found
     }
 
-    private func parseRemote(from gitDir: String) -> (owner: String?, url: String?) {
+    nonisolated private func parseRemote(from gitDir: String) -> (owner: String?, url: String?) {
         let configPath = (gitDir as NSString).appendingPathComponent("config")
         guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else {
             return (nil, nil)
@@ -163,7 +174,7 @@ final class GitHubDiscovery: ObservableObject {
         return (ownerRepo?.owner, u)
     }
 
-    private static func extractOwnerRepo(from url: String) -> (owner: String, repo: String)? {
+    nonisolated private static func extractOwnerRepo(from url: String) -> (owner: String, repo: String)? {
         // Normalize: strip .git suffix
         var s = url
         if s.hasSuffix(".git") { s = String(s.dropLast(4)) }
@@ -183,7 +194,7 @@ final class GitHubDiscovery: ObservableObject {
 
     // MARK: - `gh` CLI enrichment
 
-    private func checkGhAvailable() -> Bool {
+    nonisolated private func checkGhAvailable() -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["which", "gh"]
@@ -201,7 +212,7 @@ final class GitHubDiscovery: ObservableObject {
 
     /// Query `gh api repos/{owner}/{name}` for live repo metadata.
     /// Returns the metadata as a dict, or nil on any error.
-    private func ghAPI(_ endpoint: String) -> [String: Any]? {
+    nonisolated private func ghAPI(_ endpoint: String) -> [String: Any]? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["gh", "api", endpoint]
@@ -221,7 +232,7 @@ final class GitHubDiscovery: ObservableObject {
     }
 
     /// Query `gh api` for a list response (e.g. user/starred).
-    private func ghAPIArray(_ endpoint: String) -> [[String: Any]]? {
+    nonisolated private func ghAPIArray(_ endpoint: String) -> [[String: Any]]? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["gh", "api", endpoint]
@@ -240,7 +251,7 @@ final class GitHubDiscovery: ObservableObject {
         return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
     }
 
-    private func ghAPICount(_ endpoint: String) -> Int? {
+    nonisolated private func ghAPICount(_ endpoint: String) -> Int? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["gh", "api", endpoint, "--jq", "length"]
@@ -258,7 +269,7 @@ final class GitHubDiscovery: ObservableObject {
         return Int(s ?? "")
     }
 
-    private func enrichFromGh(owner: String, name: String, local: LocalClone) -> GitHubRepo {
+    nonisolated private func enrichFromGh(owner: String, name: String, local: LocalClone) -> GitHubRepo {
         let id = "\(owner)/\(name)"
         let endpoint = "repos/\(owner)/\(name)"
 
@@ -313,7 +324,7 @@ final class GitHubDiscovery: ObservableObject {
 
     /// Fetch user's starred repos (paginated, first 100). Excludes
     /// anything already in the local list.
-    private func fetchStarredRepos(excludingLocal: [GitHubRepo]) -> [GitHubRepo] {
+    nonisolated private func fetchStarredRepos(excludingLocal: [GitHubRepo]) -> [GitHubRepo] {
         guard let arr = ghAPIArray("user/starred?per_page=100") else { return [] }
         let localIds = Set(excludingLocal.map { $0.id })
 
@@ -353,7 +364,7 @@ final class GitHubDiscovery: ObservableObject {
 
     // MARK: - File helpers
 
-    private func mtimeFor(_ path: String) -> Date? {
+    nonisolated private func mtimeFor(_ path: String) -> Date? {
         do {
             let attrs = try FileManager.default.attributesOfItem(atPath: path)
             return attrs[.modificationDate] as? Date

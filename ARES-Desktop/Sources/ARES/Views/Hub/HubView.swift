@@ -51,8 +51,8 @@ struct HubView: View {
             }
             .background(ARESColors.background)
             .task {
-                discovery.scan()
-                gitHub.scan()
+                await discovery.scan()
+                await gitHub.scan()
             }
         }
     }
@@ -83,7 +83,9 @@ struct HubView: View {
             Spacer()
 
             Button {
-                discovery.scan()
+                Task {
+                    await discovery.scan()
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.clockwise")
@@ -246,7 +248,9 @@ struct HubView: View {
                 .font(.subheadline)
                 .foregroundStyle(ARESColors.textSecondary)
             Button {
-                discovery.scan()
+                Task {
+                    await discovery.scan()
+                }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.clockwise")

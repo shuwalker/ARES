@@ -69,7 +69,17 @@ final class ToolDiscovery: ObservableObject {
     @Published var tools: [DiscoveredTool] = []
     @Published var lastScanDate: Date? = nil
 
-    func scan() {
+    func scan() async {
+        let discoveredTools = await Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return [DiscoveredTool]() }
+            return self.performScan()
+        }.value
+        
+        self.tools = discoveredTools
+        self.lastScanDate = Date()
+    }
+
+    nonisolated private func performScan() -> [DiscoveredTool] {
         var all: [DiscoveredTool] = []
         all.append(contentsOf: scanBinaries())
         all.append(contentsOf: scanApplications())
@@ -79,8 +89,7 @@ final class ToolDiscovery: ObservableObject {
             if lhs.category != rhs.category { return lhs.category.sortOrder < rhs.category.sortOrder }
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
-        tools = all
-        lastScanDate = Date()
+        return all
     }
 
     // MARK: - Binary scan
@@ -88,7 +97,7 @@ final class ToolDiscovery: ObservableObject {
     // Look for executables in standard locations. For each, run
     // `which <name>` so PATH resolution catches npm/bun/nvm/asdf installs.
 
-    private func scanBinaries() -> [DiscoveredTool] {
+    nonisolated private func scanBinaries() -> [DiscoveredTool] {
         let home = NSString(string: "~").expandingTildeInPath
         let dirs = [
             "\(home)/.local/bin",
@@ -145,7 +154,7 @@ final class ToolDiscovery: ObservableObject {
     ///   collapsed by `normalizeName` later — see mergeDuplicates)
     /// `claude`, `claude-code` → `claude`
     /// `ares-hermes`, `hermes` → `hermes`
-    private static func baseBinaryName(_ name: String) -> String {
+    nonisolated private static func baseBinaryName(_ name: String) -> String {
         let lower = name.lowercased()
         // Hyphen/underscore split: take the first segment.
         if let firstHyphen = lower.firstIndex(of: "-") {
@@ -160,7 +169,7 @@ final class ToolDiscovery: ObservableObject {
     /// Returns true if `b` is a prefix-extension of `a` (or vice versa).
     /// "comfy" and "comfycli" → true (comfy is prefix)
     /// "llama" and "llama-server" → already handled by baseBinaryName
-    private static func isVariantOf(_ a: String, _ b: String) -> Bool {
+    nonisolated private static func isVariantOf(_ a: String, _ b: String) -> Bool {
         let (shorter, longer) = a.count <= b.count ? (a, b) : (b, a)
         if shorter == longer { return true }
         return longer.hasPrefix(shorter) && longer.count <= shorter.count + 8
@@ -171,7 +180,7 @@ final class ToolDiscovery: ObservableObject {
     /// `HermesDesktopDodo` → `hermesdesktopdodo`
     /// `Claude Code URL Handler` → `claudecodeurlhandler`
     /// `comfy` → `comfy`, `comfycli` → `comfycli` (kept distinct from comfy)
-    private static func normalizeName(_ name: String) -> String {
+    nonisolated private static func normalizeName(_ name: String) -> String {
         return name.lowercased()
             .replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: "-", with: "")
@@ -181,13 +190,13 @@ final class ToolDiscovery: ObservableObject {
 
     /// Binaries that pattern-matched but are NOT real AI tools. Add to
     /// this list as we discover false positives.
-    private static let excludedBinaries: Set<String> = [
+    nonisolated private static let excludedBinaries: Set<String> = [
         "sample",       // macOS audio utility, not "sam" research tool
         "sampleproc",   // ditto
     ]
 
     /// Apps that pattern-matched but aren't AI tools.
-    private static let excludedApps: Set<String> = [
+    nonisolated private static let excludedApps: Set<String> = [
         "Visual Studio Code",  // editor, not an AI tool
         "Xcode",               // ditto
     ]
@@ -195,7 +204,7 @@ final class ToolDiscovery: ObservableObject {
     /// Map well-known tool binaries to their local web UI URL.
     /// Hermes Agent runs a control plane at :9119. Others could be added
     /// (e.g. ComfyUI :8188, Ollama :11434 web).
-    private static func webURLFor(name: String) -> String? {
+    nonisolated private static func webURLFor(name: String) -> String? {
         let lower = name.lowercased()
         if lower.contains("hermes") { return "http://localhost:9119" }
         if lower.contains("ollama") { return "http://localhost:11434" }
@@ -207,7 +216,7 @@ final class ToolDiscovery: ObservableObject {
     //
     // /Applications and ~/Applications — every .app we recognize.
 
-    private func scanApplications() -> [DiscoveredTool] {
+    nonisolated private func scanApplications() -> [DiscoveredTool] {
         let dirs = ["/Applications", NSString(string: "~/Applications").expandingTildeInPath]
         var found: [DiscoveredTool] = []
         var seenIds: Set<String> = []
@@ -247,7 +256,7 @@ final class ToolDiscovery: ObservableObject {
     // still a strong signal. Surface as a tool with kind .cli and a
     // best-guess command name (the data dir name = the command name).
 
-    private func scanDataDirs() -> [DiscoveredTool] {
+    nonisolated private func scanDataDirs() -> [DiscoveredTool] {
         let home = NSString(string: "~").expandingTildeInPath
         let homeURL = URL(fileURLWithPath: home)
         let contents = (try? FileManager.default.contentsOfDirectory(atPath: home)) ?? []
@@ -301,7 +310,7 @@ final class ToolDiscovery: ObservableObject {
     // (strip spaces, hyphens, dots), then keep the most "informative"
     // variant (app > cli > data).
 
-    private func mergeDuplicates(_ tools: [DiscoveredTool]) -> [DiscoveredTool] {
+    nonisolated private func mergeDuplicates(_ tools: [DiscoveredTool]) -> [DiscoveredTool] {
         // Sort by priority (most "informative" first) so when we keep
         // one, it's the best representative.
         let priority: (DiscoveredTool) -> Int = { t in
@@ -354,7 +363,7 @@ final class ToolDiscovery: ObservableObject {
     ///   → all contain the token "codex"
     /// This handles the case where a tool has multiple binary/app
     /// spellings that share a common root word.
-    private static func coreTokens(name: String) -> [String] {
+    nonisolated private static func coreTokens(name: String) -> [String] {
         let lower = name.lowercased()
         // Split on non-letter chars
         let parts = lower.split(whereSeparator: { !$0.isLetter }).map(String.init)
@@ -373,7 +382,7 @@ final class ToolDiscovery: ObservableObject {
     // regex → category mapping. New tools don't need new entries; they
     // just need to match a pattern. If nothing matches, the tool is hidden.
 
-    private static let categoryPatterns: [(NSRegularExpression, DiscoveredTool.ToolCategory)] = {
+    nonisolated private static let categoryPatterns: [(NSRegularExpression, DiscoveredTool.ToolCategory)] = {
         let patterns: [(String, DiscoveredTool.ToolCategory)] = [
             // Coding agents
             ("^(claude|gemini|codex|coder|cline|aider|cody|copilot|tabnine|continue|windsurf|zed|cursor|supermaven|q$|q-developer|opencode|goose)$", .codingAgent),
@@ -409,7 +418,7 @@ final class ToolDiscovery: ObservableObject {
         }
     }()
 
-    private static func categorize(name: String) -> DiscoveredTool.ToolCategory? {
+    nonisolated private static func categorize(name: String) -> DiscoveredTool.ToolCategory? {
         let lower = name.lowercased()
         for (regex, category) in categoryPatterns {
             let range = NSRange(lower.startIndex..<lower.endIndex, in: lower)
@@ -424,12 +433,12 @@ final class ToolDiscovery: ObservableObject {
     //
     // "claude-code" -> "Claude Code", "codex" -> "Codex", "lm-studio" -> "LM Studio"
 
-    private static func prettyName(_ name: String) -> String {
+    nonisolated private static func prettyName(_ name: String) -> String {
         let parts = name.split(whereSeparator: { $0 == "-" || $0 == "_" })
         return parts.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 
-    private static func prettyAppName(_ name: String) -> String {
+    nonisolated private static func prettyAppName(_ name: String) -> String {
         // Apps sometimes have weird naming. Best effort.
         return name
     }
@@ -439,7 +448,7 @@ final class ToolDiscovery: ObservableObject {
     // Best-effort SF Symbol per tool name. Falls back to a category
     // generic symbol so unknown tools still get something reasonable.
 
-    private static func iconFor(name: String, category: DiscoveredTool.ToolCategory) -> String {
+    nonisolated private static func iconFor(name: String, category: DiscoveredTool.ToolCategory) -> String {
         let n = name.lowercased()
         if n.contains("claude") { return "sparkle" }
         if n.contains("gemini") { return "sparkles" }
@@ -481,7 +490,7 @@ final class ToolDiscovery: ObservableObject {
     // Most AI tools use ~/.<lowercased-name>/. Some exceptions (SAM uses
     // ~/sam). For .app names with spaces, we don't have a convention.
 
-    private static func guessDataPath(for name: String) -> String? {
+    nonisolated private static func guessDataPath(for name: String) -> String? {
         let bare = name.lowercased()
         if bare == "sam" { return "~/sam" }
         if bare.isEmpty { return nil }
@@ -493,7 +502,7 @@ final class ToolDiscovery: ObservableObject {
     // This is the key fix from before: we use the shell's PATH resolution
     // instead of probing 4 hard-coded paths. Catches npm/bun/nvm/asdf.
 
-    private func resolveOnPATH(_ name: String) -> String? {
+    nonisolated private func resolveOnPATH(_ name: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["which", name]
@@ -519,7 +528,7 @@ final class ToolDiscovery: ObservableObject {
     // ones that match a category pattern — that filter does most of the
     // work. This list is just a safety net.
 
-    private static let systemHiddenDirs: Set<String> = [
+    nonisolated private static let systemHiddenDirs: Set<String> = [
         "Trash", "Spotlight-V100", ".fseventsd", "Library", "Applications",
         "Desktop", "Documents", "Downloads", "Movies", "Music", "Pictures",
         "Public", "Creative Cloud Files", "Box", "iCloud Drive", "OneDrive",
@@ -534,7 +543,7 @@ final class ToolDiscovery: ObservableObject {
 
     // MARK: - File helpers
 
-    private func mtimeFor(_ path: String) -> Date? {
+    nonisolated private func mtimeFor(_ path: String) -> Date? {
         do {
             let attrs = try FileManager.default.attributesOfItem(atPath: path)
             return attrs[.modificationDate] as? Date
@@ -543,7 +552,7 @@ final class ToolDiscovery: ObservableObject {
         }
     }
 
-    private func newestMtime(in directoryPath: String) -> Date? {
+    nonisolated private func newestMtime(in directoryPath: String) -> Date? {
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(atPath: directoryPath) else {
             return nil
