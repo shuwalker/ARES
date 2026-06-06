@@ -575,14 +575,15 @@ final class ARESAppState: ObservableObject {
     func branchFromMessage(at index: Int) {
         guard !isViewingHistory else { return }
         guard chatMessages.indices.contains(index) else { return }
-        // Truncate history — keep everything up to and including the selected message
+        // Keep everything up to and including the selected message
         let branchedMessages = Array(chatMessages[...index])
-        // Give the last message a new timestamp so it acts as the fresh start
+        // Tag the FIRST message of the new session so the branch
+        // marker appears at the top of the conversation
         var tagged = branchedMessages
         if !tagged.isEmpty {
-            tagged[tagged.count - 1].parentBranchId = tagged[tagged.count - 1].id
+            tagged[0].parentBranchId = tagged[0].id
         }
-        // Create a new session with no active session (Hermes will allocate one on next send)
+        // Create a new session (Hermes will allocate a fresh ID on next send)
         activeChatSessionID = nil
         chatMessages = tagged
         chatInput = ""

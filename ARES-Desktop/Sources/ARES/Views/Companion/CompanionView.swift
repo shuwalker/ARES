@@ -621,14 +621,10 @@ struct CompanionView: View {
     @ViewBuilder
     private func branchMarker(_ bubble: ChatBubble) -> some View {
         if bubble.parentBranchId != nil {
-            HStack(spacing: 3) {
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 8))
-                Text("branched")
-                    .font(.system(size: 9))
-            }
-            .foregroundStyle(ARESColors.textTertiary)
-            .padding(.top, 1)
+            Text("\u{21B3} branched")
+                .font(.caption2)
+                .foregroundStyle(ARESColors.textTertiary)
+                .padding(.top, 1)
         }
     }
 
