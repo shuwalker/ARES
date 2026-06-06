@@ -18,6 +18,10 @@ struct CompanionView: View {
     @State private var showSourcePicker: Bool = false
     @State private var showModelPicker: Bool = false
     @State private var selectedReference: AttachedReference? = nil
+    /// Tracks which bubble is in edit mode (nil = none).
+    @State private var editingMessageId: ChatBubble.ID? = nil
+    /// Holds the current edit text while editing a message.
+    @State private var editText: String = ""
 
     // FocusState — required to receive first responder inside HSplitView
     // nested in NavigationSplitView (macOS focus routing bug workaround).
@@ -402,24 +406,38 @@ struct CompanionView: View {
                     if let refs = bubble.references, !refs.isEmpty {
                         referenceChipsLine(refs)
                     }
-                    messageBubble(bubble)
-                        .contextMenu {
-                            Button("Copy") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(bubble.content, forType: .string)
-                            }
-                            Button("Copy as Markdown") {
-                                NSPasteboard.general.clearContents()
-                                let md = formatAsMarkdown(bubble)
-                                NSPasteboard.general.setString(md, forType: .string)
-                            }
-                            Divider()
-                            if !appState.isViewingHistory {
-                                Button("Delete Message", role: .destructive) {
-                                    deleteMessage(bubble)
+                    if bubble.id == editingMessageId {
+                        editModeView(bubble)
+                    } else {
+                        messageBubble(bubble)
+                            .contextMenu {
+                                Button("Copy") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(bubble.content, forType: .string)
+                                }
+                                Button("Copy as Markdown") {
+                                    NSPasteboard.general.clearContents()
+                                    let md = formatAsMarkdown(bubble)
+                                    NSPasteboard.general.setString(md, forType: .string)
+                                }
+                                Divider()
+                                if !appState.isViewingHistory {
+                                    Button("Edit") {
+                                        beginEdit(bubble)
+                                    }
+                                    Button("Delete Message", role: .destructive) {
+                                        deleteMessage(bubble)
+                                    }
+                                }
+                                if !appState.isViewingHistory {
+                                    Divider()
+                                    Button("Branch from here") {
+                                        branchFrom(bubble)
+                                    }
                                 }
                             }
-                        }
+                    }
+                    branchMarker(bubble)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -443,7 +461,14 @@ struct CompanionView: View {
                                     deleteMessage(bubble)
                                 }
                             }
+                            if !appState.isViewingHistory {
+                                Divider()
+                                Button("Branch from here") {
+                                    branchFrom(bubble)
+                                }
+                            }
                         }
+                    branchMarker(bubble)
                 }
                 Spacer()
             }
@@ -519,6 +544,87 @@ struct CompanionView: View {
                 .background(sourceColor(for: ref.sourceName).opacity(0.15))
                 .clipShape(Capsule())
             }
+        }
+    }
+
+    // MARK: - Edit & Branch helpers
+
+    /// Displays a TextField with Cancel / Save & Resend buttons for editing.
+    @ViewBuilder
+    private func editModeView(_ bubble: ChatBubble) -> some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            TextField("Edit message…", text: $editText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...5)
+                .padding(10)
+                .background(ARESColors.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(ARESColors.gold.opacity(0.5), lineWidth: 1)
+                )
+                .foregroundStyle(ARESColors.textPrimary)
+                .onSubmit { saveEdit(bubble) }
+
+            HStack(spacing: 8) {
+                Button("Cancel") {
+                    cancelEdit()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button("Save & Resend") {
+                    saveEdit(bubble)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(ARESColors.gold)
+            }
+        }
+        .frame(maxWidth: 400)
+    }
+
+    /// Enters edit mode for the given user bubble.
+    private func beginEdit(_ bubble: ChatBubble) {
+        editingMessageId = bubble.id
+        editText = bubble.content
+    }
+
+    /// Saves the edited content, re-sends from this bubble, and exits edit mode.
+    private func saveEdit(_ bubble: ChatBubble) {
+        let msgs = appState.chatMessages
+        guard let idx = msgs.firstIndex(where: { $0.id == bubble.id }) else {
+            cancelEdit()
+            return
+        }
+        appState.editMessage(at: idx, newContent: editText)
+        editingMessageId = nil
+        editText = ""
+    }
+
+    /// Exits edit mode without saving.
+    private func cancelEdit() {
+        editingMessageId = nil
+        editText = ""
+    }
+
+    /// Branches the conversation from the selected bubble.
+    private func branchFrom(_ bubble: ChatBubble) {
+        let msgs = appState.chatMessages
+        guard let idx = msgs.firstIndex(where: { $0.id == bubble.id }) else { return }
+        // If we're currently editing, cancel first
+        cancelEdit()
+        appState.branchFromMessage(at: idx)
+    }
+
+    /// Small visual indicator shown on the first bubble of a branched session.
+    @ViewBuilder
+    private func branchMarker(_ bubble: ChatBubble) -> some View {
+        if bubble.parentBranchId != nil {
+            Text("\u{21B3} branched")
+                .font(.caption2)
+                .foregroundStyle(ARESColors.textTertiary)
+                .padding(.top, 1)
         }
     }
 
