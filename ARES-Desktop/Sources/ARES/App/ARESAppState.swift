@@ -262,76 +262,155 @@ final class ARESAppState: ObservableObject {
         // Capture references before clearing the attachment bar
         let refs = attachedReferences
 
-        // Build the prompt — prepend a small reference preamble so the
-        // model has the source title + timestamp + snippet, then the user's text.
-        let prompt = Self.buildPromptWithReferences(text: text, references: refs)
+        // Build display text (what the user typed) and prompt text (what the model sees).
+        // The model gets reference context prepended; the UI shows the raw user text.
+        let displayText = text
+        let promptText = Self.buildPromptWithReferences(text: text, references: refs)
 
-        // Append user bubble with references attached (so the UI can render chips)
-        let userBubble = ChatBubble(role: .user, content: text, references: refs.isEmpty ? nil : refs)
+        // Append user bubble with the display text (raw, without preamble) so UI is clean
+        let userBubble = ChatBubble(role: .user, content: displayText, references: refs.isEmpty ? nil : refs)
         chatMessages.append(userBubble)
         chatInput = ""
         attachedReferences = []
         isChatProcessing = true
         voiceState = .thinking
 
+        // Create a placeholder streaming bubble for the assistant's response
+        let streamingBubbleID = UUID()
+        var streamingBubble = ChatBubble(
+            role: .assistant,
+            content: "",
+            references: refs.isEmpty ? nil : refs,
+            isStreaming: true
+        )
+        streamingBubble.id = streamingBubbleID
+        chatMessages.append(streamingBubble)
+
+        // Keep a snapshot of the full conversation history for context (before streaming bubble)
+        let conversationHistory = chatMessages.filter { !$0.isStreaming }
+
         // Use existing session ID for continuity, or start a new one
         let sessionID = activeChatSessionID
 
         Task {
+            // Try streaming first; fall back to CLI if Gateway is unreachable
+            let gatewayReachable = await chatService.checkAvailability()
+
+            if gatewayReachable {
+                // --- Streaming path (real-time token delivery through Hermes Gateway) ---
+                do {
+                    // Build the messages array with reference-augmented prompt for context
+                    var contextMessages: [GatewayMessage] = conversationHistory.map { bubble in
+                        GatewayMessage(
+                            role: bubble.role == .user ? "user" : "assistant",
+                            content: bubble.content
+                        )
+                    }
+                    // Use the reference-augmented prompt text for the model
+                    contextMessages.append(GatewayMessage(role: "user", content: promptText))
+
+                    let result = try await chatService.sendMessageStream(
+                        messages: contextMessages,
+                        sessionID: sessionID,
+                        onToken: { [weak self] partial, isFinished in
+                            guard let self else { return }
+                            // Find the streaming bubble by ID and update its content
+                            if let idx = self.chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                                self.chatMessages[idx].content = partial
+                                self.chatMessages[idx].isStreaming = !isFinished
+                            }
+                        }
+                    )
+
+                    // Finalize: update session ID and persist
+                    await MainActor.run {
+                        if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                            chatMessages[idx].isStreaming = false
+                            // Remove empty response placeholder if somehow no content arrived
+                            if chatMessages[idx].content.isEmpty {
+                                chatMessages[idx].content = result.responseText.isEmpty ? "No response from ARES." : result.responseText
+                            }
+                        }
+                        activeChatSessionID = result.sessionID
+                        isChatProcessing = false
+                        voiceState = .idle
+                        persistChatTurn(userText: text, assistantText: chatMessages.last?.content ?? result.responseText, refs: refs)
+                    }
+                } catch {
+                    await MainActor.run {
+                        if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                            chatMessages[idx].content = "ARES streaming error: \(error.localizedDescription). Retrying via CLI…"
+                            chatMessages[idx].isStreaming = false
+                        }
+                        // Fallback to CLI
+                        fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID)
+                    }
+                }
+            } else {
+                // --- CLI fallback (non-streaming) ---
+                await MainActor.run {
+                    fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID)
+                }
+            }
+        }
+    }
+
+    /// CLI fallback when Ollama is not reachable. Replaces the streaming bubble.
+    private func fallbackToCLI(displayText: String, promptText: String, sessionID: String?, refs: [AttachedReference], streamingBubbleID: UUID) {
+        Task {
             do {
                 let result = try await chatService.sendMessage(
-                    prompt,
+                    promptText,
                     sessionID: sessionID,
                     model: companionConfig.model,
                     provider: companionConfig.provider
                 )
                 await MainActor.run {
-                    let assistantBubble = ChatBubble(
-                        role: .assistant,
-                        content: result.responseText,
-                        references: refs.isEmpty ? nil : refs
-                    )
-                    chatMessages.append(assistantBubble)
+                    if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                        chatMessages[idx].content = result.responseText.isEmpty ? "No response from ARES." : result.responseText
+                        chatMessages[idx].isStreaming = false
+                    }
                     activeChatSessionID = result.sessionID
                     isChatProcessing = false
                     voiceState = .idle
-
-                    // Persist session with the just-appended messages
-                    let firstUserMsg = chatMessages.first(where: { $0.role == .user })?.content ?? text
-                    let title = String(firstUserMsg.prefix(64))
-                    let now = Date()
-                    let toPersist: [PersistedChatMessage] = [
-                        PersistedChatMessage(
-                            role: .user,
-                            content: text,
-                            timestamp: now,
-                            references: refs.isEmpty ? nil : refs
-                        ),
-                        PersistedChatMessage(
-                            role: .assistant,
-                            content: result.responseText,
-                            timestamp: now,
-                            references: nil
-                        )
-                    ]
-                    chatService.persistSession(
-                        id: result.sessionID,
-                        title: title,
-                        messages: toPersist
-                    )
-                    refreshSessionHistory()
+                    persistChatTurn(userText: displayText, assistantText: result.responseText, refs: refs)
                 }
             } catch {
                 await MainActor.run {
-                    chatMessages.append(ChatBubble(
-                        role: .assistant,
-                        content: "ARES backend error: \(error.localizedDescription)"
-                    ))
+                    if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                        chatMessages[idx].content = "ARES backend error: \(error.localizedDescription)"
+                        chatMessages[idx].isStreaming = false
+                    }
                     isChatProcessing = false
                     voiceState = .idle
                 }
             }
         }
+    }
+
+    /// Persists the user+assistant turn and refreshes the history sidebar.
+    private func persistChatTurn(userText: String, assistantText: String, refs: [AttachedReference]) {
+        let sid = activeChatSessionID ?? "ares-local-\(UUID().uuidString)"
+
+        // Persist locally as backup (Gateway manages its own sessions)
+        chatService.appendTurn(role: "user", content: userText, sessionID: sid, model: companionConfig.model)
+        chatService.appendTurn(role: "assistant", content: assistantText, sessionID: sid, model: companionConfig.model)
+        chatService.persistSession(sessionID: sid, model: companionConfig.model)
+        refreshSessionHistory()
+    }
+
+    /// Cancels the in-flight streaming request.
+    func cancelStreaming() {
+        chatService.cancelStream()
+        // Finalize any streaming bubble
+        if let idx = chatMessages.lastIndex(where: { $0.isStreaming }) {
+            chatMessages[idx].isStreaming = false
+            if chatMessages[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                chatMessages[idx].content = "(Cancelled)"
+            }
+        }
+        isChatProcessing = false
+        voiceState = .idle
     }
 
     /// Builds a prompt string that includes short source reference context
@@ -417,17 +496,26 @@ final class ARESAppState: ObservableObject {
     /// Refresh the history list from disk.
     func refreshSessionHistory() {
         isLoadingHistory = true
-        sessionHistory = chatService.listSessions(limit: 50)
-        isLoadingHistory = false
+        Task {
+            do {
+                sessionHistory = try await chatService.listSessionsAsync(limit: 50)
+            } catch {
+                // Fall back to empty — Gateway may be offline
+                sessionHistory = []
+            }
+            isLoadingHistory = false
+        }
     }
 
     /// Switch the chat view to a historical session (read-only).
     func viewHistoricalSession(_ session: CompanionChatService.SessionSummary) {
         viewingHistoricalSessionID = session.id
-        if let messages = chatService.loadSessionMessages(sessionID: session.id) {
-            historicalMessages = messages
-        } else {
-            historicalMessages = []
+        Task {
+            do {
+                historicalMessages = try await chatService.loadSessionMessagesAsync(sessionID: session.id)
+            } catch {
+                historicalMessages = []
+            }
         }
     }
 
@@ -560,12 +648,23 @@ struct AgentCard: Identifiable, Equatable {
 // MARK: - Chat bubble model
 
 struct ChatBubble: Identifiable, Equatable {
-    let id = UUID()
+    var id = UUID()
     let role: BubbleRole
-    let content: String
-    let timestamp: Date = Date()
+    /// Mutable to support streaming token accumulation.
+    var content: String
+    var timestamp: Date
     /// Source references attached to this message (for inline citations)
     var references: [AttachedReference]? = nil
+    /// True while the model is still streaming tokens into this bubble.
+    var isStreaming: Bool = false
+
+    init(role: BubbleRole, content: String, timestamp: Date = Date(), references: [AttachedReference]? = nil, isStreaming: Bool = false) {
+        self.role = role
+        self.content = content
+        self.timestamp = timestamp
+        self.references = references
+        self.isStreaming = isStreaming
+    }
 }
 
 enum BubbleRole: Equatable {

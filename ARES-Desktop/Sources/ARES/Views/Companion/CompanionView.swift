@@ -351,22 +351,32 @@ struct CompanionView: View {
         if messagesToShow.isEmpty {
             emptyState
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(messagesToShow) { bubble in
-                        bubbleRow(bubble)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(messagesToShow) { bubble in
+                            bubbleRow(bubble)
+                                .id(bubble.id)
+                        }
                     }
-                    if appState.isChatProcessing && !appState.isViewingHistory {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .controlSize(.small)
-                                .padding(8)
-                            Spacer()
+                    .padding(16)
+                    .onChange(of: messagesToShow.last?.content) { _, _ in
+                        // Auto-scroll to bottom when new tokens arrive
+                        if let lastID = messagesToShow.last?.id {
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                proxy.scrollTo(lastID, anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onChange(of: messagesToShow.count) { _, newCount in
+                        // Scroll when a new message appears
+                        if let lastID = messagesToShow.last?.id {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(lastID, anchor: .bottom)
+                            }
                         }
                     }
                 }
-                .padding(16)
             }
         }
     }
@@ -443,15 +453,16 @@ struct CompanionView: View {
     /// Renders a chat bubble. Text is selectable (so Cmd+C works) but
     /// the rest of the row doesn't fight you for focus. Assistant
     /// messages get Markdown rendering (bold, code, lists, links).
+    /// Streaming bubbles show a blinking cursor.
     private func messageBubble(_ bubble: ChatBubble) -> some View {
         Group {
             if bubble.role == .assistant, let attributed = try? AttributedString(
                 markdown: bubble.content,
                 options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
             ) {
-                Text(attributed)
+                Text(attributed) + (bubble.isStreaming ? Text("▊").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
             } else {
-                Text(bubble.content)
+                Text(bubble.content) + (bubble.isStreaming ? Text("▊").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
             }
         }
         .textSelection(.enabled)
@@ -517,39 +528,54 @@ struct CompanionView: View {
         VStack(spacing: 0) {
             Divider().background(ARESColors.divider)
             HStack(alignment: .bottom, spacing: 8) {
-                // Attach reference button
-                Button(action: { showSourcePicker = true }) {
-                    Image(systemName: "plus.circle")
-                        .font(.title3)
-                        .foregroundStyle(ARESColors.gold)
+                // Attach reference button (hidden during streaming)
+                if !appState.isChatProcessing {
+                    Button(action: { showSourcePicker = true }) {
+                        Image(systemName: "plus.circle")
+                            .font(.title3)
+                            .foregroundStyle(ARESColors.gold)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(appState.isViewingHistory)
+                    .help("Attach a session reference")
                 }
-                .buttonStyle(.plain)
-                .disabled(appState.isViewingHistory)
-                .help("Attach a session reference")
 
                 // Text input
                 TextField(
-                    appState.isViewingHistory ? "Historical session — read only" : "Message ARES…",
+                    appState.isViewingHistory ? "Historical session — read only" : (appState.isChatProcessing ? "ARES is responding…" : "Message ARES…"),
                     text: $appState.chatInput,
                     axis: .vertical
                 )
                 .textFieldStyle(.plain)
                 .lineLimit(1...5)
                 .focused($focusedField, equals: .chatInput)
-                .disabled(appState.isViewingHistory)
-                .onSubmit(appState.sendChat)
-
-                // Send button
-                Button(action: appState.sendChat) {
-                    Image(systemName: "paperplane.fill")
-                        .foregroundStyle(ARESColors.gold)
+                .disabled(appState.isViewingHistory || appState.isChatProcessing)
+                .onSubmit {
+                    if !appState.isChatProcessing && !appState.isViewingHistory {
+                        appState.sendChat()
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(
-                    appState.isViewingHistory
-                    || appState.isChatProcessing
-                    || appState.chatInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
+
+                // Send button (when idle) / Cancel button (when streaming)
+                if appState.isChatProcessing {
+                    Button(action: { appState.cancelStreaming() }) {
+                        Image(systemName: "stop.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Cancel response")
+                } else {
+                    Button(action: appState.sendChat) {
+                        Image(systemName: "paperplane.fill")
+                            .foregroundStyle(ARESColors.gold)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(
+                        appState.isViewingHistory
+                        || appState.chatInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                }
             }
             .padding(12)
         }

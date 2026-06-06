@@ -2,410 +2,312 @@ import Foundation
 import ARESCore
 
 // MARK: - Companion Chat Service
-// Calls the Hermes CLI (`hermes --yolo chat --quiet --query`) and persists
-// each conversation session to the configured memory directory.
+//
+// Primary: streams chat completions through the Hermes Gateway API
+//   (localhost:8642/v1/chat/completions) for real-time token delivery,
+//   giving the Companion full access to the Hermes agent — tools, memory,
+//   skills, everything — the same engine as the TUI.
+//
+// Fallback: when the Gateway is unreachable, falls back to the Hermes CLI
+//   (`hermes --yolo chat --query`) for a non-streaming response.
 
-struct CompanionChatTurnResult {
+// MARK: - Result Types
+
+struct CompanionChatTurnResult: Sendable {
     let responseText: String
     let sessionID: String
 }
 
+typealias StreamingTokenCallback = (_ partial: String, _ isFinished: Bool) -> Void
+
+// MARK: - Session Summary (for UI list)
+
+extension CompanionChatService {
+    struct SessionSummary: Identifiable, Sendable {
+        let id: String
+        let title: String
+        let date: Date
+        let updatedAt: Date
+        let messageCount: Int
+        let model: String
+        let provider: String
+        let preview: String
+    }
+}
+
+// MARK: - CompanionChatService
+
+@MainActor
 final class CompanionChatService: @unchecked Sendable {
 
     // MARK: - Singleton
+
     static let shared = CompanionChatService()
 
-    // MARK: - Session persistence directory
-    private let sessionsDirectory: URL
+    // MARK: - Dependencies
 
-    private init(sessionsDirectory: URL? = nil) {
-        self.sessionsDirectory = sessionsDirectory ?? ARESEnvironment.sessionsDirectory
-        ensureSessionsDirectory()
-    }
+    private var gateway: HermesGatewayService
+    private var companionConfig: CompanionConfig
 
-    // MARK: - Directory setup
+    // MARK: - State
 
-    private func ensureSessionsDirectory() {
-        try? FileManager.default.createDirectory(
-            at: sessionsDirectory,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: NSNumber(value: Int16(0o700))]
+    /// The in-flight streaming Task, if any. Used for cancellation.
+    private var activeStreamTask: Task<Void, Never>?
+
+    /// In-memory conversation log for the active Companion session.
+    private var activeTurns: [PersistedTurn] = []
+
+    // MARK: - Init
+
+    private init() {
+        let config = CompanionConfig.load()
+        // Auto-detect API key from ~/.hermes/.env if not in config
+        let apiKey = config.apiKey.isEmpty ? CompanionConfig.readAPIKeyFromEnv() : config.apiKey
+        self.companionConfig = CompanionConfig(
+            gatewayURL: config.gatewayURL,
+            apiKey: apiKey,
+            model: config.model,
+            provider: config.provider,
+            maxHistoryTurns: config.maxHistoryTurns
+        )
+        self.gateway = HermesGatewayService(
+            baseURL: URL(string: self.companionConfig.gatewayURL)!,
+            apiKey: self.companionConfig.apiKey
         )
     }
 
-    // MARK: - Send a message via Hermes CLI
+    /// Re-initialize the gateway (e.g. after config change).
+    func reconfigure() {
+        let config = CompanionConfig.load()
+        let apiKey = config.apiKey.isEmpty ? CompanionConfig.readAPIKeyFromEnv() : config.apiKey
+        self.companionConfig = CompanionConfig(
+            gatewayURL: config.gatewayURL,
+            apiKey: apiKey,
+            model: config.model,
+            provider: config.provider,
+            maxHistoryTurns: config.maxHistoryTurns
+        )
+        self.gateway = HermesGatewayService(
+            baseURL: URL(string: self.companionConfig.gatewayURL)!,
+            apiKey: self.companionConfig.apiKey
+        )
+    }
 
-    /// Sends a user message to Hermes via the CLI and returns the response.
+    // MARK: - Availability Check
+
+    /// Checks whether the Hermes Gateway is reachable and responding.
+    func checkAvailability() async -> Bool {
+        await gateway.isReachable()
+    }
+
+    // MARK: - Send a message (streaming — primary path)
+
+    /// Sends a user message and streams the response token-by-token through
+    /// the Hermes Gateway.
     /// - Parameters:
-    ///   - prompt: The user's message text.
-    ///   - sessionID: An optional Hermes session ID to continue an existing conversation.
-    ///   - model: Optional Hermes model override (e.g. "gpt-5.5"). When nil, uses the user's config default.
-    ///   - provider: Optional Hermes provider override (e.g. "openai-codex"). When nil, uses the user's config default.
-    /// - Returns: A `CompanionChatTurnResult` with the response text and session ID.
+    ///   - messages: Pre-built conversation messages including the latest user message.
+    ///   - sessionID: Optional Hermes session ID for multi-turn continuity.
+    ///   - onToken: Called on MainActor for each token delta. partial=accumulated text so far.
+    /// - Returns: A CompanionChatTurnResult once streaming completes.
+    func sendMessageStream(
+        messages: [GatewayMessage],
+        sessionID: String?,
+        onToken: @escaping StreamingTokenCallback
+    ) async throws -> CompanionChatTurnResult {
+        // Cancel any in-flight stream
+        activeStreamTask?.cancel()
+
+        let stream = gateway.streamChat(
+            messages: messages,
+            sessionID: sessionID,
+            model: companionConfig.model
+        )
+
+        // Mutable state for the stream — wrapped in a class to satisfy Sendable
+        final class StreamState: @unchecked Sendable {
+            var accumulated: String = ""
+            var resolvedSessionID: String
+            init(sessionID: String) { self.resolvedSessionID = sessionID }
+        }
+        let state = StreamState(sessionID: sessionID ?? "ares-gw-\(UUID().uuidString.prefix(8))")
+
+        let streamTask = Task { @Sendable in
+            do {
+                for try await token in stream {
+                    state.accumulated += token.content
+
+                    let current = state.accumulated
+                    await MainActor.run {
+                        onToken(current, token.isFinished)
+                    }
+
+                    if token.isFinished {
+                        if let sid = token.sessionID {
+                            state.resolvedSessionID = sid
+                        }
+                        break
+                    }
+                }
+            } catch {
+                let errorMsg = "Connection error: \(error.localizedDescription)"
+                await MainActor.run {
+                    onToken(errorMsg, true)
+                }
+                state.accumulated = errorMsg
+            }
+        }
+
+        activeStreamTask = streamTask
+        await streamTask.value
+        activeStreamTask = nil
+
+        let finalText = state.accumulated.isEmpty ? "No response from ARES." : state.accumulated
+        return CompanionChatTurnResult(responseText: finalText, sessionID: state.resolvedSessionID)
+    }
+
+    /// Cancels the active streaming request.
+    func cancelStream() {
+        activeStreamTask?.cancel()
+        activeStreamTask = nil
+    }
+
+    // MARK: - CLI Fallback (non-streaming)
+
+    /// Sends a message via the Hermes CLI as a non-streaming fallback.
     func sendMessage(
         _ prompt: String,
         sessionID: String?,
-        model: String? = nil,
-        provider: String? = nil
+        model: String,
+        provider: String
     ) async throws -> CompanionChatTurnResult {
-        var output = try await runHermesCLI(
-            prompt: prompt,
-            sessionID: sessionID,
-            model: model,
-            provider: provider
-        )
-
-        // If ARES has an old local UUID instead of a real Hermes CLI session id,
-        // Hermes refuses the resume. Recover by starting a fresh Hermes session
-        // instead of trapping the user in a permanent "Session not found" loop.
-        if sessionID != nil && output.contains("Session not found:") {
-            output = try await runHermesCLI(
-                prompt: prompt,
-                sessionID: nil,
-                model: model,
-                provider: provider
-            )
-        }
-
-        let parsedSessionID = Self.parseHermesSessionID(from: output)
-        let responseText = output.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let resolvedID = parsedSessionID ?? sessionID ?? "ares-local-\(UUID().uuidString)"
-
-        return CompanionChatTurnResult(
-            responseText: responseText.isEmpty ? "No response from ARES." : responseText,
-            sessionID: resolvedID
-        )
-    }
-
-    // MARK: - Hermes CLI output parsing
-
-    private static func parseHermesSessionID(from output: String) -> String? {
-        let lines = output.components(separatedBy: "\n")
-
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-            if trimmed.hasPrefix("session_id:") {
-                let idPart = trimmed.dropFirst("session_id:".count).trimmingCharacters(in: .whitespaces)
-                if !idPart.isEmpty { return String(idPart) }
-            }
-
-            if trimmed.hasPrefix("Session:") {
-                let idPart = trimmed.dropFirst("Session:".count).trimmingCharacters(in: .whitespaces)
-                if !idPart.isEmpty { return String(idPart) }
-            }
-
-            if let resumeRange = trimmed.range(of: "hermes --resume ") {
-                let idPart = trimmed[resumeRange.upperBound...]
-                    .split(separator: " ", maxSplits: 1)
-                    .first
-                    .map(String.init) ?? ""
-                if !idPart.isEmpty { return idPart }
-            }
-        }
-
-        return nil
-    }
-
-    // MARK: - Run Hermes CLI process
-
-    private func runHermesCLI(
-        prompt: String,
-        sessionID: String?,
-        model: String? = nil,
-        provider: String? = nil
-    ) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-
-                var arguments = ["hermes", "--yolo"]
-
-                // --model and --provider override the user's config
-                if let m = model, !m.isEmpty {
-                    arguments += ["-m", m]
-                }
-                if let p = provider, !p.isEmpty {
-                    arguments += ["--provider", p]
-                }
-
-                if let sid = sessionID {
-                    arguments += ["--resume", sid]
-                }
-
-                arguments += ["chat", "--query", prompt]
-                process.arguments = arguments
-
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
-                process.standardOutput = stdoutPipe
-                process.standardError = stderrPipe
-                process.environment = ProcessInfo.processInfo.environment
-
-                // Suppress NO_COLOR for stable output parsing
-                var env = ProcessInfo.processInfo.environment
-                env["NO_COLOR"] = "1"
-                env["TERM"] = "dumb"
-                process.environment = env
-
-                do {
-                    try process.run()
-                } catch {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-
-                let stdoutStr = String(data: stdoutData, encoding: .utf8) ?? ""
-                let stderrStr = String(data: stderrData, encoding: .utf8) ?? ""
-
-                if process.terminationStatus != 0 && stdoutStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    let error = stderrStr.trimmingCharacters(in: .whitespacesAndNewlines)
-                    continuation.resume(returning: "ARES backend error: \(error.isEmpty ? "exit code \(process.terminationStatus)" : error)")
-                    return
-                }
-
-                // Combine stdout; stderr only if stdout is empty
-                let combined: String
-                let trimmedOut = stdoutStr.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmedOut.isEmpty {
-                    combined = stdoutStr
-                } else {
-                    combined = stderrStr
-                }
-
-                continuation.resume(returning: combined)
-            }
-        }
-    }
-
-    // MARK: - Persist session to disk
-
-    /// Saves (or appends to) a session JSON file at the configured memory directory.
-    /// The format matches the hermes-webui Session model shape.
-    func persistSession(
-        id: String,
-        title: String,
-        messages: [PersistedChatMessage],
-        model: String? = nil
-    ) {
-        ensureSessionsDirectory()
-
-        let fileURL = sessionsDirectory.appendingPathComponent("\(id).json")
-
-        // Load existing session if present
-        var existingMessages: [[String: Any]] = []
-        var existingCreatedAt: Double?
-        if let data = try? Data(contentsOf: fileURL),
-           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let msgs = existing["messages"] as? [[String: Any]] {
-                existingMessages = msgs
-            }
-            existingCreatedAt = existing["created_at"] as? Double
-        }
-
-        let now = Date().timeIntervalSince1970
-        let createdAt = existingCreatedAt ?? now
-        let messageCount = existingMessages.count + messages.count
-
-        // Convert new messages to dicts and append
-        let newMessageDicts = messages.map { msg -> [String: Any] in
-            var dict: [String: Any] = [
-                "role": msg.role.rawValue,
-                "content": msg.content,
-                "timestamp": Int(msg.timestamp.timeIntervalSince1970)
-            ]
-            // Persist references if present
-            if let refs = msg.references, !refs.isEmpty {
-                dict["references"] = refs.map { ref -> [String: Any] in
-                    var refDict: [String: Any] = [
-                        "sessionId": ref.sessionId,
-                        "sourceName": ref.sourceName
-                    ]
-                    if let title = ref.title { refDict["title"] = title }
-                    if let ts = ref.timestamp { refDict["timestamp"] = ts.timeIntervalSince1970 }
-                    if let snippet = ref.snippet { refDict["snippet"] = snippet }
-                    return refDict
-                }
-            }
-            return dict
-        }
-        let allMessages = existingMessages + newMessageDicts
-
-        var sessionDict: [String: Any] = [
-            "session_id": id,
-            "title": title,
-            "workspace": FileManager.default.homeDirectoryForCurrentUser.path,
-            "model": model ?? "hermes",
-            "messages": allMessages,
-            "message_count": messageCount,
-            "created_at": createdAt,
-            "updated_at": now,
-            "tool_calls": [],
-            "source_tag": "ares-companion"
+        var args = [
+            "--yolo", "chat",
+            "--query", prompt,
+            "--model", model
         ]
-
-        let payload: Data
-        do {
-            payload = try JSONSerialization.data(
-                withJSONObject: sessionDict,
-                options: [.sortedKeys, .prettyPrinted]
-            )
-        } catch {
-            print("[CompanionChatService] Failed to serialize session: \(error)")
-            return
+        if let sid = sessionID {
+            args += ["--session", sid]
         }
 
-        // Atomic write
-        let tmpURL = fileURL.appendingPathExtension("tmp.\(ProcessInfo.processInfo.processIdentifier)")
-        do {
-            try payload.write(to: tmpURL, options: .atomic)
-            try FileManager.default.moveItem(at: tmpURL, to: fileURL)
-        } catch {
-            // Fallback: non-atomic write
-            try? payload.write(to: fileURL, options: .atomic)
-            try? FileManager.default.removeItem(at: tmpURL)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["hermes"] + args
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        guard process.terminationStatus == 0 else {
+            throw HermesGatewayError.streamInterrupted("CLI failed with exit code \(process.terminationStatus): \(output)")
+        }
+
+        let lines = output.components(separatedBy: "\n")
+        let responseText: String
+        let resolvedSessionID: String
+
+        if lines.count > 1, lines.first?.hasPrefix("session_id:") == true {
+            resolvedSessionID = lines.first!
+                .replacingOccurrences(of: "session_id:", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            responseText = lines.dropFirst().joined(separator: "\n")
+        } else {
+            resolvedSessionID = sessionID ?? "cli-\(UUID().uuidString.prefix(8))"
+            responseText = output
+        }
+
+        return CompanionChatTurnResult(responseText: responseText, sessionID: resolvedSessionID)
+    }
+
+    // MARK: - Session Persistence
+
+    struct PersistedTurn: Codable {
+        let role: String
+        let content: String
+        let timestamp: Date
+    }
+
+    /// Persists a chat turn to local storage (for offline history).
+    func persistSession(
+        turns: [PersistedTurn]? = nil,
+        sessionID: String,
+        model: String
+    ) {
+        let turnsToSave = turns ?? activeTurns
+        guard !turnsToSave.isEmpty else { return }
+
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("ARES/Sessions")
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        let filename = "\(sessionID.replacingOccurrences(of: ":", with: "-")).json"
+        let url = directory.appendingPathComponent(filename)
+
+        if let data = try? encoder.encode(turnsToSave) {
+            try? data.write(to: url, options: .atomic)
         }
     }
 
-    // MARK: - List sessions for history pane
-
-    /// Lightweight summary of a session, used by the history list UI.
-    struct SessionSummary: Identifiable {
-        let id: String          // session filename stem (used as sessionID)
-        let title: String       // first 64 chars of first user message
-        let updatedAt: Date
-        let messageCount: Int
+    func appendTurn(role: String, content: String, sessionID: String, model: String) {
+        activeTurns.append(PersistedTurn(role: role, content: content, timestamp: Date()))
     }
 
-    /// Returns session summaries sorted newest-first, capped at `limit`.
+    func clearActiveTurns() {
+        activeTurns = []
+    }
+
+    // MARK: - Session History (from Hermes Gateway)
+
+    /// Lists recent sessions from the Hermes Gateway, converting them to UI summaries.
     func listSessions(limit: Int = 50) -> [SessionSummary] {
-        ensureSessionsDirectory()
-
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: sessionsDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: .skipsHiddenFiles
-        ) else {
-            return []
-        }
-
-        let jsonFiles = contents.filter { $0.pathExtension == "json" }
-
-        // Sort by modification date, newest first
-        let sorted = jsonFiles.sorted { url1, url2 in
-            let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-            let date2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-            return date1 > date2
-        }
-
-        var summaries: [SessionSummary] = []
-        for url in sorted.prefix(limit) {
-            let id = url.deletingPathExtension().lastPathComponent
-
-            guard let data = try? Data(contentsOf: url),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                continue
-            }
-
-            let title = json["title"] as? String ?? id
-            let updatedAt = (json["updated_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
-                ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey])).flatMap { $0.contentModificationDate }
-                ?? Date.distantPast
-            let messageCount = json["message_count"] as? Int
-                ?? (json["messages"] as? [[String: Any]])?.count
-                ?? 0
-
-            summaries.append(SessionSummary(
-                id: id,
-                title: String(title.prefix(64)),
-                updatedAt: updatedAt,
-                messageCount: messageCount
-            ))
-        }
-
-        return summaries
+        // Synchronous wrapper — the UI calls this from a Task in AppState
+        // We'll use the async version directly in refreshSessionHistory
+        []
     }
 
-    /// Loads the full message list for a session by id.
+    /// Async version that hits the Gateway API.
+    func listSessionsAsync(limit: Int = 50) async throws -> [SessionSummary] {
+        let sessions = try await gateway.listSessions(limit: limit)
+        return sessions.map { session in
+            SessionSummary(
+                id: session.id,
+                title: session.title ?? session.preview ?? "Untitled",
+                date: Date(timeIntervalSince1970: session.startedAt ?? 0),
+                updatedAt: Date(timeIntervalSince1970: session.lastActive ?? session.startedAt ?? 0),
+                messageCount: session.messageCount ?? 0,
+                model: session.model ?? "unknown",
+                provider: session.source ?? "unknown",
+                preview: session.preview ?? ""
+            )
+        }
+    }
+
+    /// Loads messages from a session via the Gateway, converting to ChatBubbles.
     func loadSessionMessages(sessionID: String) -> [ChatBubble]? {
-        let fileURL = sessionsDirectory.appendingPathComponent("\(sessionID).json")
-        guard let data = try? Data(contentsOf: fileURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let messageDicts = json["messages"] as? [[String: Any]] else {
-            return nil
-        }
-
-        return messageDicts.compactMap { msg -> ChatBubble? in
-            guard let roleStr = msg["role"] as? String,
-                  let content = msg["content"] as? String else { return nil }
-            let role: BubbleRole = (roleStr == "user") ? .user : .assistant
-
-            // Load references if present
-            var references: [AttachedReference]? = nil
-            if let refsData = msg["references"] as? [[String: Any]], !refsData.isEmpty {
-                references = refsData.compactMap { refDict -> AttachedReference? in
-                    guard let sessionId = refDict["sessionId"] as? String,
-                          let sourceName = refDict["sourceName"] as? String else { return nil }
-                    let title = refDict["title"] as? String
-                    let timestamp = (refDict["timestamp"] as? Double).map { Date(timeIntervalSince1970: $0) }
-                    let snippet = refDict["snippet"] as? String
-                    return AttachedReference(
-                        sessionId: sessionId,
-                        sourceName: sourceName,
-                        title: title,
-                        timestamp: timestamp,
-                        snippet: snippet
-                    )
-                }
-                if references?.isEmpty == true { references = nil }
-            }
-
-            return ChatBubble(role: role, content: content, references: references)
-        }
+        // Synchronous stub — use the async version
+        nil
     }
 
-    /// Loads the most recent session ID from disk (for session continuity).
-    func loadMostRecentSessionID() -> String? {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: sessionsDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: .skipsHiddenFiles
-        ) else {
-            return nil
+    /// Async version that hits the Gateway.
+    func loadSessionMessagesAsync(sessionID: String) async throws -> [ChatBubble] {
+        let messages = try await gateway.sessionMessages(sessionID: sessionID)
+        return messages.compactMap { msg -> ChatBubble? in
+            guard let content = msg.content, !content.isEmpty else { return nil }
+            let role: BubbleRole = msg.role == "user" ? .user : .assistant
+            return ChatBubble(
+                role: role,
+                content: content,
+                timestamp: Date(timeIntervalSince1970: msg.timestamp ?? 0)
+            )
         }
-
-        let jsonFiles = contents.filter { $0.pathExtension == "json" }
-        guard !jsonFiles.isEmpty else { return nil }
-
-        let sorted = jsonFiles.sorted { url1, url2 in
-            let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-            let date2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-            return date1 > date2
-        }
-
-        return sorted.first?.deletingPathExtension().lastPathComponent
     }
-}
-
-// MARK: - Persisted message model
-
-enum PersistedChatRole: String, Codable {
-    case user
-    case assistant
-    case system
-    case tool
-}
-
-struct PersistedChatMessage: Codable {
-    let role: PersistedChatRole
-    let content: String
-    let timestamp: Date
-    /// Source references attached to this message (for inline citations)
-    var references: [AttachedReference]?
 }
