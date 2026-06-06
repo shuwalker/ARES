@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CronJobsView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     @Binding var splitLayout: ARESSplitLayout
 
     @State private var searchText = ""
@@ -679,7 +679,7 @@ private struct CronJobDetailView: View {
 }
 
 private struct CronJobEditorView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     let mode: CronEditorMode
     @Binding var draft: CronJobDraft
     let errorMessage: String?

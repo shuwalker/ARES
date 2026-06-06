@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct SessionsView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     @Binding var splitLayout: ARESSplitLayout
     let isActive: Bool
     @State private var searchText = ""

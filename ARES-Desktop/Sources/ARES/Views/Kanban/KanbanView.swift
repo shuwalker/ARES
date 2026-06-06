@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct KanbanView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     @Binding var splitLayout: ARESSplitLayout
 
     @State private var searchText = ""

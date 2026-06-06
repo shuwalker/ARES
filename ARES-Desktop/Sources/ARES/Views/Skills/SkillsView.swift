@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SkillsView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     @Binding var splitLayout: ARESSplitLayout
     @State private var searchText = ""
     @State private var editorMode: SkillEditorMode?

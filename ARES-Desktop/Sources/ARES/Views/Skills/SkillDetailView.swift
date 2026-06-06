@@ -241,7 +241,7 @@ struct SkillDetailView: View {
 }
 
 struct SkillEditorView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
 
     let mode: SkillEditorMode
     @Binding var draft: SkillDraft

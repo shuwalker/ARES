@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct FilesView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     @Binding var splitLayout: ARESSplitLayout
     @State private var pendingWorkspaceFileID: String?
     @State private var bookmarkPendingRemoval: UUID?
@@ -559,7 +559,7 @@ private struct WorkspaceFileEditorPane: View {
 }
 
 private struct WorkspaceFileBrowserSheet: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     @Environment(\.dismiss) private var dismiss
     @State private var pathText = ""
     @State private var didLoadInitialDirectory = false

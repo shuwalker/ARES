@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 
+// MARK: - App State
+
 @MainActor
 final class ARESAppState: ObservableObject {
     // MARK: - Bootstrap state
@@ -31,13 +33,39 @@ final class ARESAppState: ObservableObject {
     @Published var chatMessages: [ChatBubble] = []
     @Published var chatInput: String = ""
     @Published var isChatProcessing: Bool = false
+    @Published var activeChatSessionID: String? = nil
+    @Published var companionConfig: CompanionConfig = CompanionConfig.load()
+
+    // MARK: - Reference state
+    @Published var attachedReferences: [AttachedReference] = []
+    @Published var showReferencePicker: Bool = false
+
+    // MARK: - History state
+    @Published var sessionHistory: [CompanionChatService.SessionSummary] = []
+    @Published var viewingHistoricalSessionID: String? = nil
+    @Published var historicalMessages: [ChatBubble] = []
+    @Published var isLoadingHistory: Bool = false
+
+    /// True when the user is viewing a historical session (chat input disabled).
+    var isViewingHistory: Bool { viewingHistoricalSessionID != nil }
 
     // MARK: - Office state
     @Published var officeAgents: [AgentCard] = []
     @Published var officeAgentCount: Int = 0
 
+    // MARK: - Source readers (cross-tool)
+    /// Readers for Claude Code, Gemini CLI, Odysseus, Hermes — used by the
+    /// reference picker to attach session context to ARES chat messages.
+    let sourceReaders: [any SourceReader] = [
+        ClaudeSessionReader(),
+        GeminiSessionReader(),
+        OdysseusSessionReader(),
+        HermesSessionReader()
+    ]
+
     private let scanner = DependencyScanner()
     private let installer = DependencyInstaller()
+    private let chatService = CompanionChatService.shared
     private var refreshTimer: Timer?
 
     init() {
@@ -155,10 +183,11 @@ final class ARESAppState: ObservableObject {
     }
 
     private func refreshSessionCount() {
-        // Count sessions from Hermes session DB
-        let sessionDir = NSString(string: "~/.hermes/sessions").expandingTildeInPath
-        if let contents = try? FileManager.default.contentsOfDirectory(atPath: sessionDir) {
-            sessionCount = contents.filter { $0.hasSuffix(".sqlite") || $0.hasSuffix(".json") }.count
+        // Count ARES companion sessions on disk
+        let aresSessionsDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ares/memory/sessions", isDirectory: true)
+        if let contents = try? FileManager.default.contentsOfDirectory(atPath: aresSessionsDir.path) {
+            sessionCount = contents.filter { $0.hasSuffix(".json") }.count
         }
         if sessionCount == 0 {
             sessionCount = 4 // fallback
@@ -222,47 +251,218 @@ final class ARESAppState: ObservableObject {
 
     // MARK: - Chat
 
+    /// Sends the current chat input to Hermes via CompanionChatService and
+    /// appends the response. Persists the session to ~/.ares/memory/sessions/.
+    /// If references are attached, prepends a short reference context to the
+    /// prompt so the model knows about the cited source(s).
     func sendChat() {
         let text = chatInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isChatProcessing else { return }
+        guard !text.isEmpty, !isChatProcessing, !isViewingHistory else { return }
 
-        chatMessages.append(ChatBubble(role: .user, content: text))
-        let prompt = text
+        // Capture references before clearing the attachment bar
+        let refs = attachedReferences
+
+        // Build the prompt — prepend a small reference preamble so the
+        // model has the source title + timestamp + snippet, then the user's text.
+        let prompt = Self.buildPromptWithReferences(text: text, references: refs)
+
+        // Append user bubble with references attached (so the UI can render chips)
+        let userBubble = ChatBubble(role: .user, content: text, references: refs.isEmpty ? nil : refs)
+        chatMessages.append(userBubble)
         chatInput = ""
+        attachedReferences = []
         isChatProcessing = true
         voiceState = .thinking
 
+        // Use existing session ID for continuity, or start a new one
+        let sessionID = activeChatSessionID
+
         Task {
-            let response = await runHermesChat(prompt)
-            await MainActor.run {
-                chatMessages.append(ChatBubble(role: .assistant, content: response))
-                isChatProcessing = false
-                voiceState = .idle
+            do {
+                let result = try await chatService.sendMessage(
+                    prompt,
+                    sessionID: sessionID,
+                    model: companionConfig.model,
+                    provider: companionConfig.provider
+                )
+                await MainActor.run {
+                    let assistantBubble = ChatBubble(
+                        role: .assistant,
+                        content: result.responseText,
+                        references: refs.isEmpty ? nil : refs
+                    )
+                    chatMessages.append(assistantBubble)
+                    activeChatSessionID = result.sessionID
+                    isChatProcessing = false
+                    voiceState = .idle
+
+                    // Persist session with the just-appended messages
+                    let firstUserMsg = chatMessages.first(where: { $0.role == .user })?.content ?? text
+                    let title = String(firstUserMsg.prefix(64))
+                    let now = Date()
+                    let toPersist: [PersistedChatMessage] = [
+                        PersistedChatMessage(
+                            role: .user,
+                            content: text,
+                            timestamp: now,
+                            references: refs.isEmpty ? nil : refs
+                        ),
+                        PersistedChatMessage(
+                            role: .assistant,
+                            content: result.responseText,
+                            timestamp: now,
+                            references: nil
+                        )
+                    ]
+                    chatService.persistSession(
+                        id: result.sessionID,
+                        title: title,
+                        messages: toPersist
+                    )
+                    refreshSessionHistory()
+                }
+            } catch {
+                await MainActor.run {
+                    chatMessages.append(ChatBubble(
+                        role: .assistant,
+                        content: "ARES backend error: \(error.localizedDescription)"
+                    ))
+                    isChatProcessing = false
+                    voiceState = .idle
+                }
             }
         }
     }
 
-    private func runHermesChat(_ prompt: String) async -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["hermes", "-z", prompt, "--yolo"]
+    /// Builds a prompt string that includes short source reference context
+    /// before the user's message. The UI shows the references as chips too.
+    private static func buildPromptWithReferences(text: String, references: [AttachedReference]) -> String {
+        guard !references.isEmpty else { return text }
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        process.environment = ProcessInfo.processInfo.environment
-
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            if let output = String(data: data, encoding: .utf8), !output.isEmpty {
-                return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        var preamble = ""
+        for ref in references {
+            preamble += "[Reference from \(ref.sourceName) session \"\(ref.title ?? ref.sessionId)\""
+            if let ts = ref.timestamp {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .short
+                preamble += ", \(formatter.string(from: ts))"
             }
-        } catch {
-            return "Hermes unreachable: \(error.localizedDescription)"
+            preamble += "]\n"
+            if let snippet = ref.snippet, !snippet.isEmpty {
+                let truncated = String(snippet.prefix(500))
+                preamble += "\(truncated)\n"
+            }
+            preamble += "\n"
         }
-        return "No response from Hermes."
+        return preamble + text
+    }
+
+    // MARK: - Reference attachments
+
+    /// Load messages from a source session by its source-prefixed ID
+    /// (e.g. "claude_code:abc123"). Returns empty array if the reader
+    /// can't find the session.
+    func loadSourceMessages(sessionId: String, source: String) -> [SessionMessage] {
+        guard let reader = sourceReaders.first(where: { $0.sourceName == source }) else { return [] }
+        return (try? reader.loadMessages(forSessionId: sessionId)) ?? []
+    }
+
+    /// Attach a session as a reference. Loads the first few messages to build
+    /// a snippet so the model has concrete context in the prompt preamble.
+    func attachReference(session: UnifiedSession) {
+        let messages = loadSourceMessages(sessionId: session.id, source: session.source)
+
+        let snippet: String?
+        if messages.isEmpty {
+            snippet = nil
+        } else {
+            let firstFew = messages.prefix(5).map { msg -> String in
+                let roleLabel = (msg.role == .user) ? "User" : "Assistant"
+                let content = msg.content ?? ""
+                return "\(roleLabel): \(String(content.prefix(100)))"
+            }.joined(separator: "\n")
+            snippet = firstFew.isEmpty ? nil : firstFew
+        }
+
+        let displayName = displayName(for: session.source)
+
+        let ref = AttachedReference(
+            sessionId: session.id,
+            sourceName: displayName,
+            title: session.title ?? session.id,
+            timestamp: session.updatedAt ?? session.startedAt,
+            snippet: snippet
+        )
+        attachedReferences.append(ref)
+    }
+
+    /// Remove an attached reference by its id.
+    func removeReference(_ ref: AttachedReference) {
+        attachedReferences.removeAll { $0.id == ref.id }
+    }
+
+    private func displayName(for source: String) -> String {
+        switch source {
+        case "claude_code": return "Claude Code"
+        case "gemini":      return "Gemini"
+        case "odysseus":    return "Odysseus"
+        case "hermes":      return "Hermes"
+        default:            return source
+        }
+    }
+
+    // MARK: - Session history
+
+    /// Refresh the history list from disk.
+    func refreshSessionHistory() {
+        isLoadingHistory = true
+        sessionHistory = chatService.listSessions(limit: 50)
+        isLoadingHistory = false
+    }
+
+    /// Switch the chat view to a historical session (read-only).
+    func viewHistoricalSession(_ session: CompanionChatService.SessionSummary) {
+        viewingHistoricalSessionID = session.id
+        if let messages = chatService.loadSessionMessages(sessionID: session.id) {
+            historicalMessages = messages
+        } else {
+            historicalMessages = []
+        }
+    }
+
+    /// Clear the historical view and start a fresh chat.
+    func startNewChat() {
+        viewingHistoricalSessionID = nil
+        historicalMessages = []
+        chatMessages = []
+        activeChatSessionID = nil
+    }
+
+    // MARK: - Chat mutations (called by CompanionView context menus)
+
+    /// Remove a single message from the live chat by index. No-op when
+    /// viewing history (history is read-only).
+    func removeChatMessage(at index: Int) {
+        guard !isViewingHistory else { return }
+        guard chatMessages.indices.contains(index) else { return }
+        chatMessages.remove(at: index)
+    }
+
+    /// Truncate the live chat at `index` (inclusive), then re-send
+    /// the user message at that index. Used by the "Regenerate"
+    /// context-menu action.
+    func truncateAndResend(at index: Int) {
+        guard !isViewingHistory else { return }
+        guard chatMessages.indices.contains(index) else { return }
+        let target = chatMessages[index]
+        guard target.role == .user else { return }
+        // Truncate everything from `index` onwards (the user message
+        // and any assistant response that followed it).
+        chatMessages.removeSubrange(index...)
+        // Re-populate input and trigger send
+        chatInput = target.content
+        sendChat()
     }
 
     // MARK: - Companion helpers
@@ -361,9 +561,11 @@ struct ChatBubble: Identifiable, Equatable {
     let role: BubbleRole
     let content: String
     let timestamp: Date = Date()
+    /// Source references attached to this message (for inline citations)
+    var references: [AttachedReference]? = nil
 }
 
-enum BubbleRole {
+enum BubbleRole: Equatable {
     case user
     case assistant
 }
@@ -387,5 +589,34 @@ enum AgentStatus {
         case .idle:    return .orange
         case .offline: return .gray
         }
+    }
+}
+
+// MARK: - Attached reference model
+
+/// A source session that the user has attached to a chat message as context.
+/// Used for inline citations and prompt preamble building.
+struct AttachedReference: Identifiable, Equatable, Codable {
+    let id: UUID
+    let sessionId: String
+    let sourceName: String
+    let title: String?
+    let timestamp: Date?
+    let snippet: String?
+
+    init(
+        id: UUID = UUID(),
+        sessionId: String,
+        sourceName: String,
+        title: String? = nil,
+        timestamp: Date? = nil,
+        snippet: String? = nil
+    ) {
+        self.id = id
+        self.sessionId = sessionId
+        self.sourceName = sourceName
+        self.title = title
+        self.timestamp = timestamp
+        self.snippet = snippet
     }
 }

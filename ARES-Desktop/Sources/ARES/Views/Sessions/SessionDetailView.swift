@@ -858,7 +858,7 @@ private struct SessionSummaryPanel: View {
 }
 
 private struct SessionComposerPanel: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
 
     let title: String
     let placeholder: String

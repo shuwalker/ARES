@@ -15,22 +15,15 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "ARES-Desktop/Vendor/SwiftTerm"),
-        .package(path: "ARES-Desktop/Vendor/SAM")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.13.0")
     ],
     targets: [
         .executableTarget(
             name: "ARES",
             dependencies: [
-                .product(name: "SwiftTerm", package: "SwiftTerm"),
-                .product(name: "UserInterface", package: "SAM"),
-                .product(name: "APIFramework", package: "SAM"),
-                .product(name: "ConfigurationSystem", package: "SAM"),
-                .product(name: "ConversationEngine", package: "SAM")
+                .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
             path: "ARES-Desktop/Sources/ARES",
-            exclude: [],
-            sources: nil,
             resources: [
                 .process("Resources")
             ]

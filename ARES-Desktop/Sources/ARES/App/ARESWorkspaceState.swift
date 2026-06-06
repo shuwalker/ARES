@@ -9,7 +9,7 @@ private enum PendingSectionEntryAction {
 }
 
 @MainActor
-final class DodoAppState: ObservableObject {
+final class ARESWorkspaceState: ObservableObject {
     @Published var selectedSection: AppSection = .connections
     @Published var activeAlert: AppAlert?
     @Published var isBusy = false

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ConnectionsView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
 
     @State private var editingConnection = ConnectionProfile()
     @State private var editorPresentationID = UUID()

@@ -2,7 +2,7 @@ import Charts
 import SwiftUI
 
 struct UsageView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
     private let topRankingPanelHeight: CGFloat = 490
 
     var body: some View {

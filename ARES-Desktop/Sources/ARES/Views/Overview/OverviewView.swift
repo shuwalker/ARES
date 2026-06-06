@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OverviewView: View {
-    @EnvironmentObject private var appState: DodoAppState
+    @EnvironmentObject private var appState: ARESWorkspaceState
 
     var body: some View {
         ARESPageContainer(width: .dashboard) {

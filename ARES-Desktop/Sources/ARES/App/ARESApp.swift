@@ -1,27 +1,21 @@
 import SwiftUI
 import AppKit
 
+@MainActor
 @main
 struct ARESApp: App {
     @NSApplicationDelegateAdaptor(ARESAppDelegate.self) var appDelegate
 
     @StateObject private var appState: ARESAppState
-    @StateObject private var samRuntime: SAMRuntime
 
     init() {
-        let state = ARESAppState()
-        _appState = StateObject(wrappedValue: state)
-        _samRuntime = StateObject(wrappedValue: SAMRuntime())
+        _appState = StateObject(wrappedValue: ARESRuntime.appState)
     }
 
     var body: some Scene {
         WindowGroup {
             ARESRootView()
                 .environmentObject(appState)
-                .environmentObject(samRuntime)
-                .environmentObject(samRuntime.conversationManager)
-                .environmentObject(samRuntime.endpointManager)
-                .environmentObject(samRuntime.sharedConversationService)
                 .frame(minWidth: 1024, minHeight: 600)
                 .preferredColorScheme(.dark)
                 .onAppear {
