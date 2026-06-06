@@ -553,6 +553,41 @@ final class ARESAppState: ObservableObject {
         sendChat()
     }
 
+    /// Edit a user message's content at the given index, truncate all
+    /// subsequent messages, then re-send the edited text. Uses the
+    /// existing truncateAndResend mechanism with the modified content.
+    func editMessage(at index: Int, newContent: String) {
+        guard !isViewingHistory else { return }
+        guard chatMessages.indices.contains(index) else { return }
+        guard chatMessages[index].role == .user else { return }
+        let trimmed = newContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Update the bubble content in-place
+        chatMessages[index].content = trimmed
+        // Then truncate and resend from this index
+        truncateAndResend(at: index)
+    }
+
+    /// Branch the conversation from the message at the given index.
+    /// Creates a new Hermes session, copies history up to and including
+    /// that message, tags the first message with `parentBranchId`,
+    /// and sets the new session as active.
+    func branchFromMessage(at index: Int) {
+        guard !isViewingHistory else { return }
+        guard chatMessages.indices.contains(index) else { return }
+        // Truncate history — keep everything up to and including the selected message
+        let branchedMessages = Array(chatMessages[...index])
+        // Give the last message a new timestamp so it acts as the fresh start
+        var tagged = branchedMessages
+        if !tagged.isEmpty {
+            tagged[tagged.count - 1].parentBranchId = tagged[tagged.count - 1].id
+        }
+        // Create a new session with no active session (Hermes will allocate one on next send)
+        activeChatSessionID = nil
+        chatMessages = tagged
+        chatInput = ""
+    }
+
     // MARK: - Companion helpers
 
     func loadSelfModel() {
@@ -657,13 +692,17 @@ struct ChatBubble: Identifiable, Equatable {
     var references: [AttachedReference]? = nil
     /// True while the model is still streaming tokens into this bubble.
     var isStreaming: Bool = false
+    /// If set, this bubble is the first message in a branched
+    /// conversation that originated from this source message ID.
+    var parentBranchId: UUID? = nil
 
-    init(role: BubbleRole, content: String, timestamp: Date = Date(), references: [AttachedReference]? = nil, isStreaming: Bool = false) {
+    init(role: BubbleRole, content: String, timestamp: Date = Date(), references: [AttachedReference]? = nil, isStreaming: Bool = false, parentBranchId: UUID? = nil) {
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.references = references
         self.isStreaming = isStreaming
+        self.parentBranchId = parentBranchId
     }
 }
 
