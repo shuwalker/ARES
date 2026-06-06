@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ARESCore
 
 /// Ensures the ARES window becomes visible on launch.
 /// SwiftUI WindowGroup on macOS can fail to materialize a window on local builds,

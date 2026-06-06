@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 final class FileEditorService: @unchecked Sendable {
     private let sshTransport: SSHTransport

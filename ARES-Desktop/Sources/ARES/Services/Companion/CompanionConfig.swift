@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 // MARK: - Companion chat configuration
 //

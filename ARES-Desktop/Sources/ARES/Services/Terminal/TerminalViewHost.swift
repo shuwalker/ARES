@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ARESCore
 @preconcurrency import SwiftTerm
 
 @MainActor

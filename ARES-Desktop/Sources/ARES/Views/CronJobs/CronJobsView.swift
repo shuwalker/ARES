@@ -1,3 +1,4 @@
+import ARESCore
 import SwiftUI
 
 struct CronJobsView: View {
@@ -240,7 +241,7 @@ struct CronJobsView: View {
             return activeConnection.remoteCronJobsPath
         }
 
-        return "~/.hermes/cron/jobs.json"
+        return ARESEnvironment.cronJobsPath
     }
 
     private var selectedJob: CronJob? {
@@ -830,8 +831,8 @@ private struct CronJobEditorView: View {
                 if draft.schedule.preset == .weekly {
                     CronFormField(label: "Day") {
                         Picker(L10n.string("Day"), selection: scheduleWeekdayBinding) {
-                            ForEach(Array(CronScheduleFormatter.weekdayPickerLabels.enumerated()), id: \.offset) { index, label in
-                                Text(L10n.string(label)).tag(index)
+                            ForEach(0..<CronScheduleFormatter.weekdayPickerLabels.count, id: \.self) { index in
+                                Text(L10n.string(CronScheduleFormatter.weekdayPickerLabels[index])).tag(index)
                             }
                         }
                         .pickerStyle(.menu)
@@ -1113,11 +1114,11 @@ private struct CronJobEditorView: View {
     }
 
     private var cronJobsPath: String {
-        appState.activeConnection?.remoteCronJobsPath ?? "~/.hermes/cron/jobs.json"
+        appState.activeConnection?.remoteCronJobsPath ?? ARESEnvironment.cronJobsPath
     }
 
     private var cronOutputPath: String {
-        (appState.activeConnection?.remoteARESHomePath ?? "~/.hermes") + "/cron/output/"
+        (appState.activeConnection?.remoteARESHomePath ?? ARESEnvironment.defaultHomeDirectory.path) + "/cron/output/"
     }
 }
 

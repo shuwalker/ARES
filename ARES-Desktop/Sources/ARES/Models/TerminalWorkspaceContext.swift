@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 struct TerminalWorkspaceContext {
     let activeConnection: ConnectionProfile?

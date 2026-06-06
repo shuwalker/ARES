@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ARESCore
 
 // MARK: - App State
 
@@ -114,13 +115,13 @@ final class ARESAppState: ObservableObject {
 
     func refreshLiveStats() {
         // Skill count from file system
-        let skillsDir = NSString(string: "~/.hermes/skills").expandingTildeInPath
+        let skillsDir = ARESEnvironment.skillsDirectory.path
         if let contents = try? FileManager.default.contentsOfDirectory(atPath: skillsDir) {
             skillCount = contents.count
         }
 
         // Memory percent from file
-        let memPath = NSString(string: "~/.hermes/memories/MEMORY.md").expandingTildeInPath
+        let memPath = ARESEnvironment.memoryFilePath.path
         if let memContent = try? String(contentsOfFile: memPath, encoding: .utf8) {
             // Parse capacity percentage from memory file header
             if let capLine = memContent.components(separatedBy: "\n").first(where: { $0.contains("%") }) {
@@ -184,8 +185,7 @@ final class ARESAppState: ObservableObject {
 
     private func refreshSessionCount() {
         // Count ARES companion sessions on disk
-        let aresSessionsDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".ares/memory/sessions", isDirectory: true)
+        let aresSessionsDir = ARESEnvironment.sessionsDirectory
         if let contents = try? FileManager.default.contentsOfDirectory(atPath: aresSessionsDir.path) {
             sessionCount = contents.filter { $0.hasSuffix(".json") }.count
         }
@@ -252,7 +252,7 @@ final class ARESAppState: ObservableObject {
     // MARK: - Chat
 
     /// Sends the current chat input to Hermes via CompanionChatService and
-    /// appends the response. Persists the session to ~/.ares/memory/sessions/.
+    /// appends the response. Persists the session to the configured memory directory.
     /// If references are attached, prepends a short reference context to the
     /// prompt so the model knows about the cited source(s).
     func sendChat() {
@@ -468,7 +468,7 @@ final class ARESAppState: ObservableObject {
     // MARK: - Companion helpers
 
     func loadSelfModel() {
-        let path = NSString(string: "~/.hermes/state/self_model.md").expandingTildeInPath
+        let path = ARESEnvironment.selfModelFilePath.path
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
             selfModelContent = ""
             companionGreeting = "ARES online."
@@ -494,6 +494,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
     case companion
     case office
     case hub
+    case settings
 
     var id: String { rawValue }
 
@@ -502,6 +503,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
         case .companion: return "Companion"
         case .office:    return "Office"
         case .hub:       return "Hub"
+        case .settings:  return "Settings"
         }
     }
 
@@ -510,6 +512,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
         case .companion: return "person.fill.viewfinder"
         case .office:    return "building.2.fill"
         case .hub:       return "square.grid.2x2.fill"
+        case .settings:  return "gearshape.fill"
         }
     }
 }

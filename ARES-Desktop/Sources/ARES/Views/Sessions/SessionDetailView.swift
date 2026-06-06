@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ARESCore
 
 private let sessionDetailBottomID = "session-detail-bottom"
 private let approvalNeededMessage = "ARES requested command approval, but this chat turn cannot collect manual approvals. Retry this turn with Auto-approve enabled, or resume the session in Terminal to review the command yourself."

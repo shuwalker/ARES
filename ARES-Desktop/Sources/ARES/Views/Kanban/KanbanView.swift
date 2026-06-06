@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ARESCore
 
 struct KanbanView: View {
     @EnvironmentObject private var appState: ARESWorkspaceState

@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 final class KanbanBrowserService: @unchecked Sendable {
     private let sshTransport: SSHTransport

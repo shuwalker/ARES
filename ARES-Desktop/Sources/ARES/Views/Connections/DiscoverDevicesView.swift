@@ -1,3 +1,4 @@
+import ARESCore
 import SwiftUI
 
 /// Bonjour device discovery + manual entry sheet.

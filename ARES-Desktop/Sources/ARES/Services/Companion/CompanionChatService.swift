@@ -1,8 +1,9 @@
 import Foundation
+import ARESCore
 
 // MARK: - Companion Chat Service
 // Calls the Hermes CLI (`hermes --yolo chat --quiet --query`) and persists
-// each conversation session to ~/.ares/memory/sessions/{id}.json.
+// each conversation session to the configured memory directory.
 
 struct CompanionChatTurnResult {
     let responseText: String
@@ -18,11 +19,7 @@ final class CompanionChatService: @unchecked Sendable {
     private let sessionsDirectory: URL
 
     private init(sessionsDirectory: URL? = nil) {
-        let aresDir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".ares", isDirectory: true)
-            .appendingPathComponent("memory", isDirectory: true)
-            .appendingPathComponent("sessions", isDirectory: true)
-        self.sessionsDirectory = sessionsDirectory ?? aresDir
+        self.sessionsDirectory = sessionsDirectory ?? ARESEnvironment.sessionsDirectory
         ensureSessionsDirectory()
     }
 
@@ -51,38 +48,64 @@ final class CompanionChatService: @unchecked Sendable {
         model: String? = nil,
         provider: String? = nil
     ) async throws -> CompanionChatTurnResult {
-        let output = try await runHermesCLI(
+        var output = try await runHermesCLI(
             prompt: prompt,
             sessionID: sessionID,
             model: model,
             provider: provider
         )
 
-        // Parse session_id from the first line of output (format: "session_id: <id>")
-        let lines = output.components(separatedBy: "\n")
-        var parsedSessionID: String?
-        var responseLines: [String] = []
-
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("session_id:") && parsedSessionID == nil {
-                let idPart = trimmed.dropFirst("session_id:".count).trimmingCharacters(in: .whitespaces)
-                parsedSessionID = String(idPart)
-            } else {
-                responseLines.append(line)
-            }
+        // If ARES has an old local UUID instead of a real Hermes CLI session id,
+        // Hermes refuses the resume. Recover by starting a fresh Hermes session
+        // instead of trapping the user in a permanent "Session not found" loop.
+        if sessionID != nil && output.contains("Session not found:") {
+            output = try await runHermesCLI(
+                prompt: prompt,
+                sessionID: nil,
+                model: model,
+                provider: provider
+            )
         }
 
-        let responseText = responseLines
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsedSessionID = Self.parseHermesSessionID(from: output)
+        let responseText = output.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let resolvedID = parsedSessionID ?? sessionID ?? UUID().uuidString
+        let resolvedID = parsedSessionID ?? sessionID ?? "ares-local-\(UUID().uuidString)"
 
         return CompanionChatTurnResult(
             responseText: responseText.isEmpty ? "No response from ARES." : responseText,
             sessionID: resolvedID
         )
+    }
+
+    // MARK: - Hermes CLI output parsing
+
+    private static func parseHermesSessionID(from output: String) -> String? {
+        let lines = output.components(separatedBy: "\n")
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.hasPrefix("session_id:") {
+                let idPart = trimmed.dropFirst("session_id:".count).trimmingCharacters(in: .whitespaces)
+                if !idPart.isEmpty { return String(idPart) }
+            }
+
+            if trimmed.hasPrefix("Session:") {
+                let idPart = trimmed.dropFirst("Session:".count).trimmingCharacters(in: .whitespaces)
+                if !idPart.isEmpty { return String(idPart) }
+            }
+
+            if let resumeRange = trimmed.range(of: "hermes --resume ") {
+                let idPart = trimmed[resumeRange.upperBound...]
+                    .split(separator: " ", maxSplits: 1)
+                    .first
+                    .map(String.init) ?? ""
+                if !idPart.isEmpty { return idPart }
+            }
+        }
+
+        return nil
     }
 
     // MARK: - Run Hermes CLI process
@@ -163,7 +186,7 @@ final class CompanionChatService: @unchecked Sendable {
 
     // MARK: - Persist session to disk
 
-    /// Saves (or appends to) a session JSON file at ~/.ares/memory/sessions/{id}.json.
+    /// Saves (or appends to) a session JSON file at the configured memory directory.
     /// The format matches the hermes-webui Session model shape.
     func persistSession(
         id: String,

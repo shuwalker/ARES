@@ -1,5 +1,6 @@
 import XCTest
 @testable import ARES
+@testable import ARESCore
 
 final class SourceReaderTests: XCTestCase {
 

@@ -1,3 +1,4 @@
+import ARESCore
 import SwiftUI
 
 struct ARESRootView: View {
@@ -19,6 +20,8 @@ struct ARESRootView: View {
                     OfficeView()
                 case .hub:
                     HubView()
+                case .settings:
+                    SettingsView()
                 }
             }
             .background(ARESColors.background)

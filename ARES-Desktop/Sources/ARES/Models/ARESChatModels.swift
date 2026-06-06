@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 struct ARESChatInvocation: Equatable, Sendable {
     let sessionID: String?

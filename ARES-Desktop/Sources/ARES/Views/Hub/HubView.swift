@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import ARESCore
 
 struct HubView: View {
     @EnvironmentObject private var appState: ARESAppState

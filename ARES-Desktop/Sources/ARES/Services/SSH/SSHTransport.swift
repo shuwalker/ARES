@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 /// Stub for SSHTransport — the real implementation was removed during the pure-ARES architecture refactor.
 /// All methods fatalError at runtime. Replace with a real SSH transport layer before re-enabling remote features.

@@ -1,3 +1,4 @@
+import ARESCore
 import Foundation
 
 struct DependencyInstaller {

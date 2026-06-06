@@ -1,3 +1,4 @@
+import ARESCore
 import SwiftUI
 
 struct OverviewView: View {
@@ -230,7 +231,7 @@ struct OverviewView: View {
                 OverviewPathRow(
                     title: "Kanban board",
                     badge: "Kanban",
-                    value: overview.paths.kanbanDatabase ?? "~/.hermes/kanban.db",
+                    value: overview.paths.kanbanDatabase ?? ARESEnvironment.kanbanDatabasePath,
                     isReady: overview.exists.kanbanDatabase ?? false
                 )
             }
@@ -313,7 +314,7 @@ struct OverviewView: View {
                     ARESInspectorField(
                         id: "database-path",
                         label: "Database path",
-                        value: overview.kanban?.databasePath ?? overview.paths.kanbanDatabase ?? "~/.hermes/kanban.db",
+                        value: overview.kanban?.databasePath ?? overview.paths.kanbanDatabase ?? ARESEnvironment.kanbanDatabasePath,
                         isMonospaced: true,
                         emphasizeValue: true
                     )

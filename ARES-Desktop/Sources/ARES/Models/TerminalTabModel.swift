@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 final class TerminalTabModel: ObservableObject, Identifiable {
     let id = UUID()

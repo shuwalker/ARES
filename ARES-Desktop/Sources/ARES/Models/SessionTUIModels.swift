@@ -1,6 +1,7 @@
 import Foundation
+import ARESCore
 
-enum SessionDetailMode: String, CaseIterable, Equatable, Sendable {
+public enum SessionDetailMode: String, CaseIterable, Equatable, Sendable {
     case transcript
     case chat
 }

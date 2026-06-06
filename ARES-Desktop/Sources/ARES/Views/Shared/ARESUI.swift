@@ -1,3 +1,4 @@
+import ARESCore
 import SwiftUI
 
 enum ARESTheme {

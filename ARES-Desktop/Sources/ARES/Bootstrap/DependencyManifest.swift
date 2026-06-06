@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ARESCore
 
 // MARK: - ARES Dependency Manifest
 

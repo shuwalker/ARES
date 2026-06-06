@@ -1,5 +1,6 @@
 import Charts
 import SwiftUI
+import ARESCore
 
 struct UsageView: View {
     @EnvironmentObject private var appState: ARESWorkspaceState

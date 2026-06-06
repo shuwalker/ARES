@@ -1,3 +1,4 @@
+import ARESCore
 import SwiftUI
 
 struct SkillDetailView: View {
@@ -497,7 +498,7 @@ struct SkillEditorView: View {
     }
 
     private var generatedRemoteSkillPath: String {
-        let root = appState.activeConnection?.remoteSkillsPath ?? "~/.hermes/skills"
+        let root = appState.activeConnection?.remoteSkillsPath ?? ARESEnvironment.skillsDirectory.path
         let relativePath = draft.relativePath.isEmpty ? "<folder-name>" : draft.relativePath
         return "\(root)/\(relativePath)/SKILL.md"
     }

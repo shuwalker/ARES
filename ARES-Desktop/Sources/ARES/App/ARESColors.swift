@@ -1,3 +1,4 @@
+import ARESCore
 import SwiftUI
 
 /// ARES design system colors — dark cinematic Spartan theme.

@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 final class SkillBrowserService: @unchecked Sendable {
     private let sshTransport: SSHTransport

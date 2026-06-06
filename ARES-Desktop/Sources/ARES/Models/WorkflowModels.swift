@@ -1,4 +1,5 @@
 import Foundation
+import ARESCore
 
 enum WorkflowPromptFormatter {
     static func normalizeForLaunch(_ prompt: String) -> String {

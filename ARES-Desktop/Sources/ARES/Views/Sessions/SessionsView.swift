@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import ARESCore
 
 struct SessionsView: View {
     @EnvironmentObject private var appState: ARESWorkspaceState

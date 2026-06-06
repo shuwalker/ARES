@@ -1,4 +1,5 @@
 import AppKit
+import ARESCore
 import SwiftUI
 
 enum TerminalThemeStyle: String, Codable, Equatable {
