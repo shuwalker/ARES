@@ -277,11 +277,13 @@ final class ARESAppState: ObservableObject {
 
         // Create a placeholder streaming bubble for the assistant's response
         let streamingBubbleID = UUID()
+        let startedAt = Date()
         var streamingBubble = ChatBubble(
             role: .assistant,
             content: "",
             references: refs.isEmpty ? nil : refs,
-            isStreaming: true
+            isStreaming: true,
+            startedAt: startedAt
         )
         streamingBubble.id = streamingBubbleID
         chatMessages.append(streamingBubble)
@@ -326,6 +328,8 @@ final class ARESAppState: ObservableObject {
                     await MainActor.run {
                         if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
                             chatMessages[idx].isStreaming = false
+                            chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
+                            chatMessages[idx].tokenCount = result.tokenCount
                             // Remove empty response placeholder if somehow no content arrived
                             if chatMessages[idx].content.isEmpty {
                                 chatMessages[idx].content = result.responseText.isEmpty ? "No response from ARES." : result.responseText
@@ -343,20 +347,20 @@ final class ARESAppState: ObservableObject {
                             chatMessages[idx].isStreaming = false
                         }
                         // Fallback to CLI
-                        fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID)
+                        fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID, startedAt: startedAt)
                     }
                 }
             } else {
                 // --- CLI fallback (non-streaming) ---
                 await MainActor.run {
-                    fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID)
+                    fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID, startedAt: startedAt)
                 }
             }
         }
     }
 
     /// CLI fallback when Ollama is not reachable. Replaces the streaming bubble.
-    private func fallbackToCLI(displayText: String, promptText: String, sessionID: String?, refs: [AttachedReference], streamingBubbleID: UUID) {
+    private func fallbackToCLI(displayText: String, promptText: String, sessionID: String?, refs: [AttachedReference], streamingBubbleID: UUID, startedAt: Date) {
         Task {
             do {
                 let result = try await chatService.sendMessage(
@@ -369,6 +373,7 @@ final class ARESAppState: ObservableObject {
                     if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
                         chatMessages[idx].content = result.responseText.isEmpty ? "No response from ARES." : result.responseText
                         chatMessages[idx].isStreaming = false
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
                     }
                     activeChatSessionID = result.sessionID
                     isChatProcessing = false
@@ -380,6 +385,8 @@ final class ARESAppState: ObservableObject {
                     if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
                         chatMessages[idx].content = "ARES backend error: \(error.localizedDescription)"
                         chatMessages[idx].isStreaming = false
+                        // Still record latency even on error — the attempt took real time
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
                     }
                     isChatProcessing = false
                     voiceState = .idle
@@ -696,14 +703,26 @@ struct ChatBubble: Identifiable, Equatable {
     /// If set, this bubble is the first message in a branched
     /// conversation that originated from this source message ID.
     var parentBranchId: UUID? = nil
+    /// Token count from the gateway response (optional).
+    var tokenCount: Int? = nil
+    /// Wall-clock latency in seconds for the assistant response.
+    var latencySeconds: Double? = nil
+    /// Computed cost in USD (v1: always nil, shown as "—").
+    var costUSD: Double? = nil
+    /// Time when streaming started, used to compute latency.
+    var startedAt: Date? = nil
 
-    init(role: BubbleRole, content: String, timestamp: Date = Date(), references: [AttachedReference]? = nil, isStreaming: Bool = false, parentBranchId: UUID? = nil) {
+    init(role: BubbleRole, content: String, timestamp: Date = Date(), references: [AttachedReference]? = nil, isStreaming: Bool = false, parentBranchId: UUID? = nil, tokenCount: Int? = nil, latencySeconds: Double? = nil, costUSD: Double? = nil, startedAt: Date? = nil) {
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.references = references
         self.isStreaming = isStreaming
         self.parentBranchId = parentBranchId
+        self.tokenCount = tokenCount
+        self.latencySeconds = latencySeconds
+        self.costUSD = costUSD
+        self.startedAt = startedAt
     }
 }
 

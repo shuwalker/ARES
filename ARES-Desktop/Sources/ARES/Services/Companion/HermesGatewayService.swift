@@ -24,12 +24,27 @@ struct GatewayMessage: Codable, Sendable {
     let content: String
 }
 
+/// Usage statistics from the OpenAI-compatible gateway response.
+struct GatewayUsage: Codable, Sendable, Equatable {
+    let promptTokens: Int
+    let completionTokens: Int
+    let totalTokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+    }
+}
+
 /// A streaming token chunk from the gateway SSE stream.
 struct GatewayStreamToken: Sendable {
     let content: String
     let isFinished: Bool
     /// The Hermes session ID returned in the final chunk (or nil mid-stream).
     let sessionID: String?
+    /// Usage statistics from the final chunk (if provided by the gateway).
+    let usage: GatewayUsage?
 }
 
 /// Summary of a Hermes session from /api/sessions.
@@ -177,6 +192,7 @@ final class HermesGatewayService: Sendable {
                     }
 
                     var accumulatedSessionID: String?
+                    var accumulatedUsage: GatewayUsage?
 
                     for try await line in bytes.lines {
                         // SSE lines start with "data: "
@@ -188,7 +204,8 @@ final class HermesGatewayService: Sendable {
                             continuation.yield(GatewayStreamToken(
                                 content: "",
                                 isFinished: true,
-                                sessionID: accumulatedSessionID
+                                sessionID: accumulatedSessionID,
+                                usage: accumulatedUsage
                             ))
                             continuation.finish()
                             return
@@ -219,15 +236,28 @@ final class HermesGatewayService: Sendable {
                             accumulatedSessionID = sid
                         }
 
+                        // Capture usage from the final chunk (OpenAI-compatible format)
+                        if isFinished, let usageDict = json["usage"] as? [String: Any],
+                           let promptTokens = usageDict["prompt_tokens"] as? Int,
+                           let completionTokens = usageDict["completion_tokens"] as? Int,
+                           let totalTokens = usageDict["total_tokens"] as? Int {
+                            accumulatedUsage = GatewayUsage(
+                                promptTokens: promptTokens,
+                                completionTokens: completionTokens,
+                                totalTokens: totalTokens
+                            )
+                        }
+
                         continuation.yield(GatewayStreamToken(
                             content: content,
                             isFinished: isFinished,
-                            sessionID: isFinished ? accumulatedSessionID : nil
+                            sessionID: isFinished ? accumulatedSessionID : nil,
+                            usage: isFinished ? accumulatedUsage : nil
                         ))
                     }
 
                     // Stream ended without [DONE] — finish anyway
-                    continuation.yield(GatewayStreamToken(content: "", isFinished: true, sessionID: accumulatedSessionID))
+                    continuation.yield(GatewayStreamToken(content: "", isFinished: true, sessionID: accumulatedSessionID, usage: accumulatedUsage))
                     continuation.finish()
 
                 } catch _ as CancellationError {
