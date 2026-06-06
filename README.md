@@ -26,6 +26,11 @@ Every decision about tooling and output format passes this test:
 
 ---
 
+## Reusable Recipes
+
+- [YouTube Playlist Research Pipeline](docs/recipes/youtube-playlist-research-pipeline.md) — build a resumable playlist-to-research-note pipeline.
+- [Video Production Workflow](docs/recipes/video-production-workflow.md) — package technical video work so another builder/editor can continue it.
+
 ## Installation
 
 ```bash

@@ -1,47 +1,42 @@
-.DS_Store
-*.xcworkspace
-*.xcodeproj
-xcuserdata
 
-# Python artifacts
 __pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
-*.egg-info/
-dist/
-build/
-
-# Test & coverage artifacts
-.pytest_cache/
+.build/
+.claude/
 .coverage
 .coverage.*
-coverage.xml
-htmlcov/
-
-# Swift/SPM artifacts
-.build/
-Package.resolved
-*.iconset/
-.swiftpm/
-
-# ARES runtime state
-~/.ares/
-
-# Secrets and credentials (NEVER commit)
+.DS_Store
 .env
-*.env
-**/.env
-~/.hermes/
-ares/__pycache__/
-.claude/
-
-# Build artifacts
-.build/
+.pytest_cache/
+.swiftpm/
+.venv/
+*.app
 *.app/
-DerivedData/
-
-# IDE
+*.egg-info/
+*.env
+*.iconset/
+*.pyc
+*.pyo
+*.xcodeproj
 *.xcuserdata
+*.xcworkspace
+**/.env
+# ARES runtime state
+# Build artifacts
+# IDE
+# Python artifacts
+# Secrets and credentials (NEVER commit)
+# Swift/SPM artifacts
+# Test & coverage artifacts
+~/.ares/
+~/.hermes/
+ARES.app
+ares/__pycache__/
+build/
+coverage.xml
+DerivedData/
+dist/
+htmlcov/
+Package.resolved
 SAM/
+venv/
+xcuserdata
