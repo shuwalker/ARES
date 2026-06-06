@@ -311,18 +311,34 @@ final class ARESAppState: ObservableObject {
                     // Use the reference-augmented prompt text for the model
                     contextMessages.append(GatewayMessage(role: "user", content: promptText))
 
+                    // Throttle re-renders to max 30 fps (every 33ms)
+                    let throttle = StreamingThrottle { [weak self] bubbleID, text in
+                        guard let self else { return }
+                        if let idx = self.chatMessages.firstIndex(where: { $0.id == bubbleID }) {
+                            self.chatMessages[idx].content = text
+                        }
+                    }
+
                     let result = try await chatService.sendMessageStream(
                         messages: contextMessages,
                         sessionID: sessionID,
                         onToken: { [weak self] partial, isFinished in
                             guard let self else { return }
-                            // Find the streaming bubble by ID and update its content
-                            if let idx = self.chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
-                                self.chatMessages[idx].content = partial
-                                self.chatMessages[idx].isStreaming = !isFinished
+                            throttle.enqueue(bubbleID: streamingBubbleID, text: partial)
+                            if isFinished {
+                                throttle.cancel()
+                                // Mark streaming as done immediately so the UI
+                                // stops the typing indicator without waiting for the
+                                // post-stream MainActor.run block.
+                                if let idx = self.chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                                    self.chatMessages[idx].isStreaming = false
+                                }
                             }
                         }
                     )
+
+                    // Ensure the throttle loop exits (idempotent — safe to call again)
+                    throttle.cancel()
 
                     // Finalize: update session ID and persist
                     await MainActor.run {
