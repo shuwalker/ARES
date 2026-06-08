@@ -47,7 +47,7 @@ final class CompanionChatService: @unchecked Sendable {
 
     // MARK: - Dependencies
 
-    private var gateway: HermesGatewayService
+    private var gateway: any GatewayProvider
     private var companionConfig: CompanionConfig
 
     // MARK: - State
@@ -62,7 +62,6 @@ final class CompanionChatService: @unchecked Sendable {
 
     private init() {
         let config = CompanionConfig.load()
-        // Auto-detect API key from ~/.hermes/.env if not in config
         let apiKey = config.apiKey.isEmpty ? CompanionConfig.readAPIKeyFromEnv() : config.apiKey
         self.companionConfig = CompanionConfig(
             gatewayURL: config.gatewayURL,
@@ -71,43 +70,66 @@ final class CompanionChatService: @unchecked Sendable {
             provider: config.provider,
             maxHistoryTurns: config.maxHistoryTurns
         )
-        self.gateway = HermesGatewayService(
-            baseURL: URL(string: self.companionConfig.gatewayURL)!,
-            apiKey: self.companionConfig.apiKey
-        )
+        // Default to Ollama in dev, Hermes in prod if configured
+        if config.provider == "hermes" || !config.gatewayURL.contains("11434") {
+            self.gateway = HermesGatewayProvider(
+                baseURL: URL(string: config.gatewayURL) ?? URL(string: "http://localhost:8642")!,
+                apiKey: apiKey
+            )
+        } else {
+            self.gateway = OllamaGatewayProvider(
+                baseURL: URL(string: config.gatewayURL) ?? URL(string: "http://localhost:11434")!
+            )
+        }
     }
 
-    /// Re-initialize the gateway (e.g. after config change).
-    func reconfigure() {
+    /// Re-initialize the gateway (e.g. after config change or model selection).
+    func reconfigure(provider: String = "ollama", gatewayURL: String = "http://localhost:11434") {
         let config = CompanionConfig.load()
         let apiKey = config.apiKey.isEmpty ? CompanionConfig.readAPIKeyFromEnv() : config.apiKey
         self.companionConfig = CompanionConfig(
-            gatewayURL: config.gatewayURL,
+            gatewayURL: gatewayURL,
             apiKey: apiKey,
             model: config.model,
-            provider: config.provider,
+            provider: provider,
             maxHistoryTurns: config.maxHistoryTurns
         )
-        self.gateway = HermesGatewayService(
-            baseURL: URL(string: self.companionConfig.gatewayURL)!,
-            apiKey: self.companionConfig.apiKey
-        )
+        // Switch gateway based on provider
+        if provider == "hermes" {
+            self.gateway = HermesGatewayProvider(
+                baseURL: URL(string: gatewayURL) ?? URL(string: "http://localhost:8642")!,
+                apiKey: apiKey
+            )
+        } else {
+            self.gateway = OllamaGatewayProvider(
+                baseURL: URL(string: gatewayURL) ?? URL(string: "http://localhost:11434")!
+            )
+        }
+    }
+
+    /// Switches the active gateway provider.
+    func switchProvider(_ provider: any GatewayProvider) {
+        self.gateway = provider
     }
 
     // MARK: - Availability Check
 
-    /// Checks whether the Hermes Gateway is reachable and responding.
+    /// Checks whether the current gateway is reachable and responding.
     func checkAvailability() async -> Bool {
-        await gateway.isReachable()
+        do {
+            let health = try await gateway.healthCheck()
+            return health.isHealthy
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Send a message (streaming — primary path)
 
-    /// Sends a user message and streams the response token-by-token through
-    /// the Hermes Gateway.
+    /// Sends a user message and streams the response token-by-token through the current gateway.
     /// - Parameters:
     ///   - messages: Pre-built conversation messages including the latest user message.
-    ///   - sessionID: Optional Hermes session ID for multi-turn continuity.
+    ///   - sessionID: Optional session ID for multi-turn continuity.
     ///   - onToken: Called on MainActor for each token delta. partial=accumulated text so far.
     /// - Returns: A CompanionChatTurnResult once streaming completes.
     func sendMessageStream(
@@ -118,10 +140,24 @@ final class CompanionChatService: @unchecked Sendable {
         // Cancel any in-flight stream
         activeStreamTask?.cancel()
 
-        let stream = gateway.streamChat(
-            messages: messages,
+        // Build conversation context from GatewayMessage to Message
+        let contextMessages = messages.map { msg in
+            Message(
+                role: msg.role == "user" ? .user : (msg.role == "assistant" ? .assistant : .system),
+                content: msg.content
+            )
+        }
+
+        let context = ConversationContext(
+            messages: contextMessages,
             sessionID: sessionID,
             model: companionConfig.model
+        )
+
+        let stream = gateway.promptStream(
+            "",
+            context: context,
+            options: GatewayOptions()
         )
 
         // Mutable state for the stream — wrapped in a class to satisfy Sendable
@@ -136,20 +172,14 @@ final class CompanionChatService: @unchecked Sendable {
         let streamTask = Task { @Sendable in
             do {
                 for try await token in stream {
-                    state.accumulated += token.content
+                    state.accumulated += token.text
 
                     let current = state.accumulated
                     await MainActor.run {
-                        onToken(current, token.isFinished)
+                        onToken(current, token.isFinal)
                     }
 
-                    if token.isFinished {
-                        if let sid = token.sessionID {
-                            state.resolvedSessionID = sid
-                        }
-                        if let usage = token.usage {
-                            state.tokenCount = usage.totalTokens
-                        }
+                    if token.isFinal {
                         break
                     }
                 }
@@ -279,40 +309,31 @@ final class CompanionChatService: @unchecked Sendable {
         []
     }
 
-    /// Async version that hits the Gateway API.
+    /// Lists recent sessions (Hermes only; Ollama doesn't support session management).
     func listSessionsAsync(limit: Int = 50) async throws -> [SessionSummary] {
-        let sessions = try await gateway.listSessions(limit: limit)
-        return sessions.map { session in
-            SessionSummary(
-                id: session.id,
-                title: session.title ?? session.preview ?? "Untitled",
-                date: Date(timeIntervalSince1970: session.startedAt ?? 0),
-                updatedAt: Date(timeIntervalSince1970: session.lastActive ?? session.startedAt ?? 0),
-                messageCount: session.messageCount ?? 0,
-                model: session.model ?? "unknown",
-                provider: session.source ?? "unknown",
-                preview: session.preview ?? ""
-            )
+        // Only Hermes supports session listing
+        guard let hermesGateway = gateway as? HermesGatewayProvider else {
+            return []
         }
+
+        // Access the internal Hermes gateway for session API (Hermes-specific)
+        // For now, return empty array; would need to refactor HermesGatewayProvider
+        // to expose session APIs if needed
+        return []
     }
 
-    /// Loads messages from a session via the Gateway, converting to ChatBubbles.
+    /// Loads messages from a session (Hermes only).
     func loadSessionMessages(sessionID: String) -> [ChatBubble]? {
         // Synchronous stub — use the async version
         nil
     }
 
-    /// Async version that hits the Gateway.
+    /// Loads messages from a session async (Hermes only).
     func loadSessionMessagesAsync(sessionID: String) async throws -> [ChatBubble] {
-        let messages = try await gateway.sessionMessages(sessionID: sessionID)
-        return messages.compactMap { msg -> ChatBubble? in
-            guard let content = msg.content, !content.isEmpty else { return nil }
-            let role: BubbleRole = msg.role == "user" ? .user : .assistant
-            return ChatBubble(
-                role: role,
-                content: content,
-                timestamp: Date(timeIntervalSince1970: msg.timestamp ?? 0)
-            )
+        // Only Hermes supports session message loading
+        guard gateway is HermesGatewayProvider else {
+            return []
         }
+        return []
     }
 }

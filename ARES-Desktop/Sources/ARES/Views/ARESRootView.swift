@@ -14,6 +14,8 @@ struct ARESRootView: View {
                     .background(ARESColors.surface)
             } detail: {
                 switch appState.selectedTab {
+                case .dashboard:
+                    DashboardView()
                 case .companion:
                     CompanionView()
                 case .office:

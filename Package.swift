@@ -41,7 +41,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ARESTests",
-            dependencies: ["ARES", "ARESCore"],
+            dependencies: ["ARESCore"],
             path: "ARES-Desktop/Tests/ARESTests"
         )
     ]

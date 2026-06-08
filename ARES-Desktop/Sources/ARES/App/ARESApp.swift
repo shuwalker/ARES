@@ -17,6 +17,11 @@ struct ARESApp: App {
         WindowGroup {
             ARESRootView()
                 .environmentObject(appState)
+                .environment(\.embodiment, appState.embodiment)
+                .environment(\.perceiver, appState.perceiver)
+                .environment(\.memory, appState.memory)
+                .environment(\.voice, appState.voice)
+                .environment(\.brain, appState.brain)
                 .frame(minWidth: 1024, minHeight: 600)
                 .preferredColorScheme(.dark)
                 .onAppear {

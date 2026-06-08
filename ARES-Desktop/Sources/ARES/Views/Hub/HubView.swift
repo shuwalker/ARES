@@ -831,7 +831,17 @@ struct CLITabContent: View {
     }
 
     private func loadSessions() async {
-        let reader: any SourceReader = (command == "claude") ? ClaudeSessionReader() : GeminiSessionReader()
+        // Build the right SourceReader for this tool. HubView used to hard-code
+        // only Claude and Gemini here, which silently broke Odysseus and Hermes —
+        // their readers existed but were never instantiated.
+        let reader: any SourceReader
+        switch command {
+        case "claude":  reader = ClaudeSessionReader()
+        case "gemini":  reader = GeminiSessionReader()
+        case "odysseus": reader = OdysseusSessionReader()
+        case "hermes":  reader = HermesSessionReader()
+        default:        reader = GeminiSessionReader()
+        }
         if let result = try? reader.listSessions() {
             sessions = result
         }

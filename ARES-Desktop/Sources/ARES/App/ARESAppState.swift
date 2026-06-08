@@ -30,6 +30,17 @@ final class ARESAppState: ObservableObject {
     @Published var hermesGatewayURL: String = "http://localhost:8642"
     @Published var activeOfficeAgents: Int = 0
 
+    /// Sum of `costUSD` on all chat bubbles newer than 24h, formatted for the stats card.
+    /// Returns "0.00" when no cost data has been recorded yet (gateway sends `nil` until usage is reported).
+    var formatted24hCost: String {
+        let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        let total = chatMessages
+            .filter { $0.timestamp >= cutoff }
+            .compactMap { $0.costUSD }
+            .reduce(0.0, +)
+        return String(format: "%.2f", total)
+    }
+
     // MARK: - Chat state
     @Published var chatMessages: [ChatBubble] = []
     @Published var chatInput: String = ""
@@ -64,14 +75,44 @@ final class ARESAppState: ObservableObject {
         HermesSessionReader()
     ]
 
+    // MARK: - Backend protocols (injected at startup)
+    var embodiment: any Embodiment
+    var perceiver: any Perceiver
+    var memory: any MemoryStore
+    var voice: any VoiceEngine
+    var brain: any ReasoningBrain
+
     private let scanner = DependencyScanner()
     private let installer = DependencyInstaller()
     private let chatService = CompanionChatService.shared
     private var refreshTimer: Timer?
 
-    init() {
+    /// Designated initializer with injectable backends.
+    init(
+        embodiment: any Embodiment,
+        perceiver: any Perceiver,
+        memory: any MemoryStore,
+        voice: any VoiceEngine,
+        brain: any ReasoningBrain
+    ) {
+        self.embodiment = embodiment
+        self.perceiver = perceiver
+        self.memory = memory
+        self.voice = voice
+        self.brain = brain
         self.hasBootstrapped = UserDefaults.standard.bool(forKey: "ARES.hasBootstrapped")
         refreshLiveStats()
+    }
+
+    /// Convenience initializer with dummy backends (for backward compatibility).
+    convenience init() {
+        self.init(
+            embodiment: DummyEmbodiment(),
+            perceiver: DummyPerceiver(),
+            memory: DummyMemoryStore(),
+            voice: DummyVoiceEngine(),
+            brain: DummyReasoningBrain()
+        )
     }
 
     // MARK: - Bootstrap actions
@@ -638,6 +679,7 @@ final class ARESAppState: ObservableObject {
 // MARK: - Tab enum
 
 enum ARESTab: String, CaseIterable, Identifiable {
+    case dashboard
     case companion
     case office
     case hub
@@ -647,6 +689,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .dashboard: return "Dashboard"
         case .companion: return "Companion"
         case .office:    return "Office"
         case .hub:       return "Hub"
@@ -656,6 +699,7 @@ enum ARESTab: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .dashboard: return "rectangle.grid.2x2.fill"
         case .companion: return "person.fill.viewfinder"
         case .office:    return "building.2.fill"
         case .hub:       return "square.grid.2x2.fill"

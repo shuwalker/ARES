@@ -1,0 +1,262 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         ARES MODULAR ARCHITECTURE                            ║
+║                     A Lego System for Embodied AI                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                    🎬 PRESENTATION LAYER (SwiftUI)                         ┃
+┃  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────┐      ┃
+┃  │   ARESApp       │  │   ARESRootView  │  │   Companion, Avatar, │      ┃
+┃  │   @main entry   │  │   Tab navigation│  │   Memory, Settings   │      ┃
+┃  │   point         │  │   dispatcher    │  │   Views              │      ┃
+┃  └──────┬──────────┘  └────────┬────────┘  └──────────┬───────────┘      ┃
+┃         └──────────────────────┼──────────────────────┘                   ┃
+┃                                │                                           ┃
+┃                                │ Uses: @Environment(\.protocol)            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                  │
+                                  ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                 🔌 WIRING LAYER (Backend Selection)                       ┃
+┃  ┌──────────────────────────────────────────────────────────────────┐    ┃
+┃  │  ARESAppState                                                    │    ┃
+┃  │  ├─ embodiment: Embodiment                                       │    ┃
+┃  │  ├─ perceiver: Perceiver                                         │    ┃
+┃  │  ├─ memory: MemoryStore                                          │    ┃
+┃  │  ├─ voice: VoiceEngine                                           │    ┃
+┃  │  └─ brain: ReasoningBrain                                        │    ┃
+┃  │                                                                   │    ┃
+┃  │  resolveBackends(environment: RuntimeEnvironment)                │    ┃
+┃  │  ├─ .development → All dummies (fast iteration)                  │    ┃
+┃  │  ├─ .production  → Real backends (local sidecars)                │    ┃
+┃  │  └─ .testing     → All dummies (deterministic)                   │    ┃
+┃  └──────────────────────────────────────────────────────────────────┘    ┃
+┃                                                                            ┃
+┃  One function, one place, zero logic elsewhere.                           ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┬━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                  │
+                                  ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                  📋 PROTOCOL LAYER (Contracts Only)                       ┃
+┃                                                                            ┃
+┃    ARESCore/Contracts/                                                    ┃
+┃                                                                            ┃
+┃    ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐     ┃
+┃    │  Embodiment      │  │  Perceiver       │  │  MemoryStore     │     ┃
+┃    │  Protocol        │  │  Protocol        │  │  Protocol        │     ┃
+┃    │  ──────────────  │  │  ──────────────  │  │  ──────────────  │     ┃
+┃    │  • state         │  │  • landmarks     │  │  • store()       │     ┃
+┃    │  • setExpr()     │  │  • prosody       │  │  • retrieve()    │     ┃
+┃    │  • setGaze()     │  │  • startListen() │  │  • update()      │     ┃
+┃    │  • speak()       │  │  • stopListen()  │  │  • delete()      │     ┃
+┃    │  • requestAp()   │  │  • capabilities  │  │  • capabilities  │     ┃
+┃    └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘     ┃
+┃             │                      │                      │                ┃
+┃    ┌────────────────────────────────────────────────────────┐            ┃
+┃    │  VoiceEngine           │  ReasoningBrain               │            ┃
+┃    │  Protocol              │  Protocol                     │            ┃
+┃    │  ───────────           │  ─────────────                │            ┃
+┃    │  • synthesize()        │  • plan()                     │            ┃
+┃    │  • recognize()         │  • respond()                  │            ┃
+┃    │  • capabilities        │  • reflect()                  │            ┃
+┃    │                        │  • capabilities               │            ┃
+┃    └────────┬───────────────┼────────┬──────────────────────┘            ┃
+┃             │               │        │                                    ┃
+┃             └───────────────┴────────┘                                    ┃
+┃                     (all protocols in ARESCore)                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┬━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                  │
+                                  ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                  🤖 DUMMY LAYER (Testing & Iteration)                    ┃
+┃                                                                            ┃
+┃    ARESCore/Dummies/                                                      ┃
+┃                                                                            ┃
+┃    ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐     ┃
+┃    │  DummyEmbodiment │  │  DummyPerceiver  │  │  DummyMemory     │     ┃
+┃    │  ──────────────  │  │  ──────────────  │  │  ──────────────  │     ┃
+┃    │  Prints:         │  │  Generates:      │  │  In-memory dict  │     ┃
+┃    │  🤖 Expression   │  │  Synthetic       │  │  [id] = memory   │     ┃
+┃    │  🤖 Gaze         │  │  landmarks       │  │  No persistence  │     ┃
+┃    │  🤖 Speech       │  │  @30fps          │  │  Fast            │     ┃
+┃    └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘     ┃
+┃             │                      │                      │                ┃
+┃    ┌────────────────────────────────────────────────────────┐            ┃
+┃    │  DummyVoiceEngine      │  DummyReasoningBrain         │            ┃
+┃    │  ──────────────        │  ──────────────────           │            ┃
+┃    │  Silent audio           │  Echoes input:               │            ┃
+┃    │  buffers                │  "Echo: <message>"           │            ┃
+┃    │  Immediate feedback     │  Returns plan + tasks        │            ┃
+┃    └────────┬───────────────┼────────┬──────────────────────┘            ┃
+┃             │               │        │                                    ┃
+┃             └───────────────┴────────┘                                    ┃
+┃                   (all inherit from protocols)                             ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┬━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                  │
+                      Selected by resolveBackends() or
+                      user implements real backend
+                                  │
+                                  ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃              🖥 PRODUCTION BACKENDS (Real Implementations)                ┃
+┃                                                                            ┃
+┃    ARESBody/                      ARESPerceive/                            ┃
+┃    ┌──────────────────┐          ┌──────────────────┐                    ┃
+┃    │  Embodiment      │          │  PerceptionClient│                    ┃
+┃    │  (Desktop/Robot) │          │  (WebSocket)     │                    ┃
+┃    └──────────────────┘          └──────────────────┘                    ┃
+┃                                                                            ┃
+┃    ARESMemory/                    ARESVoice/                               ┃
+┃    ┌──────────────────┐          ┌──────────────────┐                    ┃
+┃    │  MemoryClient    │          │  VoiceClient     │                    ┃
+┃    │  (HTTP)          │          │  (WebSocket)     │                    ┃
+┃    └──────────────────┘          └──────────────────┘                    ┃
+┃                                                                            ┃
+┃    ARESBrain/                                                              ┃
+┃    ┌──────────────────┐                                                   ┃
+┃    │  BrainClient     │                                                   ┃
+┃    │  (HTTP gateway)  │                                                   ┃
+┃    └──────────────────┘                                                   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┬━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+                                  │
+                                  ▼
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃            🐳 PYTHON SIDECARS (Docker Containers, 6 Services)            ┃
+┃                                                                            ┃
+┃    perception-svc:9201          avatar-svc:9202         voice-svc:9203   ┃
+┃    ┌──────────────────┐          ┌──────────────────┐    ┌────────────┐  ┃
+┃    │ MediaPipe        │          │ 3D Model +       │    │ Kokoro TTS │  ┃
+┃    │ Face Landmarks   │          │ Animation Rig    │    │ Whisper    │  ┃
+┃    │ OpenPose fallback│          │ UE5/Unity stream │    │ STT        │  ┃
+┃    └──────────────────┘          └──────────────────┘    └────────────┘  ┃
+┃                                                                            ┃
+┃    memory-svc:9204              world-svc:9205          brain-svc:9206   ┃
+┃    ┌──────────────────┐          ┌──────────────────┐    ┌────────────┐  ┃
+┃    │ SQLite           │          │ Scene Graph      │    │ Hermes     │  ┃
+┃    │ Embeddings       │          │ Object Tracking  │    │ Agent      │  ┃
+┃    │ Semantic Search  │          │ Spatial Relations│    │ Gateway    │  ┃
+┃    └──────────────────┘          └──────────────────┘    └────────────┘  ┃
+┃                                                                            ┃
+┃    All services run in docker-compose. Swift clients are stateless.       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                            DATA FLOW EXAMPLE                                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+User says: "Hi ARES"
+           │
+           ▼
+CompanionView.sendMessage("Hi ARES")
+           │
+           ├─ Calls @Environment(\.brain).respond(to: "Hi ARES")
+           │
+           ▼
+BrainClient (implements ReasoningBrain protocol)
+           │
+           ├─ Converts to HTTP POST
+           ├─ Calls brain-svc:9206/respond
+           │
+           ▼
+brain-svc (Python)
+           │
+           ├─ Assembles prompt with memory + context
+           ├─ Calls Hermes Agent (via MCP or CLI)
+           │
+           ▼
+Hermes Agent (reasoning loop)
+           │
+           ├─ (Optional: calls memory-svc to retrieve relevant memories)
+           ├─ Generates response
+           │
+           ▼
+Response returns to BrainClient
+           │
+           ▼
+View updates UI with response
+           │
+           ▼
+User sees answer ✅
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        EMBODIMENT SWAP EXAMPLE                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Today (Desktop):
+    Wiring.swift:
+        case .production:
+            embodiment: DesktopEmbodiment()  ← draws to screen
+
+Next Month (Robot):
+    Wiring.swift:
+        case .production:
+            embodiment: RobotEmbodiment()    ← sends motor commands
+
+Views? Unchanged ✅
+Logic? Unchanged ✅
+All other backends? Unchanged ✅
+
+Only one line changed. That's modularity.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          TESTING STRATEGY                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Development Mode:
+    ARES_ENV=development swift run ARES
+    │
+    ├─ Dummies used
+    ├─ Console prints emoji: 🤖 [DUMMY] Expression: happy @ 80%
+    ├─ App runs immediately (no sidecars needed)
+    └─ Iterate fast
+
+Production Mode:
+    docker-compose up -d
+    ARES_ENV=production swift run ARES
+    │
+    ├─ Real backends used
+    ├─ Perception flows from camera
+    ├─ Avatar rendered from landmarks
+    ├─ Memory persisted to SQLite
+    └─ Brain responds via Hermes
+
+Testing Mode:
+    swift test
+    │
+    ├─ Dummies used
+    ├─ Deterministic (no random network)
+    ├─ Tests verify protocols work
+    └─ No sidecars needed
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         8-WEEK BUILD ROADMAP                                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Week 1: ✅ Contracts + Dummies + Wiring (done!)
+        └─ App compiles, emoji messages in console
+
+Week 2: 🔄 perception-svc (MediaPipe landmarks)
+        └─ First visible: landmarks from camera
+
+Week 3: 🔄 avatar-svc rendering
+        └─ Face copies you
+
+Week 4: 🔄 voice-svc (TTS)
+        └─ Talks back
+
+Weeks 5-6: 🔄 memory-svc (SQLite)
+        └─ Remembers you
+
+Weeks 7-8: 🔄 brain-svc (Hermes)
+        └─ Reasons about the world
+
+Week 9+: 🔄 Embodiment swap demo (robot)
+        └─ All of above works on different hardware without code changes
+
+
+That's the vision. Lego bricks. Swappable. Modular. Persistent.

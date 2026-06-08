@@ -100,9 +100,9 @@ enum HermesGatewayError: LocalizedError, Sendable {
     }
 }
 
-// MARK: - HermesGatewayService
+// MARK: - HermesGateway
 
-final class HermesGatewayService: Sendable {
+final class HermesGateway: Sendable {
 
     // MARK: - Configuration
 

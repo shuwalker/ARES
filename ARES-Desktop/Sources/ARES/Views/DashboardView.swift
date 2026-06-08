@@ -16,7 +16,7 @@ struct DashboardLayout: Codable {
             case avatar
             case chat
             case history
-            case modelPicker
+            case modelPicker  // Backend picker: Ollama (LLM) vs Hermes (Agent)
             case perception
         }
     }
@@ -85,7 +85,7 @@ struct DashboardView: View {
                                         case .history:
                                             HistoryWidget()
                                         case .modelPicker:
-                                            ModelPickerWidget()
+                                            BackendPickerWidget()
                                         case .perception:
                                             PerceptionWidget()
                                         }
