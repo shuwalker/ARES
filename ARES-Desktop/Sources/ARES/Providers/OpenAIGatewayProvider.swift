@@ -20,7 +20,22 @@ final class OpenAIGatewayProvider: GatewayProvider, @unchecked Sendable {
         guard !apiKey.isEmpty else {
             return GatewayHealth(isHealthy: false, latencyMs: 0)
         }
-        return GatewayHealth(isHealthy: true, latencyMs: 50)
+        // Actually ping the /models endpoint instead of fabricating latency
+        let start = ContinuousClock.now
+        let modelsURL = URL(string: "https://api.openai.com/v1/models")!
+        var request = URLRequest(url: modelsURL)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 5
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let elapsed = ContinuousClock.now - start
+            let ms = Int(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let isHealthy = (response as? HTTPURLResponse)?.statusCode == 200
+            return GatewayHealth(isHealthy: isHealthy, latencyMs: max(ms, 1))
+        } catch {
+            return GatewayHealth(isHealthy: false, latencyMs: 0)
+        }
     }
 
     func prompt(_ message: String, context: ConversationContext, options: GatewayOptions) async throws -> GatewayResponse {
@@ -91,7 +106,72 @@ final class OpenAIGatewayProvider: GatewayProvider, @unchecked Sendable {
     }
 
     func executeToolCall(_ call: ToolCall, context: ConversationContext) async throws -> ToolResult {
-        return ToolResult(success: false, data: AnyCodable.string("Tool calling not yet implemented"))
+        // OpenAI chat completions tool flow: submit the tool result as a
+        // "tool" message and let the model continue the conversation.
+        let startTime = ContinuousClock.now
+        
+        let toolResultMessage: [String: Any] = [
+            "role": "tool",
+            "tool_call_id": call.id,
+            "content": String(describing: call.input)
+        ]
+        
+        let priorMessages = context.messages.map { msg -> [String: String] in
+            ["role": msg.role.rawValue, "content": msg.content]
+        }
+        
+        let body: [String: Any] = [
+            "model": context.model ?? "gpt-4o",
+            "messages": priorMessages + [toolResultMessage],
+            "temperature": 0.7
+        ]
+        
+        var request = URLRequest(url: baseURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let elapsed = ContinuousClock.now - startTime
+            let ms = Double(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
+            
+            guard httpStatus == 200 else {
+                let bodyStr = String(data: data, encoding: .utf8) ?? "empty"
+                return ToolResult(
+                    success: false,
+                    error: ToolError(code: "http_\(httpStatus)", message: bodyStr),
+                    executionTimeMs: ms
+                )
+            }
+            
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let choices = json["choices"] as? [[String: Any]],
+               let first = choices.first,
+               let message = first["message"] as? [String: Any],
+               let content = message["content"] as? String {
+                return ToolResult(
+                    success: true,
+                    data: AnyCodable.string(content),
+                    executionTimeMs: ms
+                )
+            }
+            
+            return ToolResult(
+                success: true,
+                data: AnyCodable.string("Tool call submitted, no text response"),
+                executionTimeMs: ms
+            )
+        } catch {
+            return ToolResult(
+                success: false,
+                error: ToolError(code: "network", message: error.localizedDescription),
+                executionTimeMs: 0
+            )
+        }
     }
 
     func getConfig() async throws -> GatewayConfig {

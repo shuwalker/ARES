@@ -2,27 +2,27 @@ import ARESCore
 import Foundation
 import SQLite3
 
-// MARK: - SQLite-backed MemoryStore
+// MARK: - JROS-Compatible SQLite MemoryStore
 //
-// Persists memories to a SQLite database using the C API (no GRDB dependency).
-// The database file is created/opened at init. A `ares_memories` table is ensured.
+// Persists memories to a SQLite database using the exact schema of JROS (jaeger_os).
+// This makes ARES natively compatible with any JROS agent's state.db.
 //
-// For the ARES companion, the default path can point at the odysseus app.db
-// which has a `chat_messages` table. Memories are stored in a separate
-// `ares_memories` table within the same database so they coexist with
-// the existing schema.
+// Schema Version: 1
+// Tables: schema_version, facts, episodic, episodic_embeddings, schedules, sessions, tool_calls, audit_log
 
 public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
     private let db: OpaquePointer?
-    private let dbPath: String
+    public let dbPath: String
     private let lock = UnsafeMutablePointer<os_unfair_lock>.allocate(capacity: 1)
+    public var embedder: OllamaGatewayProvider?
 
-    public let capabilities: Set<String> = ["persistence", "search"]
+    public let capabilities: Set<String> = ["persistence", "search", "jros-compatible", "embeddings"]
 
-    // MARK: - Init (synchronous — opens DB and creates schema)
+    // MARK: - Init (synchronous — opens DB and creates JROS schema)
 
-    public init(path: String) throws {
+    public init(path: String, embedder: OllamaGatewayProvider? = nil) throws {
         self.dbPath = path
+        self.embedder = embedder
         self.lock.initialize(to: os_unfair_lock())
 
         // Expand tilde
@@ -44,7 +44,11 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
 
         // Enable WAL mode for concurrent reads
         try Self.executeStatic(db, "PRAGMA journal_mode=WAL")
-        // Create ARES memories table
+        try Self.executeStatic(db, "PRAGMA synchronous=NORMAL")
+        try Self.executeStatic(db, "PRAGMA foreign_keys=ON")
+        try Self.executeStatic(db, "PRAGMA busy_timeout=5000")
+        
+        // Create JROS schema
         try createSchema()
     }
 
@@ -53,40 +57,162 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
         lock.deallocate()
     }
 
-    // MARK: - Schema
+    // MARK: - JROS Schema Definition
 
     private func createSchema() throws {
-        try Self.executeStatic(db, """
-        CREATE TABLE IF NOT EXISTS ares_memories (
-            id TEXT PRIMARY KEY,
-            content TEXT NOT NULL,
-            context_json TEXT NOT NULL DEFAULT '{}',
-            timestamp REAL NOT NULL,
-            embedding_blob BLOB
-        )
-        """)
-        try Self.executeStatic(db, """
-        CREATE INDEX IF NOT EXISTS idx_ares_mem_timestamp ON ares_memories(timestamp DESC)
-        """)
-        try Self.executeStatic(db, """
-        CREATE INDEX IF NOT EXISTS idx_ares_mem_content ON ares_memories(content)
-        """)
+        let statements = [
+            """
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id        INTEGER PRIMARY KEY CHECK (id = 1),
+                version   INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS facts (
+                key        TEXT PRIMARY KEY,
+                value      TEXT NOT NULL,
+                category   TEXT NOT NULL DEFAULT 'general',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_facts_category ON facts (category)",
+            """
+            CREATE TABLE IF NOT EXISTS episodic (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_key     TEXT NOT NULL,
+                ts              TEXT NOT NULL,
+                user            TEXT,
+                answer          TEXT,
+                decision_raw    TEXT,
+                tool_activity   TEXT,
+                latency_ms      INTEGER,
+                first_decision  TEXT,
+                skipped_final   INTEGER NOT NULL DEFAULT 0,
+                meta_json       TEXT
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_episodic_session ON episodic (session_key, id)",
+            "CREATE INDEX IF NOT EXISTS idx_episodic_ts ON episodic (ts)",
+            """
+            CREATE TABLE IF NOT EXISTS episodic_embeddings (
+                episodic_id INTEGER PRIMARY KEY
+                            REFERENCES episodic(id) ON DELETE CASCADE,
+                model       TEXT NOT NULL,
+                dim         INTEGER NOT NULL,
+                vector      BLOB NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS schedules (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                schedule_id     TEXT UNIQUE NOT NULL,
+                cron            TEXT NOT NULL,
+                prompt          TEXT NOT NULL,
+                next_fire_at    TEXT,
+                status          TEXT NOT NULL DEFAULT 'active',
+                session_key     TEXT,
+                created_at      TEXT NOT NULL,
+                last_fired_at   TEXT
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_schedules_status ON schedules (status, next_fire_at)",
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_key  TEXT PRIMARY KEY,
+                started_at   TEXT NOT NULL,
+                ended_at     TEXT,
+                turn_count   INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS tool_calls (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                episodic_id   INTEGER REFERENCES episodic(id) ON DELETE SET NULL,
+                session_key   TEXT NOT NULL,
+                tool_name     TEXT NOT NULL,
+                args_json     TEXT,
+                result_json   TEXT,
+                ok            INTEGER NOT NULL DEFAULT 1,
+                error         TEXT,
+                elapsed_s     REAL,
+                ts            TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls (session_key, id)",
+            "CREATE INDEX IF NOT EXISTS idx_tool_calls_tool ON tool_calls (tool_name, ts)",
+            """
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts            TEXT NOT NULL,
+                event         TEXT NOT NULL,
+                payload_json  TEXT NOT NULL,
+                session_key   TEXT
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log (event, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log (ts)"
+        ]
+
+        try withDatabaseLock {
+            try Self.executeStatic(db, "BEGIN IMMEDIATE")
+            do {
+                for statement in statements {
+                    try Self.executeStatic(db, statement)
+                }
+                
+                // Ensure schema_version is set to 1
+                var checkStmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, "SELECT version FROM schema_version WHERE id = 1", -1, &checkStmt, nil) == SQLITE_OK {
+                    if sqlite3_step(checkStmt) != SQLITE_ROW {
+                        let now = ISO8601DateFormatter().string(from: Date())
+                        try Self.executeStatic(db, "INSERT INTO schema_version (id, version, created_at, updated_at) VALUES (1, 1, '\(now)', '\(now)')")
+                    }
+                    sqlite3_finalize(checkStmt)
+                }
+                
+                try Self.executeStatic(db, "COMMIT")
+            } catch {
+                try Self.executeStatic(db, "ROLLBACK")
+                throw error
+            }
+        }
     }
 
-    // MARK: - MemoryStore Protocol
+    // MARK: - MemoryStore Protocol (Mapped to JROS `facts` table)
 
     public func store(_ memory: Memory) async throws -> String {
-        try withDatabaseLock {
-            let id = memory.id
-            let content = memory.content
-            let contextData = try JSONEncoder().encode(memory.context)
-            let contextJSON = String(data: contextData, encoding: .utf8) ?? "{}"
-            let timestamp = memory.timestamp.timeIntervalSince1970
-            let embeddingData = memory.embedding.flatMap { try? JSONEncoder().encode($0) }
+        // Generate embedding if an embedder is available
+        var memoryToStore = memory
+        if embedder != nil && memory.embedding == nil {
+            if let newEmbedding = try? await embedder?.generateEmbeddings(prompt: memory.content) {
+                memoryToStore = Memory(
+                    id: memory.id,
+                    content: memory.content,
+                    context: memory.context,
+                    timestamp: memory.timestamp,
+                    embedding: newEmbedding
+                )
+            }
+        }
+        
+        return try withDatabaseLock {
+            let key = memoryToStore.id
+            let value = memoryToStore.content
+            
+            // Extract category if available, otherwise 'general'
+            var category = "general"
+            if case .string(let c) = memoryToStore.context["category"] {
+                category = c.lowercased()
+            }
+            
+            let now = ISO8601DateFormatter().string(from: memoryToStore.timestamp)
 
             var stmt: OpaquePointer?
             let sql = """
-            INSERT OR REPLACE INTO ares_memories (id, content, context_json, timestamp, embedding_blob)
+            INSERT OR REPLACE INTO facts (key, value, category, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
             """
 
@@ -95,26 +221,19 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
             }
             defer { sqlite3_finalize(stmt) }
 
-            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(stmt, 2, content, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(stmt, 3, contextJSON, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_double(stmt, 4, timestamp)
-
-            if let embeddingData {
-                _ = embeddingData.withUnsafeBytes { ptr in
-                    sqlite3_bind_blob(stmt, 5, ptr.baseAddress, Int32(embeddingData.count), SQLITE_TRANSIENT)
-                }
-            } else {
-                sqlite3_bind_null(stmt, 5)
-            }
+            sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, category, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 4, now, -1, SQLITE_TRANSIENT) // created_at
+            sqlite3_bind_text(stmt, 5, now, -1, SQLITE_TRANSIENT) // updated_at
 
             let step = sqlite3_step(stmt)
             guard step == SQLITE_DONE else {
                 throw MemoryStoreError.queryFailed("Store failed: \(Self.errorMessage(db))")
             }
 
-            print("✅ [MEMORY] Stored memory: \(id) '\(content.prefix(40))...'")
-            return id
+            print("✅ [MEMORY] Stored fact: \(key) '\(value.prefix(40))...'")
+            return key
         }
     }
 
@@ -122,12 +241,12 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
         try withDatabaseLock {
             var results: [Memory] = []
 
-            // 1. Search ares_memories
+            // Search JROS `facts` table
             let memSQL = """
-            SELECT id, content, context_json, timestamp, embedding_blob
-            FROM ares_memories
-            WHERE content LIKE ?
-            ORDER BY timestamp DESC
+            SELECT key, value, category, created_at, updated_at
+            FROM facts
+            WHERE value LIKE ? OR key LIKE ?
+            ORDER BY updated_at DESC
             LIMIT ?
             """
 
@@ -139,21 +258,34 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
 
             let pattern = "%\(query)%"
             sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_int(stmt, 2, Int32(limit))
+            sqlite3_bind_text(stmt, 2, pattern, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(stmt, 3, Int32(limit))
 
+            let formatter = ISO8601DateFormatter()
             while sqlite3_step(stmt) == SQLITE_ROW {
-                if let memory = Self.parseRow(stmt) {
-                    results.append(memory)
-                }
+                let id = String(cString: sqlite3_column_text(stmt, 0))
+                let content = String(cString: sqlite3_column_text(stmt, 1))
+                let category = String(cString: sqlite3_column_text(stmt, 2))
+                let createdStr = String(cString: sqlite3_column_text(stmt, 3))
+                
+                let timestamp = formatter.date(from: createdStr) ?? Date()
+
+                results.append(Memory(
+                    id: id,
+                    content: content,
+                    context: ["category": .string(category)],
+                    timestamp: timestamp,
+                    embedding: nil
+                ))
             }
 
-            // 2. Also search chat_messages if it exists (read-only, for context)
+            // Also search JROS `episodic` table (chat history)
             if results.count < limit {
                 let chatSQL = """
-                SELECT id, content, timestamp
-                FROM chat_messages
-                WHERE content LIKE ?
-                ORDER BY timestamp DESC
+                SELECT id, user, answer, ts
+                FROM episodic
+                WHERE user LIKE ? OR answer LIKE ?
+                ORDER BY id DESC
                 LIMIT ?
                 """
 
@@ -162,34 +294,42 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
                     defer { sqlite3_finalize(chatStmt) }
 
                     sqlite3_bind_text(chatStmt, 1, pattern, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_int(chatStmt, 2, Int32(limit - results.count))
+                    sqlite3_bind_text(chatStmt, 2, pattern, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_int(chatStmt, 3, Int32(limit - results.count))
 
                     while sqlite3_step(chatStmt) == SQLITE_ROW {
-                        let id = String(cString: sqlite3_column_text(chatStmt, 0))
-                        let content = String(cString: sqlite3_column_text(chatStmt, 1))
-                        let timestamp = Date(timeIntervalSince1970: sqlite3_column_double(chatStmt, 2))
+                        let id = Int(sqlite3_column_int64(chatStmt, 0))
+                        
+                        var contentParts: [String] = []
+                        if let cUser = sqlite3_column_text(chatStmt, 1) {
+                            contentParts.append("USER: \(String(cString: cUser))")
+                        }
+                        if let cAnswer = sqlite3_column_text(chatStmt, 2) {
+                            contentParts.append("ASSISTANT: \(String(cString: cAnswer))")
+                        }
+                        
+                        let tsStr = String(cString: sqlite3_column_text(chatStmt, 3))
+                        let timestamp = formatter.date(from: tsStr) ?? Date()
 
                         results.append(Memory(
-                            id: id,
-                            content: content,
-                            context: ["source": AnyCodable.string("chat_messages")],
+                            id: "episodic-\(id)",
+                            content: contentParts.joined(separator: "\n"),
+                            context: ["source": .string("episodic")],
                             timestamp: timestamp,
                             embedding: nil
                         ))
                     }
                 }
-                // If chat_messages doesn't exist, that's fine — we just skip it
             }
 
-            print("🔍 [MEMORY] Retrieved \(results.count) memories for '\(query)'")
+            print("🔍 [MEMORY] Retrieved \(results.count) facts/episodes for '\(query)'")
             return results
         }
     }
 
     public func update(_ id: String, with updates: [String: AnyCodable]) async throws {
         try withDatabaseLock {
-            // First fetch existing memory
-            let fetchSQL = "SELECT content, context_json, timestamp, embedding_blob FROM ares_memories WHERE id = ?"
+            let fetchSQL = "SELECT created_at FROM facts WHERE key = ?"
             var fetchStmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, fetchSQL, -1, &fetchStmt, nil) == SQLITE_OK else {
                 throw MemoryStoreError.queryFailed("Prepare failed for update fetch: \(Self.errorMessage(db))")
@@ -197,63 +337,64 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
             defer { sqlite3_finalize(fetchStmt) }
 
             sqlite3_bind_text(fetchStmt, 1, id, -1, SQLITE_TRANSIENT)
-
             guard sqlite3_step(fetchStmt) == SQLITE_ROW else {
-                throw MemoryStoreError.notFound("Memory \(id) not found")
+                throw MemoryStoreError.notFound("Fact \(id) not found")
             }
 
-            let existingContent = String(cString: sqlite3_column_text(fetchStmt, 0))
-            let existingContextJSON = String(cString: sqlite3_column_text(fetchStmt, 1))
-            let existingTimestamp = sqlite3_column_double(fetchStmt, 2)
-
-            // Decode existing context and merge updates
-            var context: [String: AnyCodable] = [:]
-            if let data = existingContextJSON.data(using: .utf8),
-               let decoded = try? JSONDecoder().decode([String: AnyCodable].self, from: data) {
-                context = decoded
-            }
-            for (key, value) in updates {
-                context[key] = value
-            }
-
-            // Determine new content if "content" key present in updates
-            let newContent: String
+            // Only 'value' and 'category' are modifiable for facts
+            let newContent: String?
             if case .string(let s) = updates["content"] {
                 newContent = s
             } else {
-                newContent = existingContent
+                newContent = nil
+            }
+            
+            var newCategory: String?
+            if case .string(let c) = updates["category"] {
+                newCategory = c
             }
 
-            let contextData = try JSONEncoder().encode(context)
-            let contextJSON = String(data: contextData, encoding: .utf8) ?? "{}"
+            guard newContent != nil || newCategory != nil else { return }
+            
+            let now = ISO8601DateFormatter().string(from: Date())
 
-            // Update row
-            let updateSQL = """
-            UPDATE ares_memories SET content = ?, context_json = ?, timestamp = ? WHERE id = ?
-            """
-            var updateStmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, updateSQL, -1, &updateStmt, nil) == SQLITE_OK else {
-                throw MemoryStoreError.queryFailed("Prepare failed for update: \(Self.errorMessage(db))")
+            if let content = newContent, let category = newCategory {
+                let updateSQL = "UPDATE facts SET value = ?, category = ?, updated_at = ? WHERE key = ?"
+                var updateStmt: OpaquePointer?
+                sqlite3_prepare_v2(db, updateSQL, -1, &updateStmt, nil)
+                defer { sqlite3_finalize(updateStmt) }
+                sqlite3_bind_text(updateStmt, 1, content, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(updateStmt, 2, category, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(updateStmt, 3, now, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(updateStmt, 4, id, -1, SQLITE_TRANSIENT)
+                sqlite3_step(updateStmt)
+            } else if let content = newContent {
+                let updateSQL = "UPDATE facts SET value = ?, updated_at = ? WHERE key = ?"
+                var updateStmt: OpaquePointer?
+                sqlite3_prepare_v2(db, updateSQL, -1, &updateStmt, nil)
+                defer { sqlite3_finalize(updateStmt) }
+                sqlite3_bind_text(updateStmt, 1, content, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(updateStmt, 2, now, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(updateStmt, 3, id, -1, SQLITE_TRANSIENT)
+                sqlite3_step(updateStmt)
+            } else if let category = newCategory {
+                let updateSQL = "UPDATE facts SET category = ?, updated_at = ? WHERE key = ?"
+                var updateStmt: OpaquePointer?
+                sqlite3_prepare_v2(db, updateSQL, -1, &updateStmt, nil)
+                defer { sqlite3_finalize(updateStmt) }
+                sqlite3_bind_text(updateStmt, 1, category, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(updateStmt, 2, now, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(updateStmt, 3, id, -1, SQLITE_TRANSIENT)
+                sqlite3_step(updateStmt)
             }
-            defer { sqlite3_finalize(updateStmt) }
 
-            sqlite3_bind_text(updateStmt, 1, newContent, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(updateStmt, 2, contextJSON, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_double(updateStmt, 3, existingTimestamp)
-            sqlite3_bind_text(updateStmt, 4, id, -1, SQLITE_TRANSIENT)
-
-            let step = sqlite3_step(updateStmt)
-            guard step == SQLITE_DONE else {
-                throw MemoryStoreError.queryFailed("Update failed: \(Self.errorMessage(db))")
-            }
-
-            print("✏️ [MEMORY] Updated memory: \(id)")
+            print("✏️ [MEMORY] Updated fact: \(id)")
         }
     }
 
     public func delete(_ id: String) async throws {
         try withDatabaseLock {
-            let sql = "DELETE FROM ares_memories WHERE id = ?"
+            let sql = "DELETE FROM facts WHERE key = ?"
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
                 throw MemoryStoreError.queryFailed("Prepare failed for delete: \(Self.errorMessage(db))")
@@ -261,18 +402,49 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
             defer { sqlite3_finalize(stmt) }
 
             sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
-
-            let step = sqlite3_step(stmt)
-            guard step == SQLITE_DONE else {
-                throw MemoryStoreError.queryFailed("Delete failed: \(Self.errorMessage(db))")
-            }
+            sqlite3_step(stmt)
 
             let changes = sqlite3_changes(db)
             guard changes > 0 else {
-                throw MemoryStoreError.notFound("Memory \(id) not found")
+                throw MemoryStoreError.notFound("Fact \(id) not found")
             }
 
-            print("🗑️ [MEMORY] Deleted memory: \(id)")
+            print("🗑️ [MEMORY] Deleted fact: \(id)")
+        }
+    }
+
+    // MARK: - JROS Episodic Append
+
+    /// Appends a chat turn directly to the `episodic` table (JROS compatible).
+    public func appendEpisodic(sessionKey: String, user: String?, answer: String?) throws {
+        try withDatabaseLock {
+            let now = ISO8601DateFormatter().string(from: Date())
+            let sql = """
+            INSERT INTO episodic (session_key, ts, user, answer, skipped_final)
+            VALUES (?, ?, ?, ?, 0)
+            """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                throw MemoryStoreError.queryFailed("Prepare failed for appendEpisodic")
+            }
+            defer { sqlite3_finalize(stmt) }
+            
+            sqlite3_bind_text(stmt, 1, sessionKey, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, now, -1, SQLITE_TRANSIENT)
+            
+            if let user {
+                sqlite3_bind_text(stmt, 3, user, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 3)
+            }
+            
+            if let answer {
+                sqlite3_bind_text(stmt, 4, answer, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 4)
+            }
+            
+            sqlite3_step(stmt)
         }
     }
 
@@ -282,36 +454,6 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
         os_unfair_lock_lock(lock)
         defer { os_unfair_lock_unlock(lock) }
         return try body()
-    }
-
-    private static func parseRow(_ stmt: OpaquePointer?) -> Memory? {
-        guard let stmt else { return nil }
-
-        let id = String(cString: sqlite3_column_text(stmt, 0))
-        let content = String(cString: sqlite3_column_text(stmt, 1))
-        let contextJSON = String(cString: sqlite3_column_text(stmt, 2))
-        let timestamp = Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3))
-
-        var context: [String: AnyCodable] = [:]
-        if let data = contextJSON.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String: AnyCodable].self, from: data) {
-            context = decoded
-        }
-
-        var embedding: [Double]? = nil
-        if let blobPtr = sqlite3_column_blob(stmt, 4) {
-            let blobSize = sqlite3_column_bytes(stmt, 4)
-            let embeddingData = Data(bytes: blobPtr, count: Int(blobSize))
-            embedding = try? JSONDecoder().decode([Double].self, from: embeddingData)
-        }
-
-        return Memory(
-            id: id,
-            content: content,
-            context: context,
-            timestamp: timestamp,
-            embedding: embedding
-        )
     }
 
     @discardableResult
@@ -332,11 +474,7 @@ public final class SQLiteMemoryStore: MemoryStore, @unchecked Sendable {
     }
 }
 
-// SQLITE_TRANSIENT is a C macro that Swift can't see directly.
-// It's defined as ((sqlite3_destructor_type)-1) in sqlite3.h
 private let SQLITE_TRANSIENT: sqlite3_destructor_type = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-
-// MARK: - Errors
 
 enum MemoryStoreError: Error, Sendable, LocalizedError {
     case openFailed(String)

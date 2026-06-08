@@ -20,7 +20,31 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
         guard !apiKey.isEmpty else {
             return GatewayHealth(isHealthy: false, latencyMs: 0)
         }
-        return GatewayHealth(isHealthy: true, latencyMs: 50)
+        // Actually ping the Anthropic API with a minimal request instead of fabricating latency
+        let start = ContinuousClock.now
+        let body: [String: Any] = [
+            "model": "claude-3-5-sonnet-20240620",
+            "max_tokens": 1,
+            "messages": [["role": "user", "content": "hi"]]
+        ]
+        var request = URLRequest(url: baseURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 8
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let elapsed = ContinuousClock.now - start
+            let ms = Int(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            // 200 = healthy, 401/403 = bad key (unhealthy), 429 = rate-limited but key is valid
+            let isHealthy = statusCode == 200 || statusCode == 429
+            return GatewayHealth(isHealthy: isHealthy, latencyMs: max(ms, 1))
+        } catch {
+            return GatewayHealth(isHealthy: false, latencyMs: 0)
+        }
     }
 
     func prompt(_ message: String, context: ConversationContext, options: GatewayOptions) async throws -> GatewayResponse {
@@ -99,7 +123,77 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
     }
 
     func executeToolCall(_ call: ToolCall, context: ConversationContext) async throws -> ToolResult {
-        return ToolResult(success: false, data: AnyCodable.string("Tool calling not yet implemented"))
+        // Anthropic tool_result flow: submit the tool result as a user message
+        // with tool_result content block so the model continues the conversation.
+        let startTime = ContinuousClock.now
+        
+        let toolResultBlock: [String: Any] = [
+            "type": "tool_result",
+            "tool_use_id": call.id,
+            "content": String(describing: call.input)
+        ]
+        
+        let priorMessages = context.messages.map { msg -> [String: Any] in
+            ["role": msg.role.rawValue, "content": msg.content]
+        }
+        
+        let toolResultMessage: [String: Any] = [
+            "role": "user",
+            "content": [toolResultBlock]
+        ]
+        
+        let body: [String: Any] = [
+            "model": context.model ?? "claude-3-5-sonnet-20240620",
+            "max_tokens": 4096,
+            "messages": priorMessages + [toolResultMessage]
+        ]
+        
+        var request = URLRequest(url: baseURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.timeoutInterval = 30
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let elapsed = ContinuousClock.now - startTime
+            let ms = Double(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
+            
+            guard httpStatus == 200 else {
+                let bodyStr = String(data: data, encoding: .utf8) ?? "empty"
+                return ToolResult(
+                    success: false,
+                    error: ToolError(code: "http_\(httpStatus)", message: bodyStr),
+                    executionTimeMs: ms
+                )
+            }
+            
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let content = json["content"] as? [[String: Any]],
+               let textBlock = content.first(where: { $0["type"] as? String == "text" }),
+               let text = textBlock["text"] as? String {
+                return ToolResult(
+                    success: true,
+                    data: AnyCodable.string(text),
+                    executionTimeMs: ms
+                )
+            }
+            
+            return ToolResult(
+                success: true,
+                data: AnyCodable.string("Tool result submitted, no text response"),
+                executionTimeMs: ms
+            )
+        } catch {
+            return ToolResult(
+                success: false,
+                error: ToolError(code: "network", message: error.localizedDescription),
+                executionTimeMs: 0
+            )
+        }
     }
 
     func getConfig() async throws -> GatewayConfig {

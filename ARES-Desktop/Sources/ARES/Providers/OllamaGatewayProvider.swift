@@ -7,28 +7,28 @@ import ARESCore
 // Supports streaming chat completions via the OpenAI-compatible endpoint.
 // Discovers models at /api/tags and detects vision capability (if model name contains "vl").
 
-final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
+public final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
 
     // MARK: - Configuration
 
     let baseURL: URL
     private let timeoutInterval: TimeInterval = 300
 
-    init(baseURL: URL = URL(string: "http://localhost:11434")!) {
+    public init(baseURL: URL = URL(string: "http://localhost:11434")!) {
         self.baseURL = baseURL
     }
 
     // MARK: - GatewayProvider Protocol
 
-    var identifier: String { "ollama" }
-    var serviceName: String { "Ollama (Local)" }
+    public var identifier: String { "ollama" }
+    public var serviceName: String { "Ollama (Local)" }
 
-    var capabilities: Set<String> {
+    public var capabilities: Set<String> {
         var caps: Set<String> = ["reasoning", "streaming"]
         return caps
     }
 
-    func healthCheck() async throws -> GatewayHealth {
+    public func healthCheck() async throws -> GatewayHealth {
         let startTime = Date()
         do {
             let url = baseURL.appendingPathComponent("api/tags")
@@ -44,7 +44,7 @@ final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
         }
     }
 
-    func prompt(
+    public func prompt(
         _ message: String,
         context: ConversationContext,
         options: GatewayOptions
@@ -65,7 +65,7 @@ final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
         )
     }
 
-    func promptStream(
+    public func promptStream(
         _ message: String,
         context: ConversationContext,
         options: GatewayOptions
@@ -136,7 +136,7 @@ final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
         }
     }
 
-    func executeToolCall(
+    public func executeToolCall(
         _ call: ToolCall,
         context: ConversationContext
     ) async throws -> ToolResult {
@@ -144,7 +144,7 @@ final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
         return ToolResult(success: false, data: AnyCodable.string("Tool calling not supported in Ollama"))
     }
 
-    func getConfig() async throws -> GatewayConfig {
+    public func getConfig() async throws -> GatewayConfig {
         let models = try await listModels()
         let hasVision = models.contains { $0.contains("vl") }
         return GatewayConfig(
@@ -159,12 +159,12 @@ final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
 
     // MARK: - Session Management (stubs — Ollama has no session concept)
 
-    func sessionList(limit: Int) async throws -> [SessionSummary] {
+    public func sessionList(limit: Int) async throws -> [SessionSummary] {
         // Ollama does not support session management
         return []
     }
 
-    func branchSession(fromMessageId messageId: String) async throws -> SessionSummary {
+    public func branchSession(fromMessageId messageId: String) async throws -> SessionSummary {
         // Ollama does not support session branching
         throw OllamaError.unsupportedOperation("Ollama does not support session branching")
     }
@@ -204,6 +204,32 @@ final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw OllamaError.httpError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
         }
+    }
+
+    /// Generate embeddings for a given prompt using Ollama.
+    public func generateEmbeddings(prompt: String, model: String = "nomic-embed-text") async throws -> [Double] {
+        let url = baseURL.appendingPathComponent("api/embeddings")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "model": model,
+            "prompt": prompt
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw OllamaError.httpError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        
+        struct EmbeddingsResponse: Codable {
+            let embedding: [Double]
+        }
+        
+        let decoded = try JSONDecoder().decode(EmbeddingsResponse.self, from: data)
+        return decoded.embedding
     }
 }
 

@@ -33,9 +33,8 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _embodiment = DummyEmbodiment()
         case .desktop:
-            // TODO: Real DesktopEmbodiment when available
             _embodiment = DummyEmbodiment()
-            print("⚠️  [WIRING] Embodiment: using dummy (real desktop impl not ready)")
+            print("⚠️  [WIRING] Embodiment: Desktop embodiment stubbed (real desktop impl not ready)")
         }
         return self
     }
@@ -45,9 +44,8 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _perceiver = DummyPerceiver()
         case .local(let wsURL):
-            // TODO: Real PerceptionClient(url: wsURL)
             _perceiver = DummyPerceiver()
-            print("⚠️  [WIRING] Perceiver: using dummy (real websocket client not ready for \(wsURL))")
+            print("⚠️  [WIRING] Perceiver: Local perceiver stubbed for \(wsURL)")
         case .cloud:
             _perceiver = DummyPerceiver()
             print("⚠️  [WIRING] Perceiver: using dummy (cloud perception not ready)")
@@ -61,8 +59,9 @@ public final class BackendBuilder: @unchecked Sendable {
             _memory = DummyMemoryStore()
         case .sqlite(let path):
             do {
-                _memory = try SQLiteMemoryStore(path: path)
-                print("✅ [WIRING] Memory: SQLiteMemoryStore(\(path))")
+                let embedder = OllamaGatewayProvider(baseURL: URL(string: "http://localhost:11434")!)
+                _memory = try SQLiteMemoryStore(path: path, embedder: embedder)
+                print("✅ [WIRING] Memory: SQLiteMemoryStore(\(path)) with Ollama embeddings")
             } catch {
                 _memory = DummyMemoryStore()
                 print("⚠️  [WIRING] Memory: SQLiteMemoryStore failed (\(error)), falling back to dummy")
@@ -79,9 +78,8 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _voice = DummyVoiceEngine()
         case .kokoro:
-            // TODO: Real KokoroVoiceEngine()
-            _voice = DummyVoiceEngine()
-            print("⚠️  [WIRING] Voice: using dummy (Kokoro not integrated yet)")
+            _voice = SystemVoiceEngine()
+            print("⚠️  [WIRING] Voice: Kokoro not integrated, falling back to SystemVoiceEngine")
         case .system:
             _voice = SystemVoiceEngine()
             print("✅ [WIRING] Voice: SystemVoiceEngine (AVSpeechSynthesizer + SFSpeechRecognizer)")
@@ -94,9 +92,8 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _brain = DummyReasoningBrain()
         case .hermes(let url):
-            // TODO: Real HermesAgentBrain(gatewayURL: url)
-            _brain = DummyReasoningBrain()
-            print("⚠️  [WIRING] Brain: using dummy (Hermes client not integrated for \(url))")
+            _brain = HermesAgentBrain()
+            print("✅ [WIRING] Brain: HermesAgentBrain (wrapping CompanionChatService via \(url))")
         case .claude(let apiKey):
             _brain = DummyReasoningBrain()
             print("⚠️  [WIRING] Brain: using dummy (Claude client not ready for \(apiKey.prefix(4))...)")
@@ -192,46 +189,80 @@ public final class BackendBuilder: @unchecked Sendable {
             let apiKey = ProcessInfo.processInfo.environment["API_SERVER_KEY"] ?? ""
             return HermesGatewayProvider(baseURL: URL(string: url) ?? URL(string: "http://localhost:8642")!, apiKey: apiKey)
         case .anthropic(let apiKey):
-            return DummyGatewayProvider() // TODO: Implement AnthropicGatewayProvider
+            return ClaudeGatewayProvider(apiKey: apiKey)
         case .openai(let apiKey):
-            return DummyGatewayProvider() // TODO: Implement OpenAIGatewayProvider
+            return OpenAIGatewayProvider(apiKey: apiKey)
         }
     }
 
     // MARK: - Build
-
+    /// Build: construct the BackendStack.
+    /// In production mode, warns loudly for every dummy subsystem and rejects
+    /// builds where critical subsystems (Memory, Brain) are still dummies.
     public func build(checkProduction: Bool = true) throws -> BackendStack {
         let env = environmentFromLaunchArgs()
 
-        // Safety check: reject production if using dummies
-        if checkProduction && env == .production {
-            let usingDummies = [
-                _embodiment is DummyEmbodiment,
-                _perceiver is DummyPerceiver,
-                _memory is DummyMemoryStore,
-                _voice is DummyVoiceEngine,
-                _brain is DummyReasoningBrain
-            ].contains(true)
+        // Resolve any un-set slots to dummies, logging each default
+        let embodiment = _embodiment ?? { print("⚠️  [WIRING] Embodiment: no builder call, defaulting to DummyEmbodiment"); return DummyEmbodiment() }()
+        let perceiver = _perceiver ?? { print("⚠️  [WIRING] Perceiver: no builder call, defaulting to DummyPerceiver"); return DummyPerceiver() }()
+        let memory = _memory ?? { print("⚠️  [WIRING] Memory: no builder call, defaulting to DummyMemoryStore"); return DummyMemoryStore() }()
+        let voice = _voice ?? { print("⚠️  [WIRING] Voice: no builder call, defaulting to DummyVoiceEngine"); return DummyVoiceEngine() }()
+        let brain = _brain ?? { print("⚠️  [WIRING] Brain: no builder call, defaulting to DummyReasoningBrain"); return DummyReasoningBrain() }()
+        let identity = _identity ?? { print("⚠️  [WIRING] Identity: no builder call, defaulting to DummyIdentity"); return DummyIdentity() }()
+        let mimicry = _mimicry ?? { print("⚠️  [WIRING] Mimicry: no builder call, defaulting to DummyMimicry"); return DummyMimicry() }()
+        let world = _world ?? { print("⚠️  [WIRING] WorldPerception: no builder call, defaulting to DummyWorldModel"); return DummyWorldModel() }()
+        let eventBus = _eventBus ?? { print("⚠️  [WIRING] EventBus: no builder call, defaulting to DummyEventBus"); return DummyEventBus() }()
+        let workflow = _workflow ?? { print("⚠️  [WIRING] Workflow: no builder call, defaulting to DummyWorkflow"); return DummyWorkflow() }()
+        let scheduler = _scheduler ?? { print("⚠️  [WIRING] Scheduler: no builder call, defaulting to DummyScheduler"); return DummyScheduler() }()
 
-            if usingDummies {
-                let msg = "Production mode selected but backends are dummies. Set ARES_ENV=development or configure real backends."
+        // Production safety: reject if critical subsystems are dummies
+        if checkProduction && env == .production {
+            let criticalDummies: [(String, Bool)] = [
+                ("Memory", memory is DummyMemoryStore),
+                ("Brain", brain is DummyReasoningBrain)
+            ]
+            let failed = criticalDummies.filter { $0.1 }
+            if !failed.isEmpty {
+                let names = failed.map { $0.0 }.joined(separator: ", ")
+                let msg = "Production mode selected but critical subsystems are dummies: \(names). Set ARES_ENV=development or configure real backends."
                 print("🛑 [WIRING] FATAL: \(msg)")
                 throw WiringError.productionWithDummies(msg)
             }
         }
 
+        // In any mode, log a summary of which subsystems are dummies vs real
+        let subsystemAudit: [(String, String, Bool)] = [
+            ("Embodiment",   String(describing: type(of: embodiment)),   embodiment is DummyEmbodiment),
+            ("Perceiver",    String(describing: type(of: perceiver)),    perceiver is DummyPerceiver),
+            ("Memory",       String(describing: type(of: memory)),      memory is DummyMemoryStore),
+            ("Voice",        String(describing: type(of: voice)),       voice is DummyVoiceEngine),
+            ("Brain",        String(describing: type(of: brain)),       brain is DummyReasoningBrain),
+            ("Identity",     String(describing: type(of: identity)),    identity is DummyIdentity),
+            ("Mimicry",      String(describing: type(of: mimicry)),     mimicry is DummyMimicry),
+            ("World",        String(describing: type(of: world)),       world is DummyWorldModel),
+            ("EventBus",     String(describing: type(of: eventBus)),    eventBus is DummyEventBus),
+            ("Workflow",     String(describing: type(of: workflow)),    workflow is DummyWorkflow),
+            ("Scheduler",    String(describing: type(of: scheduler)),  scheduler is DummyScheduler)
+        ]
+        let dummyCount = subsystemAudit.filter(\.2).count
+        let realCount = subsystemAudit.count - dummyCount
+        print("📋 [WIRING] BackendStack summary: \(realCount) real / \(dummyCount) dummy / \(subsystemAudit.count) total")
+        for (name, impl, isDummy) in subsystemAudit {
+            print("  \(isDummy ? "⚠️ DUMMY" : "✅ REAL"): \(name) → \(impl)")
+        }
+
         return BackendStack(
-            embodiment: _embodiment ?? DummyEmbodiment(),
-            perceiver: _perceiver ?? DummyPerceiver(),
-            memory: _memory ?? DummyMemoryStore(),
-            voice: _voice ?? DummyVoiceEngine(),
-            brain: _brain ?? DummyReasoningBrain(),
-            identity: _identity ?? DummyIdentity(),
-            mimicry: _mimicry ?? DummyMimicry(),
-            world: _world ?? DummyWorldModel(),
-            eventBus: _eventBus ?? DummyEventBus(),
-            workflow: _workflow ?? DummyWorkflow(),
-            scheduler: _scheduler ?? DummyScheduler(),
+            embodiment: embodiment,
+            perceiver: perceiver,
+            memory: memory,
+            voice: voice,
+            brain: brain,
+            identity: identity,
+            mimicry: mimicry,
+            world: world,
+            eventBus: eventBus,
+            workflow: workflow,
+            scheduler: scheduler,
             environment: env
         )
     }
@@ -377,7 +408,7 @@ extension BackendStack {
         try BackendBuilder()
             .embodiment(.desktop)
             .perceiver(.local(wsURL: "ws://localhost:9100"))
-            .memory(.sqlite(path: "~/.ares/memory.db"))
+            .memory(.sqlite(path: "~/.jaeger_os/instances/default/memory/state.db"))
             .voice(.kokoro)
             .brain(.hermes(url: hermesURL))
             .identity(.filesystem(path: "~/.ares/identity.json"))

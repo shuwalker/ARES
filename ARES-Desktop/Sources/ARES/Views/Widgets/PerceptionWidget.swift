@@ -12,11 +12,11 @@ struct PerceptionWidget: View {
     @EnvironmentObject var appState: ARESAppState
 
     @State private var cameraPreview: CameraPreviewController?
-    @State private var voiceEngine: SystemVoiceEngine?
     @State private var isRecording = false
     @State private var transcription = ""
     @State private var captureOutput: String?
     @State private var isProcessing = false
+    @State private var cameraError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -24,7 +24,26 @@ struct PerceptionWidget: View {
 
             // Camera preview
             ZStack {
-                if let preview = cameraPreview {
+                if let error = cameraError {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.controlBackgroundColor))
+                        .frame(height: 200)
+                        .overlay(
+                            VStack(spacing: 8) {
+                                Image(systemName: "camera.badge.ellipsis")
+                                    .font(.title)
+                                    .foregroundColor(.orange)
+                                Text("Camera Access Denied")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                Text(error)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 8)
+                            }
+                        )
+                } else if let preview = cameraPreview {
                     CameraPreviewRepresentable(controller: preview)
                         .frame(height: 200)
                         .cornerRadius(8)
@@ -111,7 +130,6 @@ struct PerceptionWidget: View {
         .onAppear {
             requestPermissions()
             setupCamera()
-            voiceEngine = SystemVoiceEngine()
         }
     }
 
@@ -132,8 +150,12 @@ struct PerceptionWidget: View {
     private func setupCamera() {
         DispatchQueue.main.async {
             let controller = CameraPreviewController()
-            controller.setupCamera()
-            self.cameraPreview = controller
+            do {
+                try controller.setupCamera()
+                self.cameraPreview = controller
+            } catch {
+                self.cameraError = error.localizedDescription
+            }
         }
     }
 
@@ -177,13 +199,17 @@ struct PerceptionWidget: View {
     private func startRecording() {
         isRecording = true
         transcription = ""
-        guard let engine = voiceEngine else { return }
 
         do {
-            try engine.startLiveRecognition { text in
-                DispatchQueue.main.async {
-                    self.transcription = text
+            if let systemVoice = appState.voice as? SystemVoiceEngine {
+                try systemVoice.startLiveRecognition { text in
+                    DispatchQueue.main.async {
+                        self.transcription = text
+                    }
                 }
+            } else {
+                print("⚠️ [PERCEPTION] Active voice engine does not support live recognition.")
+                isRecording = false
             }
         } catch {
             print("⚠️  [PERCEPTION] Failed to start recording: \(error)")
@@ -193,61 +219,32 @@ struct PerceptionWidget: View {
 
     private func stopRecording() {
         isRecording = false
-        guard let engine = voiceEngine else { return }
-        engine.stopLiveRecognition()
+        if let systemVoice = appState.voice as? SystemVoiceEngine {
+            systemVoice.stopLiveRecognition()
+        }
 
         guard !transcription.isEmpty else { return }
-        sendTranscription(transcription)
-    }
-
-    private func sendTranscription(_ text: String) {
-        isProcessing = true
-        let msg = GatewayMessage(role: "user", content: text)
-
-        Task {
-            do {
-                let result = try await CompanionChatService.shared.sendMessageStream(
-                    messages: [msg],
-                    sessionID: nil,
-                    onToken: { partial, finished in
-                        if finished {
-                            // Speak the response
-                            let prosody = Prosody(timestamp: Date(), energy: 0.8, pitch: 120, rate: 0.9)
-                            Task {
-                                do {
-                                    _ = try await self.voiceEngine?.synthesize(text: partial, prosody: prosody)
-                                } catch {
-                                    print("⚠️  [PERCEPTION] TTS error: \(error)")
-                                }
-                            }
-                        }
-                    }
-                )
-
-                await MainActor.run {
-                    isProcessing = false
-                    transcription = ""  // Clear transcription after sending
-                    print("✅ [PERCEPTION] Chat response received")
-                }
-            } catch {
-                await MainActor.run {
-                    isProcessing = false
-                    captureOutput = "Error: \(error.localizedDescription)"
-                }
-            }
-        }
+        
+        // Feed the transcription directly into the main chat
+        appState.chatInput = transcription
+        appState.autoSpeakNextResponse = true
+        appState.sendChat()
+        
+        transcription = "" // Clear after sending
     }
 }
 
 // MARK: - Camera Preview Controller
 
-class CameraPreviewController: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+class CameraPreviewController: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let captureSession = AVCaptureSession()
     private var lastFrame: CVImageBuffer?
 
-    func setupCamera() {
-        guard let device = AVCaptureDevice.default(for: .video) else { return }
-        guard let input = try? AVCaptureDeviceInput(device: device) else { return }
+    func setupCamera() throws {
+        guard let device = AVCaptureDevice.default(for: .video) else {
+            throw NSError(domain: "PerceptionWidget", code: 1, userInfo: [NSLocalizedDescriptionKey: "No video device found on this system."])
+        }
+        let input = try AVCaptureDeviceInput(device: device)
 
         captureSession.addInput(input)
 
@@ -255,8 +252,8 @@ class CameraPreviewController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
         output.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
         captureSession.addOutput(output)
 
-        DispatchQueue.global(qos: .background).async {
-            self.captureSession.startRunning()
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            self?.captureSession.startRunning()
         }
     }
 

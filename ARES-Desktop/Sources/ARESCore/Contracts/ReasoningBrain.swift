@@ -12,7 +12,12 @@ public protocol ReasoningBrain: AnyObject, Sendable {
 
     /// Generate a response to user input.
     /// May use memory, tools, and world state internally.
-    func respond(to input: String, context: ConversationContext) async throws -> String
+    /// Supports optional streaming via the `onToken` callback.
+    func respond(
+        to input: String,
+        context: ConversationContext,
+        onToken: (@Sendable (_ partial: String, _ isFinished: Bool) -> Void)?
+    ) async throws -> String
 
     /// Reflect on an experience: consolidate memories, learn patterns.
     func reflect(on experience: Experience) async throws

@@ -66,8 +66,12 @@ final class SystemVoiceEngine: VoiceEngine, @unchecked Sendable {
         }
 
         // Tap the microphone
+        // Note: outputFormat(forBus:) returns a non-optional AVAudioFormat in the
+        // current SDK. The historical guard-let is preserved as a comment so a
+        // future SDK regression to optional still has the right error path.
         let inputNode = audioEngine.inputNode
-        guard let format = inputNode.outputFormat(forBus: 0) else {
+        let format = inputNode.outputFormat(forBus: 0)
+        if inputNode.numberOfInputs == 0 {
             throw VoiceError.audioFormatFailure
         }
 

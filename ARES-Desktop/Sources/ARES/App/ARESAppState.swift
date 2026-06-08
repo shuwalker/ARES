@@ -105,15 +105,18 @@ final class ARESAppState: ObservableObject {
         refreshLiveStats()
     }
 
-    /// Convenience initializer with dummy backends (for backward compatibility).
+    /// Convenience initializer that resolves backends from environment.
+    /// Routes through BackendBuilder just like the factory method -- no silent dummy injection.
     convenience init() {
+        let backends = resolveBackends(environmentFromLaunchArgs())
         self.init(
-            embodiment: DummyEmbodiment(),
-            perceiver: DummyPerceiver(),
-            memory: DummyMemoryStore(),
-            voice: DummyVoiceEngine(),
-            brain: DummyReasoningBrain()
+            embodiment: backends.embodiment,
+            perceiver: backends.perceiver,
+            memory: backends.memory,
+            voice: backends.voice,
+            brain: backends.brain
         )
+        print("⚠️  [ARESAppState] Convenience init() used — backends resolved from ARES_ENV. Call ARESAppState.create(environment:) explicitly if you need control.")
     }
 
     // MARK: - Bootstrap actions

@@ -52,6 +52,10 @@ final class CompanionChatService: @unchecked Sendable {
     private var companionConfig: CompanionConfig
     private let logger = Logger(subsystem: "com.ares", category: "CompanionChat")
 
+    /// Exposed so that HermesAgentBrain (and other services) can access the
+    /// memory store for reflection persistence and retrieval.
+    var currentMemoryStore: (any MemoryStore)?
+
     // MARK: - State
 
     /// The in-flight streaming Task, if any. Used for cancellation.
@@ -300,10 +304,23 @@ final class CompanionChatService: @unchecked Sendable {
     // MARK: - Session History (from Hermes Gateway)
 
     /// Lists recent sessions from the Hermes Gateway, converting them to UI summaries.
+    /// NOTE: This synchronous version exists only for legacy callers. New code
+    /// should use `listSessionsAsync()` which calls the real gateway.
     func listSessions(limit: Int = 50) -> [SessionSummary] {
-        // Synchronous wrapper — the UI calls this from a Task in AppState
-        // We'll use the async version directly in refreshSessionHistory
-        []
+        // Synchronous wrapper — will block the calling thread.
+        // Prefer `listSessionsAsync()` for UI code.
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: [SessionSummary] = []
+        Task {
+            do {
+                result = try await listSessionsAsync(limit: limit)
+            } catch {
+                logger.error("Sync listSessions failed: \(error.localizedDescription, privacy: .public)")
+            }
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 5)
+        return result
     }
 
     /// Lists recent sessions via the current gateway.
@@ -328,9 +345,23 @@ final class CompanionChatService: @unchecked Sendable {
     }
 
     /// Loads messages from a session (Hermes only).
+    /// NOTE: This synchronous version exists only for legacy callers. New code
+    /// should use `loadSessionMessagesAsync()` which reads from real storage.
     func loadSessionMessages(sessionID: String) -> [ChatBubble]? {
-        // Synchronous stub — use the async version
-        nil
+        // Synchronous wrapper — will block the calling thread.
+        // Prefer `loadSessionMessagesAsync()` for UI code.
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: [ChatBubble]? = nil
+        Task {
+            do {
+                result = try await loadSessionMessagesAsync(sessionID: sessionID)
+            } catch {
+                logger.error("Sync loadSessionMessages failed: \(error.localizedDescription, privacy: .public)")
+            }
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 5)
+        return result
     }
 
     /// Loads messages from a session async.

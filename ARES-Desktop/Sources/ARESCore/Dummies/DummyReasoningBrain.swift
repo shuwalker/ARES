@@ -20,9 +20,17 @@ public final class DummyReasoningBrain: ReasoningBrain, @unchecked Sendable {
         ]
     }
 
-    public func respond(to input: String, context: ConversationContext) async throws -> String {
-        print("🤖 [DUMMY] Responding to: '\(input)'")
-        return "🤖 Echo: \(input)"
+    public func respond(
+        to input: String,
+        context: ConversationContext,
+        onToken: (@Sendable (_ partial: String, _ isFinished: Bool) -> Void)? = nil
+    ) async throws -> String {
+        print("🤖 [DUMMY] Responding to: \(input)")
+        let reply = "Echo: \(input)"
+        if let onToken = onToken {
+            onToken(reply, true)
+        }
+        return reply
     }
 
     public func reflect(on experience: Experience) async throws {

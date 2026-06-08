@@ -527,11 +527,12 @@ struct GitHubRepoCard: View {
     }
 
     private var actionIcon: String {
-        if let path = repo.localPath {
-            // Open in VS Code if available, else Finder
-            if FileManager.default.isExecutableFile(atPath: "/usr/local/bin/code") ||
-               FileManager.default.isExecutableFile(atPath: "/opt/homebrew/bin/code") {
-                return "chevron.left.forwardslash.chevron.right"
+        if repo.localPath != nil {
+            let bundleIDs = ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "dev.zed.Zed"]
+            for id in bundleIDs {
+                if NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) != nil {
+                    return "chevron.left.forwardslash.chevron.right"
+                }
             }
             return "folder"
         }
@@ -545,19 +546,17 @@ struct GitHubRepoCard: View {
 
     private func open() {
         if let path = repo.localPath {
-            // Try VS Code first, fall back to Finder
-            let codePaths = ["/usr/local/bin/code", "/opt/homebrew/bin/code"]
-            for cp in codePaths {
-                if FileManager.default.isExecutableFile(atPath: cp) {
-                    let p = Process()
-                    p.executableURL = URL(fileURLWithPath: cp)
-                    p.arguments = [path]
-                    try? p.run()
+            let targetURL = URL(fileURLWithPath: path)
+            let bundleIDs = ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "dev.zed.Zed"]
+            for id in bundleIDs {
+                if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+                    let config = NSWorkspace.OpenConfiguration()
+                    NSWorkspace.shared.open([targetURL], withApplicationAt: appURL, configuration: config)
                     return
                 }
             }
-            NSWorkspace.shared.open(URL(fileURLWithPath: path))
-        } else if let urlStr = repo.remoteURL, let url = URL(string: urlStr) {
+            NSWorkspace.shared.open(targetURL)
+        } else if let urlStr = repo.remoteURL, URL(string: urlStr) != nil {
             // Clone via gh
             let parent = NSString(string: "~/GitHub").expandingTildeInPath
             let target = (parent as NSString).appendingPathComponent(repo.name)

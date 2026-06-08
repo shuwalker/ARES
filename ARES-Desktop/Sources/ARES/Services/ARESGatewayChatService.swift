@@ -153,11 +153,19 @@ actor ARESGatewayRPCClient {
         }
 
         let waiterID = UUID()
-        return try await withCheckedThrowingContinuation { continuation in
-            readyWaiters[waiterID] = continuation
-            readyTimeouts[waiterID] = Task {
-                try? await Task.sleep(nanoseconds: timeout.nanosecondsFromSeconds)
-                self.failReadyWaiter(waiterID, error: ARESGatewayError.timedOut("Waiting for gateway.ready"))
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                readyWaiters[waiterID] = continuation
+                readyTimeouts[waiterID] = Task {
+                    do {
+                        try await Task.sleep(nanoseconds: timeout.nanosecondsFromSeconds)
+                        self.failReadyWaiter(waiterID, error: ARESGatewayError.timedOut("Waiting for gateway.ready"))
+                    } catch {}
+                }
+            }
+        } onCancel: {
+            Task {
+                await self.failReadyWaiter(waiterID, error: CancellationError())
             }
         }
     }
@@ -182,22 +190,30 @@ actor ARESGatewayRPCClient {
             throw ARESGatewayError.invalidFrame("Failed to UTF-8 encode request")
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingRequests[requestID] = continuation
-            pendingTimeouts[requestID] = Task {
-                try? await Task.sleep(nanoseconds: timeout.nanosecondsFromSeconds)
-                self.failPendingRequest(
-                    requestID,
-                    error: ARESGatewayError.timedOut("Gateway request \(method)")
-                )
-            }
-
-            Task {
-                do {
-                    try await sender(line)
-                } catch {
-                    self.failPendingRequest(requestID, error: error)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                pendingRequests[requestID] = continuation
+                pendingTimeouts[requestID] = Task {
+                    do {
+                        try await Task.sleep(nanoseconds: timeout.nanosecondsFromSeconds)
+                        self.failPendingRequest(
+                            requestID,
+                            error: ARESGatewayError.timedOut("Gateway request \(method)")
+                        )
+                    } catch {}
                 }
+
+                Task {
+                    do {
+                        try await sender(line)
+                    } catch {
+                        self.failPendingRequest(requestID, error: error)
+                    }
+                }
+            }
+        } onCancel: {
+            Task {
+                await self.failPendingRequest(requestID, error: CancellationError())
             }
         }
     }
