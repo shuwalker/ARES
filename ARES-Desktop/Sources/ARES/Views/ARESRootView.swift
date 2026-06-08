@@ -4,6 +4,9 @@ import SwiftUI
 struct ARESRootView: View {
     @EnvironmentObject private var appState: ARESAppState
 
+    /// Shown when backend wiring fell back to safe (all-dummy) mode instead of crashing.
+    @State private var showWiringAlert = false
+
     var body: some View {
         GeometryReader { proxy in
             let isNarrow = proxy.size.width < 760
@@ -22,6 +25,16 @@ struct ARESRootView: View {
                     OfficeView()
                 case .hub:
                     HubView()
+                case .studio:
+                    StudioView()
+                case .automations:
+                    AutomationsView()
+                case .calendar:
+                    CalendarView()
+                case .tasks:
+                    TasksView()
+                case .notes:
+                    NotesView()
                 case .settings:
                     SettingsView()
                 }
@@ -30,6 +43,19 @@ struct ARESRootView: View {
             .onAppear {
                 appState.loadSelfModel()
                 appState.refreshLiveStats()
+                if UserDefaults.standard.bool(forKey: aresWiringFailedDefaultsKey) {
+                    showWiringAlert = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aresWiringFailed)) { _ in
+                showWiringAlert = true
+            }
+            .alert("ARES started in safe mode", isPresented: $showWiringAlert) {
+                Button("OK", role: .cancel) {
+                    UserDefaults.standard.set(false, forKey: aresWiringFailedDefaultsKey)
+                }
+            } message: {
+                Text("Backend services failed to load, so ARES is running with placeholder backends. Reasoning, memory, and voice features may be unavailable until this is resolved.")
             }
         }
     }

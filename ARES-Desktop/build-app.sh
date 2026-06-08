@@ -104,6 +104,8 @@ cat >> "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <string>ARES uses Apple Events to interact with Notes, Mail, and other apps on your behalf.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>ARES uses Calendar to create events and check your schedule.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>ARES uses Calendar to create events and check your schedule.</string>
     <key>NSContactsUsageDescription</key>
     <string>ARES uses Contacts to search and manage your contacts.</string>
     <key>NSHighResolutionCapable</key>
@@ -115,6 +117,8 @@ cat >> "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <key>NSNetworkUsageDescription</key>
     <string>ARES requires network access for AI model interactions, web research, and remote device management.</string>
     <key>NSRemindersUsageDescription</key>
+    <string>ARES uses Reminders to create and manage your tasks.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
     <string>ARES uses Reminders to create and manage your tasks.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>ARES uses speech recognition to process your voice commands.</string>

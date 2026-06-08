@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import ARESCore
+import SwiftData
 
 @MainActor
 @main
@@ -24,6 +25,7 @@ struct ARESApp: App {
                 .environment(\.brain, appState.brain)
                 .frame(minWidth: 1024, minHeight: 600)
                 .preferredColorScheme(.dark)
+                .modelContainer(for: Note.self)
                 .onAppear {
                     // Force window key for keyboard focus
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

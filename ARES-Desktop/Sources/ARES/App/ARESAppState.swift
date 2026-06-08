@@ -7,7 +7,7 @@ import ARESCore
 @MainActor
 final class ARESAppState: ObservableObject {
     // MARK: - Bootstrap state
-    @Published var hasBootstrapped: Bool {
+    @Published var hasBootstrapped: Bool = UserDefaults.standard.bool(forKey: "ARES.hasBootstrapped") {
         didSet { UserDefaults.standard.set(hasBootstrapped, forKey: "ARES.hasBootstrapped") }
     }
 
@@ -46,6 +46,7 @@ final class ARESAppState: ObservableObject {
     @Published var chatInput: String = ""
     @Published var isChatProcessing: Bool = false
     @Published var activeChatSessionID: String? = nil
+    @Published var autoSpeakNextResponse: Bool = false
     @Published var companionConfig: CompanionConfig = CompanionConfig.load()
 
     // MARK: - Reference state
@@ -332,85 +333,83 @@ final class ARESAppState: ObservableObject {
         // Keep a snapshot of the full conversation history for context (before streaming bubble)
         let conversationHistory = chatMessages.filter { !$0.isStreaming }
 
-        // Use existing session ID for continuity, or start a new one
+        // Ensure we have a session ID before calling the brain
+        if activeChatSessionID == nil {
+            activeChatSessionID = "ares-\(UUID().uuidString.prefix(8))"
+        }
         let sessionID = activeChatSessionID
 
         Task {
-            // Try streaming first; fall back to CLI if Gateway is unreachable
-            let gatewayReachable = await chatService.checkAvailability()
+            do {
+                let contextMessages = conversationHistory.map { bubble in
+                    Message(
+                        role: bubble.role == .user ? .user : .assistant,
+                        content: bubble.content
+                    )
+                }
+                let context = ConversationContext(
+                    messages: contextMessages,
+                    sessionID: sessionID,
+                    model: companionConfig.model
+                )
 
-            if gatewayReachable {
-                // --- Streaming path (real-time token delivery through Hermes Gateway) ---
-                do {
-                    // Build the messages array with reference-augmented prompt for context
-                    var contextMessages: [GatewayMessage] = conversationHistory.map { bubble in
-                        GatewayMessage(
-                            role: bubble.role == .user ? "user" : "assistant",
-                            content: bubble.content
-                        )
+                let throttle = StreamingThrottle { [weak self] bubbleID, text in
+                    guard let self else { return }
+                    if let idx = self.chatMessages.firstIndex(where: { $0.id == bubbleID }) {
+                        self.chatMessages[idx].content = text
                     }
-                    // Use the reference-augmented prompt text for the model
-                    contextMessages.append(GatewayMessage(role: "user", content: promptText))
+                }
 
-                    // Throttle re-renders to max 30 fps (every 33ms)
-                    let throttle = StreamingThrottle { [weak self] bubbleID, text in
-                        guard let self else { return }
-                        if let idx = self.chatMessages.firstIndex(where: { $0.id == bubbleID }) {
-                            self.chatMessages[idx].content = text
-                        }
-                    }
-
-                    let result = try await chatService.sendMessageStream(
-                        messages: contextMessages,
-                        sessionID: sessionID,
-                        onToken: { [weak self] partial, isFinished in
+                let response = try await brain.respond(
+                    to: promptText,
+                    context: context,
+                    onToken: { [weak self] partial, isFinished in
+                        Task { @MainActor in
                             guard let self else { return }
                             throttle.enqueue(bubbleID: streamingBubbleID, text: partial)
                             if isFinished {
                                 throttle.cancel()
-                                // Mark streaming as done immediately so the UI
-                                // stops the typing indicator without waiting for the
-                                // post-stream MainActor.run block.
                                 if let idx = self.chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
                                     self.chatMessages[idx].isStreaming = false
                                 }
+                                if self.autoSpeakNextResponse {
+                                    self.autoSpeakNextResponse = false
+                                    let prosody = Prosody(timestamp: Date(), energy: 0.8, pitch: 120, rate: 0.9)
+                                    Task {
+                                        do {
+                                            _ = try await self.voice.synthesize(text: partial, prosody: prosody)
+                                        } catch {
+                                            print("⚠️ [ARESAppState] TTS Error: \(error)")
+                                        }
+                                    }
+                                }
                             }
                         }
-                    )
-
-                    // Ensure the throttle loop exits (idempotent — safe to call again)
-                    throttle.cancel()
-
-                    // Finalize: update session ID and persist
-                    await MainActor.run {
-                        if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
-                            chatMessages[idx].isStreaming = false
-                            chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
-                            chatMessages[idx].tokenCount = result.tokenCount
-                            // Remove empty response placeholder if somehow no content arrived
-                            if chatMessages[idx].content.isEmpty {
-                                chatMessages[idx].content = result.responseText.isEmpty ? "No response from ARES." : result.responseText
-                            }
-                        }
-                        activeChatSessionID = result.sessionID
-                        isChatProcessing = false
-                        voiceState = .idle
-                        persistChatTurn(userText: text, assistantText: chatMessages.last?.content ?? result.responseText, refs: refs)
                     }
-                } catch {
-                    await MainActor.run {
-                        if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
-                            chatMessages[idx].content = "ARES streaming error: \(error.localizedDescription). Retrying via CLI…"
-                            chatMessages[idx].isStreaming = false
-                        }
-                        // Fallback to CLI
-                        fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID, startedAt: startedAt)
-                    }
-                }
-            } else {
-                // --- CLI fallback (non-streaming) ---
+                )
+
                 await MainActor.run {
-                    fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID, startedAt: startedAt)
+                    throttle.cancel()
+                    if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                        chatMessages[idx].isStreaming = false
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
+                        if chatMessages[idx].content.isEmpty {
+                            chatMessages[idx].content = response.isEmpty ? "No response from ARES." : response
+                        }
+                    }
+                    isChatProcessing = false
+                    voiceState = .idle
+                    persistChatTurn(userText: displayText, assistantText: chatMessages.last?.content ?? response, refs: refs)
+                }
+            } catch {
+                await MainActor.run {
+                    if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                        chatMessages[idx].content = "ARES backend error: \(error.localizedDescription)"
+                        chatMessages[idx].isStreaming = false
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
+                    }
+                    isChatProcessing = false
+                    voiceState = .idle
                 }
             }
         }
@@ -459,7 +458,16 @@ final class ARESAppState: ObservableObject {
         // Persist locally as backup (Gateway manages its own sessions)
         chatService.appendTurn(role: "user", content: userText, sessionID: sid, model: companionConfig.model)
         chatService.appendTurn(role: "assistant", content: assistantText, sessionID: sid, model: companionConfig.model)
-        chatService.persistSession(sessionID: sid, model: companionConfig.model)
+        do {
+            try chatService.persistSession(sessionID: sid, model: companionConfig.model)
+        } catch {
+            let errorBubble = ChatBubble(
+                role: .assistant,
+                content: "⚠️ System Error: Unable to save history. Disk may be full or permissions denied.\nDetails: \(error.localizedDescription)",
+                timestamp: Date()
+            )
+            chatMessages.append(errorBubble)
+        }
         refreshSessionHistory()
     }
 
@@ -655,6 +663,24 @@ final class ARESAppState: ObservableObject {
 
     // MARK: - Companion helpers
 
+    func switchGateway(_ impl: GatewayImpl) {
+        let newGateway = BackendBuilder.gateway(impl)
+        chatService.switchProvider(newGateway)
+        
+        switch impl {
+        case .ollama:
+            chatService.reconfigure(provider: "ollama", gatewayURL: "http://localhost:11434")
+        case .hermes:
+            chatService.reconfigure(provider: "hermes", gatewayURL: "http://localhost:8642")
+        case .anthropic:
+            chatService.reconfigure(provider: "anthropic", gatewayURL: "https://api.anthropic.com")
+        case .openai:
+            chatService.reconfigure(provider: "openai", gatewayURL: "https://api.openai.com")
+        default:
+            break
+        }
+    }
+
     func loadSelfModel() {
         let path = ARESEnvironment.selfModelFilePath.path
         guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
@@ -683,27 +709,42 @@ enum ARESTab: String, CaseIterable, Identifiable {
     case companion
     case office
     case hub
+    case studio
+    case automations
+    case calendar
+    case tasks
+    case notes
     case settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .dashboard: return "Dashboard"
-        case .companion: return "Companion"
-        case .office:    return "Office"
-        case .hub:       return "Hub"
-        case .settings:  return "Settings"
+        case .dashboard:    return "Dashboard"
+        case .companion:    return "Companion"
+        case .office:       return "Office"
+        case .hub:          return "Hub"
+        case .studio:       return "Studio"
+        case .automations:  return "Automations"
+        case .calendar:     return "Calendar"
+        case .tasks:        return "Tasks"
+        case .notes:        return "Notes"
+        case .settings:     return "Settings"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .dashboard: return "rectangle.grid.2x2.fill"
-        case .companion: return "person.fill.viewfinder"
-        case .office:    return "building.2.fill"
-        case .hub:       return "square.grid.2x2.fill"
-        case .settings:  return "gearshape.fill"
+        case .dashboard:    return "rectangle.grid.2x2.fill"
+        case .companion:    return "person.fill.viewfinder"
+        case .office:       return "building.2.fill"
+        case .hub:          return "square.grid.2x2.fill"
+        case .studio:       return "chevron.left.forwardslash.chevron.right"
+        case .automations:  return "gearshape.2.fill"
+        case .calendar:     return "calendar"
+        case .tasks:        return "checklist"
+        case .notes:        return "note.text"
+        case .settings:     return "gearshape.fill"
         }
     }
 }
