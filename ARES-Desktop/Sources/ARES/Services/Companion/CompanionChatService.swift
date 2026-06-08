@@ -1,5 +1,6 @@
 import Foundation
 import ARESCore
+import os
 
 // MARK: - Companion Chat Service
 //
@@ -49,6 +50,7 @@ final class CompanionChatService: @unchecked Sendable {
 
     private var gateway: any GatewayProvider
     private var companionConfig: CompanionConfig
+    private let logger = Logger(subsystem: "com.ares", category: "CompanionChat")
 
     // MARK: - State
 
@@ -120,6 +122,7 @@ final class CompanionChatService: @unchecked Sendable {
             let health = try await gateway.healthCheck()
             return health.isHealthy
         } catch {
+            logger.error("Health check failed: \(error.localizedDescription, privacy: .public)")
             return false
         }
     }
@@ -170,25 +173,17 @@ final class CompanionChatService: @unchecked Sendable {
         let state = StreamState(sessionID: sessionID ?? "ares-gw-\(UUID().uuidString.prefix(8))")
 
         let streamTask = Task { @Sendable in
-            do {
-                for try await token in stream {
-                    state.accumulated += token.text
+            for await token in stream {
+                state.accumulated += token.text
 
-                    let current = state.accumulated
-                    await MainActor.run {
-                        onToken(current, token.isFinal)
-                    }
-
-                    if token.isFinal {
-                        break
-                    }
-                }
-            } catch {
-                let errorMsg = "Connection error: \(error.localizedDescription)"
+                let current = state.accumulated
                 await MainActor.run {
-                    onToken(errorMsg, true)
+                    onToken(current, token.isFinal)
                 }
-                state.accumulated = errorMsg
+
+                if token.isFinal {
+                    break
+                }
             }
         }
 
@@ -247,8 +242,8 @@ final class CompanionChatService: @unchecked Sendable {
         let responseText: String
         let resolvedSessionID: String
 
-        if lines.count > 1, lines.first?.hasPrefix("session_id:") == true {
-            resolvedSessionID = lines.first!
+        if lines.count > 1, let firstLine = lines.first, firstLine.hasPrefix("session_id:") {
+            resolvedSessionID = firstLine
                 .replacingOccurrences(of: "session_id:", with: "")
                 .trimmingCharacters(in: .whitespaces)
             responseText = lines.dropFirst().joined(separator: "\n")
@@ -273,13 +268,16 @@ final class CompanionChatService: @unchecked Sendable {
         turns: [PersistedTurn]? = nil,
         sessionID: String,
         model: String
-    ) {
+    ) throws {
         let turnsToSave = turns ?? activeTurns
         guard !turnsToSave.isEmpty else { return }
 
-        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("ARES/Sessions")
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            logger.error("Could not locate Application Support directory; skipping session persist for \(sessionID, privacy: .public)")
+            return
+        }
+        let directory = appSupport.appendingPathComponent("ARES/Sessions")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -287,9 +285,8 @@ final class CompanionChatService: @unchecked Sendable {
         let filename = "\(sessionID.replacingOccurrences(of: ":", with: "-")).json"
         let url = directory.appendingPathComponent(filename)
 
-        if let data = try? encoder.encode(turnsToSave) {
-            try? data.write(to: url, options: .atomic)
-        }
+        let data = try encoder.encode(turnsToSave)
+        try data.write(to: url, options: .atomic)
     }
 
     func appendTurn(role: String, content: String, sessionID: String, model: String) {
@@ -338,8 +335,25 @@ final class CompanionChatService: @unchecked Sendable {
 
     /// Loads messages from a session async.
     func loadSessionMessagesAsync(sessionID: String) async throws -> [ChatBubble] {
-        // Session message loading is not yet supported through the gateway protocol.
-        // This will be added in a future iteration.
-        return []
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            logger.error("Could not locate Application Support directory; cannot load session \(sessionID, privacy: .public)")
+            throw HermesGatewayError.streamInterrupted("Application Support directory unavailable")
+        }
+        let directory = appSupport.appendingPathComponent("ARES/Sessions")
+        let filename = "\(sessionID.replacingOccurrences(of: ":", with: "-")).json"
+        let url = directory.appendingPathComponent(filename)
+        
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let turns = try decoder.decode([PersistedTurn].self, from: data)
+        
+        return turns.map { turn in
+            ChatBubble(
+                role: turn.role == "user" ? .user : .assistant,
+                content: turn.content,
+                timestamp: turn.timestamp
+            )
+        }
     }
 }
