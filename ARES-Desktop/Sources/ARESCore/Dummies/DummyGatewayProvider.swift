@@ -38,4 +38,23 @@ public final class DummyGatewayProvider: GatewayProvider, @unchecked Sendable {
     public func getConfig() async throws -> GatewayConfig {
         GatewayConfig()
     }
+
+    public func sessionList(limit: Int) async throws -> [SessionSummary] {
+        // Dummy gateway has no sessions
+        return []
+    }
+
+    public func branchSession(fromMessageId messageId: String) async throws -> SessionSummary {
+        // Dummy gateway cannot branch sessions
+        throw DummyGatewayError.unsupportedOperation("Dummy gateway does not support session branching")
+    }
+}
+
+enum DummyGatewayError: LocalizedError {
+    case unsupportedOperation(String)
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedOperation(let msg): return msg
+        }
+    }
 }

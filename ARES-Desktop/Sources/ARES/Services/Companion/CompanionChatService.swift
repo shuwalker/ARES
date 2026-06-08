@@ -309,17 +309,25 @@ final class CompanionChatService: @unchecked Sendable {
         []
     }
 
-    /// Lists recent sessions (Hermes only; Ollama doesn't support session management).
+    /// Lists recent sessions via the current gateway.
     func listSessionsAsync(limit: Int = 50) async throws -> [SessionSummary] {
-        // Only Hermes supports session listing
-        guard let hermesGateway = gateway as? HermesGatewayProvider else {
-            return []
+        // Delegate to the gateway — Hermes returns sessions, Ollama returns empty
+        let sessions = try await gateway.sessionList(limit: limit)
+        return sessions.map { session in
+            let updatedAt = session.lastActive?.dateValue ??
+                session.startedAt?.dateValue ??
+                Date()
+            return SessionSummary(
+                id: session.id,
+                title: session.resolvedTitle,
+                date: session.startedAt?.dateValue ?? updatedAt,
+                updatedAt: updatedAt,
+                messageCount: session.messageCount ?? 0,
+                model: session.displayModel ?? "unknown",
+                provider: gateway.identifier,
+                preview: session.preview ?? ""
+            )
         }
-
-        // Access the internal Hermes gateway for session API (Hermes-specific)
-        // For now, return empty array; would need to refactor HermesGatewayProvider
-        // to expose session APIs if needed
-        return []
     }
 
     /// Loads messages from a session (Hermes only).
@@ -328,12 +336,10 @@ final class CompanionChatService: @unchecked Sendable {
         nil
     }
 
-    /// Loads messages from a session async (Hermes only).
+    /// Loads messages from a session async.
     func loadSessionMessagesAsync(sessionID: String) async throws -> [ChatBubble] {
-        // Only Hermes supports session message loading
-        guard gateway is HermesGatewayProvider else {
-            return []
-        }
+        // Session message loading is not yet supported through the gateway protocol.
+        // This will be added in a future iteration.
         return []
     }
 }

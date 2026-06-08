@@ -2,21 +2,25 @@ import Foundation
 
 /// In-memory MemoryStore for testing. No persistence.
 public final class DummyMemoryStore: MemoryStore, @unchecked Sendable {
+    private let lock = NSLock()
     private var memories: [String: Memory] = [:]
 
-    public let capabilities: Set<String> = ["search"]
+    public let capabilities: Set<String> = ["memory", "search", "update", "delete"]
 
     public init() {}
 
     public func store(_ memory: Memory) async throws -> String {
-        memories[memory.id] = memory
+        lock.withLock {
+            memories[memory.id] = memory
+        }
         print("🤖 [DUMMY] Stored memory: \(memory.id) '\(memory.content.prefix(40))...'")
         return memory.id
     }
 
     public func retrieve(query: String, limit: Int) async throws -> [Memory] {
-        let results = memories.values
-            .filter { $0.content.contains(query) }
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let results = lock.withLock { Array(memories.values) }
+            .filter { normalizedQuery.isEmpty || $0.content.lowercased().contains(normalizedQuery) }
             .sorted { $0.timestamp > $1.timestamp }
             .prefix(limit)
         print("🤖 [DUMMY] Retrieved \(results.count) memories for '\(query)'")
@@ -24,23 +28,41 @@ public final class DummyMemoryStore: MemoryStore, @unchecked Sendable {
     }
 
     public func update(_ id: String, with updates: [String: AnyCodable]) async throws {
-        guard var memory = memories[id] else {
-            throw NSError(domain: "DummyMemoryStore", code: -1, userInfo: ["message": "Not found"])
+        try lock.withLock {
+            guard let memory = memories[id] else {
+                throw NSError(domain: "DummyMemoryStore", code: -1, userInfo: ["message": "Not found"])
+            }
+            var newContext = memory.context
+            updates.forEach { newContext[$0.key] = $0.value }
+            let newContent: String
+            if case .string(let content) = updates["content"] {
+                newContent = content
+            } else {
+                newContent = memory.content
+            }
+            memories[id] = Memory(
+                id: id,
+                content: newContent,
+                context: newContext,
+                timestamp: Date(),
+                embedding: memory.embedding
+            )
         }
-        var newContext = memory.context
-        updates.forEach { newContext[$0.key] = $0.value }
-        memories[id] = Memory(
-            id: id,
-            content: memory.content,
-            context: newContext,
-            timestamp: memory.timestamp,
-            embedding: memory.embedding
-        )
         print("🤖 [DUMMY] Updated memory: \(id)")
     }
 
     public func delete(_ id: String) async throws {
-        memories.removeValue(forKey: id)
+        _ = lock.withLock {
+            memories.removeValue(forKey: id)
+        }
         print("🤖 [DUMMY] Deleted memory: \(id)")
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        lock()
+        defer { unlock() }
+        return try body()
     }
 }

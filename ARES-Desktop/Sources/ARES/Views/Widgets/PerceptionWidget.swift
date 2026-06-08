@@ -4,15 +4,17 @@ import ARESCore
 
 // MARK: - Perception Widget
 //
-// Live camera preview using AVCaptureSession.
-// Capture frame button sends to qwen3-vl:8b for description.
-// Mic capture using AVAudioEngine (hold-to-talk).
+// Live camera preview with frame capture (vision model).
+// Hold-to-talk mic input via SystemVoiceEngine (STT + TTS).
 // Requests camera + mic permissions on first use.
 
 struct PerceptionWidget: View {
+    @EnvironmentObject var appState: ARESAppState
+
     @State private var cameraPreview: CameraPreviewController?
-    @State private var audioEngine = AVAudioEngine()
+    @State private var voiceEngine: SystemVoiceEngine?
     @State private var isRecording = false
+    @State private var transcription = ""
     @State private var captureOutput: String?
     @State private var isProcessing = false
 
@@ -60,42 +62,56 @@ struct PerceptionWidget: View {
                 }
             }
 
-            // Audio control
-            HStack(spacing: 12) {
-                Button {
-                    // Tap toggle
-                } label: {
-                    Image(systemName: isRecording ? "mic.fill" : "mic")
-                        .foregroundColor(isRecording ? .red : .primary)
-                }
-                .onLongPressGesture(minimumDuration: 0.1) {
-                    if !isRecording {
-                        startRecording()
-                    } else {
-                        stopRecording()
+            // Audio & Transcription
+            VStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    Button {
+                        // Tap to toggle (future: voice commands)
+                    } label: {
+                        Image(systemName: isRecording ? "mic.fill" : "mic")
+                            .foregroundColor(isRecording ? .red : .primary)
+                    }
+                    .onLongPressGesture(minimumDuration: 0.1) {
+                        if !isRecording {
+                            startRecording()
+                        } else {
+                            stopRecording()
+                        }
+                    }
+
+                    if isProcessing {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Processing...").font(.caption).foregroundColor(.secondary)
+                    } else if !transcription.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("You said").font(.caption2).foregroundColor(.secondary)
+                            Text(transcription).font(.caption).lineLimit(2)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                    } else if let output = captureOutput {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Camera").font(.caption2).foregroundColor(.secondary)
+                            Text(output).font(.caption).lineLimit(2)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
                     }
                 }
 
-                if isProcessing {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Processing...").font(.caption).foregroundColor(.secondary)
-                } else if let output = captureOutput {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Description").font(.caption2).foregroundColor(.secondary)
-                        Text(output).font(.caption).lineLimit(3)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
+                if isRecording {
+                    Text("Hold to talk...").font(.caption2).foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
-            .frame(height: 44)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .onAppear {
             requestPermissions()
             setupCamera()
+            voiceEngine = SystemVoiceEngine()
         }
     }
 
@@ -160,10 +176,66 @@ struct PerceptionWidget: View {
 
     private func startRecording() {
         isRecording = true
+        transcription = ""
+        guard let engine = voiceEngine else { return }
+
+        do {
+            try engine.startLiveRecognition { text in
+                DispatchQueue.main.async {
+                    self.transcription = text
+                }
+            }
+        } catch {
+            print("⚠️  [PERCEPTION] Failed to start recording: \(error)")
+            isRecording = false
+        }
     }
 
     private func stopRecording() {
         isRecording = false
+        guard let engine = voiceEngine else { return }
+        engine.stopLiveRecognition()
+
+        guard !transcription.isEmpty else { return }
+        sendTranscription(transcription)
+    }
+
+    private func sendTranscription(_ text: String) {
+        isProcessing = true
+        let msg = GatewayMessage(role: "user", content: text)
+
+        Task {
+            do {
+                let result = try await CompanionChatService.shared.sendMessageStream(
+                    messages: [msg],
+                    sessionID: nil,
+                    onToken: { partial, finished in
+                        if finished {
+                            // Speak the response
+                            let prosody = Prosody(timestamp: Date(), energy: 0.8, pitch: 120, rate: 0.9)
+                            Task {
+                                do {
+                                    _ = try await self.voiceEngine?.synthesize(text: partial, prosody: prosody)
+                                } catch {
+                                    print("⚠️  [PERCEPTION] TTS error: \(error)")
+                                }
+                            }
+                        }
+                    }
+                )
+
+                await MainActor.run {
+                    isProcessing = false
+                    transcription = ""  // Clear transcription after sending
+                    print("✅ [PERCEPTION] Chat response received")
+                }
+            } catch {
+                await MainActor.run {
+                    isProcessing = false
+                    captureOutput = "Error: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 }
 

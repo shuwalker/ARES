@@ -60,9 +60,13 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _memory = DummyMemoryStore()
         case .sqlite(let path):
-            // TODO: Real SQLiteMemoryStore(path: path)
-            _memory = DummyMemoryStore()
-            print("⚠️  [WIRING] Memory: using dummy (SQLite not ready for \(path))")
+            do {
+                _memory = try SQLiteMemoryStore(path: path)
+                print("✅ [WIRING] Memory: SQLiteMemoryStore(\(path))")
+            } catch {
+                _memory = DummyMemoryStore()
+                print("⚠️  [WIRING] Memory: SQLiteMemoryStore failed (\(error)), falling back to dummy")
+            }
         case .vectorDB(let url):
             _memory = DummyMemoryStore()
             print("⚠️  [WIRING] Memory: using dummy (vector DB not ready for \(url))")
@@ -79,8 +83,8 @@ public final class BackendBuilder: @unchecked Sendable {
             _voice = DummyVoiceEngine()
             print("⚠️  [WIRING] Voice: using dummy (Kokoro not integrated yet)")
         case .system:
-            _voice = DummyVoiceEngine()
-            print("⚠️  [WIRING] Voice: using dummy (System TTS not ready)")
+            _voice = SystemVoiceEngine()
+            print("✅ [WIRING] Voice: SystemVoiceEngine (AVSpeechSynthesizer + SFSpeechRecognizer)")
         }
         return self
     }
@@ -108,9 +112,13 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _identity = DummyIdentity()
         case .filesystem(let path):
-            // TODO: Real FileSystemIdentity(path: path)
-            _identity = DummyIdentity()
-            print("⚠️  [WIRING] Identity: using dummy (filesystem not ready for \(path))")
+            do {
+                _identity = try FileSystemIdentity(path: path)
+                print("✅ [WIRING] Identity: FileSystemIdentity(\(path))")
+            } catch {
+                _identity = DummyIdentity()
+                print("⚠️  [WIRING] Identity: FileSystemIdentity failed (\(error)), falling back to dummy")
+            }
         }
         return self
     }

@@ -119,4 +119,37 @@ final class HermesGatewayProvider: GatewayProvider, @unchecked Sendable {
             supportsVision: false
         )
     }
+
+    // MARK: - Session Management
+
+    func sessionList(limit: Int = 20) async throws -> [SessionSummary] {
+        let sessions = try await hermesGateway.listSessions(limit: limit)
+        return sessions.map { gwSession in
+            SessionSummary(
+                id: gwSession.id,
+                title: gwSession.title,
+                model: gwSession.model,
+                parentSessionID: nil,
+                startedAt: gwSession.startedAt.map { SessionTimestamp.unixSeconds($0) },
+                lastActive: gwSession.lastActive.map { SessionTimestamp.unixSeconds($0) },
+                messageCount: gwSession.messageCount,
+                preview: gwSession.preview
+            )
+        }
+    }
+
+    func branchSession(fromMessageId messageId: String) async throws -> SessionSummary {
+        // Create a new session with a title referencing the branch point
+        let branched = try await hermesGateway.createSession(title: "Branched from message \(messageId)")
+        return SessionSummary(
+            id: branched.id,
+            title: branched.title,
+            model: branched.model,
+            parentSessionID: nil,
+            startedAt: branched.startedAt.map { SessionTimestamp.unixSeconds($0) },
+            lastActive: branched.lastActive.map { SessionTimestamp.unixSeconds($0) },
+            messageCount: branched.messageCount,
+            preview: branched.preview
+        )
+    }
 }

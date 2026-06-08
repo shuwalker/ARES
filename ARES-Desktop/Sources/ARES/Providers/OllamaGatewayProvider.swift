@@ -157,6 +157,18 @@ final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
         )
     }
 
+    // MARK: - Session Management (stubs — Ollama has no session concept)
+
+    func sessionList(limit: Int) async throws -> [SessionSummary] {
+        // Ollama does not support session management
+        return []
+    }
+
+    func branchSession(fromMessageId messageId: String) async throws -> SessionSummary {
+        // Ollama does not support session branching
+        throw OllamaError.unsupportedOperation("Ollama does not support session branching")
+    }
+
     // MARK: - Ollama Specific APIs
 
     /// List all available models from Ollama.
@@ -201,6 +213,7 @@ enum OllamaError: LocalizedError, Sendable {
     case httpError(statusCode: Int)
     case decodingError(String)
     case cancelled
+    case unsupportedOperation(String)
 
     var errorDescription: String? {
         switch self {
@@ -210,6 +223,8 @@ enum OllamaError: LocalizedError, Sendable {
             return "Decoding error: \(msg)"
         case .cancelled:
             return "Request cancelled"
+        case .unsupportedOperation(let msg):
+            return "Unsupported operation: \(msg)"
         }
     }
 }

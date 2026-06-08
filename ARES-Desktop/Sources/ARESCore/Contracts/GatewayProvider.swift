@@ -44,6 +44,15 @@ public protocol GatewayProvider: AnyObject, Sendable {
 
     /// Get gateway configuration and limits.
     func getConfig() async throws -> GatewayConfig
+
+    /// List recent sessions from this gateway.
+    /// Gateways without session support (e.g., Ollama) return an empty array.
+    func sessionList(limit: Int) async throws -> [SessionSummary]
+
+    /// Branch (fork) a session from a specific message, creating a new session
+    /// that shares history up to that point. Gateways without session support
+    /// should throw a descriptive error.
+    func branchSession(fromMessageId messageId: String) async throws -> SessionSummary
 }
 
 /// Health status of a gateway.

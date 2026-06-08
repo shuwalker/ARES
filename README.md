@@ -4,6 +4,8 @@
 
 A standalone native Apple framework for building embodied AI experiences. Modular by design, swappable by default, runs on macOS, iOS, and beyond.
 
+For the current production-alpha testing scope, see [docs/ALPHA_READINESS.md](docs/ALPHA_READINESS.md).
+
 **ARES is not a wrapper. It's a framework.** It ships with its own implementations of every component, but every component is replaceable through clean contracts. Think of it as a lego kit — the pieces snap together through well-defined interfaces, and you can swap any piece for a different one when you need different capabilities.
 
 ---
