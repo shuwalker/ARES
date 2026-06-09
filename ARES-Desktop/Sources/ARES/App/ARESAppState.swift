@@ -82,41 +82,41 @@ final class ARESAppState: ObservableObject {
     var memory: any MemoryStore
     var voice: any VoiceEngine
     var brain: any ReasoningBrain
+    var identity: any Identity
+    var mimicry: any Mimicry
+    var world: any WorldPerception
+    var eventBus: any EventBus
+    var workflow: any Workflow
+    var scheduler: any Scheduler
 
     private let scanner = DependencyScanner()
     private let installer = DependencyInstaller()
     private let chatService = CompanionChatService.shared
     private var refreshTimer: Timer?
 
-    /// Designated initializer with injectable backends.
-    init(
-        embodiment: any Embodiment,
-        perceiver: any Perceiver,
-        memory: any MemoryStore,
-        voice: any VoiceEngine,
-        brain: any ReasoningBrain
-    ) {
-        self.embodiment = embodiment
-        self.perceiver = perceiver
-        self.memory = memory
-        self.voice = voice
-        self.brain = brain
+    /// Designated initializer accepting a full BackendStack.
+    init(stack: BackendStack) {
+        self.embodiment = stack.embodiment
+        self.perceiver = stack.perceiver
+        self.memory = stack.memory
+        self.voice = stack.voice
+        self.brain = stack.brain
+        self.identity = stack.identity
+        self.mimicry = stack.mimicry
+        self.world = stack.world
+        self.eventBus = stack.eventBus
+        self.workflow = stack.workflow
+        self.scheduler = stack.scheduler
         self.hasBootstrapped = UserDefaults.standard.bool(forKey: "ARES.hasBootstrapped")
         refreshLiveStats()
     }
 
     /// Convenience initializer that resolves backends from environment.
-    /// Routes through BackendBuilder just like the factory method -- no silent dummy injection.
+    /// Routes through BackendBuilder — no silent dummy injection.
     convenience init() {
         let backends = resolveBackends(environmentFromLaunchArgs())
-        self.init(
-            embodiment: backends.embodiment,
-            perceiver: backends.perceiver,
-            memory: backends.memory,
-            voice: backends.voice,
-            brain: backends.brain
-        )
-        print("⚠️  [ARESAppState] Convenience init() used — backends resolved from ARES_ENV. Call ARESAppState.create(environment:) explicitly if you need control.")
+        self.init(stack: backends)
+        print("⚠️  [ARESAppState] Convenience init() used — backends resolved from ARES_ENV.")
     }
 
     // MARK: - Bootstrap actions

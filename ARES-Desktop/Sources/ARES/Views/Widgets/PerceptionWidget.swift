@@ -174,10 +174,30 @@ struct PerceptionWidget: View {
     }
 
     private func sendFrameToVision(_ imageData: Data) async {
-        let gateway = BackendBuilder.gateway(.ollama(url: "http://localhost:11434"))
+        // Use the user's active gateway and model from CompanionConfig,
+        // not a hardcoded Ollama URL. Falls back to Ollama + qwen3-vl only
+        // if the active provider doesn't support vision (most local providers
+        // don't handle multimodal — Ollama is the safe local fallback).
+        let config = appState.companionConfig
+        let gateway: any GatewayProvider
+        let model: String
+
+        // Most cloud and hermes-agent gateways route vision through the
+        // same API, so we can use the active gateway directly. Only local
+        // Ollama needs a vision-capable model override.
+        switch config.provider {
+        case "ollama-local", "ollama-cloud", "ollama-launch":
+            gateway = BackendBuilder.gateway(.ollama(url: config.gatewayURL.contains("11434") ? config.gatewayURL : "http://localhost:11434"))
+            model = "qwen3-vl:8b"  // vision model override for Ollama
+        default:
+            // Hermes, Anthropic, OpenAI all handle multimodal natively
+            gateway = BackendBuilder.gateway(.hermes(url: config.gatewayURL))
+            model = config.model
+        }
+
         let context = ConversationContext(
             messages: [Message(role: .user, content: "Describe this image in one sentence.")],
-            model: "qwen3-vl:8b"
+            model: model
         )
 
         do {

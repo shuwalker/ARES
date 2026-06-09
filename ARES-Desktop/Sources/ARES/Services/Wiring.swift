@@ -70,6 +70,12 @@ extension EnvironmentValues {
     @Entry var memory: (any MemoryStore)?
     @Entry var voice: (any VoiceEngine)?
     @Entry var brain: (any ReasoningBrain)?
+    @Entry var identity: (any Identity)?
+    @Entry var mimicry: (any Mimicry)?
+    @Entry var world: (any WorldPerception)?
+    @Entry var eventBus: (any EventBus)?
+    @Entry var workflow: (any Workflow)?
+    @Entry var scheduler: (any Scheduler)?
 }
 
 // MARK: - ARESAppState Factory
@@ -78,12 +84,6 @@ extension ARESAppState {
     /// Static factory that resolves backends from environment.
     static func create(environment: RuntimeEnvironment = .development) -> ARESAppState {
         let backends = resolveBackends(environment)
-        return ARESAppState(
-            embodiment: backends.embodiment,
-            perceiver: backends.perceiver,
-            memory: backends.memory,
-            voice: backends.voice,
-            brain: backends.brain
-        )
+        return ARESAppState(stack: backends)
     }
 }

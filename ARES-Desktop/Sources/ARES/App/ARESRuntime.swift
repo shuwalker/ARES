@@ -19,7 +19,13 @@ enum ARESRuntime {
                     ARESRuntime.appState.perceiver is DummyPerceiver,
                     ARESRuntime.appState.memory is DummyMemoryStore,
                     ARESRuntime.appState.voice is DummyVoiceEngine,
-                    ARESRuntime.appState.brain is DummyReasoningBrain
+                    ARESRuntime.appState.brain is DummyReasoningBrain,
+                    ARESRuntime.appState.identity is DummyIdentity,
+                    ARESRuntime.appState.mimicry is DummyMimicry,
+                    ARESRuntime.appState.world is DummyWorldModel,
+                    ARESRuntime.appState.eventBus is DummyEventBus,
+                    ARESRuntime.appState.workflow is DummyWorkflow,
+                    ARESRuntime.appState.scheduler is DummyScheduler
                 ].contains(true)
 
                 if usingDummies {
