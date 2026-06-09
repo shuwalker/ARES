@@ -4,47 +4,35 @@ import ARESCore
 // MARK: - History Widget
 //
 // Session history list.
-// Shows recent conversations with dates and previews.
+// Shows recent conversations from ARESAppState, with real data.
 
 struct HistoryWidget: View {
-    @State private var sessions: [SessionItem] = [
-        SessionItem(
-            id: "session-001",
-            title: "About ARES Architecture",
-            date: Date().addingTimeInterval(-3600),
-            preview: "Can you explain how the modular brick pattern works?",
-            messageCount: 8
-        ),
-        SessionItem(
-            id: "session-002",
-            title: "Protocol Design Discussion",
-            date: Date().addingTimeInterval(-86400),
-            preview: "How do we ensure Sendable conformance...",
-            messageCount: 12
-        ),
-        SessionItem(
-            id: "session-003",
-            title: "Gateway Implementation",
-            date: Date().addingTimeInterval(-172800),
-            preview: "What's the difference between Ollama and Hermes...",
-            messageCount: 5
-        )
-    ]
-    @State private var selectedSession: String?
+    @EnvironmentObject private var appState: ARESAppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("History").font(.caption).foregroundColor(.secondary)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(sessions) { session in
-                        SessionRowView(
-                            session: session,
-                            isSelected: selectedSession == session.id
-                        )
-                        .onTapGesture {
-                            selectedSession = session.id
+            if appState.sessionHistory.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.title2)
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("No sessions yet")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 80)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(appState.sessionHistory.prefix(10)) { session in
+                            SessionRowView(
+                                title: session.title,
+                                date: session.updatedAt,
+                                preview: session.preview,
+                                messageCount: session.messageCount
+                            )
                         }
                     }
                 }
@@ -53,25 +41,30 @@ struct HistoryWidget: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(minHeight: 200)
+        .onAppear {
+            appState.refreshSessionHistory()
+        }
     }
 }
 
 // MARK: - Session Row View
 
 struct SessionRowView: View {
-    let session: SessionItem
-    let isSelected: Bool
+    let title: String
+    let date: Date
+    let preview: String
+    let messageCount: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.title)
+                    Text(title)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .lineLimit(1)
 
-                    Text(session.preview)
+                    Text(preview)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .lineLimit(2)
@@ -80,11 +73,11 @@ struct SessionRowView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(formatDate(session.date))
+                    Text(formatDate(date))
                         .font(.caption2)
                         .foregroundColor(.secondary)
 
-                    Text("\(session.messageCount) msgs")
+                    Text("\(messageCount) msgs")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -92,9 +85,7 @@ struct SessionRowView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(
-            isSelected ? Color.blue.opacity(0.1) : Color(.controlBackgroundColor)
-        )
+        .background(Color(.controlBackgroundColor))
         .cornerRadius(6)
     }
 
@@ -110,16 +101,6 @@ struct SessionRowView: View {
             return formatter.string(from: date)
         }
     }
-}
-
-// MARK: - Session Item Model
-
-struct SessionItem: Identifiable {
-    let id: String
-    let title: String
-    let date: Date
-    let preview: String
-    let messageCount: Int
 }
 
 #Preview {

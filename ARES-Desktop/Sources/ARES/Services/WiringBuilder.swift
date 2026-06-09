@@ -33,8 +33,9 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _embodiment = DummyEmbodiment()
         case .desktop:
+            assertionFailure("[WIRING] Desktop embodiment not yet implemented — using DummyEmbodiment fallback")
             _embodiment = DummyEmbodiment()
-            print("⚠️  [WIRING] Embodiment: Desktop embodiment stubbed (real desktop impl not ready)")
+            print("⚠️  [WIRING] Embodiment: Desktop embodiment not yet implemented — using DummyEmbodiment fallback")
         }
         return self
     }
@@ -44,11 +45,13 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _perceiver = DummyPerceiver()
         case .local(let wsURL):
+            assertionFailure("[WIRING] Local perceiver not yet implemented for \(wsURL) — using DummyPerceiver fallback")
             _perceiver = DummyPerceiver()
-            print("⚠️  [WIRING] Perceiver: Local perceiver stubbed for \(wsURL)")
+            print("⚠️  [WIRING] Perceiver: Local perceiver not yet implemented for \(wsURL) — using DummyPerceiver fallback")
         case .cloud:
+            assertionFailure("[WIRING] Cloud perceiver not yet implemented — using DummyPerceiver fallback")
             _perceiver = DummyPerceiver()
-            print("⚠️  [WIRING] Perceiver: using dummy (cloud perception not ready)")
+            print("⚠️  [WIRING] Perceiver: Cloud perceiver not yet implemented — using DummyPerceiver fallback")
         }
         return self
     }
@@ -95,11 +98,13 @@ public final class BackendBuilder: @unchecked Sendable {
             _brain = HermesAgentBrain()
             print("✅ [WIRING] Brain: HermesAgentBrain (wrapping CompanionChatService via \(url))")
         case .claude(let apiKey):
+            assertionFailure("[WIRING] Claude brain not yet implemented for \(apiKey.prefix(4))... — using DummyReasoningBrain fallback")
             _brain = DummyReasoningBrain()
-            print("⚠️  [WIRING] Brain: using dummy (Claude client not ready for \(apiKey.prefix(4))...)")
+            print("⚠️  [WIRING] Brain: Claude brain not yet implemented for \(apiKey.prefix(4))... — using DummyReasoningBrain fallback")
         case .local(let model):
+            assertionFailure("[WIRING] Local brain not yet implemented for \(model) — using DummyReasoningBrain fallback")
             _brain = DummyReasoningBrain()
-            print("⚠️  [WIRING] Brain: using dummy (Local model \(model) not integrated)")
+            print("⚠️  [WIRING] Brain: Local model \(model) not yet implemented — using DummyReasoningBrain fallback")
         }
         return self
     }
@@ -125,8 +130,9 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _mimicry = DummyMimicry()
         case .realistic:
+            assertionFailure("[WIRING] Realistic mimicry not yet implemented — using DummyMimicry fallback")
             _mimicry = DummyMimicry()
-            print("⚠️  [WIRING] Mimicry: using dummy (realistic engine not ready)")
+            print("⚠️  [WIRING] Mimicry: Realistic engine not yet implemented — using DummyMimicry fallback")
         }
         return self
     }
@@ -136,8 +142,9 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _world = DummyWorldModel()
         case .vision(let modelName):
+            assertionFailure("[WIRING] Vision world model not yet implemented for \(modelName) — using DummyWorldModel fallback")
             _world = DummyWorldModel()
-            print("⚠️  [WIRING] World: using dummy (vision model \(modelName) not integrated)")
+            print("⚠️  [WIRING] World: Vision model \(modelName) not yet implemented — using DummyWorldModel fallback")
         }
         return self
     }
@@ -147,8 +154,9 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _eventBus = DummyEventBus()
         case .zmq(let endpoint):
+            assertionFailure("[WIRING] ZMQ event bus not yet implemented for \(endpoint) — using DummyEventBus fallback")
             _eventBus = DummyEventBus()
-            print("⚠️  [WIRING] EventBus: using dummy (ZMQ not ready for \(endpoint))")
+            print("⚠️  [WIRING] EventBus: ZMQ not yet implemented for \(endpoint) — using DummyEventBus fallback")
         }
         return self
     }
@@ -158,8 +166,9 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _workflow = DummyWorkflow()
         case .filesystem(let path):
+            assertionFailure("[WIRING] Filesystem workflow not yet implemented for \(path) — using DummyWorkflow fallback")
             _workflow = DummyWorkflow()
-            print("⚠️  [WIRING] Workflow: using dummy (filesystem not ready for \(path))")
+            print("⚠️  [WIRING] Workflow: Filesystem not yet implemented for \(path) — using DummyWorkflow fallback")
         }
         return self
     }
@@ -169,11 +178,13 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _scheduler = DummyScheduler()
         case .launchctl:
+            assertionFailure("[WIRING] launchctl scheduler not yet implemented — using DummyScheduler fallback")
             _scheduler = DummyScheduler()
-            print("⚠️  [WIRING] Scheduler: using dummy (launchctl not integrated)")
+            print("⚠️  [WIRING] Scheduler: launchctl not yet implemented — using DummyScheduler fallback")
         case .hermes:
+            assertionFailure("[WIRING] Hermes scheduler not yet implemented — using DummyScheduler fallback")
             _scheduler = DummyScheduler()
-            print("⚠️  [WIRING] Scheduler: using dummy (Hermes scheduler not integrated)")
+            print("⚠️  [WIRING] Scheduler: Hermes not yet implemented — using DummyScheduler fallback")
         }
         return self
     }

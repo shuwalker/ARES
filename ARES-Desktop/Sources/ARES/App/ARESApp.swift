@@ -9,15 +9,19 @@ struct ARESApp: App {
     @NSApplicationDelegateAdaptor(ARESAppDelegate.self) var appDelegate
 
     @StateObject private var appState: ARESAppState
+    @StateObject private var workspaceState: ARESWorkspaceState
 
     init() {
-        _appState = StateObject(wrappedValue: ARESRuntime.appState)
+        let state = ARESRuntime.appState
+        _appState = StateObject(wrappedValue: state)
+        _workspaceState = StateObject(wrappedValue: ARESWorkspaceState())
     }
 
     var body: some Scene {
         WindowGroup {
             ARESRootView()
                 .environmentObject(appState)
+                .environmentObject(workspaceState)
                 .environment(\.embodiment, appState.embodiment)
                 .environment(\.perceiver, appState.perceiver)
                 .environment(\.memory, appState.memory)
