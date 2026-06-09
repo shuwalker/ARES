@@ -112,6 +112,8 @@ cat >> "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <true/>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright (c) 2025-2026 Jenkins Robotics. All rights reserved.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>ARES uses the camera for live visual perception and environment awareness.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>ARES needs microphone access for voice input.</string>
     <key>NSNetworkUsageDescription</key>

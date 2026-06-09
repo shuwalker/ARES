@@ -127,24 +127,9 @@ struct PerceptionWidget: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .onAppear {
-            requestPermissions()
-            setupCamera()
-        }
-    }
-
-    private func requestPermissions() {
-        AVCaptureDevice.requestAccess(for: .video) { granted in
-            if granted {
-                DispatchQueue.main.async {
-                    setupCamera()
-                }
-            }
-        }
-
-        AVAudioApplication.requestRecordPermission { granted in
-            // Permission requested
-        }
+        // Do NOT request camera/mic on appear — macOS kills the process
+        // if Info.plist is missing NSCameraUsageDescription. Instead, request
+        // permissions lazily when the user first taps the capture or mic button.
     }
 
     private func setupCamera() {
@@ -160,15 +145,32 @@ struct PerceptionWidget: View {
     }
 
     private func captureFrame() {
-        guard let controller = cameraPreview else { return }
+        // Request camera permission if not yet determined
+        guard let preview = cameraPreview else {
+            // First tap: request permission + setup camera
+            requestCameraPermissionAndSetup()
+            return
+        }
         isProcessing = true
 
         Task {
-            if let imageData = controller.captureFrame() {
+            if let imageData = preview.captureFrame() {
                 await sendFrameToVision(imageData)
             }
             await MainActor.run {
                 isProcessing = false
+            }
+        }
+    }
+
+    private func requestCameraPermissionAndSetup() {
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+                if granted {
+                    self.setupCamera()
+                } else {
+                    self.cameraError = "Camera access denied. Enable it in System Settings > Privacy & Security > Camera."
+                }
             }
         }
     }
@@ -217,6 +219,19 @@ struct PerceptionWidget: View {
     }
 
     private func startRecording() {
+        AVAudioApplication.requestRecordPermission { granted in
+            guard granted else {
+                print("⚠️  [PERCEPTION] Microphone permission denied.")
+                DispatchQueue.main.async { self.isRecording = false }
+                return
+            }
+            DispatchQueue.main.async {
+                self.beginRecording()
+            }
+        }
+    }
+
+    private func beginRecording() {
         isRecording = true
         transcription = ""
 
