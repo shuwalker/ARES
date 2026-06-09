@@ -21,7 +21,7 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
             return GatewayHealth(isHealthy: false, latencyMs: 0)
         }
         // Actually ping the Anthropic API with a minimal request instead of fabricating latency
-        let start = ContinuousClock.now
+        let start = CFAbsoluteTimeGetCurrent()
         let body: [String: Any] = [
             "model": "claude-3-5-sonnet-20240620",
             "max_tokens": 1,
@@ -36,12 +36,12 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
         request.timeoutInterval = 8
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            let elapsed = ContinuousClock.now - start
-            let ms = Int(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            let ms = elapsed * 1000.0
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             // 200 = healthy, 401/403 = bad key (unhealthy), 429 = rate-limited but key is valid
             let isHealthy = statusCode == 200 || statusCode == 429
-            return GatewayHealth(isHealthy: isHealthy, latencyMs: max(ms, 1))
+            return GatewayHealth(isHealthy: isHealthy, latencyMs: max(ms, 1.0))
         } catch {
             return GatewayHealth(isHealthy: false, latencyMs: 0)
         }
@@ -125,7 +125,7 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
     func executeToolCall(_ call: ToolCall, context: ConversationContext) async throws -> ToolResult {
         // Anthropic tool_result flow: submit the tool result as a user message
         // with tool_result content block so the model continues the conversation.
-        let startTime = ContinuousClock.now
+        let startTime = CFAbsoluteTimeGetCurrent()
         
         let toolResultBlock: [String: Any] = [
             "type": "tool_result",
@@ -158,15 +158,15 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            let elapsed = ContinuousClock.now - startTime
-            let ms = Double(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            let ms = elapsed * 1000.0
             let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
             
             guard httpStatus == 200 else {
                 let bodyStr = String(data: data, encoding: .utf8) ?? "empty"
                 return ToolResult(
                     success: false,
-                    error: ToolError(code: "http_\(httpStatus)", message: bodyStr),
+                    error: ToolError(code: .executionFailed, message: "HTTP \(httpStatus): \(bodyStr)"),
                     executionTimeMs: ms
                 )
             }
@@ -190,7 +190,7 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
         } catch {
             return ToolResult(
                 success: false,
-                error: ToolError(code: "network", message: error.localizedDescription),
+                error: ToolError(code: .timeout, message: error.localizedDescription),
                 executionTimeMs: 0
             )
         }

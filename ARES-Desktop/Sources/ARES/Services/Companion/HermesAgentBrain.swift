@@ -30,7 +30,7 @@ final class HermesAgentBrain: ReasoningBrain, @unchecked Sendable {
             let result = try await CompanionChatService.shared.sendMessageStream(
                 messages: messages,
                 sessionID: "ares-planning",
-                onToken: nil
+                onToken: { _, _ in }
             )
             
             let tasks = parseTaskList(from: result.responseText)
@@ -82,15 +82,19 @@ final class HermesAgentBrain: ReasoningBrain, @unchecked Sendable {
             let result = try await CompanionChatService.shared.sendMessageStream(
                 messages: messages,
                 sessionID: "ares-reflection",
-                onToken: nil
+                onToken: { _, _ in }
             )
             
             if !result.responseText.isEmpty {
                 print("✅ [HermesAgentBrain] Reflection complete: \(String(result.responseText.prefix(200)))")
                 
                 // Store reflection in memory for future retrieval
-                if let sqliteMemory = CompanionChatService.shared.currentMemoryStore as? SQLiteMemoryStore {
-                    try? await sqliteMemory.store(key: "reflection:\(experience.taskId)", value: AnyCodable.string(result.responseText))
+                if let store = await CompanionChatService.shared.currentMemoryStore {
+                    let memory = Memory(
+                        content: result.responseText,
+                        context: ["type": AnyCodable.string("reflection"), "taskId": AnyCodable.string(experience.taskId)]
+                    )
+                    _ = try? await store.store(memory)
                 }
             }
         } catch {

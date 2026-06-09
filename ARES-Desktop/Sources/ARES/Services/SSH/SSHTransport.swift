@@ -64,7 +64,7 @@ final class SSHTransport: @unchecked Sendable {
         pythonScript: String,
         responseType: T.Type
     ) async throws -> T {
-        let pythonCommand = "\(paths.remotePythonPath) \(pythonScript)"
+        let pythonCommand = "python3 \(pythonScript)"
         let result = try await execute(on: connection, remoteCommand: pythonCommand)
 
         guard result.exitCode == 0 else {

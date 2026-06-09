@@ -21,7 +21,7 @@ final class OpenAIGatewayProvider: GatewayProvider, @unchecked Sendable {
             return GatewayHealth(isHealthy: false, latencyMs: 0)
         }
         // Actually ping the /models endpoint instead of fabricating latency
-        let start = ContinuousClock.now
+        let start = CFAbsoluteTimeGetCurrent()
         let modelsURL = URL(string: "https://api.openai.com/v1/models")!
         var request = URLRequest(url: modelsURL)
         request.httpMethod = "GET"
@@ -29,10 +29,10 @@ final class OpenAIGatewayProvider: GatewayProvider, @unchecked Sendable {
         request.timeoutInterval = 5
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            let elapsed = ContinuousClock.now - start
-            let ms = Int(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            let ms = elapsed * 1000.0
             let isHealthy = (response as? HTTPURLResponse)?.statusCode == 200
-            return GatewayHealth(isHealthy: isHealthy, latencyMs: max(ms, 1))
+            return GatewayHealth(isHealthy: isHealthy, latencyMs: max(ms, 1.0))
         } catch {
             return GatewayHealth(isHealthy: false, latencyMs: 0)
         }
@@ -108,7 +108,7 @@ final class OpenAIGatewayProvider: GatewayProvider, @unchecked Sendable {
     func executeToolCall(_ call: ToolCall, context: ConversationContext) async throws -> ToolResult {
         // OpenAI chat completions tool flow: submit the tool result as a
         // "tool" message and let the model continue the conversation.
-        let startTime = ContinuousClock.now
+        let startTime = CFAbsoluteTimeGetCurrent()
         
         let toolResultMessage: [String: Any] = [
             "role": "tool",
@@ -135,15 +135,15 @@ final class OpenAIGatewayProvider: GatewayProvider, @unchecked Sendable {
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            let elapsed = ContinuousClock.now - startTime
-            let ms = Double(Duration.components(seconds: elapsed.components.seconds, attoseconds: elapsed.components.attoseconds).milliseconds)
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            let ms = elapsed * 1000.0
             let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
             
             guard httpStatus == 200 else {
                 let bodyStr = String(data: data, encoding: .utf8) ?? "empty"
                 return ToolResult(
                     success: false,
-                    error: ToolError(code: "http_\(httpStatus)", message: bodyStr),
+                    error: ToolError(code: .executionFailed, message: "HTTP \(httpStatus): \(bodyStr)"),
                     executionTimeMs: ms
                 )
             }
@@ -168,7 +168,7 @@ final class OpenAIGatewayProvider: GatewayProvider, @unchecked Sendable {
         } catch {
             return ToolResult(
                 success: false,
-                error: ToolError(code: "network", message: error.localizedDescription),
+                error: ToolError(code: .timeout, message: error.localizedDescription),
                 executionTimeMs: 0
             )
         }
