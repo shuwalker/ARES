@@ -120,6 +120,17 @@ final class HermesGatewayProvider: GatewayProvider, @unchecked Sendable {
         )
     }
 
+    func listAvailableModels() async throws -> [GatewayModelChoice] {
+        return [
+            GatewayModelChoice(
+                provider: identifier,
+                model: "hermes-agent",
+                displayName: "Hermes Agent (full)",
+                summary: "Full agent with tools, memory, skills"
+            )
+        ]
+    }
+
     // MARK: - Session Management
 
     func sessionList(limit: Int = 20) async throws -> [SessionSummary] {

@@ -148,11 +148,16 @@ final class CompanionChatService: @unchecked Sendable {
     /// - Parameters:
     ///   - messages: Pre-built conversation messages including the latest user message.
     ///   - sessionID: Optional session ID for multi-turn continuity.
+    ///   - gatewayOverride: Optional gateway to route this call through instead of the
+    ///     service's configured gateway (used by GatewayBrain to bring its own provider).
+    ///   - modelOverride: Optional model name overriding the configured companion model.
     ///   - onToken: Called on MainActor for each token delta. partial=accumulated text so far.
     /// - Returns: A CompanionChatTurnResult once streaming completes.
     func sendMessageStream(
         messages: [GatewayMessage],
         sessionID: String?,
+        gateway gatewayOverride: (any GatewayProvider)? = nil,
+        modelOverride: String? = nil,
         onToken: @escaping StreamingTokenCallback
     ) async throws -> CompanionChatTurnResult {
         // Cancel any in-flight stream
@@ -165,6 +170,12 @@ final class CompanionChatService: @unchecked Sendable {
                 content: msg.content
             )
         }
+
+        // Resolve gateway/model for this call. Per-call overrides let brains
+        // (e.g. GatewayBrain) route through their own provider instead of the
+        // service's configured one.
+        let gateway = gatewayOverride ?? self.gateway
+        let model = modelOverride ?? companionConfig.model
 
         // Agent loop: offer local tools to tool-capable gateways.
         // Hermes runs its own agent loop server-side and does not advertise
@@ -183,8 +194,6 @@ final class CompanionChatService: @unchecked Sendable {
             init(sessionID: String) { self.resolvedSessionID = sessionID }
         }
         let state = StreamState(sessionID: sessionID ?? "ares-gw-\(UUID().uuidString.prefix(8))")
-        let gateway = self.gateway
-        let model = companionConfig.model
 
         for round in 1...maxToolRounds {
             let context = ConversationContext(

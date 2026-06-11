@@ -1,7 +1,7 @@
 import Foundation
 
 /// VoiceEngine protocol: TTS, STT, and prosody extraction.
-/// Conforming types: KokoroVoiceEngine, SystemVoiceEngine, KokoroLocalEngine
+/// Conforming types: SystemVoiceEngine, DummyVoiceEngine
 public protocol VoiceEngine: AnyObject, Sendable {
     /// Synthesize text to speech with prosody controls.
     /// Returns an audio buffer ready to play.

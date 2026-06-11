@@ -40,6 +40,20 @@ struct ARESRootView: View {
                 }
             }
             .background(ARESColors.background)
+            .inspector(isPresented: $appState.isInspectorPresented) {
+                ARESInspectorView()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        appState.isInspectorPresented.toggle()
+                    } label: {
+                        Label("Toggle Inspector", systemImage: "sidebar.right")
+                    }
+                }
+            }
             .onAppear {
                 appState.loadSelfModel()
                 appState.refreshLiveStats()

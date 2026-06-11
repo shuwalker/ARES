@@ -20,7 +20,8 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.13.0")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.13.0"),
+        .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.19.0")
     ],
     targets: [
         .target(
@@ -32,7 +33,8 @@ let package = Package(
             name: "ARES",
             dependencies: [
                 "ARESCore",
-                .product(name: "SwiftTerm", package: "SwiftTerm")
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "MLX", package: "mlx-swift")
             ],
             path: "ARES-Desktop/Sources/ARES",
             resources: [

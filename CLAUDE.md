@@ -1,144 +1,79 @@
 # CLAUDE.md — ARES Development Guide
 
-For Claude Code contributors. This file tells you what's built, what's planned, and how to work on ARES without breaking things.
+For AI contributors. This file describes what actually exists. The old Python codebase (`ares/` package, `pyproject.toml`, pytest) is **deleted** — ARES is now a pure Swift project.
 
 ## What ARES Is
 
-ARES = Autonomous Reasoning & Execution System. A persistent embodied AI companion that runs locally on a Mac Studio (primary) and syncs to a MacBook Pro (secondary) via iCloud Drive.
+ARES = Autonomous Reasoning & Execution System. A native macOS **Mission Control for AI**: chat, avatar, voice, terminal, files, kanban, skills, and automation in one SwiftUI app.
 
-**ARES is not Hermes.** Hermes is one reasoning engine inside ARES. ARES is the product — avatar, sensors, memory, tools, approval layer, and workflows.
+- ARES is the **front end** of the Jenkins Robotics stack. **JROS is the back end** — but it's swappable like any other provider, not hardcoded.
+- Modular "bricks" architecture: every capability is a protocol; implementations plug in via wiring.
+- **Local-first.** The user owns their data. No cloud-only paths, no phoning home.
 
-**Current phase:** Rebuild (ARES 2). See `docs/ARES_2_REBUILD.md` for the full thesis. The target is a Jarvis-like always-on entity with a Swift face, voice states, memory, and tool execution.
+## Architecture
 
-## Architecture (8 Layers)
+Two Swift targets under `ARES-Desktop/Sources/`:
 
-Defined in `ares/runtime/agent_stack` and `docs/ARES_2_REBUILD.md`:
+- **ARESCore** (framework layer, zero business logic)
+  - `Contracts/` — 15 protocol contracts (GatewayProvider, ReasoningBrain, MemoryStore, VoiceEngine, Perceiver, WorldModel, Identity, Mimicry, EventBus, KanbanBoard, CronScheduler, ToolProvider, PersonaProvider, Embodiment, ResourceProvider)
+  - `Dummies/` — safe no-op implementations, **dev only**
+  - `Models/`, `Services/` — shared types and utilities (incl. ToolRegistry, Hub readers)
+- **ARES** (app layer)
+  - `App/` — entry point, ARESAppState, ARESRuntime, app delegate
+  - `Providers/` — concrete brick implementations (Ollama, Hermes, Claude, OpenAI gateways; JROS bridges; system voice; Apple Vision; storage)
+  - `Services/` — business logic (WiringBuilder, CompanionChatService, Agent/, SSH/, Terminal/, Storage/)
+  - `Views/` — full screens (Companion, Hub, Kanban, Terminal, Files, Settings, …) with composable widgets in `Views/Widgets/`
 
-1. **Presence** — Avatar, voice, emotion, idle behavior, visible cognitive activity
-2. **Runtime** — Always-on process, config, health, restart, service lifecycle (borrow Lilith's discipline)
-3. **Memory** — Identity, preferences, episodic history, project memory, summaries
-4. **Perception** — Permissioned sensors: mic, screen, camera, files, later robot inputs
-5. **Reasoning** — Model routing, planning, reflection. Hermes is one adapter here.
-6. **Tools** — MCP, filesystem, browser/computer control, code, n8n, creative tools
-7. **Approval** — Policy layer for installs, deletion, publishing, spending, hardware control
-8. **Workflows** — Content creation, research, coding, automation, robot tasks
+**Wiring philosophy:** `Services/WiringBuilder.swift` is the **only** place that maps protocols to implementations. Three tiers, in order:
 
-## What's Built
+1. Configured provider (JROS / Hermes / Ollama / Claude / OpenAI)
+2. Built-in native fallback (system TTS, SQLite memory, local event bus, …)
+3. Dummies — development only; **rejected in production builds**
 
-| Component | Status | Location |
-|---|---|---|
-| Python package | ✅ Installed in venv | `ares/` package, `pyproject.toml` |
-| CLI entrypoint | ✅ `ares --help` works | `ares/cli.py` |
-| Config system | ✅ TOML-based | `ares/config/` |
-| Core runtime | ✅ Basic | `ares/core/`, `ares/runtime/` |
-| Memory module | ✅ Basic TOML/JSONL | `ares/memory.py` |
-| LLM routing | ✅ Local/cloud switch | `ares/llm/` |
-| Embodiment | 🟡 Swift face scaffolded | `ares/embodiment/` |
-| ARES-Desktop app | ✅ SwiftUI app exists | `ARES-Desktop/` (forked from Hermes desktop) |
-| MCP integration | 🟡 Skeleton | `ares/tools/`, depends on external MCP servers |
-| Workflows | 🟡 Content pipeline defined | `ares/workflows/`, `docs/content_workflow.md` |
-| Video production | 🟡 HyperFrames just integrated | `~/hyperframes/` (external, see below) |
-| Tests | ✅ 30 passed, 12 skipped | `tests/unit/`, `tests/integration/` |
+## Agent Loop
 
-## What's NOT Built (Don't Assume It Exists)
+- `Services/Companion/CompanionChatService.swift` runs a multi-round tool loop: send tool schemas → model returns tool calls → execute → feed results back → repeat until final text.
+- `Services/Agent/ToolRouter.swift` + `ARESCore/Services/ToolRegistry.swift` aggregate ToolProviders and expose them to tool-capable gateways.
+- `Services/Agent/ApprovalBroker.swift` gates any tool with `requiresApproval` or `category: .system` behind a user consent sheet. Per-tool allowlist lives in UserDefaults key `ARES.approval.allowlist`.
 
-- **Robot hardware MCP servers** — motion (:9520), vision (:9521), voice (:9522) are ports on a spec, not running services
-- **Physical ARES build** — skeleton, eyes, hands are design-phase only
-- **Avatar face** — SwiftUI scaffold exists but no active rendering pipeline
-- **Voice synthesis** — No TTS engine wired in yet
-- **n8n workflows** — localhost:5678 is the target, not implemented
-- **Content publish pipeline** — No YouTube upload, no social auto-post
-
-## External Integrations (Managed Outside ARES Repo)
-
-These live outside the repo but are part of the operational stack:
-
-| Tool | Location | Role |
-|---|---|---|
-| Hermes Agent | `~/.hermes/` | Primary reasoning engine, Discord gateway, cron, skills |
-| Ollama | `http://localhost:11434` | Local LLM server (gemma4:31b, mistral-large-3, etc.) |
-| HyperFrames | `~/hyperframes/` | HTML→MP4 renderer (HeyGen open-source) |
-| HyperDirector | `~/.hermes/skills/hyperdirector` | Hermes skill for video production workflow |
-| ARES Dashboard | `~/hyperframes/ares-dashboard/index.html` | Live status dashboard for the stack |
-| Obsidian KB | `/Volumes/Jenkins_Robotics/03_Knowledge/YouTube/` | Pipeline output: video_index + 7-axis entries |
-| NAS | `/Volumes/Jenkins_Robotics/` | Network storage for media, renders, backups |
-| RackPC | `100.85.249.11` (Tailscale) | Homelab server for CI/batch compute |
-| Hermes Self-Reflection | `~/.hermes/skills/hermes-self-reflection/` | Weekly cron skill — reads vault + sessions, writes evolving self-model |
-| SearXNG | Docker `searxng:8080` | Self-hosted search — free, no API keys, no rate limits |
-
-## Development Setup
+## Build & Test
 
 ```bash
-cd ~/GitHub/ARES-Autonomous-Reasoning-Execution-System
-
-# Python 3.11+ required (pyproject.toml: requires-python >=3.11)
-# Use homebrew Python if system Python is <3.11
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-
-# Verify
-ares --help
-pytest tests/unit/ -x -q
+cd ARES-Desktop
+swift build
+swift test
 ```
 
-**Claude Code workflow:**
-- `claude` from the repo root opens Claude Code with full context
-- Use worktrees for isolated features: `claude --worktree`
-- Clean worktrees when done: `git worktree prune` + delete `.claude/worktrees/*`
+- macOS 14+, Swift 6.1+ (strict concurrency, Sendable everywhere).
+- Release builds default to the **production stack**. Override with `ARES_ENV` or UserDefaults `ARES.safeMode`.
 
 ## Git Rules
 
-- **Main is protected.** Branch for all work. Feature branches only.
-- **Never commit to main directly.**
-- **Upstream:** `nousresearch/hermes-desktop` — this repo forked from there. Keep `upstream` remote current.
-- **Origin:** `shuwalker/ARES-Autonomous-Reasoning-Execution-System` — personal fork.
+- **Main is protected.** Feature branches only; never commit to main directly.
+- Current production push happens on branch `production/v1.0`.
+- `PRODUCTION_PLAN.md` is the source of truth: punch list, brick-by-brick verdicts, and the **cut-or-finish policy** (every feature is either wired for real or removed — no half-states).
+- `attic/v1.0-cuts/` preserves cut code. **Never delete code without atticing it first.**
 
-## Testing
+## External Stack
 
-```bash
-# Fast unit tests (no services needed)
-pytest tests/unit/ -x -q
+| Service | Location | Notes |
+|---|---|---|
+| JROS | `~/GitHub/JROS` | Robotics back end; Unix socket `/tmp/ares_jros.sock` |
+| Hermes | `~/.hermes` | Agent gateway, `localhost:8642` |
+| Ollama | `localhost:11434` | Local LLM inference |
+| n8n | `localhost:5678` | Workflow automation (ToolProvider) |
 
-# Integration tests (skip if services not running)
-pytest tests/integration/ -x -q
-
-# With coverage
-pytest tests/ --cov=ares --cov-report=term-missing
-```
-
-Current status: 30 passed, 12 skipped (integration tests auto-skip if ARES services unreachable).
-
-## Code Standards
-
-- **Python:** Black + ruff configured in `pyproject.toml` (line length 120)
-- **Swift:** Standard Xcode formatting
-- **No `any` or `as T` assertions** in TypeScript (HyperFrames rule, inherited)
-- **Keep Hermes integration clean.** Hermes calls ARES via MCP or CLI. Don't embed Hermes internals into ARES.
-
-## Current Priorities (In Order)
-
-1. **ARES-Desktop Swift app** — Get the SwiftUI face rendering, even if static. This is the user-facing product.
-2. **MCP server wiring** — Connect ARES to Hermes's MCP tool layer so ARES can call Hermes skills.
-3. **Memory persistence** — Make `ares/memory.py` survive restarts with proper TOML/JSONL storage on iCloud.
-4. **Voice states** — Idle, listening, thinking, speaking, sleeping. Even without TTS, the state machine matters.
-5. **Content workflow** — Hook HyperDirector skill into ARES workflow system so ARES can request video production.
-6. **Approval layer** — Policy engine for high-risk actions. Start with simple allowlist/blocklist.
-7. **Robot hardware** — Only after above are solid. MCP servers for motion/vision/voice when JP01 is built.
+All optional — ARES must degrade to native built-ins when they're absent.
 
 ## What Will Break Things
 
-- Changing `ares/cli.py` entrypoint signature
-- Moving `ares/` package without updating `pyproject.toml [tool.setuptools.packages.find]`
-- Committing `.claude/worktrees/` (they're tracked, don't add new ones)
-- Breaking Hermes MCP integration (ARES depends on Hermes for reasoning)
-- Adding cloud-only dependencies without local fallback
-- Anything that requires ARES to "phone home" or call external APIs without user approval
+- Editing an ARESCore contract without updating **all** conformers (dummies + providers + JROS bridges).
+- Adding wiring enum cases without real implementations — violates cut-or-finish; no `assertionFailure` fallbacks to dummies.
+- Committing `.build/` or `*.app` bundles (gitignored; keep it that way).
+- Bypassing ApprovalBroker for system-category or approval-required tools.
+- Cloud-only dependencies without a local fallback.
+- Deleting code without copying it to `attic/v1.0-cuts/` first.
 
-## Contact / Context
+## Owner
 
-- **Owner:** Matthew Jenkins (shuwalker)
-- **Primary machine:** Mac Studio (this machine)
-- **Secondary:** MacBook Pro (sync via iCloud)
-- **Hermes runs here:** Mac Studio, `~/.hermes/`
-- **This repo:** Forked from `nousresearch/hermes-desktop`, diverged significantly for robotics/embodiment
+Matthew Jenkins (shuwalker) · Mac Studio (primary) · Built by Jenkins Robotics.

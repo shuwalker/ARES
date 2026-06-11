@@ -14,11 +14,12 @@ struct AvatarWidget: View {
     @State private var hyperframesReady = false
     @State private var mimicryTask: Task<Void, Never>?
     @State private var webViewCoordinator: WebViewCoordinator?
+    @State private var activePort: UInt16 = 3002
 
     var body: some View {
         VStack(spacing: 12) {
             if hyperframesReady {
-                AvatarWebView(coordinator: $webViewCoordinator)
+                AvatarWebView(coordinator: $webViewCoordinator, port: activePort)
                     .frame(minHeight: 200)
             } else {
                 AvatarFallbackView()
@@ -35,7 +36,6 @@ struct AvatarWidget: View {
             mimicryTask?.cancel()
         }
         .onChange(of: appState.voiceState) { _, newState in
-            // Push real voice state changes to the WebView
             let (emotion, state) = voiceStateToEmotionState(newState)
             webViewCoordinator?.setEmotion(emotion, intensity: 1.0, state: state)
         }
@@ -49,7 +49,6 @@ struct AvatarWidget: View {
         }
     }
 
-    /// Map real voice state to avatar emotion representation.
     private func voiceStateToEmotionState(_ vs: VoiceState) -> (emotion: String, state: String) {
         switch vs {
         case .idle:
@@ -66,10 +65,14 @@ struct AvatarWidget: View {
     }
 
     private func startHyperFrames() {
+        // Dynamically find an open port starting from 3002
+        let port = PortManager.findOpenPort(startingAt: 3002)
+        self.activePort = port
+        
         Task {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            proc.arguments = ["npx", "hyperframes", "preview", "--port", "3002"]
+            proc.arguments = ["npx", "hyperframes", "preview", "--port", "\(port)"]
             proc.currentDirectoryURL = AvatarCompositionInstaller.avatarDir
             proc.standardOutput = FileHandle.nullDevice
             proc.standardError = FileHandle.nullDevice
@@ -79,8 +82,7 @@ struct AvatarWidget: View {
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 await MainActor.run {
                     hyperframesReady = true
-                    print("✅ [AVATAR] HyperFrames preview server started at localhost:3002")
-                    // Set initial emotion from current app state
+                    print("✅ [AVATAR] HyperFrames preview server started at localhost:\(port)")
                     let (emotion, state) = voiceStateToEmotionState(appState.voiceState)
                     webViewCoordinator?.setEmotion(emotion, intensity: 0.5, state: state)
                 }
@@ -95,6 +97,7 @@ struct AvatarWidget: View {
 
 struct AvatarWebView: NSViewRepresentable {
     @Binding var coordinator: WebViewCoordinator?
+    let port: UInt16
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -103,7 +106,7 @@ struct AvatarWebView: NSViewRepresentable {
         let coordinator = WebViewCoordinator(webView: webView)
         self.coordinator = coordinator
 
-        let url = URL(string: "http://localhost:3002")!
+        let url = URL(string: "http://localhost:\(port)")!
         webView.load(URLRequest(url: url))
 
         return webView
@@ -140,6 +143,8 @@ struct AvatarFallbackView: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var blinkOpacity: Double = 1.0
     @State private var blinkTimer: Timer?
+    @State private var eyeOffset: CGSize = .zero
+    @State private var trackingTimer: Timer?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -228,9 +233,11 @@ struct AvatarFallbackView: View {
         .onAppear {
             startBlinking()
             startPulse()
+            startFaceTracking()
         }
         .onDisappear {
             blinkTimer?.invalidate()
+            trackingTimer?.invalidate()
         }
     }
 
@@ -239,6 +246,7 @@ struct AvatarFallbackView: View {
         Ellipse()
             .fill(Color.black)
             .frame(width: 12, height: blinkOpacity < 0.5 ? 2 : 12)
+            .offset(eyeOffset)
             .animation(.easeIn(duration: 0.1), value: blinkOpacity)
     }
 
@@ -269,12 +277,53 @@ struct AvatarFallbackView: View {
     private func startPulse() {
         // Subtly pulse the background when speaking or thinking
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            guard appState.isChatProcessing || appState.voiceState == .speaking else {
-                pulseScale = 1.0
-                return
+            Task { @MainActor in
+                guard appState.isChatProcessing || appState.voiceState == .speaking else {
+                    // If not speaking/thinking, pulse scale drops back to 1.0 unless face tracking keeps it slightly active
+                    if eyeOffset == .zero {
+                        withAnimation(.easeInOut(duration: 1.0)) {
+                            pulseScale = 1.0
+                        }
+                    }
+                    return
+                }
+                withAnimation(.easeInOut(duration: 1.0)) {
+                    pulseScale = pulseScale == 1.0 ? 1.15 : 1.0
+                }
             }
-            withAnimation(.easeInOut(duration: 1.0)) {
-                pulseScale = pulseScale == 1.0 ? 1.15 : 1.0
+        }
+    }
+
+    private func startFaceTracking() {
+        trackingTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
+            Task {
+                do {
+                    let state = try await appState.world.getState()
+                    if let face = state.objects.first(where: { $0.kind == "person" }) {
+                        // normalized bounding box [0,1]
+                        let center = CGPoint(x: face.boundingBox.midX, y: face.boundingBox.midY)
+                        // map to eye offset, max offset ~ 6 points
+                        let xOffset = (center.x - 0.5) * 12
+                        let yOffset = (0.5 - center.y) * 12
+                        
+                        await MainActor.run {
+                            withAnimation(.spring(duration: 0.3)) {
+                                eyeOffset = CGSize(width: xOffset, height: yOffset)
+                                if pulseScale == 1.0 { pulseScale = 1.05 } // user present
+                            }
+                        }
+                    } else {
+                        await MainActor.run {
+                            if eyeOffset != .zero {
+                                withAnimation(.spring(duration: 0.5)) {
+                                    eyeOffset = .zero
+                                }
+                            }
+                        }
+                    }
+                } catch {
+                    // Ignore tracking errors
+                }
             }
         }
     }

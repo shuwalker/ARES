@@ -39,6 +39,17 @@ public final class DummyGatewayProvider: GatewayProvider, @unchecked Sendable {
         GatewayConfig()
     }
 
+    public func listAvailableModels() async throws -> [GatewayModelChoice] {
+        return [
+            GatewayModelChoice(
+                provider: "dummy",
+                model: "dummy-model",
+                displayName: "Dummy Model",
+                summary: "A dummy model for testing."
+            )
+        ]
+    }
+
     public func sessionList(limit: Int) async throws -> [SessionSummary] {
         // Dummy gateway has no sessions
         return []

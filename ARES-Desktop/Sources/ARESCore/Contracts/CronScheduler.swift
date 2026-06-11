@@ -2,7 +2,7 @@ import Foundation
 
 /// Scheduler protocol: recurring task execution and management.
 /// Bridges cron-like scheduling to reasoning (agent can schedule itself).
-/// Conforming types: LaunchctlScheduler, HermesScheduler, DummyScheduler
+/// Conforming types: NativeMacScheduler, DummyScheduler
 public protocol Scheduler: AnyObject, Sendable {
     /// List all scheduled jobs.
     func listJobs() async throws -> [ScheduledJob]

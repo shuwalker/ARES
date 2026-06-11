@@ -16,8 +16,9 @@ final class ARESAppState: ObservableObject {
     @Published var isInstalling = false
     @Published var installError: String?
 
-    // MARK: - Tab navigation
-    @Published var selectedTab: ARESTab = .companion
+    // MARK: - Navigation
+    @Published var selectedTab: ARESTab = .dashboard
+    @Published var isInspectorPresented: Bool = false
 
     // MARK: - Companion state
     @Published var companionGreeting: String = ""
@@ -88,6 +89,11 @@ final class ARESAppState: ObservableObject {
     var eventBus: any EventBus
     var workflow: any Workflow
     var scheduler: any Scheduler
+
+    // Active implementations for UI Pickers
+    @Published var activeVoiceImpl: VoiceImpl = .system
+    @Published var activeWorldImpl: WorldImpl = .appleVision
+    @Published var activeEventBusImpl: EventBusImpl = .local
 
     private let scanner = DependencyScanner()
     private let installer = DependencyInstaller()
@@ -670,6 +676,11 @@ final class ARESAppState: ObservableObject {
         let newGateway = BackendBuilder.gateway(impl)
         chatService.switchProvider(newGateway)
         
+        // Ensure the brain is set to use the ChatService gateway again
+        if !(self.brain is HermesAgentBrain) {
+            self.switchBrain(.hermes(url: "http://localhost:8642"))
+        }
+        
         switch impl {
         case .ollama:
             chatService.reconfigure(provider: "ollama", gatewayURL: "http://localhost:11434")
@@ -682,6 +693,25 @@ final class ARESAppState: ObservableObject {
         default:
             break
         }
+    }
+
+    func switchBrain(_ impl: BrainImpl) {
+        self.brain = BackendBuilder.makeBrain(impl)
+    }
+
+    func switchVoice(_ impl: VoiceImpl) {
+        self.activeVoiceImpl = impl
+        self.voice = BackendBuilder.makeVoice(impl)
+    }
+
+    func switchWorld(_ impl: WorldImpl) {
+        self.activeWorldImpl = impl
+        self.world = BackendBuilder.makeWorld(impl)
+    }
+
+    func switchEventBus(_ impl: EventBusImpl) {
+        self.activeEventBusImpl = impl
+        self.eventBus = BackendBuilder.makeEventBus(impl)
     }
 
     func loadSelfModel() {

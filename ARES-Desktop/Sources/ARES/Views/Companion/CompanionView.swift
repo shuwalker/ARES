@@ -93,33 +93,12 @@ struct CompanionView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            // Pulsing avatar ring
-            ZStack {
-                Circle()
-                    .stroke(appState.voiceState.color.opacity(0.4), lineWidth: 2)
-                    .frame(width: 200, height: 200)
-                    .scaleEffect(showStats ? 1.05 : 1.0)
-                    .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true),
-                               value: showStats)
-
-                Circle()
-                    .fill(ARESColors.background)
-                    .frame(width: 180, height: 180)
-
-                Circle()
-                    .fill(ARESColors.gradient)
-                    .frame(width: 160, height: 160)
-
-                Image(systemName: "shield.righthalf.filled")
-                    .font(.system(size: 64))
-                    .foregroundStyle(
-                        .linearGradient(
-                            colors: [.white.opacity(0.9), .white.opacity(0.3)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            }
+            // Real Avatar Rendering (HyperFrames 3D or 2D Fallback)
+            AvatarWidget()
+                .frame(width: 220, height: 220)
+                .scaleEffect(showStats ? 1.05 : 1.0)
+                .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true),
+                           value: showStats)
 
             // Voice state label
             Text(appState.voiceState.label.uppercased())
@@ -766,11 +745,13 @@ struct CompanionView: View {
 struct ModelPickerView: View {
     @EnvironmentObject private var appState: ARESAppState
     @State private var searchText: String = ""
+    @State private var choices: [CompanionConfig.Choice] = CompanionConfig.allChoices
+    @State private var isRefreshing: Bool = false
 
     private var filtered: [CompanionConfig.Choice] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        if q.isEmpty { return CompanionConfig.allChoices }
-        return CompanionConfig.allChoices.filter {
+        if q.isEmpty { return choices }
+        return choices.filter {
             $0.displayName.lowercased().contains(q) ||
             $0.provider.lowercased().contains(q) ||
             $0.model.lowercased().contains(q) ||
@@ -857,6 +838,24 @@ struct ModelPickerView: View {
             .frame(width: 360, height: 440)
         }
         .background(ARESColors.surface)
+        .onAppear {
+            if isRefreshing { return }
+            isRefreshing = true
+            Task {
+                let config = ARESConfiguration.shared
+                let gateways: [any GatewayProvider] = [
+                    HermesGatewayProvider(baseURL: URL(string: config.hermesURL)!),
+                    OllamaGatewayProvider(baseURL: URL(string: config.ollamaURL)!),
+                    ClaudeGatewayProvider(apiKey: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""),
+                    OpenAIGatewayProvider(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? "")
+                ]
+                await CompanionConfig.refreshChoices(gateways: gateways)
+                await MainActor.run {
+                    self.choices = CompanionConfig.allChoices
+                    self.isRefreshing = false
+                }
+            }
+        }
     }
 
     @ViewBuilder

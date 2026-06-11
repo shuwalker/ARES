@@ -6,9 +6,9 @@ import SwiftUI
 /// Usage:
 ///   let app = BackendBuilder()
 ///       .embodiment(.desktop)
-///       .perceiver(.local)
+///       .perceiver(.microphone)
 ///       .memory(.sqlite)
-///       .voice(.kokoro)
+///       .voice(.system)
 ///       .brain(.hermes(url:))
 ///       .build()
 public final class BackendBuilder: @unchecked Sendable {
@@ -28,14 +28,16 @@ public final class BackendBuilder: @unchecked Sendable {
 
     // MARK: - Builder Methods
 
+    private var _embodimentImpl: EmbodimentImpl?
+
     public func embodiment(_ impl: EmbodimentImpl) -> Self {
+        _embodimentImpl = impl
         switch impl {
         case .dummy:
             _embodiment = DummyEmbodiment()
         case .desktop:
-            assertionFailure("[WIRING] Desktop embodiment not yet implemented — using DummyEmbodiment fallback")
-            _embodiment = DummyEmbodiment()
-            print("⚠️  [WIRING] Embodiment: Desktop embodiment not yet implemented — using DummyEmbodiment fallback")
+            // Instantiated in build() because it needs EventBus and VoiceEngine
+            break
         }
         return self
     }
@@ -44,14 +46,9 @@ public final class BackendBuilder: @unchecked Sendable {
         switch impl {
         case .dummy:
             _perceiver = DummyPerceiver()
-        case .local(let wsURL):
-            assertionFailure("[WIRING] Local perceiver not yet implemented for \(wsURL) — using DummyPerceiver fallback")
-            _perceiver = DummyPerceiver()
-            print("⚠️  [WIRING] Perceiver: Local perceiver not yet implemented for \(wsURL) — using DummyPerceiver fallback")
-        case .cloud:
-            assertionFailure("[WIRING] Cloud perceiver not yet implemented — using DummyPerceiver fallback")
-            _perceiver = DummyPerceiver()
-            print("⚠️  [WIRING] Perceiver: Cloud perceiver not yet implemented — using DummyPerceiver fallback")
+        case .microphone:
+            _perceiver = MicPerceiver()
+            print("✅ [WIRING] Perceiver: MicPerceiver (AVAudioEngine microphone capture)")
         }
         return self
     }
@@ -69,9 +66,6 @@ public final class BackendBuilder: @unchecked Sendable {
                 _memory = DummyMemoryStore()
                 print("⚠️  [WIRING] Memory: SQLiteMemoryStore failed (\(error)), falling back to dummy")
             }
-        case .vectorDB(let url):
-            _memory = DummyMemoryStore()
-            print("⚠️  [WIRING] Memory: using dummy (vector DB not ready for \(url))")
         }
         return self
     }
@@ -80,9 +74,6 @@ public final class BackendBuilder: @unchecked Sendable {
         switch impl {
         case .dummy:
             _voice = DummyVoiceEngine()
-        case .kokoro:
-            _voice = SystemVoiceEngine()
-            print("⚠️  [WIRING] Voice: Kokoro not integrated, falling back to SystemVoiceEngine")
         case .system:
             _voice = SystemVoiceEngine()
             print("✅ [WIRING] Voice: SystemVoiceEngine (AVSpeechSynthesizer + SFSpeechRecognizer)")
@@ -98,13 +89,8 @@ public final class BackendBuilder: @unchecked Sendable {
             _brain = HermesAgentBrain()
             print("✅ [WIRING] Brain: HermesAgentBrain (wrapping CompanionChatService via \(url))")
         case .claude(let apiKey):
-            assertionFailure("[WIRING] Claude brain not yet implemented for \(apiKey.prefix(4))... — using DummyReasoningBrain fallback")
-            _brain = DummyReasoningBrain()
-            print("⚠️  [WIRING] Brain: Claude brain not yet implemented for \(apiKey.prefix(4))... — using DummyReasoningBrain fallback")
-        case .local(let model):
-            assertionFailure("[WIRING] Local brain not yet implemented for \(model) — using DummyReasoningBrain fallback")
-            _brain = DummyReasoningBrain()
-            print("⚠️  [WIRING] Brain: Local model \(model) not yet implemented — using DummyReasoningBrain fallback")
+            _brain = GatewayBrain(gateway: ClaudeGatewayProvider(apiKey: apiKey))
+            print("✅ [WIRING] Brain: GatewayBrain over ClaudeGatewayProvider (key \(apiKey.prefix(4))...)")
         }
         return self
     }
@@ -130,9 +116,8 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _mimicry = DummyMimicry()
         case .realistic:
-            assertionFailure("[WIRING] Realistic mimicry not yet implemented — using DummyMimicry fallback")
-            _mimicry = DummyMimicry()
-            print("⚠️  [WIRING] Mimicry: Realistic engine not yet implemented — using DummyMimicry fallback")
+            _mimicry = RealisticMimicry()
+            print("✅ [WIRING] Mimicry: RealisticMimicry")
         }
         return self
     }
@@ -141,10 +126,17 @@ public final class BackendBuilder: @unchecked Sendable {
         switch impl {
         case .dummy:
             _world = DummyWorldModel()
-        case .vision(let modelName):
-            assertionFailure("[WIRING] Vision world model not yet implemented for \(modelName) — using DummyWorldModel fallback")
-            _world = DummyWorldModel()
-            print("⚠️  [WIRING] World: Vision model \(modelName) not yet implemented — using DummyWorldModel fallback")
+        case .appleVision:
+            _world = AppleVisionWorldModel()
+            print("✅ [WIRING] World: AppleVisionWorldModel")
+        case .screenCapture:
+            if #available(macOS 12.3, *) {
+                _world = ScreenCaptureWorldModel()
+                print("✅ [WIRING] World: ScreenCaptureWorldModel")
+            } else {
+                _world = DummyWorldModel()
+                print("⚠️  [WIRING] World: ScreenCaptureWorldModel requires macOS 12.3+")
+            }
         }
         return self
     }
@@ -153,10 +145,12 @@ public final class BackendBuilder: @unchecked Sendable {
         switch impl {
         case .dummy:
             _eventBus = DummyEventBus()
-        case .zmq(let endpoint):
-            assertionFailure("[WIRING] ZMQ event bus not yet implemented for \(endpoint) — using DummyEventBus fallback")
-            _eventBus = DummyEventBus()
-            print("⚠️  [WIRING] EventBus: ZMQ not yet implemented for \(endpoint) — using DummyEventBus fallback")
+        case .local:
+            _eventBus = LocalEventBus()
+            print("✅ [WIRING] EventBus: LocalEventBus (NotificationCenter)")
+        case .jros(let socketPath):
+            _eventBus = JROSEventBusBridge(socketPath: socketPath)
+            print("✅ [WIRING] EventBus: JROSEventBusBridge (UDS to \(socketPath))")
         }
         return self
     }
@@ -166,9 +160,13 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             _workflow = DummyWorkflow()
         case .filesystem(let path):
-            assertionFailure("[WIRING] Filesystem workflow not yet implemented for \(path) — using DummyWorkflow fallback")
-            _workflow = DummyWorkflow()
-            print("⚠️  [WIRING] Workflow: Filesystem not yet implemented for \(path) — using DummyWorkflow fallback")
+            do {
+                _workflow = try FileSystemWorkflow(path: path)
+                print("✅ [WIRING] Workflow: FileSystemWorkflow(\(path))")
+            } catch {
+                _workflow = DummyWorkflow()
+                print("⚠️  [WIRING] Workflow: FileSystemWorkflow failed (\(error)), falling back to dummy")
+            }
         }
         return self
     }
@@ -177,14 +175,9 @@ public final class BackendBuilder: @unchecked Sendable {
         switch impl {
         case .dummy:
             _scheduler = DummyScheduler()
-        case .launchctl:
-            assertionFailure("[WIRING] launchctl scheduler not yet implemented — using DummyScheduler fallback")
-            _scheduler = DummyScheduler()
-            print("⚠️  [WIRING] Scheduler: launchctl not yet implemented — using DummyScheduler fallback")
-        case .hermes:
-            assertionFailure("[WIRING] Hermes scheduler not yet implemented — using DummyScheduler fallback")
-            _scheduler = DummyScheduler()
-            print("⚠️  [WIRING] Scheduler: Hermes not yet implemented — using DummyScheduler fallback")
+        case .nativeMac:
+            _scheduler = NativeMacScheduler()
+            print("✅ [WIRING] Scheduler: NativeMacScheduler")
         }
         return self
     }
@@ -206,6 +199,30 @@ public final class BackendBuilder: @unchecked Sendable {
         }
     }
 
+    public static func makeVoice(_ impl: VoiceImpl) -> any VoiceEngine {
+        let builder = BackendBuilder()
+        _ = builder.voice(impl)
+        return builder._voice ?? DummyVoiceEngine()
+    }
+
+    public static func makeBrain(_ impl: BrainImpl) -> any ReasoningBrain {
+        let builder = BackendBuilder()
+        _ = builder.brain(impl)
+        return builder._brain ?? DummyReasoningBrain()
+    }
+
+    public static func makeWorld(_ impl: WorldImpl) -> any WorldPerception {
+        let builder = BackendBuilder()
+        _ = builder.world(impl)
+        return builder._world ?? DummyWorldModel()
+    }
+
+    public static func makeEventBus(_ impl: EventBusImpl) -> any EventBus {
+        let builder = BackendBuilder()
+        _ = builder.eventBus(impl)
+        return builder._eventBus ?? DummyEventBus()
+    }
+
     // MARK: - Build
     /// Build: construct the BackendStack.
     /// In production mode, warns loudly for every dummy subsystem and rejects
@@ -214,7 +231,6 @@ public final class BackendBuilder: @unchecked Sendable {
         let env = environmentFromLaunchArgs()
 
         // Resolve any un-set slots to dummies, logging each default
-        let embodiment = _embodiment ?? { print("⚠️  [WIRING] Embodiment: no builder call, defaulting to DummyEmbodiment"); return DummyEmbodiment() }()
         let perceiver = _perceiver ?? { print("⚠️  [WIRING] Perceiver: no builder call, defaulting to DummyPerceiver"); return DummyPerceiver() }()
         let memory = _memory ?? { print("⚠️  [WIRING] Memory: no builder call, defaulting to DummyMemoryStore"); return DummyMemoryStore() }()
         let voice = _voice ?? { print("⚠️  [WIRING] Voice: no builder call, defaulting to DummyVoiceEngine"); return DummyVoiceEngine() }()
@@ -223,6 +239,14 @@ public final class BackendBuilder: @unchecked Sendable {
         let mimicry = _mimicry ?? { print("⚠️  [WIRING] Mimicry: no builder call, defaulting to DummyMimicry"); return DummyMimicry() }()
         let world = _world ?? { print("⚠️  [WIRING] WorldPerception: no builder call, defaulting to DummyWorldModel"); return DummyWorldModel() }()
         let eventBus = _eventBus ?? { print("⚠️  [WIRING] EventBus: no builder call, defaulting to DummyEventBus"); return DummyEventBus() }()
+        
+        let embodiment: any Embodiment
+        if _embodimentImpl == .desktop {
+            embodiment = DesktopEmbodiment(eventBus: eventBus, voiceEngine: voice)
+            print("✅ [WIRING] Embodiment: DesktopEmbodiment")
+        } else {
+            embodiment = _embodiment ?? { print("⚠️  [WIRING] Embodiment: no builder call, defaulting to DummyEmbodiment"); return DummyEmbodiment() }()
+        }
         let workflow = _workflow ?? { print("⚠️  [WIRING] Workflow: no builder call, defaulting to DummyWorkflow"); return DummyWorkflow() }()
         let scheduler = _scheduler ?? { print("⚠️  [WIRING] Scheduler: no builder call, defaulting to DummyScheduler"); return DummyScheduler() }()
 
@@ -288,19 +312,16 @@ public enum EmbodimentImpl {
 
 public enum PerceiverImpl {
     case dummy
-    case local(wsURL: String)
-    case cloud
+    case microphone
 }
 
 public enum MemoryImpl {
     case dummy
     case sqlite(path: String)
-    case vectorDB(url: String)
 }
 
 public enum VoiceImpl {
     case dummy
-    case kokoro
     case system
 }
 
@@ -308,7 +329,6 @@ public enum BrainImpl {
     case dummy
     case hermes(url: String)
     case claude(apiKey: String)
-    case local(model: String)
 }
 
 public enum IdentityImpl {
@@ -321,14 +341,16 @@ public enum MimicryImpl {
     case realistic
 }
 
-public enum WorldImpl {
+public enum WorldImpl: Equatable {
     case dummy
-    case vision(model: String)
+    case appleVision
+    case screenCapture
 }
 
-public enum EventBusImpl {
+public enum EventBusImpl: Equatable {
     case dummy
-    case zmq(endpoint: String)
+    case local
+    case jros(socketPath: String)
 }
 
 public enum WorkflowImpl {
@@ -338,8 +360,7 @@ public enum WorkflowImpl {
 
 public enum SchedulerImpl {
     case dummy
-    case launchctl
-    case hermes
+    case nativeMac
 }
 
 public enum GatewayImpl {
@@ -383,15 +404,22 @@ enum RuntimeEnvironment {
 }
 
 func environmentFromLaunchArgs() -> RuntimeEnvironment {
-    let env = ProcessInfo.processInfo.environment["ARES_ENV"] ?? "development"
-    switch env.lowercased() {
-    case "production", "prod":
-        return .production
-    case "testing", "test":
-        return .testing
-    default:
-        return .development
+    // Explicit override wins (CLI, Xcode scheme)
+    if let env = ProcessInfo.processInfo.environment["ARES_ENV"] {
+        switch env.lowercased() {
+        case "production", "prod": return .production
+        case "testing", "test": return .testing
+        case "development", "dev": return .development
+        default: break
+        }
     }
+    // User-selectable safe mode (Settings)
+    if UserDefaults.standard.bool(forKey: "ARES.safeMode") { return .development }
+    #if DEBUG
+    return .development
+    #else
+    return .production   // release builds run the real stack by default
+    #endif
 }
 
 // MARK: - Convenience Factory
@@ -415,19 +443,20 @@ extension BackendStack {
     }
 
     /// Production preset: real backends (will fail if not configured).
-    static func production(hermesURL: String = "http://localhost:8642") throws -> BackendStack {
-        try BackendBuilder()
+    static func production(hermesURL: String = ARESConfiguration.shared.hermesURL) throws -> BackendStack {
+        let config = ARESConfiguration.shared
+        return try BackendBuilder()
             .embodiment(.desktop)
-            .perceiver(.local(wsURL: "ws://localhost:9100"))
-            .memory(.sqlite(path: "~/.jaeger_os/instances/default/memory/state.db"))
-            .voice(.kokoro)
+            .perceiver(.microphone)
+            .memory(.sqlite(path: config.memoryDBPath))
+            .voice(.system)
             .brain(.hermes(url: hermesURL))
-            .identity(.filesystem(path: "~/.ares/identity.json"))
+            .identity(.filesystem(path: config.identityJSONPath))
             .mimicry(.realistic)
-            .world(.vision(model: "yolov8"))
-            .eventBus(.zmq(endpoint: "tcp://127.0.0.1:5555"))
-            .workflow(.filesystem(path: "~/.ares/workflows"))
-            .scheduler(.hermes)
+            .world(.appleVision)
+            .eventBus(.local)
+            .workflow(.filesystem(path: config.workflowsPath))
+            .scheduler(.nativeMac)
             .build(checkProduction: true)
     }
 }

@@ -1,214 +1,191 @@
 import SwiftUI
 import ARESCore
 
-// MARK: - Dashboard Layout Config
+// MARK: - Widget Type
 
-struct DashboardLayout: Codable {
-    struct Slot: Codable, Identifiable {
-        let id: String
-        let widget: WidgetType
-        var row: Int
-        var column: Int
-        let rowSpan: Int
-        let columnSpan: Int
+enum DashboardWidgetType: String, Codable, CaseIterable, Identifiable {
+    case avatar
+    case chat
+    case history
+    case metrics
+    case perception
+    case thoughtStream
+    case agentStatus
 
-        enum WidgetType: String, Codable {
-            case avatar
-            case chat
-            case history
-            case modelPicker  // Backend picker: Ollama (LLM) vs Hermes (Agent)
-            case perception
+    var id: String { rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .avatar: return "Agent Avatar"
+        case .chat: return "Live Chat"
+        case .history: return "Event History"
+        case .metrics: return "System Metrics"
+        case .perception: return "Live Perception"
+        case .thoughtStream: return "Thought Stream"
+        case .agentStatus: return "Agent Status"
         }
     }
-
-    var slots: [Slot]
-    var name: String = "default"
-
-    static let `default` = DashboardLayout(
-        slots: [
-            Slot(id: "avatar", widget: .avatar, row: 0, column: 0, rowSpan: 3, columnSpan: 1),
-            Slot(id: "chat", widget: .chat, row: 0, column: 1, rowSpan: 3, columnSpan: 2),
-            Slot(id: "history", widget: .history, row: 0, column: 3, rowSpan: 3, columnSpan: 1),
-            Slot(id: "modelPicker", widget: .modelPicker, row: 3, column: 0, rowSpan: 1, columnSpan: 4),
-            Slot(id: "perception", widget: .perception, row: 4, column: 0, rowSpan: 2, columnSpan: 4)
-        ]
-    )
 }
 
-// MARK: - DashboardView
+// MARK: - Dashboard Layout Config
+
+struct DashboardSlot: Codable, Identifiable, Equatable {
+    let id: UUID
+    var type: DashboardWidgetType
+    var span: Int
+    
+    init(id: UUID = UUID(), type: DashboardWidgetType, span: Int = 1) {
+        self.id = id
+        self.type = type
+        self.span = span
+    }
+}
+
+// MARK: - Dashboard View Model
+
+@MainActor
+class DashboardViewModel: ObservableObject {
+    @Published var slots: [DashboardSlot] = []
+    
+    init() {
+        loadLayout()
+    }
+    
+    func loadLayout() {
+        if let data = UserDefaults.standard.data(forKey: "ares_dashboard_layout"),
+           let saved = try? JSONDecoder().decode([DashboardSlot].self, from: data) {
+            self.slots = saved
+        } else {
+            self.slots = [
+                DashboardSlot(type: .metrics, span: 2),
+                DashboardSlot(type: .thoughtStream, span: 2),
+                DashboardSlot(type: .agentStatus, span: 1),
+                DashboardSlot(type: .avatar, span: 1),
+                DashboardSlot(type: .chat, span: 1),
+                DashboardSlot(type: .perception, span: 1),
+                DashboardSlot(type: .history, span: 2)
+            ]
+        }
+    }
+    
+    func saveLayout() {
+        if let data = try? JSONEncoder().encode(slots) {
+            UserDefaults.standard.set(data, forKey: "ares_dashboard_layout")
+        }
+    }
+    
+    func move(from source: DashboardSlot, to destination: DashboardSlot) {
+        guard let sourceIdx = slots.firstIndex(of: source),
+              let destIdx = slots.firstIndex(of: destination) else { return }
+        
+        var newSlots = slots
+        newSlots.remove(at: sourceIdx)
+        newSlots.insert(source, at: destIdx)
+        
+        withAnimation(.spring()) {
+            slots = newSlots
+        }
+        saveLayout()
+    }
+}
+
+// MARK: - Dashboard View
 
 struct DashboardView: View {
-    @State private var layout: DashboardLayout = DashboardLayout.default
+    @StateObject private var viewModel = DashboardViewModel()
     @State private var isEditing = false
+    @State private var draggingItem: DashboardSlot?
+
+    let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                // Title bar
-                HStack {
-                    Text("ARES Dashboard")
-                        .font(.title2)
-                        .fontWeight(.bold)
-
-                    Spacer()
-
-                    Button {
-                        isEditing.toggle()
-                    } label: {
-                        Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil.circle")
-                            .foregroundColor(isEditing ? .green : .blue)
-                    }
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Mission Control")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button {
+                    withAnimation { isEditing.toggle() }
+                } label: {
+                    Label(isEditing ? "Done" : "Edit Dashboard", systemImage: isEditing ? "checkmark.circle.fill" : "slider.horizontal.3")
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color(.controlBackgroundColor))
+                .buttonStyle(.borderedProminent)
+                .tint(isEditing ? .green : .accentColor)
+            }
+            .padding()
+            .background(.ultraThinMaterial)
 
-                Divider()
-
-                // Dashboard grid
-                ScrollView {
-                    VStack(spacing: 12) {
-                        // Group slots by row
-                        let rowCount = layout.slots.map { $0.row }.max() ?? 0
-                        ForEach(0...rowCount, id: \.self) { row in
-                            HStack(spacing: 12) {
-                                let rowSlots = layout.slots.filter { $0.row == row }
-                                    .sorted { $0.column < $1.column }
-
-                                ForEach(rowSlots) { slot in
-                                    Group {
-                                        switch slot.widget {
-                                        case .avatar:
-                                            AvatarWidget()
-                                        case .chat:
-                                            ChatWidget()
-                                        case .history:
-                                            HistoryWidget()
-                                        case .modelPicker:
-                                            BackendPickerWidget()
-                                        case .perception:
-                                            PerceptionWidget()
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .background(Color(.windowBackgroundColor))
-                                    .cornerRadius(8)
-                                    .contextMenu {
-                                        if isEditing {
-                                            Button("Move Up") {
-                                                moveSlot(slot, direction: .up)
-                                            }
-                                            Button("Move Down") {
-                                                moveSlot(slot, direction: .down)
-                                            }
-                                            Divider()
-                                            Button("Remove", role: .destructive) {
-                                                removeSlot(slot)
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Spacer()
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(viewModel.slots) { slot in
+                        WidgetContainer(slot: slot, isEditing: isEditing, isDragging: draggingItem == slot) {
+                            switch slot.type {
+                            case .avatar: AvatarWidget()
+                            case .chat: ChatWidget()
+                            case .history: HistoryWidget()
+                            case .metrics: MetricsWidget()
+                            case .perception: PerceptionWidget()
+                            case .thoughtStream: ThoughtStreamWidget()
+                            case .agentStatus: AgentStatusWidget()
+                            }
+                        }
+                        .gridCellColumns(slot.span)
+                        .draggable(slot.id.uuidString) {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(ARESColors.surface)
+                                .frame(width: 200, height: 100)
+                                .overlay(Text(slot.type.displayName))
+                                .onAppear { draggingItem = slot }
+                        }
+                        .dropDestination(for: String.self) { items, location in
+                            draggingItem = nil
+                            return true
+                        } isTargeted: { targeted in
+                            if targeted, let draggingItem = draggingItem, draggingItem != slot {
+                                viewModel.move(from: draggingItem, to: slot)
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
                 }
+                .padding(16)
             }
+        }
+        .background(ARESColors.background)
+    }
+}
 
+// MARK: - Widget Container
+struct WidgetContainer<Content: View>: View {
+    let slot: DashboardSlot
+    let isEditing: Bool
+    let isDragging: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+                .opacity(isDragging ? 0.3 : 1.0)
+            
             if isEditing {
-                VStack {
-                    HStack {
-                        Text("Edit Layout")
-                            .font(.headline)
-                        Spacer()
-                        Button("Done") {
-                            isEditing = false
-                            saveLayout()
-                        }
-                        .fontWeight(.semibold)
-                    }
-                    .padding()
-
-                    List {
-                        Section("Widgets") {
-                            ForEach(layout.slots) { slot in
-                                HStack {
-                                    Text(slot.widget.rawValue.capitalized)
-                                    Spacer()
-                                    Image(systemName: "line.3.horizontal.decrease.circle")
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                            .onMove { from, to in
-                                layout.slots.move(fromOffsets: from, toOffset: to)
-                            }
-                        }
-                    }
-
-                    Spacer()
-                }
-                .frame(maxWidth: 300)
-                .background(Color(.windowBackgroundColor))
-                .cornerRadius(12)
-                .shadow(radius: 8)
-                .padding()
+                Image(systemName: "line.3.horizontal")
+                    .padding(8)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .padding(8)
             }
         }
-        .onAppear {
-            loadLayout()
-        }
-    }
-
-    private func moveSlot(_ slot: DashboardLayout.Slot, direction: MoveDirection) {
-        guard let index = layout.slots.firstIndex(where: { $0.id == slot.id }) else { return }
-
-        var updatedSlot = layout.slots[index]
-        if direction == .up && updatedSlot.row > 0 {
-            updatedSlot.row -= 1
-        } else if direction == .down {
-            updatedSlot.row += 1
-        }
-        layout.slots[index] = updatedSlot
-    }
-
-    private func removeSlot(_ slot: DashboardLayout.Slot) {
-        layout.slots.removeAll { $0.id == slot.id }
-    }
-
-    private func saveLayout() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
-
-        if let data = try? encoder.encode(layout),
-           let json = String(data: data, encoding: .utf8) {
-            let path = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".ares")
-                .appendingPathComponent("dashboard_layout.json")
-
-            try? FileManager.default.createDirectory(
-                at: path.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try? json.write(to: path, atomically: true, encoding: .utf8)
-        }
-    }
-
-    private func loadLayout() {
-        let path = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".ares")
-            .appendingPathComponent("dashboard_layout.json")
-
-        if let data = try? Data(contentsOf: path),
-           let loaded = try? JSONDecoder().decode(DashboardLayout.self, from: data) {
-            layout = loaded
-        }
-    }
-
-    enum MoveDirection {
-        case up, down
     }
 }
 

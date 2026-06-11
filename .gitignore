@@ -20,6 +20,8 @@ __pycache__/
 *.xcuserdata
 *.xcworkspace
 **/.env
+.claude/worktrees/
+diff_output.txt
 # ARES runtime state
 # Build artifacts
 # IDE

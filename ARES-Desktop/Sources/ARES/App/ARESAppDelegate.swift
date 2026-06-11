@@ -23,6 +23,12 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        Task { @MainActor in
+            NodeProcessManager.shared.stopAllNodes()
+        }
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             forceWindowVisible()

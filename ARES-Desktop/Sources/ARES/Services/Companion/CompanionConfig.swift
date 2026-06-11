@@ -34,26 +34,41 @@ struct CompanionConfig: Codable, Equatable {
     /// Maximum conversation history turns to include as context.
     var maxHistoryTurns: Int
 
-    // MARK: - Model catalog
-
-    /// All available (provider, model) choices the picker can offer.
-    /// Mirrors ~/.hermes/config.yaml providers + the special "hermes-agent" entry.
-    static let allChoices: [Choice] = [
-        // Full agent (default — uses Hermes Gateway with full tool access)
-        Choice(provider: "hermes-gateway", model: "hermes-agent", displayName: "Hermes Agent (full)", summary: "Full agent with tools, memory, skills — same as TUI.", group: .local, speed: .medium, quality: .excellent),
-
-        // Local
-        Choice(provider: "ollama-local", model: "gemma4:e4b-mlx", displayName: "Gemma 4 (local)", summary: "Runs on your Mac. Fast. Small. Good enough for short answers.", group: .local, speed: .fast, quality: .basic),
-        Choice(provider: "ollama-local", model: "qwen3:8b", displayName: "Qwen 3 8B (local)", summary: "Bigger local model. Slower, smarter than Gemma.", group: .local, speed: .medium, quality: .good),
-
-        // Cloud via Ollama
-        Choice(provider: "ollama-cloud", model: "glm-5.1:cloud", displayName: "GLM 5.1 (cloud)", summary: "Cloud model via Ollama. Medium quality, medium speed.", group: .cloud, speed: .medium, quality: .good),
-        Choice(provider: "ollama-launch", model: "minimax-m3:cloud", displayName: "MiniMax M3 (cloud)", summary: "Cloud model. Fast, lightweight responses.", group: .cloud, speed: .fast, quality: .basic),
-
-        // Frontier
-        Choice(provider: "openai-codex", model: "gpt-5.5", displayName: "GPT-5.5 (Codex)", summary: "OpenAI's latest. Excellent at code and reasoning. Slower.", group: .frontier, speed: .slow, quality: .excellent),
-        Choice(provider: "anthropic", model: "claude-sonnet-4", displayName: "Claude Sonnet 4", summary: "Anthropic's mid-tier. Strong writing, good at nuance.", group: .frontier, speed: .slow, quality: .excellent),
+    /// A cached list of available models, populated at runtime.
+    @MainActor static var allChoices: [Choice] = [
+        Choice(provider: "hermes", model: "hermes-agent", displayName: "Hermes Agent (full)", summary: "Full agent with tools, memory, skills", group: .local, speed: .medium, quality: .excellent)
     ]
+
+    /// Fetches all models from all provided gateways dynamically.
+    static func refreshChoices(gateways: [any GatewayProvider]) async {
+        var newChoices: [Choice] = []
+        for gateway in gateways {
+            if let models = try? await gateway.listAvailableModels() {
+                for model in models {
+                    let group: Choice.Group = gateway.identifier == "ollama" ? .local : .cloud
+                    newChoices.append(Choice(
+                        provider: model.provider,
+                        model: model.model,
+                        displayName: model.displayName,
+                        summary: model.summary,
+                        group: group,
+                        speed: .medium,
+                        quality: .good
+                    ))
+                }
+            }
+        }
+        
+        // Always ensure hermes-agent is at the top
+        let hermes = newChoices.first(where: { $0.model == "hermes-agent" }) ?? Choice(provider: "hermes", model: "hermes-agent", displayName: "Hermes Agent (full)", summary: "Full agent with tools, memory, skills", group: .local, speed: .medium, quality: .excellent)
+        
+        var filtered = newChoices.filter { $0.model != "hermes-agent" }
+        filtered.insert(hermes, at: 0)
+        
+        await MainActor.run {
+            self.allChoices = filtered
+        }
+    }
 
     /// UserDefaults key for persistence.
     private static let defaultsKey = "com.ares.companion.config"
@@ -75,7 +90,7 @@ struct CompanionConfig: Codable, Equatable {
     }
 
     /// Find a matching choice in the catalog.
-    var currentChoice: Choice {
+    @MainActor var currentChoice: Choice {
         Self.allChoices.first { $0.provider == provider && $0.model == model }
             ?? Choice(provider: provider, model: model, displayName: model, summary: "", group: .cloud, speed: .medium, quality: .basic)
     }
