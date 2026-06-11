@@ -1,6 +1,0 @@
-name: perception
-version: 0.1.0
-category: cognitive
-permission_tier: 0
-latency_class: fast
-entry_point: ares.skills.cognitive.perception_server:server

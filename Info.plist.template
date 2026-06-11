@@ -17,5 +17,8 @@
     <key>NSSupportsAutomaticTermination</key><true/>
     <key>LSUIElement</key><false/>
     <key>NSMicrophoneUsageDescription</key><string>ARES uses your microphone for voice commands and conversations.</string>
+    <key>NSScreenCaptureUsageDescription</key><string>ARES needs screen recording access to see your screen for visual context.</string>
+    <key>NSCameraUsageDescription</key><string>ARES uses your camera to perceive the physical world.</string>
+    <key>NSAppleEventsUsageDescription</key><string>ARES requires Apple Events access to automate desktop apps.</string>
 </dict>
 </plist>

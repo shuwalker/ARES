@@ -18,6 +18,10 @@ struct CompanionView: View {
     @State private var showSourcePicker: Bool = false
     @State private var showModelPicker: Bool = false
     @State private var selectedReference: AttachedReference? = nil
+    /// Tracks which bubble is in edit mode (nil = none).
+    @State private var editingMessageId: ChatBubble.ID? = nil
+    /// Holds the current edit text while editing a message.
+    @State private var editText: String = ""
 
     // FocusState — required to receive first responder inside HSplitView
     // nested in NavigationSplitView (macOS focus routing bug workaround).
@@ -89,33 +93,12 @@ struct CompanionView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            // Pulsing avatar ring
-            ZStack {
-                Circle()
-                    .stroke(appState.voiceState.color.opacity(0.4), lineWidth: 2)
-                    .frame(width: 200, height: 200)
-                    .scaleEffect(showStats ? 1.05 : 1.0)
-                    .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true),
-                               value: showStats)
-
-                Circle()
-                    .fill(ARESColors.background)
-                    .frame(width: 180, height: 180)
-
-                Circle()
-                    .fill(ARESColors.gradient)
-                    .frame(width: 160, height: 160)
-
-                Image(systemName: "shield.righthalf.filled")
-                    .font(.system(size: 64))
-                    .foregroundStyle(
-                        .linearGradient(
-                            colors: [.white.opacity(0.9), .white.opacity(0.3)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            }
+            // Real Avatar Rendering (HyperFrames 3D or 2D Fallback)
+            AvatarWidget()
+                .frame(width: 220, height: 220)
+                .scaleEffect(showStats ? 1.05 : 1.0)
+                .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true),
+                           value: showStats)
 
             // Voice state label
             Text(appState.voiceState.label.uppercased())
@@ -402,24 +385,38 @@ struct CompanionView: View {
                     if let refs = bubble.references, !refs.isEmpty {
                         referenceChipsLine(refs)
                     }
-                    messageBubble(bubble)
-                        .contextMenu {
-                            Button("Copy") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(bubble.content, forType: .string)
-                            }
-                            Button("Copy as Markdown") {
-                                NSPasteboard.general.clearContents()
-                                let md = formatAsMarkdown(bubble)
-                                NSPasteboard.general.setString(md, forType: .string)
-                            }
-                            Divider()
-                            if !appState.isViewingHistory {
-                                Button("Delete Message", role: .destructive) {
-                                    deleteMessage(bubble)
+                    if bubble.id == editingMessageId {
+                        editModeView(bubble)
+                    } else {
+                        messageBubble(bubble)
+                            .contextMenu {
+                                Button("Copy") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(bubble.content, forType: .string)
+                                }
+                                Button("Copy as Markdown") {
+                                    NSPasteboard.general.clearContents()
+                                    let md = formatAsMarkdown(bubble)
+                                    NSPasteboard.general.setString(md, forType: .string)
+                                }
+                                Divider()
+                                if !appState.isViewingHistory {
+                                    Button("Edit") {
+                                        beginEdit(bubble)
+                                    }
+                                    Button("Delete Message", role: .destructive) {
+                                        deleteMessage(bubble)
+                                    }
+                                }
+                                if !appState.isViewingHistory {
+                                    Divider()
+                                    Button("Branch from here") {
+                                        branchFrom(bubble)
+                                    }
                                 }
                             }
-                        }
+                    }
+                    branchMarker(bubble)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -443,7 +440,14 @@ struct CompanionView: View {
                                     deleteMessage(bubble)
                                 }
                             }
+                            if !appState.isViewingHistory {
+                                Divider()
+                                Button("Branch from here") {
+                                    branchFrom(bubble)
+                                }
+                            }
                         }
+                    branchMarker(bubble)
                 }
                 Spacer()
             }
@@ -455,25 +459,76 @@ struct CompanionView: View {
     /// messages get Markdown rendering (bold, code, lists, links).
     /// Streaming bubbles show a blinking cursor.
     private func messageBubble(_ bubble: ChatBubble) -> some View {
-        Group {
-            if bubble.role == .assistant, let attributed = try? AttributedString(
-                markdown: bubble.content,
-                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-            ) {
-                Text(attributed) + (bubble.isStreaming ? Text("▊").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
-            } else {
-                Text(bubble.content) + (bubble.isStreaming ? Text("▊").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
+        VStack(alignment: .leading, spacing: 4) {
+            Group {
+                if bubble.role == .assistant, let attributed = try? AttributedString(
+                    markdown: bubble.content,
+                    options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+                ) {
+                    Text(attributed) + (bubble.isStreaming ? Text("\u{258A}").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
+                } else {
+                    Text(bubble.content) + (bubble.isStreaming ? Text("\u{258A}").foregroundStyle(ARESColors.gold).fontWeight(.bold) : Text(""))
+                }
+            }
+            .textSelection(.enabled)
+            .padding(10)
+            .background(bubble.role == .user
+                        ? ARESColors.accent.opacity(0.25)
+                        : ARESColors.surfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(ARESColors.textPrimary)
+            .frame(maxWidth: .infinity, alignment: bubble.role == .user ? .trailing : .leading)
+            .textSelection(.enabled)
+
+            // Stats footer — only for assistant bubbles after streaming completes
+            if bubble.role == .assistant && !bubble.isStreaming && hasAnyStats(bubble) {
+                statsFooter(bubble)
             }
         }
-        .textSelection(.enabled)
-        .padding(10)
-        .background(bubble.role == .user
-                    ? ARESColors.accent.opacity(0.25)
-                    : ARESColors.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .foregroundStyle(ARESColors.textPrimary)
-        .frame(maxWidth: .infinity, alignment: bubble.role == .user ? .trailing : .leading)
-        .textSelection(.enabled)
+    }
+
+    /// Returns true if any stats value is present on this bubble.
+    private func hasAnyStats(_ bubble: ChatBubble) -> Bool {
+        bubble.tokenCount != nil || bubble.latencySeconds != nil || bubble.costUSD != nil
+    }
+
+    /// Small footer showing per-message token / latency / cost stats.
+    private func statsFooter(_ bubble: ChatBubble) -> some View {
+        HStack(spacing: 4) {
+            Text(formattedTokens(bubble.tokenCount))
+            if bubble.latencySeconds != nil || bubble.tokenCount != nil {
+                Text("\u{00B7}")
+            }
+            Text(formattedLatency(bubble.latencySeconds))
+            if bubble.costUSD != nil {
+                Text("\u{00B7}")
+                Text(formattedCost(bubble.costUSD))
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(ARESColors.textTertiary)
+        .padding(.leading, 10)
+    }
+
+    /// Format token count: "1.2k" for >= 1000, else plain integer.
+    private func formattedTokens(_ count: Int?) -> String {
+        guard let count else { return "\u{2014}" }
+        if count >= 1000 {
+            let k = Double(count) / 1000.0
+            return String(format: "%.1f", k) + "k tokens"
+        }
+        return "\(count) tokens"
+    }
+
+    /// Format latency: "4.3s" with one decimal.
+    private func formattedLatency(_ seconds: Double?) -> String {
+        guard let seconds else { return "\u{2014}" }
+        return String(format: "%.1f", seconds) + "s"
+    }
+
+    /// Format cost (v1: always "—").
+    private func formattedCost(_ usd: Double?) -> String {
+        "\u{2014}"
     }
 
     /// Format a message for clipboard as Markdown. Assistant messages
@@ -519,6 +574,87 @@ struct CompanionView: View {
                 .background(sourceColor(for: ref.sourceName).opacity(0.15))
                 .clipShape(Capsule())
             }
+        }
+    }
+
+    // MARK: - Edit & Branch helpers
+
+    /// Displays a TextField with Cancel / Save & Resend buttons for editing.
+    @ViewBuilder
+    private func editModeView(_ bubble: ChatBubble) -> some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            TextField("Edit message…", text: $editText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...5)
+                .padding(10)
+                .background(ARESColors.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(ARESColors.gold.opacity(0.5), lineWidth: 1)
+                )
+                .foregroundStyle(ARESColors.textPrimary)
+                .onSubmit { saveEdit(bubble) }
+
+            HStack(spacing: 8) {
+                Button("Cancel") {
+                    cancelEdit()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button("Save & Resend") {
+                    saveEdit(bubble)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(ARESColors.gold)
+            }
+        }
+        .frame(maxWidth: 400)
+    }
+
+    /// Enters edit mode for the given user bubble.
+    private func beginEdit(_ bubble: ChatBubble) {
+        editingMessageId = bubble.id
+        editText = bubble.content
+    }
+
+    /// Saves the edited content, re-sends from this bubble, and exits edit mode.
+    private func saveEdit(_ bubble: ChatBubble) {
+        let msgs = appState.chatMessages
+        guard let idx = msgs.firstIndex(where: { $0.id == bubble.id }) else {
+            cancelEdit()
+            return
+        }
+        appState.editMessage(at: idx, newContent: editText)
+        editingMessageId = nil
+        editText = ""
+    }
+
+    /// Exits edit mode without saving.
+    private func cancelEdit() {
+        editingMessageId = nil
+        editText = ""
+    }
+
+    /// Branches the conversation from the selected bubble.
+    private func branchFrom(_ bubble: ChatBubble) {
+        let msgs = appState.chatMessages
+        guard let idx = msgs.firstIndex(where: { $0.id == bubble.id }) else { return }
+        // If we're currently editing, cancel first
+        cancelEdit()
+        appState.branchFromMessage(at: idx)
+    }
+
+    /// Small visual indicator shown on the first bubble of a branched session.
+    @ViewBuilder
+    private func branchMarker(_ bubble: ChatBubble) -> some View {
+        if bubble.parentBranchId != nil {
+            Text("\u{21B3} branched")
+                .font(.caption2)
+                .foregroundStyle(ARESColors.textTertiary)
+                .padding(.top, 1)
         }
     }
 
@@ -590,6 +726,7 @@ struct CompanionView: View {
                 StatCard(title: "SKILLS",   value: "\(appState.skillCount)",   icon: "book.closed",              color: ARESColors.accent)
                 StatCard(title: "MEMORY",   value: "\(appState.memoryPercent)%", icon: "brain.head.profile",      color: ARESColors.green)
                 StatCard(title: "AGENTS",   value: "\(appState.activeOfficeAgents)", icon: "person.3",            color: ARESColors.purple)
+                StatCard(title: "24H COST", value: "$\(appState.formatted24hCost)", icon: "dollarsign.circle",      color: ARESColors.gold)
             }
             .padding(16)
         }
@@ -608,11 +745,13 @@ struct CompanionView: View {
 struct ModelPickerView: View {
     @EnvironmentObject private var appState: ARESAppState
     @State private var searchText: String = ""
+    @State private var choices: [CompanionConfig.Choice] = CompanionConfig.allChoices
+    @State private var isRefreshing: Bool = false
 
     private var filtered: [CompanionConfig.Choice] {
         let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        if q.isEmpty { return CompanionConfig.allChoices }
-        return CompanionConfig.allChoices.filter {
+        if q.isEmpty { return choices }
+        return choices.filter {
             $0.displayName.lowercased().contains(q) ||
             $0.provider.lowercased().contains(q) ||
             $0.model.lowercased().contains(q) ||
@@ -699,6 +838,24 @@ struct ModelPickerView: View {
             .frame(width: 360, height: 440)
         }
         .background(ARESColors.surface)
+        .onAppear {
+            if isRefreshing { return }
+            isRefreshing = true
+            Task {
+                let config = ARESConfiguration.shared
+                let gateways: [any GatewayProvider] = [
+                    HermesGatewayProvider(baseURL: URL(string: config.hermesURL)!),
+                    OllamaGatewayProvider(baseURL: URL(string: config.ollamaURL)!),
+                    ClaudeGatewayProvider(apiKey: ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""),
+                    OpenAIGatewayProvider(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? "")
+                ]
+                await CompanionConfig.refreshChoices(gateways: gateways)
+                await MainActor.run {
+                    self.choices = CompanionConfig.allChoices
+                    self.isRefreshing = false
+                }
+            }
+        }
     }
 
     @ViewBuilder

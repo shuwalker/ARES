@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ARES}",
+            "name": "Debug ARES",
+            "target": "ARES",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug ARES"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:ARES}",
+            "name": "Release ARES",
+            "target": "ARES",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release ARES"
+        }
+    ]
+}

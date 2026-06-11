@@ -7,7 +7,7 @@ import ARESCore
 @MainActor
 final class ARESAppState: ObservableObject {
     // MARK: - Bootstrap state
-    @Published var hasBootstrapped: Bool {
+    @Published var hasBootstrapped: Bool = UserDefaults.standard.bool(forKey: "ARES.hasBootstrapped") {
         didSet { UserDefaults.standard.set(hasBootstrapped, forKey: "ARES.hasBootstrapped") }
     }
 
@@ -16,8 +16,9 @@ final class ARESAppState: ObservableObject {
     @Published var isInstalling = false
     @Published var installError: String?
 
-    // MARK: - Tab navigation
-    @Published var selectedTab: ARESTab = .companion
+    // MARK: - Navigation
+    @Published var selectedTab: ARESTab = .dashboard
+    @Published var isInspectorPresented: Bool = false
 
     // MARK: - Companion state
     @Published var companionGreeting: String = ""
@@ -30,11 +31,23 @@ final class ARESAppState: ObservableObject {
     @Published var hermesGatewayURL: String = "http://localhost:8642"
     @Published var activeOfficeAgents: Int = 0
 
+    /// Sum of `costUSD` on all chat bubbles newer than 24h, formatted for the stats card.
+    /// Returns "0.00" when no cost data has been recorded yet (gateway sends `nil` until usage is reported).
+    var formatted24hCost: String {
+        let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        let total = chatMessages
+            .filter { $0.timestamp >= cutoff }
+            .compactMap { $0.costUSD }
+            .reduce(0.0, +)
+        return String(format: "%.2f", total)
+    }
+
     // MARK: - Chat state
     @Published var chatMessages: [ChatBubble] = []
     @Published var chatInput: String = ""
     @Published var isChatProcessing: Bool = false
     @Published var activeChatSessionID: String? = nil
+    @Published var autoSpeakNextResponse: Bool = false
     @Published var companionConfig: CompanionConfig = CompanionConfig.load()
 
     // MARK: - Reference state
@@ -64,14 +77,52 @@ final class ARESAppState: ObservableObject {
         HermesSessionReader()
     ]
 
+    // MARK: - Backend protocols (injected at startup)
+    var embodiment: any Embodiment
+    var perceiver: any Perceiver
+    var memory: any MemoryStore
+    var voice: any VoiceEngine
+    var brain: any ReasoningBrain
+    var identity: any Identity
+    var mimicry: any Mimicry
+    var world: any WorldPerception
+    var eventBus: any EventBus
+    var workflow: any Workflow
+    var scheduler: any Scheduler
+
+    // Active implementations for UI Pickers
+    @Published var activeVoiceImpl: VoiceImpl = .system
+    @Published var activeWorldImpl: WorldImpl = .appleVision
+    @Published var activeEventBusImpl: EventBusImpl = .local
+
     private let scanner = DependencyScanner()
     private let installer = DependencyInstaller()
     private let chatService = CompanionChatService.shared
     private var refreshTimer: Timer?
 
-    init() {
+    /// Designated initializer accepting a full BackendStack.
+    init(stack: BackendStack) {
+        self.embodiment = stack.embodiment
+        self.perceiver = stack.perceiver
+        self.memory = stack.memory
+        self.voice = stack.voice
+        self.brain = stack.brain
+        self.identity = stack.identity
+        self.mimicry = stack.mimicry
+        self.world = stack.world
+        self.eventBus = stack.eventBus
+        self.workflow = stack.workflow
+        self.scheduler = stack.scheduler
         self.hasBootstrapped = UserDefaults.standard.bool(forKey: "ARES.hasBootstrapped")
         refreshLiveStats()
+    }
+
+    /// Convenience initializer that resolves backends from environment.
+    /// Routes through BackendBuilder — no silent dummy injection.
+    convenience init() {
+        let backends = resolveBackends(environmentFromLaunchArgs())
+        self.init(stack: backends)
+        print("⚠️  [ARESAppState] Convenience init() used — backends resolved from ARES_ENV.")
     }
 
     // MARK: - Bootstrap actions
@@ -277,11 +328,13 @@ final class ARESAppState: ObservableObject {
 
         // Create a placeholder streaming bubble for the assistant's response
         let streamingBubbleID = UUID()
+        let startedAt = Date()
         var streamingBubble = ChatBubble(
             role: .assistant,
             content: "",
             references: refs.isEmpty ? nil : refs,
-            isStreaming: true
+            isStreaming: true,
+            startedAt: startedAt
         )
         streamingBubble.id = streamingBubbleID
         chatMessages.append(streamingBubble)
@@ -289,74 +342,90 @@ final class ARESAppState: ObservableObject {
         // Keep a snapshot of the full conversation history for context (before streaming bubble)
         let conversationHistory = chatMessages.filter { !$0.isStreaming }
 
-        // Use existing session ID for continuity, or start a new one
+        // Ensure we have a session ID before calling the brain
+        if activeChatSessionID == nil {
+            activeChatSessionID = "ares-\(UUID().uuidString.prefix(8))"
+        }
         let sessionID = activeChatSessionID
 
         Task {
-            // Try streaming first; fall back to CLI if Gateway is unreachable
-            let gatewayReachable = await chatService.checkAvailability()
-
-            if gatewayReachable {
-                // --- Streaming path (real-time token delivery through Hermes Gateway) ---
-                do {
-                    // Build the messages array with reference-augmented prompt for context
-                    var contextMessages: [GatewayMessage] = conversationHistory.map { bubble in
-                        GatewayMessage(
-                            role: bubble.role == .user ? "user" : "assistant",
-                            content: bubble.content
-                        )
-                    }
-                    // Use the reference-augmented prompt text for the model
-                    contextMessages.append(GatewayMessage(role: "user", content: promptText))
-
-                    let result = try await chatService.sendMessageStream(
-                        messages: contextMessages,
-                        sessionID: sessionID,
-                        onToken: { [weak self] partial, isFinished in
-                            guard let self else { return }
-                            // Find the streaming bubble by ID and update its content
-                            if let idx = self.chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
-                                self.chatMessages[idx].content = partial
-                                self.chatMessages[idx].isStreaming = !isFinished
-                            }
-                        }
+            do {
+                let contextMessages = conversationHistory.map { bubble in
+                    Message(
+                        role: bubble.role == .user ? .user : .assistant,
+                        content: bubble.content
                     )
+                }
+                let context = ConversationContext(
+                    messages: contextMessages,
+                    sessionID: sessionID,
+                    model: companionConfig.model
+                )
 
-                    // Finalize: update session ID and persist
-                    await MainActor.run {
-                        if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
-                            chatMessages[idx].isStreaming = false
-                            // Remove empty response placeholder if somehow no content arrived
-                            if chatMessages[idx].content.isEmpty {
-                                chatMessages[idx].content = result.responseText.isEmpty ? "No response from ARES." : result.responseText
-                            }
-                        }
-                        activeChatSessionID = result.sessionID
-                        isChatProcessing = false
-                        voiceState = .idle
-                        persistChatTurn(userText: text, assistantText: chatMessages.last?.content ?? result.responseText, refs: refs)
-                    }
-                } catch {
-                    await MainActor.run {
-                        if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
-                            chatMessages[idx].content = "ARES streaming error: \(error.localizedDescription). Retrying via CLI…"
-                            chatMessages[idx].isStreaming = false
-                        }
-                        // Fallback to CLI
-                        fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID)
+                let throttle = StreamingThrottle { [weak self] bubbleID, text in
+                    guard let self else { return }
+                    if let idx = self.chatMessages.firstIndex(where: { $0.id == bubbleID }) {
+                        self.chatMessages[idx].content = text
                     }
                 }
-            } else {
-                // --- CLI fallback (non-streaming) ---
+
+                let response = try await brain.respond(
+                    to: promptText,
+                    context: context,
+                    onToken: { [weak self] partial, isFinished in
+                        Task { @MainActor in
+                            guard let self else { return }
+                            throttle.enqueue(bubbleID: streamingBubbleID, text: partial)
+                            if isFinished {
+                                throttle.cancel()
+                                if let idx = self.chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                                    self.chatMessages[idx].isStreaming = false
+                                }
+                                if self.autoSpeakNextResponse {
+                                    self.autoSpeakNextResponse = false
+                                    let prosody = Prosody(timestamp: Date(), energy: 0.8, pitch: 120, rate: 0.9)
+                                    Task {
+                                        do {
+                                            _ = try await self.voice.synthesize(text: partial, prosody: prosody)
+                                        } catch {
+                                            print("⚠️ [ARESAppState] TTS Error: \(error)")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+
                 await MainActor.run {
-                    fallbackToCLI(displayText: displayText, promptText: promptText, sessionID: sessionID, refs: refs, streamingBubbleID: streamingBubbleID)
+                    throttle.cancel()
+                    if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                        chatMessages[idx].isStreaming = false
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
+                        if chatMessages[idx].content.isEmpty {
+                            chatMessages[idx].content = response.isEmpty ? "No response from ARES." : response
+                        }
+                    }
+                    isChatProcessing = false
+                    voiceState = .idle
+                    persistChatTurn(userText: displayText, assistantText: chatMessages.last?.content ?? response, refs: refs)
+                }
+            } catch {
+                await MainActor.run {
+                    if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
+                        chatMessages[idx].content = "ARES backend error: \(error.localizedDescription)"
+                        chatMessages[idx].isStreaming = false
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
+                    }
+                    isChatProcessing = false
+                    voiceState = .idle
                 }
             }
         }
     }
 
     /// CLI fallback when Ollama is not reachable. Replaces the streaming bubble.
-    private func fallbackToCLI(displayText: String, promptText: String, sessionID: String?, refs: [AttachedReference], streamingBubbleID: UUID) {
+    private func fallbackToCLI(displayText: String, promptText: String, sessionID: String?, refs: [AttachedReference], streamingBubbleID: UUID, startedAt: Date) {
         Task {
             do {
                 let result = try await chatService.sendMessage(
@@ -369,6 +438,7 @@ final class ARESAppState: ObservableObject {
                     if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
                         chatMessages[idx].content = result.responseText.isEmpty ? "No response from ARES." : result.responseText
                         chatMessages[idx].isStreaming = false
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
                     }
                     activeChatSessionID = result.sessionID
                     isChatProcessing = false
@@ -380,6 +450,8 @@ final class ARESAppState: ObservableObject {
                     if let idx = chatMessages.firstIndex(where: { $0.id == streamingBubbleID }) {
                         chatMessages[idx].content = "ARES backend error: \(error.localizedDescription)"
                         chatMessages[idx].isStreaming = false
+                        // Still record latency even on error — the attempt took real time
+                        chatMessages[idx].latencySeconds = Date().timeIntervalSince(startedAt)
                     }
                     isChatProcessing = false
                     voiceState = .idle
@@ -395,7 +467,16 @@ final class ARESAppState: ObservableObject {
         // Persist locally as backup (Gateway manages its own sessions)
         chatService.appendTurn(role: "user", content: userText, sessionID: sid, model: companionConfig.model)
         chatService.appendTurn(role: "assistant", content: assistantText, sessionID: sid, model: companionConfig.model)
-        chatService.persistSession(sessionID: sid, model: companionConfig.model)
+        do {
+            try chatService.persistSession(sessionID: sid, model: companionConfig.model)
+        } catch {
+            let errorBubble = ChatBubble(
+                role: .assistant,
+                content: "⚠️ System Error: Unable to save history. Disk may be full or permissions denied.\nDetails: \(error.localizedDescription)",
+                timestamp: Date()
+            )
+            chatMessages.append(errorBubble)
+        }
         refreshSessionHistory()
     }
 
@@ -553,7 +634,85 @@ final class ARESAppState: ObservableObject {
         sendChat()
     }
 
+    /// Edit a user message's content at the given index, truncate all
+    /// subsequent messages, then re-send the edited text. Uses the
+    /// existing truncateAndResend mechanism with the modified content.
+    func editMessage(at index: Int, newContent: String) {
+        guard !isViewingHistory else { return }
+        guard chatMessages.indices.contains(index) else { return }
+        guard chatMessages[index].role == .user else { return }
+        let trimmed = newContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Update the bubble content in-place
+        chatMessages[index].content = trimmed
+        // Then truncate and resend from this index
+        truncateAndResend(at: index)
+    }
+
+    /// Branch the conversation from the message at the given index.
+    /// Creates a new Hermes session, copies history up to and including
+    /// that message, tags the first message with `parentBranchId`,
+    /// and sets the new session as active.
+    func branchFromMessage(at index: Int) {
+        guard !isViewingHistory else { return }
+        guard chatMessages.indices.contains(index) else { return }
+        // Keep everything up to and including the selected message
+        let branchedMessages = Array(chatMessages[...index])
+        // Tag the FIRST message of the new session so the branch
+        // marker appears at the top of the conversation
+        var tagged = branchedMessages
+        if !tagged.isEmpty {
+            tagged[0].parentBranchId = tagged[0].id
+        }
+        // Create a new session (Hermes will allocate a fresh ID on next send)
+        activeChatSessionID = nil
+        chatMessages = tagged
+        chatInput = ""
+    }
+
     // MARK: - Companion helpers
+
+    func switchGateway(_ impl: GatewayImpl) {
+        let newGateway = BackendBuilder.gateway(impl)
+        chatService.switchProvider(newGateway)
+        
+        // Ensure the brain is set to use the ChatService gateway again
+        if !(self.brain is HermesAgentBrain) {
+            self.switchBrain(.hermes(url: "http://localhost:8642"))
+        }
+        
+        switch impl {
+        case .ollama:
+            chatService.reconfigure(provider: "ollama", gatewayURL: "http://localhost:11434")
+        case .hermes:
+            chatService.reconfigure(provider: "hermes", gatewayURL: "http://localhost:8642")
+        case .anthropic:
+            chatService.reconfigure(provider: "anthropic", gatewayURL: "https://api.anthropic.com")
+        case .openai:
+            chatService.reconfigure(provider: "openai", gatewayURL: "https://api.openai.com")
+        default:
+            break
+        }
+    }
+
+    func switchBrain(_ impl: BrainImpl) {
+        self.brain = BackendBuilder.makeBrain(impl)
+    }
+
+    func switchVoice(_ impl: VoiceImpl) {
+        self.activeVoiceImpl = impl
+        self.voice = BackendBuilder.makeVoice(impl)
+    }
+
+    func switchWorld(_ impl: WorldImpl) {
+        self.activeWorldImpl = impl
+        self.world = BackendBuilder.makeWorld(impl)
+    }
+
+    func switchEventBus(_ impl: EventBusImpl) {
+        self.activeEventBusImpl = impl
+        self.eventBus = BackendBuilder.makeEventBus(impl)
+    }
 
     func loadSelfModel() {
         let path = ARESEnvironment.selfModelFilePath.path
@@ -579,28 +738,46 @@ final class ARESAppState: ObservableObject {
 // MARK: - Tab enum
 
 enum ARESTab: String, CaseIterable, Identifiable {
+    case dashboard
     case companion
     case office
     case hub
+    case studio
+    case automations
+    case calendar
+    case tasks
+    case notes
     case settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .companion: return "Companion"
-        case .office:    return "Office"
-        case .hub:       return "Hub"
-        case .settings:  return "Settings"
+        case .dashboard:    return "Dashboard"
+        case .companion:    return "Companion"
+        case .office:       return "Office"
+        case .hub:          return "Hub"
+        case .studio:       return "Studio"
+        case .automations:  return "Automations"
+        case .calendar:     return "Calendar"
+        case .tasks:        return "Tasks"
+        case .notes:        return "Notes"
+        case .settings:     return "Settings"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .companion: return "person.fill.viewfinder"
-        case .office:    return "building.2.fill"
-        case .hub:       return "square.grid.2x2.fill"
-        case .settings:  return "gearshape.fill"
+        case .dashboard:    return "rectangle.grid.2x2.fill"
+        case .companion:    return "person.fill.viewfinder"
+        case .office:       return "building.2.fill"
+        case .hub:          return "square.grid.2x2.fill"
+        case .studio:       return "chevron.left.forwardslash.chevron.right"
+        case .automations:  return "gearshape.2.fill"
+        case .calendar:     return "calendar"
+        case .tasks:        return "checklist"
+        case .notes:        return "note.text"
+        case .settings:     return "gearshape.fill"
         }
     }
 }
@@ -657,13 +834,29 @@ struct ChatBubble: Identifiable, Equatable {
     var references: [AttachedReference]? = nil
     /// True while the model is still streaming tokens into this bubble.
     var isStreaming: Bool = false
+    /// If set, this bubble is the first message in a branched
+    /// conversation that originated from this source message ID.
+    var parentBranchId: UUID? = nil
+    /// Token count from the gateway response (optional).
+    var tokenCount: Int? = nil
+    /// Wall-clock latency in seconds for the assistant response.
+    var latencySeconds: Double? = nil
+    /// Computed cost in USD (v1: always nil, shown as "—").
+    var costUSD: Double? = nil
+    /// Time when streaming started, used to compute latency.
+    var startedAt: Date? = nil
 
-    init(role: BubbleRole, content: String, timestamp: Date = Date(), references: [AttachedReference]? = nil, isStreaming: Bool = false) {
+    init(role: BubbleRole, content: String, timestamp: Date = Date(), references: [AttachedReference]? = nil, isStreaming: Bool = false, parentBranchId: UUID? = nil, tokenCount: Int? = nil, latencySeconds: Double? = nil, costUSD: Double? = nil, startedAt: Date? = nil) {
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.references = references
         self.isStreaming = isStreaming
+        self.parentBranchId = parentBranchId
+        self.tokenCount = tokenCount
+        self.latencySeconds = latencySeconds
+        self.costUSD = costUSD
+        self.startedAt = startedAt
     }
 }
 

@@ -22,6 +22,15 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                // Section 0: Modular Engines
+                settingsSection(header: "MODULAR ENGINES",
+                                subtitle: "Select which backend systems power ARES") {
+                    BackendPickerWidget()
+                    VoicePickerWidget()
+                    VisionPickerWidget()
+                    EventBusPickerWidget()
+                }
+
                 // Section 1: Integrations
                 settingsSection(header: "INTEGRATIONS",
                                 subtitle: "Which detected tools ARES can read session data from") {

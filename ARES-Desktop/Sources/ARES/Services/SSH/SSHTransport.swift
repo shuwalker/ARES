@@ -1,8 +1,9 @@
 import Foundation
 import ARESCore
 
-/// Stub for SSHTransport — the real implementation was removed during the pure-ARES architecture refactor.
-/// All methods fatalError at runtime. Replace with a real SSH transport layer before re-enabling remote features.
+/// SSH transport for remote connections via /usr/bin/ssh.
+/// Requires a running SSH agent or key-based auth. If SSH binary is missing
+/// or the connection cannot be established, methods throw descriptive errors.
 
 // MARK: - SSHTransportError
 
@@ -10,12 +11,14 @@ enum SSHTransportError: LocalizedError {
     case invalidResponse(String)
     case remoteFailure(String)
     case launchFailure(String)
+    case sshUnavailable(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse(let message): return message
         case .remoteFailure(let message): return message
         case .launchFailure(let message): return message
+        case .sshUnavailable(let message): return message
         }
     }
 }
@@ -32,6 +35,7 @@ struct SSHTransportResult: Sendable {
 
 final class SSHTransport: @unchecked Sendable {
     let paths: AppPaths
+    private let sshBinary = "/usr/bin/ssh"
 
     init(paths: AppPaths) {
         self.paths = paths
@@ -45,7 +49,12 @@ final class SSHTransport: @unchecked Sendable {
         standardInput: Data? = nil,
         allocateTTY: Bool = false
     ) async throws -> SSHTransportResult {
-        fatalError("SSHTransport.execute(on:remoteCommand:standardInput:allocateTTY:) is not implemented")
+        guard FileManager.default.isExecutableFile(atPath: sshBinary) else {
+            throw SSHTransportError.sshUnavailable("SSH binary not found at \(sshBinary). Install OpenSSH or enable Remote Login in Sharing preferences.")
+        }
+
+        let args = shellArguments(for: connection, startupCommandLine: remoteCommand)
+        return try await runProcess(arguments: args, standardInput: standardInput)
     }
 
     // MARK: - Execute JSON (typed response)
@@ -55,7 +64,19 @@ final class SSHTransport: @unchecked Sendable {
         pythonScript: String,
         responseType: T.Type
     ) async throws -> T {
-        fatalError("SSHTransport.executeJSON(on:pythonScript:responseType:) is not implemented")
+        let pythonCommand = "python3 \(pythonScript)"
+        let result = try await execute(on: connection, remoteCommand: pythonCommand)
+
+        guard result.exitCode == 0 else {
+            throw SSHTransportError.remoteFailure("Python script exited with code \(result.exitCode): \(result.stderr)")
+        }
+
+        let data = Data(result.stdout.utf8)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw SSHTransportError.invalidResponse("Failed to decode JSON response: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Validation helpers
@@ -64,7 +85,9 @@ final class SSHTransport: @unchecked Sendable {
         _ result: SSHTransportResult,
         for connection: ConnectionProfile
     ) throws {
-        fatalError("SSHTransport.validateSuccessfulExit(_:for:) is not implemented")
+        if result.exitCode != 0 {
+            throw SSHTransportError.remoteFailure("Process failed with exit code \(result.exitCode)")
+        }
     }
 
     // MARK: - Terminal / shell arguments
@@ -73,7 +96,30 @@ final class SSHTransport: @unchecked Sendable {
         for connection: ConnectionProfile,
         startupCommandLine: String? = nil
     ) -> [String] {
-        fatalError("SSHTransport.shellArguments(for:startupCommandLine:) is not implemented")
+        var args = [sshBinary]
+
+        // Key-based auth: disable password prompts, use default keys
+        args += ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+
+        if let port = connection.sshPort, port != 22 {
+            args += ["-p", "\(port)"]
+        }
+
+        // Build the remote target
+        let target: String
+        if let user = connection.trimmedUser {
+            target = "\(user)@\(connection.effectiveTarget)"
+        } else {
+            target = connection.effectiveTarget
+        }
+        args.append(target)
+
+        // Append the command (or interactive shell if nil)
+        if let cmd = startupCommandLine {
+            args.append(cmd)
+        }
+
+        return args
     }
 
     // MARK: - Service arguments (for Process-based SSH)
@@ -81,9 +127,25 @@ final class SSHTransport: @unchecked Sendable {
     func serviceArguments(
         for connection: ConnectionProfile,
         remoteCommand: String,
-        allocateTTY: Bool
+        allocateTTY: Bool = false
     ) -> [String] {
-        fatalError("SSHTransport.serviceArguments(for:remoteCommand:allocateTTY:) is not implemented")
+        var args = [sshBinary]
+        args += ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+
+        if let port = connection.sshPort, port != 22 {
+            args += ["-p", "\(port)"]
+        }
+
+        let target: String
+        if let user = connection.trimmedUser {
+            target = "\(user)@\(connection.effectiveTarget)"
+        } else {
+            target = connection.effectiveTarget
+        }
+        args.append(target)
+        args.append(remoteCommand)
+
+        return args
     }
 
     // MARK: - Diagnostics
@@ -94,6 +156,45 @@ final class SSHTransport: @unchecked Sendable {
         exitCode: Int32,
         connection: ConnectionProfile
     ) -> String {
-        fatalError("SSHTransport.describeRemoteFailure(stdout:stderr:exitCode:connection:) is not implemented")
+        if exitCode == 255 {
+            return "SSH connection failed to \(connection.effectiveTarget). Check that Remote Login is enabled, keys are configured, and the host is reachable.\nstderr: \(stderr)"
+        }
+        return "Remote failure: exit \(exitCode)\nstdout: \(stdout)\nstderr: \(stderr)"
+    }
+
+    // MARK: - Process runner
+
+    private func runProcess(arguments: [String], standardInput: Data?) async throws -> SSHTransportResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: arguments[0])
+        process.arguments = Array(arguments.dropFirst())
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        if let input = standardInput {
+            let stdinPipe = Pipe()
+            process.standardInput = stdinPipe
+            try process.run()
+            if let handle = stdinPipe.fileHandleForWriting as? FileHandle {
+                try handle.write(contentsOf: input)
+                try handle.close()
+            }
+        } else {
+            try process.run()
+        }
+
+        process.waitUntilExit()
+
+        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
+        return SSHTransportResult(
+            stdout: String(data: stdoutData, encoding: .utf8) ?? "",
+            stderr: String(data: stderrData, encoding: .utf8) ?? "",
+            exitCode: process.terminationStatus
+        )
     }
 }
