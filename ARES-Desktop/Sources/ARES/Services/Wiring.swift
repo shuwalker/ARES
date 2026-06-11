@@ -25,21 +25,25 @@ func resolveBackends(_ mode: RuntimeEnvironment) -> BackendStack {
     do {
         switch mode {
         case .development:
-            return try BackendStack.development()
+            // Same real stack as production, but tolerate per-brick dummy
+            // fallbacks (e.g. SQLite init failure) instead of refusing to start.
+            let hermesURL = ProcessInfo.processInfo.environment["HERMES_URL"] ?? ARESConfiguration.shared.hermesURL
+            return try BackendStack.real(hermesURL: hermesURL, check: false)
 
         case .production:
             // Try to use real backends; fail loudly if not configured
-            let hermesURL = ProcessInfo.processInfo.environment["HERMES_URL"] ?? "http://localhost:8642"
+            let hermesURL = ProcessInfo.processInfo.environment["HERMES_URL"] ?? ARESConfiguration.shared.hermesURL
             return try BackendStack.production(hermesURL: hermesURL)
 
         case .testing:
-            return try BackendStack.development()  // Testing uses development (all dummies)
+            return try BackendStack.safeMode()  // All dummies, no real services touched
         }
     } catch {
-        // Fallback: if build() fails, use development (all dummies) with a loud warning
-        wiringLog.error("Failed to build backends: \(error.localizedDescription, privacy: .public). Falling back to development mode (all dummies).")
+        // Fallback: if build() fails, use safe mode (all dummies) with a loud warning
+        wiringLog.error("Failed to build backends: \(error.localizedDescription, privacy: .public). Falling back to safe mode (all dummies).")
+        signalWiringFailure()
         do {
-            return try BackendStack.development()
+            return try BackendStack.safeMode()
         } catch {
             // Last resort: construct an all-dummy stack inline (non-throwing) rather than crash.
             wiringLog.fault("Even development fallback failed: \(error.localizedDescription, privacy: .public). Using inline dummy stack.")

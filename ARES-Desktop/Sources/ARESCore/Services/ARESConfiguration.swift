@@ -65,4 +65,26 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
     @Published public var localPerceiverWSURL: String = UserDefaults.standard.string(forKey: "ARES_PERCEIVER_WS") ?? "ws://localhost:9100" {
         didSet { UserDefaults.standard.set(localPerceiverWSURL, forKey: "ARES_PERCEIVER_WS") }
     }
+
+    @Published public var hermesDashboardURL: String = UserDefaults.standard.string(forKey: "ares.config.hermesDashboardURL") ?? "http://localhost:9119" {
+        didSet { UserDefaults.standard.set(hermesDashboardURL, forKey: "ares.config.hermesDashboardURL") }
+    }
+
+    /// Hermes Gateway API key. Stored in UserDefaults; the API_SERVER_KEY
+    /// environment variable still wins so CLI/Xcode launches can override,
+    /// but Finder launches (no shell env) fall back to the persisted value.
+    @Published public var hermesAPIKey: String = ProcessInfo.processInfo.environment["API_SERVER_KEY"]
+        ?? UserDefaults.standard.string(forKey: "ares.config.hermesAPIKey") ?? "" {
+        didSet { UserDefaults.standard.set(hermesAPIKey, forKey: "ares.config.hermesAPIKey") }
+    }
+
+    // MARK: - Parsed URLs (fall back to defaults if the stored string is malformed)
+
+    public var hermesBaseURL: URL {
+        URL(string: hermesURL) ?? URL(string: "http://localhost:8642")!
+    }
+
+    public var ollamaBaseURL: URL {
+        URL(string: ollamaURL) ?? URL(string: "http://localhost:11434")!
+    }
 }

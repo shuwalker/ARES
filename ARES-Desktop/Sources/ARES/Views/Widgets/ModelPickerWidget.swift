@@ -73,7 +73,7 @@ struct BackendPickerWidget: View {
                         Button {
                             selectedOllamaModel = model
                             selectedBackend = .ollama(model: model)
-                            switchBackend(to: .ollama(url: "http://localhost:11434"))
+                            switchBackend(to: .ollama(url: ARESConfiguration.shared.ollamaURL))
                             appState.companionConfig.model = model
                         } label: {
                             HStack {
@@ -113,7 +113,7 @@ struct BackendPickerWidget: View {
                 Section("Agentic Framework (With Tools)") {
                     Button {
                         selectedBackend = .hermes
-                        switchBackend(to: .hermes(url: "http://localhost:8642"))
+                        switchBackend(to: .hermes(url: ARESConfiguration.shared.hermesURL))
                         appState.companionConfig.model = "hermes"
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {

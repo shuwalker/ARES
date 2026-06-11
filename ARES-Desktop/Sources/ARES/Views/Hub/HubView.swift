@@ -1038,7 +1038,7 @@ struct BackendWebView: NSViewRepresentable {
 struct WebUIView: NSViewRepresentable {
     let url: String
 
-    init(url: String = "http://localhost:9119") {
+    init(url: String = ARESConfiguration.shared.hermesDashboardURL) {
         self.url = url
     }
 

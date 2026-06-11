@@ -189,7 +189,7 @@ struct PerceptionWidget: View {
         // Ollama needs a vision-capable model override.
         switch config.provider {
         case "ollama-local", "ollama-cloud", "ollama-launch":
-            gateway = BackendBuilder.gateway(.ollama(url: config.gatewayURL.contains("11434") ? config.gatewayURL : "http://localhost:11434"))
+            gateway = BackendBuilder.gateway(.ollama(url: config.gatewayURL.contains("11434") ? config.gatewayURL : ARESConfiguration.shared.ollamaURL))
             model = "qwen3-vl:8b"  // vision model override for Ollama
         default:
             // Hermes, Anthropic, OpenAI all handle multimodal natively

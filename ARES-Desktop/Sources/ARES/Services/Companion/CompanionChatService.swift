@@ -90,18 +90,18 @@ final class CompanionChatService: @unchecked Sendable {
         // Default to Ollama in dev, Hermes in prod if configured
         if config.provider == "hermes" || !config.gatewayURL.contains("11434") {
             self.gateway = HermesGatewayProvider(
-                baseURL: URL(string: config.gatewayURL) ?? URL(string: "http://localhost:8642")!,
+                baseURL: URL(string: config.gatewayURL) ?? ARESConfiguration.shared.hermesBaseURL,
                 apiKey: apiKey
             )
         } else {
             self.gateway = OllamaGatewayProvider(
-                baseURL: URL(string: config.gatewayURL) ?? URL(string: "http://localhost:11434")!
+                baseURL: URL(string: config.gatewayURL) ?? ARESConfiguration.shared.ollamaBaseURL
             )
         }
     }
 
     /// Re-initialize the gateway (e.g. after config change or model selection).
-    func reconfigure(provider: String = "ollama", gatewayURL: String = "http://localhost:11434") {
+    func reconfigure(provider: String = "ollama", gatewayURL: String = ARESConfiguration.shared.ollamaURL) {
         let config = CompanionConfig.load()
         let apiKey = config.apiKey.isEmpty ? CompanionConfig.readAPIKeyFromEnv() : config.apiKey
         self.companionConfig = CompanionConfig(
@@ -114,12 +114,12 @@ final class CompanionChatService: @unchecked Sendable {
         // Switch gateway based on provider
         if provider == "hermes" {
             self.gateway = HermesGatewayProvider(
-                baseURL: URL(string: gatewayURL) ?? URL(string: "http://localhost:8642")!,
+                baseURL: URL(string: gatewayURL) ?? ARESConfiguration.shared.hermesBaseURL,
                 apiKey: apiKey
             )
         } else {
             self.gateway = OllamaGatewayProvider(
-                baseURL: URL(string: gatewayURL) ?? URL(string: "http://localhost:11434")!
+                baseURL: URL(string: gatewayURL) ?? ARESConfiguration.shared.ollamaBaseURL
             )
         }
     }

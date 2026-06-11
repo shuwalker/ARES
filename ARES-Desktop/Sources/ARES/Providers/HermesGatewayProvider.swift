@@ -10,8 +10,8 @@ final class HermesGatewayProvider: GatewayProvider, @unchecked Sendable {
 
     private let hermesGateway: HermesGateway
 
-    init(baseURL: URL = URL(string: "http://localhost:8642")!,
-         apiKey: String = ProcessInfo.processInfo.environment["API_SERVER_KEY"] ?? "") {
+    init(baseURL: URL = ARESConfiguration.shared.hermesBaseURL,
+         apiKey: String = ARESConfiguration.shared.hermesAPIKey) {
         self.hermesGateway = HermesGateway(baseURL: baseURL, apiKey: apiKey)
     }
 

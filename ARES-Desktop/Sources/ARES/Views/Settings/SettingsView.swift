@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var quickLaunchItems: [QuickLaunchItem] = defaultQuickLaunch
     @State private var diagnosticReport: String? = nil
     @State private var isRunningDiagnostics = false
+    @AppStorage("ARES.safeMode") private var safeMode = false
 
     var body: some View {
         ScrollView {
@@ -29,6 +30,14 @@ struct SettingsView: View {
                     VoicePickerWidget()
                     VisionPickerWidget()
                     EventBusPickerWidget()
+                }
+
+                // Section 0.5: Safe mode
+                settingsSection(header: "SAFE MODE",
+                                subtitle: "Run with dummy backends only — no real services touched. Takes effect on relaunch.") {
+                    Toggle("Safe mode (all dummies)", isOn: $safeMode)
+                        .toggleStyle(.switch)
+                        .foregroundStyle(ARESColors.textPrimary)
                 }
 
                 // Section 1: Integrations
@@ -138,7 +147,7 @@ struct SettingsView: View {
             lines.append("Gateway: \(appState.hermesRunning ? "OK" : "UNREACHABLE")")
 
             // Check Ollama
-            let ollamaURL = URL(string: "http://localhost:11434/api/tags")!
+            let ollamaURL = ARESConfiguration.shared.ollamaBaseURL.appendingPathComponent("api/tags")
             var ollamaOK = false
             if let _ = try? await URLSession.shared.data(from: ollamaURL) {
                 ollamaOK = true
@@ -187,5 +196,5 @@ private let defaultIntegrations: [IntegrationToggle] = [
 
 private let defaultQuickLaunch: [QuickLaunchItem] = [
     QuickLaunchItem(id: "terminal", name: "Terminal", icon: "terminal.fill", command: "x-man-page://"),
-    QuickLaunchItem(id: "hermes-dashboard", name: "Hermes Dashboard", icon: "bolt.horizontal", command: "http://localhost:9119"),
+    QuickLaunchItem(id: "hermes-dashboard", name: "Hermes Dashboard", icon: "bolt.horizontal", command: ARESConfiguration.shared.hermesDashboardURL),
 ]

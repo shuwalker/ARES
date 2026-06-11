@@ -59,7 +59,7 @@ public final class BackendBuilder: @unchecked Sendable {
             _memory = DummyMemoryStore()
         case .sqlite(let path):
             do {
-                let embedder = OllamaGatewayProvider(baseURL: URL(string: "http://localhost:11434")!)
+                let embedder = OllamaGatewayProvider(baseURL: ARESConfiguration.shared.ollamaBaseURL)
                 _memory = try SQLiteMemoryStore(path: path, embedder: embedder)
                 print("✅ [WIRING] Memory: SQLiteMemoryStore(\(path)) with Ollama embeddings")
             } catch {
@@ -188,10 +188,10 @@ public final class BackendBuilder: @unchecked Sendable {
         case .dummy:
             return DummyGatewayProvider()
         case .ollama(let url):
-            return OllamaGatewayProvider(baseURL: URL(string: url) ?? URL(string: "http://localhost:11434")!)
+            return OllamaGatewayProvider(baseURL: URL(string: url) ?? ARESConfiguration.shared.ollamaBaseURL)
         case .hermes(let url):
-            let apiKey = ProcessInfo.processInfo.environment["API_SERVER_KEY"] ?? ""
-            return HermesGatewayProvider(baseURL: URL(string: url) ?? URL(string: "http://localhost:8642")!, apiKey: apiKey)
+            let apiKey = ARESConfiguration.shared.hermesAPIKey
+            return HermesGatewayProvider(baseURL: URL(string: url) ?? ARESConfiguration.shared.hermesBaseURL, apiKey: apiKey)
         case .anthropic(let apiKey):
             return ClaudeGatewayProvider(apiKey: apiKey)
         case .openai(let apiKey):
@@ -413,20 +413,21 @@ func environmentFromLaunchArgs() -> RuntimeEnvironment {
         default: break
         }
     }
-    // User-selectable safe mode (Settings)
-    if UserDefaults.standard.bool(forKey: "ARES.safeMode") { return .development }
+    // User-selectable safe mode (Settings): all dummies, nothing touches real services
+    if UserDefaults.standard.bool(forKey: "ARES.safeMode") { return .testing }
     #if DEBUG
-    return .development
+    return .development  // real stack, per-brick fallback to dummies on failure
     #else
-    return .production   // release builds run the real stack by default
+    return .production   // real stack, hard failure if critical bricks are dummies
     #endif
 }
 
 // MARK: - Convenience Factory
 
 extension BackendStack {
-    /// Development preset: all dummies.
-    static func development() throws -> BackendStack {
+    /// Safe-mode preset: all dummies. Used by `.testing` and the
+    /// "Safe mode" Settings toggle — never by a normal launch.
+    static func safeMode() throws -> BackendStack {
         try BackendBuilder()
             .embodiment(.dummy)
             .perceiver(.dummy)
@@ -442,8 +443,12 @@ extension BackendStack {
             .build(checkProduction: false)
     }
 
-    /// Production preset: real backends (will fail if not configured).
-    static func production(hermesURL: String = ARESConfiguration.shared.hermesURL) throws -> BackendStack {
+    /// Real-stack preset: every brick gets its real, local implementation.
+    /// All of these run on-device (SQLite, AVSpeech, mic, filesystem, etc.) —
+    /// only the brain needs the Hermes Gateway to be reachable.
+    /// `check: true` rejects the build if a critical brick fell back to a dummy;
+    /// `check: false` (development) tolerates per-brick fallbacks.
+    static func real(hermesURL: String = ARESConfiguration.shared.hermesURL, check: Bool) throws -> BackendStack {
         let config = ARESConfiguration.shared
         return try BackendBuilder()
             .embodiment(.desktop)
@@ -457,6 +462,11 @@ extension BackendStack {
             .eventBus(.local)
             .workflow(.filesystem(path: config.workflowsPath))
             .scheduler(.nativeMac)
-            .build(checkProduction: true)
+            .build(checkProduction: check)
+    }
+
+    /// Production preset: real backends (will fail if not configured).
+    static func production(hermesURL: String = ARESConfiguration.shared.hermesURL) throws -> BackendStack {
+        try real(hermesURL: hermesURL, check: true)
     }
 }

@@ -6,7 +6,7 @@ final class HermesAgentBrain: ReasoningBrain, @unchecked Sendable {
     
     private let hermesBaseURL: String
     
-    init(hermesURL: String = "http://localhost:8642") {
+    init(hermesURL: String = ARESConfiguration.shared.hermesURL) {
         self.hermesBaseURL = hermesURL
     }
     

@@ -14,7 +14,7 @@ public final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
     let baseURL: URL
     private let timeoutInterval: TimeInterval = 300
 
-    public init(baseURL: URL = URL(string: "http://localhost:11434")!) {
+    public init(baseURL: URL = ARESConfiguration.shared.ollamaBaseURL) {
         self.baseURL = baseURL
     }
 

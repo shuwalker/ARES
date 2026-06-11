@@ -1,6 +1,6 @@
 # ARES — Autonomous Reasoning & Execution System
 
-**v0.2.0 — "Batteries Included, Pro Extensions Optional"**
+**v0.1.0 — "Batteries Included, Pro Extensions Optional"**
 
 ARES is a powerful, self-sufficient desktop AI application for macOS. It provides a beautiful Mission Control UI for interacting with your local or cloud agents.
 

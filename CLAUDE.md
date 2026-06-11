@@ -39,18 +39,19 @@ Two Swift targets under `ARES-Desktop/Sources/`:
 ## Build & Test
 
 ```bash
-cd ARES-Desktop
+# from the repo root (Package.swift lives here)
 swift build
 swift test
 ```
 
 - macOS 14+, Swift 6.1+ (strict concurrency, Sendable everywhere).
-- Release builds default to the **production stack**. Override with `ARES_ENV` or UserDefaults `ARES.safeMode`.
+- **Debug and release builds both run the real stack.** Debug (`.development`) tolerates per-brick fallback to dummies; release (`.production`) refuses to start if a critical brick is a dummy. All-dummy mode is `.testing`, reachable only via the Settings "Safe mode" toggle (UserDefaults `ARES.safeMode`) or `ARES_ENV=testing`.
+- **No hardcoded service URLs at call sites.** All endpoints (Hermes gateway/dashboard, Ollama, n8n) and the Hermes API key live in `ARESCore/Services/ARESConfiguration.swift`, persisted in UserDefaults. `HERMES_URL`/`API_SERVER_KEY` env vars override for CLI/Xcode launches.
+- CI (`.github/workflows/ci.yml`) runs `swift build` + `swift test` on a macOS runner for every PR — don't merge red.
 
 ## Git Rules
 
-- **Main is protected.** Feature branches only; never commit to main directly.
-- Current production push happens on branch `production/v1.0`.
+- **Main is protected.** Feature branches only; never commit to main directly. Merge via PR once CI is green; delete the branch after merge.
 - `PRODUCTION_PLAN.md` is the source of truth: punch list, brick-by-brick verdicts, and the **cut-or-finish policy** (every feature is either wired for real or removed — no half-states).
 - `attic/v1.0-cuts/` preserves cut code. **Never delete code without atticing it first.**
 

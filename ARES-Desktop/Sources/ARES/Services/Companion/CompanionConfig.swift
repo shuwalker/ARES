@@ -117,7 +117,7 @@ struct CompanionConfig: Codable, Equatable {
     }
 
     init(
-        gatewayURL: String = "http://localhost:8642",
+        gatewayURL: String = ARESConfiguration.shared.hermesURL,
         apiKey: String = "",
         model: String = "hermes-agent",
         provider: String = "hermes-gateway",

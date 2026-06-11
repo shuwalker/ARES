@@ -28,7 +28,7 @@ final class ARESAppState: ObservableObject {
     @Published var sessionCount: Int = 0
     @Published var memoryPercent: Int = 0
     @Published var hermesRunning: Bool = false
-    @Published var hermesGatewayURL: String = "http://localhost:8642"
+    @Published var hermesGatewayURL: String = ARESConfiguration.shared.hermesURL
     @Published var activeOfficeAgents: Int = 0
 
     /// Sum of `costUSD` on all chat bubbles newer than 24h, formatted for the stats card.
@@ -171,22 +171,15 @@ final class ARESAppState: ObservableObject {
             skillCount = contents.count
         }
 
-        // Memory percent from file
+        // Memory percent from file. 0 when the file is missing or has no
+        // capacity header — never invent a number for the stats card.
         let memPath = ARESEnvironment.memoryFilePath.path
-        if let memContent = try? String(contentsOfFile: memPath, encoding: .utf8) {
-            // Parse capacity percentage from memory file header
-            if let capLine = memContent.components(separatedBy: "\n").first(where: { $0.contains("%") }) {
-                if let pctStr = capLine.components(separatedBy: "[").last?.components(separatedBy: "%").first,
-                   let pct = Int(pctStr.trimmingCharacters(in: .whitespaces)) {
-                    memoryPercent = pct
-                } else {
-                    memoryPercent = 94
-                }
-            } else {
-                memoryPercent = 94
-            }
-        } else {
-            memoryPercent = 94
+        memoryPercent = 0
+        if let memContent = try? String(contentsOfFile: memPath, encoding: .utf8),
+           let capLine = memContent.components(separatedBy: "\n").first(where: { $0.contains("%") }),
+           let pctStr = capLine.components(separatedBy: "[").last?.components(separatedBy: "%").first,
+           let pct = Int(pctStr.trimmingCharacters(in: .whitespaces)) {
+            memoryPercent = pct
         }
 
         // Hermes health check via HTTP
@@ -217,7 +210,7 @@ final class ARESAppState: ObservableObject {
                     hermesRunning = (response as? HTTPURLResponse)?.statusCode == 200
                 } catch {
                     // Fallback: try WebUI
-                    if let webURL = URL(string: "http://localhost:9119") {
+                    if let webURL = URL(string: ARESConfiguration.shared.hermesDashboardURL) {
                         var webReq = URLRequest(url: webURL, timeoutInterval: 2)
                         webReq.cachePolicy = .reloadIgnoringLocalCacheData
                         do {
@@ -239,9 +232,6 @@ final class ARESAppState: ObservableObject {
         let aresSessionsDir = ARESEnvironment.sessionsDirectory
         if let contents = try? FileManager.default.contentsOfDirectory(atPath: aresSessionsDir.path) {
             sessionCount = contents.filter { $0.hasSuffix(".json") }.count
-        }
-        if sessionCount == 0 {
-            sessionCount = 4 // fallback
         }
     }
 
@@ -408,7 +398,11 @@ final class ARESAppState: ObservableObject {
                     }
                     isChatProcessing = false
                     voiceState = .idle
-                    persistChatTurn(userText: displayText, assistantText: chatMessages.last?.content ?? response, refs: refs)
+                    let finalText = chatMessages.last?.content ?? response
+                    persistChatTurn(userText: displayText, assistantText: finalText, refs: refs)
+                    Task { [eventBus] in
+                        try? await eventBus.publish(ReasoningEvent(prompt: promptText, response: finalText))
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -678,14 +672,14 @@ final class ARESAppState: ObservableObject {
         
         // Ensure the brain is set to use the ChatService gateway again
         if !(self.brain is HermesAgentBrain) {
-            self.switchBrain(.hermes(url: "http://localhost:8642"))
+            self.switchBrain(.hermes(url: ARESConfiguration.shared.hermesURL))
         }
-        
+
         switch impl {
         case .ollama:
-            chatService.reconfigure(provider: "ollama", gatewayURL: "http://localhost:11434")
+            chatService.reconfigure(provider: "ollama", gatewayURL: ARESConfiguration.shared.ollamaURL)
         case .hermes:
-            chatService.reconfigure(provider: "hermes", gatewayURL: "http://localhost:8642")
+            chatService.reconfigure(provider: "hermes", gatewayURL: ARESConfiguration.shared.hermesURL)
         case .anthropic:
             chatService.reconfigure(provider: "anthropic", gatewayURL: "https://api.anthropic.com")
         case .openai:

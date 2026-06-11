@@ -110,7 +110,7 @@ final class HermesGateway: Sendable {
     let apiKey: String
     let timeoutInterval: TimeInterval
 
-    init(baseURL: URL = URL(string: "http://localhost:8642")!,
+    init(baseURL: URL = ARESConfiguration.shared.hermesBaseURL,
          apiKey: String,
          timeoutInterval: TimeInterval = 300) {
         self.baseURL = baseURL
