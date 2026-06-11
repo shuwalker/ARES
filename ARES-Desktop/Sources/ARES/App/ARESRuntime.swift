@@ -4,6 +4,11 @@ import Foundation
 @MainActor
 enum ARESRuntime {
     static let appState: ARESAppState = {
+        // Register tool providers. These flow to tool-capable gateways through
+        // ToolRouter/ToolRegistry; execution is gated by ApprovalBroker.
+        ToolRegistry.shared.register(provider: N8NToolProvider())
+        ToolRegistry.shared.register(provider: NativeComputerControlToolProvider())
+
         let state = ARESAppState.create(environment: environmentFromLaunchArgs())
         startDummyWarningTimer(environment: environmentFromLaunchArgs())
         return state

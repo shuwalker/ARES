@@ -14,7 +14,7 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
 
     var identifier: String { "claude" }
     var serviceName: String { "Anthropic Claude" }
-    var capabilities: Set<String> { ["reasoning", "streaming"] }
+    var capabilities: Set<String> { ["reasoning", "streaming", "tools"] }
 
     func healthCheck() async throws -> GatewayHealth {
         guard !apiKey.isEmpty else {
@@ -49,14 +49,23 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
 
     func prompt(_ message: String, context: ConversationContext, options: GatewayOptions) async throws -> GatewayResponse {
         var accumulated = ""
+        var toolCalls: [ToolCall] = []
         var tokenCount = TokenCount(input: 0, output: 0)
 
         for try await token in promptStream(message, context: context, options: options) {
             accumulated += token.text
             tokenCount = TokenCount(input: tokenCount.input, output: tokenCount.output + 1)
+            if let calls = token.toolCalls {
+                toolCalls.append(contentsOf: calls)
+            }
         }
 
-        return GatewayResponse(text: accumulated, stopReason: .endTurn, tokenCount: tokenCount)
+        return GatewayResponse(
+            text: accumulated,
+            toolCalls: toolCalls,
+            stopReason: toolCalls.isEmpty ? .endTurn : .toolCall,
+            tokenCount: tokenCount
+        )
     }
 
     func promptStream(_ message: String, context: ConversationContext, options: GatewayOptions) -> AsyncStream<StreamedToken> {
@@ -75,8 +84,11 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
                         "stream": true,
                         "max_tokens": options.maxTokens
                     ]
-                    if let sys = systemMsg {
+                    if let sys = systemMsg ?? options.systemPrompt {
                         body["system"] = sys
+                    }
+                    if let tools = options.tools, !tools.isEmpty {
+                        body["tools"] = GatewayToolEncoding.anthropic(tools)
                     }
 
                     var request = URLRequest(url: baseURL)
@@ -94,6 +106,32 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
                     }
 
                     var tokenIndex = 0
+                    var completedToolCalls: [ToolCall] = []
+                    // Accumulator for the tool_use block currently being streamed.
+                    var currentToolID: String?
+                    var currentToolName: String?
+                    var currentToolJSON = ""
+
+                    func finishCurrentToolBlock() {
+                        guard let id = currentToolID, let name = currentToolName else { return }
+                        let inputDict: [String: Any] = {
+                            guard !currentToolJSON.isEmpty,
+                                  let data = currentToolJSON.data(using: .utf8),
+                                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                                return [:]
+                            }
+                            return obj
+                        }()
+                        completedToolCalls.append(ToolCall(
+                            id: id,
+                            toolName: name,
+                            input: ToolJSON.input(from: inputDict)
+                        ))
+                        currentToolID = nil
+                        currentToolName = nil
+                        currentToolJSON = ""
+                    }
+
                     for try await line in bytes.lines {
                         guard line.hasPrefix("data: ") else { continue }
                         let jsonStr = line.dropFirst(6)
@@ -101,18 +139,41 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
                         if let data = jsonStr.data(using: .utf8),
                            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let type = json["type"] as? String {
-                           
-                            if type == "content_block_delta",
-                               let delta = json["delta"] as? [String: Any],
-                               let text = delta["text"] as? String {
-                                continuation.yield(StreamedToken(text: text, tokenIndex: tokenIndex, isFinal: false))
-                                tokenIndex += 1
-                            } else if type == "message_stop" {
+
+                            switch type {
+                            case "content_block_start":
+                                if let block = json["content_block"] as? [String: Any],
+                                   block["type"] as? String == "tool_use" {
+                                    currentToolID = block["id"] as? String ?? UUID().uuidString
+                                    currentToolName = block["name"] as? String
+                                    currentToolJSON = ""
+                                }
+                            case "content_block_delta":
+                                if let delta = json["delta"] as? [String: Any] {
+                                    if let text = delta["text"] as? String {
+                                        continuation.yield(StreamedToken(text: text, tokenIndex: tokenIndex, isFinal: false))
+                                        tokenIndex += 1
+                                    } else if let partialJSON = delta["partial_json"] as? String {
+                                        currentToolJSON += partialJSON
+                                    }
+                                }
+                            case "content_block_stop":
+                                finishCurrentToolBlock()
+                            case "message_stop":
+                                break
+                            default:
                                 break
                             }
+                            if type == "message_stop" { break }
                         }
                     }
-                    continuation.yield(StreamedToken(text: "", tokenIndex: tokenIndex, isFinal: true))
+                    finishCurrentToolBlock()
+                    continuation.yield(StreamedToken(
+                        text: "",
+                        tokenIndex: tokenIndex,
+                        isFinal: true,
+                        toolCalls: completedToolCalls.isEmpty ? nil : completedToolCalls
+                    ))
                     continuation.finish()
                 } catch {
                     claudeGatewayLog.error("Streaming failed: \(error.localizedDescription, privacy: .public)")
@@ -123,81 +184,30 @@ final class ClaudeGatewayProvider: GatewayProvider, @unchecked Sendable {
     }
 
     func executeToolCall(_ call: ToolCall, context: ConversationContext) async throws -> ToolResult {
-        // Anthropic tool_result flow: submit the tool result as a user message
-        // with tool_result content block so the model continues the conversation.
-        let startTime = CFAbsoluteTimeGetCurrent()
-        
-        let toolResultBlock: [String: Any] = [
-            "type": "tool_result",
-            "tool_use_id": call.id,
-            "content": String(describing: call.input)
-        ]
-        
-        let priorMessages = context.messages.map { msg -> [String: Any] in
-            ["role": msg.role.rawValue, "content": msg.content]
-        }
-        
-        let toolResultMessage: [String: Any] = [
-            "role": "user",
-            "content": [toolResultBlock]
-        ]
-        
-        let body: [String: Any] = [
-            "model": context.model ?? "claude-3-5-sonnet-20240620",
-            "max_tokens": 4096,
-            "messages": priorMessages + [toolResultMessage]
-        ]
-        
-        var request = URLRequest(url: baseURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        request.timeoutInterval = 30
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-            let ms = elapsed * 1000.0
-            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
-            
-            guard httpStatus == 200 else {
-                let bodyStr = String(data: data, encoding: .utf8) ?? "empty"
-                return ToolResult(
-                    success: false,
-                    error: ToolError(code: .executionFailed, message: "HTTP \(httpStatus): \(bodyStr)"),
-                    executionTimeMs: ms
-                )
-            }
-            
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let content = json["content"] as? [[String: Any]],
-               let textBlock = content.first(where: { $0["type"] as? String == "text" }),
-               let text = textBlock["text"] as? String {
-                return ToolResult(
-                    success: true,
-                    data: AnyCodable.string(text),
-                    executionTimeMs: ms
-                )
-            }
-            
-            return ToolResult(
-                success: true,
-                data: AnyCodable.string("Tool result submitted, no text response"),
-                executionTimeMs: ms
-            )
-        } catch {
-            return ToolResult(
-                success: false,
-                error: ToolError(code: .timeout, message: error.localizedDescription),
-                executionTimeMs: 0
-            )
-        }
+        // Tool calls requested by the model are executed locally through the
+        // ToolRouter; results are fed back to the model by the agent loop.
+        await ToolRouter.shared.execute(call)
     }
 
     func getConfig() async throws -> GatewayConfig {
         return GatewayConfig(supportedModels: ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307"])
+    }
+
+    func listAvailableModels() async throws -> [GatewayModelChoice] {
+        return [
+            GatewayModelChoice(
+                provider: identifier,
+                model: "claude-3-5-sonnet-20240620",
+                displayName: "Claude 3.5 Sonnet",
+                summary: "Anthropic's latest high-performance model"
+            ),
+            GatewayModelChoice(
+                provider: identifier,
+                model: "claude-3-haiku-20240307",
+                displayName: "Claude 3 Haiku",
+                summary: "Fast and lightweight model"
+            )
+        ]
     }
 
     func sessionList(limit: Int) async throws -> [SessionSummary] { return [] }

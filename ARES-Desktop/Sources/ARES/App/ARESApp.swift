@@ -34,8 +34,9 @@ struct ARESApp: App {
                 .environment(\.workflow, appState.workflow)
                 .environment(\.scheduler, appState.scheduler)
                 .frame(minWidth: 1024, minHeight: 600)
+                .toolApprovalSheet()
                 .preferredColorScheme(.dark)
-                .modelContainer(for: Note.self)
+                .modelContainer(for: [Note.self, SessionModel.self, MessageModel.self])
                 .onAppear {
                     // Force window key for keyboard focus
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

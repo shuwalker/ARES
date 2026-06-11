@@ -1,6 +1,7 @@
 import Foundation
 import ARESCore
 import os
+import SwiftData
 
 // MARK: - Companion Chat Service
 //
@@ -63,6 +64,16 @@ final class CompanionChatService: @unchecked Sendable {
 
     /// In-memory conversation log for the active Companion session.
     private var activeTurns: [PersistedTurn] = []
+
+    // MARK: - SwiftData Container
+    private lazy var container: ModelContainer? = {
+        do {
+            return try ModelContainer(for: SessionModel.self, MessageModel.self)
+        } catch {
+            logger.error("Failed to create SwiftData container: \\(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }()
 
     // MARK: - Init
 
@@ -148,54 +159,131 @@ final class CompanionChatService: @unchecked Sendable {
         activeStreamTask?.cancel()
 
         // Build conversation context from GatewayMessage to Message
-        let contextMessages = messages.map { msg in
+        var conversation = messages.map { msg in
             Message(
                 role: msg.role == "user" ? .user : (msg.role == "assistant" ? .assistant : .system),
                 content: msg.content
             )
         }
 
-        let context = ConversationContext(
-            messages: contextMessages,
-            sessionID: sessionID,
-            model: companionConfig.model
-        )
-
-        let stream = gateway.promptStream(
-            "",
-            context: context,
-            options: GatewayOptions()
-        )
+        // Agent loop: offer local tools to tool-capable gateways.
+        // Hermes runs its own agent loop server-side and does not advertise
+        // the "tools" capability here, so it streams straight through.
+        let availableTools = await ToolRouter.shared.availableTools()
+        let useTools = !availableTools.isEmpty && gateway.capabilities.contains("tools")
+        let maxToolRounds = 8
 
         // Mutable state for the stream — wrapped in a class to satisfy Sendable
         final class StreamState: @unchecked Sendable {
-            var accumulated: String = ""
+            var transcript: String = ""        // everything shown to the user across rounds
+            var roundText: String = ""         // model text in the current round
+            var toolCalls: [ToolCall] = []     // tool calls requested in the current round
             var resolvedSessionID: String
             var tokenCount: Int?
             init(sessionID: String) { self.resolvedSessionID = sessionID }
         }
         let state = StreamState(sessionID: sessionID ?? "ares-gw-\(UUID().uuidString.prefix(8))")
+        let gateway = self.gateway
+        let model = companionConfig.model
 
-        let streamTask = Task { @Sendable in
-            for await token in stream {
-                state.accumulated += token.text
+        for round in 1...maxToolRounds {
+            let context = ConversationContext(
+                messages: conversation,
+                sessionID: sessionID,
+                model: model
+            )
 
-                let current = state.accumulated
-                await MainActor.run {
-                    onToken(current, token.isFinal)
+            let stream = gateway.promptStream(
+                "",
+                context: context,
+                options: GatewayOptions(tools: useTools ? availableTools : nil)
+            )
+
+            state.roundText = ""
+            state.toolCalls = []
+
+            let streamTask = Task { @Sendable in
+                for await token in stream {
+                    state.roundText += token.text
+                    if let calls = token.toolCalls {
+                        state.toolCalls.append(contentsOf: calls)
+                    }
+
+                    let current = state.transcript + state.roundText
+                    let isFinishedForUI = token.isFinal && state.toolCalls.isEmpty
+                    await MainActor.run {
+                        onToken(current, isFinishedForUI)
+                    }
+
+                    if token.isFinal {
+                        break
+                    }
                 }
+            }
 
-                if token.isFinal {
-                    break
+            activeStreamTask = streamTask
+            await streamTask.value
+            activeStreamTask = nil
+
+            // No tool calls -> this round's text is the final answer.
+            if state.toolCalls.isEmpty {
+                state.transcript += state.roundText
+                break
+            }
+
+            // Tool round: record the model turn, execute each call (approval
+            // is enforced inside ToolRouter), and feed results back.
+            state.transcript += state.roundText
+            let callDescriptions = state.toolCalls
+                .map { "\($0.toolName)(\(ToolJSON.dictionary(from: $0.input)))" }
+                .joined(separator: ", ")
+            conversation.append(Message(
+                role: .assistant,
+                content: state.roundText.isEmpty
+                    ? "[calling tools: \(callDescriptions)]"
+                    : state.roundText + "\n[calling tools: \(callDescriptions)]"
+            ))
+
+            for call in state.toolCalls {
+                let displayName = call.toolName
+                    .replacingOccurrences(of: ToolRouter.namespaceSeparator, with: " · ")
+                state.transcript += "\n\n⚙️ \(displayName)…"
+                let progressSoFar = state.transcript
+                await MainActor.run { onToken(progressSoFar, false) }
+
+                let result = await ToolRouter.shared.execute(call)
+
+                let resultText: String
+                if result.success {
+                    state.transcript += " ✅"
+                    if let data = result.data {
+                        resultText = String(String(describing: ToolJSON.any(from: data)).prefix(4000))
+                    } else {
+                        resultText = "(no output)"
+                    }
+                } else {
+                    state.transcript += " ❌"
+                    resultText = "ERROR: \(result.error?.message ?? "unknown failure")"
                 }
+                let progressAfter = state.transcript
+                await MainActor.run { onToken(progressAfter, false) }
+
+                conversation.append(Message(
+                    role: .user,
+                    content: "[tool result for \(call.toolName)]: \(resultText)"
+                ))
+            }
+            state.transcript += "\n\n"
+
+            // Out of rounds: surface that we stopped rather than looping forever.
+            if round == maxToolRounds {
+                state.transcript += "⚠️ Stopped after \(maxToolRounds) tool rounds without a final answer.\n"
+                let finalProgress = state.transcript
+                await MainActor.run { onToken(finalProgress, true) }
             }
         }
 
-        activeStreamTask = streamTask
-        await streamTask.value
-        activeStreamTask = nil
-
-        let finalText = state.accumulated.isEmpty ? "No response from ARES." : state.accumulated
+        let finalText = state.transcript.isEmpty ? "No response from ARES." : state.transcript
         return CompanionChatTurnResult(responseText: finalText, sessionID: state.resolvedSessionID, tokenCount: state.tokenCount)
     }
 
@@ -273,24 +361,49 @@ final class CompanionChatService: @unchecked Sendable {
         sessionID: String,
         model: String
     ) throws {
+        guard let container = container else { return }
+        let context = ModelContext(container)
+        
         let turnsToSave = turns ?? activeTurns
         guard !turnsToSave.isEmpty else { return }
 
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            logger.error("Could not locate Application Support directory; skipping session persist for \(sessionID, privacy: .public)")
-            return
+        // Fetch or create session
+        let fetchDescriptor = FetchDescriptor<SessionModel>(predicate: #Predicate { $0.id == sessionID })
+        let existingSessions = try context.fetch(fetchDescriptor)
+        
+        let sessionModel: SessionModel
+        if let existing = existingSessions.first {
+            sessionModel = existing
+            sessionModel.updatedAt = Date()
+            sessionModel.model = model
+            sessionModel.provider = companionConfig.provider
+        } else {
+            let title = turnsToSave.first(where: { $0.role == "user" })?.content.prefix(30).description ?? "New Session"
+            sessionModel = SessionModel(
+                id: sessionID,
+                title: title,
+                startedAt: turnsToSave.first?.timestamp ?? Date(),
+                updatedAt: Date(),
+                model: model,
+                provider: companionConfig.provider
+            )
+            context.insert(sessionModel)
         }
-        let directory = appSupport.appendingPathComponent("ARES/Sessions")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-
-        let filename = "\(sessionID.replacingOccurrences(of: ":", with: "-")).json"
-        let url = directory.appendingPathComponent(filename)
-
-        let data = try encoder.encode(turnsToSave)
-        try data.write(to: url, options: .atomic)
+        
+        // Add new messages that aren't already in the session
+        // For simplicity in this demo, we clear and re-add or just add the newest ones.
+        // Actually, since activeTurns grows, let's just sync the array.
+        let existingCount = sessionModel.messages.count
+        if turnsToSave.count > existingCount {
+            let newTurns = turnsToSave.dropFirst(existingCount)
+            for turn in newTurns {
+                let msgModel = MessageModel(role: turn.role, content: turn.content, timestamp: turn.timestamp, session: sessionModel)
+                context.insert(msgModel)
+                sessionModel.messages.append(msgModel)
+            }
+        }
+        
+        try context.save()
     }
 
     func appendTurn(role: String, content: String, sessionID: String, model: String) {
@@ -366,24 +479,24 @@ final class CompanionChatService: @unchecked Sendable {
 
     /// Loads messages from a session async.
     func loadSessionMessagesAsync(sessionID: String) async throws -> [ChatBubble] {
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            logger.error("Could not locate Application Support directory; cannot load session \(sessionID, privacy: .public)")
-            throw HermesGatewayError.streamInterrupted("Application Support directory unavailable")
+        guard let container = container else { return [] }
+        let context = ModelContext(container)
+        
+        let fetchDescriptor = FetchDescriptor<SessionModel>(predicate: #Predicate { $0.id == sessionID })
+        guard let sessionModel = try context.fetch(fetchDescriptor).first else {
+            return []
         }
-        let directory = appSupport.appendingPathComponent("ARES/Sessions")
-        let filename = "\(sessionID.replacingOccurrences(of: ":", with: "-")).json"
-        let url = directory.appendingPathComponent(filename)
         
-        let data = try Data(contentsOf: url)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let turns = try decoder.decode([PersistedTurn].self, from: data)
+        let sortedMessages = sessionModel.messages.sorted(by: { $0.timestamp < $1.timestamp })
         
-        return turns.map { turn in
+        // Populate activeTurns so future appends work seamlessly
+        activeTurns = sortedMessages.map { PersistedTurn(role: $0.role, content: $0.content, timestamp: $0.timestamp) }
+        
+        return sortedMessages.map { msg in
             ChatBubble(
-                role: turn.role == "user" ? .user : .assistant,
-                content: turn.content,
-                timestamp: turn.timestamp
+                role: msg.role == "user" ? .user : .assistant,
+                content: msg.content,
+                timestamp: msg.timestamp
             )
         }
     }

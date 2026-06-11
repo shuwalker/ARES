@@ -24,7 +24,7 @@ public final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
     public var serviceName: String { "Ollama (Local)" }
 
     public var capabilities: Set<String> {
-        var caps: Set<String> = ["reasoning", "streaming"]
+        let caps: Set<String> = ["reasoning", "streaming", "tools"]
         return caps
     }
 
@@ -88,6 +88,9 @@ public final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
                         "stream": true,
                         "temperature": options.temperature
                     ]
+                    if let tools = options.tools, !tools.isEmpty {
+                        body["tools"] = GatewayToolEncoding.openAIFunction(tools)
+                    }
 
                     let requestBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -103,19 +106,34 @@ public final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
                     }
 
                     var tokenIndex = 0
+                    var pendingToolCalls: [ToolCall] = []
                     for try await line in bytes.lines {
                         guard let data = line.data(using: .utf8),
                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let message = json["message"] as? [String: String],
-                              let content = message["content"] else {
+                              let message = json["message"] as? [String: Any] else {
                             continue
                         }
 
+                        // Tool calls: {"message": {"tool_calls": [{"function": {"name": ..., "arguments": {...}}}]}}
+                        if let rawCalls = message["tool_calls"] as? [[String: Any]] {
+                            for rawCall in rawCalls {
+                                guard let function = rawCall["function"] as? [String: Any],
+                                      let name = function["name"] as? String else { continue }
+                                let arguments = function["arguments"] as? [String: Any] ?? [:]
+                                pendingToolCalls.append(ToolCall(
+                                    toolName: name,
+                                    input: ToolJSON.input(from: arguments)
+                                ))
+                            }
+                        }
+
+                        let content = message["content"] as? String ?? ""
                         let isFinished = json["done"] as? Bool ?? false
                         continuation.yield(StreamedToken(
                             text: content,
                             tokenIndex: tokenIndex,
-                            isFinal: isFinished
+                            isFinal: isFinished,
+                            toolCalls: isFinished && !pendingToolCalls.isEmpty ? pendingToolCalls : nil
                         ))
                         tokenIndex += 1
 
@@ -140,8 +158,9 @@ public final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
         _ call: ToolCall,
         context: ConversationContext
     ) async throws -> ToolResult {
-        // Ollama doesn't support tool calling natively; return not implemented
-        return ToolResult(success: false, data: AnyCodable.string("Tool calling not supported in Ollama"))
+        // Tool calls requested by the model are executed locally through the
+        // ToolRouter (Ollama itself has no server-side tool execution).
+        await ToolRouter.shared.execute(call)
     }
 
     public func getConfig() async throws -> GatewayConfig {
@@ -155,6 +174,18 @@ public final class OllamaGatewayProvider: GatewayProvider, @unchecked Sendable {
             supportsToolCalling: false,
             supportsVision: hasVision
         )
+    }
+
+    public func listAvailableModels() async throws -> [GatewayModelChoice] {
+        let models = try await listModels()
+        return models.map {
+            GatewayModelChoice(
+                provider: identifier,
+                model: $0,
+                displayName: "\($0) (local)",
+                summary: "Local Ollama model"
+            )
+        }
     }
 
     // MARK: - Session Management (stubs — Ollama has no session concept)

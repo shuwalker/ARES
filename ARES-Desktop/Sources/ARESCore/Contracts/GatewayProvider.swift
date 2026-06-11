@@ -45,6 +45,9 @@ public protocol GatewayProvider: AnyObject, Sendable {
     /// Get gateway configuration and limits.
     func getConfig() async throws -> GatewayConfig
 
+    /// Dynamically list available models from this gateway.
+    func listAvailableModels() async throws -> [GatewayModelChoice]
+
     /// List recent sessions from this gateway.
     /// Gateways without session support (e.g., Ollama) return an empty array.
     func sessionList(limit: Int) async throws -> [SessionSummary]
@@ -139,15 +142,21 @@ public struct StreamedToken: Codable, Sendable {
     public let text: String
     public let tokenIndex: Int
     public let isFinal: Bool
+    /// Tool invocations requested by the model in this turn.
+    /// Populated on the final token when the model decided to call tools
+    /// instead of (or in addition to) answering in text.
+    public let toolCalls: [ToolCall]?
 
     public init(
         text: String,
         tokenIndex: Int = 0,
-        isFinal: Bool = false
+        isFinal: Bool = false,
+        toolCalls: [ToolCall]? = nil
     ) {
         self.text = text
         self.tokenIndex = tokenIndex
         self.isFinal = isFinal
+        self.toolCalls = toolCalls
     }
 }
 
