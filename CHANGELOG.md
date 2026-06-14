@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [v0.51.416] — 2026-06-14 — Release OC (cache + single-flight /api/sessions payloads, #3791)
+
+### Fixed
+
+- **The session sidebar list is now cached and single-flighted, so multi-tab and polling churn no longer recompute it on every request.** Concurrent identical `/api/sessions` requests coalesce onto one computation, and the computed payload is cached with a key that includes the active profile, the `all_profiles` flag, the session-source toggles (CLI / previous-messaging / cron), and the source filter — so no cache entry is shared across profiles or settings. Mutations invalidate the matching profile plus aggregate caches (and attention/import events clear all caches), and live stream / pending / attention fields are overlaid at response time so unread and live state stay fresh. (#3791)
+
 ## [v0.51.415] — 2026-06-14 — Release OB (keep complete sidebar metadata on the index fastpath, #4166)
 
 ### Fixed
