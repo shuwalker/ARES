@@ -5402,6 +5402,9 @@ def _llm_wiki_config_path() -> str | None:
 # Cap WIKI walks to prevent self-DoS if WIKI_PATH points at /, /etc, /home, etc.
 # Real LLM wikis have under a few thousand files; 10k is generous and catches misconfig.
 _LLM_WIKI_MAX_FILES = 10000
+# Cap a single served wiki page at 2 MiB so a huge/binary file can't be slurped
+# wholesale into memory + a JSON response (DoS / memory-blowup guard).
+_LLM_WIKI_MAX_PAGE_BYTES = 2 * 1024 * 1024
 # Refuse to walk these system roots even if explicitly configured.
 _LLM_WIKI_FORBIDDEN_ROOTS = frozenset(
     str(Path(p).expanduser().resolve()) for p in ("/", "/etc", "/usr", "/var", "/opt", "/sys", "/proc")
@@ -5460,16 +5463,31 @@ def _llm_wiki_count_files(root: Path) -> int:
 
 def _llm_wiki_page_files(wiki_path: Path) -> list[Path]:
     pages: list[Path] = []
-    # Defense in depth: refuse forbidden system roots.
+    # Defense in depth: refuse forbidden system roots, and resolve the wiki root
+    # ONCE as the single trust base for all containment checks below.
     try:
-        if str(wiki_path.resolve()) in _LLM_WIKI_FORBIDDEN_ROOTS:
+        wiki_real = wiki_path.resolve()
+        if str(wiki_real) in _LLM_WIKI_FORBIDDEN_ROOTS:
             return pages
     except Exception:
         return pages
+
+    def _is_clean_relpath(rel: Path) -> bool:
+        # No dot-prefixed segment (dotfile/dotdir) anywhere in the path.
+        return not any(part.startswith(".") for part in rel.parts)
+
     iterated = 0
     for dirname in _LLM_WIKI_PAGE_DIRS:
         section = wiki_path / dirname
         if not section.exists() or not section.is_dir():
+            continue
+        # The section itself must resolve UNDER the real wiki root — guards a
+        # symlinked section (e.g. concepts -> /tmp/outside) from exposing files
+        # outside the wiki tree entirely.
+        try:
+            section_real = section.resolve()
+            section_real.relative_to(wiki_real)
+        except (OSError, ValueError):
             continue
         for item in section.rglob("*.md"):
             iterated += 1
@@ -5477,9 +5495,21 @@ def _llm_wiki_page_files(wiki_path: Path) -> list[Path]:
                 return pages  # bounded
             try:
                 rel = item.relative_to(section)
-                if item.is_file() and not any(part.startswith(".") for part in rel.parts):
-                    pages.append(item)
-            except Exception:
+                if not item.is_file() or not _is_clean_relpath(rel):
+                    continue
+                # Resolve the real target and require it to live under BOTH the
+                # real wiki root and the real section, with no dot-prefixed
+                # segment on the resolved-relative path. This closes symlink
+                # escapes whose link name looks like a clean *.md page but whose
+                # target is an arbitrary / hidden / out-of-tree file (the read
+                # endpoint would otherwise serve it).
+                item_real = item.resolve()
+                item_real.relative_to(section_real)
+                rel_real = item_real.relative_to(wiki_real)
+                if not _is_clean_relpath(rel_real):
+                    continue
+                pages.append(item)
+            except (OSError, ValueError):
                 continue
     return pages
 
@@ -6836,6 +6866,91 @@ def handle_get(handler, parsed) -> bool:
         return True
     if parsed.path == "/api/wiki/status":
         return _handle_llm_wiki_status(handler, parsed)
+    if parsed.path == "/api/wiki/browse":
+        wiki_root, _, _ = _llm_wiki_resolve_path()
+        if not wiki_root or not os.path.isdir(wiki_root):
+            return bad(handler, "Wiki not configured or directory not found", status=404)
+        page_paths = _llm_wiki_page_files(wiki_root)
+        pages = []
+        for fp in sorted(page_paths, key=lambda p: str(p).lower()):
+            try:
+                rel = fp.relative_to(wiki_root)
+            except ValueError:
+                continue
+            try:
+                st = fp.stat()
+            except OSError:
+                continue
+            pages.append({"name": fp.name, "path": str(rel).replace("\\", "/"), "size": st.st_size, "mtime": int(st.st_mtime)})
+        return j(handler, {"pages": pages})
+    if parsed.path == "/api/wiki/page":
+        wiki_root, _, _ = _llm_wiki_resolve_path()
+        page_path = parse_qs(parsed.query or "").get("path", [""])[0]
+        if not wiki_root or not page_path:
+            return bad(handler, "Wiki not configured or path not provided", status=400)
+        # Reject a real `..` path SEGMENT (or absolute path), not the bare
+        # substring — a legitimate listed filename like `v1..v2.md` contains
+        # ".." without being traversal. Containment + the resolved-allowlist
+        # membership check below are the actual security boundary.
+        _page_parts = page_path.replace("\\", "/").split("/")
+        if os.path.isabs(page_path) or any(part == ".." for part in _page_parts):
+            return bad(handler, "Invalid path", status=400)
+        full_path = Path(os.path.join(wiki_root, page_path))
+        if not _skill_path_within(Path(wiki_root), full_path):
+            return bad(handler, "Invalid path", status=400)
+        # Only serve files the browse/list path would surface (same allowlist:
+        # *.md under the wiki page-dirs, no dotfiles, forbidden-roots guard).
+        # Without this the read endpoint could return ANY file inside the wiki
+        # root (e.g. .env / .git/config / non-.md), since containment alone
+        # doesn't constrain which files are readable (Opus review finding).
+        # Capture each allowlisted page's STABLE IDENTITY (st_dev, st_ino) so the
+        # post-open fstat below can detect a file/parent-dir swapped in after the
+        # allowlist check (TOCTOU write-race, Codex finding) — a pathname re-open
+        # alone can't, since O_NOFOLLOW only guards the final component, not a
+        # swapped parent directory.
+        allowed_identity: dict[Path, tuple] = {}
+        try:
+            for _p in _llm_wiki_page_files(Path(wiki_root)):
+                try:
+                    rp = _p.resolve()
+                    st0 = rp.stat()
+                    allowed_identity[rp] = (st0.st_dev, st0.st_ino)
+                except OSError:
+                    continue
+        except Exception:
+            allowed_identity = {}
+        try:
+            resolved_target = full_path.resolve()
+        except OSError:
+            return bad(handler, "Page not found", status=404)
+        if resolved_target not in allowed_identity:
+            return bad(handler, "Page not found", status=404)
+        # Read the ALREADY-RESOLVED, allowlisted real path with O_NOFOLLOW so a
+        # symlink swapped in for the final component between the allowlist check
+        # and the read is refused rather than followed. Then fstat the open fd
+        # and require its (st_dev, st_ino) to match the identity captured during
+        # allowlisting — this closes a parent-directory swap that O_NOFOLLOW
+        # would otherwise follow. Any mismatch / vanished / swapped page returns
+        # a clean 404, never a 500.
+        try:
+            fd = os.open(str(resolved_target), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            try:
+                st_open = os.fstat(fd)
+                if (st_open.st_dev, st_open.st_ino) != allowed_identity[resolved_target]:
+                    return bad(handler, "Page not found", status=404)
+                raw = os.read(fd, _LLM_WIKI_MAX_PAGE_BYTES + 1)
+            finally:
+                os.close(fd)
+            if len(raw) > _LLM_WIKI_MAX_PAGE_BYTES:
+                raw = raw[:_LLM_WIKI_MAX_PAGE_BYTES]
+            content = raw.decode("utf-8", errors="replace")
+        except (FileNotFoundError, IsADirectoryError):
+            return bad(handler, "Page not found", status=404)
+        except OSError:
+            # ELOOP (symlink swapped in under O_NOFOLLOW) or any other read
+            # failure → clean 404, never a 500.
+            return bad(handler, "Could not read page", status=404)
+        return j(handler, {"content": content, "path": page_path})
     if parsed.path == "/api/logs":
         return _handle_logs(handler, parsed)
 
