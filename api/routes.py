@@ -9941,6 +9941,24 @@ def handle_post(handler, parsed) -> bool:
         saved = save_settings(body)
         saved.pop("password_hash", None)  # never expose hash to client
 
+        # Settings that change which sessions appear in the sidebar must
+        # invalidate the session-list cache directly. Relying on the cache's
+        # settings-file mtime stamp is fragile: a toggle that writes the
+        # settings file within the same mtime granularity as a cached entry (and
+        # produces the default-valued key, e.g. show_cli_sessions back to its
+        # True default) can leave a stale row set served for up to the cache TTL.
+        # This is the root cause of the intermittent gateway_sync test flake
+        # (a freshly-inserted CLI/gateway session occasionally absent from
+        # /api/sessions right after the visibility toggle). Invalidate explicitly.
+        if any(
+            k in body
+            for k in ("show_cli_sessions", "show_cron_sessions")
+        ):
+            try:
+                _clear_session_list_cache()
+            except Exception:
+                pass
+
         auth_enabled_after = is_auth_enabled()
         auth_just_enabled = bool(
             requested_password and auth_enabled_after and not auth_enabled_before

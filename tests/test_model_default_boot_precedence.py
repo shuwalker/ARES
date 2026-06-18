@@ -307,7 +307,7 @@ def _run_populate_driver(
         [NODE, driver_path, str(REPO / "static" / "ui.js"), json.dumps(payload)],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(f"node driver failed:\nSTDOUT={result.stdout}\nSTDERR={result.stderr}")

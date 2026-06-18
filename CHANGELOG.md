@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [v0.51.502] — 2026-06-18 — Release RL (CLI-session visibility toggle invalidates the sidebar cache)
+
+### Fixed
+
+- **Toggling "show CLI/messaging sessions" now takes effect immediately instead of after a brief delay.** `POST /api/settings` did not invalidate the session-list cache, which is keyed partly on the visibility setting and otherwise only revalidated by the settings-file mtime stamp. When a visibility toggle wrote the settings file within the same mtime granularity as a cached entry (and resolved to the default-valued cache key), the sidebar could keep serving the stale session set for up to the cache TTL (~2.5s). The settings handler now clears the session-list cache directly whenever `show_cli_sessions` / `show_cron_sessions` change. This was also the root cause of an intermittent `test_gateway_sync` CI flake (a freshly-inserted CLI/gateway session occasionally absent from `/api/sessions` right after the visibility toggle).
+
 ## [v0.51.501] — 2026-06-18 — Release RK (Ctrl/Cmd+, opens Settings)
 
 ### Added

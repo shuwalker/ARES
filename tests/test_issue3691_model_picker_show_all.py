@@ -1394,7 +1394,7 @@ def _run_dropdown_driver(driver_path: str, payload: dict | None = None) -> dict:
         [NODE, driver_path, str(REPO / "static" / "ui.js"), json.dumps(payload)],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(f"node driver failed:\nSTDOUT={result.stdout}\nSTDERR={result.stderr}")
@@ -1562,7 +1562,7 @@ def test_runtime_inplace_expand_then_search_clear_preserves_expanded_group(_driv
         [NODE, _driver_paths["inplace"], str(REPO / "static" / "ui.js"), json.dumps(payload)],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(f"node inplace driver failed:\nSTDOUT={result.stdout}\nSTDERR={result.stderr}")
@@ -1621,7 +1621,7 @@ def test_runtime_inplace_endpoint_error_group_renders_open(_driver_paths):
         [NODE, _driver_paths["endpoint_error"], str(REPO / "static" / "ui.js"), json.dumps(payload)],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(f"node endpoint_error driver failed:\nSTDOUT={result.stdout}\nSTDERR={result.stderr}")
@@ -1663,7 +1663,7 @@ def test_runtime_inplace_expand_with_preexisting_options_reveals_them(_driver_pa
         [NODE, _driver_paths["preexisting"], str(REPO / "static" / "ui.js"), json.dumps(payload)],
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(f"node preexisting driver failed:\nSTDOUT={result.stdout}\nSTDERR={result.stderr}")

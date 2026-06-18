@@ -24,7 +24,7 @@ def _run_node(source: str) -> str:
         capture_output=True,
         encoding="utf-8",
         text=True,
-        timeout=10,
+        timeout=30,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr)

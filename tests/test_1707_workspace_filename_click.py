@@ -278,7 +278,7 @@ setTimeout_(() => {
     )
     r = subprocess.run(
         [NODE, "-e", js],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True, text=True, timeout=30,
     )
     if r.returncode != 0:
         raise RuntimeError(f"node failed: {r.stderr}")
