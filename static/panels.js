@@ -2347,11 +2347,18 @@ function _kanbanRunHtml(run){
 function _kanbanLinksHtml(links){
   const parents = (links && links.parents) || [];
   const children = (links && links.children) || [];
-  if (!parents.length && !children.length) return '';
-  const item = id => `<code>${esc(id)}</code>`;
-  return `<div class="kanban-detail-links-grid">
-    <div><strong>${esc(t('kanban_parents'))}</strong><div>${parents.length ? parents.map(item).join(' ') : esc(t('kanban_empty'))}</div></div>
-    <div><strong>${esc(t('kanban_children'))}</strong><div>${children.length ? children.map(item).join(' ') : esc(t('kanban_empty'))}</div></div>
+  const taskId = _kanbanCurrentTaskId;
+  const item = (id) => `<code>${esc(id)} <button class="btn mini" onclick="removeKanbanDependency('${esc(taskId)}','${esc(id)}')" data-i18n="kanban_remove_dependency" title="${esc(t('kanban_remove_dependency') || 'Remove')}">✕</button></code>`;
+  const hasLinks = parents.length || children.length;
+  return `<div class="kanban-detail-links-section">
+    ${hasLinks ? `<div class="kanban-detail-links-grid">
+      <div><strong>${esc(t('kanban_parents'))}</strong><div>${parents.length ? parents.map(item).join(' ') : esc(t('kanban_empty'))}</div></div>
+      <div><strong>${esc(t('kanban_children'))}</strong><div>${children.length ? children.map(item).join(' ') : esc(t('kanban_empty'))}</div></div>
+    </div>` : ''}
+    <div class="kanban-detail-links-controls">
+      <input type="text" id="kanbanDependencyInput" maxlength="255" autocomplete="off" data-i18n-placeholder="kanban_dependency_placeholder" placeholder="Task ID to link">
+      <button class="btn secondary" onclick="addKanbanDependency('${esc(taskId)}')" data-i18n="kanban_add_dependency">Add dependency</button>
+    </div>
   </div>`;
 }
 
@@ -2727,6 +2734,14 @@ function _kanbanTaskModalKey(ev){
   }
 }
 
+function _kanbanOnWorkspaceKindChange(){
+  const kindEl = document.getElementById('kanbanTaskModalWorkspaceKind');
+  const pathRowEl = document.getElementById('kanbanTaskModalWorkspacePathRow');
+  if (!kindEl || !pathRowEl) return;
+  const kind = kindEl.value;
+  pathRowEl.style.display = (kind === 'scratch') ? 'none' : 'block';
+}
+
 async function submitKanbanTaskModal(){
   const titleEl = document.getElementById('kanbanTaskModalTitleInput');
   const bodyEl = document.getElementById('kanbanTaskModalBody');
@@ -2734,6 +2749,8 @@ async function submitKanbanTaskModal(){
   const assigneeEl = document.getElementById('kanbanTaskModalAssignee');
   const tenantEl = document.getElementById('kanbanTaskModalTenant');
   const priorityEl = document.getElementById('kanbanTaskModalPriority');
+  const workspaceKindEl = document.getElementById('kanbanTaskModalWorkspaceKind');
+  const workspacePathEl = document.getElementById('kanbanTaskModalWorkspacePath');
   const errEl = document.getElementById('kanbanTaskModalError');
   const submitBtn = document.getElementById('kanbanTaskModalSubmit');
   const title = titleEl ? titleEl.value.trim() : '';
@@ -2741,6 +2758,16 @@ async function submitKanbanTaskModal(){
     if (errEl) errEl.textContent = t('kanban_title_required') || 'Title is required.';
     if (titleEl) titleEl.focus();
     return;
+  }
+  // Validate workspace path for non-scratch workspace kinds
+  const workspaceKind = workspaceKindEl ? workspaceKindEl.value : 'scratch';
+  if (workspaceKind !== 'scratch') {
+    const workspacePath = workspacePathEl ? workspacePathEl.value.trim() : '';
+    if (!workspacePath) {
+      if (errEl) errEl.textContent = t('kanban_workspace_path_required') || 'Workspace path is required for non-scratch workspaces.';
+      if (workspacePathEl) workspacePathEl.focus();
+      return;
+    }
   }
   // Build payload — for create we omit defaulted fields so the backend chooses;
   // for edit we send every field so users can clear assignee/tenant/body.
@@ -2751,6 +2778,7 @@ async function submitKanbanTaskModal(){
   const tenantVal = tenantEl ? tenantEl.value.trim() : '';
   const statusVal = statusEl ? statusEl.value : '';
   const priorityRaw = priorityEl ? priorityEl.value : '';
+  const workspacePathVal = workspacePathEl ? workspacePathEl.value.trim() : '';
   if (isEdit) {
     payload.body = bodyVal;
     payload.assignee = assigneeVal || null;
@@ -2764,6 +2792,8 @@ async function submitKanbanTaskModal(){
     }
     const n = parseInt(priorityRaw, 10);
     payload.priority = Number.isNaN(n) ? 0 : n;
+    payload.workspace_kind = workspaceKind;
+    if (workspacePathVal) payload.workspace_path = workspacePathVal;
   } else {
     if (bodyVal.trim()) payload.body = bodyVal;
     if (statusVal) payload.status = statusVal;
@@ -2773,6 +2803,8 @@ async function submitKanbanTaskModal(){
       const n = parseInt(priorityRaw, 10);
       if (!Number.isNaN(n)) payload.priority = n;
     }
+    payload.workspace_kind = workspaceKind;
+    if (workspacePathVal) payload.workspace_path = workspacePathVal;
   }
   // Soft warning: a Ready task with the explicit "Unassigned" option will sit
   // forever because the dispatcher skips unassigned rows (kanban_db.py:3567).
@@ -2841,6 +2873,31 @@ async function addKanbanComment(taskId){
       body: JSON.stringify({body}),
     });
     if (input) input.value = '';
+    await loadKanbanTask(taskId);
+  } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
+}
+
+async function addKanbanDependency(taskId){
+  const input = document.getElementById('kanbanDependencyInput');
+  const linkTo = input ? input.value.trim() : '';
+  if (!taskId || !linkTo) return;
+  try {
+    await api('/api/kanban/links' + _kanbanBoardQuery(), {
+      method: 'POST',
+      body: JSON.stringify({parent: taskId, child: linkTo}),
+    });
+    if (input) input.value = '';
+    await loadKanbanTask(taskId);
+  } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
+}
+
+async function removeKanbanDependency(taskId, linkId){
+  if (!taskId || !linkId) return;
+  try {
+    await api('/api/kanban/links' + _kanbanBoardQuery(), {
+      method: 'POST',
+      body: JSON.stringify({parent: taskId, child: linkId}),
+    });
     await loadKanbanTask(taskId);
   } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
 }
