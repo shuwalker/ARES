@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [v0.51.511] — 2026-06-19 — Release RV (virtual transcript renders during programmatic scrolls)
+
+### Fixed
+
+- **Scrolling back down through a long virtualized transcript no longer leaves blank gaps (#4346 family; regression from #4434/v0.51.500).** The message virtual-window render was scheduled behind the scroll handler's `_programmaticScroll` guard, so when the measurement-compensation path adjusted `scrollTop` and briefly left that flag set, scroll events were dropped and the DOM froze (spacer + first row stuck while the computed window advanced). The virtual-window render now always fires on scroll; the guard still suppresses the pin/cue/prefetch bookkeeping that genuinely shouldn't react to programmatic scrolls. Thanks @rodboev.
+
 ## [v0.51.510] — 2026-06-19 — Release RU (Kanban task workspace + dependency controls)
 
 ### Added
