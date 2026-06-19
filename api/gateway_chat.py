@@ -584,6 +584,18 @@ def _run_gateway_chat_streaming(
             if final_text is None:
                 return
         else:
+            # Legacy gateway path: emit unsupported approval notice once per session,
+            # but only when the gateway genuinely lacks approval capability.
+            if not gateway_supports_approval(base_url, api_key):
+                if not hasattr(s, "_approval_notice_emitted"):
+                    s._approval_notice_emitted = False
+                if not s._approval_notice_emitted:
+                    put_gateway_event("warning", {
+                        "type": "approval_gateway_unsupported",
+                        "message": "Approvals require a newer gateway. Upgrade the connected Hermes gateway to enable this.",
+                    })
+                    s._approval_notice_emitted = True
+
             url = f"{base_url}/v1/chat/completions"
             headers = {
                 "Content-Type": "application/json",

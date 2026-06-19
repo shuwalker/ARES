@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [v0.51.509] — 2026-06-19 — Release RT (notice when the connected gateway can't do approvals)
+
+### Added
+
+- **The chat now shows a one-time notice when the connected Hermes gateway is too old to support command approvals (#4300).** On the legacy gateway path, if the gateway lacks approval capability, a single per-session warning ("Approvals require a newer gateway — upgrade the connected Hermes gateway to enable this") is surfaced instead of approvals silently doing nothing. Localized in all bundled locales. Thanks @rodboev.
+
 ## [v0.51.508] — 2026-06-19 — Release RS (the /model command works under a reverse-proxy subpath)
 
 ### Fixed
