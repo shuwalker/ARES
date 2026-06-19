@@ -459,7 +459,7 @@ def test_wiki_page_alias_spellings_are_rejected(monkeypatch, tmp_path):
 
     monkeypatch.setattr(routes, "_llm_wiki_resolve_path", lambda: (wiki_root, None, None))
 
-    for alias in ("concepts/./real.md", "concepts//real.md", "concepts/real.md/"):
+    for alias in ("concepts/./real.md", "concepts//real.md", "concepts/real.md/", "concepts%5Creal.md"):
         handler = _FakeHandler()
         routes.handle_get(handler, urlparse(f"http://example.com/api/wiki/page?path={alias}"))
         assert handler.status == 400, f"alias spelling {alias!r} must be rejected, got {handler.status}"

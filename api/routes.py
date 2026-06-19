@@ -7384,6 +7384,8 @@ def handle_get(handler, parsed) -> bool:
         page_path = parse_qs(parsed.query or "").get("path", [""])[0]
         if not wiki_root or not page_path:
             return bad(handler, "Wiki not configured or path not provided", status=400)
+        if "\\" in page_path:
+            return bad(handler, "Invalid path", status=400)
         # Reject a real `..` path SEGMENT (or absolute path), not the bare
         # substring — a legitimate listed filename like `v1..v2.md` contains
         # ".." without being traversal. Containment + the resolved-allowlist
