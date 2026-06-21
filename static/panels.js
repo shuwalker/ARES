@@ -57,7 +57,7 @@ function syncAppTitlebar() {
   if (panel === 'chat' && typeof S !== 'undefined' && S && S.session) {
     mainText = S.session.title || (typeof t === 'function' ? t('untitled') : 'Untitled');
     const vis = Array.isArray(S.messages) ? S.messages.filter(m => m && m.role && m.role !== 'tool') : [];
-    if (typeof t === 'function') subText = t('n_messages', vis.length);
+    subText = String(vis.length);
     sourceLabel = S.session.source_label || S.session.source_tag || S.session.raw_source || '';
     // Recovered sidecars stamp source_label 'WebUI' (api/session_recovery.py); don't badge a native session as its own source (#3338).
     if (/^webui$/i.test(sourceLabel)) sourceLabel = '';
@@ -150,6 +150,85 @@ function syncAppTitlebar() {
       inp.focus();
       inp.select();
     };
+  }
+
+  // Mobile touch interactions — wired once per element lifetime.
+  if ('ontouchstart' in window && !titleEl._mobileTouchWired) {
+    titleEl._mobileTouchWired = true;
+
+    // Tap-to-reveal full title popover
+    let _titlePopover = null;
+    const _dismissTitlePopover = () => {
+      if (_titlePopover) { _titlePopover.remove(); _titlePopover = null; }
+    };
+    titleEl.addEventListener('click', function _onTitleClick(e) {
+      if (_renamingAppTitlebar) return;
+      if (_titlePopover) {
+        _dismissTitlePopover();
+        if (typeof titleEl.ondblclick === 'function') titleEl.ondblclick(e);
+        return;
+      }
+      e.stopPropagation();
+      const pop = document.createElement('div');
+      pop.className = 'app-titlebar-title-popover';
+      pop.textContent = (S && S.session && S.session.title) ||
+        (typeof t === 'function' ? t('untitled') : 'Untitled');
+      document.body.appendChild(pop);
+      const rect = titleEl.getBoundingClientRect();
+      pop.style.top = (rect.bottom + 6) + 'px';
+      pop.style.left = Math.max(8, rect.left) + 'px';
+      pop.style.maxWidth = (window.innerWidth - 16) + 'px';
+      _titlePopover = pop;
+      const _outside = (ev) => {
+        if (!pop.contains(ev.target) && ev.target !== titleEl) {
+          _dismissTitlePopover();
+          document.removeEventListener('click', _outside, true);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', _outside, true), 0);
+    }, { passive: true });
+
+    // Long-press → session action menu (mirrors project-chip pattern, sessions.js:5362-5407)
+    if (panel === 'chat' && S && S.session && !S.session.read_only && !S.session.is_read_only &&
+        typeof _openSessionActionMenu === 'function') {
+      let _lpTimer = null;
+      let _lpHandled = false;
+      let _lpStartX = 0, _lpStartY = 0;
+      const _lpDelay = typeof SESSION_LONG_PRESS_DELAY_MS !== 'undefined' ?
+        SESSION_LONG_PRESS_DELAY_MS : 400;
+      titleEl.addEventListener('touchstart', (e) => {
+        const touch = e.changedTouches && e.changedTouches[0];
+        if (!touch) return;
+        if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+        _lpHandled = false; _lpStartX = touch.clientX; _lpStartY = touch.clientY;
+        titleEl.classList.add('long-pressing');
+        _lpTimer = setTimeout(() => {
+          _lpTimer = null;
+          if (_lpHandled) return;
+          _lpHandled = true;
+          titleEl.classList.remove('long-pressing');
+          _openSessionActionMenu(S.session, titleEl);
+        }, _lpDelay);
+      }, { passive: true });
+      titleEl.addEventListener('touchmove', (e) => {
+        if (!_lpTimer) return;
+        const touch = e.changedTouches && e.changedTouches[0];
+        if (!touch) return;
+        if (Math.abs(touch.clientX - _lpStartX) > 10 || Math.abs(touch.clientY - _lpStartY) > 10) {
+          clearTimeout(_lpTimer); _lpTimer = null;
+          titleEl.classList.remove('long-pressing');
+        }
+      }, { passive: true });
+      titleEl.addEventListener('touchend', (e) => {
+        clearTimeout(_lpTimer); _lpTimer = null;
+        titleEl.classList.remove('long-pressing');
+        if (_lpHandled) { e.preventDefault(); e.stopPropagation(); }
+      }, { passive: false });
+      titleEl.addEventListener('touchcancel', () => {
+        clearTimeout(_lpTimer); _lpTimer = null; _lpHandled = false;
+        titleEl.classList.remove('long-pressing');
+      }, { passive: true });
+    }
   }
 }
 
