@@ -16,7 +16,6 @@ These are source-structure assertions on the on_reasoning closure in api/streami
 coalescing contract can't silently regress to the drop-based version.
 """
 import pathlib
-import re
 
 REPO = pathlib.Path(__file__).parent.parent
 STREAMING = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
