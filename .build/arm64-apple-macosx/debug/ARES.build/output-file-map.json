@@ -1,0 +1,89 @@
+{
+  "": {
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/primary.swiftdeps"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/App/ARESApp.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/AIRouter.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/HermesGateway.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/PersonaService.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/SpeechService.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/TaskManager.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/ThreeJsAvatarRenderer.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/HermexView.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SanctumView.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SetupView.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/TaskManagementViews.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews.dia"
+  },
+  "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/DerivedSources/resource_bundle_accessor.swift": {
+    "dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor.d",
+    "object": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor.swift.o",
+    "swiftmodule": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor~partial.swiftmodule",
+    "swift-dependencies": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor.swiftdeps",
+    "diagnostics": "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor.dia"
+  }
+}

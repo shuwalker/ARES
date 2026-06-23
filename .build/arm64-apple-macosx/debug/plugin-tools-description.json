@@ -1,0 +1,575 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Assets.xcassets" : {
+      "inputs" : [
+        {
+          "kind" : "directory",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/Assets.xcassets"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "directory",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Assets.xcassets"
+        }
+      ]
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Albedo.jpg" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/AvatarModel/Fma_EdwardGate_Albedo.jpg"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Albedo.jpg"
+        }
+      ]
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Ao.jpg" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/AvatarModel/Fma_EdwardGate_Ao.jpg"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Ao.jpg"
+        }
+      ]
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Metallic.jpg" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/AvatarModel/Fma_EdwardGate_Metallic.jpg"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Metallic.jpg"
+        }
+      ]
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Normal.png" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/AvatarModel/Fma_EdwardGate_Normal.png"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Normal.png"
+        }
+      ]
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Roughness.jpg" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/AvatarModel/Fma_EdwardGate_Roughness.jpg"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/Fma_EdwardGate_Roughness.jpg"
+        }
+      ]
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/fmaEdward.mtl" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/AvatarModel/fmaEdward.mtl"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/fmaEdward.mtl"
+        }
+      ]
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/fmaEdward.obj" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Resources/AvatarModel/fmaEdward.obj"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES_ARES.bundle/fmaEdward.obj"
+        }
+      ]
+    }
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.ARES-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/sources",
+      "importPath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/App/ARESApp.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/AIRouter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/HermesGateway.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/PersonaService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/SpeechService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/TaskManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/ThreeJsAvatarRenderer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/HermexView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SanctumView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SetupView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/TaskManagementViews.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/DerivedSources/resource_bundle_accessor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<ARES-arm64-apple-macosx-debug.module-resources>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "ARES",
+      "moduleOutputPath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/Modules/ARES.swiftmodule",
+      "objects" : [
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews.swift.o",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx14.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
+        "-module-cache-path",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "ARES_main",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "ares"
+      ],
+      "outputFileMapPath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/Modules/ARES.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/App/ARESApp.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/AIRouter.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/HermesGateway.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/PersonaService.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/SpeechService.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/TaskManager.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/ThreeJsAvatarRenderer.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/HermexView.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SanctumView.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SetupView.swift",
+        "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/TaskManagementViews.swift",
+        "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/DerivedSources/resource_bundle_accessor.swift"
+      ],
+      "tempsPath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "ARES" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "ARES",
+      "-package-name",
+      "ares",
+      "-c",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/App/ARESApp.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/AIRouter.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/HermesGateway.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/PersonaService.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/SpeechService.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/TaskManager.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/ThreeJsAvatarRenderer.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/HermexView.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SanctumView.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SetupView.swift",
+      "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/TaskManagementViews.swift",
+      "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/DerivedSources/resource_bundle_accessor.swift",
+      "-I",
+      "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx14.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
+      "-module-cache-path",
+      "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "ARES_main",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "ares",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "ARES" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES-entitlement.plist"
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/App/ARESApp.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/AIRouter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/HermesGateway.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/PersonaService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/SpeechService.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/TaskManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Services/ThreeJsAvatarRenderer.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/HermexView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SanctumView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/SetupView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/Sources/ARES/Views/TaskManagementViews.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/DerivedSources/resource_bundle_accessor.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/sources"
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/AIRouter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ARESApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermesGateway.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/HermexView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/PersonaService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SanctumView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SetupView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/SpeechService.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManagementViews.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/TaskManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/ThreeJsAvatarRenderer.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.build/resource_bundle_accessor.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/ARES.product/Objects.LinkFileList"
+    },
+    "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/matthewjenkins/GitHub/ARES/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}
