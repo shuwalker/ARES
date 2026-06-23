@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [v0.51.598] — 2026-06-23 — Release VE (preserve scroll across live worklog rebuilds)
+
+### Fixed
+
+- **The transcript no longer jumps while a live tool/thinking worklog rebuilds mid-stream.** When the live "Compact Worklog" activity scene re-rendered (removing and re-adding its tool-card / thinking / anchor rows), the surrounding scroll position could shift, yanking the reader away from where they were. The rebuild now captures the scroll position before the DOM churn and restores it same-frame afterward (before the pinned-to-bottom follow), so an unpinned reader keeps their place and a pinned reader still follows the latest output. Thanks @franksong2702. (#4743)
+
 ## [v0.51.597] — 2026-06-23 — Release VD (message footer wraps instead of overflowing on narrow screens)
 
 ### Fixed
