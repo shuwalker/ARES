@@ -1,108 +1,140 @@
 import Foundation
-import AppKit
+import EventKit
 
-// MARK: - Task Manager
-// Bridges ARES to Apple Reminders + Calendar via osascript
-// No third-party dependencies. No API keys. Uses what's on the machine.
+// MARK: - Task Manager (EventKit Native)
+// Bridges ARES to Apple Reminders + Calendar via EventKit.
+// No osascript. No timeouts. Native Apple framework.
 
 @MainActor
 final class TaskManager: ObservableObject {
     static let shared = TaskManager()
     
+    private let eventStore = EKEventStore()
+    private var hasRemindersAccess = false
+    private var hasCalendarAccess = false
+    
     @Published var todayTasks: [ARESTask] = []
     @Published var overdueTasks: [ARESTask] = []
-    @Published var thisWeekTasks: [ARESTask] = []
     @Published var inboxCount: Int = 0
     @Published var todayEvents: [ARESEvent] = []
     @Published var isRefreshing = false
     @Published var lastError: String?
     
+    // MARK: - Permission
+    
+    func requestAccess() async -> Bool {
+        do {
+            hasRemindersAccess = try await eventStore.requestFullAccessToReminders()
+            hasCalendarAccess = try await eventStore.requestFullAccessToEvents()
+            return hasRemindersAccess && hasCalendarAccess
+        } catch {
+            lastError = "Permission denied: \(error.localizedDescription)"
+            return false
+        }
+    }
+    
     // MARK: - Task CRUD
     
-    /// Create a task in Apple Reminders
     func createTask(
         title: String,
-        list: String = "Inbox",
+        listName: String = "Inbox",
         dueDate: Date? = nil,
         priority: Int = 0,
-        notes: String = "",
-        recurrence: RecurrenceRule? = nil
+        notes: String = ""
     ) async -> Bool {
-        let dateStr = dueDate.map { formatAppleScriptDate($0) } ?? "missing value"
-        let priorityStr = "\(priority)"
-        let notesEscaped = notes.replacingOccurrences(of: "\"", with: "\\\"")
+        guard hasRemindersAccess else { return false }
         
-        let script: String
+        let reminder = EKReminder(eventStore: eventStore)
+        reminder.title = title
+        reminder.priority = priority
+        reminder.notes = notes
+        
         if let due = dueDate {
-            script = """
-            tell application "Reminders"
-                tell list "\(list)"
-                    make new reminder with properties {name:"\(title.escapedForAppleScript)", due date:\(dateStr), priority:\(priorityStr), body:"\(notesEscaped)"}
-                end tell
-            end tell
-            """
-        } else {
-            script = """
-            tell application "Reminders"
-                tell list "\(list)"
-                    make new reminder with properties {name:"\(title.escapedForAppleScript)", priority:\(priorityStr), body:"\(notesEscaped)"}
-                end tell
-            end tell
-            """
+            let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
+            reminder.dueDateComponents = components
         }
         
-        return await runOSAScript(script)
+        if let calendar = findOrCreateList(named: listName) {
+            reminder.calendar = calendar
+        }
+        
+        do {
+            try eventStore.save(reminder, commit: true)
+            return true
+        } catch {
+            lastError = "Failed to create task: \(error.localizedDescription)"
+            return false
+        }
     }
     
-    /// Mark a task complete
-    func completeTask(title: String, list: String = "Today") async -> Bool {
-        let script = """
-        tell application "Reminders"
-            set r to first reminder of list "\(list)" whose name is "\(title.escapedForAppleScript)"
-            set completed of r to true
-        end tell
-        """
-        return await runOSAScript(script)
+    func completeTask(reminderID: String) async -> Bool {
+        guard hasRemindersAccess else { return false }
+        
+        let predicate = eventStore.predicateForIncompleteReminders(
+            withDueDateStarting: nil, ending: nil, calendars: nil
+        )
+        
+        let reminders = await fetchReminders(matching: predicate)
+        if let reminder = reminders.first(where: { $0.calendarItemIdentifier == reminderID }) {
+            reminder.isCompleted = true
+            do {
+                try eventStore.save(reminder, commit: true)
+                return true
+            } catch {
+                lastError = "Failed to complete: \(error.localizedDescription)"
+            }
+        }
+        return false
     }
     
-    /// Reschedule a task to a new date
-    func rescheduleTask(title: String, list: String, newDate: Date) async -> Bool {
-        let dateStr = formatAppleScriptDate(newDate)
-        let script = """
-        tell application "Reminders"
-            set r to first reminder of list "\(list)" whose name is "\(title.escapedForAppleScript)"
-            set due date of r to \(dateStr)
-        end tell
-        """
-        return await runOSAScript(script)
+    func rescheduleTask(reminderID: String, newDate: Date) async -> Bool {
+        guard hasRemindersAccess else { return false }
+        
+        let predicate = eventStore.predicateForIncompleteReminders(
+            withDueDateStarting: nil, ending: nil, calendars: nil
+        )
+        
+        let reminders = await fetchReminders(matching: predicate)
+        if let reminder = reminders.first(where: { $0.calendarItemIdentifier == reminderID }) {
+            let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: newDate)
+            reminder.dueDateComponents = components
+            do {
+                try eventStore.save(reminder, commit: true)
+                return true
+            } catch {
+                lastError = "Failed to reschedule: \(error.localizedDescription)"
+            }
+        }
+        return false
     }
     
-    /// Move task to a different list
-    func moveTask(title: String, fromList: String, toList: String) async -> Bool {
-        let script = """
-        tell application "Reminders"
-            set r to first reminder of list "\(fromList)" whose name is "\(title.escapedForAppleScript)"
-            move r to list "\(toList)"
-        end tell
-        """
-        return await runOSAScript(script)
-    }
-    
-    /// Delete a task
-    func deleteTask(title: String, list: String) async -> Bool {
-        let script = """
-        tell application "Reminders"
-            set r to first reminder of list "\(list)" whose name is "\(title.escapedForAppleScript)"
-            delete r
-        end tell
-        """
-        return await runOSAScript(script)
+    func deleteTask(reminderID: String) async -> Bool {
+        guard hasRemindersAccess else { return false }
+        
+        let predicate = eventStore.predicateForIncompleteReminders(
+            withDueDateStarting: nil, ending: nil, calendars: nil
+        )
+        
+        let reminders = await fetchReminders(matching: predicate)
+        if let reminder = reminders.first(where: { $0.calendarItemIdentifier == reminderID }) {
+            do {
+                try eventStore.remove(reminder, commit: true)
+                return true
+            } catch {
+                lastError = "Failed to delete: \(error.localizedDescription)"
+            }
+        }
+        return false
     }
     
     // MARK: - Reading Data
     
-    /// Refresh all task data from Apple Reminders
     func refreshAll() async {
+        guard hasRemindersAccess else {
+            lastError = "No Reminders access. Grant permission in System Settings."
+            return
+        }
+        
         isRefreshing = true
         lastError = nil
         
@@ -117,111 +149,89 @@ final class TaskManager: ObservableObject {
     }
     
     private func refreshOverdue() async {
-        let script = """
-        tell application "Reminders"
-            set todayDate to current date
-            set hours of todayDate to 0
-            set minutes of todayDate to 0
-            set seconds of todayDate to 0
-            set output to ""
-            repeat with eachList in lists
-                repeat with eachReminder in reminders of eachList
-                    if due date of eachReminder is not missing value then
-                        if due date of eachReminder < todayDate and completed of eachReminder is false then
-                            set daysOverdue to (todayDate - due date of eachReminder) div days
-                            set p to priority of eachReminder
-                            set output to output & name of eachReminder & "|" & name of eachList & "|" & daysOverdue & "|" & p & "|" & (id of eachReminder as text) & linefeed
-                        end if
-                    end if
-                end repeat
-            end repeat
-            return output
-        end tell
-        """
+        let predicate = eventStore.predicateForIncompleteReminders(
+            withDueDateStarting: nil,
+            ending: Calendar.current.startOfDay(for: Date()),
+            calendars: nil
+        )
         
-        if let result = await runOSAScriptWithOutput(script) {
-            let tasks = parseTaskLines(result)
-            await MainActor.run { self.overdueTasks = tasks }
-        }
+        let reminders = await fetchReminders(matching: predicate)
+        let now = Date()
+        let tasks: [ARESTask] = reminders.compactMap { r in
+            guard let due = r.dueDateComponents?.date else { return nil }
+            let daysOverdue = Calendar.current.dateComponents([.day], from: due, to: now).day ?? 0
+            return ARESTask(
+                title: r.title,
+                list: r.calendar?.title ?? "Unknown",
+                daysOverdue: daysOverdue,
+                priority: r.priority,
+                reminderID: r.calendarItemIdentifier
+            )
+        }.sorted { $0.daysOverdue > $1.daysOverdue }
+        
+        await MainActor.run { self.overdueTasks = tasks }
     }
     
     private func refreshToday() async {
-        let script = """
-        tell application "Reminders"
-            set todayDate to current date
-            set hours of todayDate to 0
-            set minutes of todayDate to 0
-            set seconds of todayDate to 0
-            set endOfDay to todayDate + (1 * days)
-            set output to ""
-            repeat with eachList in lists
-                repeat with eachReminder in reminders of eachList
-                    if due date of eachReminder is not missing value then
-                        set d to due date of eachReminder
-                        if d >= todayDate and d < endOfDay and completed of eachReminder is false then
-                            set p to priority of eachReminder
-                            set output to output & name of eachReminder & "|" & name of eachList & "|0|" & p & "|" & (id of eachReminder as text) & linefeed
-                        end if
-                    end if
-                end repeat
-            end repeat
-            return output
-        end tell
-        """
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
         
-        if let result = await runOSAScriptWithOutput(script) {
-            let tasks = parseTaskLines(result)
-            await MainActor.run { self.todayTasks = tasks }
-        }
+        let predicate = eventStore.predicateForIncompleteReminders(
+            withDueDateStarting: startOfDay,
+            ending: endOfDay,
+            calendars: nil
+        )
+        
+        let reminders = await fetchReminders(matching: predicate)
+        let tasks: [ARESTask] = reminders.map { r in
+            ARESTask(
+                title: r.title,
+                list: r.calendar?.title ?? "Unknown",
+                daysOverdue: 0,
+                priority: r.priority,
+                reminderID: r.calendarItemIdentifier
+            )
+        }.sorted { $0.priority > $1.priority }
+        
+        await MainActor.run { self.todayTasks = tasks }
     }
     
     private func refreshInboxCount() async {
-        let script = """
-        tell application "Reminders"
-            set cnt to 0
-            repeat with eachReminder in reminders of list "Inbox"
-                if completed of eachReminder is false then set cnt to cnt + 1
-            end repeat
-            return cnt
-        end tell
-        """
-        
-        if let result = await runOSAScriptWithOutput(script),
-           let count = Int(result.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            await MainActor.run { self.inboxCount = count }
+        guard let inboxCalendar = eventStore.calendars(for: .reminder)
+            .first(where: { $0.title.lowercased() == "inbox" }) else {
+            await MainActor.run { self.inboxCount = 0 }
+            return
         }
+        
+        let predicate = eventStore.predicateForIncompleteReminders(
+            withDueDateStarting: nil, ending: nil, calendars: [inboxCalendar]
+        )
+        
+        let reminders = await fetchReminders(matching: predicate)
+        await MainActor.run { self.inboxCount = reminders.count }
     }
     
     private func refreshCalendarEvents() async {
-        let script = """
-        tell application "Calendar"
-            set todayDate to current date
-            set hours of todayDate to 0
-            set minutes of todayDate to 0
-            set seconds of todayDate to 0
-            set endOfDay to todayDate + (1 * days)
-            set output to ""
-            set calList to {"Work", "Jenkins Family", "Jenkins Robotics", "Ares", "Focus", "PERSONAL", "Planned", "Scheduled Reminders", "Birthdays", "US Holidays"}
-            repeat with calName in calList
-                try
-                    set c to calendar calName
-                    repeat with eachEvent in events of c
-                        if start date of eachEvent >= todayDate and start date of eachEvent < endOfDay then
-                            set s to start date of eachEvent
-                            set e to end date of eachEvent
-                            set output to output & summary of eachEvent & "|" & calName & "|" & s & "|" & e & linefeed
-                        end if
-                    end repeat
-                end try
-            end repeat
-            return output
-        end tell
-        """
+        guard hasCalendarAccess else { return }
         
-        if let result = await runOSAScriptWithOutput(script) {
-            let events = parseEventLines(result)
-            await MainActor.run { self.todayEvents = events }
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        let predicate = eventStore.predicateForEvents(
+            withStart: startOfDay, end: endOfDay, calendars: nil
+        )
+        
+        let events = eventStore.events(matching: predicate)
+        let aresEvents: [ARESEvent] = events.map { e in
+            ARESEvent(
+                title: e.title,
+                calendar: e.calendar?.title ?? "Unknown",
+                startDate: e.startDate,
+                endDate: e.endDate
+            )
         }
+        
+        await MainActor.run { self.todayEvents = aresEvents }
     }
     
     // MARK: - Morning Briefing
@@ -244,11 +254,40 @@ final class TaskManager: ObservableObject {
             smallTasks: Array(smallTasks),
             overdueTasks: Array(overdueTasks.prefix(5)),
             events: todayEvents,
-            suggestion: generateSuggestion()
+            suggestion: energySuggestion()
         )
     }
     
-    private func generateSuggestion() -> String {
+    // MARK: - Helpers
+    
+    private func fetchReminders(matching predicate: NSPredicate) async -> [EKReminder] {
+        await withCheckedContinuation { continuation in
+            eventStore.fetchReminders(matching: predicate) { reminders in
+                continuation.resume(returning: reminders ?? [])
+            }
+        }
+    }
+    
+    private func findOrCreateList(named name: String) -> EKCalendar? {
+        let reminderCalendars = eventStore.calendars(for: .reminder)
+        
+        if let existing = reminderCalendars.first(where: { $0.title.lowercased() == name.lowercased() }) {
+            return existing
+        }
+        
+        let newCalendar = EKCalendar(for: .reminder, eventStore: eventStore)
+        newCalendar.title = name
+        newCalendar.source = eventStore.defaultCalendarForNewReminders()?.source
+        
+        do {
+            try eventStore.saveCalendar(newCalendar, commit: true)
+            return newCalendar
+        } catch {
+            return nil
+        }
+    }
+    
+    private func energySuggestion() -> String {
         let hour = Calendar.current.component(.hour, from: Date())
         if hour < 12 {
             return "Morning energy is high. Consider deep work on your top priority task."
@@ -259,94 +298,6 @@ final class TaskManager: ObservableObject {
         } else {
             return "Evening. Light tasks, planning tomorrow, or winding down."
         }
-    }
-    
-    // MARK: - Helpers
-    
-    private func runOSAScript(_ script: String) async -> Bool {
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                process.arguments = ["-e", script]
-                process.standardOutput = FileHandle.nullDevice
-                process.standardError = FileHandle.nullDevice
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    continuation.resume(returning: process.terminationStatus == 0)
-                } catch {
-                    continuation.resume(returning: false)
-                }
-            }
-        }
-    }
-    
-    private func runOSAScriptWithOutput(_ script: String) async -> String? {
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                process.arguments = ["-e", script]
-                let outPipe = Pipe()
-                let errPipe = Pipe()
-                process.standardOutput = outPipe
-                process.standardError = errPipe
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8)
-                    continuation.resume(returning: output)
-                } catch {
-                    continuation.resume(returning: nil)
-                }
-            }
-        }
-    }
-    
-    private func parseTaskLines(_ output: String) -> [ARESTask] {
-        var tasks: [ARESTask] = []
-        let lines = output.components(separatedBy: .newlines)
-        for line in lines {
-            let parts = line.components(separatedBy: "|")
-            if parts.count >= 5 {
-                let title = parts[0].trimmingCharacters(in: .whitespaces)
-                guard !title.isEmpty else { continue }
-                tasks.append(ARESTask(
-                    title: title,
-                    list: parts[1].trimmingCharacters(in: .whitespaces),
-                    daysOverdue: Int(parts[2]) ?? 0,
-                    priority: Int(parts[3]) ?? 0,
-                    reminderID: parts[4].trimmingCharacters(in: .whitespaces)
-                ))
-            }
-        }
-        return tasks
-    }
-    
-    private func parseEventLines(_ output: String) -> [ARESEvent] {
-        var events: [ARESEvent] = []
-        let lines = output.components(separatedBy: .newlines)
-        for line in lines {
-            let parts = line.components(separatedBy: "|")
-            if parts.count >= 4 {
-                events.append(ARESEvent(
-                    title: parts[0].trimmingCharacters(in: .whitespaces),
-                    calendar: parts[1].trimmingCharacters(in: .whitespaces),
-                    startDate: Date(),
-                    endDate: Date()
-                ))
-            }
-        }
-        return events
-    }
-    
-    private func formatAppleScriptDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d, yyyy h:mm:ss a"
-        formatter.locale = Locale(identifier: "en_US")
-        return "date \"\(formatter.string(from: date))\""
     }
 }
 
@@ -393,22 +344,4 @@ struct MorningBriefing {
     let overdueTasks: [ARESTask]
     let events: [ARESEvent]
     let suggestion: String
-}
-
-enum RecurrenceRule {
-    case daily
-    case weekly
-    case monthly
-    case yearly
-    case custom(String)
-}
-
-// MARK: - AppleScript String Escaping
-
-extension String {
-    var escapedForAppleScript: String {
-        self.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-    }
 }
