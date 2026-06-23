@@ -3819,11 +3819,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
   // when the rAF fires before the next token arrives.
   let _cachedParsed=null;
   let _cachedParsedText='';
+  let _cachedParsedReasoning='';
   function _scheduleRender(parsed){
     // If caller provides a pre-computed parse result, cache it for _doRender.
     if(parsed){
       _cachedParsed=parsed;
       _cachedParsedText=assistantText;
+      _cachedParsedReasoning=liveReasoningText;
     }
     if(_renderPending) return;
     if(_streamFinalized) return; // Bug A: don't schedule new rAF after stream finalized
@@ -3843,7 +3845,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       // Guard: a pending setTimeout+rAF can outlive stream finalization.
       if(_streamFinalized) return;
       _lastRenderMs=performance.now();
-      const parsed=_cachedParsed&&_cachedParsedText===assistantText ? _cachedParsed : _parseStreamState();
+      const parsed=_cachedParsed&&_cachedParsedText===assistantText&&_cachedParsedReasoning===liveReasoningText ? _cachedParsed : _parseStreamState();
       _cachedParsed=null;
       _renderLiveThinking(parsed);
       if(assistantBody){
