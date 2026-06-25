@@ -8253,6 +8253,32 @@ async function handlePluginEnableToggle(pluginKey, checked){
   }
 }
 
+function _pluginActivationState(plugin){
+  const activation=(plugin&&typeof plugin.activation==='string')
+    ? plugin.activation
+    : (plugin&&plugin.enabled===false ? 'disabled' : 'enabled');
+  // Mirror _buildPluginCard's isProviderActive precedence: an explicit
+  // is_active_provider===true overrides the activation string so the sort
+  // bucket always matches the badge.
+  if(plugin&&plugin.is_active_provider===true) return 'provider';
+  if(activation==='exclusive'||activation==='provider'){
+    if(plugin&&plugin.is_active_provider===false) return 'disabled';
+    return 'provider';
+  }
+  if(activation==='enabled') return 'enabled';
+  return 'disabled';
+}
+
+function _partitionPluginsActiveFirst(plugins){
+  const active=[];
+  const inactive=[];
+  for(const p of plugins){
+    if(_pluginActivationState(p)==='disabled') inactive.push(p);
+    else active.push(p);
+  }
+  return active.concat(inactive);
+}
+
 async function loadPluginsPanel(){
   const list=$('pluginsList');
   const empty=$('pluginsEmpty');
@@ -8271,7 +8297,7 @@ async function loadPluginsPanel(){
     }
     if(empty) empty.style.display='none';
     list.style.display='';
-    for(const plugin of plugins){
+    for(const plugin of _partitionPluginsActiveFirst(plugins)){
       list.appendChild(_buildPluginCard(plugin));
     }
   }catch(e){

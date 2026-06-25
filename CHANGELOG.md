@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [v0.51.641] — 2026-06-25 — Release WV (disabled plugins read as disabled in dark mode, active ones sort first)
+
+### Fixed
+
+- **In dark mode, disabled plugins no longer show a green "enabled-looking" badge, and active plugins sort to the top of the Plugins list.** The disabled-badge style lost a CSS specificity contest to the dark provider-badge rule, so a disabled plugin's badge rendered the same green as an enabled one — indistinguishable at a glance. A dark-mode-specific rule now renders the disabled badge in the muted surface color. The Plugins list also sorts active/enabled plugins above inactive ones (a stable partition that never reorders within a bucket), with the sort bucket always matching the badge actually shown. Thanks @rodboev. (#4848, closes #4713)
+
 ## [v0.51.640] — 2026-06-25 — Release WU (faster profile switching — Claude Code transcript parses are cached)
 
 ### Fixed

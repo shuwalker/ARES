@@ -4654,6 +4654,7 @@ main.main > #mainPlugin{display:none;}
 .plugin-card-header{cursor:default;}
 .plugin-card-header:hover{background:transparent;}
 .plugin-card-badge-disabled{background:var(--surface);color:var(--muted);}
+:root.dark .provider-card-badge.plugin-card-badge-disabled{background:var(--surface);color:var(--muted);}
 .plugin-hook-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
 .plugin-hook-badge{display:inline-flex;align-items:center;border:1px solid var(--border2);background:var(--code-bg);color:var(--text);border-radius:999px;padding:3px 8px;font-size:11px;font-family:var(--font-mono);}
 .plugin-hook-empty{font-size:12px;color:var(--muted);font-style:italic;}
