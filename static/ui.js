@@ -10960,6 +10960,12 @@ function _toolArgsSnapshot(args, limit){
     'url','uri','command','cmd','path','file','file_path','filename','file_glob',
     'glob','offset','limit',
   ];
+  // Content / diff-reconstruction keys must not be capped to the short
+  // incidental-arg limit, or long commands/paths get cut and recovery-rebuilt
+  // diffs (built from old_string/new_string/patch) break (#4928). Mirrors the
+  // backend _TOOL_ARG_CONTENT_KEYS / _TOOL_ARG_CONTENT_CAP.
+  const contentKeys=new Set(['command','cmd','script','code','patch','diff','old_string','new_string','content','path','file_path']);
+  const CONTENT_CAP=4000;
   const keys=[
     ...priority.filter(k=>Object.prototype.hasOwnProperty.call(args,k)),
     ...Object.keys(args).filter(k=>!priority.includes(k)),
@@ -10967,7 +10973,8 @@ function _toolArgsSnapshot(args, limit){
   const out={};
   keys.forEach(k=>{
     const v=String(args[k]);
-    out[k]=v.slice(0,120)+(v.length>120?'...':'');
+    const cap=contentKeys.has(String(k).toLowerCase())?CONTENT_CAP:120;
+    out[k]=v.slice(0,cap)+(v.length>cap?'...':'');
   });
   return out;
 }

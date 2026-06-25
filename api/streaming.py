@@ -4930,6 +4930,16 @@ def _agent_result_terminal_failure(result) -> bool:
 
 _TOOL_RESULT_SNIPPET_MAX = 4000
 
+# Tool-arg keys whose values are card content / diff-reconstruction inputs.
+# These must not be capped to the short incidental-arg limit (#4928), or long
+# commands/paths get cut and recovery-rebuilt diffs (built from old_string/
+# new_string/patch) break. Matched case-insensitively against the arg key.
+_TOOL_ARG_CONTENT_KEYS = frozenset({
+    'command', 'cmd', 'script', 'code', 'patch', 'diff',
+    'old_string', 'new_string', 'content', 'path', 'file_path',
+})
+_TOOL_ARG_CONTENT_CAP = _TOOL_RESULT_SNIPPET_MAX
+
 
 _LIVE_TOOL_PROMPT_DELTA_MAX = 12_000
 _LIVE_TOOL_PROMPT_TURN_MAX = 24_000
@@ -5030,13 +5040,21 @@ def _tool_result_snippet(raw, limit: int = _TOOL_RESULT_SNIPPET_MAX) -> str:
 
 
 def _truncate_tool_args(args, limit: int = 6) -> dict:
-    """Truncate tool args for compact session persistence."""
+    """Truncate tool args for compact session persistence.
+
+    Incidental args keep a short 120-char cap, but content/diff-bearing keys
+    (the command, code, and patch fields that tool cards and recovery-rebuilt
+    diffs are reconstructed from) get a much larger cap so a long command, file
+    path, or reconstructed diff is not silently corrupted (#4928). A hard cap is
+    still applied for storage safety, aligned with the result snippet cap.
+    """
     out = {}
     if not isinstance(args, dict):
         return out
     for k, v in list(args.items())[:limit]:
         s = str(v)
-        out[k] = s[:120] + ('...' if len(s) > 120 else '')
+        cap = _TOOL_ARG_CONTENT_CAP if str(k).lower() in _TOOL_ARG_CONTENT_KEYS else 120
+        out[k] = s[:cap] + ('...' if len(s) > cap else '')
     return out
 
 
@@ -6632,7 +6650,8 @@ def _run_agent_streaming(
                 if isinstance(args, dict):
                     for k, v in list(args.items())[:4]:
                         s2 = str(v)
-                        args_snap[k] = s2[:120] + ('...' if len(s2) > 120 else '')
+                        cap = _TOOL_ARG_CONTENT_CAP if str(k).lower() in _TOOL_ARG_CONTENT_KEYS else 120
+                        args_snap[k] = s2[:cap] + ('...' if len(s2) > cap else '')
                 return args_snap
 
             def _record_live_tool_start(tool_call_id, name, args):
