@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [v0.51.684] — 2026-06-26 — Release YN (copying a rendered table no longer drags its sort/filter chrome — or eats surrounding text)
+
+### Fixed
+
+- **Copying a rendered markdown table now produces clean table text instead of the enhanced sort/filter chrome and dark styling — without clobbering other selected content.** After WebUI enhances a table (header cells wrapped in sort buttons, filter UI inserted), a full-table copy carried that markup and dropped the header row. A copy interceptor now reconstructs clean table markup (header preserved, chrome stripped, dark inline styling removed, cell content HTML-escaped) — but only for a *full* enhanced-table selection. A partial selection (a few cells, one row/column), or a selection that merely crosses the table (text before → table → text after), falls through to native copy unchanged, so neither the surrounding prose nor a sub-selection is lost. Thanks @rodboev. (#4994, fixes #4945)
+
 ## [v0.51.683] — 2026-06-26 — Release YM (WebUI finds the agent for pip-style installs — no more cron.jobs import error)
 
 ### Fixed
