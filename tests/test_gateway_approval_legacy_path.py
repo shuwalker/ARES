@@ -336,7 +336,8 @@ def test_legacy_approval_records_run_id_for_response_relay():
 def test_mirrored_run_id_survives_active_stream_loss():
     """A mirrored gateway approval must still relay after active_stream_id is lost."""
     import io
-    import tools.approval as ta
+    import threading
+    from types import SimpleNamespace
     from api import route_approvals as ra
     from api import routes
 
@@ -344,25 +345,29 @@ def test_mirrored_run_id_survives_active_stream_loss():
     approval_id = "appr-legacy-stream-loss"
     run_id = "run-legacy-stream-loss"
 
-    with ta._lock:
-        ta._gateway_queues.pop(sid, None)
-        ta._pending.pop(sid, None)
+    with ra._lock:
+        ra._gateway_queues.pop(sid, None)
+        ra._pending.pop(sid, None)
 
-    entry = ta._ApprovalEntry({
-        "command": "rm -rf /tmp/test",
-        "description": "Delete temporary files",
-        "pattern_key": "dangerous_command",
-        "pattern_keys": ["dangerous_command"],
-        "approval_id": approval_id,
-        "run_id": run_id,
-        "choices": ["once", "session", "always", "deny"],
-    })
-    with ta._lock:
-        ta._gateway_queues.setdefault(sid, []).append(entry)
+    entry = SimpleNamespace(
+        data={
+            "command": "rm -rf /tmp/test",
+            "description": "Delete temporary files",
+            "pattern_key": "dangerous_command",
+            "pattern_keys": ["dangerous_command"],
+            "approval_id": approval_id,
+            "run_id": run_id,
+            "choices": ["once", "session", "always", "deny"],
+        },
+        event=threading.Event(),
+        result=None,
+    )
+    with ra._lock:
+        ra._gateway_queues.setdefault(sid, []).append(entry)
     ra.submit_gateway_pending_mirror(sid, entry.data)
 
-    with ta._lock:
-        mirrored = ta._pending[sid][0]
+    with ra._lock:
+        mirrored = ra._pending[sid][0]
     assert mirrored["approval_id"] == approval_id
     assert mirrored["run_id"] == run_id
     assert mirrored.get(ra._GATEWAY_MIRROR_FLAG) is True
@@ -376,6 +381,19 @@ def test_mirrored_run_id_survives_active_stream_loss():
         captured["body"] = json.loads(req.data)
         return {"ok": True}
 
+    def fake_resolve_gateway_approval(session_key, choice, resolve_all=False):
+        del resolve_all
+        with ra._lock:
+            queue = ra._gateway_queues.get(session_key) or []
+            if not queue:
+                return 0
+            queued_entry = queue.pop(0)
+            queued_entry.result = choice
+            queued_entry.event.set()
+            if not queue:
+                ra._gateway_queues.pop(session_key, None)
+            return 1
+
     handler = MagicMock()
     handler.wfile = io.BytesIO()
     body = {"session_id": sid, "choice": "once", "approval_id": approval_id}
@@ -386,6 +404,7 @@ def test_mirrored_run_id_survives_active_stream_loss():
              patch("api.gateway_chat._gateway_base_url", return_value="http://gw:8642"), \
              patch("api.gateway_chat._gateway_api_key", return_value=""), \
              patch("api.config.get_config", return_value={}), \
+             patch("api.routes.resolve_gateway_approval", new=fake_resolve_gateway_approval), \
              patch("api.runner_client.HttpRunnerClient._request_json", new=fake_request_json):
             routes._handle_approval_respond(handler, body)
 
@@ -396,9 +415,9 @@ def test_mirrored_run_id_survives_active_stream_loss():
         handler.send_response.assert_called_with(200)
         assert entry.event.is_set(), "mirrored gateway approval was not resolved"
         assert entry.result == "once"
-        with ta._lock:
-            assert sid not in ta._pending, "mirrored pending card was not cleared"
-            assert sid not in ta._gateway_queues, "parked gateway entry was not drained"
+        with ra._lock:
+            assert sid not in ra._pending, "mirrored pending card was not cleared"
+            assert sid not in ra._gateway_queues, "parked gateway entry was not drained"
         assert handler.wfile.getvalue()
         assert json.loads(handler.wfile.getvalue().decode("utf-8")) == {
             "ok": True,
@@ -406,22 +425,22 @@ def test_mirrored_run_id_survives_active_stream_loss():
             "relayed": True,
         }
     finally:
-        with ta._lock:
-            ta._gateway_queues.pop(sid, None)
-            ta._pending.pop(sid, None)
+        with ra._lock:
+            ra._gateway_queues.pop(sid, None)
+            ra._pending.pop(sid, None)
 
 
 def test_gateway_mode_no_pending_click_stays_non_409():
     """Gateway mode must still fall through when nothing is pending."""
-    import tools.approval as ta
+    from api import route_approvals as ra
     from api import routes
 
     sid = "sess-legacy-no-pending"
     approval_id = "appr-legacy-no-pending"
 
-    with ta._lock:
-        ta._gateway_queues.pop(sid, None)
-        ta._pending.pop(sid, None)
+    with ra._lock:
+        ra._gateway_queues.pop(sid, None)
+        ra._pending.pop(sid, None)
 
     mock_session = MagicMock()
     mock_session.active_stream_id = None
