@@ -133,6 +133,14 @@ def test_gallery_installed_extension_becomes_runtime_manifest(monkeypatch, tmp_p
         "enabled": True,
         "script_urls": ["/extensions/my-ext/assets/app.js"],
         "stylesheet_urls": ["/extensions/my-ext/assets/app.css"],
+        "extensions": [
+            {
+                "id": "my-ext",
+                "name": "My Extension",
+                "storage_owned": False,
+                "settings_schema": [],
+            }
+        ],
     }
     status = ext_mod.get_extension_status()
     assert status["manifest"]["status"] == "gallery_installed"
@@ -203,6 +211,14 @@ def test_install_bootstraps_managed_default_root_without_env(monkeypatch, tmp_pa
         "enabled": True,
         "script_urls": ["/extensions/plug-ext/app.js"],
         "stylesheet_urls": [],
+        "extensions": [
+            {
+                "id": "plug-ext",
+                "name": "Plug And Play",
+                "storage_owned": False,
+                "settings_schema": [],
+            }
+        ],
     }
     status = ext_mod.get_extension_status()
     assert status["enabled"] is True

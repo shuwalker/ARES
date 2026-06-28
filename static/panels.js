@@ -8200,7 +8200,6 @@ function _extensionSettingsFieldHtml(field,value){
 
 function _extensionSettingsControls(entry){
   const id=(entry&&entry.id)||'';
-  const schema=Array.isArray(entry&&entry.settings_schema)?entry.settings_schema:[];
   const storageOwned=!!(entry&&entry.storage_owned);
   if(!storageOwned){
     return '<div class="extension-settings-empty">No extension-owned browser storage permission.</div>';
@@ -8209,6 +8208,7 @@ function _extensionSettingsControls(entry){
   if(!settingsApi||!settingsApi.trusted){
     return '<div class="extension-settings-empty">Reload WebUI after enabling or installing this extension to edit browser-local settings.</div>';
   }
+  const schema=Array.isArray(settingsApi&&settingsApi.schema)?settingsApi.schema:[];
   const values=settingsApi?settingsApi.values:{};
   const fields=schema.length
     ? schema.map(field=>_extensionSettingsFieldHtml(field,values[field.key])).join('')

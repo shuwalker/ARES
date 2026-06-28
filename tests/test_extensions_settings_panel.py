@@ -230,14 +230,16 @@ def test_extensions_installed_settings_route_through_shared_accessor():
     bind_block = _between("function _bindExtensionSettingsButtons", "async function loadExtensionsPanel")
     gallery_block = _between("function _renderExtensionsGallery", "function _bindExtensionGalleryButtons")
 
-    assert "entry&&entry.settings_schema" in settings_block
     assert "entry&&entry.storage_owned" in settings_block
     assert "window.HermesExtensionSettings.settingsForExtension(id)" in settings_block
+    assert "settingsApi&&settingsApi.schema" in settings_block
+    assert "settingsApi||!settingsApi.trusted" in settings_block
     assert "data-extension-settings-save" in settings_block
     assert "data-extension-settings-reset" in settings_block
     assert "data-extension-storage-clear" in settings_block
     assert "Browser-local extension settings" in settings_block
     assert "Do not store secrets here" in settings_block
+    assert "Reload WebUI after enabling or installing this extension to edit browser-local settings." in settings_block
     assert "_extensionSettingsControls(entry)" in installed_block
     assert "window.HermesExtensionSettings.settingsForExtension(id).reset()" in bind_block
     assert "window.HermesExtensionSettings.storageForExtension(id).clear()" in bind_block
