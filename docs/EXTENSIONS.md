@@ -251,6 +251,37 @@ paths are never returned by the status endpoint. If `health_path` is omitted,
 diagnostics use `/health`; if `health_path` is present but invalid, the sidecar is
 skipped rather than probed.
 
+## Embedding an external web app in an iframe
+
+By default the WebUI's Content-Security-Policy only allows it to embed
+**same-origin** content in an `<iframe>` (the `frame-src` directive falls back to
+`'self'`). An extension that wants to pin an external self-hosted web app — a
+Grafana board, Vaultwarden, a personal dashboard — as a tab therefore needs the
+operator to widen `frame-src`, opt-in, via an environment variable:
+
+```bash
+# space-separated http(s) origins; optional *. subdomain wildcard and port.
+export HERMES_WEBUI_CSP_FRAME_EXTRA="https://grafana.example.com https://*.dash.example.com:8443"
+```
+
+Rules and guarantees:
+
+- Only `http(s)` origins are accepted (an iframe `src` is always http(s)).
+  Entries may include a `*.` subdomain wildcard and a port or `*` port; a path,
+  a `ws://`/`wss://` scheme, an invalid port, or any attempt to inject another
+  directive is rejected and the whole value is ignored (with a logged warning).
+- This mirrors the existing `HERMES_WEBUI_CSP_CONNECT_EXTRA` knob (which widens
+  `connect-src` for `fetch`/WebSocket); the two are independent.
+- It only governs what the WebUI page may **embed**. It does **not** touch
+  `frame-ancestors`, which stays `'none'` — so widening `frame-src` never lets
+  another site embed the WebUI itself.
+- Default-off: with the variable unset, the policy is unchanged (same-origin
+  iframes only).
+
+An "external app tab" extension should document the exact origin(s) it needs so
+the operator can set this knob deliberately, rather than assuming a wide-open
+policy.
+
 ## Static file serving
 
 When `HERMES_WEBUI_EXTENSION_DIR` points at an existing directory, files under
