@@ -92,7 +92,28 @@ def _looks_like_js_regex_literal_start(src: str, idx: int) -> bool:
     previous = _previous_significant_js_token(src, idx)
     if previous in {"return", "throw", "case", "delete", "typeof", "void", "yield"}:
         return True
-    return previous in {"", "(", "[", "{", "=", ":", ",", ";", "!", "?", "&", "|"}
+    return previous in {
+        "",
+        "(",
+        "[",
+        "{",
+        "=",
+        ":",
+        ",",
+        ";",
+        "!",
+        "?",
+        "&",
+        "|",
+        "+",
+        "-",
+        "*",
+        "%",
+        "^",
+        "~",
+        "<",
+        ">",
+    }
 
 
 def _skip_js_regex_literal(src: str, idx: int) -> int:
@@ -218,7 +239,6 @@ def _find_function_declaration(src: str, name: str) -> tuple[int, int]:
 
 def _function_source(src: str, name: str) -> str:
     start, params_open = _find_function_declaration(src, name)
-    assert params_open != -1, f"{name} params not found"
     params_close = _matching_delimiter(src, params_open, "(", ")")
     brace = src.find("{", params_close)
     assert brace != -1, f"{name} body not found"
@@ -291,6 +311,20 @@ def test_function_extractor_ignores_destructured_parameter_braces():
 
     assert body.lstrip().startswith("if(anchorOwnedAssistantRawIdxs.has(rawIdx))")
     assert "fallback = true" not in body
+
+
+def test_function_extractor_skips_regex_after_binary_operator():
+    source = """
+    function sample(){
+      const matcher = fallback || /\\{[^}]+\\}/;
+      if(anchorOwnedAssistantRawIdxs.has(rawIdx)) return;
+    }
+    """
+
+    body = _function_body(source, "sample")
+
+    assert "const matcher = fallback || /\\{[^}]+\\}/;" in body
+    assert "if(anchorOwnedAssistantRawIdxs.has(rawIdx)) return;" in body
 
 
 def test_transparent_raw_content_helper_is_fallback_only_when_anchor_scene_absent():
