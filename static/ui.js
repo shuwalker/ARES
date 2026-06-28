@@ -6878,6 +6878,24 @@ function autoReadLastAssistant(){
     _playEdgeTtsChunked(clean, null);
     return;
   }
+  // Extension-registered TTS engine (window.registerHermesTtsEngine): synth via
+  // the extension, then play through the shared audio-buffer path. Mirrors the
+  // registered-engine branch in speakMessage() so auto-read honors the selection.
+  if(typeof window._hermesTtsIsRegistered==='function' && window._hermesTtsIsRegistered(engine)){
+    _ttsSpeaking=true;
+    const _opts={
+      voice: localStorage.getItem('hermes-tts-voice')||'',
+      rate: parseFloat(localStorage.getItem('hermes-tts-rate')),
+      pitch: parseFloat(localStorage.getItem('hermes-tts-pitch')),
+    };
+    Promise.resolve(window._hermesTtsSynth(engine, clean, _opts))
+      .then(function(buf){ return _playAudioBuf(buf, null, 'TTS'); })
+      .catch(function(){ _ttsSpeaking=false; _playingEdgeAudio=null; });
+    return;
+  }
+  // Unknown/unregistered engine (e.g. an extension engine that's no longer
+  // registered) — fall back to browser TTS only if it's available.
+  if(!('speechSynthesis' in window)) return;
   // Use chunked playback for browser TTS
   _ttsChunkQueue=_splitForTTS(clean);
   _ttsChunkIndex=0;

@@ -885,6 +885,68 @@ function _micToastKeyForRecognitionError(error){
 window._micActive=window._micActive||false;
 window._micPendingSend=window._micPendingSend||false;
 
+// ── Extension TTS-engine registry (registerHermesTtsEngine) ──────────────────
+// Defined at MODULE scope (not inside the voice-mode IIFE below) so the public
+// API exists even on browsers without SpeechRecognition / speechSynthesis — an
+// extension can register a TTS engine regardless of STT/browser-TTS support.
+// Lets a trusted local extension contribute a TTS engine that appears in the
+// Settings -> TTS Engine dropdown and is used by BOTH playback paths (voice-mode
+// auto-read and the per-message Listen button). The extension provides an async
+// synthesize(text, opts) that returns audio bytes (ArrayBuffer or Blob); core
+// handles selection, the dropdown option, and playback. Mirrors registerHermesSkin.
+//
+//   window.registerHermesTtsEngine({
+//     id: 'voicevox',            // [a-z0-9_-], not a built-in (browser/edge/elevenlabs)
+//     label: 'VOICEVOX (local)',
+//     synthesize(text, opts) { return Promise<ArrayBuffer|Blob>; }
+//   }) -> true on success, false if rejected
+var _HERMES_TTS_ENGINES = Object.create(null);
+var _HERMES_TTS_RESERVED = { browser:1, edge:1, elevenlabs:1 };
+function _hermesTtsValidId(id){ return typeof id==='string' && /^[a-z0-9][a-z0-9_-]{0,31}$/.test(id); }
+function _hermesAddTtsOption(id, label){
+  var sel=document.getElementById('settingsTtsEngine');
+  if(!sel) return;
+  if(sel.querySelector('option[value="'+id+'"]')) return;
+  var opt=document.createElement('option');
+  opt.value=id;
+  opt.textContent=label;   // textContent — never innerHTML (no injection)
+  sel.appendChild(opt);
+}
+window.registerHermesTtsEngine=function(desc){
+  try{
+    if(!desc||typeof desc!=='object') return false;
+    var id=String(desc.id||'').toLowerCase();
+    if(!_hermesTtsValidId(id)) return false;
+    if(_HERMES_TTS_RESERVED[id]) return false;          // can't shadow a built-in
+    if(typeof desc.synthesize!=='function') return false;
+    var label=(typeof desc.label==='string' && desc.label.trim()) ? desc.label.trim().slice(0,48) : id;
+    _HERMES_TTS_ENGINES[id]={ id:id, label:label, synthesize:desc.synthesize };
+    _hermesAddTtsOption(id, label);
+    return true;
+  }catch(_){ return false; }
+};
+window._hermesTtsIsRegistered=function(id){ return !!_HERMES_TTS_ENGINES[id]; };
+// List registered engines (for the settings panel to re-add options on render).
+window._hermesTtsEngineOptions=function(){
+  return Object.keys(_HERMES_TTS_ENGINES).map(function(k){
+    return { id:_HERMES_TTS_ENGINES[k].id, label:_HERMES_TTS_ENGINES[k].label };
+  });
+};
+// Returns a Promise<ArrayBuffer> or null if the engine isn't registered.
+window._hermesTtsSynth=function(id, text, opts){
+  var eng=_HERMES_TTS_ENGINES[id];
+  if(!eng) return null;
+  return Promise.resolve()
+    .then(function(){ return eng.synthesize(text, opts||{}); })
+    .then(function(out){
+      if(!out) throw new Error('empty TTS result');
+      if(out instanceof ArrayBuffer) return out;
+      if(typeof Blob!=='undefined' && out instanceof Blob) return out.arrayBuffer();
+      if(out.buffer instanceof ArrayBuffer) return out.buffer;   // typed array
+      throw new Error('TTS engine returned an unsupported type');
+    });
+};
+
 // ── Turn-based voice mode (#1333) ────────────────────────────────────────
 // Chained flow: listen → send → (agent processes) → TTS response → listen again
 (function(){
@@ -1078,66 +1140,6 @@ window._micPendingSend=window._micPendingSend||false;
     // send() is global from boot.js
     if(typeof send==='function') send();
   }
-
-  // ── Extension TTS-engine registry (theme-registration's sibling for voice) ──
-  // Lets a trusted local extension contribute a TTS engine that appears in the
-  // Settings -> TTS Engine dropdown and is used by BOTH playback paths (the
-  // voice-mode auto-read and the per-message Listen button). The extension
-  // provides an async synthesize(text, opts) that returns audio bytes
-  // (ArrayBuffer or Blob); core handles selection, the dropdown option, and
-  // playback. Mirrors window.registerHermesSkin.
-  //
-  //   window.registerHermesTtsEngine({
-  //     id: 'voicevox',            // [a-z0-9_-], not a built-in (browser/edge/elevenlabs)
-  //     label: 'VOICEVOX (local)',
-  //     synthesize(text, opts) { return Promise<ArrayBuffer|Blob>; }
-  //   }) -> true on success, false if rejected
-  var _HERMES_TTS_ENGINES = Object.create(null);
-  var _HERMES_TTS_RESERVED = { browser:1, edge:1, elevenlabs:1 };
-  function _hermesTtsValidId(id){ return typeof id==='string' && /^[a-z0-9][a-z0-9_-]{0,31}$/.test(id); }
-  function _hermesAddTtsOption(id, label){
-    var sel=document.getElementById('settingsTtsEngine');
-    if(!sel) return;
-    if(sel.querySelector('option[value="'+id+'"]')) return;
-    var opt=document.createElement('option');
-    opt.value=id;
-    opt.textContent=label;   // textContent — never innerHTML (no injection)
-    sel.appendChild(opt);
-  }
-  window.registerHermesTtsEngine=function(desc){
-    try{
-      if(!desc||typeof desc!=='object') return false;
-      var id=String(desc.id||'').toLowerCase();
-      if(!_hermesTtsValidId(id)) return false;
-      if(_HERMES_TTS_RESERVED[id]) return false;          // can't shadow a built-in
-      if(typeof desc.synthesize!=='function') return false;
-      var label=(typeof desc.label==='string' && desc.label.trim()) ? desc.label.trim().slice(0,48) : id;
-      _HERMES_TTS_ENGINES[id]={ id:id, label:label, synthesize:desc.synthesize };
-      _hermesAddTtsOption(id, label);
-      return true;
-    }catch(_){ return false; }
-  };
-  window._hermesTtsIsRegistered=function(id){ return !!_HERMES_TTS_ENGINES[id]; };
-  // List registered engines (for the settings panel to re-add options on render).
-  window._hermesTtsEngineOptions=function(){
-    return Object.keys(_HERMES_TTS_ENGINES).map(function(k){
-      return { id:_HERMES_TTS_ENGINES[k].id, label:_HERMES_TTS_ENGINES[k].label };
-    });
-  };
-  // Returns a Promise<ArrayBuffer> or null if the engine isn't registered.
-  window._hermesTtsSynth=function(id, text, opts){
-    var eng=_HERMES_TTS_ENGINES[id];
-    if(!eng) return null;
-    return Promise.resolve()
-      .then(function(){ return eng.synthesize(text, opts||{}); })
-      .then(function(out){
-        if(!out) throw new Error('empty TTS result');
-        if(out instanceof ArrayBuffer) return out;
-        if(typeof Blob!=='undefined' && out instanceof Blob) return out.arrayBuffer();
-        if(out.buffer instanceof ArrayBuffer) return out.buffer;   // typed array
-        throw new Error('TTS engine returned an unsupported type');
-      });
-  };
 
   function _speakResponse(){
     if(!_voiceModeActive) return;
