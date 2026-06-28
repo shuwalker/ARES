@@ -1899,38 +1899,98 @@ def _is_valid_image(path: Path, mime: str) -> bool:
     return False
 
 
-def _resolve_image_input_mode(cfg: dict) -> str:
-    """Return ``"native"`` or ``"text"`` based on config, mirroring
-    ``agent/image_routing.py:decide_image_input_mode``.
+def _explicit_text_signal(cfg: dict) -> bool:
+    """True when the user has explicitly opted into the text (vision_analyze)
+    image pipeline.
 
-    The agent has this logic, but the WebUI's ``_build_native_multimodal_message``
-    was unconditionally embedding images as native ``image_url`` parts, completely
-    bypassing ``image_input_mode``.  This caused silent failures when the main model
-    does not support images and the fallback model is also text-only (#21160-related).
+    Two explicit signals, either of which means "the user chose text on
+    purpose" and we must honour it rather than forwarding images natively:
+
+      * ``agent.image_input_mode: text`` — a direct mode override.
+      * a configured ``auxiliary.vision`` backend (provider not ``auto``/empty,
+        or an explicit model / base_url) — the user is paying for a dedicated
+        vision model and wants the text pipeline regardless of the main model.
+
+    This mirrors the explicit-signal portion of
+    ``agent/image_routing.py:decide_image_input_mode`` and is used both to
+    interpret *why* the canonical router returned ``"text"`` (so the
+    unknown-model carve-out only fires when there's no explicit user choice)
+    and as the fallback decision when the agent package is unavailable.
     """
+    if not isinstance(cfg, dict):
+        return False
     agent_cfg = cfg.get("agent") or {}
-    mode = str(agent_cfg.get("image_input_mode", "auto") or "auto").strip().lower()
-    if mode not in ("auto", "native", "text"):
-        mode = "auto"
-
-    if mode == "native":
-        return "native"
-    if mode == "text":
-        return "text"
-
-    # auto: if auxiliary.vision is explicitly configured → text mode
-    # (user opted into a dedicated vision backend)
+    if isinstance(agent_cfg, dict):
+        mode = str(agent_cfg.get("image_input_mode", "auto") or "auto").strip().lower()
+        if mode == "text":
+            return True
     aux = cfg.get("auxiliary") or {}
-    vision = aux.get("vision") or {}
+    vision = (aux.get("vision") or {}) if isinstance(aux, dict) else {}
+    if not isinstance(vision, dict):
+        return False
     provider = str(vision.get("provider") or "").strip().lower()
     model_name = str(vision.get("model") or "").strip()
     base_url = str(vision.get("base_url") or "").strip()
-    if provider not in ("", "auto") or model_name or base_url:
-        return "text"
+    return provider not in ("", "auto") or bool(model_name) or bool(base_url)
 
-    # No explicit vision config, no model-capability lookup available in WebUI.
-    # Default to native — the agent's ``_strip_images_from_messages`` guard will
-    # strip images on rejection and retry as text.
+
+def _resolve_image_input_mode(cfg: dict) -> str:
+    """Return ``"native"`` or ``"text"`` for current-turn image uploads.
+
+    Delegates the routing decision to ``agent/image_routing.py:
+    decide_image_input_mode`` — the single source of truth — instead of the
+    local re-implementation that previously lived here. That copy had DIVERGED
+    from the canonical function: it returned ``"text"`` (dropping the image) in
+    cases the canonical router would have forwarded natively, because it never
+    consulted the active model's vision capability and instead hard-coded a
+    handful of config heuristics.
+
+    The WebUI keeps one deliberate carve-out on top of the canonical decision:
+    for UNKNOWN / custom models (no models.dev capability data) the canonical
+    router conservatively returns ``"text"``, but the WebUI historically
+    forwards images NATIVELY and relies on the agent's strip-and-retry guard
+    (``run_agent._try_shrink_image_parts_in_messages`` /
+    ``_strip_images_from_messages``) to downgrade on a provider rejection. We
+    preserve that behaviour here: a canonical ``"text"`` verdict is only
+    honoured when there is a real signal — an explicit user choice
+    (``image_input_mode: text`` or a configured ``auxiliary.vision`` backend)
+    or a model KNOWN to lack vision. Otherwise we forward native.
+
+    When the agent package is unavailable (e.g. the WebUI standalone test
+    environment, where ``import agent`` fails), we fall back to the historical
+    WebUI behaviour: honour an explicit text signal, otherwise native.
+    """
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    try:
+        from agent.image_routing import decide_image_input_mode, _lookup_supports_vision
+        from agent.auxiliary_client import _read_main_provider, _read_main_model
+
+        provider = (_read_main_provider() or "").strip()
+        model = (_read_main_model() or "").strip()
+
+        mode = decide_image_input_mode(provider, model, cfg)
+        if mode == "native":
+            return "native"
+
+        # Canonical returned "text". Honour it only when it reflects a genuine
+        # signal; otherwise apply the WebUI unknown-model native carve-out.
+        if _explicit_text_signal(cfg):
+            return "text"
+        if _lookup_supports_vision(provider, model, cfg) is False:
+            # Model is KNOWN to be text-only — respect the canonical verdict.
+            return "text"
+        # Unknown / custom model (capability is None): WebUI forwards native
+        # and lets the agent's strip-and-retry guard downgrade on rejection.
+        return "native"
+    except Exception:
+        # Agent package unavailable or import error — preserve historical WebUI
+        # behaviour: explicit text signal wins, otherwise native.
+        pass
+
+    if _explicit_text_signal(cfg):
+        return "text"
     return "native"
 
 
