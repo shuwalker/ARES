@@ -24,6 +24,7 @@ from api.config import (
     gateway_supports_approval,
     register_active_run,
     unregister_active_run,
+    unregister_stream_owner,
     update_active_run,
 )
 from api.helpers import _redact_text, redact_session_data
@@ -513,6 +514,9 @@ def _run_gateway_chat_streaming(
     """
     q = STREAMS.get(stream_id)
     if q is None:
+        # Cancelled before the worker started; release the owner entry the route
+        # layer registered so STREAM_SESSION_OWNERS does not leak (no teardown finally runs).
+        unregister_stream_owner(stream_id)
         return
     register_active_run(
         stream_id,
