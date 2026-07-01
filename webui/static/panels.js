@@ -6168,6 +6168,94 @@ window.addEventListener('resize',()=>{
   if(dd&&dd.classList.contains('open')) _positionProfileDropdown();
 });
 
+// ── ARES Backend Selector ─────────────────────────────────────
+// The core ARES feature: pick which AI backend runs your agent.
+// Hermes (default), JROS, or Hybrid (Hermes + JROS).
+
+let _aresCurrentBackend = 'hermes';
+let _aresJrosAvailable = false;
+
+function initAresBackend() {
+  api('/api/ares/backend').then(data => {
+    _aresCurrentBackend = data.current || 'hermes';
+    _aresJrosAvailable = (data.status && data.status.jros) || false;
+    updateAresBackendUI();
+  }).catch(() => {
+    // Backend API not available — default to Hermes, hide the chip
+    const wrap = $('aresBackendWrap');
+    if (wrap) wrap.style.display = 'none';
+  });
+}
+
+function updateAresBackendUI() {
+  const label = $('aresBackendLabel');
+  if (label) label.textContent = {
+    hermes: 'Hermes', jros: 'JROS', hybrid: 'Hybrid'
+  }[_aresCurrentBackend] || 'Hermes';
+
+  // Update checkmarks
+  document.querySelectorAll('.profile-dropdown-check[data-check-for]').forEach(el => {
+    el.textContent = (el.dataset.checkFor === _aresCurrentBackend) ? '✓' : '';
+  });
+
+  // JROS status text
+  const jrosStatus = $('aresBackendJrosStatus');
+  const hybridStatus = $('aresBackendHybridStatus');
+  if (jrosStatus) jrosStatus.textContent = _aresJrosAvailable ? 'JROS daemon online' : 'JROS daemon offline';
+  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes + JROS persona + tools' : 'Needs JROS daemon running';
+
+  // Dim unavailable options
+  const jrosOpt = $('aresBackendOptionJros');
+  const hybridOpt = $('aresBackendOptionHybrid');
+  if (jrosOpt) jrosOpt.style.opacity = _aresJrosAvailable ? '1' : '0.5';
+  if (hybridOpt) hybridOpt.style.opacity = _aresJrosAvailable ? '1' : '0.5';
+}
+
+function toggleAresBackendDropdown() {
+  const dd = $('aresBackendDropdown');
+  if (!dd) return;
+  if (dd.style.display === 'none' || !dd.style.display) {
+    closeProfileDropdown();
+    if (typeof closeModelDropdown === 'function') closeModelDropdown();
+    if (typeof closeWsDropdown === 'function') closeWsDropdown();
+    dd.style.display = 'block';
+    dd.classList.add('open');
+  } else {
+    dd.style.display = 'none';
+    dd.classList.remove('open');
+  }
+}
+
+function closeAresBackendDropdown() {
+  const dd = $('aresBackendDropdown');
+  if (dd) { dd.style.display = 'none'; dd.classList.remove('open'); }
+}
+
+function setAresBackend(backend) {
+  if (backend !== 'hermes' && !_aresJrosAvailable) {
+    showToast('JROS daemon is offline — start it first');
+    return;
+  }
+  api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify({ backend }) })
+    .then(() => {
+      _aresCurrentBackend = backend;
+      updateAresBackendUI();
+      closeAresBackendDropdown();
+      showToast(`Backend switched to ${backend === 'hermes' ? 'Hermes' : backend === 'jros' ? 'JROS' : 'Hybrid'}`);
+    })
+    .catch(e => showToast('Failed to switch backend'));
+}
+
+// Close on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('#aresBackendWrap')) closeAresBackendDropdown();
+});
+
+// Init on page load
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(initAresBackend, 500);
+});
+
 async function switchToProfile(name) {
   // ── #4671 profile-switch loading-skeleton — FOUR-GUARD CONTRACT ───────────────
   // The skeleton must never be clobbered by the OLD profile's content and must never

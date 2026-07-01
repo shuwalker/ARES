@@ -11506,6 +11506,35 @@ def handle_get(handler, parsed) -> bool:
             return bad(handler, f"Failed to save persona: {exc}")
         return j(handler, {"ok": True, "persona_id": persona_id})
 
+    # ARES: Backend selector endpoints
+    if parsed.path == "/api/ares/backend":
+        try:
+            from api.backend_selector import get_active_backend, backend_status
+            from api.config import get_config as _get_cfg
+            _cfg = _get_cfg()
+            current = get_active_backend(_cfg)
+            status = backend_status()
+        except Exception as exc:
+            return bad(handler, f"Failed to get backend status: {exc}")
+        return j(handler, {
+            "current": current,
+            "status": status,
+        })
+
+    if parsed.path == "/api/ares/backend/set":
+        body = read_body(handler)
+        backend = str(body.get("backend", "")).strip().lower()
+        if backend not in ("hermes", "jros", "hybrid"):
+            return bad(handler, f"Invalid backend: {backend}. Must be hermes, jros, or hybrid.")
+        try:
+            from api.config import get_config as _get_cfg, save_settings
+            _cfg = _get_cfg()
+            _cfg["ares_backend"] = backend
+            save_settings(_cfg)
+        except Exception as exc:
+            return bad(handler, f"Failed to save backend: {exc}")
+        return j(handler, {"ok": True, "backend": backend})
+
     if parsed.path == "/api/git-info":
         qs = parse_qs(parsed.query)
         sid = qs.get("session_id", [""])[0]
@@ -12616,6 +12645,19 @@ def handle_post(handler, parsed) -> bool:
         except Exception as exc:
             return bad(handler, f"Failed to save persona: {exc}")
         return j(handler, {"ok": True, "persona_id": persona_id})
+
+    if parsed.path == "/api/ares/backend/set":
+        backend = str(body.get("backend", "")).strip().lower()
+        if backend not in ("hermes", "jros", "hybrid"):
+            return bad(handler, f"Invalid backend: {backend}. Must be hermes, jros, or hybrid.")
+        try:
+            from api.config import get_config as _get_cfg, save_settings
+            _cfg = _get_cfg()
+            _cfg["ares_backend"] = backend
+            save_settings(_cfg)
+        except Exception as exc:
+            return bad(handler, f"Failed to save backend: {exc}")
+        return j(handler, {"ok": True, "backend": backend})
 
     if parsed.path == "/api/personality/set":
         try:

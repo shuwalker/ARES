@@ -1176,14 +1176,28 @@ def _purge_agent_pycache(repo_dir: Path) -> None:
 def _schedule_restart(delay: float = 2.0) -> None:
     """Re-exec this process after *delay* seconds.
 
-    Called after a successful update so that the freshly-pulled code is
-    loaded on the next request, rather than running with a mix of old and
-    new Python modules in sys.modules.
+    ARES SAFETY CHANGE: Self-restart via os.execv() is DISABLED to prevent
+    the server from killing itself during an update. If the git pull fails
+    or the venv breaks, os.execv() would start a broken process that never
+    comes back. Instead, the update applies the pull and returns success —
+    the user manually restarts the server when ready.
+
+    To re-enable self-restart (not recommended), set ARES_WEBUI_AUTO_RESTART=1.
+    """
+    if os.environ.get('ARES_WEBUI_AUTO_RESTART', '').strip() in ('1', 'true', 'yes'):
+        _schedule_restart_original(delay)
+        return
+
+    logger.info('ARES: Self-restart disabled (ARES_WEBUI_AUTO_RESTART not set). Update applied — restart manually to load new code.')
+
+
+def _schedule_restart_original(delay: float = 2.0) -> None:
+    """Original self-restart logic - only called when ARES_WEBUI_AUTO_RESTART=1.
 
     os.execv() replaces the current process image with a fresh interpreter
-    running the same argv — sessions are preserved on disk, the HTTP port
+    running the same argv - sessions are preserved on disk, the HTTP port
     is reclaimed within the delay window, and the client's own
-    ``setTimeout(() => location.reload(), 2500)`` lands after the restart.
+    setTimeout(() => location.reload(), 2500) lands after the restart.
 
     Coordinates with ``_apply_lock``: when the user updates both webui
     and agent, the client POSTs them sequentially.  Without coordination

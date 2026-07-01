@@ -613,6 +613,36 @@
                 <span class="composer-profile-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
               </button>
             </div>
+            <div id="aresBackendWrap" class="composer-profile-wrap">
+              <button class="composer-profile-chip ares-backend-chip" id="aresBackendChip" type="button" onclick="toggleAresBackendDropdown()" title="Select AI backend">
+                <span class="composer-profile-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.07 7.07l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.07-7.07l4.24-4.24"/></svg></span>
+                <span class="composer-profile-label" id="aresBackendLabel">Hermes</span>
+                <span class="composer-profile-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+              </button>
+              <div id="aresBackendDropdown" class="profile-dropdown" style="display:none">
+                <button class="profile-dropdown-item" data-backend="hermes" onclick="setAresBackend('hermes')">
+                  <span class="profile-dropdown-check" data-check-for="hermes">✓</span>
+                  <span style="flex:1">
+                    <strong>Hermes</strong>
+                    <br><small style="color:var(--muted)">Default — Hermes Agent in-process</small>
+                  </span>
+                </button>
+                <button class="profile-dropdown-item" data-backend="jros" id="aresBackendOptionJros" onclick="setAresBackend('jros')">
+                  <span class="profile-dropdown-check" data-check-for="jros"></span>
+                  <span style="flex:1">
+                    <strong>JROS</strong>
+                    <br><small style="color:var(--muted)" id="aresBackendJrosStatus">Checking…</small>
+                  </span>
+                </button>
+                <button class="profile-dropdown-item" data-backend="hybrid" id="aresBackendOptionHybrid" onclick="setAresBackend('hybrid')">
+                  <span class="profile-dropdown-check" data-check-for="hybrid"></span>
+                  <span style="flex:1">
+                    <strong>Hybrid</strong>
+                    <br><small style="color:var(--muted)" id="aresBackendHybridStatus">Hermes + JROS persona + tools</small>
+                  </span>
+                </button>
+              </div>
+            </div>
             <div class="composer-ws-wrap">
               <div class="composer-workspace-group ws-chip" id="composerWorkspaceGroup" role="group" aria-label="Workspace controls">
                 <button class="composer-workspace-files-btn" id="btnWorkspacePanelToggle" type="button" onclick="toggleWorkspacePanel()" title="Show workspace panel" aria-pressed="false" aria-label="Toggle workspace files panel">

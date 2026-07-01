@@ -7879,14 +7879,22 @@ def _run_agent_streaming(
             # through interim_assistant_callback instead of frontend guesses.
 
             # ARES: inject JROS persona into system prompt
+            # Only inject in hybrid mode (Hermes loop + JROS persona).
+            # In hermes mode: no injection (pure Hermes behavior).
+            # In jros mode: JROS handles its own persona (not this code path).
             _persona_prompt = ""
             try:
-                from api.persona import get_persona_prompt as _get_persona
-                _persona_id = str(_cfg.get("ares_persona", "") or "").strip()
-                if _persona_id:
-                    _persona_prompt = _get_persona(_persona_id)
-                    if _persona_prompt:
-                        logger.info("ARES persona '%s' loaded (%d chars)", _persona_id, len(_persona_prompt))
+                from api.backend_selector import get_active_backend, BACKEND_HYBRID
+                _ares_backend = get_active_backend(_cfg)
+                if _ares_backend == BACKEND_HYBRID:
+                    from api.persona import get_persona_prompt as _get_persona
+                    _persona_id = str(_cfg.get("ares_persona", "") or "").strip()
+                    if _persona_id:
+                        _persona_prompt = _get_persona(_persona_id)
+                        if _persona_prompt:
+                            logger.info("ARES persona '%s' loaded (%d chars, hybrid mode)", _persona_id, len(_persona_prompt))
+                else:
+                    logger.debug("ARES backend=%s — skipping persona injection", _ares_backend)
             except Exception as _exc:
                 logger.warning("ARES persona injection failed: %s", _exc)
 
