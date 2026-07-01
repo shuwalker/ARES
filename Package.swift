@@ -4,20 +4,30 @@ import PackageDescription
 let package = Package(
     name: "ARES",
     platforms: [
-        .macOS(.v14),
-        .iOS(.v17),
-        .visionOS(.v1)
+        .macOS(.v15),
+        .iOS(.v18),
+        .visionOS(.v2)
     ],
     products: [
-        .executable(name: "ARES", targets: ["ARES"])
+        .executable(name: "ARES", targets: ["ARES"]),
+        .executable(name: "arestask", targets: ["AresTaskCLI"])
+    ],
+    dependencies: [
+        .package(path: "ARES-Modules")
     ],
     targets: [
         .executableTarget(
             name: "ARES",
+            dependencies: [.product(name: "ARESModules", package: "ARES-Modules")],
             path: "Sources/ARES",
             resources: [
                 .process("Resources")
             ]
+        ),
+        .executableTarget(
+            name: "AresTaskCLI",
+            dependencies: [.product(name: "ARESModules", package: "ARES-Modules")],
+            path: "Sources/AresTaskCLI"
         )
     ]
 )

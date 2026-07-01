@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+
+# Swift build
+.build/
+*.o
+*.d
+*.dia
+*.swiftdeps
+/.build
+
+# ARES Web UI — runtime state (never commit)
+webui/.venv/
+webui/.env
+webui/.env.*
+!webui/.env.example
+!webui/.env.docker.example
+webui/.pbkdf2_key
+webui/.signing_key
+webui/.login_attempts.json
+webui/.ares_state/
+webui/.webui_state/
+webui/.pytest_cache/
+webui/__pycache__/
+webui/**/__pycache__/
+webui/node_modules/
+webui/api/_version.py
+webui/uv.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets
+.env
+*.pem
+*.key

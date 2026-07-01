@@ -3,14 +3,33 @@ import Foundation
 // MARK: - AI Router
 // Routes every request to the best available AI engine.
 // ARES doesn't have multiple chats — it has ONE AI that uses every engine.
+//
+// Refactored: 5 separate engine classes collapsed into:
+//   1. OpenAIChatEngine — single class for all OpenAI-compatible APIs
+//      (Hermes, Ollama, Claude via proxy, Gemini via proxy, any /v1/chat/completions endpoint)
+//   2. ClaudeCliEngine — subprocess pipe, not HTTP (kept as-is)
+//
+// This eliminates ~200 lines of duplicated HTTP boilerplate.
+// To add a new provider: register(.openAI(id:model:baseURL:apiKey:))
+// No new class needed.
 
 final class AIRouter: @unchecked Sendable {
     static let shared = AIRouter()
 
     private var engines: [AIEngine] = []
+    private var priorityOrder: [String] = []
 
-    func register(_ engine: AIEngine) {
+    func register(_ engine: AIEngine, priority: Int? = nil) {
         engines.append(engine)
+        if let p = priority {
+            priorityOrder.append(engine.id)
+            // Sort by priority: lower number = higher priority
+            engines.sort { a, b in
+                let pa = priorityOrder.firstIndex(of: a.id) ?? Int.max
+                let pb = priorityOrder.firstIndex(of: b.id) ?? Int.max
+                return pa < pb
+            }
+        }
     }
 
     func chat(messages: [[String: String]], preferredEngine: String? = nil) async throws -> String {
@@ -57,29 +76,102 @@ protocol AIEngine: AnyObject {
     func chat(messages: [[String: String]]) async throws -> String
 }
 
-// MARK: - Hermes Engine
+// MARK: - OpenAI-Compatible Chat Engine
+// Single class handles any API that speaks OpenAI's /v1/chat/completions format.
+// This covers: Hermes Gateway, Ollama (/v1/), OpenAI, Groq, OpenRouter,
+// LiteLLM proxy, vLLM, LM Studio, and any OpenAI-compatible endpoint.
+//
+// For providers with non-OpenAI native APIs (Anthropic, Gemini),
+// point baseURL at an OpenAI-compatible proxy (LiteLLM, OpenRouter, etc.)
 
-final class HermesEngine: AIEngine, @unchecked Sendable {
-    let id = "hermes"
-    let displayName = "Hermes Agent"
-    private let gateway: HermesGateway
+final class OpenAIChatEngine: AIEngine, @unchecked Sendable {
+    let id: String
+    let displayName: String
+    private let baseURL: String
+    private let apiKey: String
+    private let model: String
+    private let healthEndpoint: String?
 
-    init(url: String) {
-        self.gateway = HermesGateway(url: url)
+    init(id: String, displayName: String, baseURL: String, apiKey: String = "", model: String = "", healthEndpoint: String? = nil) {
+        self.id = id
+        self.displayName = displayName
+        self.baseURL = baseURL
+        self.apiKey = apiKey
+        self.model = model
+        self.healthEndpoint = healthEndpoint
     }
 
-    var isAvailable: Bool { true }
-
     func checkAvailability() async -> Bool {
-        (try? await gateway.health()) ?? false
+        // If a health endpoint is specified, check it
+        if let health = healthEndpoint, let url = URL(string: health) {
+            return (try? await URLSession.shared.data(from: url))
+                .map { ($0.1 as? HTTPURLResponse)?.statusCode == 200 } ?? false
+        }
+        // Otherwise, if we have a base URL, try a quick HEAD on the completions endpoint
+        if let url = URL(string: "\(baseURL)/v1/models") {
+            var req = URLRequest(url: url, timeoutInterval: 5)
+            if !apiKey.isEmpty { req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+            return (try? await URLSession.shared.data(for: req))
+                .map { ($0.1 as? HTTPURLResponse)?.statusCode == 200 } ?? false
+        }
+        return false
     }
 
     func chat(messages: [[String: String]]) async throws -> String {
-        try await gateway.chat(messages: messages)
+        let url = URL(string: "\(baseURL)/v1/chat/completions")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !apiKey.isEmpty { req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+        req.timeoutInterval = 300
+
+        // Normalize roles: "ares" → "assistant"
+        let normalizedMessages = messages.map { msg -> [String: String] in
+            let role = msg["role"] == "ares" ? "assistant" : msg["role"] ?? "user"
+            return ["role": role, "content": msg["content"] ?? ""]
+        }
+
+        var body: [String: Any] = [
+            "messages": normalizedMessages,
+            "stream": false
+        ]
+        if !model.isEmpty { body["model"] = model }
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let bodyStr = String(data: data, encoding: .utf8) ?? "no response body"
+            throw EngineError.httpError(id: id, statusCode: statusCode, body: bodyStr)
+        }
+
+        struct ChatCompletionResponse: Codable {
+            let choices: [Choice]?
+            struct Choice: Codable {
+                let message: Message?
+                struct Message: Codable {
+                    let content: String?
+                }
+            }
+        }
+
+        let decoded = try JSONDecoder().decode(ChatCompletionResponse.self, from: data)
+        return decoded.choices?.first?.message?.content ?? ""
     }
 }
 
-// MARK: - Claude CLI Engine (direct pipe, no API key needed)
+enum EngineError: LocalizedError {
+    case httpError(id: String, statusCode: Int, body: String)
+    var errorDescription: String? {
+        switch self {
+        case .httpError(let id, let code, let body):
+            return "Engine '\(id)' returned HTTP \(code): \(body)"
+        }
+    }
+}
+
+// MARK: - Claude CLI Engine (subprocess pipe, not HTTP)
+// Kept separate because it's a local binary invocation, not an HTTP API.
 
 final class ClaudeCliEngine: AIEngine, @unchecked Sendable {
     let id = "claude-cli"
@@ -135,196 +227,50 @@ enum ClaudeCliError: LocalizedError {
     }
 }
 
-// MARK: - Gemini Engine (web UI wrapper - no API key needed)
+// MARK: - Convenience Factory
+// Usage in ARESApp.swift:
+//   router.register(.hermes(url: "http://localhost:8642"), priority: 1)
+//   router.register(.ollama(model: "gemma4:e4b"), priority: 5)
+//   router.register(.openAI(id: "openai", model: "gpt-4o", apiKey: "..."), priority: 3)
 
-final class GeminiEngine: AIEngine, @unchecked Sendable {
-    let id = "gemini"
-    let displayName = "Google Gemini"
-    private let apiKey: String
-
-    init(apiKey: String) {
-        self.apiKey = apiKey
-    }
-
-    var isAvailable: Bool { !apiKey.isEmpty }
-
-    func checkAvailability() async -> Bool { isAvailable }
-
-    func chat(messages: [[String: String]]) async throws -> String {
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(apiKey)")!
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 60
-
-        // Convert messages to Gemini format
-        let contents = messages.map { msg -> [String: Any] in
-            let role = msg["role"] == "ares" ? "model" : "user"
-            return [
-                "role": role,
-                "parts": [["text": msg["content"] ?? ""]]
-            ]
+extension AIRouter {
+    enum EngineFactory {
+        /// Hermes Agent Gateway — OpenAI-compatible at /v1/chat/completions
+        static func hermes(url: String = "http://localhost:8642") -> OpenAIChatEngine {
+            OpenAIChatEngine(
+                id: "hermes",
+                displayName: "Hermes Agent",
+                baseURL: url,
+                model: "",
+                healthEndpoint: "\(url)/health"
+            )
         }
 
-        let body: [String: Any] = ["contents": contents]
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw GeminiError.apiError
+        /// Ollama local model — OpenAI-compatible at /v1/chat/completions
+        static func ollama(model: String = "gemma4:e4b", port: Int = 11434) -> OpenAIChatEngine {
+            OpenAIChatEngine(
+                id: "local",
+                displayName: "Local (Ollama)",
+                baseURL: "http://localhost:\(port)",
+                model: model,
+                healthEndpoint: "http://localhost:\(port)/api/tags"
+            )
         }
 
-        struct GeminiResponse: Codable {
-            let candidates: [Candidate]?
-            struct Candidate: Codable {
-                let content: Content?
-                struct Content: Codable {
-                    let parts: [Part]?
-                    struct Part: Codable {
-                        let text: String?
-                    }
-                }
-            }
+        /// Generic OpenAI-compatible API (OpenAI, Groq, OpenRouter, LiteLLM, vLLM, etc.)
+        static func openAI(id: String, displayName: String, baseURL: String, apiKey: String, model: String) -> OpenAIChatEngine {
+            OpenAIChatEngine(
+                id: id,
+                displayName: displayName,
+                baseURL: baseURL,
+                apiKey: apiKey,
+                model: model
+            )
         }
 
-        let decoded = try JSONDecoder().decode(GeminiResponse.self, from: data)
-        return decoded.candidates?.first?.content?.parts?.first?.text ?? ""
-    }
-}
-
-enum GeminiError: LocalizedError {
-    case apiError
-    case notFound
-    var errorDescription: String? {
-        switch self {
-        case .apiError: return "Gemini API error"
-        case .notFound: return "Gemini not found on this system"
+        /// Claude CLI — subprocess pipe (not HTTP)
+        static func claudeCLI() -> ClaudeCliEngine {
+            ClaudeCliEngine()
         }
     }
-}
-
-// MARK: - Claude Engine
-
-final class ClaudeEngine: AIEngine, @unchecked Sendable {
-    let id = "claude"
-    let displayName = "Claude (Anthropic)"
-    private let apiKey: String
-
-    init(apiKey: String) {
-        self.apiKey = apiKey
-    }
-
-    var isAvailable: Bool { !apiKey.isEmpty }
-
-    func checkAvailability() async -> Bool { isAvailable }
-
-    func chat(messages: [[String: String]]) async throws -> String {
-        let url = URL(string: "https://api.anthropic.com/v1/messages")!
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        req.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        req.timeoutInterval = 60
-
-        let systemMsg = messages.first { $0["role"] == "system" }
-        let chatMessages = messages.filter { $0["role"] != "system" }.map { msg -> [String: String] in
-            ["role": msg["role"] == "ares" ? "assistant" : msg["role"] ?? "user", "content": msg["content"] ?? ""]
-        }
-
-        var body: [String: Any] = [
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 4096,
-            "messages": chatMessages
-        ]
-        if let system = systemMsg {
-            body["system"] = system["content"]
-        }
-
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw ClaudeError.apiError
-        }
-
-        struct ClaudeResponse: Codable {
-            let content: [Content]?
-            struct Content: Codable {
-                let text: String?
-            }
-        }
-
-        let decoded = try JSONDecoder().decode(ClaudeResponse.self, from: data)
-        return decoded.content?.first?.text ?? ""
-    }
-}
-
-enum ClaudeError: LocalizedError {
-    case apiError
-    case notFound
-    var errorDescription: String? {
-        switch self {
-        case .apiError: return "Claude API error"
-        case .notFound: return "Claude not found on this system"
-        }
-    }
-}
-
-// MARK: - Local Engine (Ollama)
-
-final class LocalEngine: AIEngine, @unchecked Sendable {
-    let id = "local"
-    let displayName = "Local (Ollama)"
-    private let model: String
-
-    init(model: String = "gemma4:e4b") {
-        self.model = model
-    }
-
-    var isAvailable: Bool { true }
-
-    func checkAvailability() async -> Bool {
-        guard let url = URL(string: "http://localhost:11434/api/tags") else { return false }
-        return (try? await URLSession.shared.data(from: url)).map { ($0.1 as? HTTPURLResponse)?.statusCode == 200 } ?? false
-    }
-
-    func chat(messages: [[String: String]]) async throws -> String {
-        let url = URL(string: "http://localhost:11434/api/chat")!
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 300
-
-        let ollamaMessages = messages.map { msg -> [String: String] in
-            ["role": msg["role"] == "ares" ? "assistant" : msg["role"] ?? "user", "content": msg["content"] ?? ""]
-        }
-
-        let body: [String: Any] = [
-            "model": model,
-            "messages": ollamaMessages,
-            "stream": false
-        ]
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw LocalError.apiError
-        }
-
-        struct OllamaResponse: Codable {
-            let message: Message?
-            struct Message: Codable {
-                let content: String
-            }
-        }
-
-        let decoded = try JSONDecoder().decode(OllamaResponse.self, from: data)
-        return decoded.message?.content ?? ""
-    }
-}
-
-enum LocalError: LocalizedError {
-    case apiError
-    var errorDescription: String? { "Local model error" }
 }

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff3333;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b0000;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1a0000;stop-opacity:1" />
+    </linearGradient>
+    <filter id="neon">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" fill="url(#bg)" rx="40"/>
+  <!-- Outer ring - Greek meander pattern simplified -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="url(#glow)" stroke-width="3" opacity="0.3"/>
+  <circle cx="256" cy="256" r="170" fill="none" stroke="url(#glow)" stroke-width="1" opacity="0.2"/>
+  <!-- Ares helmet / warrior symbol -->
+  <g filter="url(#neon)">
+    <!-- Central crest - stylized A -->
+    <path d="M 196 320 L 256 160 L 316 320" fill="none" stroke="url(#glow)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Crossbar of A -->
+    <line x1="226" y1="260" x2="286" y2="260" stroke="url(#glow)" stroke-width="6" stroke-linecap="round"/>
+    <!-- Spear shaft -->
+    <line x1="256" y1="160" x2="256" y2="340" stroke="url(#glow)" stroke-width="3" opacity="0.4"/>
+    <!-- Helmet wings -->
+    <path d="M 196 200 Q 160 180 140 220" fill="none" stroke="url(#glow)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+    <path d="M 316 200 Q 352 180 372 220" fill="none" stroke="url(#glow)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  </g>
+  <!-- Circuit dots around the edge -->
+  <circle cx="256" cy="76" r="4" fill="#ff3333" opacity="0.6"/>
+  <circle cx="256" cy="436" r="4" fill="#ff3333" opacity="0.6"/>
+  <circle cx="76" cy="256" r="4" fill="#ff3333" opacity="0.6"/>
+  <circle cx="436" cy="256" r="4" fill="#ff3333" opacity="0.6"/>
+  <circle cx="130" cy="130" r="3" fill="#ff3333" opacity="0.4"/>
+  <circle cx="382" cy="130" r="3" fill="#ff3333" opacity="0.4"/>
+  <circle cx="130" cy="382" r="3" fill="#ff3333" opacity="0.4"/>
+  <circle cx="382" cy="382" r="3" fill="#ff3333" opacity="0.4"/>
+</svg>

@@ -344,7 +344,7 @@ struct TaskListView: View {
                     ForEach(tasks) { task in
                         TaskDetailRow(task: task, onComplete: {
                             Task {
-                                await taskManager.completeTask(title: task.title, list: task.list)
+                                await taskManager.completeTask(reminderID: task.id.uuidString)
                                 await refresh()
                             }
                         })

@@ -238,6 +238,7 @@ final class TaskManager: ObservableObject {
     
     func generateMorningBriefing() async -> MorningBriefing {
         await refreshAll()
+        await writeCache()
         
         let bigTasks = todayTasks.filter { $0.priority >= 3 }.prefix(1)
         let mediumTasks = todayTasks.filter { $0.priority == 2 }.prefix(3)
@@ -258,14 +259,48 @@ final class TaskManager: ObservableObject {
         )
     }
     
+    // MARK: - Cache (for cron scripts)
+    
+    private func writeCache() async {
+        let cache: [String: Any] = [
+            "updated_at": ISO8601DateFormatter().string(from: Date()),
+            "overdue": overdueTasks.map { t -> [String: Any] in
+                ["title": t.title, "list": t.list, "daysOverdue": t.daysOverdue, "priority": t.priority, "reminderID": t.reminderID]
+            },
+            "today": todayTasks.map { t -> [String: Any] in
+                ["title": t.title, "list": t.list, "priority": t.priority, "reminderID": t.reminderID]
+            },
+            "inbox_count": inboxCount
+        ]
+        
+        let cacheDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ares")
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let cachePath = cacheDir.appendingPathComponent("task-cache.json")
+        
+        if let data = try? JSONSerialization.data(withJSONObject: cache, options: .prettyPrinted) {
+            try? data.write(to: cachePath, options: .atomic)
+        }
+    }
+    
     // MARK: - Helpers
     
+    @MainActor
     private func fetchReminders(matching predicate: NSPredicate) async -> [EKReminder] {
-        await withCheckedContinuation { continuation in
-            eventStore.fetchReminders(matching: predicate) { reminders in
-                continuation.resume(returning: reminders ?? [])
+        let store = self.eventStore
+        // EventKit callbacks are non-Sendable; bridge through NSData
+        let data = await withCheckedContinuation { (continuation: CheckedContinuation<Data, Never>) in
+            store.fetchReminders(matching: predicate) { reminders in
+                let result = reminders ?? []
+                // Archive on the callback thread, resume with Sendable Data
+                let archived = try? NSKeyedArchiver.archivedData(withRootObject: result, requiringSecureCoding: false)
+                continuation.resume(returning: archived ?? Data())
             }
         }
+        // Unarchive on MainActor
+        guard let unarchived = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: [NSArray.self, EKReminder.self], from: data) as? [EKReminder] else {
+            return []
+        }
+        return unarchived
     }
     
     private func findOrCreateList(named name: String) -> EKCalendar? {

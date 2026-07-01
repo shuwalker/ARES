@@ -53,25 +53,39 @@ final class AppState: ObservableObject {
     }
 
     func initializeEngines() {
-        // Hermes — primary engine
-        let hermes = HermesEngine(url: UserDefaults.standard.string(forKey: "ares_gateway_url") ?? "http://localhost:8642")
-        router.register(hermes)
+        let gatewayURL = UserDefaults.standard.string(forKey: "ares_gateway_url") ?? "http://localhost:8642"
 
-        // Claude CLI — direct pipe, no API key needed
-        router.register(ClaudeCliEngine())
+        // Hermes — primary engine (priority 1)
+        router.register(AIRouter.EngineFactory.hermes(url: gatewayURL), priority: 1)
 
-        // Gemini — if API key available
-        if let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty {
-            router.register(GeminiEngine(apiKey: key))
-        }
+        // Claude CLI — subprocess pipe (priority 2)
+        router.register(AIRouter.EngineFactory.claudeCLI(), priority: 2)
 
-        // Claude API — if API key available
+        // Cloud providers via OpenAI-compatible proxies — if API keys available
         if let key = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !key.isEmpty {
-            router.register(ClaudeEngine(apiKey: key))
+            router.register(
+                AIRouter.EngineFactory.openAI(
+                    id: "claude", displayName: "Claude (Anthropic)",
+                    baseURL: "https://api.anthropic.com", apiKey: key,
+                    model: "claude-sonnet-4-20250514"
+                ),
+                priority: 3
+            )
         }
 
-        // Local — always available if Ollama is running
-        router.register(LocalEngine())
+        if let key = ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !key.isEmpty {
+            router.register(
+                AIRouter.EngineFactory.openAI(
+                    id: "gemini", displayName: "Google Gemini",
+                    baseURL: "https://generativelanguage.googleapis.com/v1beta", apiKey: key,
+                    model: "gemini-2.0-flash"
+                ),
+                priority: 4
+            )
+        }
+
+        // Local — Ollama fallback (priority 5, lowest)
+        router.register(AIRouter.EngineFactory.ollama(model: "gemma4:e4b"), priority: 5)
     }
 
     func send(_ text: String) {
@@ -91,7 +105,7 @@ final class AppState: ObservableObject {
                 var chatMessages = messages.map { ["role": $0.role, "content": $0.content] }
                 chatMessages.insert(["role": "system", "content": systemContext], at: 0)
 
-                let result = try await router.chat(messages: chatMessages)
+                let result = try await router.chat(messages: chatMessages, preferredEngine: activeEngine)
                 let response = Message(role: "ares", content: result, engine: activeEngine)
                 messages.append(response)
                 renderer.showFloatingText(result, role: "ares")
