@@ -6775,10 +6775,8 @@ def _run_agent_streaming(
                 and _current_provider == _last_persisted_provider
             ):
                 s.model_provider = provider_context
-                _last_persisted_provider = provider_context
                 if _repaired and model != (s.model or ""):
                     s.model = model
-                    _last_persisted_model = model
 
         # Capture the resolved profile name now, while profile context is
         # reliable. Used in the compression migration block to stamp s.profile
