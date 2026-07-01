@@ -643,6 +643,14 @@
                 </button>
               </div>
             </div>
+            <div id="aresPersonaWrap" class="composer-profile-wrap" style="display:none">
+              <button class="composer-profile-chip ares-persona-chip" id="aresPersonaChip" type="button" onclick="toggleAresPersonaDropdown()" title="Select AI persona">
+                <span class="composer-profile-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 0 0-10 10c0 4 3 7 7 8 1 0 2-1 3-1s2 1 3 1c4-1 7-4 7-8a10 10 0 0 0-10-10z"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M9 15c1 1 2 1 3 1s2 0 3-1"/></svg></span>
+                <span class="composer-profile-label" id="aresPersonaLabel">None</span>
+                <span class="composer-profile-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+              </button>
+              <div id="aresPersonaDropdown" class="profile-dropdown" style="display:none"></div>
+            </div>
             <div class="composer-ws-wrap">
               <div class="composer-workspace-group ws-chip" id="composerWorkspaceGroup" role="group" aria-label="Workspace controls">
                 <button class="composer-workspace-files-btn" id="btnWorkspacePanelToggle" type="button" onclick="toggleWorkspacePanel()" title="Show workspace panel" aria-pressed="false" aria-label="Toggle workspace files panel">

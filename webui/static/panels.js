@@ -6256,6 +6256,119 @@ window.addEventListener('DOMContentLoaded', () => {
   setTimeout(initAresBackend, 500);
 });
 
+// ── ARES Persona Selector ──────────────────────────────────────
+// Pick a JROS character/persona to inject into the system prompt.
+// Only active in Hybrid backend mode. Uses identical chip+dropdown
+// pattern as the backend selector and profile picker for visual
+// consistency in the composer footer.
+
+let _aresPersonas = [];
+let _aresCurrentPersona = '';
+
+function initAresPersona() {
+  api('/api/ares/personas').then(data => {
+    _aresPersonas = data.personas || [];
+    if (!_aresPersonas.length) return; // no personas — keep chip hidden
+
+    // Check if a persona is already selected (from config)
+    api('/api/ares/persona/current').then(cfg => {
+      _aresCurrentPersona = cfg.persona_id || '';
+    }).catch(() => {});
+
+    // Only show if backend is hybrid (personas are hybrid-only)
+    api('/api/ares/backend').then(backendData => {
+      if (backendData.current === 'hybrid') {
+        const wrap = $('aresPersonaWrap');
+        if (wrap) wrap.style.display = '';
+      }
+      updateAresPersonaUI();
+    }).catch(() => {});
+  }).catch(() => {
+    // Persona API not available — keep chip hidden
+  });
+}
+
+function updateAresPersonaUI() {
+  const label = $('aresPersonaLabel');
+  const current = _aresPersonas.find(p => p.id === _aresCurrentPersona);
+  if (label) label.textContent = current ? current.name : 'None';
+
+  // Rebuild dropdown
+  const dd = $('aresPersonaDropdown');
+  if (!dd) return;
+  dd.innerHTML = '';
+
+  // "None" option — clears persona
+  const noneBtn = document.createElement('button');
+  noneBtn.className = 'profile-dropdown-item';
+  noneBtn.innerHTML = `<span class="profile-dropdown-check" data-check-for="">${_aresCurrentPersona === '' ? '✓' : ''}</span><span style="flex:1"><strong>None</strong><br><small style="color:var(--muted)">No persona injection</small></span>`;
+  noneBtn.onclick = () => setAresPersona('');
+  dd.appendChild(noneBtn);
+
+  _aresPersonas.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'profile-dropdown-item';
+    btn.innerHTML = `<span class="profile-dropdown-check" data-check-for="${p.id}">${p.id === _aresCurrentPersona ? '✓' : ''}</span><span style="flex:1"><strong>${p.name}</strong><br><small style="color:var(--muted)">${p.description || p.id}</small></span>`;
+    btn.onclick = () => setAresPersona(p.id);
+    dd.appendChild(btn);
+  });
+}
+
+function toggleAresPersonaDropdown() {
+  const dd = $('aresPersonaDropdown');
+  if (!dd) return;
+  if (dd.style.display === 'none' || !dd.style.display) {
+    closeProfileDropdown();
+    closeAresBackendDropdown();
+    if (typeof closeModelDropdown === 'function') closeModelDropdown();
+    if (typeof closeWsDropdown === 'function') closeWsDropdown();
+    dd.style.display = 'block';
+    dd.classList.add('open');
+  } else {
+    dd.style.display = 'none';
+    dd.classList.remove('open');
+  }
+}
+
+function closeAresPersonaDropdown() {
+  const dd = $('aresPersonaDropdown');
+  if (dd) { dd.style.display = 'none'; dd.classList.remove('open'); }
+}
+
+function setAresPersona(personaId) {
+  api('/api/ares/persona/set', { method: 'POST', body: JSON.stringify({ persona_id: personaId }) })
+    .then(() => {
+      _aresCurrentPersona = personaId;
+      updateAresPersonaUI();
+      closeAresPersonaDropdown();
+      const current = _aresPersonas.find(p => p.id === personaId);
+      showToast(`Persona set to ${current ? current.name : 'None'}`);
+    })
+    .catch(e => showToast('Failed to set persona'));
+}
+
+// Close on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('#aresPersonaWrap')) closeAresPersonaDropdown();
+});
+
+// Init on page load
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(initAresPersona, 800);
+});
+
+// ── ARES Backend visibility sync ──────────────────────────────
+// When backend changes, show/hide persona chip accordingly.
+// Wrap the existing setAresBackend to add persona visibility logic.
+const _origSetAresBackend = window.setAresBackend;
+if (_origSetAresBackend) {
+  window.setAresBackend = function(backend) {
+    _origSetAresBackend.call(this, backend);
+    const wrap = $('aresPersonaWrap');
+    if (wrap) wrap.style.display = (backend === 'hybrid') ? '' : 'none';
+  };
+}
+
 async function switchToProfile(name) {
   // ── #4671 profile-switch loading-skeleton — FOUR-GUARD CONTRACT ───────────────
   // The skeleton must never be clobbered by the OLD profile's content and must never

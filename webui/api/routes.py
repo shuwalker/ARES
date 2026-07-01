@@ -11494,6 +11494,16 @@ def handle_get(handler, parsed) -> bool:
             return bad(handler, f"Failed to list personas: {exc}")
         return j(handler, {"personas": personas})
 
+    # ARES: Get current persona
+    if parsed.path == "/api/ares/persona/current":
+        try:
+            from api.config import get_config as _get_cfg
+            _cfg = _get_cfg()
+            persona_id = str(_cfg.get("ares_persona", "") or "").strip()
+        except Exception:
+            persona_id = ""
+        return j(handler, {"persona_id": persona_id})
+
     if parsed.path == "/api/ares/persona/set":
         body = read_body(handler)
         persona_id = str(body.get("persona_id", "")).strip()
