@@ -2521,6 +2521,11 @@
   .composer-profile-chip{display:inline-flex;align-items:center;gap:8px;max-width:180px;padding:8px 10px 8px 12px;border-radius:999px;border:1px solid transparent;background-color:transparent;font-weight:500;cursor:pointer;transition:color .15s,background-color .15s,border-color .15s;}
   .composer-profile-chip:hover{background-color:var(--hover-bg);}
   .composer-profile-chip.active{background:var(--accent-bg);border-color:var(--accent-bg-strong);}
+  /* ARES backend/persona chips — match existing chip colors */
+  .composer-profile-chip.ares-backend-chip,
+  .composer-profile-chip.ares-persona-chip{color:var(--muted);}
+  .composer-profile-chip.ares-backend-chip:hover,
+  .composer-profile-chip.ares-persona-chip:hover{color:var(--text);}
   .composer-profile-chip.switching{opacity:.65;cursor:wait;pointer-events:none;}
   .composer-profile-chip.switching .composer-profile-icon::after{content:'';display:inline-block;width:10px;height:10px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;position:absolute;left:50%;top:50%;margin-left:-5px;margin-top:-5px;}
   .composer-profile-chip.switching .composer-profile-icon{position:relative;}
@@ -2605,6 +2610,7 @@
   .ares-backend-copy{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
   .ares-backend-name{font-size:14px;font-weight:600;color:var(--text);}
   .ares-backend-desc{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ares-backend-card{flex-shrink:0;width:32px;height:42px;border-radius:4px;object-fit:cover;border:1px solid var(--border);background:var(--panel-bg);}
   .composer-mobile-config-copy{display:flex;flex-direction:column;gap:1px;min-width:0;line-height:1.2;}
   /* The kicker labels (WORKSPACE / MODEL / REASONING / CONTEXT) duplicate the
      meaning the row icon already conveys, and at iPhone 14 width (390px) the
@@ -4778,7 +4784,9 @@ main.main > #mainWorkspaces,
 main.main > #mainProfiles,
 main.main > #mainInsights,
 main.main > #mainLogs{display:none;}
-main.main:not(.showing-settings):not(.showing-skills):not(.showing-memory):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-plugin) > #mainChat{display:flex;}
+main.main > #mainCharacters{display:none;}
+main.main:not(.showing-settings):not(.showing-skills):not(.showing-memory):not(.showing-tasks):not(.showing-kanban):not(.showing-workspaces):not(.showing-profiles):not(.showing-insights):not(.showing-logs):not(.showing-characters):not(.showing-plugin) > #mainChat{display:flex;}
+main.main.showing-characters > #mainCharacters{display:flex;}
 main.main.showing-settings > #mainSettings{display:flex;overflow-y:auto;}
 main.main.showing-skills > #mainSkills{display:flex;}
 main.main.showing-memory > #mainMemory{display:flex;}

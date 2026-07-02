@@ -11499,6 +11499,71 @@ def handle_get(handler, parsed) -> bool:
             return bad(handler, f"Failed to list personas: {exc}")
         return j(handler, {"personas": personas})
 
+    # ARES: JROS character library — full character data with traits
+    if parsed.path == "/api/ares/characters":
+        try:
+            import yaml as _yaml
+            char_root = Path.home() / "GitHub" / "JROS" / "jaeger_os" / "personality" / "characters"
+            characters = []
+            if char_root.is_dir():
+                for char_dir in sorted(char_root.iterdir()):
+                    if not char_dir.is_dir():
+                        continue
+                    yml = char_dir / "character.yaml"
+                    if not yml.exists():
+                        continue
+                    with open(yml) as f:
+                        data = _yaml.safe_load(f) or {}
+                    cid = data.get("id", char_dir.name)
+                    name = data.get("name", cid)
+                    desc = data.get("description", "")
+                    identity = data.get("identity", {}) or {}
+                    role = identity.get("role", "")
+                    voice_tone = identity.get("voice_tone", "")
+                    voice_id = identity.get("voice_id", "")
+                    traits = data.get("traits", {}) or {}
+                    hexaco = traits.get("hexaco", {}) or {}
+                    special = traits.get("special", {}) or {}
+                    expression = traits.get("expression", {}) or {}
+                    characters.append({
+                        "id": cid,
+                        "name": name,
+                        "description": desc,
+                        "role": role,
+                        "voice_tone": voice_tone,
+                        "voice_id": voice_id,
+                        "level": data.get("level", 1),
+                        "card_url": f"/static/characters/{cid}.png",
+                        "traits": {
+                            "hexaco": hexaco,
+                            "special": special,
+                            "expression": expression,
+                        },
+                        "backstory": (data.get("prompt", {}) or {}).get("backstory", ""),
+                        "speech_patterns": (data.get("prompt", {}) or {}).get("speech_patterns", []),
+                        "custom_instructions": (data.get("prompt", {}) or {}).get("custom_instructions", ""),
+                    })
+        except Exception as exc:
+            return bad(handler, f"Failed to list characters: {exc}")
+        return j(handler, {"characters": characters})
+
+    # ARES: Get single character by ID
+    if parsed.path == "/api/ares/character":
+        qs = parse_qs(parsed.query)
+        char_id = qs.get("id", [""])[0]
+        if not char_id:
+            return bad(handler, "id required")
+        try:
+            import yaml as _yaml
+            yml = Path.home() / "GitHub" / "JROS" / "jaeger_os" / "personality" / "characters" / char_id / "character.yaml"
+            if not yml.exists():
+                return bad(handler, "Character not found", 404)
+            with open(yml) as f:
+                data = _yaml.safe_load(f) or {}
+        except Exception as exc:
+            return bad(handler, f"Failed to load character: {exc}")
+        return j(handler, {"character": data})
+
     # ARES: Get current persona
     if parsed.path == "/api/ares/persona/current":
         try:
@@ -13632,7 +13697,7 @@ def handle_post(handler, parsed) -> bool:
         elif is_auth_enabled() or requested_password:
             body["auth_disabled_acknowledged"] = False
 
-        from api.config import get_max_tokens_status, set_max_tokens
+        from api.config import get_max_tokens_status, set_max_tokens, save_settings
 
         saved = save_settings(body)
         if max_tokens_provided:

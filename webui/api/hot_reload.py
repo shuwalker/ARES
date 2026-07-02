@@ -1,12 +1,15 @@
 """
-ARES WebUI Hot-Reload — automatic server restart + live static reload.
+ARES WebUI Hot-Reload — live static reload (browser SSE) + .py change logging.
 
 Two-tier hot-reload:
 
-1. **Python source (.py)** — full process restart via os._exit(0).
-   launchd KeepAlive restarts the process in ~2 seconds. The browser's
-   SSE reconnect logic handles the brief downtime transparently.
-   This is the nuclear option: guaranteed clean state, no stale modules.
+1. **Python source (.py)** — LOGGED ONLY, no server restart.
+   .py changes are logged so the agent knows when code was modified, but
+   the server is NOT killed. This prevents session interruptions caused by
+   os._exit(0) → launchd restart → SSE connection drop.
+   To apply .py changes, restart the server manually:
+       launchctl kickstart -k gui/$(id -u)/com.ares.hermes-webui
+   Or set ARES_WEBUI_PY_RELOAD=1 to re-enable auto-restart for development.
 
 2. **Static files (.css, .js, .html)** — instant browser reload via SSE.
    No server restart needed. The watcher broadcasts a `hot_reload` SSE
@@ -14,7 +17,8 @@ Two-tier hot-reload:
    Zero downtime, zero connection loss.
 
 Enable via environment variable:
-    ARES_WEBUI_RELOAD=1
+    ARES_WEBUI_RELOAD=1           — static reload (always on when set)
+    ARES_WEBUI_PY_RELOAD=1        — also auto-restart on .py changes (dev only)
 
 The watcher runs in a daemon thread and is designed to be fire-and-forget:
 start it once in main(), and it handles the rest.
@@ -48,6 +52,11 @@ _STATIC_EXTENSIONS = {".css", ".js", ".html", ".svg", ".png", ".ico", ".webmanif
 
 # Directories we don't watch for static changes (build artifacts, venv, etc.)
 _IGNORE_DIRS = {"__pycache__", ".venv", "venv", ".git", "node_modules", ".pytest_cache"}
+
+# Whether .py changes should trigger a full server restart (os._exit(0)).
+# Default: False — .py changes are logged only, server stays alive.
+# Set ARES_WEBUI_PY_RELOAD=1 to enable auto-restart for development.
+_PY_RELOAD_ENABLED = os.getenv("ARES_WEBUI_PY_RELOAD", "0") == "1"
 
 
 def _is_python_source(path: str) -> bool:
@@ -169,7 +178,10 @@ class _ReloadHandler:
             return
 
         if _is_python_source(event.src_path):
-            self._schedule_restart(event.src_path)
+            if _PY_RELOAD_ENABLED:
+                self._schedule_restart(event.src_path)
+            else:
+                logger.info("[hot-reload] .py change (restart disabled): %s", event.src_path)
         elif _is_static_file(event.src_path):
             self._schedule_static_reload(event.src_path)
 
@@ -211,6 +223,9 @@ class _ReloadHandler:
         If any stage fails, the restart is aborted and the server keeps
         running on the old code. The user fixes the issue and saves again.
         """
+        if not hasattr(self, '_pending_py_changes'):
+            logger.warning("[hot-reload] _trigger_restart called before __init__ completed — skipping")
+            return
         with self._lock:
             changed = list(self._pending_py_changes)
             snapshots = dict(self._py_snapshots)
