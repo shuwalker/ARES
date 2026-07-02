@@ -77,6 +77,36 @@ def _is_relevant_change(path: str) -> bool:
     return False
 
 
+def _syntax_check_files(paths: list[str]) -> list[tuple[str, str]]:
+    """Compile-check .py files. Returns list of (path, error_message) for failures.
+
+    Uses py_compile which catches syntax errors without importing the module
+    (so no side effects, no circular import risk). A clean compile doesn't
+    guarantee the code is correct, but it guarantees the server won't crash
+    on import — which is the crash-loop scenario we're preventing.
+    """
+    import py_compile
+
+    failed = []
+    for path in paths:
+        try:
+            py_compile.compile(path, doraise=True)
+        except py_compile.PyCompileError as e:
+            # Extract the useful line from the error message
+            msg = str(e)
+            # py_compile wraps the message; try to extract the SyntaxError line
+            if "SyntaxError" in msg:
+                # Keep it concise — just the error type and line
+                for line in msg.split("\n"):
+                    if "SyntaxError" in line or "Error" in line:
+                        msg = line.strip()
+                        break
+            failed.append((path, msg))
+        except Exception as e:
+            failed.append((path, str(e)))
+    return failed
+
+
 class _ReloadHandler:
     """Watchdog event handler with separate debounce timers for .py vs static."""
 
@@ -85,6 +115,7 @@ class _ReloadHandler:
         self._static_timer: threading.Timer | None = None
         self._lock = threading.Lock()
         self._armed = True
+        self._pending_py_changes: set[str] = set()
 
     def on_any_event(self, event):
         if not self._armed:
@@ -104,6 +135,7 @@ class _ReloadHandler:
         logger.info("[hot-reload] Python source change: %s", path)
 
         with self._lock:
+            self._pending_py_changes.add(path)
             if self._py_timer is not None:
                 self._py_timer.cancel()
             self._py_timer = threading.Timer(_DEBOUNCE_SECONDS, self._trigger_restart)
@@ -122,12 +154,39 @@ class _ReloadHandler:
             self._static_timer.start()
 
     def _trigger_restart(self):
-        """Gracefully exit so launchd restarts the process."""
+        """Gracefully exit so launchd restarts the process.
+
+        Pre-flight: py_compile every .py file that changed since the last
+        successful restart. If any file has a syntax error, we ABORT the
+        restart and log the error — better to keep running on the old code
+        than to crash-loop launchd on broken code.
+        """
+        with self._lock:
+            changed = list(self._pending_py_changes)
+
+        if changed:
+            failed = _syntax_check_files(changed)
+            if failed:
+                print(
+                    f"\n[hot-reload] ⚠ Restart ABORTED — syntax errors in "
+                    f"{len(failed)} file(s):",
+                    flush=True,
+                )
+                for path, err in failed:
+                    print(f"  ✗ {path}: {err}", flush=True)
+                print("[hot-reload] Fix the errors and save again to retry.\n", flush=True)
+                self._pending_py_changes.clear()
+                return
+
         logger.info("[hot-reload] Restarting server (graceful exit)...")
         print(
             "\n[hot-reload] Python source changed — restarting server...\n",
             flush=True,
         )
+
+        # Clear pending changes — the restart will pick up the new code
+        with self._lock:
+            self._pending_py_changes.clear()
 
         # Brief grace period to let in-flight HTTP responses drain
         time.sleep(_EXIT_GRACE_SECONDS)

@@ -2294,13 +2294,18 @@ def _build_session_list_cache_payload(
         return list(rows)
 
     full_scoped_all_sources = archived_scoped if include_archived else visible_scoped
+    # ARES fix: exclude default_hidden sessions (cron/subagent/webhook with
+    # project_id) from the tab count so the label matches the rendered list.
+    # Upstream counts them even though they're hidden — the number is inflated.
     webui_session_count = sum(
         1 for s in full_scoped_all_sources
         if not _is_cli_session_for_settings(s)
+        and not s.get("default_hidden")
     )
     cli_session_count = sum(
         1 for s in full_scoped_all_sources
         if _is_cli_session_for_settings(s)
+        and not s.get("default_hidden")
     )
     visible_scoped_filtered = _filter_sidebar_source(visible_scoped)
     archived_scoped_filtered = _filter_sidebar_source(archived_scoped)
