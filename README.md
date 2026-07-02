@@ -10,6 +10,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
   <a href="#features">Features</a> ·
+  <a href="#character-avatar-browser">Characters</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="webui/FORK_CHANGES.md">Changelog</a> ·
   <a href="#credits">Credits</a>
@@ -24,6 +25,10 @@
 
 <p align="center">
   <img src="docs/assets/webui-screenshot.png" alt="ARES Web UI">
+</p>
+
+<p align="center">
+  <img src="docs/assets/character-tab-showcase.png" alt="ARES character avatar browser">
 </p>
 
 ---
@@ -60,13 +65,25 @@ open .build/arm64-apple-macosx/debug/ARES.app
 - **Persistent Entity** — ARES is not a chatbot. It's a continuous intelligence with memory, drives, and presence across sessions.
 - **Web UI** — Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on any device over Tailscale.
 - **Backend Selector** — Switch between Hermes, JROS, or Hybrid mode per-conversation. JROS personas inject into the agent loop.
-- **Persona System** — 14 built-in character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, and more). JROS character/v1 + legacy persona/v1 dual-schema support.
+- **Character Avatar Browser** — 14 visual character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more) with card art, traits, lore, and active identity selection.
 - **Native macOS App** — SwiftUI app wraps the Web UI in WKWebView with native window, voice (edge-tts), and animated 3D avatar eyes.
 - **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads. Zero downtime for static, ~2s blip for Python.
 - **Hermes Agent Integration** — Full tool system: terminal, file ops, web search, code execution, MCP, skills, memory, delegation, cron jobs.
 - **Multi-Model Routing** — Cloud-first (GLM-5.2, DeepSeek V4, Qwen 3.5) with local fallback (Gemma4). Reasoning effort configurable per-session.
 - **Mail Butler** — IMAP-based mail cleaner with 321 classification rules. Server-side, no Mail.app dependency.
 - **Built in Public** — Every episode of the build is documented as part of the "Building Ares" YouTube series.
+
+## Character Avatar Browser
+
+ARES now exposes the persona system as a real product surface instead of a hidden dropdown. The character tab loads JROS `character/v1` YAML data, displays avatar card art, shows role/voice/trait/lore detail, and lets the user set the active ARES identity from the browser.
+
+- **Visual roster:** 14 built-in character cards are checked into `webui/static/persona-cards/` and `webui/static/characters/`.
+- **Schema-backed:** The browser reads JROS character data through `webui/api/characters.py` and `/api/ares/characters`.
+- **Runtime control:** Selecting a character writes the active persona through the existing ARES persona API.
+
+<p align="center">
+  <img src="docs/assets/character-tab-showcase.png" alt="ARES character tab with avatar cards and trait detail">
+</p>
 
 ## Architecture
 
@@ -76,8 +93,8 @@ open .build/arm64-apple-macosx/debug/ARES.app
 │         webui/ (self-contained)                  │
 │                                                  │
 │  ┌───────────┐  ┌──────────────┐  ┌──────────┐ │
-│  │ Persona    │  │ Backend      │  │ Animated │ │
-│  │ Picker     │  │ Selector     │  │ Eyes     │ │
+│  │ Character  │  │ Backend      │  │ Animated │ │
+│  │ Browser    │  │ Selector     │  │ Eyes     │ │
 │  │ (JROS YAML)│  │ (Hermes/JROS)│  │ (CSS/SVG)│ │
 │  └─────┬─────┘  └──────┬───────┘  └────┬─────┘ │
 │        │                │               │       │
@@ -107,7 +124,7 @@ ARES/
 │   └── AresTaskCLI/       # CLI tool for task management
 ├── webui/                 # ARES Web UI (Python web server)
 │   ├── api/               # Backend — server, streaming, auth, hot-reload
-│   ├── static/            # Frontend — HTML, JS, CSS, icons
+│   ├── static/            # Frontend — HTML, JS, CSS, icons, character art
 │   ├── server.py          # Entry point
 │   ├── requirements.txt   # Python dependencies
 │   └── tests/             # Test suite

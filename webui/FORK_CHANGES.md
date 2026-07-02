@@ -5,6 +5,25 @@ Each entry: date, what changed, which files, why, and rollback path.
 
 ---
 
+## 2026-07-02 — Character avatar browser + public showcase
+
+**What:** Added the ARES Characters panel as a visual browser for JROS `character/v1` personas and updated public docs/website imagery to show the avatar tab.
+
+**Why:** Persona selection is now a product surface, not just backend config. The website and README should show the character roster, avatar art, traits, lore, and active identity control.
+
+**Files changed:**
+- `api/characters.py` — **NEW**. Character YAML loader for full character details.
+- `api/routes.py` — `/api/ares/characters` and `/api/ares/character?id=<id>` endpoints.
+- `static/characters.js` / `static/characters.css` — character list, detail pane, traits, lore, active persona selection.
+- `static/characters/` and `static/persona-cards/` — 14 checked-in avatar card assets.
+- `docs/index.html`, `docs/assets/character-tab-showcase.png`, `README.md`, `webui/README.md` — public website and repo docs showcase.
+
+**Rollback:** Revert commit(s) adding `api/characters.py`, `static/characters.*`, character image assets, and docs/site references. Existing backend selector/persona APIs can remain.
+
+**Verification:** Python compile and JS syntax checks passed; `/api/ares/characters` returned 14 characters; docs asset exists at 1600×960.
+
+---
+
 ## 2026-07-02 — Sidebar session count fix (is_cli_session field)
 
 **What:** Changed `webui_session_count` and `cli_session_count` in routes.py to use `s.get("is_cli_session")` instead of `_is_cli_session_for_settings(s)`. The `_is_cli_session_for_settings()` function misclassifies Claude Code sessions (source=external_agent, is_cli_session=True) as non-CLI, inflating the WebUI count by ~200.

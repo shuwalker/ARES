@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="ARES — Artificial Reasoning Entity System. An open-source embodied AI operating system. Deploy a persistent intelligence with its own drives, voice, face, and presence.">
+<meta name="description" content="ARES — Artificial Reasoning Entity System. An open-source embodied AI operating system with a persistent intelligence, character avatar browser, voice, face, and presence.">
 <title>ARES — Artificial Reasoning Entity System</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%23ff4444' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ff4444'/%3E%3C/svg%3E">
 <style>
@@ -213,6 +213,47 @@
     background: linear-gradient(transparent, rgba(0,0,0,0.85)); color: var(--heading);
     font-size: 14px; font-weight: 600; z-index: 2;
   }
+  .preview-panel .preview-img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    opacity: 0.82; filter: saturate(1.08) contrast(1.04);
+    transition: opacity .25s ease, transform .5s cubic-bezier(.2,.7,.2,1);
+  }
+  .preview-panel:hover .preview-img, .preview-panel:focus-visible .preview-img { opacity: 1; transform: scale(1.03); }
+
+  /* Character showcase */
+  .character-showcase {
+    display: grid; grid-template-columns: 0.9fr 1.25fr; gap: 30px; align-items: center;
+    margin-top: 44px;
+  }
+  .character-copy {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px;
+  }
+  .character-copy h3 { color: var(--heading); font-size: 24px; margin: 0 0 12px; }
+  .character-copy p { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+  .character-points { display: grid; gap: 12px; margin-top: 20px; }
+  .character-point {
+    display: flex; gap: 12px; align-items: flex-start; color: var(--fg); font-size: 14px;
+    padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.02);
+  }
+  .character-point .mark {
+    width: 22px; height: 22px; border-radius: 7px; flex: 0 0 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; background: linear-gradient(135deg, var(--accent), #b51f1f);
+    font-size: 12px; font-weight: 900;
+  }
+  .character-art {
+    position: relative; border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
+    background: radial-gradient(circle at 70% 20%, rgba(255,68,68,0.18), transparent 42%), var(--panel);
+    box-shadow: 0 28px 80px rgba(0,0,0,0.48), 0 0 60px rgba(255,68,68,0.08);
+  }
+  .character-art img { width: 100%; display: block; }
+  .character-art::after {
+    content: "ARES character tab"; position: absolute; left: 18px; bottom: 16px;
+    padding: 7px 11px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14);
+    color: var(--fg); background: rgba(0,0,0,0.62); backdrop-filter: blur(8px);
+    font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  }
 
   /* CTA code */
   .cta-code {
@@ -262,6 +303,7 @@
     .grid { grid-template-columns: 1fr; }
     .myth-grid { grid-template-columns: 1fr; }
     .powered-grid { grid-template-columns: 1fr; }
+    .character-showcase { grid-template-columns: 1fr; }
     .previews { flex-direction: column; height: auto; gap: 12px; }
     .preview-panel { flex: none; width: 100%; height: 200px; }
     .preview-panel:hover { height: 300px; }
@@ -281,6 +323,7 @@
     <div class="nav-links">
       <a href="#mythology">Mythology</a>
       <a href="#features">Features</a>
+      <a href="#characters">Characters</a>
       <a href="#powered">Powered by</a>
       <a href="#how">How it started</a>
       <a href="#start">Get started</a>
@@ -384,8 +427,8 @@
       </div>
       <div class="feature">
         <span class="ico">&#x1F3AD;</span>
-        <h3>Persona System</h3>
-        <p>14 built-in character personas &mdash; HAL 9000, GLaDOS, Jarvis, TARS, Bender, and more. JROS character/v1 dual-schema support.</p>
+        <h3>Character Avatar Browser</h3>
+        <p>14 visual character personas &mdash; HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more. Card art, traits, lore, and active identity control.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F4BB;</span>
@@ -411,6 +454,31 @@
         <span class="ico">&#x1F512;</span>
         <h3>Private by default</h3>
         <p>Runs on your machine against your own endpoints. No telemetry, no cloud dependency unless you choose it. Your data stays yours.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CHARACTERS -->
+<section id="characters">
+  <div class="wrap">
+    <div class="center">
+      <div class="eyebrow">Character Browser</div>
+      <h2 class="h">The avatar tab is now part of the product story</h2>
+      <p class="sub">ARES can present itself through a visual character library: JROS personas, card art, trait maps, lore, and one-click active identity selection.</p>
+    </div>
+    <div class="character-showcase">
+      <div class="character-copy">
+        <h3>Choose who answers before the model speaks.</h3>
+        <p>The character tab turns persona selection into a visible product surface instead of a hidden config setting. It makes the entity feel embodied before the robot body exists.</p>
+        <div class="character-points">
+          <div class="character-point"><span class="mark">1</span><span><strong>14 built-in characters</strong><br>HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more.</span></div>
+          <div class="character-point"><span class="mark">2</span><span><strong>JROS character/v1 data</strong><br>Roles, voice tone, traits, lore, backstory, and speech patterns load from the character schema.</span></div>
+          <div class="character-point"><span class="mark">3</span><span><strong>Active persona control</strong><br>The UI shows which identity is active and can switch the running ARES personality from the browser.</span></div>
+        </div>
+      </div>
+      <div class="character-art">
+        <img src="assets/character-tab-showcase.png" alt="ARES character tab showing avatar cards, character list, and GLaDOS detail view">
       </div>
     </div>
   </div>
@@ -479,8 +547,8 @@
         <div class="label">Chat with the entity &mdash; full tool dispatch, streaming, context compression</div>
       </div>
       <div class="preview-panel" tabindex="0">
-        <div class="ph"><span class="icon">&#x1F3AD;</span>Persona picker</div>
-        <div class="label">14 built-in personas &mdash; HAL 9000, GLaDOS, Jarvis, TARS, Bender...</div>
+        <img class="preview-img" src="assets/character-tab-showcase.png" alt="ARES character avatar browser preview">
+        <div class="label">Character tab &mdash; 14 visual personas with art, traits, lore, and active identity control</div>
       </div>
       <div class="preview-panel" tabindex="0">
         <div class="ph"><span class="icon">&#x1F504;</span>Backend selector</div>

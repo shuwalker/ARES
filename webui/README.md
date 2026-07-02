@@ -28,7 +28,23 @@ cp .env.example .env
 - Server header → `ARESWebUI/`
 - Update checker → tracks ARES, Hermes, and JROS repos
 - `api/persona.py` — JROS persona injection module
+- `api/characters.py` — full character browser data loader for JROS `character/v1` YAML
+- `static/characters.js` + `static/characters.css` — avatar tab UI with character list, detail pane, traits, lore, and active persona selection
+- `static/characters/` and `static/persona-cards/` — checked-in character art used by the avatar browser and public website assets
 - All Hermes-facing UI strings rebranded
+
+## Character Avatar Tab
+
+The Characters panel is the visual front door for ARES identity selection. It exposes 14 JROS-backed personas with avatar art, roles, voice tone, traits, lore, backstory, and speech patterns.
+
+Runtime paths:
+
+- `GET /api/ares/characters` — list all characters with summary/detail data
+- `GET /api/ares/character?id=<id>` — load one character YAML
+- `GET /api/ares/persona/current` — current active persona
+- `POST /api/ares/persona/set` — set active persona from the UI
+
+The public website/README showcase image is generated from the same checked-in character card art and lives at `../docs/assets/character-tab-showcase.png`.
 
 ## Dependencies
 
