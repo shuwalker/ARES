@@ -6194,8 +6194,13 @@ function updateAresBackendUI() {
   }[_aresCurrentBackend] || 'Hermes';
 
   // Update checkmarks
-  document.querySelectorAll('.profile-dropdown-check[data-check-for]').forEach(el => {
+  document.querySelectorAll('.ares-backend-check[data-check-for]').forEach(el => {
     el.textContent = (el.dataset.checkFor === _aresCurrentBackend) ? '✓' : '';
+  });
+  // Sync selected state on action buttons
+  document.querySelectorAll('.ares-backend-action').forEach(btn => {
+    const backend = btn.getAttribute('data-backend');
+    btn.classList.toggle('selected', backend === _aresCurrentBackend);
   });
 
   // JROS status text
@@ -6214,16 +6219,26 @@ function updateAresBackendUI() {
 function toggleAresBackendDropdown() {
   const dd = $('aresBackendDropdown');
   if (!dd) return;
-  if (dd.style.display === 'none' || !dd.style.display) {
-    closeProfileDropdown();
-    if (typeof closeModelDropdown === 'function') closeModelDropdown();
-    if (typeof closeWsDropdown === 'function') closeWsDropdown();
-    dd.style.display = 'block';
-    dd.classList.add('open');
-  } else {
-    dd.style.display = 'none';
-    dd.classList.remove('open');
+  const isOpen = dd.classList.contains('open');
+  if (isOpen) {
+    closeAresBackendDropdown();
+    return;
   }
+  // Close other dropdowns first
+  closeProfileDropdown();
+  if (typeof closeModelDropdown === 'function') closeModelDropdown();
+  if (typeof closeWsDropdown === 'function') closeWsDropdown();
+  if (typeof closeMobileComposerConfig === 'function') closeMobileComposerConfig();
+  if (typeof closeReasoningDropdown === 'function') closeReasoningDropdown();
+  if (typeof closeToolsetsDropdown === 'function') closeToolsetsDropdown();
+  if (typeof closeAresPersonaDropdown === 'function') closeAresPersonaDropdown();
+  dd.style.display = 'flex';
+  dd.classList.add('open');
+  // Sync selected state
+  document.querySelectorAll('.ares-backend-action').forEach(btn => {
+    const backend = btn.getAttribute('data-backend');
+    btn.classList.toggle('selected', backend === _aresCurrentBackend);
+  });
 }
 
 function closeAresBackendDropdown() {
@@ -6248,7 +6263,7 @@ function setAresBackend(backend) {
 
 // Close on outside click
 document.addEventListener('click', e => {
-  if (!e.target.closest('#aresBackendWrap')) closeAresBackendDropdown();
+  if (!e.target.closest('#aresBackendWrap') && !e.target.closest('#aresBackendDropdown')) closeAresBackendDropdown();
 });
 
 // Init on page load

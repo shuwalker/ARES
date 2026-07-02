@@ -6861,6 +6861,18 @@ function startSessionStream(sid) {
         if (typeof renderSessionList === 'function') void renderSessionList();
       } catch (_) {}
     });
+    // ── ARES hot-reload: static file changed, reload browser instantly ──
+    // Fired by api/hot_reload.py when a .css/.js/.html file is saved.
+    // No server restart — just a page reload to pick up the new assets.
+    es.addEventListener('hot_reload', e => {
+      try {
+        const d = JSON.parse(e.data || '{}');
+        if (d.type === 'static_reload') {
+          console.log('[hot-reload] Static files changed — reloading browser');
+          location.reload();
+        }
+      } catch (_) {}
+    });
     es.onerror = () => {
       // Browser already auto-reconnects EventSource on most transient
       // failures. We only intervene if the connection has been closed for

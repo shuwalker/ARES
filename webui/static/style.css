@@ -2595,6 +2595,16 @@
   .composer-mobile-config-panel.open{display:flex;}
   .composer-mobile-config-action{box-sizing:border-box;display:inline-flex;align-items:center;gap:10px;min-width:0;min-height:44px;padding:8px 10px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--muted);font:inherit;text-align:left;cursor:pointer;overflow:hidden;}
   .composer-mobile-config-action.active{background:var(--accent-bg);border-color:var(--accent-bg-strong);color:var(--text);}
+  /* ── ARES Backend Panel — same floating-up pattern as mobile config ── */
+  .ares-backend-panel{display:none;position:absolute;left:8px;right:8px;bottom:calc(100% + 6px);z-index:190;padding:8px;gap:6px;flex-direction:column;background:var(--surface);border:1px solid var(--border2);border-radius:12px;box-shadow:0 -6px 28px rgba(0,0,0,.35);overflow:visible;}
+  .ares-backend-panel.open{display:flex;}
+  .ares-backend-action{box-sizing:border-box;display:flex;align-items:center;gap:12px;min-width:0;min-height:52px;padding:10px 12px;border-radius:10px;border:1px solid transparent;background:var(--input-bg);color:var(--muted);font:inherit;text-align:left;cursor:pointer;overflow:hidden;width:100%;}
+  .ares-backend-action:active{background:var(--accent-bg);border-color:var(--accent-bg-strong);color:var(--text);}
+  .ares-backend-action.selected{background:var(--accent-bg);border-color:var(--accent-bg-strong);color:var(--text);}
+  .ares-backend-check{flex-shrink:0;width:20px;text-align:center;font-weight:700;color:var(--accent);}
+  .ares-backend-copy{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
+  .ares-backend-name{font-size:14px;font-weight:600;color:var(--text);}
+  .ares-backend-desc{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .composer-mobile-config-copy{display:flex;flex-direction:column;gap:1px;min-width:0;line-height:1.2;}
   /* The kicker labels (WORKSPACE / MODEL / REASONING / CONTEXT) duplicate the
      meaning the row icon already conveys, and at iPhone 14 width (390px) the

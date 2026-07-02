@@ -659,6 +659,18 @@ def main() -> None:
     except Exception as e:
         print(f'[!!] WARNING: Plugin loading failed: {e}', flush=True)
 
+    # ── Hot-reload watcher (ARES WebUI) ──────────────────────────────
+    # When ARES_WEBUI_RELOAD=1, watch all .py files and os._exit(0) on
+    # change so launchd KeepAlive restarts the process. The browser's
+    # SSE reconnect logic handles the ~2s downtime transparently.
+    if os.environ.get("ARES_WEBUI_RELOAD", "").strip() in ("1", "true", "yes"):
+        try:
+            from api.hot_reload import start_watcher as _start_hot_reload
+            _start_hot_reload()
+            print('[ok] Hot-reload enabled — .py changes will auto-restart server', flush=True)
+        except Exception as e:
+            print(f'[!!] WARNING: Hot-reload watcher failed to start: {e}', flush=True)
+
     _abort_if_already_serving(HOST, PORT)
     httpd = QuietHTTPServer((HOST, PORT), Handler)
 

@@ -12,3 +12,4 @@
 # CPU/RAM metrics on platforms without /proc:  pip install psutil>=5.9
 pyyaml>=6.0
 cryptography>=42.0
+watchdog>=6.0  # ARES hot-reload: auto-restart on .py changes (ARES_WEBUI_RELOAD=1)
