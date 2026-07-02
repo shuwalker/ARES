@@ -107,6 +107,48 @@ def _syntax_check_files(paths: list[str]) -> list[tuple[str, str]]:
     return failed
 
 
+def _files_are_stable(paths: list[str], snapshots: dict[str, tuple[int, float]]) -> bool:
+    """Check if files have stopped changing.
+
+    Compares current (size, mtime) against snapshots taken at the last
+    watchdog event. If any file is still being written (size or mtime
+    changed since the snapshot), returns False — the caller should wait
+    and retry.
+
+    This catches:
+    - Partial writes (editor still flushing to disk)
+    - Atomic saves (temp file → rename fires multiple events)
+    - Multi-file refactors (save-all saves files 200ms apart)
+    """
+    import os
+
+    for path in paths:
+        try:
+            stat = os.stat(path)
+            current = (stat.st_size, stat.st_mtime)
+            snap = snapshots.get(path)
+            if snap is None or snap != current:
+                return False
+        except OSError:
+            # File deleted or inaccessible — treat as unstable
+            return False
+    return True
+
+
+def _snapshot_files(paths: list[str]) -> dict[str, tuple[int, float]]:
+    """Capture (size, mtime) for each file path."""
+    import os
+
+    snapshots = {}
+    for path in paths:
+        try:
+            stat = os.stat(path)
+            snapshots[path] = (stat.st_size, stat.st_mtime)
+        except OSError:
+            pass
+    return snapshots
+
+
 class _ReloadHandler:
     """Watchdog event handler with separate debounce timers for .py vs static."""
 
@@ -116,6 +158,7 @@ class _ReloadHandler:
         self._lock = threading.Lock()
         self._armed = True
         self._pending_py_changes: set[str] = set()
+        self._py_snapshots: dict[str, tuple[int, float]] = {}
 
     def on_any_event(self, event):
         if not self._armed:
@@ -136,6 +179,10 @@ class _ReloadHandler:
 
         with self._lock:
             self._pending_py_changes.add(path)
+            # Snapshot the file's (size, mtime) so we can detect
+            # if it's still being written when the debounce fires.
+            snap = _snapshot_files([path])
+            self._py_snapshots.update(snap)
             if self._py_timer is not None:
                 self._py_timer.cancel()
             self._py_timer = threading.Timer(_DEBOUNCE_SECONDS, self._trigger_restart)
@@ -156,28 +203,57 @@ class _ReloadHandler:
     def _trigger_restart(self):
         """Gracefully exit so launchd restarts the process.
 
-        Pre-flight: py_compile every .py file that changed since the last
-        successful restart. If any file has a syntax error, we ABORT the
-        restart and log the error — better to keep running on the old code
-        than to crash-loop launchd on broken code.
+        Three-stage pre-flight:
+        1. File stability — are all changed files done being written?
+        2. Syntax check — do all changed files compile?
+        3. Only then exit — launchd restarts with the new code.
+
+        If any stage fails, the restart is aborted and the server keeps
+        running on the old code. The user fixes the issue and saves again.
         """
         with self._lock:
             changed = list(self._pending_py_changes)
+            snapshots = dict(self._py_snapshots)
 
-        if changed:
-            failed = _syntax_check_files(changed)
-            if failed:
+        if not changed:
+            return
+
+        # Stage 1: File stability check
+        if not _files_are_stable(changed, snapshots):
+            logger.info("[hot-reload] Files still being written — waiting 0.3s...")
+            # Re-snapshot and retry once more after a short wait
+            time.sleep(0.3)
+            new_snapshots = _snapshot_files(changed)
+            if not _files_are_stable(changed, new_snapshots):
                 print(
-                    f"\n[hot-reload] ⚠ Restart ABORTED — syntax errors in "
-                    f"{len(failed)} file(s):",
+                    "\n[hot-reload] ⚠ Restart ABORTED — files still being written. "
+                    "Save again when the write is complete.\n",
                     flush=True,
                 )
-                for path, err in failed:
-                    print(f"  ✗ {path}: {err}", flush=True)
-                print("[hot-reload] Fix the errors and save again to retry.\n", flush=True)
-                self._pending_py_changes.clear()
+                with self._lock:
+                    self._pending_py_changes.clear()
+                    self._py_snapshots.clear()
                 return
+            # Files stabilized — update snapshots for the syntax check
+            snapshots = new_snapshots
 
+        # Stage 2: Syntax check
+        failed = _syntax_check_files(changed)
+        if failed:
+            print(
+                f"\n[hot-reload] ⚠ Restart ABORTED — syntax errors in "
+                f"{len(failed)} file(s):",
+                flush=True,
+            )
+            for path, err in failed:
+                print(f"  ✗ {path}: {err}", flush=True)
+            print("[hot-reload] Fix the errors and save again to retry.\n", flush=True)
+            with self._lock:
+                self._pending_py_changes.clear()
+                self._py_snapshots.clear()
+            return
+
+        # Stage 3: All clear — restart
         logger.info("[hot-reload] Restarting server (graceful exit)...")
         print(
             "\n[hot-reload] Python source changed — restarting server...\n",
@@ -187,6 +263,7 @@ class _ReloadHandler:
         # Clear pending changes — the restart will pick up the new code
         with self._lock:
             self._pending_py_changes.clear()
+            self._py_snapshots.clear()
 
         # Brief grace period to let in-flight HTTP responses drain
         time.sleep(_EXIT_GRACE_SECONDS)
