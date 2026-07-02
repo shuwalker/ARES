@@ -2299,12 +2299,12 @@ def _build_session_list_cache_payload(
     # Upstream counts them even though they're hidden — the number is inflated.
     webui_session_count = sum(
         1 for s in full_scoped_all_sources
-        if not _is_cli_session_for_settings(s)
+        if not s.get("is_cli_session")
         and not s.get("default_hidden")
     )
     cli_session_count = sum(
         1 for s in full_scoped_all_sources
-        if _is_cli_session_for_settings(s)
+        if s.get("is_cli_session")
         and not s.get("default_hidden")
     )
     visible_scoped_filtered = _filter_sidebar_source(visible_scoped)

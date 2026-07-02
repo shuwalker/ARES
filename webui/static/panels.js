@@ -6315,15 +6315,17 @@ function updateAresPersonaUI() {
 
   // "None" option — clears persona
   const noneBtn = document.createElement('button');
-  noneBtn.className = 'profile-dropdown-item';
-  noneBtn.innerHTML = `<span class="profile-dropdown-check" data-check-for="">${_aresCurrentPersona === '' ? '✓' : ''}</span><span style="flex:1"><strong>None</strong><br><small style="color:var(--muted)">No persona injection</small></span>`;
+  noneBtn.className = 'ares-backend-action';
+  noneBtn.setAttribute('data-persona', '');
+  noneBtn.innerHTML = `<span class="ares-backend-check" data-check-for="">${_aresCurrentPersona === '' ? '✓' : ''}</span><span class="ares-backend-copy"><span class="ares-backend-name">None</span><span class="ares-backend-desc">No persona injection</span></span>`;
   noneBtn.onclick = () => setAresPersona('');
   dd.appendChild(noneBtn);
 
   _aresPersonas.forEach(p => {
     const btn = document.createElement('button');
-    btn.className = 'profile-dropdown-item';
-    btn.innerHTML = `<span class="profile-dropdown-check" data-check-for="${p.id}">${p.id === _aresCurrentPersona ? '✓' : ''}</span><span style="flex:1"><strong>${p.name}</strong><br><small style="color:var(--muted)">${p.description || p.id}</small></span>`;
+    btn.className = 'ares-backend-action';
+    btn.setAttribute('data-persona', p.id);
+    btn.innerHTML = `<span class="ares-backend-check" data-check-for="${p.id}">${p.id === _aresCurrentPersona ? '✓' : ''}</span><span class="ares-backend-copy"><span class="ares-backend-name">${p.name}</span><span class="ares-backend-desc">${p.description || p.id}</span></span>`;
     btn.onclick = () => setAresPersona(p.id);
     dd.appendChild(btn);
   });
@@ -6332,17 +6334,20 @@ function updateAresPersonaUI() {
 function toggleAresPersonaDropdown() {
   const dd = $('aresPersonaDropdown');
   if (!dd) return;
-  if (dd.style.display === 'none' || !dd.style.display) {
-    closeProfileDropdown();
-    closeAresBackendDropdown();
-    if (typeof closeModelDropdown === 'function') closeModelDropdown();
-    if (typeof closeWsDropdown === 'function') closeWsDropdown();
-    dd.style.display = 'block';
-    dd.classList.add('open');
-  } else {
-    dd.style.display = 'none';
-    dd.classList.remove('open');
+  const isOpen = dd.classList.contains('open');
+  if (isOpen) {
+    closeAresPersonaDropdown();
+    return;
   }
+  closeProfileDropdown();
+  closeAresBackendDropdown();
+  if (typeof closeModelDropdown === 'function') closeModelDropdown();
+  if (typeof closeWsDropdown === 'function') closeWsDropdown();
+  if (typeof closeMobileComposerConfig === 'function') closeMobileComposerConfig();
+  if (typeof closeReasoningDropdown === 'function') closeReasoningDropdown();
+  if (typeof closeToolsetsDropdown === 'function') closeToolsetsDropdown();
+  dd.style.display = 'flex';
+  dd.classList.add('open');
 }
 
 function closeAresPersonaDropdown() {
@@ -6364,7 +6369,7 @@ function setAresPersona(personaId) {
 
 // Close on outside click
 document.addEventListener('click', e => {
-  if (!e.target.closest('#aresPersonaWrap')) closeAresPersonaDropdown();
+  if (!e.target.closest('#aresPersonaWrap') && !e.target.closest('#aresPersonaDropdown')) closeAresPersonaDropdown();
 });
 
 // Init on page load
