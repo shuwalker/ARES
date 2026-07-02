@@ -4439,12 +4439,20 @@ async function _runRenderSessionListRefresh(opts, _gen){
   try{
     if(!($('sessionSearch').value||'').trim()) _contentSearchResults = [];
     const sessionListQS = _sessionListQueryString();
-    const sessionRequestOpts={timeoutToast:false};
+    // #5394: the sidebar session-list GET is idempotent, so 502/503/504 retry
+    // must be unconditional. Previously retries/retryStatuses were boot-gated, so
+    // a transient 502 during an nginx->backend restart on a warm refresh (profile
+    // switch, focus/visible/reconnect) failed on the first attempt and left the
+    // sidebar stale until a hard reload. Boot still keeps the larger timeout +
+    // timeout retry; every refresh now retries the transient upstream statuses.
+    const sessionRequestOpts={
+      timeoutToast:false,
+      retries:1,
+      retryStatuses:[502,503,504],
+    };
     if(!_sessionListHasLoadedOnce){
       sessionRequestOpts.timeoutMs=_SESSION_LIST_BOOT_TIMEOUT_MS;
-      sessionRequestOpts.retries=1;
       sessionRequestOpts.retryTimeouts=true;
-      sessionRequestOpts.retryStatuses=[502,503,504];
     }
     const {sessData, projData}=await _loadSidebarSessionListPayload(sessionListQS, sessionRequestOpts);
     // Discard stale response — a newer renderSessionList() call superseded us.
