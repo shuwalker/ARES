@@ -44,8 +44,8 @@
   }
   nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--heading); letter-spacing: -0.02em; }
-  .brand .logo { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(255,68,68,0.4); }
-  .brand .logo::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--bg); }
+  .brand .logo { width: 28px; height: 28px; border-radius: 6px; overflow: hidden; }
+  .brand .logo img { width: 100%; height: 100%; object-fit: cover; }
   .nav-links { display: flex; align-items: center; gap: 24px; }
   .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; transition: color .15s; }
   .nav-links a:hover { color: var(--fg); }
@@ -275,7 +275,7 @@
 <nav>
   <div class="wrap">
     <div class="brand">
-      <span class="logo"></span>
+      <span class="logo"><img src="assets/ares-icon.svg" alt="ARES"></span>
       ARES
     </div>
     <div class="nav-links">
@@ -296,6 +296,9 @@
     <div class="hero-badge">
       <span class="dot"></span>
       Beta &mdash; built in public
+    </div>
+    <div style="margin-bottom: 24px;">
+      <img src="assets/ares-icon.svg" alt="ARES" style="width: 96px; height: 96px; border-radius: 20px; box-shadow: 0 0 50px rgba(255,68,68,0.4); animation: float 4s ease-in-out infinite;">
     </div>
     <div class="acronym">
       <div class="letter"><span class="char">A</span><span class="word">Artificial</span></div>
@@ -534,7 +537,7 @@ cp .env.example .env  <span class="cm"># set HERMES_WEBUI_PASSWORD</span>
 <footer>
   <div class="wrap">
     <div class="brand">
-      <span class="logo"></span>
+      <span class="logo"><img src="assets/ares-icon.svg" alt="ARES"></span>
       ARES
     </div>
     <div class="links">
