@@ -20,7 +20,7 @@ const fs = require('fs');
 
 const ui = fs.readFileSync(process.argv[2], 'utf8');
 const helperStart = ui.indexOf('const _MERMAID_VIEWER_MIN_SCALE');
-const helperEnd = ui.indexOf('function _openImgLightboxWithNav');
+const helperEnd = ui.indexOf("document.addEventListener('click'");
 if (helperStart < 0 || helperEnd < 0) {
   throw new Error('could not locate Mermaid viewer helpers');
 }
@@ -121,6 +121,8 @@ function makeElement(tagName) {
       copy.innerHTML = this.innerHTML;
       copy.clientWidth = this.clientWidth;
       copy.clientHeight = this.clientHeight;
+      if (this.viewBox) copy.viewBox = {baseVal: {...this.viewBox.baseVal}};
+      if (this.getBBox) copy.getBBox = this.getBBox;
       copy.classList = makeClassList(copy);
       for (const cls of String(this.className || '').split(/\s+/).filter(Boolean)) copy.classList.add(cls);
       return copy;
@@ -296,10 +298,13 @@ function runScenario(payload) {
   if (payload.scenario === 'lightbox-resize') {
     const expectedEnvelopeWidth = Math.round((payload.viewportWidth || 0) * 0.9);
     const expectedEnvelopeHeight = Math.round((payload.viewportHeight || 0) * 0.9);
+    triggerWindowResize(payload.viewportWidth, payload.viewportHeight);
     const lightboxSvg = makeSvg(payload.width || 480, payload.height || 320);
-    const lightbox = _mountMermaidViewer(lightboxSvg, {mode:'lightbox'});
-    const lightboxState = lightbox && lightbox._mermaidViewer;
+    const beforeListenerCount = (windowListeners.resize || []).length;
+    const lightbox = _openMermaidLightbox(lightboxSvg);
+    const lightboxState = lightbox && lightbox.children[0] && lightbox.children[0]._mermaidViewer;
     if (!lightboxState) throw new Error('unable to access lightbox viewer state');
+    const afterOpenListenerCount = (windowListeners.resize || []).length;
     lightboxState.viewport.clientWidth = expectedEnvelopeWidth || 960;
     lightboxState.viewport.clientHeight = expectedEnvelopeHeight || 540;
     lightboxState.viewport.getBoundingClientRect = () => ({left: 0, top: 0, width: lightboxState.viewport.clientWidth, height: lightboxState.viewport.clientHeight});
@@ -307,11 +312,15 @@ function runScenario(payload) {
     const beforeViewportHeight = lightboxState.viewport.style.height;
     const beforeScale = lightboxState.scale;
     triggerWindowResize(payload.resizedViewportWidth, payload.resizedViewportHeight);
-    lightboxState.resizeToEnvelope();
     const afterViewportWidth = lightboxState.viewport.style.width;
     const afterViewportHeight = lightboxState.viewport.style.height;
     const afterScale = lightboxState.scale;
+    _closeImgLightbox(lightbox);
+    const afterCloseListenerCount = (windowListeners.resize || []).length;
     return {
+      beforeListenerCount,
+      afterOpenListenerCount,
+      afterCloseListenerCount,
       beforeViewportWidth,
       beforeViewportHeight,
       beforeScale,
@@ -526,3 +535,6 @@ def test_lightbox_resize_recomputes_viewport_and_scale(_driver_path):
     expectedScale = min(result["expectedViewportWidth"] / 4000, result["expectedViewportHeight"] / 320)
     assert abs(result["afterScale"] - expectedScale) < 1e-9
     assert result["afterScale"] != result["beforeScale"]
+    assert result["beforeListenerCount"] == 0
+    assert result["afterOpenListenerCount"] == 1
+    assert result["afterCloseListenerCount"] == 0
