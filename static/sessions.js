@@ -34,6 +34,36 @@ let _draftSaveTimer = null;
 const _DRAFT_SAVE_DELAY_MS = 400;
 const NEW_CHAT_DRAFT_SESSION_KEY = 'hermes-new-chat-draft-session';
 const _composerDraftKnownPayloadSessions = new Set();
+const _composerDraftRestoreSuppressedUntilBySid = new Map();
+const _COMPOSER_DRAFT_RESTORE_SUPPRESS_MS = 30000;
+
+function _suppressComposerDraftRestoreAfterSubmit(sid) {
+  if (!sid) return;
+  _composerDraftRestoreSuppressedUntilBySid.set(
+    sid,
+    Date.now() + _COMPOSER_DRAFT_RESTORE_SUPPRESS_MS,
+  );
+  // Local state must reflect the submitted/cleared composer immediately. The
+  // POST that clears the server-side draft is async; same-session refreshes can
+  // otherwise race in with the old draft and repopulate the textarea.
+  _rememberComposerDraftPayloadState(sid, '', []);
+}
+
+function _clearComposerDraftRestoreSuppression(sid) {
+  if (!sid) return;
+  _composerDraftRestoreSuppressedUntilBySid.delete(sid);
+}
+
+function _isComposerDraftRestoreSuppressed(sid) {
+  if (!sid) return false;
+  const until = _composerDraftRestoreSuppressedUntilBySid.get(sid);
+  if (!until) return false;
+  if (Date.now() > until) {
+    _composerDraftRestoreSuppressedUntilBySid.delete(sid);
+    return false;
+  }
+  return true;
+}
 
 function _profileMatchesActiveProfile(profile, activeProfile){
   const eventName = (typeof profile === 'string' && profile.trim()) ? profile.trim() : 'default';
@@ -103,6 +133,7 @@ function _saveComposerDraft(sid, text, files) {
   const normalizedText = String(text || '');
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
   if (_composerDraftHasPayload(normalizedText, normalizedFiles)) {
+    _clearComposerDraftRestoreSuppression(sid);
     _composerDraftKnownPayloadSessions.add(sid);
   }
   _draftSaveTimer = setTimeout(() => {
@@ -144,6 +175,9 @@ function _saveComposerDraftNow(sid, text, files) {
   clearTimeout(_draftSaveTimer);
   const normalizedText = String(text || '');
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (_composerDraftHasPayload(normalizedText, normalizedFiles)) {
+    _clearComposerDraftRestoreSuppression(sid);
+  }
   // Most chat switches leave an empty composer. Avoid putting the switch path
   // behind a network POST unless there is new local draft content or an existing
   // server draft that must be cleared.
@@ -174,6 +208,11 @@ function _restoreComposerDraft(draft, targetSid, opts={}) {
   const files = (draft && Array.isArray(draft.files)) ? draft.files : [];
   const current = ta.value || '';
   const preserveActiveInput = !!(opts && opts.preserveActiveInput);
+  const restoreSid = targetSid || (S.session && S.session.session_id);
+  const hasServerDraftPayload = _composerDraftHasPayload(text, files);
+
+  if (restoreSid && hasServerDraftPayload && _isComposerDraftRestoreSuppressed(restoreSid)) return;
+  if (restoreSid && !hasServerDraftPayload) _clearComposerDraftRestoreSuppression(restoreSid);
 
   // Same-session force refreshes are driven by external state changes and may
   // finish seconds after the user continued typing. In that case the local
@@ -206,6 +245,7 @@ function _clearComposerDraft(sid) {
   if (!sid) return;
   clearTimeout(_draftSaveTimer);
   _clearRememberedNewChatDraftSession(sid);
+  _suppressComposerDraftRestoreAfterSubmit(sid);
   return api('/api/session/draft', {
     method: 'POST',
     body: JSON.stringify({ session_id: sid, text: '' }),

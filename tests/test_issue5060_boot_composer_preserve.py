@@ -38,11 +38,18 @@ def _draft_restore_block() -> str:
     return SESSIONS_JS[start:end]
 
 
-def _run_case(*, initial_text: str, draft: dict | None, opts: dict | None, current_sid, force_reload: bool) -> dict:
+def _draft_restore_suppression_block() -> str:
+    start = SESSIONS_JS.index("const _composerDraftRestoreSuppressedUntilBySid")
+    end = SESSIONS_JS.index("function _profileMatchesActiveProfile", start)
+    return SESSIONS_JS[start:end]
+
+
+def _run_case(*, initial_text: str, draft: dict | None, opts: dict | None, current_sid, force_reload: bool, suppress_restore: bool = False) -> dict:
     if NODE is None:
         pytest.skip("node not on PATH")
     restore_fn = _function_block(SESSIONS_JS, "function _restoreComposerDraft(draft, targetSid, opts={}) {")
     draft_block = _draft_restore_block()
+    suppression_block = _draft_restore_suppression_block()
     script = f"""
 const state = {{
   value: {json.dumps(initial_text)},
@@ -68,6 +75,14 @@ const sid = 'boot-session';
 const currentSid = {json.dumps(current_sid)};
 const forceReload = {json.dumps(force_reload)};
 const opts = {json.dumps(opts or {})};
+function _composerDraftHasPayload(text, files) {{
+  return !!(String(text || '') || (Array.isArray(files) && files.filter(Boolean).length));
+}}
+function _rememberComposerDraftPayloadState(sid, text, files) {{
+  state.rememberedDraft = {{sid, text, files}};
+}}
+{suppression_block}
+if ({json.dumps(suppress_restore)}) _suppressComposerDraftRestoreAfterSubmit(sid);
 {restore_fn}
 {draft_block}
 process.stdout.write(JSON.stringify({{
@@ -121,6 +136,27 @@ def test_boot_restore_still_populates_empty_composer_from_saved_draft():
     assert data["value"] == "server draft"
     assert data["autoResizeCount"] == 1
     assert data["updateSendBtnCount"] == 1
+
+
+def test_same_session_submitted_clear_blocks_stale_server_draft_restore():
+    """After send clears the composer, a stale same-session refresh must not refill it.
+
+    Mobile browsers can deliver refresh/input timing such that the textarea is
+    empty locally while /api/session still returns the previous non-empty
+    composer_draft. The submitted-clear suppression should keep that old draft
+    out of the input.
+    """
+    data = _run_case(
+        initial_text="",
+        draft={"text": "old submitted suffix", "files": []},
+        opts={"preserveActiveInput": True},
+        current_sid="boot-session",
+        force_reload=True,
+        suppress_restore=True,
+    )
+    assert data["value"] == ""
+    assert data["autoResizeCount"] == 0
+    assert data["updateSendBtnCount"] == 0
 
 
 def test_cross_session_restore_keeps_existing_draft_semantics():

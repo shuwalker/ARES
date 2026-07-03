@@ -1027,8 +1027,10 @@ function _composerTextWithPendingSelections(){
 }
 
 function _clearComposerAfterQueuedSelectionSend(){
+  const sid=arguments.length?arguments[0]:(S.session&&S.session.session_id);
   const composer=(typeof $==='function'&&$('msg'))||document.getElementById('msg');
   if(composer)composer.value='';
+  if(sid&&typeof _clearComposerDraft==='function') _clearComposerDraft(sid);
   _clearPendingSelections();
   if(typeof autoResize==='function') autoResize();
 }
@@ -1306,6 +1308,7 @@ async function send(){
       const _modelState=_chatPayloadModelState();
       queueSessionMessage(_targetSid,{text:_text,files:[...S.pendingFiles],model:_modelState.model,model_provider:_modelState.model_provider,profile:S.activeProfile||'default'});
       _clearComposerAfterQueuedSelectionSend();
+      if(_targetSid&&typeof _clearComposerDraft==='function') _clearComposerDraft(_targetSid);
       S.pendingFiles=[];renderTray();
       updateQueueBadge(_targetSid);
       showToast(`Queued: "${_text.slice(0,40)}${_text.length>40?'…':''}"`,2000);
@@ -1373,12 +1376,13 @@ async function send(){
         // After a delivered steer, clear any staged files because the text-only
         // steer payload has been handled. On failure, keep files staged.
         if(_steerDelivered){S.pendingFiles=[];renderTray();}
+        if(_steerDelivered&&S.session&&typeof _clearComposerDraft==='function') _clearComposerDraft(S.session.session_id);
       } else if(defaultMessageMode==='interrupt'){
         // Queue the message, then cancel so drain re-sends it.
         const _modelState=_chatPayloadModelState();
         queueSessionMessage(S.session.session_id,{text,files:[...S.pendingFiles],model:_modelState.model,model_provider:_modelState.model_provider,profile:S.activeProfile||'default'});
         updateQueueBadge(S.session.session_id);
-        $('msg').value='';autoResize();
+        _clearComposerAfterQueuedSelectionSend(S.session&&S.session.session_id);
         S.pendingFiles=[];renderTray();
         if(S.activeStreamId&&typeof cancelStream==='function'){
           showToast(t('busy_interrupt_confirm'),2000);
@@ -1391,7 +1395,7 @@ async function send(){
         // 'steer' mode when no stream is active or _trySteer is unavailable.
         const _modelState=_chatPayloadModelState();
         queueSessionMessage(S.session.session_id,{text,files:[...S.pendingFiles],model:_modelState.model,model_provider:_modelState.model_provider,profile:S.activeProfile||'default'});
-        $('msg').value='';autoResize();
+        _clearComposerAfterQueuedSelectionSend(S.session&&S.session.session_id);
         S.pendingFiles=[];renderTray();
         updateQueueBadge(S.session.session_id);
         showToast(`Queued: "${text.slice(0,40)}${text.length>40?'…':''}"`,2000);
