@@ -1216,6 +1216,35 @@ function openInBrowser(){
 }
 // openInBrowser keeps the helper-based raw path, which expands to an explicit &inline=1 URL.
 
+async function copyPreviewFilePath(){
+  if(!_previewCurrentPath||!S.session) return;
+  try{
+    const r=await api('/api/file/path',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,path:_previewCurrentPath})});
+    const abs=(r&&r.path)||_previewCurrentPath;
+    if(typeof _copyTextWithFallback==='function'){
+      await _copyTextWithFallback(abs,t('path_copied'),t('path_copy_failed'));
+      return;
+    }
+    try{
+      await navigator.clipboard.writeText(abs);
+      showToast(t('path_copied'));
+    }catch(clipErr){
+      const ta=document.createElement('textarea');
+      ta.value=abs;
+      ta.style.cssText='position:fixed;left:-9999px;top:-9999px;';
+      document.body.appendChild(ta);
+      ta.select();
+      let copied=false;
+      try{copied=document.execCommand('copy');}catch(_){}
+      ta.remove();
+      if(copied) showToast(t('path_copied'));
+      else showToast(t('path_copy_failed')+(clipErr&&clipErr.message?clipErr.message:String(clipErr)));
+    }
+  }catch(err){
+    showToast(t('path_copy_failed')+(err.message||err));
+  }
+}
+
 // ── Workspace upload ──────────────────────────────────────────────────
 function triggerWorkspaceUpload() {
   if(_workspacePathIsReadOnly(S.currentDir || '.')){
