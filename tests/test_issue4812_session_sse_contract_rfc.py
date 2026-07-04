@@ -126,6 +126,41 @@ class TestEndpointDistinction:
             f"_handle_session_events_stream definition; got: {routes[handler_line - 1].strip()!r}"
         )
 
+    def test_rfc_run_journal_anchors_land_on_real_source(self):
+        """Every named-symbol / emission anchor the RFC cites in the run-journal
+        inventory must land on the actual source token (not just be in-bounds),
+        so a stale line number can't silently pass (#5513 gate finding 2)."""
+        import re
+        text = _rfc()
+        routes = (REPO / "api" / "routes.py").read_text(encoding="utf-8").splitlines()
+
+        def _first_anchor_after(label):
+            m = re.search(r"%s.*?api/routes\.py:(\d+)" % re.escape(label), text, re.DOTALL)
+            assert m, f"RFC must cite a routes.py anchor near {label!r}"
+            return int(m.group(1))
+
+        # (label in RFC prose, token that must appear on the cited line)
+        checks = [
+            ("_parse_run_journal_event_id()", "def _parse_run_journal_event_id"),
+            ("_parse_run_journal_after_seq()", "def _parse_run_journal_after_seq"),
+            ("_runner_event_id()", "def _runner_event_id"),
+            ("_replay_run_journal()", "def _replay_run_journal"),
+        ]
+        for label, token in checks:
+            line = _first_anchor_after(label)
+            assert 1 <= line <= len(routes), f"{label} anchor api/routes.py:{line} beyond EOF"
+            assert token in routes[line - 1], (
+                f"RFC's {label} anchor api/routes.py:{line} must contain {token!r}; "
+                f"got: {routes[line - 1].strip()!r}"
+            )
+
+        # The live-emission bullet must cite the real _sse_with_id call site.
+        emit_line = _first_anchor_after("live `/api/chat/stream` path at")
+        assert "_sse_with_id" in routes[emit_line - 1], (
+            f"RFC's live-emission anchor api/routes.py:{emit_line} must be an "
+            f"_sse_with_id() call; got: {routes[emit_line - 1].strip()!r}"
+        )
+
     def test_contracts_distinguishes_both_endpoints(self):
         text = _contracts()
         assert "/api/sessions/{session_id}/events" in text, (

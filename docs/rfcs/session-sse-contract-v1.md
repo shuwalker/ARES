@@ -80,7 +80,10 @@ if source layout moves later.
   below, §Reconnect).
 - `_runner_event_id()` at `api/routes.py:15765-15772` constructs the event `id`
   field as `stream_id:seq`.
-- Live event `id:` is emitted during replay/stream at `api/routes.py:15703-15762`.
+- SSE frames carry their `id:` via the `_sse_with_id()` helper, emitted on the
+  live `/api/chat/stream` path at `api/routes.py:15918`, on the runner-observe
+  path at `api/routes.py:15811`, and during journal replay at
+  `api/routes.py:15721` / `15734`.
 - `_replay_run_journal()` reads events by `(session_id, stream_id)` at
   `api/routes.py:15703-15735`.
 - `api/streaming.py:6265-6285` writes current live agent streams to
