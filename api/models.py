@@ -1408,58 +1408,40 @@ class Session:
             return cls.load(sid)
 
     @staticmethod
-    def _compute_user_message_count_lazy(sid: str, messages=None) -> int:
-        """perf(session-load-latency) Priority 1: cheap SQL-only user count.
+    def _compute_user_message_count(messages) -> int:
+        """perf(session-load-latency) Priority 1: bounded in-memory count.
 
-        Returns the number of messages with role='user' for a given session.
-        Fast path is a single indexed SQLite query (~5ms even for 2,500+ msg
-        sessions because idx_messages_session covers the WHERE filter); the
-        role='user' predicate is a second filter on the small index range.
+        Returns the number of messages with role='user' in ``messages``.
+        Pre-patch compact() did the same O(N) walk inline; the walk is
+        extracted here so it can be measured and bounded independently.
 
-        If the SQLite query fails for any reason (DB locked, file missing,
-        schema drift), the helper falls back to an O(N) walk over the
-        ``messages`` argument passed in by the caller. The caller always has
-        ``self.messages`` in memory by the time compact() runs (Session.load()
-        populates it from the sidecar), so the fallback is bounded by the
-        already-loaded Python list, not a fresh disk read.
+        On the test corpus (a 2,400-message sidecar) this walk runs in
+        tens of milliseconds on a Celeron N3350 with eMMC. Cost is
+        proportional to the sidecar length the caller already loaded, not
+        to anything new we read from disk.
 
-        The previous O(N) walk inside compact() did not handle a missing
-        self.messages either, falling back to 0 in that case. The fallback
-        here therefore preserves the prior behavior on every input the prior
-        code accepted.
+        Critical: this walks ``messages`` (the sidecar) and NOT state.db.
+        A previous version of this helper queried state.db for the same
+        count, but the two sources can diverge by hundreds of messages
+        during recovery / mid-flight writes / pending_user_message, and
+        the sidebar's stale-row detection (see
+        ``_looks_like_stale_zero_message_row`` and
+        ``_row_may_need_sidecar_metadata_refresh``) consumes this field as
+        if the sidecar were the source of truth. Mixing the two sources
+        would silently flip the field's semantics.
         """
-        try:
-            import sqlite3 as _sqlite3
-            from api.config import STATE_DIR
-            # Resolve the active state.db (profile-aware).
-            try:
-                from api.models import _active_state_db_path
-                db_path = _active_state_db_path()
-            except Exception:
-                db_path = STATE_DIR / 'state.db'
-            conn = _sqlite3.connect(str(db_path), timeout=2.0)
-            try:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT COUNT(*) FROM messages "
-                    "WHERE session_id = ? AND role = 'user'",
-                    (str(sid),),
-                )
-                row = cur.fetchone()
-                return int(row[0]) if row and row[0] is not None else 0
-            finally:
-                conn.close()
-        except Exception:
-            # DB unavailable or schema mismatch — fall back to the in-memory
-            # walk. This is what the pre-patch compact() did unconditionally,
-            # so callers see the same number they'd have seen before for any
-            # session where Session.load() populated self.messages.
-            if not isinstance(messages, list):
-                return 0
-            from api.models import _message_role
-            return sum(
-                1 for m in messages if _message_role(m) == 'user'
-            )
+        if not isinstance(messages, list):
+            return 0
+        n = 0
+        for m in messages:
+            if isinstance(m, dict):
+                # Inline role check to avoid the _message_role helper call
+                # on every iteration. dict.get('role') with default '' is
+                # materially faster than a function call for the hot loop.
+                role = m.get('role')
+                if isinstance(role, str) and role == 'user':
+                    n += 1
+        return n
 
     def compact(self, include_runtime=False, active_stream_ids=None) -> dict:
         active_stream_ids = active_stream_ids if active_stream_ids is not None else set()
@@ -1519,10 +1501,7 @@ class Session:
                 'worktree_repo_root': self.worktree_repo_root,
                 'worktree_created_at': self.worktree_created_at,
             } if self.worktree_path else {}),
-            'user_message_count': Session._compute_user_message_count_lazy(
-                self.session_id,
-                self.messages,
-            ),
+            'user_message_count': Session._compute_user_message_count(self.messages),
             'active_stream_id': self.active_stream_id,
             'pending_user_message': self.pending_user_message,
             'has_pending_user_message': has_pending_user_message,
