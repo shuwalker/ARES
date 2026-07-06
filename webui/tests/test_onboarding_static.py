@@ -13,7 +13,7 @@ def test_index_contains_onboarding_overlay_markup():
     assert 'id="onboardingOverlay"' in html
     assert 'id="onboardingBody"' in html
     assert 'id="onboardingNextBtn"' in html
-    assert 'src="static/onboarding.js?v=__WEBUI_VERSION__"' in html
+    assert 'src="static/onboarding.js?v=ares-onboarding-20260705"' in html
 
 
 def test_onboarding_css_rules_exist():
@@ -34,6 +34,8 @@ def test_onboarding_js_exposes_bootstrap_hooks():
     assert "api('/api/onboarding/status')" in js
     assert "api('/api/onboarding/setup'" in js
     assert "api('/api/onboarding/complete'" in js
+    assert "api('/api/ares/provider/sync'" in js
+    assert "ARES_PROVIDER_SYNC_IDS" in js
 
 
 def test_onboarding_uses_i18n_helpers():
@@ -43,10 +45,10 @@ def test_onboarding_uses_i18n_helpers():
     assert 'data-i18n="onboarding_title"' in html
     assert 'data-i18n="onboarding_continue"' in html
     assert "t('onboarding_step_system_title')" in js
+    assert "t('onboarding_step_mcp_title')" in js
     assert "t('onboarding_step_setup_title')" in js
     assert "t('onboarding_complete')" in js
-    assert "onboarding_title: 'Welcome to Hermes Web UI'" in i18n
-    assert "onboarding_title: 'Bienvenido a Hermes Web UI'" in i18n
+    assert "onboarding_title: 'Welcome to ARES Web UI'" in i18n
 
 
 def test_bootstrap_script_contains_official_installer_and_windows_guard():

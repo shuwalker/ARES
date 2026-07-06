@@ -12739,6 +12739,42 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, f"Failed to save backend: {exc}")
         return j(handler, {"ok": True, "backend": backend})
 
+    if parsed.path == "/api/ares/provider/sync":
+        # Writes Hermes/JROS config.yaml provider metadata — same local-network
+        # gate as /api/onboarding/setup when auth is disabled.
+        if not _onboarding_gate_allows(handler):
+            return bad(
+                handler,
+                "Provider sync is only available from local networks when auth is not enabled. "
+                "To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.",
+                403,
+            )
+        provider = str(body.get("provider", "")).strip()
+        model = str(body.get("model", "")).strip()
+        base_url = str(body.get("base_url", "")).strip() or None
+        api_key_env = str(body.get("api_key_env", "")).strip() or None
+        targets = body.get("targets") or ["hermes", "jros"]
+        dry_run = bool(body.get("dry_run", False))
+        if not isinstance(targets, list):
+            return bad(handler, "targets must be a list of hermes and/or jros")
+        try:
+            from api.ares_provider_sync import sync_provider
+
+            result = sync_provider(
+                provider=provider,
+                model=model,
+                base_url=base_url,
+                targets=targets,
+                api_key_env=api_key_env,
+                hermes_config_path=_active_profile_config_path(),
+                dry_run=dry_run,
+            )
+        except ValueError as exc:
+            return bad(handler, str(exc), 400)
+        except Exception as exc:
+            return bad(handler, f"Failed to sync provider: {exc}")
+        return j(handler, result)
+
     if parsed.path == "/api/personality/set":
         try:
             require(body, "session_id")
@@ -18358,6 +18394,30 @@ def _active_run_stream_for_session(session_id: str | None) -> str | None:
     return None
 
 
+def _select_chat_worker_target():
+    """Return the backend worker for a normal WebUI chat turn.
+
+    The ARES backend selector is the product-level router, so it must win over
+    transport details like gateway-chat.  ``jros`` routes to the real JROS
+    bridge; the ZMQ ping daemon is presence only and cannot execute turns.
+    ``hybrid`` intentionally falls through to the normal Hermes worker so
+    existing persona/tool injection remains additive.
+    """
+    try:
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+
+        if get_active_backend(get_config()) == BACKEND_JROS:
+            from api.jros_bridge import run_jros_streaming
+
+            return run_jros_streaming, False, True
+    except Exception:
+        logger.warning("Failed to resolve ARES backend; falling back to Hermes worker", exc_info=True)
+    backend_is_gateway = webui_gateway_chat_enabled(get_config())
+    if backend_is_gateway:
+        return _run_gateway_chat_streaming, True, False
+    return _run_agent_streaming, False, False
+
+
 def _start_chat_stream_for_session(
     s,
     *,
@@ -18491,10 +18551,9 @@ def _start_chat_stream_for_session(
     if goal_related:
         STREAM_GOAL_RELATED[stream_id] = True
     diag.stage("worker_thread_start") if diag else None
-    backend_is_gateway = webui_gateway_chat_enabled(get_config())
-    worker_target = _run_gateway_chat_streaming if backend_is_gateway else _run_agent_streaming
+    worker_target, backend_is_gateway, backend_is_jros = _select_chat_worker_target()
     worker_kwargs = {"model_provider": model_provider, "goal_related": goal_related}
-    if moa_config and not backend_is_gateway:
+    if moa_config and not backend_is_gateway and not backend_is_jros:
         worker_kwargs["moa_config"] = moa_config
     thr = threading.Thread(
         target=worker_target,
@@ -18601,6 +18660,28 @@ def _start_run(
     returns no adapter is surfaced as ``{"error": str(exc), "_status": 501}``
     so both call sites can map it onto their own HTTP shape.
     """
+    # ARES product backend selection must happen before the Hermes runtime
+    # adapter/gateway.  Otherwise `jros` looks selected in the UI while the
+    # active Hermes adapter still consumes the turn.
+    try:
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+
+        if get_active_backend(get_config()) == BACKEND_JROS:
+            return _start_chat_stream_for_session(
+                s,
+                msg=msg,
+                attachments=attachments,
+                workspace=workspace,
+                model="jros",
+                model_provider="jros",
+                normalized_model=True,
+                diag=diag,
+                source=source,
+                moa_config=None,
+            )
+    except Exception:
+        logger.warning("Failed to resolve ARES backend before runtime adapter", exc_info=True)
+
     from api.runtime_adapter import (
         LegacyJournalRuntimeAdapter,
         StartRunRequest,
@@ -18608,6 +18689,24 @@ def _start_run(
         runtime_adapter_enabled,
         runtime_adapter_runner_enabled,
     )
+
+    try:
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+        if get_active_backend(get_config()) == BACKEND_JROS:
+            return _start_chat_stream_for_session(
+                s,
+                msg=msg,
+                attachments=attachments,
+                workspace=workspace,
+                model=model,
+                model_provider=model_provider,
+                normalized_model=normalized_model,
+                diag=diag,
+                source=source,
+                moa_config=moa_config,
+            )
+    except Exception:
+        logger.warning("Failed to resolve ARES backend before runtime adapter; continuing with adapter selection", exc_info=True)
 
     if runtime_adapter_enabled() or runtime_adapter_runner_enabled():
         def _legacy_start_run(request: StartRunRequest) -> dict:

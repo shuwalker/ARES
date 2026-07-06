@@ -31,7 +31,7 @@ from api.config import REPO_ROOT as WEBUI_SOURCE_ROOT, STREAMS, STREAMS_LOCK
 def _find_owning_git_repo(path: Path) -> Path:
     """Return the parent git checkout that owns this WebUI source tree.
 
-    ARES vendors the WebUI as ``~/GitHub/ARES/webui``. The update banner must
+    ARES vendors the WebUI inside the checked-out ARES repo. The update banner must
     check and pull the ARES repo root, not create/use a nested git repo under
     ``webui/``. If no parent checkout exists, fall back to the WebUI directory
     so Docker/baked-image behavior stays unchanged.

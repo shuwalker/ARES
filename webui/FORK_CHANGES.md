@@ -5,6 +5,25 @@ Each entry: date, what changed, which files, why, and rollback path.
 
 ---
 
+## 2026-07-05 — Onboarding wizard, MCP bootstrap, provider sync, JROS bridge
+
+**What:** Expanded the first-run onboarding wizard with agent-prompt, Tailscale/iPhone, connect-test, and MCP-placement steps. Added MCP bootstrap CLIs (`tools/mcp-bootstrap/`, `tools/safari-mcp-bootstrap/`), Hermes/JROS provider sync (`api/ares_provider_sync.py`, `/api/ares/provider/sync`), and a default-off JROS chat bridge (`api/jros_bridge.py`).
+
+**Why:** New ARES installs need a portable, backend-neutral path for private-network mobile access and correct local-vs-remote MCP placement. JROS backend mode and cross-backend provider sync should work without hardcoded machine paths.
+
+**Files changed:**
+- `webui/static/onboarding.js`, `webui/static/index.html`, `webui/static/style.css`, `webui/static/i18n.js` — wizard steps, MCP guidance, provider sync hook after setup.
+- `webui/api/routes.py` — `/api/ares/provider/sync` with local-network gate when auth is disabled.
+- `webui/api/ares_provider_sync.py`, `webui/api/jros_bridge.py` — **NEW**. Provider metadata sync and JROS streaming bridge (`ARES_JROS_DIR`, `ARES_JROS_INSTANCE` overrides).
+- `tools/mcp-bootstrap/`, `tools/safari-mcp-bootstrap/` — **NEW**. Catalog/plan/configure/verify helpers.
+- `webui/tests/test_onboarding_static.py`, `test_ares_provider_sync.py`, `test_jros_backend_streaming.py`, `test_ares_onboarding_public_portability.py` — coverage.
+
+**Rollback:** Revert onboarding.js step list and static assets; remove new API modules and MCP bootstrap tools; drop provider-sync route block from `routes.py`.
+
+**Verification:** `pytest tests/test_onboarding_static.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py tests/test_ares_onboarding_public_portability.py` — 18 passed.
+
+---
+
 ## 2026-07-02 — Character avatar browser + public showcase
 
 **What:** Added the ARES Characters panel as a visual browser for JROS `character/v1` personas and updated public docs/website imagery to show the avatar tab.
@@ -58,7 +77,7 @@ Each entry: date, what changed, which files, why, and rollback path.
 
 **Rollback:** Set `ARES_WEBUI_RELOAD=0` or remove from `start-webui.sh`. Delete `api/hot_reload.py`. Revert `server.py` lines 662-672.
 
-**Verified:** Touched `api/config.py` → server auto-restarted (PID 71388→71440), launchd brought it back in ~3.5s. Tailscale access confirmed via `http://100.74.2.15:8787`. Static reload SSE broadcast confirmed via log output.
+**Verified:** Touched `api/config.py` → server auto-restarted, launchd brought it back in ~3.5s. Tailscale access confirmed via `http://100.x.y.z:8787`. Static reload SSE broadcast confirmed via log output.
 
 ---
 
@@ -66,7 +85,7 @@ Each entry: date, what changed, which files, why, and rollback path.
 
 **What:** Cleared stale Tailscale serve config that was wrapping port 8787 in TLS.
 
-**Why:** iPhone PWA connects via `http://100.74.2.15:8787/?source=pwa` (plain HTTP — can't install TLS certs on iPhone). Stale `tailscale serve` config was intercepting 8787 and serving HTTPS, causing "Client sent an HTTP request to an HTTPS server" error on iPhone.
+**Why:** iPhone PWA connects via a Tailscale URL such as `http://100.x.y.z:8787/?source=pwa` (plain HTTP — custom TLS certs are difficult on iPhone). Stale `tailscale serve` config was intercepting 8787 and serving HTTPS, causing "Client sent an HTTP request to an HTTPS server" error on iPhone.
 
 **Files changed:** None (config only). Ran `tailscale serve --https=8787 reset` to clear the stale config.
 

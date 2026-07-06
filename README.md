@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/shuwalker/ARES/releases"><img src="https://img.shields.io/badge/status-beta-orange" alt="Status: Beta"></a>
-  <a href="https://github.com/shuwalker/ARES/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
+  <a href="https://github.com/shuwalker/ARES/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <a href="https://github.com/NousResearch/hermes-agent"><img src="https://img.shields.io/badge/powered%20by-Hermes%20Agent-purple" alt="Powered by Hermes Agent"></a>
   <a href="https://github.com/JenkinsRobotics/JROS"><img src="https://img.shields.io/badge/robotics-JROS-cyan" alt="JROS Robotics"></a>
 </p>
@@ -39,9 +39,16 @@
 git clone https://github.com/shuwalker/ARES.git
 cd ARES/webui
 
-# Create venv (Python 3.11+)
+# Create venv (Python 3.11-3.13)
 python3.11 -m venv .venv
-.venv/bin/pip install pyyaml cryptography edge-tts psutil watchdog
+.venv/bin/pip install -r requirements.txt
+
+# Optional voice and system-health support
+.venv/bin/pip install edge-tts psutil
+
+# Install Hermes Agent (dependency)
+mkdir -p ~/.hermes
+git clone https://github.com/NousResearch/hermes-agent.git ~/.hermes/hermes-agent
 .venv/bin/pip install -e ~/.hermes/hermes-agent  # Hermes Agent (editable)
 
 # Configure
@@ -56,8 +63,7 @@ cp .env.example .env
 ### Native macOS App
 
 ```bash
-swift build
-open .build/arm64-apple-macosx/debug/ARES.app
+swift run ARES
 ```
 
 ## Features
@@ -129,7 +135,9 @@ ARES/
 │   ├── requirements.txt   # Python dependencies
 │   └── tests/             # Test suite
 ├── tools/                 # Standalone tools
-│   └── mail-butler/       # IMAP mail cleaner with ARES classification rules
+│   ├── mail-butler/       # IMAP mail cleaner with ARES classification rules
+│   ├── mcp-bootstrap/     # Local vs remote/server MCP setup and verification
+│   └── safari-mcp-bootstrap/ # Safari MCP setup/doctor for macOS automation
 └── docs/assets/           # README images and branding
 ```
 
@@ -149,11 +157,11 @@ The Web UI checks for updates on three repos:
 
 ## Credits
 
-The ARES Web UI (`webui/`) is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) by the Hermes Web UI Contributors, originally licensed under MIT. See `LICENSE` for the full stacked license.
+The ARES Web UI (`webui/`) is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) by the Hermes Web UI Contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `webui/LICENSE` for the preserved upstream MIT notice.
 
 ## Owner
 
-Matthew Jenkins (shuwalker) · Jenkins Robotics · Built on Mac Studio (M1 Max, 32GB)
+Matthew Jenkins (shuwalker) · Jenkins Robotics
 
 ## Star History
 

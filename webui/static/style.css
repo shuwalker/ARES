@@ -1863,6 +1863,36 @@
   .onboarding-field span{font-size:12px;font-weight:700;color:var(--text);}
   .onboarding-field input,.onboarding-field select{margin-bottom:0;padding:10px 12px;border-radius:10px;font-size:13px;background:var(--input-bg);border:1px solid var(--border2);color:var(--text);}
   .onboarding-copy{font-size:12px;color:var(--muted);line-height:1.7;}
+  .onboarding-hero-icon{width:92px;height:92px;margin:2px auto 8px;border-radius:28px;display:flex;align-items:center;justify-content:center;border:1px solid var(--accent-bg-strong);background:var(--surface-subtle);color:var(--text);font-family:var(--font-mono);font-size:30px;font-weight:700;box-shadow:0 0 0 1px rgba(255,255,255,.02) inset;}
+  .onboarding-centered-copy{text-align:center;max-width:620px;margin:0 auto;}
+  .onboarding-centered-copy h3{font-size:34px;line-height:1.08;letter-spacing:-.04em;margin:6px 0 10px;color:var(--text);}
+  .onboarding-centered-copy p{font-size:15px;line-height:1.7;color:var(--muted);margin:0;}
+  .onboarding-kicker{font-size:12px;font-weight:800;letter-spacing:.22em;color:var(--accent);margin-top:4px;text-transform:uppercase;}
+  .onboarding-prompt-card,.onboarding-command-card{border:1px solid var(--border);border-radius:18px;background:var(--surface);padding:18px;display:flex;flex-direction:column;gap:14px;}
+  .onboarding-prompt-card pre{max-height:260px;overflow:auto;white-space:pre-wrap;margin:0;font-family:var(--font-mono);font-size:13px;line-height:1.55;color:var(--text);}
+  .onboarding-command-card code{display:block;background:var(--input-bg);border:1px solid var(--border2);border-radius:10px;padding:10px 12px;color:var(--text);font-size:12px;white-space:pre-wrap;word-break:break-word;}
+  .onboarding-primary-wide,.onboarding-secondary-wide{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:14px;border:1px solid var(--border2);font-weight:800;font-size:15px;text-decoration:none;cursor:pointer;padding:12px 16px;}
+  .onboarding-primary-wide{background:var(--accent);border-color:var(--accent);color:var(--accent-contrast,#050505);}
+  .onboarding-secondary-wide{background:var(--surface);color:var(--text);}
+  .onboarding-number-list{display:flex;flex-direction:column;gap:16px;margin:8px 0;}
+  .onboarding-number-list div{display:flex;align-items:flex-start;gap:16px;}
+  .onboarding-number-list span{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--accent-contrast,#050505);font-weight:900;flex-shrink:0;}
+  .onboarding-number-list p{margin:3px 0 0;color:var(--text);font-size:16px;line-height:1.45;}
+  .onboarding-connect-head{text-align:left;margin:0;}
+  .onboarding-connect-head h3{font-size:32px;}
+  .onboarding-connect-fields{display:flex;flex-direction:column;gap:14px;}
+  .onboarding-connect-field{display:flex;align-items:center;gap:14px;border:1px solid var(--border);background:var(--surface);border-radius:16px;padding:16px;}
+  .onboarding-connect-field>div:nth-child(2){min-width:0;flex:1;display:flex;flex-direction:column;gap:5px;}
+  .onboarding-connect-field strong{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;}
+  .onboarding-connect-field span{color:var(--text);font-size:18px;word-break:break-all;}
+  .onboarding-connect-field button{border:1px solid var(--border2);border-radius:10px;background:var(--input-bg);color:var(--text);font-weight:700;padding:8px 12px;cursor:pointer;}
+  .onboarding-connect-icon{font-size:22px;width:34px;text-align:center;color:var(--accent);}
+  .onboarding-dual-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .onboarding-mcp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;}
+  .onboarding-mcp-card{border:1px solid var(--border);border-radius:16px;background:var(--surface);padding:16px;}
+  .onboarding-mcp-card strong{display:block;color:var(--text);font-size:14px;margin-bottom:6px;}
+  .onboarding-mcp-card p{color:var(--muted);font-size:12px;line-height:1.55;margin:0 0 10px;}
+  .onboarding-mcp-card ul{margin:0;padding-left:18px;color:var(--text);font-size:12px;line-height:1.7;}
   /* Onboarding probe (#1499) — Test connection button + status banner */
   .onboarding-probe-row{display:flex;justify-content:flex-end;margin-top:-2px;}
   .onboarding-probe-btn{padding:6px 12px;font-size:12px;font-weight:600;border-radius:8px;background:var(--input-bg);border:1px solid var(--border2);color:var(--text);cursor:pointer;}
@@ -3185,6 +3215,13 @@
     .onboarding-main{padding:20px 18px 18px;}
     .onboarding-actions{flex-direction:column-reverse;}
     .onboarding-actions .sm-btn{width:100%;min-height:44px;}
+    .onboarding-centered-copy h3,.onboarding-connect-head h3{font-size:26px;}
+    .onboarding-dual-actions{grid-template-columns:1fr;}
+    .onboarding-mcp-grid{grid-template-columns:1fr;}
+    .onboarding-connect-field{align-items:flex-start;padding:14px;}
+    .onboarding-connect-field button{min-height:44px;}
+    .onboarding-prompt-card,.onboarding-command-card{padding:14px;}
+    .onboarding-prompt-card pre{max-height:220px;font-size:12px;}
     /* Login page responsive */
     .card{width:90vw;max-width:320px;padding:28px 24px;}
   }

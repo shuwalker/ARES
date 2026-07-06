@@ -20,6 +20,7 @@ let package = Package(
             name: "ARES",
             dependencies: [.product(name: "ARESModules", package: "ARES-Modules")],
             path: "Sources/ARES",
+            exclude: ["Info.plist"],
             resources: [
                 .process("Resources")
             ]

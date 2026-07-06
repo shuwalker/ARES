@@ -6,7 +6,7 @@
 --
 -- Re-run this on any Mac. Saved at:
 --   ~/.ares/scripts/mail-rules/install-rules.applescript
---   ~/GitHub/ARES/tools/mail-butler/install-rules.applescript
+--   <ARES repo>/tools/mail-butler/install-rules.applescript
 
 tell application "Mail"
 	

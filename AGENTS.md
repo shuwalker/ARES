@@ -1,10 +1,20 @@
 # AGENTS.md — ARES Repository Guide
 
-For AI contributors. This describes what actually exists in this repo.
+For AI contributors and coworkers. This file, together with `CLAUDE.md`, defines the mandatory rules and current state of the repository.
 
 ## What ARES Is
 
 ARES = Artificial Reasoning Entity System. A persistent AI entity with its own identity, voice, and presence. This repo contains both the native macOS app (Swift) and the web UI (Python, forked from hermes-webui).
+
+## Mandatory Rule Files
+
+All AI agents and human contributors must read and follow:
+
+- `CLAUDE.md` (root) — Core licensing, philosophy, and contribution rules
+- `webui/CLAUDE.md` — Web UI specific constraints
+- `CONTRIBUTING.md` — Contribution process
+- `LICENSE` + `COMMERCIAL-LICENSE.md` — Licensing model (AGPL-3.0 + dual licensing)
+- `AGENT_PROMPT.md` — Detailed prompt for VS Code / Claude Code agents
 
 ## Repository Layout
 
@@ -13,8 +23,10 @@ ARES/
 ├── Sources/ARES/          # SwiftUI app — Companion chat, Hub, voice, avatar
 ├── Sources/AresTaskCLI/   # CLI tool for task management
 ├── webui/                 # ARES Web UI — Python web server (forked from hermes-webui, rebranded)
-├── tools/                 # Standalone tools (mail-butler, etc.)
+├── tools/                 # Standalone tools (mail-butler, mcp-bootstrap, etc.)
 ├── Package.swift          # Swift Package Manager manifest
+├── CLAUDE.md              # Main AI agent rules
+├── CONTRIBUTING.md        # Contribution guide
 └── .gitignore
 ```
 

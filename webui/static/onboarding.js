@@ -1,4 +1,4 @@
-const ONBOARDING={status:null,step:0,steps:['system','setup','workspace','password','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:''},active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
+const ONBOARDING={status:null,step:0,steps:['system','agentPrompt','iphone','connect','mcp','setup','workspace','password','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:''},active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
 
 // ── Onboarding base-URL probe (#1499) ───────────────────────────────────────
 // Probes <base_url>/models so the wizard can validate the configured endpoint
@@ -117,13 +117,25 @@ function _getOnboardingCurrentSetup(){
   return (((ONBOARDING.status||{}).setup||{}).current)||{};
 }
 
+const ARES_PROVIDER_SYNC_IDS={
+  gemini:'gemini',
+  openai:'openai',
+  anthropic:'anthropic',
+  ollama:'ollama',
+  lmstudio:'lmstudio',
+};
+
 function _onboardingStepMeta(key){
   return ({
-    system:{title:t('onboarding_step_system_title'),desc:t('onboarding_step_system_desc')},
-    setup:{title:t('onboarding_step_setup_title'),desc:t('onboarding_step_setup_desc')},
-    workspace:{title:t('onboarding_step_workspace_title'),desc:t('onboarding_step_workspace_desc')},
-    password:{title:t('onboarding_step_password_title'),desc:t('onboarding_step_password_desc')},
-    finish:{title:t('onboarding_step_finish_title'),desc:t('onboarding_step_finish_desc')}
+    system:{title:t('onboarding_step_system_title')||'System check',desc:t('onboarding_step_system_desc')||'Verify the ARES agent backend and config visibility.'},
+    agentPrompt:{title:t('onboarding_step_agent_prompt_title')||'Agent prompt',desc:t('onboarding_step_agent_prompt_desc')||'Copy the setup request for a local or remote agent.'},
+    iphone:{title:t('onboarding_step_iphone_title')||'iPhone access',desc:t('onboarding_step_iphone_desc')||'Install Tailscale and join the same private network.'},
+    connect:{title:t('onboarding_step_connect_title')||'Connect',desc:t('onboarding_step_connect_desc')||'Test the URL and password you will use from mobile.'},
+    mcp:{title:t('onboarding_step_mcp_title')||'MCP servers',desc:t('onboarding_step_mcp_desc')||'Choose local-only vs remote/server automation.'},
+    setup:{title:t('onboarding_step_setup_title')||'Provider setup',desc:t('onboarding_step_setup_desc')||'Save the minimum ARES provider config.'},
+    workspace:{title:t('onboarding_step_workspace_title')||'Workspace + model',desc:t('onboarding_step_workspace_desc')||'Pick defaults for new sessions and chat.'},
+    password:{title:t('onboarding_step_password_title')||'Optional password',desc:t('onboarding_step_password_desc')||'Protect the Web UI before sharing it.'},
+    finish:{title:t('onboarding_step_finish_title')||'Finish',desc:t('onboarding_step_finish_desc')||'Review and enter the app.'}
   })[key];
 }
 
@@ -235,6 +247,64 @@ function _providerStatusLabel(system){
   return t('onboarding_check_provider_pending');
 }
 
+function _aresOnboardingServerUrl(){
+  try{return window.location.origin||'';}catch{return '';}
+}
+
+function _aresOnboardingPrompt(){
+  const serverUrl=_aresOnboardingServerUrl()||'http://<tailscale-ip>:8787';
+  return `Set up ARES Web UI on this machine for mobile access over a private network such as Tailscale.
+
+Use the ARES repo as the app source. Install dependencies, enable password auth, and run the WebUI on port 8787. Prefer Tailscale/private-network access over public exposure.
+
+If Tailscale is not installed, install it using the correct method for this OS and sign into the user's tailnet/private network. If Tailscale Serve is available, try to expose the WebUI cleanly; otherwise bind the server to 0.0.0.0 only after confirming password auth is active.
+
+Set up auto-start appropriate for this OS so ARES survives reboots.
+
+Configure MCP servers using this rule:
+- local-only app/device MCPs run on the owning machine (example: Safari MCP on macOS)
+- stateless/API/database/file MCPs can run on a server, homelab, VPS, NAS, or other machine reachable over the user's private network with auth
+
+Run these ARES bootstrap checks if present:
+python3 tools/mcp-bootstrap/mcp_bootstrap.py --catalog --plan
+# macOS Safari automation only, from the ARES repo root:
+python3 tools/safari-mcp-bootstrap/safari_mcp_bootstrap.py --configure-hermes
+
+Verify it works: curl ${serverUrl}/api/onboarding/status should return JSON.
+
+Reply with:
+- the exact server URL the user should enter on mobile or another client
+- the password or auth status
+- which MCP servers are local vs remote
+- any one-time setup steps I still need to do on my phone or Mac.`;
+}
+
+async function copyAresOnboardingPrompt(){
+  const text=_aresOnboardingPrompt();
+  try{await navigator.clipboard.writeText(text);showToast('ARES setup prompt copied');}
+  catch(e){showToast(text);}
+}
+
+async function copyAresConnectUrl(){
+  const text=_aresOnboardingServerUrl()||'http://<tailscale-ip>:8787';
+  try{await navigator.clipboard.writeText(text);showToast('Server URL copied');}
+  catch(e){showToast(text);}
+}
+
+async function testAresOnboardingConnection(){
+  try{
+    const res=await api('/api/onboarding/status');
+    if(res&&typeof res==='object'){
+      const ready=res.system&&res.system.chat_ready;
+      _setOnboardingNotice(ready?'Connection test passed. ARES is reachable and chat-ready.':'Connection test passed. ARES is reachable; provider setup may still need completion.', ready?'success':'info');
+    }else{
+      _setOnboardingNotice('Connection test returned an unexpected response.', 'warn');
+    }
+  }catch(e){
+    _setOnboardingNotice(`Connection test failed: ${(e&&e.message)||String(e)}`, 'warn');
+  }
+}
+
 function _renderOnboardingBody(){
   const body=$('onboardingBody');
   if(!body||!ONBOARDING.status)return;
@@ -265,6 +335,73 @@ function _renderOnboardingBody(){
         ${system.current_base_url?`<p><strong>${t('onboarding_base_url_label')}</strong> ${esc(system.current_base_url)}</p>`:''}
         ${system.missing_modules&&system.missing_modules.length?`<p><strong>${t('onboarding_missing_imports')}</strong> ${esc(system.missing_modules.join(', '))}</p>`:''}
       </div>`;
+    return;
+  }
+
+  if(key==='agentPrompt'){
+    _setOnboardingNotice(t('onboarding_notice_agent_prompt')||'Copy this prompt into the agent running on the machine that will host ARES. It installs WebUI, password auth, private-network access, auto-start, and MCP bootstrap checks. If no agent backend is installed, use the Hermes Agent install link below.','info');
+    body.innerHTML=`
+      <div class="onboarding-hero-icon">›_</div>
+      <div class="onboarding-centered-copy">
+        <div class="onboarding-kicker">${t('onboarding_kicker_step_1')||'STEP 1'}</div>
+        <h3>${t('onboarding_agent_prompt_heading')||'Set up ARES Web UI'}</h3>
+        <p>${t('onboarding_agent_prompt_body')||'Send this prompt to the agent backend on the target machine. If no backend exists yet, install Hermes Agent first or connect ARES to an existing backend URL.'}</p><div class="onboarding-command-card"><code>curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash</code><a class="onboarding-secondary-wide" href="https://hermes-agent.nousresearch.com/docs" target="_blank" rel="noopener">${t('onboarding_hermes_docs_link')||'Open Hermes Agent docs'}</a></div>
+      </div>
+      <div class="onboarding-prompt-card">
+        <pre>${esc(_aresOnboardingPrompt())}</pre>
+        <button class="onboarding-primary-wide" type="button" onclick="copyAresOnboardingPrompt()">✓ ${t('onboarding_copy_setup_prompt')||'Copy setup prompt'}</button>
+      </div>`;
+    return;
+  }
+
+  if(key==='iphone'){
+    _setOnboardingNotice(t('onboarding_notice_iphone')||'ARES mobile access is designed around Tailscale/private networking, not public Cloudflare exposure.','info');
+    body.innerHTML=`
+      <div class="onboarding-hero-icon">⇥</div>
+      <div class="onboarding-centered-copy">
+        <div class="onboarding-kicker">${t('onboarding_kicker_step_2')||'STEP 2'}</div>
+        <h3>${t('onboarding_iphone_heading')||'Install Tailscale on iPhone'}</h3>
+        <p>${t('onboarding_iphone_body')||'Install Tailscale on your iPhone and sign into the same tailnet/private network as the computer or server running ARES.'}</p>
+      </div>
+      <div class="onboarding-number-list">
+        <div><span>1</span><p>${t('onboarding_iphone_step_1')||'Install Tailscale from the App Store.'}</p></div>
+        <div><span>2</span><p>${t('onboarding_iphone_step_2')||'Sign in with the same account/tailnet used by the ARES host.'}</p></div>
+        <div><span>3</span><p>${t('onboarding_iphone_step_3')||'Keep Tailscale connected while using ARES from Safari, the WebClip, or the native shell.'}</p></div>
+      </div>
+      <a class="onboarding-secondary-wide" href="https://apps.apple.com/app/tailscale/id1470499037" target="_blank" rel="noopener">↗ ${t('onboarding_tailscale_app_store')||'Get Tailscale on the App Store'}</a>`;
+    return;
+  }
+
+  if(key==='connect'){
+    const url=_aresOnboardingServerUrl()||'http://<tailscale-ip>:8787';
+    _setOnboardingNotice(t('onboarding_notice_connect')||'Use the private-network IP/hostname URL from the host machine. If this page is already loaded over Tailscale, the URL below is ready to copy.','info');
+    body.innerHTML=`
+      <div class="onboarding-centered-copy onboarding-connect-head">
+        <h3>${t('onboarding_connect_heading')||'Connect'}</h3>
+        <p>${t('onboarding_connect_body')||'Enter this server URL in the mobile app or open it directly from another device after the private network is connected.'}</p>
+      </div>
+      <div class="onboarding-connect-fields">
+        <div class="onboarding-connect-field"><div class="onboarding-connect-icon">🔗</div><div><strong>${t('onboarding_connect_server_url')||'Server URL'}</strong><span>${esc(url)}</span></div><button type="button" onclick="copyAresConnectUrl()">${t('onboarding_copy')||'Copy'}</button></div>
+        <div class="onboarding-connect-field"><div class="onboarding-connect-icon">🔑</div><div><strong>${t('onboarding_connect_password')||'Password'}</strong><span>${settings.password_enabled?(t('onboarding_connect_password_enabled')||'Password auth is enabled'):(t('onboarding_connect_password_pending')||'Set one on the password step before sharing this URL')}</span></div></div>
+      </div>
+      <div class="onboarding-dual-actions"><button class="onboarding-secondary-wide" type="button" onclick="testAresOnboardingConnection()">🌐 ${t('onboarding_test_connection')||'Test connection'}</button></div>`;
+    return;
+  }
+
+  if(key==='mcp'){
+    _setOnboardingNotice(t('onboarding_notice_mcp')||'MCP setup is part of ARES onboarding: app-bound servers stay local; stateless services can live on a server, homelab, VPS, NAS, or another trusted machine.','info');
+    body.innerHTML=`
+      <div class="onboarding-centered-copy">
+        <div class="onboarding-kicker">${t('onboarding_kicker_step_3')||'STEP 3'}</div>
+        <h3>${t('onboarding_mcp_heading')||'Place MCP servers correctly'}</h3>
+        <p>${t('onboarding_mcp_body')||'ARES should guide users to install each MCP where it actually belongs instead of dumping everything on one machine.'}</p>
+      </div>
+      <div class="onboarding-mcp-grid">
+        <div class="onboarding-mcp-card"><strong>${t('onboarding_mcp_local_title')||'Local-only MCP'}</strong><p>${t('onboarding_mcp_local_desc')||'Runs on the machine that owns the app/device permission.'}</p><ul><li>Safari / Apple Events</li><li>Find My / Mail / Messages</li><li>USB hardware or cameras</li></ul></div>
+        <div class="onboarding-mcp-card"><strong>${t('onboarding_mcp_remote_title')||'Remote/server MCP'}</strong><p>${t('onboarding_mcp_remote_desc')||'Runs remotely when it is stateless, API-based, or near shared storage.'}</p><ul><li>GitHub / Linear / Notion</li><li>Databases and file stores</li><li>Long-running workers</li></ul></div>
+        <div class="onboarding-mcp-card"><strong>${t('onboarding_mcp_filesystem_title')||'Filesystem MCP'}</strong><p>${t('onboarding_mcp_filesystem_desc')||'Runs where the target files live. Start with this ARES repo or a user-selected workspace, then add shared drives only after verification.'}</p><ul><li>ARES repo</li><li>User-selected workspace</li><li>Verified shared storage</li></ul></div>
+      </div>
+      <div class="onboarding-command-card"><code>python3 tools/mcp-bootstrap/mcp_bootstrap.py --catalog --plan</code><code># macOS Safari automation only:<br>python3 tools/safari-mcp-bootstrap/safari_mcp_bootstrap.py --configure-hermes</code></div>`;
     return;
   }
 
@@ -462,6 +599,26 @@ function prevOnboardingStep(){
   _renderOnboardingBody();
 }
 
+async function _syncAresProviderToBackends(providerId, model, baseUrl, apiKeyEnv){
+  const syncProvider=ARES_PROVIDER_SYNC_IDS[providerId];
+  if(!syncProvider || !model) return null;
+  try{
+    return await api('/api/ares/provider/sync',{
+      method:'POST',
+      body:JSON.stringify({
+        provider:syncProvider,
+        model,
+        base_url:baseUrl||undefined,
+        api_key_env:apiKeyEnv||undefined,
+        targets:['hermes','jros'],
+      }),
+    });
+  }catch(e){
+    console.warn('ARES provider sync skipped',e);
+    return null;
+  }
+}
+
 async function _saveOnboardingProviderSetup(){
   const provider=(ONBOARDING.form.provider||'').trim();
   const model=(ONBOARDING.form.model||'').trim();
@@ -476,12 +633,18 @@ async function _saveOnboardingProviderSetup(){
   // just marks complete for unsupported providers) or could silently overwrite
   // config.yaml if the user accidentally changed the provider dropdown.
   const currentIsOauth=!!(ONBOARDING.status&&ONBOARDING.status.setup&&ONBOARDING.status.setup.current_is_oauth);
-  if(isUnchanged && !apiKey && ((ONBOARDING.status.system||{}).chat_ready || currentIsOauth)) return;
+  if(isUnchanged && !apiKey && ((ONBOARDING.status.system||{}).chat_ready || currentIsOauth)){
+    const setupProvider=_getOnboardingSetupProvider(provider);
+    await _syncAresProviderToBackends(provider, model || current.model || '', baseUrl || current.base_url || '', setupProvider&&setupProvider.env_var);
+    return;
+  }
   const body={provider,model};
   if(apiKey) body.api_key=apiKey;
   if(baseUrl) body.base_url=baseUrl;
   const status=await api('/api/onboarding/setup',{method:'POST',body:JSON.stringify(body)});
   ONBOARDING.status=status;
+  const setupProvider=_getOnboardingSetupProvider(provider);
+  await _syncAresProviderToBackends(provider, model, baseUrl, setupProvider&&setupProvider.env_var);
 }
 
 async function _saveOnboardingDefaults(){

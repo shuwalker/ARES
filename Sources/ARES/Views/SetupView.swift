@@ -4,6 +4,7 @@ struct SetupView: View {
     @EnvironmentObject var state: AppState
     @State private var step: SetupStep = .welcome
     @State private var tailscaleIP: String = ""
+    @State private var manualHost: String = ""
     @State private var isChecking = false
     @State private var errorMessage: String?
 
@@ -81,12 +82,12 @@ struct SetupView: View {
                 .font(.system(size: 40))
                 .foregroundColor(.black.opacity(0.6))
 
-            Text("Connect to your Mac Studio")
+            Text("Connect to your ARES host")
                 .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundColor(.black)
 
-            Text("ARES runs on your Mac Studio. This device connects to it over Tailscale.")
+            Text("ARES runs on your computer, server, homelab, or another backend host. This device connects to it over Tailscale or a private network.")
                 .font(.body)
                 .foregroundColor(.black.opacity(0.5))
                 .multilineTextAlignment(.center)
@@ -94,7 +95,7 @@ struct SetupView: View {
             if isChecking {
                 ProgressView()
                     .scaleEffect(0.8)
-                Text("Discovering your Mac Studio...")
+                Text("Discovering your ARES host...")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else if !tailscaleIP.isEmpty {
@@ -103,7 +104,7 @@ struct SetupView: View {
                         .font(.title)
                         .foregroundColor(.green)
 
-                    Text("Found Mac Studio")
+                    Text("Found ARES host")
                         .fontWeight(.medium)
 
                     Text(tailscaleIP)
@@ -157,15 +158,22 @@ struct SetupView: View {
                         }
                         .buttonStyle(.plain)
 
-                        Button {
-                            // Manual entry
-                            tailscaleIP = "100.74.2.15"
-                            errorMessage = nil
-                        } label: {
-                            Text("Enter Manually")
-                                .foregroundColor(.secondary)
+                        VStack(spacing: 8) {
+                            TextField("100.x.y.z or hostname", text: $manualHost)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 220)
+                            Button {
+                                let trimmed = manualHost.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !trimmed.isEmpty {
+                                    tailscaleIP = trimmed
+                                    errorMessage = nil
+                                }
+                            } label: {
+                                Text("Use Manual Host")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -174,7 +182,7 @@ struct SetupView: View {
                 Button {
                     discoverTailscale()
                 } label: {
-                    Text("Scan for Mac Studio")
+                    Text("Scan for ARES Host")
                         .fontWeight(.medium)
                         .foregroundColor(.white)
                         .padding(.horizontal, 40)
@@ -196,7 +204,7 @@ struct SetupView: View {
                 .font(.title3)
                 .foregroundColor(.black)
 
-            Text("Establishing secure connection to your Mac Studio")
+            Text("Establishing secure connection to your ARES host")
                 .font(.body)
                 .foregroundColor(.black.opacity(0.5))
         }
@@ -228,8 +236,8 @@ struct SetupView: View {
         errorMessage = nil
 
         Task {
-            // Try common Tailscale IPs and localhost
-            let candidates = ["100.74.2.15", "100.78.245.49", "localhost", "100.100.100.100"]
+            // Try local development first; remote hosts are discovered from the user's Tailscale peers below.
+            let candidates = ["localhost", "127.0.0.1"]
             for ip in candidates {
                 let url = "http://\(ip):8642"
                 if let healthy = try? await HermesGateway(url: url).health(), healthy {
@@ -254,11 +262,10 @@ struct SetupView: View {
                 task.waitUntilExit()
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    for (_, value) in json {
+                    let peers = (json["Peer"] as? [String: Any]) ?? json
+                    for (_, value) in peers {
                         if let peer = value as? [String: Any],
-                           let tailscaleIPs = peer["TailscaleIPs"] as? [String],
-                           let dnsName = peer["DNSName"] as? String,
-                           dnsName.lowercased().contains("studio") || dnsName.lowercased().contains("macstudio") {
+                           let tailscaleIPs = peer["TailscaleIPs"] as? [String] {
                             if let ip = tailscaleIPs.first {
                                 let url = "http://\(ip):8642"
                                 if let healthy = try? await HermesGateway(url: url).health(), healthy {
@@ -276,7 +283,7 @@ struct SetupView: View {
 
             await MainActor.run {
                 isChecking = false
-                errorMessage = "Could not find your Mac Studio on Tailscale. Make sure Tailscale is running on both devices and the Hermes Gateway is active."
+                errorMessage = "Could not find an ARES host on Tailscale. Make sure Tailscale is running on both devices and the backend gateway is active, or enter the host manually."
             }
         }
     }
