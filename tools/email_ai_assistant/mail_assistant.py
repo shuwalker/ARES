@@ -26,6 +26,8 @@ import os
 import re
 import subprocess
 import tempfile
+import urllib.request
+import urllib.error
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -70,9 +72,6 @@ class MailAssistant:
     It exposes the same logical tool surface the Odysseus MCP server provided,
     but routes all reads/writes through the existing authenticated Mail.app.
     """
-
-    def __init__(self):
-        self._verify_mail_app()
 
     def _verify_mail_app(self) -> None:
         """Quick sanity check that Mail.app is available."""
@@ -214,16 +213,116 @@ class MailAssistant:
             )
         ]
 
-    def draft_reply(self, message_id: str, prompt: str) -> str:
+    # ------------------------------------------------------------------
+    # LLM integration
+    # ------------------------------------------------------------------
+
+    # Ollama Cloud (OpenAI-compatible) endpoint configuration.
+    # Uses the same provider routing as Hermes Agent: glm-5.1 via ollama-cloud.
+    # API key is read from OLLAMA_API_KEY env var, falling back to ~/.hermes/.env
+    _LLM_BASE_URL = os.environ.get("OLLAMA_CLOUD_URL", "https://ollama.com/v1")
+    _LLM_API_KEY: str = ""  # resolved in __init__
+    _LLM_MODEL = os.environ.get("ARES_MAIL_MODEL", "glm-5.1")
+
+    @staticmethod
+    def _resolve_api_key() -> str:
+        """Resolve API key from env var, falling back to ~/.hermes/.env."""
+        key = os.environ.get("OLLAMA_API_KEY", "")
+        if key:
+            return key
+        env_file = Path.home() / ".hermes" / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                line = line.strip()
+                if line.startswith("OLLAMA_API_KEY=") and not line.startswith("#"):
+                    return line.split("=", 1)[1].strip()
+        return ""
+
+    def __init__(self):
+        self._verify_mail_app()
+        self._LLM_API_KEY = self._resolve_api_key()
+
+    def _call_llm(self, system_prompt: str, user_prompt: str, max_tokens: int = 512) -> str:
+        """Call the configured LLM via OpenAI-compatible API.
+
+        Routes through Ollama Cloud (glm-5.1) by default — same provider
+        chain used by Hermes Agent for delegation tasks.
+        """
+        payload = {
+            "model": self._LLM_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.4,
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if self._LLM_API_KEY:
+            headers["Authorization"] = f"Bearer {self._LLM_API_KEY}"
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self._LLM_BASE_URL}/chat/completions",
+            data=data,
+            headers=headers,
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            return result["choices"][0]["message"]["content"].strip()
+        except (urllib.error.URLError, KeyError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"LLM call failed: {e}") from e
+
+    def draft_reply(self, message_id: str, prompt: str = "") -> str:
         """
         Generate a draft reply using the LLM.
 
-        This is the core AI assistant capability.
-        In production this will call the configured Hermes LLM endpoint.
+        Reads the message, constructs a system prompt that captures
+        Matthew's mail philosophy (concise, action-oriented), and
+        calls the configured cloud model.
+
+        Args:
+            message_id: AppleScript message ID to reply to.
+            prompt: Optional additional instructions (e.g. "be formal",
+                    "ask about pricing", "decline politely").
+
+        Returns:
+            Draft reply text ready for review.
         """
-        # Placeholder — real LLM call will be wired in Phase 2
         msg = self.read_message(message_id)
-        return f"[DRAFT] Reply to: {msg.subject}\n\nBased on prompt: {prompt}\n\n(LLM integration pending)"
+
+        system_prompt = (
+            "You are an email assistant for Matthew Jenkins. "
+            "Draft concise, professional replies. "
+            "Matthew's style: direct, no filler, action-oriented. "
+            "Keep replies under 150 words unless the email needs detail. "
+            "Never add fake specifics or hallucinate details. "
+            "If unsure about something, say so rather than guessing."
+        )
+
+        thread = self.parse_thread(msg)
+        thread_text = "\n\n".join(
+            f"[{node.meta}] {node.body[:2000]}" for node in thread
+        )
+
+        user_prompt = f"""Email from: {msg.sender}
+Subject: {msg.subject}
+Date: {msg.date_received}
+
+Content:
+{thread_text[:4000]}
+
+{"Additional instructions: " + prompt if prompt else "Write an appropriate reply."}
+
+Reply:"""
+
+        return self._call_llm(system_prompt, user_prompt)
 
     def mark_read(self, message_id: str) -> bool:
         """Mark a message as read."""
