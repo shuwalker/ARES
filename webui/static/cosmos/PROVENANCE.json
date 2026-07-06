@@ -1,0 +1,143 @@
+{
+  "project": "obsidian-cosmos",
+  "vault": "SprialSecondBrain",
+  "owner": "Sean Jenkins",
+  "generated": "2026-07-05T17:12:08.554473",
+  "provenance": "local-only build; GitHub repo pending setup; see spiral-integration.md",
+  "files": [
+    {
+      "path": "cosmos.html",
+      "bytes": 26718,
+      "sha256": "750e3b41794e034e76c74d427dee86d156eb48dd03629ed83d10794ad63a150e"
+    },
+    {
+      "path": "docs/app.js",
+      "bytes": 1745,
+      "sha256": "8dbb2e2b157d45e8514b1f7a7dae11219debfaedde0435d24558caf6dafbbd52"
+    },
+    {
+      "path": "docs/assets/screenshot-1.png",
+      "bytes": 50520,
+      "sha256": "ac6b4a1e25e01a7c7ec18c6a73c69f4fd06bf2daf4f6e77bee6a6af64d7aae34"
+    },
+    {
+      "path": "docs/assets/screenshot-2.png",
+      "bytes": 31106,
+      "sha256": "190885c5dffaabf1f0ac4b66e69768713c29f17575e8b6df79026d7fe565b3d4"
+    },
+    {
+      "path": "docs/assets/screenshot-3.png",
+      "bytes": 26319,
+      "sha256": "dd16f87af3d701355d6ece57d226fe84270f166f9d578a60211830f2a281c621"
+    },
+    {
+      "path": "docs/assets/screenshot-4.png",
+      "bytes": 33015,
+      "sha256": "4cbc1e70de554da04f756f2fb8e2bb7a60df634f92c9a5abf87a2de7f990d3f1"
+    },
+    {
+      "path": "docs/assets/screenshot-5.png",
+      "bytes": 30870,
+      "sha256": "91f7ec1a967b5a8c710075342b1bbfa3e03fccab04e52ec6c0778b02969fb9ae"
+    },
+    {
+      "path": "docs/index.html",
+      "bytes": 6932,
+      "sha256": "1483c8c323f4570231fc6c87f10d61d36086afbf8cd659e3e9224b765496feb3"
+    },
+    {
+      "path": "docs/styles.css",
+      "bytes": 3936,
+      "sha256": "f7c592a05b154f76ef442ab8267eb994e1f3e212bda01d76ba2d0e89f7c36ed3"
+    },
+    {
+      "path": "marketing/gumroad-listing.md",
+      "bytes": 2846,
+      "sha256": "8678f4aa5dfd02a0ef5c27f08a2d596e7bf516de1259f4088876f0ac794e4bc0"
+    },
+    {
+      "path": "marketing/one-pager.pdf",
+      "bytes": 47104,
+      "sha256": "86c85dbbf51d11edfdfde70da188bc50517a4d8e3c0f925bd72288e6f8de75a5"
+    },
+    {
+      "path": "marketing/screenshot-1.png",
+      "bytes": 50520,
+      "sha256": "ac6b4a1e25e01a7c7ec18c6a73c69f4fd06bf2daf4f6e77bee6a6af64d7aae34"
+    },
+    {
+      "path": "marketing/screenshot-2.png",
+      "bytes": 31106,
+      "sha256": "190885c5dffaabf1f0ac4b66e69768713c29f17575e8b6df79026d7fe565b3d4"
+    },
+    {
+      "path": "marketing/screenshot-3.png",
+      "bytes": 26319,
+      "sha256": "dd16f87af3d701355d6ece57d226fe84270f166f9d578a60211830f2a281c621"
+    },
+    {
+      "path": "marketing/screenshot-4.png",
+      "bytes": 33015,
+      "sha256": "4cbc1e70de554da04f756f2fb8e2bb7a60df634f92c9a5abf87a2de7f990d3f1"
+    },
+    {
+      "path": "marketing/screenshot-5.png",
+      "bytes": 30870,
+      "sha256": "91f7ec1a967b5a8c710075342b1bbfa3e03fccab04e52ec6c0778b02969fb9ae"
+    },
+    {
+      "path": "obsidian-dashboard.json",
+      "bytes": 1318,
+      "sha256": "aae1cbd399a1e79f4405d6b6f0b15887687728c5c71edf3090f4f708aae180ff"
+    },
+    {
+      "path": "PROJECT-BRIEF.md",
+      "bytes": 3111,
+      "sha256": "8747e054199666e4591a935ddea49e9841f3a7f25f78efea3582e159be33792b"
+    },
+    {
+      "path": "README.md",
+      "bytes": 1976,
+      "sha256": "9608799f09517b842e0e3339c201abc1272e17c3135365a2d1771ac5e7f15dea"
+    },
+    {
+      "path": "SESSIONS/build-01.md",
+      "bytes": 3396,
+      "sha256": "9f9de4394cc13b3aa612152aba6d27beead668c9dbd75051e2f156c10b1bbcd3"
+    },
+    {
+      "path": "SESSIONS/launch-01.md",
+      "bytes": 1208,
+      "sha256": "0ced8227c80891066ce6eda821ba93d7ca8413f7e57b04cf69ad3893248c680f"
+    },
+    {
+      "path": "SESSIONS/plan-01.md",
+      "bytes": 1286,
+      "sha256": "d20c8fff35ae3f36ee248ca231541d99268d72fbfb8692dcea4d58deb1e375e5"
+    },
+    {
+      "path": "spiral-integration.md",
+      "bytes": 2372,
+      "sha256": "e9cda0759fc6c5e9f28b6be86971e7cea5ebf1eead877f17b5f4793a08ccaa82"
+    },
+    {
+      "path": "theme-switcher.js",
+      "bytes": 1725,
+      "sha256": "4e24b7af27e5fc0f97f13d4c565939899fb443966bb80e9cbda0a8e06ea339c3"
+    },
+    {
+      "path": "themes/skill-tree.js",
+      "bytes": 8786,
+      "sha256": "f5379852208a63d15ae80a29fedc16e931ad4246cde875e9c124fa6c5ec24934"
+    },
+    {
+      "path": "themes/solar-system.js",
+      "bytes": 8186,
+      "sha256": "3d7e586256ed10c45f2b7c809d8367b19509af430f2f1240b27e8c164eda59e1"
+    }
+  ],
+  "totals": {
+    "files": 26,
+    "bytes": 466305
+  }
+}

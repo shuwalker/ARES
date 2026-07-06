@@ -1,0 +1,370 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Spiral Office — Active Sessions</title>
+<style>
+  body { background:#0b0d14; color:#d8e1ff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; margin:0; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; position: relative; }
+  header { display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size: 22px; color:#cfe1ff; margin:0; }
+  .sub { color:#8aa2d6; font-size: 12px; }
+  .toolbar { display:flex; gap: 12px; margin-top: 16px; }
+  button, select, input[type="text"] {
+    background:#0f1520; color:#d8e1ff; border:1px solid #243055; padding: 8px 10px; border-radius: 10px; font-family: inherit;
+  }
+  .office { position: relative; height: 720px; background: radial-gradient( circle at 30% 30%, #131a2f, #07090f ); border: 1px solid #243055; border-radius: 18px; overflow: hidden; margin-top: 18px; }
+  .grid { position: absolute; inset:0; background-image:
+    linear-gradient( to right, rgba(255,255,255,0.04) 1px, transparent 1px ),
+    linear-gradient( to bottom, rgba(255,255,255,0.04) 1px, transparent 1px );
+    background-size: 28px 28px;
+  }
+  .floor { position:absolute; bottom: 90px; left:40px; right:40px; height: 2px; background:#2a3560; }
+  .bg-label { position:absolute; top:16px; left:18px; color:#6a7ba3; font-size: 11px; }
+  .bg-clock { position:absolute; top:16px; right:18px; color:#6a7ba3; font-size: 11px; }
+  .npc { position:absolute; transform: translate(-50%,-100%); display:flex; flex-direction:column; align-items:center; gap: 8px; transition: left 500ms cubic-bezier(.4,.2,.2,1), top 500ms cubic-bezier(.4,.2,.2,1); cursor:pointer; }
+  .avatar { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #1f2c55; background:#151c31; display:grid; place-items:center; font-size: 28px; }
+  .npc.active .avatar { animation: pulse 1.6s infinite; }
+  .npc.idle .avatar { filter: saturate(0.55); }
+  .npc.council .avatar { border-color:#6a3dff; box-shadow:0 0 14px rgba(106,61,255,0.35); }
+  .npc.idea .avatar { border-color:#ffd07a; box-shadow:0 0 12px rgba(255,208,122,0.28); }
+  .name { background: rgba( 8,10,18, 0.65 ); backdrop-filter: blur(4px); padding: 6px 10px; border-radius: 999px; border: 1px solid #243055; color:#e8eeff; font-size: 11px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .role { color:#86a0d0; font-size: 10px; }
+  .bubble { position: absolute; top:-22px; background:#0d1220; border: 1px solid #2d3a66; padding: 5px 8px; border-radius: 14px; color:#ffd07a; font-size: 11px; max-width: 300px; opacity: 0; transform: translateY(8px); transition: opacity 180ms, transform 180ms; pointer-events:none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .npc:hover .bubble, .npc.talking .bubble { opacity:1; transform: translateY(0); }
+  .log { background:#0b0d14; border-top:1px solid #243055; }
+  .log pre { margin:0; padding: 14px 18px; font-size: 11px; color:#c8d6f0; max-height: 160px; overflow: auto; }
+  .pill { display:inline-block; background:#15203d; color:#a6c3ff; border:1px solid #263a66; padding: 3px 8px; border-radius: 999px; font-size: 10px; }
+  @keyframes pulse { 0%{ transform: scale(1);} 50%{ transform: scale(1.04);} 100%{ transform: scale(1);} }
+  .legend { display:flex; gap:10px; flex-wrap:wrap; margin-top: 8px; align-items: center; }
+  .legend div { display:flex; align-items:center; gap:6px; font-size:11px; color:#c7d5ff; }
+  .dot { width:10px; height:10px; border-radius: 50%; }
+  .state-chips { display:flex; gap:8px; }
+  .state-chips .chip { background:#0f1520; color:#a6c3ff; border:1px solid #263a66; padding:6px 10px; border-radius:999px; cursor:pointer; font-size:10px; }
+  .state-chips .chip.on { background:#15203d; border-color:#3bb7ff; color:#e8eeff; }
+  .source-hint { color:#6a7ba3; font-size:11px; }
+  .hidden-office { display:none !important; }
+  .detail { position:absolute; inset:0; background: rgba(7,9,15,0.6); display:none; place-items:center; }
+  .detail.open { display:grid; }
+  .detail-card { background:#0f1520; border:1px solid #243055; border-radius:16px; padding:18px; min-width: 260px; max-width: 460px; width: 92%; position: relative; }
+  .detail-close { position:absolute; top:8px; right:10px; background: transparent; border: none; color:#c7d5ff; font-size: 16px; cursor:pointer; }
+  .detail-icon { font-size: 40px; margin-bottom: 8px; }
+  .detail-title { font-size: 16px; color:#e8eeff; margin-bottom: 8px; }
+  .detail-meta { color:#86a0d0; font-size: 11px; margin-bottom: 8px; }
+  .detail-action { background:#0b0d14; border:1px solid #243055; border-radius:12px; padding:10px; color:#c8d6f0; font-size: 11px; max-height: 160px; overflow: auto; white-space: pre-wrap; }
+  .detail-copy { margin-top: 10px; background:#15203d; color:#a6c3ff; border:1px solid #263a66; padding:8px 10px; border-radius:10px; cursor:pointer; font-size:11px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>🧭 Spiral Office</h1>
+        <div class="sub">Live office view of Hermes sessions drifting on the floor.</div>
+      </div>
+      <div class="sub" id="clock">—</div>
+    </header>
+
+    <div class="toolbar">
+      <button id="refreshBtn">Refresh now</button>
+      <button id="freeRoamBtn">Toggle free-roam</button>
+      <select id="filterSel">
+        <option value="all">Filter: all</option>
+        <option value="tui">tui</option>
+        <option value="discord">discord</option>
+        <option value="cron">cron</option>
+      </select>
+      <input type="text" id="searchInput" placeholder="Search title or session_id..." />
+    </div>
+
+    <div class="legend">
+      <div><span class="dot" style="background:#ffd07a"></span> task</div>
+      <div><span class="dot" style="background:#3bb7ff"></span> active</div>
+      <div><span class="dot" style="background:#6b7d99"></span> idle</div>
+      <div><span class="dot" style="background:#6a3dff"></span> council</div>
+      <div><span class="dot" style="background:#ffd07a"></span> idea</div>
+      <div class="state-chips" id="stateChips">
+        <div class="chip on" data-state="sessions">sessions</div>
+        <div class="chip" data-state="ideas">ideas</div>
+        <div class="chip" data-state="council">council</div>
+      </div>
+      <span class="source-hint" id="sourceHint">showing all sources</span>
+      <div class="pill" id="countPill">0</div>
+    </div>
+
+    <div class="office" id="office">
+      <div class="grid"></div>
+      <div class="floor"></div>
+      <div class="bg-label">session-quarter</div>
+      <div class="bg-label" style="right:18px;text-align:right;">council desk</div>
+      <div id="detail" class="detail">
+        <div class="detail-card">
+          <button id="detailClose" class="detail-close" aria-label="Close">×</button>
+          <div id="detailIcon" class="detail-icon"></div>
+          <div id="detailTitle" class="detail-title"></div>
+          <div id="detailMeta" class="detail-meta"></div>
+          <pre id="detailAction" class="detail-action"></pre>
+          <button id="detailCopy" class="detail-copy">Copy ID</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="log">
+      <pre id="events">Idle...</pre>
+    </div>
+  </div>
+
+<script>
+const office = document.getElementById('office');
+const events = document.getElementById('events');
+const clock = document.getElementById('clock');
+const countPill = document.getElementById('countPill');
+const refreshBtn = document.getElementById('refreshBtn');
+const freeRoamBtn = document.getElementById('freeRoamBtn');
+const filterSel = document.getElementById('filterSel');
+const searchInput = document.getElementById('searchInput');
+const stateChips = document.getElementById('stateChips');
+const detail = document.getElementById('detail');
+const detailClose = document.getElementById('detailClose');
+const detailTitle = document.getElementById('detailTitle');
+const detailMeta = document.getElementById('detailMeta');
+const detailAction = document.getElementById('detailAction');
+const detailIcon = document.getElementById('detailIcon');
+const detailCopy = document.getElementById('detailCopy');
+
+let npcs = [];
+let freeRoam = false;
+let raf = null;
+let visibility = { sessions: true, ideas: true, council: true };
+let lastSnapshot = { sessions:[], ideas:[], council:[] };
+let selectedId = null;
+
+function ts() {
+  return new Date().toLocaleString('en-US', { hour12: false });
+}
+
+function log(msg) {
+  events.textContent = `[${ts()}] ${msg}\n` + events.textContent;
+}
+
+function clockTick() {
+  clock.textContent = ts();
+}
+
+function avatarFor(r) {
+  if (r.type === 'idea') return '💡';
+  if (r.type === 'council') return '🏛️';
+  const key = (r.title || r.npc || r.session_id || r.idea_id || '').toLowerCase();
+  if (key.includes('github')) return '🐙';
+  if (key.includes('backup') || key.includes('recovery')) return '💾';
+  if (key.includes('obsidian') || key.includes('vault')) return '🗂️';
+  if (key.includes('ai') || key.includes('monetiz')) return '🧠';
+  if (key.includes('network') || key.includes('pc')) return '🖥️';
+  if (key.includes('star') || key.includes('scout')) return '⭐';
+  if (r.source === 'cron') return '⏱️';
+  return '🤖';
+}
+
+function normalizeId(r) {
+  const id = r.npc || r.session_id || r.idea_id || '';
+  return id ? id + '' : '';
+}
+
+function posFor(r, index, total) {
+  const w = office.clientWidth || 1000;
+  const h = office.clientHeight || 720;
+  if (r.type === 'idea') {
+    const angle = ((index || 0) / Math.max(total,1)) * Math.PI * 2;
+    const rx = 260 + (index % 4) * 90;
+    const cx = w/2;
+    const cy = h/2 + 40;
+    return { x: cx + Math.cos(angle)*rx, y: cy + Math.sin(angle)*rx };
+  }
+  if (r.type === 'council') {
+    return { x: w - 160, y: 90 + index * 110 };
+  }
+  const hash = String(r.npc || r.session_id || '').split('').reduce((a,b)=>a+b.charCodeAt(0),0);
+  const x = 60 + (hash * 1.37 % (w - 120));
+  const y = 90 + ((hash * 3.11) % (h - 220));
+  return { x, y };
+}
+
+function openDetail(rec) {
+  const id = normalizeId(rec);
+  if (selectedId === id && detail.classList.contains('open')) { closeDetail(); return; }
+  selectedId = id;
+  detailIcon.textContent = rec.icon || avatarFor(rec);
+  detailTitle.textContent = rec.title || 'untitled';
+  const lines = [];
+  lines.push('type: ' + (rec.type || 'session'));
+  if (rec.source) lines.push('source: ' + rec.source);
+  if (rec.role) lines.push('role: ' + rec.role);
+  if (rec.status) lines.push('status: ' + rec.status);
+  if (rec.session_id) lines.push('session_id: ' + rec.session_id);
+  if (rec.idea_id) lines.push('idea_id: ' + rec.idea_id);
+  if (rec.npc) lines.push('npc: ' + rec.npc);
+  if (rec.last_active) lines.push('last_active: ' + rec.last_active);
+  detailMeta.textContent = lines.join('\n');
+  detailAction.textContent = rec.last_action || rec.last_active || '';
+  detailCopy.textContent = rec.type==='idea' ? 'Copy idea_id' : (rec.type==='council' ? 'Copy council npc' : 'Copy session_id');
+  detailCopy.dataset.copy = rec.idea_id || rec.session_id || rec.npc || '';
+  detail.classList.add('open');
+}
+
+function closeDetail() {
+  selectedId = null;
+  detail.classList.remove('open');
+}
+
+detailClose.addEventListener('click', closeDetail);
+detail.addEventListener('click', (e) => { if (e.target === detail) closeDetail(); });
+detailCopy.addEventListener('click', () => {
+  const text = detailCopy.dataset.copy || '';
+  if (!text) return;
+  if (navigator && navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => log('copied ' + text));
+  } else {
+    log('copy unavailable: ' + text);
+  }
+});
+
+function createNpc(rec, index, total) {
+  const el = document.createElement('div');
+  el.className = 'npc npc-' + (rec.type || 'session');
+  el.dataset.id = normalizeId(rec);
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = (rec.last_action || rec.last_active || '').slice(0, 110);
+
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = rec.icon || avatarFor(rec);
+
+  const name = document.createElement('div');
+  name.className = 'name';
+  name.textContent = rec.title || 'untitled';
+
+  const role = document.createElement('div');
+  role.className = 'role';
+  role.textContent = rec.role || rec.source || '';
+
+  el.appendChild(bubble);
+  el.appendChild(avatar);
+  el.appendChild(name);
+  el.appendChild(role);
+  office.appendChild(el);
+
+  const pos = posFor(rec, index, total);
+  const npc = { el, rec, x: pos.x, y: pos.y };
+  npcs.push(npc);
+
+  el.addEventListener('mouseenter', () => el.classList.add('talking'));
+  el.addEventListener('mouseleave', () => el.classList.remove('talking'));
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openDetail(rec);
+  });
+  return npc;
+}
+
+function renderOffice(sessions, ideasList, councilArr) {
+  const query = (searchInput.value || '').toLowerCase();
+  const inQuery = (r) => {
+    if (!query) return true;
+    const text = String((r.title||'') + ' ' + (r.npc||'') + ' ' + (r.session_id||'') + ' ' + (r.idea_id||'') + ' ' + (r.role||''));
+    return text.toLowerCase().includes(query);
+  };
+
+  const merged = [
+    ...(visibility.sessions ? sessions.filter(inQuery).map(r => ({...r, type:'session'})) : []),
+    ...(visibility.ideas ? ideasList.filter(inQuery).map((r,i) => ({...r, type:'idea'})) : []),
+    ...(visibility.council ? councilArr.filter(inQuery).map((r,i) => ({...r, type:'council'})) : [])
+  ];
+
+  const known = new Map(npcs.map(n => [n.el.dataset.id, n]));
+  npcs = [];
+  office.querySelectorAll('.npc').forEach(el => {
+    if (!merged.find(r => normalizeId(r) === el.dataset.id)) el.remove();
+  });
+
+  merged.forEach((r, i) => {
+    const id = normalizeId(r);
+    let n = known.get(id);
+    const total = merged.length;
+    if (!n) {
+      n = createNpc(r, i, total);
+    } else {
+      n.rec = r;
+      const b = n.el.querySelector('.bubble');
+      if (b) b.textContent = (r.last_action || r.last_active || '').slice(0, 110);
+      const nm = n.el.querySelector('.name');
+      if (nm) nm.textContent = r.title || 'untitled';
+    }
+    const state = r.status === 'active' ? 'active' : 'idle';
+    n.el.className = 'npc ' + state + ' npc-' + (r.type || 'session');
+    if (selectedId === id) openDetail(r);
+    npcs.push(n);
+  });
+
+  countPill.textContent = npcs.length;
+  document.getElementById('sourceHint').textContent =
+    ['sessions','ideas','council'].filter(k => visibility[k]).join(' + ') || 'nothing shown';
+}
+
+function update(seconds) {
+  const W = office.clientWidth || 1000;
+  const H = office.clientHeight || 720;
+  npcs.forEach(n => {
+    if (freeRoam) {
+      n.x += (Math.random() - 0.5) * 0.6;
+      n.y += (Math.random() - 0.5) * 0.6;
+      n.x = Math.max(30, Math.min(W - 30, n.x));
+      n.y = Math.max(70, Math.min(H - 70, n.y));
+    }
+    n.el.style.left = n.x + 'px';
+    n.el.style.top = n.y + 'px';
+  });
+  clockTick();
+  raf = requestAnimationFrame(update);
+}
+
+async function fetchSnapshot() {
+  try {
+    const res = await fetch('/office-snapshot.json');
+    const data = await res.json();
+    lastSnapshot.sessions = data.sessions || [];
+    lastSnapshot.ideas = data.ideas || [];
+    lastSnapshot.council = data.council || [];
+    renderOffice(lastSnapshot.sessions, lastSnapshot.ideas, lastSnapshot.council);
+  } catch (e) {
+    log('snapshot fetch failed: ' + e.message);
+  }
+}
+
+function init() {
+  log('Office live. Click an NPC for details.');
+  renderOffice([], [], []);
+  raf = requestAnimationFrame(update);
+  fetchSnapshot();
+  setInterval(fetchSnapshot, 5 * 60 * 1000);
+  refreshBtn.onclick = () => fetchSnapshot().then(() => log('refreshed'));
+  freeRoamBtn.onclick = () => { freeRoam = !freeRoam; log('free-roam: ' + (freeRoam ? 'on' : 'off')); };
+  filterSel.onchange = () => fetchSnapshot();
+  searchInput.oninput = () => fetchSnapshot();
+  stateChips.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      visibility[chip.dataset.state] = !visibility[chip.dataset.state];
+      chip.classList.toggle('on', visibility[chip.dataset.state]);
+      renderOffice(lastSnapshot.sessions, lastSnapshot.ideas, lastSnapshot.council);
+    });
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+  clockTick();
+  setInterval(clockTick, 1000);
+}
+
+init();
+</script>
+</body>
+</html>

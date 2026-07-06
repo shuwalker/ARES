@@ -1,0 +1,172 @@
+{
+  "generated_at": "2026-07-06T03:59:22.600596+00:00",
+  "office": "Spiral Second Brain",
+  "sessions": [
+    {
+      "session_id": "20260705_205856_484fa7",
+      "title": "(untitled)",
+      "source": "tui",
+      "last_active": "2026-07-06T03:59:20.825309+00:00",
+      "last_action": "this is about cosmos poroject what do we havge to do for that and the virtual office as well",
+      "status": "active",
+      "npc": "session_20260705_205856_484fa7"
+    },
+    {
+      "session_id": "20260705_205833_c93dc5",
+      "title": "(untitled)",
+      "source": "tui",
+      "last_active": "2026-07-06T03:59:20.503711+00:00",
+      "last_action": "Vault Sync / session queue pipeline \u2014 the sync + approvals",
+      "status": "active",
+      "npc": "session_20260705_205833_c93dc5"
+    },
+    {
+      "session_id": "20260705_205819_775ba3",
+      "title": "(untitled)",
+      "source": "tui",
+      "last_active": "2026-07-06T03:59:19.315068+00:00",
+      "last_action": "Provider failover \u2014 health checks and fallback path validation",
+      "status": "active",
+      "npc": "session_20260705_205819_775ba3"
+    },
+    {
+      "session_id": "20260705_205809_19d3fb",
+      "title": "(untitled)",
+      "source": "tui",
+      "last_active": "2026-07-06T03:59:17.076102+00:00",
+      "last_action": "GitHub star scout \u2014 archiving repo stars",
+      "status": "active",
+      "npc": "session_20260705_205809_19d3fb"
+    },
+    {
+      "session_id": "20260705_205755_6145bb",
+      "title": "Remote Mac SSH Setup Verification",
+      "source": "tui",
+      "last_active": "2026-07-06T03:59:00.847322+00:00",
+      "last_action": "SSH/setup verification \u2014 remote Mac setup checks you were doing via Discord",
+      "status": "active",
+      "npc": "session_20260705_205755_6145bb"
+    },
+    {
+      "session_id": "20260705_205629_1ff851",
+      "title": "Start separate conversations per unique task",
+      "source": "tui",
+      "last_active": "2026-07-06T03:57:06.761176+00:00",
+      "last_action": "i cleared our session hsitory bc it was being to much i want a convo per unique task we r a doing understand can you start thoes for me",
+      "status": "active",
+      "npc": "session_20260705_205629_1ff851"
+    },
+    {
+      "session_id": "cron_ab0c6bae03ee_20260705_205458",
+      "title": "Hermes Session Queue Sync \u00b7 Jul 05 20:55",
+      "source": "cron",
+      "last_active": "2026-07-06T03:55:46.498466+00:00",
+      "last_action": "[IMPORTANT: The user has invoked the \"session-queue-management\" skill, indicating they want you to follow its instructions. The full skill content is loaded below.] --- name: sessi",
+      "status": "active",
+      "npc": "session_cron_ab0c6bae03ee_20260705_205458"
+    },
+    {
+      "session_id": "cron_85e910596863_20260705_205427",
+      "title": "Hermes Session Queue Approvals Processor \u00b7 Jul 05 20:55",
+      "source": "cron",
+      "last_active": "2026-07-06T03:55:11.377245+00:00",
+      "last_action": "[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user \u2014 do NOT use send_message or try to deliver the outpu",
+      "status": "active",
+      "npc": "session_cron_85e910596863_20260705_205427"
+    },
+    {
+      "session_id": "20260705_171707_fdc9eec3",
+      "title": "SSH command to verify remote Mac setup",
+      "source": "discord",
+      "last_active": "2026-07-06T03:54:00.348562+00:00",
+      "last_action": "cant u ssh to my mac and control it or ssomething the whole idea is that you control the mac device",
+      "status": "active",
+      "npc": "session_20260705_171707_fdc9eec3"
+    },
+    {
+      "session_id": "cron_ab0c6bae03ee_20260705_185425",
+      "title": "Hermes Session Queue Sync \u00b7 Jul 05 18:54",
+      "source": "cron",
+      "last_active": "2026-07-06T01:54:55.616745+00:00",
+      "last_action": "[IMPORTANT: The user has invoked the \"session-queue-management\" skill, indicating they want you to follow its instructions. The full skill content is loaded below.] --- name: sessi",
+      "status": "active",
+      "npc": "session_cron_ab0c6bae03ee_20260705_185425"
+    },
+    {
+      "session_id": "cron_e50efe51e9ab_20260705_170251",
+      "title": "Provider Failover Health Check \u00b7 Jul 05 17:03",
+      "source": "cron",
+      "last_active": "2026-07-06T00:03:08.412045+00:00",
+      "last_action": "[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user \u2014 do NOT use send_message or try to deliver the outpu",
+      "status": "active",
+      "npc": "session_cron_e50efe51e9ab_20260705_170251"
+    },
+    {
+      "session_id": "cron_322808d1752c_20260705_164851",
+      "title": "github-star-scout \u00b7 Jul 05 16:49",
+      "source": "cron",
+      "last_active": "2026-07-05T23:49:57.322621+00:00",
+      "last_action": "[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user \u2014 do NOT use send_message or try to deliver the outpu",
+      "status": "active",
+      "npc": "session_cron_322808d1752c_20260705_164851"
+    },
+    {
+      "session_id": "cron_f44cd74cfee8_20260705_154104",
+      "title": "Vault Sync \u2014 spiralmk4 \u00b7 Jul 05 15:41",
+      "source": "cron",
+      "last_active": "2026-07-05T22:41:19.847899+00:00",
+      "last_action": "[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response will be automatically delivered to the user \u2014 do NOT use send_message or try to deliver the outpu",
+      "status": "active",
+      "npc": "session_cron_f44cd74cfee8_20260705_154104"
+    }
+  ],
+  "ideas": [
+    {
+      "idea_id": "---",
+      "title": "---",
+      "approved": false,
+      "owner_session": "---",
+      "npc": "idea__",
+      "last_active": "2026-07-06T03:59:22.600596+00:00",
+      "last_action": "awaiting review",
+      "status": "approved"
+    },
+    {
+      "idea_id": "example-01",
+      "title": "Automatic school assignment tracker",
+      "approved": false,
+      "owner_session": "(unassigned)",
+      "npc": "idea_example_01",
+      "last_active": "2026-07-06T03:59:22.600596+00:00",
+      "last_action": "awaiting review",
+      "status": "approved"
+    },
+    {
+      "idea_id": "---",
+      "title": "(untitled idea)",
+      "approved": false,
+      "owner_session": "---",
+      "npc": "idea__",
+      "last_active": "2026-07-06T03:59:22.600596+00:00",
+      "last_action": "awaiting review",
+      "status": "approved"
+    }
+  ],
+  "council": [
+    {
+      "npc": "council_aries",
+      "role": "strategic_review",
+      "status": "online"
+    },
+    {
+      "npc": "council_athena",
+      "role": "project_gate",
+      "status": "online"
+    },
+    {
+      "npc": "council_mercury",
+      "role": "execution_ops",
+      "status": "online"
+    }
+  ]
+}
