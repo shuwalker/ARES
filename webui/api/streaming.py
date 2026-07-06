@@ -7878,6 +7878,20 @@ def _run_agent_streaming(
             # while making long tool runs emit real user-visible interim text
             # through interim_assistant_callback instead of frontend guesses.
 
+            # ARES: inject self-persistence contract into system prompt.
+            # This is ARES-owned product behavior above Hermes/JROS, not a backend
+            # implementation detail. It stays adapter-first so backends remain swappable.
+            _self_persistence_prompt = ""
+            try:
+                from api.ares_self_persistence import (
+                    render_self_persistence_prompt,
+                    should_inject_self_persistence,
+                )
+                if should_inject_self_persistence(_cfg):
+                    _self_persistence_prompt = render_self_persistence_prompt(_cfg)
+            except Exception as _exc:
+                logger.warning("ARES self-persistence prompt injection failed: %s", _exc)
+
             # ARES: inject JROS persona into system prompt
             # Only inject in hybrid mode (Hermes loop + JROS persona).
             # In hermes mode: no injection (pure Hermes behavior).
@@ -7898,9 +7912,33 @@ def _run_agent_streaming(
             except Exception as _exc:
                 logger.warning("ARES persona injection failed: %s", _exc)
 
-            # Merge persona with personality prompt — persona goes first so
-            # it forms the identity base, personality layers on top.
+            # ARES: inject runtime context into system prompt.
+            # Live ARES operating state (backend mode, capabilities, tasks,
+            # promises, embodiment) is injected every turn so the agent
+            # knows what it can do right now — not just what rules to follow.
+            _runtime_context_prompt = ""
+            try:
+                from api.ares_runtime_context import (
+                    build_runtime_context,
+                    render_context_prompt,
+                )
+                from api.backend_selector import get_active_backend
+                _ares_backend = get_active_backend(_cfg)
+                _runtime_ctx = build_runtime_context(backend=_ares_backend)
+                _runtime_context_prompt = render_context_prompt(_runtime_ctx)
+            except Exception as _exc:
+                logger.warning("ARES runtime context injection failed: %s", _exc)
+
+            # Merge ARES prompts. Order matters:
+            # 1. Self-persistence contract (ownership boundaries)
+            # 2. Runtime context (live operating state)
+            # 3. Persona (character voice)
+            # 4. Personality (behavioral modifiers)
             _combined_prompt_parts = []
+            if _self_persistence_prompt:
+                _combined_prompt_parts.append(_self_persistence_prompt)
+            if _runtime_context_prompt:
+                _combined_prompt_parts.append(_runtime_context_prompt)
             if _persona_prompt:
                 _combined_prompt_parts.append(_persona_prompt)
             if _personality_prompt:

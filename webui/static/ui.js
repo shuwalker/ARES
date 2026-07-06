@@ -7605,11 +7605,12 @@ function _todosHash(items){
   // implies a hash change.  Field separators (\x1f, \x1e) are control
   // chars unlikely to appear in real todo content, so collisions across
   // boundaries are not realistic.
+  // Supports both old format (content/text) and mission-control format (title).
   let h=items.length+'|';
   for(let i=0;i<items.length;i++){
     const t=items[i]||{};
-    const content=t.content==null?(t.text==null?'':t.text):t.content;
-    h+=String(t.id==null?'':t.id)+'\x1f'+String(content)+'\x1f'+String(t.status==null?'':t.status)+'\x1e';
+    const label=t.title||t.content||t.text||'';
+    h+=String(t.id==null?'':t.id)+'\x1f'+String(label)+'\x1f'+String(t.status==null?'':t.status)+'\x1f'+String(t.priority==null?'':t.priority)+'\x1f'+String(t.assignee==null?'':t.assignee)+'\x1e';
   }
   return h;
 }
@@ -7686,16 +7687,18 @@ function scheduleTodosRefresh(){
   // Idempotent: many `todo_state` events fire on each tool result, but
   // only the latest snapshot needs to paint.  RAF lets us coalesce
   // without timer drift.
+  //
+  // This function handles PER-SESSION todo events (the `todo` tool).
+  // It refreshes only the workspace (right sidebar) per-session panel.
+  // The left sidebar "Master task list" panel is refreshed by kanban
+  // SSE events via _scheduleKanbanRefresh(), not per-session todo_state.
   if(_todosRenderRafId) return;
   if(typeof requestAnimationFrame!=='function'){
-    if(typeof loadTodos==='function') loadTodos();
     if(typeof _refreshWorkspacePanelTodos==='function') _refreshWorkspacePanelTodos();
     return;
   }
   _todosRenderRafId=requestAnimationFrame(()=>{
     _todosRenderRafId=0;
-    const sidebarActive=_todosPanelIsActive();
-    if(sidebarActive&&typeof loadTodos==='function') loadTodos();
     if(typeof _refreshWorkspacePanelTodos==='function') _refreshWorkspacePanelTodos();
   });
 }
@@ -7704,6 +7707,7 @@ function _resetTodosRenderCache(){
   // Clear after every cross-session navigation so the next render is
   // never short-circuited against a hash from a different session.
   _todosLastRenderedHash=null;
+  if(typeof _masterTodosLastRenderedHash!=='undefined') _masterTodosLastRenderedHash=null;
   if(typeof _resetWorkspaceTodosRenderCache==='function') _resetWorkspaceTodosRenderCache();
 }
 

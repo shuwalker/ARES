@@ -410,12 +410,13 @@ async function switchPanel(name, opts = {}) {
   }
   // Lazy-load panel data
   if (nextPanel === 'tasks') await loadCrons();
+  if (nextPanel === 'email' && window.AresEmail) await AresEmail.load();
   if (nextPanel === 'kanban') await loadKanban();
   if (nextPanel === 'skills') await loadSkills();
   if (nextPanel === 'memory') await loadMemory();
   if (nextPanel === 'workspaces') await loadWorkspacesPanel();
   if (nextPanel === 'profiles') await loadProfilesPanel();
-  if (nextPanel === 'todos') loadTodos();
+  if (nextPanel === 'todos') await loadTodos();
   if (nextPanel === 'insights') await loadInsights();
   if (nextPanel === 'characters') AresCharacters.load();
   if (nextPanel === 'logs') await loadLogs();
@@ -2323,6 +2324,9 @@ function _scheduleKanbanRefresh(events){
     _kanbanRefreshScheduled = false;
     const taskIds = Array.from(_kanbanRefreshPendingTaskIds);
     _kanbanRefreshPendingTaskIds.clear();
+    // Always refresh the master todo panel when kanban data changes,
+    // regardless of which panel is currently active.
+    if (typeof loadTodos === 'function') loadTodos();
     if (_currentPanel !== 'kanban') return;
     try {
       await loadKanban(true);
@@ -3276,46 +3280,267 @@ async function loadKanbanTask(taskId){
   } catch(e) { showToast(t('kanban_unavailable') + ': ' + (e.message || e), 'error'); }
 }
 
-// Phase 2: Single-source-of-truth render.
+// Master todo panel — aggregates ALL tasks from the Kanban system across
+// ALL sessions.  Fetches from /api/kanban/board and renders a flat list
+// (no column layout) using the same renderTodoRow() as per-session todos.
 //
-// Reads `S.todos` (set by the `todo_state` SSE listener, INFLIGHT
-// restore, or session cold-load — see _hydrateTodosFromSession in
-// ui.js).  When `S.todoStateMeta` is null we have never seen an
-// explicit signal and fall through to the legacy reverse-scan over
-// settled tool messages — this keeps the panel populated against
-// pre-Phase-1 servers and during the upgrade window.
+// ────────────────────────────────────────────────────────────────────────────
+// Master Task List (Mission Control)
 //
-// The render is short-circuited via `_todosLastRenderedHash` (defined
-// in ui.js): repeated emissions that yield identical DOM are no-ops.
-// Coalescing of bursty live updates happens upstream in
-// scheduleTodosRefresh().
-function loadTodos() {
+// Distinct from the Kanban board: read-only grouped summary with
+// click-to-navigate, status counts, and assignee sections.
+// For full CRUD, drag-drop, dispatch, and detail → use the Kanban tab.
+// ────────────────────────────────────────────────────────────────────────────
+
+let _masterTodosLastRenderedHash = null;
+let _masterTodosFetchInProgress = false;
+
+// Kanban-native status order and display config
+const MASTER_STATUS_ORDER = ['triage','todo','ready','running','blocked','done','archived'];
+const MASTER_STATUS_COLORS = {
+  triage:   {bg:'rgba(180,130,50,.12)', border:'rgba(180,130,50,.4)', text:'#c89632', icon:'inbox'},
+  todo:     {bg:'rgba(130,130,130,.10)', border:'rgba(130,130,130,.3)', text:'var(--muted)', icon:'square'},
+  ready:    {bg:'rgba(80,160,240,.10)',  border:'rgba(80,160,240,.3)',  text:'var(--blue)',  icon:'circle-dot'},
+  running:  {bg:'rgba(80,180,100,.10)',  border:'rgba(80,180,100,.3)', text:'#4caf6e',       icon:'loader'},
+  blocked:  {bg:'rgba(220,80,60,.10)',   border:'rgba(220,80,60,.3)',  text:'#e05545',       icon:'alert-triangle'},
+  done:     {bg:'rgba(100,200,100,.08)', border:'rgba(100,200,100,.2)',text:'rgba(100,200,100,.7)',icon:'check'},
+  archived: {bg:'rgba(130,130,130,.06)', border:'rgba(130,130,130,.15)',text:'rgba(130,130,130,.4)',icon:'archive'},
+};
+const MASTER_PRIORITY_LABELS = {0:'Normal',1:'Low',2:'Medium',5:'High',10:'Urgent',20:'Critical',90:'Top'};
+
+// Extract all tasks from a kanban board payload, preserving full kanban fields.
+function _kanbanBoardToMissionList(board) {
+  if (!board || !Array.isArray(board.columns)) return [];
+  const allTasks = [];
+  for (const col of board.columns) {
+    if (!col || !Array.isArray(col.tasks)) continue;
+    for (const task of col.tasks) {
+      allTasks.push({
+        id: task.id || '',
+        title: task.title || '',
+        body: task.body || '',
+        status: task.status || 'todo',
+        assignee: task.assignee || '',
+        priority: task.priority || 0,
+        tenant: task.tenant || '',
+        link_counts: task.link_counts || {parents: 0, children: 0},
+        comment_count: task.comment_count || 0,
+        age: task.age_seconds || task.age || null,
+      });
+    }
+  }
+  return allTasks;
+}
+
+// Render the status stats bar
+function _renderMissionStats(tasks) {
+  const counts = {};
+  for (const s of MASTER_STATUS_ORDER) counts[s] = 0;
+  for (const t of tasks) {
+    const s = t.status || 'todo';
+    counts[s] = (counts[s] || 0) + 1;
+  }
+  let html = '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+  for (const s of MASTER_STATUS_ORDER) {
+    const n = counts[s] || 0;
+    if (n === 0) continue;
+    const c = MASTER_STATUS_COLORS[s] || MASTER_STATUS_COLORS.todo;
+    html += '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:' + c.bg + ';border:1px solid ' + c.border + ';color:' + c.text + '">';
+    if (typeof li === 'function') html += li(c.icon, 10);
+    html += n + '</span>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// Render a single task row for the mission control view.
+// Clicking opens the task detail in the Kanban panel — no inline editing.
+function _renderMissionTask(task) {
+  const s = task.status || 'todo';
+  const c = MASTER_STATUS_COLORS[s] || MASTER_STATUS_COLORS.todo;
+  const prio = task.priority || 0;
+  const prioLabel = MASTER_PRIORITY_LABELS[prio] || (prio > 0 ? 'P' + prio : '');
+  const assignee = task.assignee || '';
+  const deps = task.link_counts || {};
+  const hasChildren = (deps.children || 0) > 0;
+  const hasParents = (deps.parents || 0) > 0;
+
+  // Truncate title for compact display
+  const title = (task.title || task.id || 'Untitled');
+  const displayTitle = title.length > 60 ? title.slice(0, 57) + '\u2026' : title;
+
+  let badges = '';
+  if (prio >= 10) badges += '<span style="font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;background:rgba(220,80,60,.15);color:#e05545;margin-left:4px">' + esc(String(prioLabel || prio)) + '</span>';
+  else if (prio >= 5) badges += '<span style="font-size:9px;font-weight:600;padding:1px 4px;border-radius:3px;background:rgba(220,160,50,.12);color:#c89632;margin-left:4px">' + esc(String(prioLabel || prio)) + '</span>';
+  if (hasChildren) badges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(80,160,240,.1);color:var(--blue);margin-left:4px">\u2193' + deps.children + '</span>';
+  if (hasParents) badges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(130,130,130,.1);color:var(--muted);margin-left:4px">\u2191' + deps.parents + '</span>';
+  if (task.comment_count > 0) badges += '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(130,130,130,.08);color:var(--muted);margin-left:4px">\uD83D\uDCAC' + task.comment_count + '</span>';
+
+  const assigneeTag = assignee
+    ? '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(130,130,130,.1);color:var(--muted);margin-left:auto;flex-shrink:0">' + esc(assignee) + '</span>'
+    : '';
+
+  const isDone = s === 'done' || s === 'archived';
+  const titleStyle = isDone ? 'text-decoration:line-through;opacity:.6' : '';
+
+  return '<div class="mission-task" onclick="switchPanel(\'kanban\');openKanbanCard(event,\'' + esc(task.id) + '\')" style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:6px;cursor:pointer;transition:background .15s" onmouseenter="this.style.background=\'var(--hover-bg)\'" onmouseleave="this.style.background=\'transparent\'">' +
+    '<span style="font-size:13px;display:inline-flex;align-items:center;flex-shrink:0;color:' + c.text + '">' + (typeof li==='function'?li(c.icon,13):'') + '</span>' +
+    '<span style="flex:1;min-width:0;font-size:12px;color:' + (isDone?'var(--muted)':'var(--text)') + ';' + titleStyle + ';line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(displayTitle) + '</span>' +
+    badges + assigneeTag +
+    '</div>';
+}
+
+// Render a group section with header
+function _renderMissionGroup(label, tasks, groupStyle) {
+  if (!tasks.length) return '';
+  let html = '<div style="margin-bottom:12px">';
+  html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;margin-bottom:4px;' + (groupStyle||'') + '">';
+  html += '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">' + esc(label) + '</span>';
+  html += '<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;background:var(--hover-bg);color:var(--muted)">' + tasks.length + '</span>';
+  html += '</div>';
+  for (const t of tasks) html += _renderMissionTask(t);
+  html += '</div>';
+  return html;
+}
+
+// Main render: group tasks and produce mission-control HTML
+function _renderMissionControl(tasks) {
+  const groupBy = ($('todoGroupBy') && $('todoGroupBy').value) || 'status';
+
+  // Sort tasks: status priority first, then by kanban priority desc, then id
+  const statusPriority = {running:0,blocked:1,triage:2,todo:3,ready:4,done:5,archived:6};
+  tasks.sort(function(a, b) {
+    const sp = (statusPriority[a.status] != null ? statusPriority[a.status] : 3) - (statusPriority[b.status] != null ? statusPriority[b.status] : 3);
+    if (sp !== 0) return sp;
+    const pp = (b.priority || 0) - (a.priority || 0);
+    if (pp !== 0) return pp;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  // Update stats bar
+  const statsEl = $('todoStats');
+  if (statsEl) statsEl.innerHTML = _renderMissionStats(tasks);
+
+  if (groupBy === 'flat') {
+    let html = '';
+    for (const t of tasks) html += _renderMissionTask(t);
+    return html;
+  }
+
+  // Group tasks
+  const groups = {};
+  if (groupBy === 'status') {
+    for (const s of MASTER_STATUS_ORDER) groups[s] = [];
+    for (const t of tasks) {
+      const s = t.status || 'todo';
+      if (!groups[s]) groups[s] = [];
+      groups[s].push(t);
+    }
+    let html = '';
+    for (const s of MASTER_STATUS_ORDER) {
+      if (!groups[s] || !groups[s].length) continue;
+      const c = MASTER_STATUS_COLORS[s] || MASTER_STATUS_COLORS.todo;
+      const label = t('kanban_status_' + s) || s.charAt(0).toUpperCase() + s.slice(1);
+      const groupStyle = 'border-left:3px solid ' + c.text + ';padding-left:8px';
+      html += _renderMissionGroup(label, groups[s], groupStyle);
+    }
+    return html;
+  }
+
+  if (groupBy === 'assignee') {
+    for (const t of tasks) {
+      const a = t.assignee || 'Unassigned';
+      if (!groups[a]) groups[a] = [];
+      groups[a].push(t);
+    }
+    const sortedKeys = Object.keys(groups).sort(function(a, b) {
+      if (a === 'Unassigned') return 1;
+      if (b === 'Unassigned') return -1;
+      return a.localeCompare(b);
+    });
+    let html = '';
+    for (const a of sortedKeys) {
+      html += _renderMissionGroup(a, groups[a], 'border-left:3px solid var(--blue);padding-left:8px');
+    }
+    return html;
+  }
+
+  if (groupBy === 'priority') {
+    const prioBuckets = {Critical:[],High:[],Medium:[],Low:[],Normal:[]};
+    const bucketOrder = ['Critical','High','Medium','Low','Normal'];
+    for (const t of tasks) {
+      const p = t.priority || 0;
+      let bucket = 'Normal';
+      if (p >= 20 || p === 90) bucket = 'Critical';
+      else if (p >= 10) bucket = 'High';
+      else if (p >= 5) bucket = 'Medium';
+      else if (p >= 1) bucket = 'Low';
+      prioBuckets[bucket].push(t);
+    }
+    const prioColors = {Critical:'#e05545',High:'#c89632',Medium:'var(--blue)',Low:'rgba(130,130,130,.6)',Normal:'var(--muted)'};
+    let html = '';
+    for (const b of bucketOrder) {
+      if (!prioBuckets[b].length) continue;
+      html += _renderMissionGroup(b, prioBuckets[b], 'border-left:3px solid ' + prioColors[b] + ';padding-left:8px');
+    }
+    return html;
+  }
+
+  // Fallback: flat
+  let html = '';
+  for (const t of tasks) html += _renderMissionTask(t);
+  return html;
+}
+
+async function loadTodos(forceRefresh) {
   const panel = $('todoPanel');
   if (!panel) return;
 
-  let todos;
-  if (S.todoStateMeta) {
-    todos = Array.isArray(S.todos) ? S.todos : [];
-  } else {
-    todos = _legacyTodosFromMessages();
-  }
+  if (_masterTodosFetchInProgress) return;
+  _masterTodosFetchInProgress = true;
 
-  if (!todos.length) {
-    if (typeof _todosLastRenderedHash !== 'undefined' && _todosLastRenderedHash === '__empty__') return;
-    panel.innerHTML = renderTodoEmptyState();
-    if (typeof _todosLastRenderedHash !== 'undefined') _todosLastRenderedHash = '__empty__';
-    return;
-  }
+  try {
+    const includeArchived = !!($('todoIncludeArchived') && $('todoIncludeArchived').checked);
+    var url = '/api/kanban/board';
+    var params = [];
+    if (includeArchived) params.push('include_archived=1');
+    if (params.length) url += '?' + params.join('&');
 
-  if (typeof _todosHash === 'function' && typeof _todosLastRenderedHash !== 'undefined') {
-    const hash = _todosHash(todos);
-    if (hash === _todosLastRenderedHash) return;
-    _todosLastRenderedHash = hash;
-  }
+    const data = await api(url);
+    if (!data || data.changed === false) {
+      // unchanged — skip repaint
+      return;
+    }
+    const tasks = _kanbanBoardToMissionList(data);
 
-  // Single innerHTML join is the cheapest correct way to materialize
-  // ~10–50 leaf nodes.  All user-controlled content goes through esc().
-  panel.innerHTML = renderTodoRows(todos, {metadata:true});
+    if (!tasks.length) {
+      if (_masterTodosLastRenderedHash === '__empty__') return;
+      panel.innerHTML = renderTodoEmptyState();
+      var statsEl = $('todoStats');
+      if (statsEl) statsEl.innerHTML = '';
+      _masterTodosLastRenderedHash = '__empty__';
+      return;
+    }
+
+    // Hash dedup using the full task list
+    if (typeof _todosHash === 'function') {
+      const hash = _todosHash(tasks);
+      if (!forceRefresh && hash === _masterTodosLastRenderedHash) return;
+      _masterTodosLastRenderedHash = hash;
+    }
+
+    panel.innerHTML = _renderMissionControl(tasks);
+  } catch (e) {
+    if (_masterTodosLastRenderedHash !== '__error__') {
+      var panel2 = $('todoPanel');
+      if (panel2) panel2.innerHTML = renderTodoEmptyState();
+      var statsEl2 = $('todoStats');
+      if (statsEl2) statsEl2.innerHTML = '';
+      _masterTodosLastRenderedHash = '__error__';
+    }
+  } finally {
+    _masterTodosFetchInProgress = false;
+  }
 }
 
 // Legacy fallback: reverse-scan settled tool messages for the most
@@ -8125,6 +8350,7 @@ async function _autosavePreferencesSettings(payload){
       window._terminalAutoExpandOnOutput=!!(saved&&saved.terminal_auto_expand_on_output);
     }
     if(payload&&payload.workspace_todos_tab!==undefined){
+      // Default to true when the setting has never been explicitly saved
       window._workspaceTodosTab=!!(saved&&saved.workspace_todos_tab);
       if(typeof _applyWorkspaceTodosTabVisibility==='function') _applyWorkspaceTodosTabVisibility();
     }
@@ -10765,7 +10991,9 @@ function _applySavedSettingsUi(saved, body, opts){
   window._simplifiedToolCalling=true;
   _syncChatActivityDisplayModeControl(body.chat_activity_display_mode);
   window._terminalAutoExpandOnOutput=!!body.terminal_auto_expand_on_output;
-  window._workspaceTodosTab=!!body.workspace_todos_tab;
+  // Default to true so the per-session Todos tab is visible in the right sidebar
+  // by default. Users can still toggle it off in preferences.
+  window._workspaceTodosTab=body.workspace_todos_tab!==undefined?!!body.workspace_todos_tab:true;
   if(typeof _applyWorkspaceTodosTabVisibility==='function') _applyWorkspaceTodosTabVisibility();
   window._sessionJumpButtonsEnabled=!!body.session_jump_buttons;
   if(typeof _applySessionNavigationPrefs==='function') _applySessionNavigationPrefs();
