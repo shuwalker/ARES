@@ -52,9 +52,14 @@ src-tauri/dist/
 # ARES Electron wrapper — local build artifacts (never commit)
 windows-app/node_modules/
 windows-app/dist/
+windows-app/build.log
 
 # Hermes local runtime
 .hermes/
 
 # Wrapper venv
 .venv-ares-wrapper/
+
+# Node.js — local install (never commit)
+node_modules/
+package-lock.json
