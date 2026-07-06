@@ -23,10 +23,7 @@ iex (irm https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/ins
 ```
 
 **Remote access over Tailscale:**
-```bash
-tailscale serve --https=8787 reset
-# Then access via http://<tailscale-ip>:8787
-```
+Install Tailscale on both machines, sign into the same tailnet, then access via `http://<tailscale-ip>:8787`.
 
 ## Manual start
 

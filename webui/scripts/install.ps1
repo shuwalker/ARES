@@ -159,8 +159,8 @@ Write-Host ""
 Write-Host "  Then open: http://localhost:$PortFinal"
 Write-Host ""
 Write-Host "  For remote access over Tailscale:"
-Write-Host "    tailscale serve --https=$PortFinal reset"
-Write-Host "    # Access via http://<tailscale-ip>:$PortFinal"
+Write-Host "    Install Tailscale on both machines, sign into the same tailnet,"
+Write-Host "    then access via http://<tailscale-ip>:$PortFinal"
 Write-Host ""
 
 if (-not $SkipSetup) {
