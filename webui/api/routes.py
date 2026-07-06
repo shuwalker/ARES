@@ -11615,6 +11615,44 @@ def handle_get(handler, parsed) -> bool:
             return bad(handler, f"Failed to save backend: {exc}")
         return j(handler, {"ok": True, "backend": backend})
 
+    if parsed.path == "/api/ares/self-persistence":
+        try:
+            from api.ares_self_persistence import build_self_persistence_contract
+            from api.config import get_config as _get_cfg
+            _cfg = _get_cfg()
+            contract = build_self_persistence_contract(_cfg)
+        except Exception as exc:
+            return bad(handler, f"Failed to build ARES self-persistence contract: {exc}")
+        return j(handler, {"self_persistence": contract})
+
+    # ARES: Runtime context — live operating state for the agent
+    if parsed.path == "/api/ares/runtime-context":
+        try:
+            from api.ares_runtime_context import build_runtime_context
+            from api.backend_selector import get_active_backend
+            from api.config import get_config as _get_cfg
+            _cfg = _get_cfg()
+            backend = get_active_backend(_cfg)
+            context = build_runtime_context(backend=backend)
+        except Exception as exc:
+            return bad(handler, f"Failed to build ARES runtime context: {exc}")
+        return j(handler, {"runtime_context": context})
+
+    # ARES: Tool definitions — callable tools for the active backend
+    if parsed.path == "/api/ares/tools":
+        try:
+            from api.ares_tool_adapter import register_ares_tools
+            from api.backend_selector import get_active_backend
+            from api.config import get_config as _get_cfg
+            _cfg = _get_cfg()
+            backend = get_active_backend(_cfg)
+            # Normalize backend name for tool adapter
+            target = "hermes" if backend in ("hermes", "hybrid") else backend
+            tools = register_ares_tools(target=target)
+        except Exception as exc:
+            return bad(handler, f"Failed to list ARES tools: {exc}")
+        return j(handler, {"tools": tools})
+
     if parsed.path == "/api/git-info":
         qs = parse_qs(parsed.query)
         sid = qs.get("session_id", [""])[0]
@@ -12162,6 +12200,23 @@ def handle_get(handler, parsed) -> bool:
                     handler.end_headers()
                     handler.wfile.write(html_content)
                     return True
+
+    # ── Email API routes (backed by MailAssistant) ──
+    if parsed.path == "/api/email/unread":
+        from api.email_routes import handle_email_unread_get
+        return handle_email_unread_get(handler, parsed)
+    if parsed.path == "/api/email/all":
+        from api.email_routes import handle_email_all_get
+        return handle_email_all_get(handler, parsed)
+    if parsed.path == "/api/email/message":
+        from api.email_routes import handle_email_message_get
+        return handle_email_message_get(handler, parsed)
+    if parsed.path == "/api/email/classify":
+        from api.email_routes import handle_email_classify_get
+        return handle_email_classify_get(handler, parsed)
+    if parsed.path == "/api/email/thread":
+        from api.email_routes import handle_email_thread_get
+        return handle_email_thread_get(handler, parsed)
 
     return False  # 404
 
@@ -14501,6 +14556,23 @@ def handle_post(handler, parsed) -> bool:
         except Exception as e:
             logger.exception("rollback/restore failed")
             return bad(handler, str(e), status=500)
+
+    # ── Email API routes (backed by MailAssistant) ──
+    if parsed.path == "/api/email/draft":
+        from api.email_routes import handle_email_draft_post
+        return handle_email_draft_post(handler, parsed, body)
+    if parsed.path == "/api/email/clean":
+        from api.email_routes import handle_email_clean_post
+        return handle_email_clean_post(handler, parsed, body)
+    if parsed.path == "/api/email/move":
+        from api.email_routes import handle_email_move_post
+        return handle_email_move_post(handler, parsed, body)
+    if parsed.path == "/api/email/mark_read":
+        from api.email_routes import handle_email_mark_read_post
+        return handle_email_mark_read_post(handler, parsed, body)
+    if parsed.path == "/api/email/save_nas":
+        from api.email_routes import handle_email_save_nas_post
+        return handle_email_save_nas_post(handler, parsed, body)
 
     return False  # 404
 
