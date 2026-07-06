@@ -4,20 +4,35 @@ Web interface for ARES — Artificial Reasoning Entity System.
 
 Forked from [hermes-webui](https://github.com/nesquena/hermes-webui), rebranded as ARES.
 
-## Running
+## Install
+
+**Windows — no terminal needed:**
+1. Download [`start_ares.bat`](webui/start_ares.bat) from the repo
+2. Double-click it
+
+That's it. It downloads Python if missing, clones the repo, installs deps, and starts the server. The onboarding wizard handles the rest.
+
+**macOS / Linux (terminal):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iex (irm https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.ps1)
+```
+
+**Remote access over Tailscale:**
+```bash
+tailscale serve --https=8787 reset
+# Then access via http://<tailscale-ip>:8787
+```
+
+## Manual start
 
 ```bash
-# Create venv (Python 3.11+)
-python3.11 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install -e ~/.hermes/hermes-agent  # Hermes Agent (editable)
-
-# Configure
-cp .env.example .env
-# Edit .env — set HERMES_WEBUI_PASSWORD
-
-# Start
-.venv/bin/python server.py
+cd ARES/webui
+python server.py
 # → http://localhost:8787
 ```
 

@@ -66,10 +66,12 @@ def resolve_jros_config_path() -> Path:
         if instance_name:
             return _expand_path(Path("~/.jaeger/instances").expanduser() / instance_name / "config.yaml")
 
-    fallback = Path("~/jaeger/jaeger_os/instance/default/config.yaml").expanduser()
-    if fallback.exists():
-        return _expand_path(fallback)
+    # Check the actual JROS repo install location first
+    repo_path = Path("~/jaeger/jaeger_os/instance/default/config.yaml").expanduser()
+    if repo_path.exists():
+        return _expand_path(repo_path)
 
+    # Default instance path (JROS uses ~/.jaeger/instances/<name>/config.yaml)
     return _expand_path(Path("~/.jaeger/instances/default/config.yaml"))
 
 
@@ -194,6 +196,7 @@ def sync_provider(
         "changed_targets": [],
         "dry_run": bool(dry_run),
         "secret_values_written": False,
+        "fallback_chain_synced": False,
     }
 
     if "hermes" in normalized_targets:
@@ -226,4 +229,59 @@ def sync_provider(
         if changed:
             results["changed_targets"].append("jros")
 
+    return results
+
+
+def sync_fallback_chain(
+    hermes_config_path: str | os.PathLike[str] | None = None,
+    jros_config_path: str | os.PathLike[str] | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Sync the fallback_providers chain from Hermes config to JROS config.
+    
+    Returns a JSON-safe dictionary describing what was synced.
+    """
+    results: dict[str, Any] = {
+        "ok": True,
+        "fallback_chain_synced": False,
+        "dry_run": bool(dry_run),
+        "targets": {},
+        "changed_targets": [],
+        "fallback_entries_synced": 0,
+    }
+    
+    if hermes_config_path is None:
+        raise ValueError("hermes_config_path is required")
+    
+    hermes_path = _expand_path(hermes_config_path)
+    hermes_current = load_yaml_config(hermes_path)
+    fallback_chain = hermes_current.get("fallback_providers", [])
+    
+    if not isinstance(fallback_chain, list) or not fallback_chain:
+        results["targets"]["hermes"] = {"path": str(hermes_path), "changed": False, "note": "no fallback chain"}
+        return results
+    
+    results["targets"]["hermes"] = {
+        "path": str(hermes_path),
+        "changed": False,
+        "fallback_entries": len(fallback_chain),
+    }
+    
+    if jros_config_path is not None or resolve_jros_config_path().exists():
+        jros_path = _expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
+        jros_current = load_yaml_config(jros_path)
+        
+        updated = deepcopy(jros_current)
+        updated["fallback_providers"] = deepcopy(fallback_chain)
+        
+        changed = updated != jros_current
+        if changed and not dry_run:
+            save_yaml_config(jros_path, updated)
+        
+        results["targets"]["jros"] = _path_result(jros_path, changed)
+        results["fallback_chain_synced"] = True
+        results["fallback_entries_synced"] = len(fallback_chain)
+        if changed:
+            results["changed_targets"].append("jros")
+    
     return results

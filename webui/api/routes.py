@@ -11578,10 +11578,11 @@ def handle_get(handler, parsed) -> bool:
         body = read_body(handler)
         persona_id = str(body.get("persona_id", "")).strip()
         try:
-            from api.config import get_config as _get_cfg, save_settings
-            _cfg = _get_cfg()
+            config_path = _get_config_path()
+            _cfg = _load_yaml_config_file(config_path)
             _cfg["ares_persona"] = persona_id
-            save_settings(_cfg)
+            _save_yaml_config_file(config_path, _cfg)
+            reload_config()
         except Exception as exc:
             return bad(handler, f"Failed to save persona: {exc}")
         return j(handler, {"ok": True, "persona_id": persona_id})
@@ -11607,10 +11608,11 @@ def handle_get(handler, parsed) -> bool:
         if backend not in ("hermes", "jros", "hybrid"):
             return bad(handler, f"Invalid backend: {backend}. Must be hermes, jros, or hybrid.")
         try:
-            from api.config import get_config as _get_cfg, save_settings
-            _cfg = _get_cfg()
+            config_path = _get_config_path()
+            _cfg = _load_yaml_config_file(config_path)
             _cfg["ares_backend"] = backend
-            save_settings(_cfg)
+            _save_yaml_config_file(config_path, _cfg)
+            reload_config()
         except Exception as exc:
             return bad(handler, f"Failed to save backend: {exc}")
         return j(handler, {"ok": True, "backend": backend})
@@ -12773,10 +12775,11 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/ares/persona/set":
         persona_id = str(body.get("persona_id", "")).strip()
         try:
-            from api.config import get_config as _get_cfg, save_settings
-            _cfg = _get_cfg()
+            config_path = _get_config_path()
+            _cfg = _load_yaml_config_file(config_path)
             _cfg["ares_persona"] = persona_id
-            save_settings(_cfg)
+            _save_yaml_config_file(config_path, _cfg)
+            reload_config()
         except Exception as exc:
             return bad(handler, f"Failed to save persona: {exc}")
         return j(handler, {"ok": True, "persona_id": persona_id})
@@ -12786,10 +12789,11 @@ def handle_post(handler, parsed) -> bool:
         if backend not in ("hermes", "jros", "hybrid"):
             return bad(handler, f"Invalid backend: {backend}. Must be hermes, jros, or hybrid.")
         try:
-            from api.config import get_config as _get_cfg, save_settings
-            _cfg = _get_cfg()
+            config_path = _get_config_path()
+            _cfg = _load_yaml_config_file(config_path)
             _cfg["ares_backend"] = backend
-            save_settings(_cfg)
+            _save_yaml_config_file(config_path, _cfg)
+            reload_config()
         except Exception as exc:
             return bad(handler, f"Failed to save backend: {exc}")
         return j(handler, {"ok": True, "backend": backend})
@@ -12824,6 +12828,22 @@ def handle_post(handler, parsed) -> bool:
                 hermes_config_path=_active_profile_config_path(),
                 dry_run=dry_run,
             )
+            
+            # Also sync the fallback_providers chain from Hermes to JROS
+            if "jros" in targets:
+                from api.ares_provider_sync import sync_fallback_chain
+                
+                try:
+                    fallback_result = sync_fallback_chain(
+                        hermes_config_path=_active_profile_config_path(),
+                        dry_run=dry_run,
+                    )
+                    result["fallback_chain"] = fallback_result
+                except Exception as fallback_exc:
+                    # Non-fatal - log but don't fail the whole sync
+                    logger.warning("Failed to sync fallback chain: %s", fallback_exc)
+                    result["fallback_chain"] = {"ok": False, "error": str(fallback_exc)}
+            
         except ValueError as exc:
             return bad(handler, str(exc), 400)
         except Exception as exc:

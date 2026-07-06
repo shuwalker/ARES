@@ -3496,11 +3496,15 @@ async function loadTodos(forceRefresh) {
   const panel = $('todoPanel');
   if (!panel) return;
 
+  _hydrateMissionControlPrefs();
+  _persistMissionControlPrefs();
+
   if (_masterTodosFetchInProgress) return;
   _masterTodosFetchInProgress = true;
 
   try {
     const includeArchived = !!($('todoIncludeArchived') && $('todoIncludeArchived').checked);
+    _persistMissionControlPrefs();
     var url = '/api/kanban/board';
     var params = [];
     if (includeArchived) params.push('include_archived=1');
@@ -6396,7 +6400,7 @@ window.addEventListener('resize',()=>{
 
 // ── ARES Backend Selector ─────────────────────────────────────
 // The core ARES feature: pick which AI backend runs your agent.
-// Hermes (default), JROS, or Hybrid (Hermes + JROS).
+// Hermes, JROS as the full replacement backend, or Hybrid as the additive mode.
 
 let _aresCurrentBackend = 'hermes';
 let _aresJrosAvailable = false;
@@ -6413,11 +6417,28 @@ function initAresBackend() {
   });
 }
 
+function _aresBackendDisplayName(backend) {
+  return { hermes: 'Hermes', jros: 'JROS', hybrid: 'Hybrid' }[backend] || 'Hermes';
+}
+
+function _syncAresBackendDependentUI() {
+  const personaWrap = $('aresPersonaWrap');
+  if (personaWrap) personaWrap.style.display = (_aresCurrentBackend === 'hybrid') ? '' : 'none';
+
+  const chip = $('aresBackendChip');
+  if (chip) {
+    chip.dataset.backend = _aresCurrentBackend;
+    chip.title = _aresCurrentBackend === 'jros'
+      ? 'JROS is running this conversation'
+      : _aresCurrentBackend === 'hybrid'
+        ? 'Hybrid mode: Hermes loop with JROS persona/tools'
+        : 'Hermes is running this conversation';
+  }
+}
+
 function updateAresBackendUI() {
   const label = $('aresBackendLabel');
-  if (label) label.textContent = {
-    hermes: 'Hermes', jros: 'JROS', hybrid: 'Hybrid'
-  }[_aresCurrentBackend] || 'Hermes';
+  if (label) label.textContent = _aresBackendDisplayName(_aresCurrentBackend);
 
   // Update checkmarks
   document.querySelectorAll('.ares-backend-check[data-check-for]').forEach(el => {
@@ -6432,14 +6453,18 @@ function updateAresBackendUI() {
   // JROS status text
   const jrosStatus = $('aresBackendJrosStatus');
   const hybridStatus = $('aresBackendHybridStatus');
-  if (jrosStatus) jrosStatus.textContent = _aresJrosAvailable ? 'JROS daemon online' : 'JROS daemon offline';
-  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes + JROS persona + tools' : 'Needs JROS daemon running';
+  if (jrosStatus) jrosStatus.textContent = _aresJrosAvailable ? 'Full replacement runtime ready' : 'Full replacement bridge boots on next turn';
+  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes loop + JROS persona/tools' : 'Needs JROS presence bridge';
 
-  // Dim unavailable options
+  // Direct JROS is allowed even when the presence daemon is offline because the
+  // real JROS bridge boots JROS in-process on first use. Hybrid still depends on
+  // the presence/tool bridge.
   const jrosOpt = $('aresBackendOptionJros');
   const hybridOpt = $('aresBackendOptionHybrid');
-  if (jrosOpt) jrosOpt.style.opacity = _aresJrosAvailable ? '1' : '0.5';
+  if (jrosOpt) jrosOpt.style.opacity = '1';
   if (hybridOpt) hybridOpt.style.opacity = _aresJrosAvailable ? '1' : '0.5';
+
+  _syncAresBackendDependentUI();
 }
 
 function toggleAresBackendDropdown() {
@@ -6473,16 +6498,16 @@ function closeAresBackendDropdown() {
 }
 
 function setAresBackend(backend) {
-  if (backend !== 'hermes' && !_aresJrosAvailable) {
-    showToast('JROS daemon is offline — start it first');
+  if (backend === 'hybrid' && !_aresJrosAvailable) {
+    showToast('Hybrid needs the JROS presence bridge running');
     return;
   }
   api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify({ backend }) })
-    .then(() => {
-      _aresCurrentBackend = backend;
+    .then(data => {
+      _aresCurrentBackend = (data && data.backend) || backend;
       updateAresBackendUI();
       closeAresBackendDropdown();
-      showToast(`Backend switched to ${backend === 'hermes' ? 'Hermes' : backend === 'jros' ? 'JROS' : 'Hybrid'}`);
+      showToast(`Backend switched to ${_aresBackendDisplayName(_aresCurrentBackend)}`);
     })
     .catch(e => showToast('Failed to switch backend'));
 }
@@ -6603,18 +6628,6 @@ document.addEventListener('click', e => {
 window.addEventListener('DOMContentLoaded', () => {
   setTimeout(initAresPersona, 800);
 });
-
-// ── ARES Backend visibility sync ──────────────────────────────
-// When backend changes, show/hide persona chip accordingly.
-// Wrap the existing setAresBackend to add persona visibility logic.
-const _origSetAresBackend = window.setAresBackend;
-if (_origSetAresBackend) {
-  window.setAresBackend = function(backend) {
-    _origSetAresBackend.call(this, backend);
-    const wrap = $('aresPersonaWrap');
-    if (wrap) wrap.style.display = (backend === 'hybrid') ? '' : 'none';
-  };
-}
 
 async function switchToProfile(name) {
   // ── #4671 profile-switch loading-skeleton — FOUR-GUARD CONTRACT ───────────────
@@ -10109,7 +10122,7 @@ async function loadProvidersPanel(){
   try{
     const data=await api('/api/providers');
     const quota=await _fetchProviderQuotaStatus(false).catch(e=>({ok:false,status:'unavailable',quota:null,message:e.message||t('provider_quota_unavailable'),client_fetched_at:new Date().toISOString()}));
-    const providers=(data.providers||[]).filter(p=>p.configurable||p.is_oauth||p.is_custom||p.is_plugin_provider);
+    const providers=(data.providers||[]).filter(p=>p.configurable||p.is_oauth||p.is_custom||p.is_plugin_provider||p.has_key);
     list.innerHTML='';
     _providerCardEls.clear();
     const quotaCard=_buildProviderQuotaCard(quota);

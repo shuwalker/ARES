@@ -4748,13 +4748,34 @@ def _pool_entry_payloads(provider_id: str) -> list[dict[str, Any]]:
 
 def _has_explicit_pool_credentials(provider_id: str) -> bool:
     """Return True when the credential pool has at least one non-ambient entry
-    for *provider_id* (i.e. not a gh-cli / GITHUB_TOKEN auto-detect).
+    for *provider_id* (i.e. not a gh-cli / GITHUB_TOKEN auto-detect) **that
+    actually has a usable credential** — not just a metadata placeholder.
+
+    Entries with ``source: "env:..."`` whose env var is unset will have
+    ``runtime_api_key: None``; those should not count as having a key.
+    Similarly, entries with only a ``secret_fingerprint`` (a reference hash)
+    but no resolved ``runtime_api_key`` or ``access_token`` are stale
+    placeholders and should not count.
 
     Reuses ``_CREDENTIAL_POOL_CACHE`` so that callers on hot paths (provider
     detection, model listing, live-model fetch) don't pay the ~10s load_pool
     cost more than once per TTL window.
     """
-    return bool(_pool_entry_payloads(provider_id))
+    payloads = _pool_entry_payloads(provider_id)
+    if not payloads:
+        return False
+    # At least one payload must have a usable runtime credential.
+    for p in payloads:
+        auth_type = (p.get("auth_type") or "").strip().lower()
+        if p.get("runtime_api_key"):
+            # API-key entry with a resolved key — usable.
+            return True
+        if auth_type == "oauth" and p.get("access_token"):
+            # OAuth entry with a live access token — usable.
+            return True
+    # All entries are metadata-only (env refs with no actual key resolved,
+    # or OAuth entries with only a stale fingerprint but no access_token).
+    return False
 _provider_models_invalidated_ts: dict[str, float] = {}  # provider_id -> timestamp of last invalidation
 
 # Disk-backed in-memory cache for get_available_models().
@@ -8248,11 +8269,66 @@ def save_settings(settings: dict) -> dict:
     global DEFAULT_WORKSPACE
     if "default_workspace" in current:
         DEFAULT_WORKSPACE = resolve_default_workspace(current["default_workspace"])
+
+    # ARES: Auto-sync provider changes to Hermes and JROS configs
+    # This ensures both backends use the same providers and fallbacks
+    _sync_providers_on_settings_save(current)
+
     current["default_model"] = get_effective_default_model()
     return current
 
 
+def _sync_providers_on_settings_save(settings: dict) -> None:
+    """Sync provider changes to Hermes and JROS configs automatically.
+    
+    Called after save_settings() to ensure both backends stay in sync.
+    Only syncs when provider-related settings actually changed.
+    """
+    try:
+        # Check if provider settings changed
+        provider = settings.get("default_model_provider")
+        if not provider:
+            return
+        
+        # Get the current model for this provider
+        from api.config import get_config as _get_cfg
+        cfg = _get_cfg()
+        model = cfg.get("model", {}).get("default", "")
+        if not model:
+            return
+        
+        # Trigger async sync to Hermes + JROS configs
+        _trigger_provider_sync(provider, model)
+    except Exception:
+        # Never block settings save on sync failure
+        logger.debug("Provider auto-sync failed", exc_info=True)
+
+
+def _trigger_provider_sync(provider: str, model: str) -> None:
+    """Trigger provider sync in background to avoid blocking UI."""
+    import threading
+    
+    def _sync_worker():
+        try:
+            from api.ares_provider_sync import sync_provider
+            from api.config import _get_config_path
+            
+            # Sync to both Hermes and JROS
+            sync_provider(
+                provider=provider,
+                model=model,
+                targets=["hermes", "jros"],
+                hermes_config_path=_get_config_path(),
+                dry_run=False,
+            )
+        except Exception:
+            logger.debug("Background provider sync failed for %s/%s", provider, model)
+    
+    thread = threading.Thread(target=_sync_worker, daemon=True)
+    thread.start()
+
 # Apply saved settings on startup (override env-derived defaults)
+# Exception: if HERMES_WEBUI_DEFAULT_WORKSPACE is explicitly set in the
 # Exception: if HERMES_WEBUI_DEFAULT_WORKSPACE is explicitly set in the
 # environment, it wins over whatever settings.json has stored.  Persisted
 # config must never shadow an explicit env-var override (Docker deployments
