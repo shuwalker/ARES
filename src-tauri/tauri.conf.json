@@ -2,7 +2,7 @@
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "devPath": "http://localhost:8787",
+    "devPath": "http://127.0.0.1:8787",
     "distDir": "../webui",
     "withWatch": false
   },
@@ -15,7 +15,8 @@
       "all": false,
       "shell": {
         "all": false,
-        "open": true
+        "open": true,
+        "sidecar": false
       },
       "dialog": {
         "all": true,
@@ -26,7 +27,7 @@
         "save": true
       },
       "fs": {
-        "all": true,
+        "all": false,
         "readFile": true,
         "writeFile": true,
         "readDir": true,
@@ -34,9 +35,24 @@
         "removeFile": true,
         "renameFile": true,
         "exists": true,
-        "scope": ["**"]
+        "scope": [
+          "$APPDATA/ARES/**",
+          "$LOCALAPPDATA/ARES/**",
+          "$APPDATA/**"
+        ]
       },
       "path": {
+        "all": true
+      },
+      "http": {
+        "all": true,
+        "request": true,
+        "scope": [
+          "http://127.0.0.1:8787/**",
+          "https://**"
+        ]
+      },
+      "notification": {
         "all": true
       }
     },
@@ -53,11 +69,21 @@
       ]
     },
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src http://127.0.0.1:8787 https:; img-src 'self' https: data:; script-src 'self'; style-src 'self' 'unsafe-inline'"
     },
     "systemTray": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
+      "iconPath": "icons/icon.ico",
+      "iconAsTemplate": true,
+      "menu": {
+        "show_hide": {
+          "text": "Show / Hide",
+          "action": "show_hide"
+        },
+        "quit": {
+          "text": "Quit",
+          "action": "quit"
+        }
+      }
     },
     "updater": {
       "active": false
@@ -65,12 +91,13 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 800,
+        "height": 900,
         "resizable": true,
         "title": "ARES",
-        "width": 1200,
-        "minHeight": 600,
-        "minWidth": 800
+        "width": 1280,
+        "minHeight": 640,
+        "minWidth": 860,
+        "fileDropEnabled": false
       }
     ]
   }

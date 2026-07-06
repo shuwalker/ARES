@@ -44,3 +44,17 @@ __pycache__/
 .env
 *.pem
 *.key
+
+# ARES Tauri wrapper — local build artifacts (never commit)
+src-tauri/target/
+src-tauri/dist/
+
+# ARES Electron wrapper — local build artifacts (never commit)
+windows-app/node_modules/
+windows-app/dist/
+
+# Hermes local runtime
+.hermes/
+
+# Wrapper venv
+.venv-ares-wrapper/

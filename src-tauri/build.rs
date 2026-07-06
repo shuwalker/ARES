@@ -1,21 +1,18 @@
 use std::process::Command;
 
 fn main() {
-  // When building in release mode, bundle the web UI
-  if cfg!(feature = "custom-protocol") {
-    // This is where we would build the web UI if we were bundling it
-    // For now, we're just connecting to the local server
-    println!("cargo:warning=Building in release mode - connecting to local ARES server at 127.0.0.1:8787");
-  }
-  
-  // Build the web UI assets
-  println!("cargo:warning=Building web UI assets...");
-  let status = Command::new("npm")
-    .args(&["run", "build"])
-    .current_dir("../webui")
+  // When building in release mode with the Tauri CLI, ensure the web UI has
+  // its static assets prepared. The server also serves directly from
+  // webui/static/ so this step is a build-time hint; failure is non-fatal.
+  println!("cargo:warning=Preparing web UI assets for Tauri bundle...");
+  let _ = Command::new("python")
+    .args(["server.py", "preflight"])
+    .current_dir("..")
     .status();
-    
-  if let Err(e) = status {
-    println!("cargo:warning=Failed to build web UI: {}", e);
+
+  // Placed here so cargo sees the distDir files; actual bundling is handled
+  // by tauri.conf.json → "distDir": "../webui".
+  if cfg!(feature = "custom-protocol") {
+    println!("cargo:warning=Tauri custom-protocol build: shipping bundled web assets.");
   }
 }
