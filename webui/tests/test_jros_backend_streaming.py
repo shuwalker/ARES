@@ -109,5 +109,9 @@ def test_jros_bridge_runs_voice_turn_and_persists_session(monkeypatch):
     assert saved.pending_user_message is None
     assert [m["role"] for m in saved.messages] == ["user", "assistant"]
     assert saved.messages[-1]["content"] == "JROS says hi"
+    assert saved.messages[-1]["backend"] == "jros"
+    assert saved.messages[-1]["model_provider"] == "test-provider"
+    assert saved.model == "test-model"
+    assert saved.model_provider == "test-provider"
     assert stream_id not in config.STREAMS
     assert stream_id not in config.CANCEL_FLAGS

@@ -1745,6 +1745,70 @@ def _clear_live_models_cache() -> None:
         _LIVE_MODELS_CACHE.clear()
 
 
+_JROS_COMPATIBLE_MODEL_PROVIDERS = frozenset({"ollama-cloud", "ollama-local", "ollama", "local"})
+
+
+def _filter_model_catalog_for_active_ares_backend(catalog: dict) -> dict:
+    """Return the same model-picker catalog, scoped to the active ARES runtime.
+
+    Backend selection changes who runs the turn; it must not manufacture fake
+    model providers. In direct JROS mode the shared picker should show only real
+    providers that JROS can route today: local Ollama-compatible models and
+    Ollama Cloud. Hermes/Hybrid keep the normal Hermes catalog.
+    """
+    try:
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+
+        if get_active_backend(get_config()) != BACKEND_JROS:
+            return catalog
+    except Exception:
+        return catalog
+
+    filtered = copy.deepcopy(catalog or {})
+    groups = []
+    for group in filtered.get("groups") or []:
+        provider_id = str(group.get("provider_id") or group.get("provider") or "").strip().lower()
+        if provider_id in _JROS_COMPATIBLE_MODEL_PROVIDERS:
+            groups.append(group)
+    filtered["groups"] = groups
+    filtered["ares_backend"] = "jros"
+    filtered["compatible_providers"] = sorted(_JROS_COMPATIBLE_MODEL_PROVIDERS)
+
+    badges = filtered.get("configured_model_badges")
+    if isinstance(badges, dict):
+        filtered["configured_model_badges"] = {
+            model_id: badge
+            for model_id, badge in badges.items()
+            if str((badge or {}).get("provider") or "").strip().lower() in _JROS_COMPATIBLE_MODEL_PROVIDERS
+        }
+
+    active_provider = str(filtered.get("active_provider") or "").strip().lower()
+    if active_provider not in _JROS_COMPATIBLE_MODEL_PROVIDERS:
+        first_group = groups[0] if groups else {}
+        filtered["active_provider"] = first_group.get("provider_id") or first_group.get("provider") or None
+
+    default_model = str(filtered.get("default_model") or "").strip()
+    default_in_filtered = False
+    if default_model:
+        for group in groups:
+            for key in ("models", "extra_models"):
+                if any((m or {}).get("id") == default_model for m in (group.get(key) or [])):
+                    default_in_filtered = True
+                    break
+            if default_in_filtered:
+                break
+    if not default_in_filtered:
+        replacement = None
+        for group in groups:
+            models = group.get("models") or group.get("extra_models") or []
+            if models:
+                replacement = (models[0] or {}).get("id")
+                break
+        filtered["default_model"] = replacement
+
+    return filtered
+
+
 from api import route_session_list_cache as _route_session_list_cache
 
 _SESSIONS_CACHE = _route_session_list_cache._SESSIONS_CACHE
@@ -10692,10 +10756,10 @@ def handle_get(handler, parsed) -> bool:
         # api.config.get_available_models cold path + profile_scope_for_detached_worker.
         freshness = parse_qs(parsed.query or "").get("freshness", [""])[0].strip().lower()
         if freshness == "session_visit":
-            return j(handler, get_available_models_for_session_visit())
+            return j(handler, _filter_model_catalog_for_active_ares_backend(get_available_models_for_session_visit()))
         if freshness:
             return bad(handler, f"unknown models freshness: {freshness}", status=400)
-        return j(handler, get_available_models())
+        return j(handler, _filter_model_catalog_for_active_ares_backend(get_available_models()))
 
     if parsed.path == "/api/models/live":
         from api.profiles import profile_env_for_active_request
@@ -18753,26 +18817,10 @@ def _start_run(
     so both call sites can map it onto their own HTTP shape.
     """
     # ARES product backend selection must happen before the Hermes runtime
-    # adapter/gateway.  Otherwise `jros` looks selected in the UI while the
-    # active Hermes adapter still consumes the turn.
-    try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
-
-        if get_active_backend(get_config()) == BACKEND_JROS:
-            return _start_chat_stream_for_session(
-                s,
-                msg=msg,
-                attachments=attachments,
-                workspace=workspace,
-                model="jros",
-                model_provider="jros",
-                normalized_model=True,
-                diag=diag,
-                source=source,
-                moa_config=None,
-            )
-    except Exception:
-        logger.warning("Failed to resolve ARES backend before runtime adapter", exc_info=True)
+    # adapter/gateway. Otherwise `jros` looks selected in the UI while the
+    # active Hermes adapter still consumes the turn. Backend selection changes
+    # the runtime only; keep the shared model picker authoritative for both
+    # Hermes and JROS instead of manufacturing a fake jros/jros model route.
 
     from api.runtime_adapter import (
         LegacyJournalRuntimeAdapter,

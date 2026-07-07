@@ -113,6 +113,7 @@ def _merge_and_save_jros_turn(
     assistant_text: str,
     workspace: str,
     model: str,
+    model_provider: str | None,
     attachments: list | None,
 ) -> Any:
     with _get_session_agent_lock(session_id):
@@ -127,13 +128,15 @@ def _merge_and_save_jros_turn(
             user_msg["_source"] = pending_source
         if attachments:
             user_msg["attachments"] = list(attachments)
+        selected_model_provider = str(model_provider or "").strip() or None
         assistant_msg = {
             "role": "assistant",
             "content": assistant_text,
             "timestamp": assistant_ts,
             "backend": "jros",
-            "model_provider": "jros",
         }
+        if selected_model_provider:
+            assistant_msg["model_provider"] = selected_model_provider
         saved_reasoning = STREAM_REASONING_TEXT.get(stream_id, "")
         if saved_reasoning:
             assistant_msg["reasoning"] = saved_reasoning
@@ -168,7 +171,8 @@ def _merge_and_save_jros_turn(
             for msg in reversed(s.messages):
                 if isinstance(msg, dict) and msg.get("role") == "assistant" and msg.get("content") == assistant_text:
                     msg["backend"] = "jros"
-                    msg["model_provider"] = "jros"
+                    if selected_model_provider:
+                        msg["model_provider"] = selected_model_provider
                     break
         except Exception:
             logger.debug("Failed to merge JROS display transcript", exc_info=True)
@@ -186,8 +190,8 @@ def _merge_and_save_jros_turn(
         s.pending_started_at = None
         s.pending_user_source = None
         s.workspace = str(workspace)
-        s.model = model or "jros"
-        s.model_provider = "jros"
+        s.model = model or getattr(s, "model", "") or ""
+        s.model_provider = selected_model_provider
         s.save()
         return s
 
@@ -261,8 +265,8 @@ def _run_jros_chat_streaming(
         started_at=time.time(),
         phase="jros-starting",
         workspace=str(workspace),
-        model=model or "jros",
-        provider="jros",
+        model=model or "",
+        provider=model_provider or None,
         backend="jros",
     )
     try:
@@ -353,7 +357,8 @@ def _run_jros_chat_streaming(
             msg_text=str(msg_text or ""),
             assistant_text=assistant_text,
             workspace=str(workspace),
-            model=model or "jros",
+            model=model or "",
+            model_provider=model_provider,
             attachments=attachments,
         )
         if saved_session is None:

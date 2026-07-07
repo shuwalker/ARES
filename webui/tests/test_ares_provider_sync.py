@@ -169,7 +169,7 @@ def test_provider_sync_post_route_calls_sync_provider(monkeypatch, tmp_path):
 
 
 def test_fallback_chain_sync_updates_jros(tmp_path):
-    """sync_fallback_chain copies fallback_providers from Hermes to JROS."""
+    """sync_fallback_chain translates Hermes fallback_providers to JROS-runnable providers."""
     hermes_config = tmp_path / "hermes" / "config.yaml"
     jros_config = tmp_path / "jros" / "config.yaml"
     
@@ -190,16 +190,21 @@ def test_fallback_chain_sync_updates_jros(tmp_path):
     
     assert result["ok"] is True
     assert result["fallback_chain_synced"] is True
-    assert result["fallback_entries_synced"] == 3
+    assert result["fallback_entries_synced"] == 2
     assert "jros" in result["changed_targets"]
+    assert result["targets"]["jros"]["skipped_entries"] == [
+        {
+            "provider": "openai-codex",
+            "model": "gpt-5.5",
+            "reason": "provider is not supported by JROS fallback runtime",
+        }
+    ]
     
     jros = _read_yaml(jros_config)
-    assert "fallback_providers" in jros
-    assert len(jros["fallback_providers"]) == 3
-    assert jros["fallback_providers"][0]["provider"] == "openai-codex"
-    assert jros["fallback_providers"][0]["model"] == "gpt-5.5"
-    assert jros["fallback_providers"][1]["provider"] == "ollama-cloud"
-    assert jros["fallback_providers"][1]["model"] == "glm-4.7"
+    assert jros["fallback_providers"] == [
+        {"provider": "ollama-cloud", "model": "glm-4.7"},
+        {"provider": "ollama", "model": "gemma4:e4b-mlx"},
+    ]
 
 
 def test_fallback_chain_sync_dry_run(tmp_path):

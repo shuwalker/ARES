@@ -6506,6 +6506,11 @@ function setAresBackend(backend) {
     .then(data => {
       _aresCurrentBackend = (data && data.backend) || backend;
       updateAresBackendUI();
+      if (typeof _refreshModelDropdownsAfterProviderChange === 'function') {
+        _refreshModelDropdownsAfterProviderChange();
+      } else if (typeof populateModelDropdown === 'function') {
+        populateModelDropdown();
+      }
       closeAresBackendDropdown();
       showToast(`Backend switched to ${_aresBackendDisplayName(_aresCurrentBackend)}`);
     })

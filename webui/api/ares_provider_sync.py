@@ -42,6 +42,19 @@ PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
     },
 }
 
+JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
+    "anthropic": "anthropic",
+    "gemini": "gemini",
+    "lmstudio": "lmstudio",
+    "ollama": "ollama",
+    "ollama-cloud": "ollama-cloud",
+    "ollama-local": "ollama",
+    "openai": "openai",
+    # Hermes OAuth provider slugs are not runnable by JROS today.
+    "openai-codex": None,
+    "xai-oauth": None,
+}
+
 JROS_CONFIG_ENV = "ARES_JROS_CONFIG_PATH"
 JROS_INSTANCE_DIR_ENV = "JAEGER_INSTANCE_DIR"
 
@@ -163,6 +176,58 @@ def _path_result(path: Path, changed: bool) -> dict[str, Any]:
     return {"path": str(path), "changed": changed}
 
 
+def _jros_supported_fallback_chain(
+    fallback_chain: list[Any],
+    jros_current: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Translate Hermes fallback entries into JROS-runnable provider entries."""
+    external_model = jros_current.get("external_model") if isinstance(jros_current, dict) else None
+    active_identity: tuple[str, str] | None = None
+    if isinstance(external_model, dict) and external_model.get("enabled"):
+        active_provider = str(external_model.get("provider") or "").strip().lower()
+        active_model = str(external_model.get("model") or "").strip().lower()
+        if active_provider and active_model:
+            active_identity = (active_provider, active_model)
+
+    translated: list[dict[str, Any]] = []
+    skipped: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for raw_entry in fallback_chain:
+        if not isinstance(raw_entry, dict):
+            skipped.append({"provider": "", "model": "", "reason": "entry is not an object"})
+            continue
+        provider = str(raw_entry.get("provider") or "").strip().lower()
+        model = str(raw_entry.get("model") or "").strip()
+        if not provider or not model:
+            skipped.append({"provider": provider, "model": model, "reason": "missing provider or model"})
+            continue
+
+        mapped_provider = JROS_FALLBACK_PROVIDER_MAP.get(provider)
+        if not mapped_provider:
+            skipped.append({
+                "provider": provider,
+                "model": model,
+                "reason": "provider is not supported by JROS fallback runtime",
+            })
+            continue
+
+        identity = (mapped_provider.lower(), model.lower())
+        if active_identity is not None and identity == active_identity:
+            skipped.append({"provider": provider, "model": model, "reason": "same as active JROS external_model"})
+            continue
+        if identity in seen:
+            skipped.append({"provider": provider, "model": model, "reason": "duplicate fallback route"})
+            continue
+
+        seen.add(identity)
+        entry = deepcopy(raw_entry)
+        entry["provider"] = mapped_provider
+        translated.append(entry)
+
+    return translated, skipped
+
+
 def sync_provider(
     provider: str,
     model: str,
@@ -272,15 +337,17 @@ def sync_fallback_chain(
         jros_current = load_yaml_config(jros_path)
         
         updated = deepcopy(jros_current)
-        updated["fallback_providers"] = deepcopy(fallback_chain)
+        jros_fallback_chain, skipped_entries = _jros_supported_fallback_chain(fallback_chain, jros_current)
+        updated["fallback_providers"] = deepcopy(jros_fallback_chain)
         
         changed = updated != jros_current
         if changed and not dry_run:
             save_yaml_config(jros_path, updated)
         
         results["targets"]["jros"] = _path_result(jros_path, changed)
+        results["targets"]["jros"]["skipped_entries"] = skipped_entries
         results["fallback_chain_synced"] = True
-        results["fallback_entries_synced"] = len(fallback_chain)
+        results["fallback_entries_synced"] = len(jros_fallback_chain)
         if changed:
             results["changed_targets"].append("jros")
     

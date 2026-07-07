@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added provider fallback chain sync — when you set up providers in Hermes config, ARES now automatically copies the `fallback_providers` chain to JROS config so both backends use the same fallback sequence. No more manual sync needed.
+- Added provider fallback chain sync — when you set up providers in Hermes config, ARES now translates the `fallback_providers` chain into JROS-runnable provider slugs so both backends get a valid fallback sequence. Hermes OAuth-only providers are kept in Hermes and skipped for JROS with reasons.
 - Provider sync endpoint (`/api/ares/provider/sync`) now syncs both active provider AND fallback chain in one call.
 - Settings → Providers tab now also shows providers that have a configured API key (even if not configurable via env var), fixing `ollama-local` being hidden despite having a key.
 - Auto-sync: provider changes in Settings now automatically propagate to Hermes and JROS configs via `_sync_providers_on_settings_save()`.
