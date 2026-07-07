@@ -61,3 +61,7 @@ The public website/README showcase image is generated from the same checked-in c
 - Python 3.11+
 - [Hermes Agent](https://hermes-agent.nousresearch.com/) (installed in editable mode)
 - See `requirements.txt` for Python deps
+
+## Docker
+
+For Docker-based deployments, see the [Docker Deployment Guide](docs/docker.md).

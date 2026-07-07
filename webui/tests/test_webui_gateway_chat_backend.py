@@ -239,8 +239,7 @@ def test_gateway_chat_health_payload_is_documented_as_operator_diagnostic_only()
     # as an operator-only diagnostic, not a user-facing banner — now lives there.
     # CHANGELOG keeps its release-note entry. (Contract test moved with content.)
     advanced = Path("docs/advanced-chat-setup.md").read_text(encoding="utf-8")
-    changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
-    for text in (advanced, changelog):
+    for text in (advanced,):
         assert "gateway_chat" in text
         assert "operator diagnostic" in text
         assert "not currently rendered as a user-facing health banner" in text

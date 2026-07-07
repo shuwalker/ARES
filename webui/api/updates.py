@@ -51,7 +51,7 @@ def _find_owning_git_repo(path: Path) -> Path:
     return root
 
 
-WEBUI_UPDATE_REPO_ROOT = _find_owning_git_repo(WEBUI_SOURCE_ROOT)
+REPO_ROOT = _find_owning_git_repo(WEBUI_SOURCE_ROOT)
 
 logger = logging.getLogger(__name__)
 
@@ -305,14 +305,14 @@ def _detect_webui_version() -> str:
     """
     # Timeout capped at 3s: git describe on a healthy local repo is <50ms;
     # a 10s stall on import (NFS-mounted .git, broken git binary) is unacceptable.
-    out = _describe_git_version(WEBUI_UPDATE_REPO_ROOT)
+    out = _describe_git_version(REPO_ROOT)
     if out:
         return out
 
     # Docker / baked-image fallback: api/_version.py written by CI at build time.
     # Parse with regex rather than exec() — the file holds exactly one assignment
     # and regex is sufficient; exec() on a build artifact is an unnecessary surface.
-    version_file = WEBUI_SOURCE_ROOT / 'api' / '_version.py'
+    version_file = REPO_ROOT / 'api' / '_version.py' if (REPO_ROOT / 'api').exists() else WEBUI_SOURCE_ROOT / 'api' / '_version.py'
     if version_file.exists():
         try:
             import re as _re
@@ -832,7 +832,7 @@ def check_for_updates(force=False, *, include_agent=True):
 
     try:
         # Run checks outside the lock (network I/O)
-        webui_info = _check_repo(WEBUI_UPDATE_REPO_ROOT, 'webui')
+        webui_info = _check_repo(REPO_ROOT, 'webui')
         agent_info = _check_repo(_AGENT_DIR, 'agent') if include_agent else _ignored_agent_update_info()
         jros_info = _check_repo(_JROS_DIR, 'jros') if _JROS_DIR else {'name': 'jros', 'behind': None, 'no_git': True}
 
@@ -849,7 +849,7 @@ def check_for_updates(force=False, *, include_agent=True):
 
 def _repo_path_for_update_target(target: str):
     if target == 'webui':
-        return WEBUI_UPDATE_REPO_ROOT
+        return REPO_ROOT
     if target == 'agent':
         return _AGENT_DIR
     if target == 'jros':
@@ -1230,7 +1230,7 @@ def _schedule_restart_original(delay: float = 2.0) -> None:
             # cached class definitions.
             if _AGENT_DIR is not None:
                 _purge_agent_pycache(Path(_AGENT_DIR))
-            _purge_agent_pycache(WEBUI_UPDATE_REPO_ROOT)
+            _purge_agent_pycache(REPO_ROOT)
             try:
                 # Re-exec into the just-pulled image.
                 #
@@ -1363,7 +1363,7 @@ def apply_force_update(target: str) -> dict:
         return {'ok': False, 'message': 'Update already in progress'}
     try:
         if target == 'webui':
-            path = WEBUI_UPDATE_REPO_ROOT
+            path = REPO_ROOT
         elif target == 'agent':
             path = _AGENT_DIR
         else:
@@ -1456,7 +1456,7 @@ def apply_update(target):
 def _apply_update_inner(target):
     """Inner implementation of apply_update, called under _apply_lock."""
     if target == 'webui':
-        path = WEBUI_UPDATE_REPO_ROOT
+        path = REPO_ROOT
     elif target == 'agent':
         path = _AGENT_DIR
     else:
