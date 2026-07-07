@@ -1,0 +1,37 @@
+{
+  "name": "ares-windows-native",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node ../../node_modules/.bin/electron.cmd .",
+    "build": "node ../../node_modules/.bin/electron-builder.cmd --win nsis",
+    "package": "node scripts/package-portable.cjs"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "asar": "^3",
+    "electron": "^33.4.11",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.ares.desktop",
+    "productName": "ARES",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

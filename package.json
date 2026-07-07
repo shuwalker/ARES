@@ -1,0 +1,14 @@
+{
+  "name": "ares",
+  "version": "0.1.0",
+  "description": "ARES companion surface",
+  "scripts": {
+    "windows": "cd windows-app && npm install && npm run package",
+    "windows:start": "cd windows-app && npm install && electron .",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "workspaces": [
+    "windows-app"
+  ]
+}
