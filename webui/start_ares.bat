@@ -6,20 +6,19 @@ REM Then starts the server.
 setlocal enabledelayedexpansion
 
 set "ARES_HOME=%USERPROFILE%\.ares"
-set "INSTALL_DIR=%ARES_HOME%\webui"
+set "INSTALL_DIR=%ARES_HOME%"
+set "WEBUI_DIR=%ARES_HOME%\webui"
 set "PORT=8787"
 set "HOST=0.0.0.0"
 
 REM === If not inside the repo, check if installed or clone ===
 if not exist "%~dp0server.py" (
-    if exist "%INSTALL_DIR%\server.py" (
-        cd /d "%INSTALL_DIR%"
+    if exist "%WEBUI_DIR%\server.py" (
+        cd /d "%WEBUI_DIR%"
     ) else (
         echo.
         echo === ARES Web UI Installer ===
         echo.
-        
-        REM Check git
         where git >nul 2>&1
         if errorlevel 1 (
             echo [..] Git not found. Downloading ARES directly...
@@ -40,7 +39,7 @@ if not exist "%~dp0server.py" (
                 git clone --depth 1 https://github.com/shuwalker/ARES.git "%INSTALL_DIR%"
             )
         )
-        cd /d "%INSTALL_DIR%"
+        cd /d "%WEBUI_DIR%"
     )
 )
 

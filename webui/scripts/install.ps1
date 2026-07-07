@@ -28,9 +28,10 @@ $ErrorActionPreference = 'Stop'
 
 $RepoUrl = 'https://github.com/shuwalker/ARES.git'
 $AresHome = if ($env:ARES_HOME) { $env:ARES_HOME } else { Join-Path $env:USERPROFILE '.ares' }
-$InstallDirFinal = if ($InstallDir) { $InstallDir } else { Join-Path $AresHome 'webui' }
+$InstallDirFinal = if ($InstallDir) { $InstallDir } else { $AresHome }
 $PortFinal = if ($Port) { $Port } elseif ($env:ARES_WEBUI_PORT) { $env:ARES_WEBUI_PORT } else { 8787 }
 $HostFinal = if ($Host) { $Host } elseif ($env:ARES_WEBUI_HOST) { $env:ARES_WEBUI_HOST } else { '0.0.0.0' }
+$WebuiDir = Join-Path $InstallDirFinal 'webui'
 
 Write-Host ""
 Write-Host "┌────────────────────────────────────────────┐" -ForegroundColor Magenta
@@ -96,7 +97,7 @@ if (Test-Path $InstallDirFinal) {
         exit 1
     }
 }
-Push-Location $InstallDirFinal
+Push-Location $WebuiDir
 Write-Host "✓ Repository ready" -ForegroundColor Green
 
 # === Create venv ===
@@ -115,7 +116,7 @@ $VenvPython = Join-Path (Get-Location) '.venv\Scripts\python.exe'
 & $VenvPython -m pip install --upgrade pip -q
 
 Write-Host "Installing WebUI Python dependencies..."
-& $VenvPython -m pip install -r (Join-Path $InstallDirFinal 'requirements.txt')
+& $VenvPython -m pip install -r (Join-Path $WebuiDir 'requirements.txt')
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to install WebUI dependencies"
     exit 1
@@ -149,22 +150,10 @@ Write-Host ""
 Write-Host "✓ ARES Web UI installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Start the server:"
-Write-Host "    cd $InstallDirFinal && .venv\Scripts\python server.py"
-Write-Host ""
-Write-Host "  Or set env and run:"
-Write-Host "    `$env:HERMES_WEBUI_HOST='$HostFinal'"
-Write-Host "    `$env:HERMES_WEBUI_PORT='$PortFinal'"
-Write-Host "    $InstallDirFinal\.venv\Scripts\python $InstallDirFinal\server.py"
-Write-Host ""
-Write-Host "  Then open: http://localhost:$PortFinal"
-Write-Host ""
-Write-Host "  For remote access over Tailscale:"
-Write-Host "    Install Tailscale on both machines, sign into the same tailnet,"
-Write-Host "    then access via http://<tailscale-ip>:$PortFinal"
-Write-Host ""
+Write-Host "    cd $WebuiDir && .venv\Scripts\python server.py"
 
 if (-not $SkipSetup) {
-    Write-Host "  The onboarding wizard will guide you through setup when you open the browser."
+    Write-Host "  The onboarding wizard will open in your browser."
 }
 
 # Auto-start if interactive
@@ -172,5 +161,5 @@ if ($Host.UI.RawUI -and -not $SkipSetup) {
     Write-Host "Starting ARES Web UI..." -ForegroundColor Cyan
     $env:HERMES_WEBUI_HOST = $HostFinal
     $env:HERMES_WEBUI_PORT = "$PortFinal"
-    & $VenvPython (Join-Path $InstallDirFinal 'server.py')
+    & $VenvPython (Join-Path $WebuiDir 'server.py')
 }

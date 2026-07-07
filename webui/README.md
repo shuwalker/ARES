@@ -6,13 +6,7 @@ Forked from [hermes-webui](https://github.com/nesquena/hermes-webui), rebranded 
 
 ## Install
 
-**Windows — no terminal needed:**
-1. Download [`start_ares.bat`](webui/start_ares.bat) from the repo
-2. Double-click it
-
-That's it. It downloads Python if missing, clones the repo, installs deps, and starts the server. The onboarding wizard handles the rest.
-
-**macOS / Linux (terminal):**
+**macOS / Linux:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.sh | bash
 ```
@@ -22,8 +16,12 @@ curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/i
 iex (irm https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.ps1)
 ```
 
-**Remote access over Tailscale:**
-Install Tailscale on both machines, sign into the same tailnet, then access via `http://<tailscale-ip>:8787`.
+**Windows (no terminal):**
+Download [`start_ares.bat`](webui/start_ares.bat) and double-click it.
+
+All paths auto-install Python if needed, clone the repo, set up a venv, install dependencies, and start the server. Open http://localhost:8787 in your browser — the onboarding wizard handles the rest.
+
+**Remote access:** Install [Tailscale](https://tailscale.com) on both machines, sign into the same account, then access via `http://<tailscale-ip>:8787`.
 
 ## Manual start
 

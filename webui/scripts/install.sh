@@ -37,7 +37,8 @@ BOLD='\033[1m'
 REPO_URL_SSH="git@github.com:shuwalker/ARES.git"
 REPO_URL_HTTPS="https://github.com/shuwalker/ARES.git"
 ARES_HOME="${ARES_HOME:-$HOME/.ares}"
-INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME/webui}"
+INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME}"
+WEBUI_DIR="$INSTALL_DIR/webui"
 PYTHON_VERSION="3.11"
 BRANCH="main"
 PORT="${ARES_WEBUI_PORT:-8787}"
@@ -64,7 +65,7 @@ while [[ $# -gt 0 ]]; do
         --branch) BRANCH="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
         --host) HOST="$2"; shift 2 ;;
-        --dir) INSTALL_DIR="$2"; shift 2 ;;
+        --dir) INSTALL_DIR="$2"; WEBUI_DIR="$INSTALL_DIR/webui"; shift 2 ;;
         --manifest) MANIFEST_MODE=true; shift ;;
         --stage) STAGE_NAME="$2"; shift 2 ;;
         --json) JSON_OUTPUT=true; shift ;;
@@ -80,7 +81,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --branch NAME   Git branch to install (default: main)"
             echo "  --port PORT     Web UI port (default: 8787)"
             echo "  --host HOST     Bind address (default: 0.0.0.0)"
-            echo "  --dir PATH      Install directory (default: ~/.ares/webui)"
+            echo "  --dir PATH      Install directory (default: ~/.ares)"
             echo "  --manifest      Print desktop bootstrap stage manifest as JSON"
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
@@ -272,7 +273,7 @@ clone_repo() {
         fi
     fi
 
-    cd "$INSTALL_DIR"
+    cd "$WEBUI_DIR"
     log_success "Repository ready"
 }
 
@@ -298,8 +299,8 @@ install_deps() {
     log_info "Installing dependencies..."
 
     if [ "$USE_VENV" = true ]; then
-        export VIRTUAL_ENV="$INSTALL_DIR/venv"
-        PIP_PYTHON="$INSTALL_DIR/venv/bin/python"
+        export VIRTUAL_ENV="$WEBUI_DIR/venv"
+        PIP_PYTHON="$WEBUI_DIR/venv/bin/python"
     else
         PIP_PYTHON="$PYTHON_PATH"
     fi
@@ -308,7 +309,7 @@ install_deps() {
 
     # Install WebUI deps
     log_info "Installing WebUI Python dependencies..."
-    if ! "$PIP_PYTHON" -m pip install -r "$INSTALL_DIR/requirements.txt"; then
+    if ! "$PIP_PYTHON" -m pip install -r "$WEBUI_DIR/requirements.txt"; then
         log_error "Failed to install WebUI dependencies"
         exit 1
     fi
@@ -330,7 +331,7 @@ install_deps() {
 setup_config() {
     log_info "Preparing configuration..."
 
-    cd "$INSTALL_DIR"
+    cd "$WEBUI_DIR"
 
     # Create .env from template if missing
     if [ ! -f ".env" ] && [ -f ".env.example" ]; then
@@ -339,7 +340,7 @@ setup_config() {
     fi
 
     # Create state directory
-    mkdir -p "$ARES_HOME/webui"
+    mkdir -p "$ARES_HOME"
 
     log_success "Configuration ready"
 }
@@ -400,10 +401,10 @@ echo ""
 echo -e "${GREEN}${BOLD}ARES Web UI installation complete!${NC}"
 echo ""
 echo "  Start the server:"
-echo "    cd $INSTALL_DIR && ./venv/bin/python server.py"
+echo "    cd $WEBUI_DIR && ./venv/bin/python server.py"
 echo ""
 echo "  Or set env and run:"
-echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $INSTALL_DIR/venv/bin/python $INSTALL_DIR/server.py"
+echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
 echo ""
 echo "  Then open: http://localhost:$PORT"
 echo ""
