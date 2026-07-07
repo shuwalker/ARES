@@ -29,7 +29,9 @@ def test_get_profile_skills_stats(tmp_path):
     profile_home = tmp_path / "auditor"
     _write_skill(profile_home, "alpha")
     _write_skill(profile_home, "beta")
-    _write_skill(profile_home, "gamma", platforms=["macos"])
+    import sys
+    incompat_platform = "windows" if sys.platform == "darwin" else "macos"
+    _write_skill(profile_home, "gamma", platforms=[incompat_platform])
     _write_config(profile_home, ["beta"])
 
     # Explicitly clear the stats cache to ensure we compute fresh

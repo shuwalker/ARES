@@ -410,6 +410,7 @@ class TestScheduleRestart:
         original_execv = _os.execv
 
         monkeypatch.setattr(sys, 'platform', 'linux')
+        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(_os, 'execv', fake_execv)
 
@@ -442,6 +443,7 @@ class TestScheduleRestart:
 
         # Override the autouse no-op stub with a recording spy.
         monkeypatch.setattr(sys, 'platform', 'linux')
+        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(upd, "_purge_agent_pycache", spy_purge)
         monkeypatch.setattr(os, "execv", fake_execv)
@@ -1734,8 +1736,8 @@ class TestUpdateBannerUx:
         assert 'info.release_based' in src
         assert 'info.current_version' in src
         assert 'info.latest_version' in src
-        assert "_formatUpdateTargetStatus('WebUI',data.webui)" in src
-        assert "_formatUpdateTargetStatus('Agent',data.agent)" in src
+        assert "_formatUpdateTargetStatus('ARES',data.webui)" in src
+        assert "_formatUpdateTargetStatus('Hermes',data.agent)" in src
 
     def test_settings_update_check_uses_same_repo_branch_formatter(self):
         src = read('static/panels.js')
@@ -1743,8 +1745,8 @@ class TestUpdateBannerUx:
         assert m, "checkUpdatesNow() not found"
         fn = m.group(0)
         assert '_formatUpdateTargetStatus' in fn
-        assert "formatUpdatePart('WebUI',data.webui)" in fn
-        assert "formatUpdatePart('Agent',data.agent)" in fn
+        assert "formatUpdatePart('ARES',data.webui)" in fn
+        assert "formatUpdatePart('Hermes',data.agent)" in fn
 
 
 # ── static/index.html ─────────────────────────────────────────────────────────
@@ -1803,6 +1805,7 @@ class TestSequentialUpdateRestartCoordination:
             execv_called.set()
 
         monkeypatch.setattr(sys, 'platform', 'linux')
+        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(os, 'execv', fake_execv)
 
@@ -1852,6 +1855,7 @@ class TestSequentialUpdateRestartCoordination:
         def fake_execv(exe, args):
             execv_called.append(True)
         monkeypatch.setattr(sys, 'platform', 'linux')
+        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(os, 'execv', fake_execv)
 
@@ -2171,7 +2175,7 @@ class TestWhatsNewSummaryToggle:
         ]
         assert sections['Worth knowing'] == [
             'Some lower-level cleanup supports the visible update changes.',
-            'WebUI has 57 updates; this summary uses the latest 24 commit subjects, with the full comparison still available in the diff link.',
+            'ARES has 57 updates; this summary uses the latest 24 commit subjects, with the full comparison still available in the diff link.',
         ]
         assert result['targets'][0]['commits_truncated'] is True
 
@@ -2255,7 +2259,7 @@ class TestWhatsNewSummaryToggle:
 
         def fake_llm(_system, prompt):
             calls.append(prompt)
-            if 'Agent:' in prompt:
+            if 'Hermes:' in prompt:
                 return '- Agent startup is clearer.'
             return '- WebUI settings are easier to use.'
 

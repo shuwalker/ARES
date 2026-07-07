@@ -11,6 +11,7 @@
   <a href="#quick-start">Quick Start</a> ·
   <a href="#features">Features</a> ·
   <a href="#character-avatar-browser">Characters</a> ·
+  <a href="#native-app">Native App</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="webui/FORK_CHANGES.md">Changelog</a> ·
   <a href="#credits">Credits</a>
@@ -49,7 +50,7 @@ python3.11 -m venv .venv
 # Install Hermes Agent (dependency)
 mkdir -p ~/.hermes
 git clone https://github.com/NousResearch/hermes-agent.git ~/.hermes/hermes-agent
-.venv/bin/pip install -e ~/.hermes/hermes-agent  # Hermes Agent (editable)
+.venv/bin/pip install -e ~/.hermes/hermes-agent
 
 # Configure
 cp .env.example .env
@@ -60,32 +61,48 @@ cp .env.example .env
 # → http://localhost:8787
 ```
 
-### Native macOS App
+## Native App
+
+The merged repo includes two Swift app surfaces:
+
+- `ARES` — primary native macOS Mission Control app under `ARES-Desktop/Sources/`.
+- `ARESLegacy` — earlier lightweight SwiftUI app under `Sources/ARES/`, kept for reference and migration.
 
 ```bash
+# from repo root
+swift build
+swift test
 swift run ARES
 ```
 
+ARES uses a batteries-included/pro-extensions architecture:
+
+- **Native interface:** SwiftUI Mission Control UI, dashboard, companion surfaces, terminal/files/kanban/skills/automation views.
+- **Native capabilities:** local SQLite memory, Apple voice/perception hooks, local event bus, configured provider routing.
+- **Optional backends:** Hermes for the current agent loop, JROS for embodiment/robotics, Ollama/cloud providers for models, and workflow tools when detected.
+- **Graceful fallback:** optional services are detected/configured rather than hardcoded; ARES must still boot without JROS or external workflow tools.
+
 ## Features
 
-- **Persistent Entity** — ARES is not a chatbot. It's a continuous intelligence with memory, drives, and presence across sessions.
-- **Web UI** — Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on any device over Tailscale.
-- **Backend Selector** — Switch between Hermes, JROS, or Hybrid mode per-conversation. JROS personas inject into the agent loop.
-- **Character Avatar Browser** — 14 visual character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more) with card art, traits, lore, and active identity selection.
-- **Native macOS App** — SwiftUI app wraps the Web UI in WKWebView with native window, voice (edge-tts), and animated 3D avatar eyes.
-- **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads. Zero downtime for static, ~2s blip for Python.
-- **Hermes Agent Integration** — Full tool system: terminal, file ops, web search, code execution, MCP, skills, memory, delegation, cron jobs.
-- **Multi-Model Routing** — Cloud-first (GLM-5.2, DeepSeek V4, Qwen 3.5) with local fallback (Gemma4). Reasoning effort configurable per-session.
-- **Mail Butler** — IMAP-based mail cleaner with 321 classification rules. Server-side, no Mail.app dependency.
-- **Built in Public** — Every episode of the build is documented as part of the "Building Ares" YouTube series.
+- **Persistent Entity** — ARES is not a chatbot. It is a continuous intelligence with identity, memory, drives, and presence across sessions.
+- **Web UI** — Self-contained Python server with streaming, session management, hot-reload, password auth, and mobile/browser access.
+- **Backend Selector** — Switch between Hermes, JROS, or hybrid mode per conversation. JROS personas can inject into the agent loop.
+- **Character Avatar Browser** — Visual character personas with card art, traits, lore, and active identity selection.
+- **Native macOS App** — SwiftUI app for native windowing, voice, dashboard, files, terminal, and embodied companion UI.
+- **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads.
+- **Hermes Agent Integration** — Tool system, terminal, file ops, web search, code execution, MCP, skills, memory, delegation, and cron jobs.
+- **Multi-Model Routing** — Cloud/local model routing through configured providers with local fallback where available.
+- **Mail Butler** — IMAP-based mail cleaner/classifier without requiring Mail.app.
+- **Windows Wrapper** — Tauri/Electron wrapper surfaces for Windows packaging and install testing.
+- **Built in Public** — The build is documented as part of the “Building Ares” series.
 
 ## Character Avatar Browser
 
-ARES now exposes the persona system as a real product surface instead of a hidden dropdown. The character tab loads JROS `character/v1` YAML data, displays avatar card art, shows role/voice/trait/lore detail, and lets the user set the active ARES identity from the browser.
+ARES exposes the persona system as a real product surface instead of a hidden dropdown. The character tab loads JROS `character/v1` YAML data, displays avatar card art, shows role/voice/trait/lore detail, and lets the user set the active ARES identity from the browser.
 
-- **Visual roster:** 14 built-in character cards are checked into `webui/static/persona-cards/` and `webui/static/characters/`.
-- **Schema-backed:** The browser reads JROS character data through `webui/api/characters.py` and `/api/ares/characters`.
-- **Runtime control:** Selecting a character writes the active persona through the existing ARES persona API.
+- **Visual roster:** built-in character cards are checked into `webui/static/persona-cards/` and `webui/static/characters/`.
+- **Schema-backed:** the browser reads JROS character data through `webui/api/characters.py` and `/api/ares/characters`.
+- **Runtime control:** selecting a character writes the active persona through the existing ARES persona API.
 
 <p align="center">
   <img src="docs/assets/character-tab-showcase.png" alt="ARES character tab with avatar cards and trait detail">
@@ -93,75 +110,68 @@ ARES now exposes the persona system as a real product surface instead of a hidde
 
 ## Architecture
 
-```
+```text
 ┌──────────────────────────────────────────────────┐
-│              ARES Web UI                         │
-│         webui/ (self-contained)                  │
-│                                                  │
-│  ┌───────────┐  ┌──────────────┐  ┌──────────┐ │
-│  │ Character  │  │ Backend      │  │ Animated │ │
-│  │ Browser    │  │ Selector     │  │ Eyes     │ │
-│  │ (JROS YAML)│  │ (Hermes/JROS)│  │ (CSS/SVG)│ │
-│  └─────┬─────┘  └──────┬───────┘  └────┬─────┘ │
-│        │                │               │       │
-│        ▼                ▼               ▼       │
-│  ┌──────────────────────────────────────────┐  │
-│  │     Hermes Agent Loop (in-process)       │  │
-│  │  LLM: Ollama Cloud (GLM-5.2, xhigh)      │  │
-│  │  Routing: Hermes provider routing        │  │
-│  └──────────────────────────────────────────┘  │
+│                    ARES                          │
+│ Persistent identity, UX, task continuity, memory │
+├──────────────────────────────────────────────────┤
+│ Native app / WebUI / Windows wrapper             │
+├──────────────────────────────────────────────────┤
+│ Hermes Agent runtime        JROS body layer       │
+│ tools, skills, sessions     robotics, embodiment  │
+├──────────────────────────────────────────────────┤
+│ Local/cloud model providers, user data, devices   │
 └──────────────────────────────────────────────────┘
-         │                         │
-         ▼                         ▼
-   ┌──────────┐            ┌──────────────┐
-   │ Ollama   │            │ JROS Daemon  │
-   │ Cloud    │            │ (NDJSON      │
-   │ (GLM-5.2)│            │  Unix socket) │
-   └──────────┘            └──────────────┘
 ```
+
+Key rules:
+
+1. **ARES owns the identity.** Hermes is the current runtime; JROS is the optional body layer.
+2. **LLM calls go through the configured agent/runtime path, not directly to raw inference by default.** The agent loop, tool dispatch, sessions, memory, streaming, context compression, and skills are the value.
+3. **JROS integration is additive.** JROS personas/tools/embodiment bridge into ARES; ARES still boots without JROS.
+4. **Native and WebUI surfaces share the same product identity.** Users should experience one ARES, not separate Hermes/JROS modes.
+5. **Public repo stays portable.** No private paths, secrets, OAuth tokens, local runtime DBs, or personal profile state.
 
 ## Repository Structure
 
-```
+```text
 ARES/
-├── Package.swift          # Swift Package Manager manifest
-├── Sources/               # Native macOS app (SwiftUI)
-│   ├── ARES/              # Main app — Companion, Hub, voice, avatar
-│   └── AresTaskCLI/       # CLI tool for task management
-├── webui/                 # ARES Web UI (Python web server)
-│   ├── api/               # Backend — server, streaming, auth, hot-reload
-│   ├── static/            # Frontend — HTML, JS, CSS, icons, character art
-│   ├── server.py          # Entry point
-│   ├── requirements.txt   # Python dependencies
-│   └── tests/             # Test suite
-├── tools/                 # Standalone tools
-│   ├── email_ai_assistant/ # Native Mail.app AI assistant (classify, draft, auto-clean)
-│   ├── mcp-bootstrap/     # Local vs remote/server MCP setup and verification
-│   └── safari-mcp-bootstrap/ # Safari MCP setup/doctor for macOS automation
-└── docs/assets/           # README images and branding
+├── Package.swift                 # Swift Package manifest
+├── Sources/                      # Legacy/lightweight Swift app + CLI
+│   ├── ARES/                     # ARESLegacy target
+│   └── AresTaskCLI/              # Task CLI
+├── ARES-Modules/                 # Local Swift module package
+├── ARES-Desktop/                 # Primary native macOS app
+│   ├── Sources/ARESCore/         # contracts, models, utilities
+│   ├── Sources/ARES/             # app, providers, services, views
+│   └── Tests/ARESTests/          # native tests
+├── webui/                        # ARES Web UI (Python server/frontend)
+│   ├── api/                      # server, streaming, auth, integrations
+│   ├── static/                   # frontend assets, icons, character art
+│   ├── server.py                 # entry point
+│   ├── requirements.txt          # Python dependencies
+│   └── tests/                    # WebUI test suite
+├── src-tauri/                    # Tauri wrapper
+├── windows-app/                  # Windows wrapper/installer work
+├── tools/                        # Standalone utilities
+└── docs/                         # public documentation/assets
 ```
-
-## Key Decisions
-
-1. **LLM goes through Hermes Agent, not Ollama directly.** The agent loop (tool dispatch, sessions, memory, streaming, context compression, skills) IS the value.
-2. **Web UI lives in `webui/`** — self-contained: own venv, own auth, own deps. One repo with the Swift app.
-3. **JROS integration is additive.** JROS personas inject into the Hermes system prompt. JROS tools register into the Hermes tool registry. The agent loop stays Hermes's.
-4. **ARES Swift app wraps the Web UI in WKWebView** for native window, voice, and the animated eyes avatar.
 
 ## Update Checking
 
-The Web UI checks for updates on three repos:
+The Web UI checks for updates across the configured stack:
+
 - **ARES** — this repo (`shuwalker/ARES`)
 - **Hermes** — the agent engine (`NousResearch/hermes-agent`)
 - **JROS** — robotics/embodiment (`JenkinsRobotics/JROS`)
 
 ## Credits
 
-The ARES Web UI (`webui/`) is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) by the Hermes Web UI Contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `webui/LICENSE` for the preserved upstream MIT notice.
+The ARES Web UI (`webui/`) is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) by the Hermes Web UI contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `webui/LICENSE` for the preserved upstream MIT notice.
 
 ## Owner
 
-Matthew Jenkins (shuwalker) · Jenkins Robotics
+Built by Jenkins Robotics.
 
 ## Star History
 

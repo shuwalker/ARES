@@ -10,42 +10,105 @@ This file defines mandatory rules for AI agents working in the ARES repository.
 - Do not introduce code with terms incompatible with AGPL distribution.
 - Do not change the license model without explicit maintainer approval.
 
-## Project focus
+## What ARES Is
 
-ARES is being made installable and functional for people who clone the public repo. The current priority is production-grade onboarding, backend setup guidance, and clean public documentation.
+ARES = Autonomous Reasoning & Execution System.
+
+ARES is the persistent AI person/product layer: identity, memory, task continuity, self-audit, autonomous follow-through, embodiment state, voice/face/presence, and cross-session context.
+
+- Hermes Agent is the current agent/runtime layer: tools, skills, gateway, sessions, cron, memory backend support, and model/provider routing.
+- JROS is the optional robotics/body layer: hardware abstraction, embodiment daemon/tools/personas, and robot control primitives.
+- ARES owns the user-facing identity and experience above both.
 
 ## Public repo privacy boundary
 
-Public repo code/docs must not contain Matthew-specific runtime values: personal paths, real Tailscale IPs/hostnames/tailnet names, personal hardware requirements, `.hermes`, `.ares/config`, SOUL.md, auth files, tokens, API keys, cookies, or live profile assumptions.
+Public repo code/docs must not contain maintainer-specific runtime values: personal paths, real Tailscale IPs/hostnames/tailnet names, personal hardware requirements, `.hermes`, `.ares/config`, SOUL.md, auth files, tokens, API keys, cookies, or live profile assumptions.
 
 Use placeholders, detected values, or user-selected paths.
 
-## Repository structure rules
+## Repository structure
 
-Keep the existing layout:
+Keep the merged layout intentional:
 
-- `Sources/` — Swift native app
-- `ARES-Modules/` — local Swift package required by `Package.swift`
-- `webui/` — Python web server and frontend
-- `tools/` — standalone utilities
-- `docs/` — documentation and assets
+- `Package.swift` — Swift package manifest for the native app targets.
+- `Sources/ARES/` — legacy/lightweight Swift app surface kept as `ARESLegacy`.
+- `Sources/AresTaskCLI/` — task CLI.
+- `ARES-Modules/` — local Swift package used by legacy/native support code.
+- `ARES-Desktop/Sources/ARESCore/` — protocol contracts, shared models, utilities.
+- `ARES-Desktop/Sources/ARES/` — primary native macOS app target.
+- `ARES-Desktop/Tests/ARESTests/` — native app tests.
+- `webui/` — Python web server and frontend adapted from Hermes WebUI.
+- `windows-app/` and `src-tauri/` — Windows/Tauri wrapper surfaces.
+- `tools/` — standalone utilities.
+- `docs/` — public documentation and assets.
 
-Do not create new top-level directories without explicit approval. Do not modify Hermes Agent source code under `~/.hermes/hermes-agent/`.
+Do not create new top-level directories without explicit approval. Do not modify Hermes Agent source code under a user runtime directory; build ARES adapters/config/templates instead.
+
+## Native app architecture
+
+Two Swift layers under `ARES-Desktop/Sources/`:
+
+- **ARESCore**
+  - `Contracts/` — protocol contracts: GatewayProvider, ReasoningBrain, MemoryStore, VoiceEngine, Perceiver, WorldModel, Identity, Mimicry, EventBus, KanbanBoard, CronScheduler, ToolProvider, PersonaProvider, Embodiment, ResourceProvider.
+  - `Dummies/` — safe no-op implementations for development/testing only.
+  - `Models/`, `Services/`, `Utilities/` — shared types, discovery, hub readers, registry, and support code.
+- **ARES**
+  - `App/` — entry point, app state, runtime, app delegate.
+  - `Providers/` — concrete implementations for Hermes, JROS, Ollama, Claude, OpenAI, storage, voice, perception, and local event bus.
+  - `Services/` — wiring, companion chat, agent tool routing, terminal, storage, browser services.
+  - `Views/` — Companion, Hub, Kanban, Terminal, Files, Settings, widgets, and related UI.
+
+`ARES-Desktop/Sources/ARES/Services/WiringBuilder.swift` owns protocol-to-implementation wiring. Prefer configured providers first, native fallbacks second, and development dummies only where explicitly allowed.
 
 ## Code quality standards
 
 - Write production-quality, tested code.
 - No stubs or placeholder implementations for user-facing setup paths.
-- Follow existing patterns in `webui/api/`, `webui/static/`, and `Sources/ARES/`.
-- New API endpoints must include proper authentication/owner-scope checks.
+- Follow existing patterns in `webui/api/`, `webui/static/`, `Sources/ARES/`, and `ARES-Desktop/Sources/`.
+- New WebUI API endpoints must include proper authentication/owner-scope checks.
 - Preserve hot-reload behavior (`ARES_WEBUI_RELOAD=1`).
+- System-category or approval-required native tools must go through the approval broker/consent path.
+- Cloud-only dependencies need local or graceful fallback behavior.
 
-## Before proposing any commit
+## Build & test
+
+```bash
+# Native app / Swift package
+swift build
+swift test
+
+# Focused WebUI tests
+cd webui
+./scripts/test.sh tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py
+```
+
+Before proposing any commit:
 
 ```bash
 git diff --check
 swift build
+swift test
 cd webui && ./scripts/test.sh tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py
 ```
 
-Also run a privacy leak scan on changed public files. Any Matthew-specific match outside an explicit regression-test forbidden-string list is a blocker.
+Also run a privacy leak scan on changed public files. Any maintainer-specific match outside an explicit regression-test forbidden-string list is a blocker.
+
+## Git rules
+
+- Prefer feature branches and PRs for normal development.
+- Keep `main` releasable: do not merge red builds intentionally.
+- Preserve removed-but-useful code in `attic/` before deleting it.
+- Do not commit build outputs, `.app` bundles, venvs, local runtime databases, generated auth files, or secrets.
+
+## External stack assumptions
+
+External services must be optional/detected, not hardcoded:
+
+| Service | Default role | Expected configuration style |
+|---|---|---|
+| JROS | Robotics/embodiment backend | user-selected path/socket/env/template |
+| Hermes | Agent gateway/runtime | configured URL/API key/env/template |
+| Ollama | Local model inference | detected localhost or configured URL |
+| Workflow tools | Automation/tool providers | detected/configured per user |
+
+ARES must degrade gracefully when optional services are absent.

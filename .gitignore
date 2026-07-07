@@ -1,13 +1,26 @@
 # macOS
 .DS_Store
+*.app
+*.app/
+*.iconset/
+*.xcodeproj
+*.xcuserdata
+*.xcworkspace
+xcuserdata
+DerivedData/
+ARES.app
 
-# Swift build
+# Swift/SPM build artifacts
 .build/
+/.build
+.swiftpm/
 *.o
 *.d
 *.dia
 *.swiftdeps
-/.build
+Package.resolved
+build/
+dist/
 
 # ARES Web UI — runtime state (never commit)
 webui/.venv/
@@ -27,23 +40,38 @@ webui/node_modules/
 webui/api/_version.py
 webui/uv.lock
 
-# Python
+# Python artifacts
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 *.egg-info/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+venv/
+.venv/
 
-# IDE
+# IDE / agent local state
 .vscode/
 .idea/
 *.swp
 *.swo
+.claude/
+.claude/worktrees/
 
-# Secrets
+# Secrets and credentials (NEVER commit)
 .env
+*.env
+**/.env
 *.pem
 *.key
+
+# Private runtime folders must never be vendored into this repo
+.hermes/
+.ares/
 
 # ARES Tauri wrapper — local build artifacts (never commit)
 src-tauri/target/
@@ -54,12 +82,14 @@ windows-app/node_modules/
 windows-app/dist/
 windows-app/build.log
 
-# Hermes local runtime
-.hermes/
+# Node.js — local install (never commit)
+node_modules/
+package-lock.json
 
 # Wrapper venv
 .venv-ares-wrapper/
 
-# Node.js — local install (never commit)
-node_modules/
-package-lock.json
+# Misc generated files
+diff_output.txt
+SAM/
+dares/__pycache__/

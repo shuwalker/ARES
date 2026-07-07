@@ -10877,7 +10877,7 @@ def handle_get(handler, parsed) -> bool:
         # precedence in api.auth.get_password_hash(), but until now the UI
         # had no way to know — see issue #1139 / #1560.
         settings["password_env_var"] = bool(
-            os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
+            os.getenv("ARES_WEBUI_PASSWORD", "").strip() or os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
         )
         # Auth-state fields for frontend safety badge / confirmation flows
         from api.auth import get_password_hash, is_auth_enabled
@@ -13807,7 +13807,7 @@ def handle_post(handler, parsed) -> bool:
         # succeeding — the previous behaviour returned 200 + a green save toast
         # while every subsequent login still required the env-var password.
         if requested_password or requested_clear_password:
-            if os.getenv("HERMES_WEBUI_PASSWORD", "").strip():
+            if os.getenv("ARES_WEBUI_PASSWORD", "").strip() or os.getenv("HERMES_WEBUI_PASSWORD", "").strip():
                 return bad(
                     handler,
                     "HERMES_WEBUI_PASSWORD env var is set — it overrides the settings password. "
@@ -13875,7 +13875,9 @@ def handle_post(handler, parsed) -> bool:
         if max_tokens_provided:
             max_tokens_status = set_max_tokens(max_tokens_value)
         saved.pop("password_hash", None)  # never expose hash to client
-        saved.update(max_tokens_status if max_tokens_provided else get_max_tokens_status())
+        _status = max_tokens_status if (max_tokens_provided and max_tokens_status is not None) else get_max_tokens_status()
+        if isinstance(_status, dict):
+            saved.update(_status)
 
         # Settings that change which sessions appear in the sidebar must
         # invalidate the session-list cache directly. Relying on the cache's

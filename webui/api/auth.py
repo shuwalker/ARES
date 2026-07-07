@@ -383,7 +383,7 @@ def get_password_hash() -> str | None:
         if _AUTH_HASH_COMPUTED:
             return _AUTH_HASH_CACHE
 
-        env_pw = os.getenv('HERMES_WEBUI_PASSWORD', '').strip()
+        env_pw = os.getenv('ARES_WEBUI_PASSWORD', '').strip() or os.getenv('HERMES_WEBUI_PASSWORD', '').strip()
         if env_pw:
             result = _hash_password(env_pw)
         else:

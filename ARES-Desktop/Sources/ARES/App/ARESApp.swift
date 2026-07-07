@@ -1,0 +1,54 @@
+import SwiftUI
+import AppKit
+import ARESCore
+import SwiftData
+
+@MainActor
+@main
+struct ARESApp: App {
+    @NSApplicationDelegateAdaptor(ARESAppDelegate.self) var appDelegate
+
+    @StateObject private var appState: ARESAppState
+    @StateObject private var workspaceState: ARESWorkspaceState
+
+    init() {
+        let state = ARESRuntime.appState
+        _appState = StateObject(wrappedValue: state)
+        _workspaceState = StateObject(wrappedValue: ARESWorkspaceState())
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ARESRootView()
+                .environmentObject(appState)
+                .environmentObject(workspaceState)
+                .environment(\.embodiment, appState.embodiment)
+                .environment(\.perceiver, appState.perceiver)
+                .environment(\.memory, appState.memory)
+                .environment(\.voice, appState.voice)
+                .environment(\.brain, appState.brain)
+                .environment(\.identity, appState.identity)
+                .environment(\.mimicry, appState.mimicry)
+                .environment(\.world, appState.world)
+                .environment(\.eventBus, appState.eventBus)
+                .environment(\.workflow, appState.workflow)
+                .environment(\.scheduler, appState.scheduler)
+                .frame(minWidth: 1024, minHeight: 600)
+                .toolApprovalSheet()
+                .preferredColorScheme(.dark)
+                .modelContainer(for: [Note.self, SessionModel.self, MessageModel.self])
+                .onAppear {
+                    // Force window key for keyboard focus
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                }
+        }
+        .defaultSize(width: 1200, height: 800)
+        .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About ARES") {}
+            }
+        }
+    }
+}
