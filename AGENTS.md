@@ -23,7 +23,7 @@ ARES/
 ├── Sources/ARES/          # SwiftUI app — Companion chat, Hub, voice, avatar
 ├── Sources/AresTaskCLI/   # CLI tool for task management
 ├── webui/                 # ARES Web UI — Python web server (forked from hermes-webui, rebranded)
-├── tools/                 # Standalone tools (mail-butler, mcp-bootstrap, etc.)
+├── tools/                 # Standalone tools (email_ai_assistant, mcp-bootstrap, etc.)
 ├── Package.swift          # Swift Package Manager manifest
 ├── CLAUDE.md              # Main AI agent rules
 ├── CONTRIBUTING.md        # Contribution guide

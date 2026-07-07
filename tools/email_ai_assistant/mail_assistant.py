@@ -17,7 +17,7 @@ Core capabilities:
 - Auto-clean: move junk/newsletters to junk, archive receipts/statements
 - Save categorized archives to NAS
 
-All operations respect Matthew's mail philosophy:
+Mail philosophy (configurable per operator, see ares_mail_config.py):
 Inbox = TO-DO list. Junk/newsletters = trash. Receipts/statements = archive.
 """
 
@@ -34,6 +34,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    from . import ares_mail_config as _cfg
+except ImportError:
+    # Running as a standalone script (python mail_assistant.py ...) rather
+    # than as a package member — fall back to a path-based import.
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import ares_mail_config as _cfg
 
 # Reuse proven patterns from apple-mail-management skill
 # (sender-filter batching, unified inbox, macOS 27 workarounds)
@@ -156,7 +166,7 @@ KEEP_DOMAINS = [
     "applecard.apple.com", "synchrony.com", "synchronybank.com",
     "intuit.com", "fordcredit.com", "vanguard.com",
     "guideline.com", "carta.com", "marcus.com",
-    "quantumspace.us", "phasefour.io", "bamboohr.com",
+    "bamboohr.com",
     "gethired.com", "naviabenefits.com", "kellybenefits.com",
     "indeed.com", "indeedemail.com", "axelon.com",
     "github.com", "accounts.google.com", "docker.com",
@@ -171,9 +181,8 @@ KEEP_DOMAINS = [
     "pineanimalhospital.com", "ezyvet.com",
     "michaelsutter.com", "lastpass.com",
     "icloud.com", "trello.com",
-    "dnljenkins5@yahoo.com", "tc935@aol.com",
     "dmv.ca.gov", "wildlifelicense.com",
-]
+] + _cfg.extra_keep_addresses()
 
 # ── Junk subject patterns ───────────────────────────────────────────────
 
@@ -231,9 +240,9 @@ ARCHIVE_CATEGORIES = {
         "norwegianreward.com", "hilton.com",
     ],
     "Work": [
-        "quantumspace.us", "phasefour.io", "bamboohr.com",
+        "bamboohr.com",
         "gethired.com", "indeed.com", "indeedemail.com", "axelon.com",
-    ],
+    ] + _cfg.extra_work_domains(),
     "Purchases": [
         "steampowered.com", "playstation.com", "txn-email.playstation.com",
         "sonyentertainmentnetwork.com", "email.playstation.com",
@@ -288,8 +297,10 @@ ARCHIVE_WHEN_READ_DOMAINS = [
     "support@synchrony.com",
 ]
 
-# NAS archive path
-NAS_MAIL_ARCHIVE = "/Volumes/Personal-Drive/04_Archives/Mail"
+# Optional archive export path (e.g. a NAS mount). Empty when unconfigured —
+# save_to_nas() then no-ops rather than writing anywhere.
+def _nas_mail_archive() -> str:
+    return _cfg.nas_archive_path()
 
 
 @dataclass
@@ -652,7 +663,8 @@ class MailAssistant:
         if body:
             prompt_text += f"\nBody: {body}"
 
-        prompt = f"""You are Matthew's email classifier. Classify this email as exactly one of:
+        owner = _cfg.assistant_name() or "the account owner"
+        prompt = f"""You are {owner}'s email classifier. Classify this email as exactly one of:
 {categories}
 
 Be aggressive — if it's a promo or marketing email, it's newsletter. If it's spam or scam, it's junk. A read receipt or statement should be archive, not keep. Only keep in inbox if it needs action.
@@ -744,8 +756,8 @@ Respond with exactly one word: keep, junk, newsletter, or archive"""
 
             # Archive read receipts/statements
             for item in results["archive"]:
-                # Try NAS save first
-                if os.path.exists(NAS_MAIL_ARCHIVE):
+                # Try NAS save first, if an archive path is configured
+                if os.path.exists(_nas_mail_archive()):
                     subfolder = self.get_archive_subfolder(item.sender)
                     if self.save_to_nas(item.message_id, item.sender, item.subject, subfolder):
                         nas_saved += 1
@@ -840,12 +852,13 @@ Respond with exactly one word: keep, junk, newsletter, or archive"""
             return False
 
     def save_to_nas(self, message_id: str, sender: str, subject: str, subfolder: str) -> bool:
-        """Save email content to NAS archive before removing from inbox."""
-        if not os.path.exists(NAS_MAIL_ARCHIVE):
+        """Save email content to the configured archive path, if any."""
+        nas_root = _nas_mail_archive()
+        if not nas_root or not os.path.exists(nas_root):
             return False
 
         # Ensure subfolder exists
-        folder_path = os.path.join(NAS_MAIL_ARCHIVE, subfolder)
+        folder_path = os.path.join(nas_root, subfolder)
         os.makedirs(folder_path, exist_ok=True)
 
         # Fetch message content
@@ -939,9 +952,8 @@ Respond with exactly one word: keep, junk, newsletter, or archive"""
         """
         Generate a draft reply using the LLM.
 
-        Reads the message, constructs a system prompt that captures
-        Matthew's mail philosophy (concise, action-oriented), and
-        calls the configured cloud model.
+        Reads the message, constructs a system prompt for a concise,
+        action-oriented reply style, and calls the configured cloud model.
 
         Args:
             message_id: AppleScript message ID to reply to.
@@ -953,10 +965,11 @@ Respond with exactly one word: keep, junk, newsletter, or archive"""
         """
         msg = self.read_message(message_id)
 
+        owner = _cfg.assistant_name()
+        for_clause = f" for {owner}" if owner else ""
         system_prompt = (
-            "You are an email assistant for Matthew Jenkins. "
-            "Draft concise, professional replies. "
-            "Matthew's style: direct, no filler, action-oriented. "
+            f"You are an email assistant{for_clause}. "
+            "Draft concise, professional replies: direct, no filler, action-oriented. "
             "Keep replies under 150 words unless the email needs detail. "
             "Never add fake specifics or hallucinate details. "
             "If unsure about something, say so rather than guessing."

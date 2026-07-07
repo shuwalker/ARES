@@ -8,6 +8,7 @@ struct BriefingView: View {
     @StateObject private var taskManager = TaskManager.shared
     @State private var briefing: MorningBriefing?
     @State private var isLoading = true
+    @AppStorage("ares_user_name") private var userName: String = ""
     
     var body: some View {
         ScrollView {
@@ -89,7 +90,7 @@ struct BriefingView: View {
                     .font(.title)
                     .foregroundColor(.yellow)
                 VStack(alignment: .leading) {
-                    Text("Good \(timeOfDay()), Matthew")
+                    Text(userName.isEmpty ? "Good \(timeOfDay())" : "Good \(timeOfDay()), \(userName)")
                         .font(.title2)
                         .fontWeight(.bold)
                     Text(formattedDate(briefing.date))

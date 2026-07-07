@@ -186,9 +186,9 @@
           .then(function (data) {
             var full = data.character || data;
             var merged = Object.assign({}, char, {
-              backstory: (full.prompt || {}).backstory || char.backstory,
-              speech_patterns: (full.prompt || {}).speech_patterns || char.speech_patterns,
-              custom_instructions: (full.prompt || {}).custom_instructions || char.custom_instructions,
+              backstory: full.backstory || char.backstory,
+              speech_patterns: full.speech_patterns || char.speech_patterns,
+              custom_instructions: full.custom_instructions || char.custom_instructions,
             });
             // Add domains from full traits
             if (full.traits && full.traits.domains) {

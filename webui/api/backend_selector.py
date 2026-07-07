@@ -7,14 +7,28 @@ Backends:
   - jros: JROS agent — direct JROS agent loop, own model/tools/personality
   - hybrid: Hermes loop + JROS persona injection + JROS tools (additive)
 
-This module is pure routing logic — no side effects on import. The actual
-JROS bridge (ZMQ client) is in api/jros_bridge.py and only loads when needed.
+This module is pure routing logic — no side effects on import. Execution
+itself happens in api/jros_bridge.py, which runs JROS in-process via a direct
+Python import of the operator's JROS checkout (ARES_JROS_DIR).
+
+Availability is checked two ways, in order:
+  1. If ARES_JROS_BUS_ENDPOINT is set, an operator has chosen to run
+     scripts/jros_presence.py as a liveness sidecar (a real ZMQ REP daemon —
+     see that file). Ping it: a live daemon proves JROS is actually running,
+     and its reply carries the live model/provider for display.
+  2. Otherwise, fall back to a filesystem check: does ARES_JROS_DIR point at
+     a real jaeger_os/ checkout that api.jros_bridge could import?
+
+Note the sidecar only ever answers "is JROS alive" — turn execution always
+goes through the in-process bridge above, not through the sidecar, so a
+remote/separate-process JROS is not yet a runnable configuration end to end.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -25,14 +39,12 @@ BACKEND_HYBRID = "hybrid"
 
 VALID_BACKENDS = (BACKEND_HERMES, BACKEND_JROS, BACKEND_HYBRID)
 
-# JROS bus endpoint — ZMQ IPC socket
-_JROS_BUS_ENDPOINT = os.environ.get(
-    "ARES_JROS_BUS_ENDPOINT", "ipc:///tmp/jros.bus"
-)
+_JROS_BUS_ENDPOINT_ENV = "ARES_JROS_BUS_ENDPOINT"
 
-# Cache JROS availability probe (5s TTL to avoid hammering ZMQ on every request)
+# Cache JROS availability probe (5s TTL — avoids hammering ZMQ/filesystem per request)
 _jros_available_cache: Optional[bool] = None
 _jros_available_ts: float = 0.0
+_jros_presence_info: dict = {}
 _JROS_CACHE_TTL = 5.0
 
 
@@ -44,49 +56,75 @@ def get_active_backend(config: dict) -> str:
     return BACKEND_HERMES
 
 
-def is_jros_available() -> bool:
-    """Check if JROS daemon is reachable on the ZMQ IPC bus.
+def _probe_jros_presence_daemon(endpoint: str) -> Optional[dict]:
+    """Ping the scripts/jros_presence.py sidecar, if one is configured.
 
-    Non-blocking probe with 1s timeout. Cached for 5 seconds to avoid
-    creating a ZMQ context on every API call.
+    Returns the daemon's reply dict on success, or None if unreachable
+    (daemon not installed, not running, or zmq not available).
     """
-    import time
+    try:
+        import zmq
 
-    global _jros_available_cache, _jros_available_ts
+        ctx = zmq.Context.instance()
+        sock = ctx.socket(zmq.REQ)
+        sock.setsockopt(zmq.LINGER, 0)
+        sock.setsockopt(zmq.RCVTIMEO, 1000)
+        sock.connect(endpoint)
+        sock.send_json({"op": "ping"})
+        reply = sock.recv_json()
+        sock.close()
+        return reply if isinstance(reply, dict) and reply.get("ok") else None
+    except Exception:
+        return None
+
+
+def is_jros_available() -> bool:
+    """Check whether JROS is usable right now.
+
+    Prefers a live ping to the presence sidecar (see module docstring) when
+    ARES_JROS_BUS_ENDPOINT is configured; otherwise falls back to checking
+    that ARES_JROS_DIR points at a real jaeger_os/ checkout.
+    """
+    global _jros_available_cache, _jros_available_ts, _jros_presence_info
     now = time.time()
     if _jros_available_cache is not None and (now - _jros_available_ts) < _JROS_CACHE_TTL:
         return _jros_available_cache
 
-    try:
-        import zmq
-        ctx = zmq.Context.instance()
-        sock = ctx.socket(zmq.REQ)
-        sock.setsockopt(zmq.LINGER, 0)
-        sock.setsockopt(zmq.RCVTIMEO, 1000)  # 1s timeout
-        sock.connect(_JROS_BUS_ENDPOINT)
-        # Ping — JROS broker responds to "ping" on the bus
-        sock.send_json({"op": "ping"})
-        reply = sock.recv_json()  # raises if timeout
-        sock.close()
-        result = bool(reply.get("ok", False))
-    except Exception:
-        # ZMQ not installed, bus not running, timeout — all mean "not available"
-        result = False
+    result = False
+    presence_info: dict = {}
+    endpoint = os.environ.get(_JROS_BUS_ENDPOINT_ENV, "").strip()
+    if endpoint:
+        reply = _probe_jros_presence_daemon(endpoint)
+        if reply is not None:
+            result = True
+            presence_info = {"model": reply.get("model"), "provider": reply.get("provider")}
+
+    if not result and not endpoint:
+        try:
+            from api.jros_bridge import _jros_repo_root
+
+            result = (_jros_repo_root() / "jaeger_os").is_dir()
+        except Exception:
+            result = False
 
     _jros_available_cache = result
     _jros_available_ts = now
+    _jros_presence_info = presence_info
     return result
 
 
 def backend_status() -> dict:
     """Return current backend availability for UI display."""
     jros_up = is_jros_available()
-    return {
+    status = {
         "hermes": True,  # always available (in-process)
         "jros": jros_up,
         "hybrid": jros_up,  # hybrid needs JROS too
-        "jros_endpoint": _JROS_BUS_ENDPOINT if jros_up else None,
     }
+    if jros_up and _jros_presence_info:
+        status["jros_model"] = _jros_presence_info.get("model")
+        status["jros_provider"] = _jros_presence_info.get("provider")
+    return status
 
 
 def should_inject_persona(config: dict) -> bool:

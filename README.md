@@ -135,7 +135,7 @@ ARES/
 │   ├── requirements.txt   # Python dependencies
 │   └── tests/             # Test suite
 ├── tools/                 # Standalone tools
-│   ├── mail-butler/       # IMAP mail cleaner with ARES classification rules
+│   ├── email_ai_assistant/ # Native Mail.app AI assistant (classify, draft, auto-clean)
 │   ├── mcp-bootstrap/     # Local vs remote/server MCP setup and verification
 │   └── safari-mcp-bootstrap/ # Safari MCP setup/doctor for macOS automation
 └── docs/assets/           # README images and branding

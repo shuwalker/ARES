@@ -1,14 +1,18 @@
 """JROS character detail loader — serves full character data including traits, lore, and card URL.
 
-Reads character YAMLs from ~/GitHub/JROS/jaeger_os/personality/characters/<id>/character.yaml
+Reads character YAMLs from <JROS repo>/jaeger_os/personality/characters/<id>/character.yaml
 (schema: character/v1).  Designed as a companion to api.persona — persona handles
 prompt rendering, this module exposes the raw data for the WebUI character browser.
+
+The JROS repo location is never assumed: it comes from ``ARES_JROS_DIR`` (the same
+override ``api.jros_bridge`` uses), or ``ARES_CHARACTER_DIR`` directly if the
+character library lives somewhere other than a JROS checkout.
 """
 
 from __future__ import annotations
 
-import logging
 import os
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,13 +20,16 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_CHARACTER_DIR = os.path.expanduser("~/GitHub/JROS/jaeger_os/personality/characters")
 _CHARACTER_DIR_ENV = "ARES_CHARACTER_DIR"
 
 
 def _character_dir() -> Path:
-    raw = os.getenv(_CHARACTER_DIR_ENV, _CHARACTER_DIR)
-    return Path(raw).expanduser()
+    explicit = os.environ.get(_CHARACTER_DIR_ENV, "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    from api.jros_bridge import _jros_repo_root
+
+    return _jros_repo_root() / "jaeger_os" / "personality" / "characters"
 
 
 def _parse_character(data: dict, yml_path: Path) -> Optional[dict[str, Any]]:

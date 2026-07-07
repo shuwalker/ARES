@@ -1748,6 +1748,40 @@ def _clear_live_models_cache() -> None:
 _JROS_COMPATIBLE_MODEL_PROVIDERS = frozenset({"ollama-cloud", "ollama-local", "ollama", "local"})
 
 
+def _sync_main_model_to_jros(result: dict) -> None:
+    """Best-effort: mirror a Hermes main-model change into JROS's config.
+
+    Keeps both backends pointed at the same model so switching the ARES
+    backend selector doesn't silently leave JROS on a stale model. JROS has
+    no live model hot-swap, so this also drops the cached JROS boot — the
+    next JROS/Hybrid turn re-boots (a few seconds) and picks up the change.
+    Never raises: a JROS sync failure must not fail the Hermes model change
+    that already succeeded.
+    """
+    provider = str((result or {}).get("provider") or "").strip().lower()
+    model = str((result or {}).get("model") or "").strip()
+    if not provider or not model:
+        return
+    try:
+        from api.ares_provider_sync import JROS_FALLBACK_PROVIDER_MAP, sync_provider
+
+        jros_provider = JROS_FALLBACK_PROVIDER_MAP.get(provider)
+        if not jros_provider:
+            logger.info("Model provider %s has no JROS equivalent; skipping JROS sync", provider)
+            return
+        sync_provider(
+            provider=jros_provider,
+            model=model,
+            targets=["jros"],
+            hermes_config_path=_active_profile_config_path(),
+        )
+        from api.jros_bridge import reset_jros_boot
+
+        reset_jros_boot()
+    except Exception:
+        logger.warning("Failed to sync main model change to JROS", exc_info=True)
+
+
 def _filter_model_catalog_for_active_ares_backend(catalog: dict) -> dict:
     """Return the same model-picker catalog, scoped to the active ARES runtime.
 
@@ -11566,47 +11600,8 @@ def handle_get(handler, parsed) -> bool:
     # ARES: JROS character library — full character data with traits
     if parsed.path == "/api/ares/characters":
         try:
-            import yaml as _yaml
-            char_root = Path.home() / "GitHub" / "JROS" / "jaeger_os" / "personality" / "characters"
-            characters = []
-            if char_root.is_dir():
-                for char_dir in sorted(char_root.iterdir()):
-                    if not char_dir.is_dir():
-                        continue
-                    yml = char_dir / "character.yaml"
-                    if not yml.exists():
-                        continue
-                    with open(yml) as f:
-                        data = _yaml.safe_load(f) or {}
-                    cid = data.get("id", char_dir.name)
-                    name = data.get("name", cid)
-                    desc = data.get("description", "")
-                    identity = data.get("identity", {}) or {}
-                    role = identity.get("role", "")
-                    voice_tone = identity.get("voice_tone", "")
-                    voice_id = identity.get("voice_id", "")
-                    traits = data.get("traits", {}) or {}
-                    hexaco = traits.get("hexaco", {}) or {}
-                    special = traits.get("special", {}) or {}
-                    expression = traits.get("expression", {}) or {}
-                    characters.append({
-                        "id": cid,
-                        "name": name,
-                        "description": desc,
-                        "role": role,
-                        "voice_tone": voice_tone,
-                        "voice_id": voice_id,
-                        "level": data.get("level", 1),
-                        "card_url": f"/static/characters/{cid}.png",
-                        "traits": {
-                            "hexaco": hexaco,
-                            "special": special,
-                            "expression": expression,
-                        },
-                        "backstory": (data.get("prompt", {}) or {}).get("backstory", ""),
-                        "speech_patterns": (data.get("prompt", {}) or {}).get("speech_patterns", []),
-                        "custom_instructions": (data.get("prompt", {}) or {}).get("custom_instructions", ""),
-                    })
+            from api.characters import list_characters
+            characters = list_characters()
         except Exception as exc:
             return bad(handler, f"Failed to list characters: {exc}")
         return j(handler, {"characters": characters})
@@ -11618,12 +11613,10 @@ def handle_get(handler, parsed) -> bool:
         if not char_id:
             return bad(handler, "id required")
         try:
-            import yaml as _yaml
-            yml = Path.home() / "GitHub" / "JROS" / "jaeger_os" / "personality" / "characters" / char_id / "character.yaml"
-            if not yml.exists():
+            from api.characters import get_character
+            data = get_character(char_id)
+            if data is None:
                 return bad(handler, "Character not found", 404)
-            with open(yml) as f:
-                data = _yaml.safe_load(f) or {}
         except Exception as exc:
             return bad(handler, f"Failed to load character: {exc}")
         return j(handler, {"character": data})
@@ -12671,7 +12664,9 @@ def handle_post(handler, parsed) -> bool:
             provider = body.get("provider") if isinstance(body, dict) else None
             if str(provider or "").strip().lower() == "auto":
                 provider = None
-            return j(handler, set_hermes_default_model(body.get("model"), provider=provider, advanced=advanced))
+            result = set_hermes_default_model(body.get("model"), provider=provider, advanced=advanced)
+            _sync_main_model_to_jros(result)
+            return j(handler, result)
         except ValueError as e:
             return bad(handler, str(e))
         except RuntimeError as e:
@@ -12693,7 +12688,9 @@ def handle_post(handler, parsed) -> bool:
         if scope == "main":
             try:
                 main_provider = provider if provider != "auto" else None
-                return j(handler, set_hermes_default_model(model, provider=main_provider, advanced=advanced))
+                result = set_hermes_default_model(model, provider=main_provider, advanced=advanced)
+                _sync_main_model_to_jros(result)
+                return j(handler, result)
             except ValueError as exc:
                 return bad(handler, str(exc), status=400)
         return bad(handler, f"unknown scope: {scope}", status=400)

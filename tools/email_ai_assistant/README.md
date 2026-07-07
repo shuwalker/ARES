@@ -1,44 +1,42 @@
-# Email AI Assistant — Tool README
+# Email AI Assistant
 
-Production-grade AI email management for ARES using native Mail.app as the single source of truth.
+AI email management for ARES using the native macOS Mail.app as the single
+source of truth — no IMAP credentials, no app passwords, everything runs
+through AppleScript against your already-authenticated mail accounts.
 
-## Status
+Wired into the WebUI's Email panel via `webui/api/email_routes.py`
+(`/api/email/*`).
 
-- **Branch**: `feat/odysseus-email-ai-assistant`
-- **Core**: `mail_assistant.py` + `mail_assistant_production.py`
-- **Tools exposed**: `list_unread_emails`, `read_email`, `draft_reply`
-- **Connection**: 100% native Mail.app (AppleScript) — no custom IMAP, no app passwords
-- **Philosophy**: Inbox = TO-DO list. Aggressive junk/newsletter removal. Archive receipts.
+## Capabilities
+
+- List unread / all inbox messages
+- Read full message content
+- Classify messages (fast heuristic domain/subject matching, LLM fallback for
+  anything uncertain)
+- Draft replies via the configured LLM
+- Auto-clean: move junk/newsletters to Junk, archive receipts/statements
+- Optional export of archived messages to a configured local/NAS path
+
+## Configuration
+
+Nothing here is hardcoded to a specific person or machine. Configure via
+environment variables, or `~/.ares/mail_config.json`:
+
+| Setting | Env var | Purpose |
+|---|---|---|
+| Assistant name | `ARES_MAIL_ASSISTANT_NAME` | Used in LLM prompts ("email assistant for \<name\>") |
+| Archive export path | `ARES_MAIL_NAS_PATH` | Where `auto_clean`/`save_to_nas` write archived `.eml` files. Unset = disabled. |
+| Extra keep addresses | `ARES_MAIL_KEEP_ADDRESSES` | Comma-separated senders/domains that should never be classified as junk |
+| Work domains | `ARES_MAIL_WORK_DOMAINS` | Comma-separated employer domain(s) filed under the "Work" archive category |
+
+The LLM classifier/drafter uses whatever OpenAI-compatible endpoint is
+configured via `OLLAMA_API_KEY` / `OLLAMA_CLOUD_URL` / `ARES_MAIL_MODEL`
+(falls back to `~/.hermes/.env` for the API key).
+
+See `ares_mail_config.py` for the full config resolution logic.
 
 ## Files
 
-- `mail_assistant.py` — Core class with AppleScript-backed operations
-- `mail_assistant_production.py` — Hardened wrapper with logging + safety
-- `tool.py` — Hermes tool wrappers for agent use
-- `email_thread_parser.py` (original) — Reference implementation (being integrated by swarm)
-
-## Current Capabilities (as of Cycle 1)
-
-- List unread messages (fast, safe batching)
-- Read full message content
-- Draft replies (stub → real LLM in next cycle)
-- Mark read / move to junk (account-aware)
-
-## Safety
-
-- All destructive actions are logged
-- Default limits are conservative
-- Never auto-sends without explicit confirmation (enforced in production wrapper)
-
-## Next Cycles (autonomous)
-
-Subagents are currently working on:
-1. Full thread parser integration
-2. Real LLM-powered drafting
-3. Hermes skill registration
-
-Manager will review, approve, and iterate until the feature is merge-ready.
-
-## License Note
-
-This feature absorbs logic from Odysseus (AGPL-3.0-or-later). ARES license will be updated to AGPL-3.0-or-later upon merge.
+- `mail_assistant.py` — the `MailAssistant` class: AppleScript operations, classification, LLM drafting
+- `ares_mail_config.py` — operator-specific configuration (name, paths, domain lists)
+- `__init__.py` — package init

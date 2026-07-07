@@ -45,10 +45,20 @@ _BOOT: Any | None = None
 
 
 def _jros_repo_root() -> Path:
+    """Resolve the JROS repo checkout location.
+
+    There is no universal install path to guess — JROS is installed wherever
+    the operator put it, not necessarily under any particular developer's
+    directory layout. ``ARES_JROS_DIR`` must be set explicitly.
+    """
     override = os.environ.get("ARES_JROS_DIR", "").strip()
-    if override:
-        return Path(override).expanduser().resolve()
-    return (Path.home() / "GitHub" / "JROS").resolve()
+    if not override:
+        raise RuntimeError(
+            "ARES_JROS_DIR is not set. Point it at your JROS checkout "
+            "(the directory containing jaeger_os/) to use the JROS backend "
+            "or character library."
+        )
+    return Path(override).expanduser().resolve()
 
 
 def _jros_instance_name() -> str:
@@ -78,6 +88,21 @@ def _boot_jros() -> Any:
                 prewarm_model=False,
             )
         return _BOOT
+
+
+def reset_jros_boot() -> None:
+    """Drop the cached JROS boot so the next turn re-boots from disk config.
+
+    JROS has no live model hot-swap (its client's model is fixed at
+    construction time), so picking a new model or failing over to a
+    fallback provider only takes effect after a re-boot. Call this after
+    writing new provider settings to JROS's config.yaml (see
+    api.ares_provider_sync) — the next chat turn on this backend pays one
+    boot's worth of latency and then runs the new model.
+    """
+    global _BOOT
+    with _BOOT_LOCK:
+        _BOOT = None
 
 
 def _stream_writeback_is_current(session: Any, stream_id: str) -> bool:
@@ -194,6 +219,115 @@ def _merge_and_save_jros_turn(
         s.model_provider = selected_model_provider
         s.save()
         return s
+
+
+def _jros_fallback_chain() -> list[dict]:
+    """Read the fallback_providers chain already synced into JROS's config.
+
+    api.ares_provider_sync.sync_fallback_chain() writes this list (mirrored
+    from Hermes's own fallback_providers, translated to JROS-runnable
+    providers). JROS itself never reads it — nothing about "no provider
+    negotiation" in jaeger_os changes because of this list existing — so
+    this bridge is what actually walks it on failure.
+    """
+    try:
+        from api.ares_provider_sync import load_yaml_config, resolve_jros_config_path
+
+        cfg = load_yaml_config(resolve_jros_config_path())
+        chain = cfg.get("fallback_providers") if isinstance(cfg, dict) else None
+        return [e for e in chain if isinstance(e, dict) and e.get("provider") and e.get("model")] if isinstance(chain, list) else []
+    except Exception:
+        logger.debug("Failed to read JROS fallback chain", exc_info=True)
+        return []
+
+
+def _apply_jros_provider_entry(entry: dict) -> None:
+    """Write a fallback entry into JROS's external_model config and reboot.
+
+    Raises on failure to write config; the caller decides whether to try the
+    next entry or give up.
+    """
+    from api.ares_provider_sync import load_yaml_config, resolve_jros_config_path, save_yaml_config
+
+    path = resolve_jros_config_path()
+    cfg = load_yaml_config(path)
+    external_model = cfg.get("external_model")
+    if not isinstance(external_model, dict):
+        external_model = {}
+        cfg["external_model"] = external_model
+    external_model["enabled"] = True
+    external_model["provider"] = entry["provider"]
+    external_model["model"] = entry["model"]
+    if entry.get("base_url"):
+        external_model["base_url"] = entry["base_url"]
+    if entry.get("key_env") or entry.get("api_key_env"):
+        external_model["api_key_env"] = entry.get("key_env") or entry.get("api_key_env")
+    save_yaml_config(path, cfg)
+    reset_jros_boot()
+
+
+def _attempt_jros_turn(msg_text: str, session_id: str, cancel_event: threading.Event) -> tuple[str, str, list[str]]:
+    """One boot+run attempt against JROS as currently configured.
+
+    Returns (assistant_text, error, tool_activity) — same shape as
+    _assistant_text_from_jros_result. Raises on a hard failure (boot crash,
+    import error, etc.) so the fallback loop can distinguish "JROS ran and
+    reported an error" from "JROS didn't run at all" — both are failures
+    worth falling back on, but only the latter needs the exception logged.
+    """
+    boot = _boot_jros()
+    if cancel_event.is_set():
+        return "", "", []
+    from jaeger_os.main import run_for_voice
+
+    with contextlib.redirect_stdout(sys.stderr):
+        result = run_for_voice(boot.client, str(msg_text or ""), session_key=f"webui:{session_id}")
+    return _assistant_text_from_jros_result(result)
+
+
+def _run_jros_turn_with_fallback(
+    msg_text: str, session_id: str, cancel_event: threading.Event, put_jros_event
+) -> tuple[str, str, list[str]]:
+    """Try the active JROS provider; on failure, walk the synced fallback
+    chain (each attempt costs a reboot) until one succeeds or it's exhausted.
+
+    Mirrors Hermes's exhaust-the-chain behavior, implemented here because
+    JROS has no native fallback/retry concept of its own.
+    """
+    try:
+        assistant_text, error, tool_activity = _attempt_jros_turn(msg_text, session_id, cancel_event)
+        if not error and assistant_text:
+            return assistant_text, error, tool_activity
+        last_error = error or "JROS returned no response"
+    except Exception as exc:
+        last_error = str(exc)
+        logger.warning("JROS turn failed on active provider: %s", last_error, exc_info=True)
+
+    chain = _jros_fallback_chain()
+    if not chain:
+        return "", last_error, []
+
+    for i, entry in enumerate(chain):
+        if cancel_event.is_set():
+            return "", last_error, []
+        put_jros_event("apperror", {
+            "label": "JROS falling back",
+            "type": "jros_fallback",
+            "message": f"{entry['provider']}/{entry['model']} failed; trying fallback {i + 1}/{len(chain)}: "
+                       f"switching to next configured provider.",
+            "hint": last_error,
+        })
+        try:
+            _apply_jros_provider_entry(entry)
+            assistant_text, error, tool_activity = _attempt_jros_turn(msg_text, session_id, cancel_event)
+            if not error and assistant_text:
+                return assistant_text, error, tool_activity
+            last_error = error or "JROS returned no response"
+        except Exception as exc:
+            last_error = str(exc)
+            logger.warning("JROS fallback attempt %s (%s/%s) failed: %s", i + 1, entry.get("provider"), entry.get("model"), last_error, exc_info=True)
+
+    return "", f"All JROS providers exhausted. Last error: {last_error}", []
 
 
 def _run_jros_goal_hook(*, session_id: str, stream_id: str, goal_related: bool, assistant_text: str, put_jros_event) -> None:
@@ -313,19 +447,13 @@ def _run_jros_chat_streaming(
             "prefill": {"status": "jros", "source": "jros", "label": "JROS", "message_count": 0},
         })
         update_active_run(stream_id, phase="jros-booting")
-        boot = _boot_jros()
-        if cancel_event.is_set():
-            put_jros_event("cancel", {"message": "Cancelled by user"})
-            return
         update_active_run(stream_id, phase="jros-request")
-        from jaeger_os.main import run_for_voice
-
-        with contextlib.redirect_stdout(sys.stderr):
-            result = run_for_voice(boot.client, str(msg_text or ""), session_key=f"webui:{session_id}")
+        assistant_text, error, tool_activity = _run_jros_turn_with_fallback(
+            msg_text, session_id, cancel_event, put_jros_event
+        )
         if cancel_event.is_set():
             put_jros_event("cancel", {"message": "Cancelled by user"})
             return
-        assistant_text, error, tool_activity = _assistant_text_from_jros_result(result)
         for activity in tool_activity:
             if stream_id in STREAM_LIVE_TOOL_CALLS:
                 STREAM_LIVE_TOOL_CALLS[stream_id].append({"name": "jros", "args": {"activity": activity}, "done": True})
