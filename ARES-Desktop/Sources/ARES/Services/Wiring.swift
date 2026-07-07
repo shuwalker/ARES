@@ -55,11 +55,13 @@ func resolveBackends(_ mode: RuntimeEnvironment) -> BackendStack {
                 voice: DummyVoiceEngine(),
                 brain: DummyReasoningBrain(),
                 identity: DummyIdentity(),
+                ownerModel: DummyOwnerModelProvider(),
                 mimicry: DummyMimicry(),
                 world: DummyWorldModel(),
                 eventBus: DummyEventBus(),
                 workflow: DummyWorkflow(),
                 scheduler: DummyScheduler(),
+                executionRouter: BackendBuilder.defaultExecutionBackendRouter(),
                 environment: .development
             )
         }
@@ -75,11 +77,13 @@ extension EnvironmentValues {
     @Entry var voice: (any VoiceEngine)?
     @Entry var brain: (any ReasoningBrain)?
     @Entry var identity: (any Identity)?
+    @Entry var ownerModel: (any OwnerModelProvider)?
     @Entry var mimicry: (any Mimicry)?
     @Entry var world: (any WorldPerception)?
     @Entry var eventBus: (any EventBus)?
     @Entry var workflow: (any Workflow)?
     @Entry var scheduler: (any Scheduler)?
+    @Entry var executionRouter: ExecutionBackendRouter?
 }
 
 // MARK: - ARESAppState Factory

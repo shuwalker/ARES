@@ -19,7 +19,7 @@ final class AlphaBackendContractTests: XCTestCase {
 
     func testMemoryStoreRoundTripsAndUpdatesContent() async throws {
         let store = DummyMemoryStore()
-        let memory = Memory(id: "mem-1", content: "Matthew likes local-first tools")
+        let memory = Memory(id: "mem-1", content: "owner likes local-first tools")
 
         let id = try await store.store(memory)
         XCTAssertEqual(id, "mem-1")
@@ -27,13 +27,94 @@ final class AlphaBackendContractTests: XCTestCase {
         var results = try await store.retrieve(query: "LOCAL-FIRST", limit: 5)
         XCTAssertEqual(results.map(\.id), ["mem-1"])
 
-        try await store.update("mem-1", with: ["content": .string("Matthew likes production alpha builds")])
+        try await store.update("mem-1", with: ["content": .string("owner likes production alpha builds")])
         results = try await store.retrieve(query: "alpha", limit: 5)
-        XCTAssertEqual(results.first?.content, "Matthew likes production alpha builds")
+        XCTAssertEqual(results.first?.content, "owner likes production alpha builds")
 
         try await store.delete("mem-1")
-        results = try await store.retrieve(query: "Matthew", limit: 5)
+        results = try await store.retrieve(query: "owner", limit: 5)
         XCTAssertTrue(results.isEmpty)
+    }
+
+    func testOwnerModelRecordsCorrectionsAndBuildsContext() async throws {
+        let ownerModel = DummyOwnerModelProvider()
+        try await ownerModel.recordCorrection(OwnerCorrection(
+            originalBehavior: "used vague AI layer names",
+            correctedBehavior: "use direct feature names in ARESCore",
+            evidence: "unit-test"
+        ))
+        try await ownerModel.updateStandards([
+            OwnerStandard(area: "architecture", rule: "Owner learning is Owner Model, not Mimicry")
+        ])
+
+        let context = try await ownerModel.buildContext(for: "owner model architecture")
+        XCTAssertEqual(context.activeStandards.first?.area, "architecture")
+        XCTAssertTrue(context.relevantRejectedPatterns.contains { $0.summary.contains("vague AI") })
+        XCTAssertTrue(context.relevantAcceptedPatterns.contains { $0.summary.contains("direct feature names") })
+        XCTAssertGreaterThan(context.confidence, 0)
+    }
+
+    func testExecutionBackendRouterTreatsHermesAndJROSAsPeerFrameworks() throws {
+        let router = ExecutionBackendRouter(backends: [
+            ExecutionBackendDescriptor(
+                kind: .hermes,
+                displayName: "Hermes Agent",
+                capabilities: [.agentTurn, .toolUse, .memory, .scheduling, .verification]
+            ),
+            ExecutionBackendDescriptor(
+                kind: .jros,
+                displayName: "JROS",
+                capabilities: [.agentTurn, .toolUse, .voiceInput, .voiceOutput, .robotics, .eventBus, .hardwareSafety]
+            ),
+            ExecutionBackendDescriptor(
+                kind: .aresNative,
+                displayName: "ARES Native",
+                capabilities: [.naturalLanguageInterface, .uiPresentation, .automationFlow]
+            )
+        ])
+
+        let route = router.route(for: ExecutionBackendRequest(
+            userIntent: "Use agent tools and robot hardware from one natural request",
+            requiredCapabilities: [.scheduling, .robotics, .hardwareSafety]
+        ))
+
+        if case .hybrid(let backends) = route.mode {
+            XCTAssertEqual(Set(backends), Set([.hermes, .jros]))
+        } else {
+            XCTFail("Expected hybrid route, got \(route.mode)")
+        }
+        XCTAssertEqual(Set(route.selectedBackends), Set([.hermes, .jros]))
+        XCTAssertTrue(route.isRoutable)
+        XCTAssertTrue(route.rationale.contains { $0.contains("Hybrid route") })
+    }
+
+    func testExecutionBackendRouterAllowsPureARESNativeUXAutomation() throws {
+        let router = ExecutionBackendRouter(backends: [
+            ExecutionBackendDescriptor(
+                kind: .aresNative,
+                displayName: "ARES Native",
+                capabilities: [.naturalLanguageInterface, .uiPresentation, .automationFlow]
+            ),
+            ExecutionBackendDescriptor(
+                kind: .hermes,
+                displayName: "Hermes Agent",
+                capabilities: [.agentTurn, .toolUse, .memory]
+            ),
+            ExecutionBackendDescriptor(
+                kind: .jros,
+                displayName: "JROS",
+                capabilities: [.agentTurn, .voiceInput, .voiceOutput, .robotics]
+            )
+        ])
+
+        let route = router.route(for: ExecutionBackendRequest(
+            userIntent: "Create a guided setup flow from natural language",
+            requiredCapabilities: [.naturalLanguageInterface, .uiPresentation, .automationFlow]
+        ))
+
+        XCTAssertEqual(route.mode, .single(.aresNative))
+        XCTAssertEqual(route.selectedBackends, [.aresNative])
+        XCTAssertTrue(route.isRoutable)
     }
 
     func testWorkflowPersistsCardChanges() async throws {

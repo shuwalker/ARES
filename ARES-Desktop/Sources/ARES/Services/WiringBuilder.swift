@@ -18,11 +18,13 @@ public final class BackendBuilder: @unchecked Sendable {
     private var _voice: (any VoiceEngine)?
     private var _brain: (any ReasoningBrain)?
     private var _identity: (any Identity)?
+    private var _ownerModel: (any OwnerModelProvider)?
     private var _mimicry: (any Mimicry)?
     private var _world: (any WorldPerception)?
     private var _eventBus: (any EventBus)?
     private var _workflow: (any Workflow)?
     private var _scheduler: (any Scheduler)?
+    private var _executionRouter: ExecutionBackendRouter?
 
     public init() {}
 
@@ -111,6 +113,22 @@ public final class BackendBuilder: @unchecked Sendable {
         return self
     }
 
+    public func ownerModel(_ impl: OwnerModelImpl) -> Self {
+        switch impl {
+        case .dummy:
+            _ownerModel = DummyOwnerModelProvider()
+        case .filesystem(let path):
+            do {
+                _ownerModel = try FileSystemOwnerModelProvider(path: path)
+                print("✅ [WIRING] OwnerModel: FileSystemOwnerModelProvider(\(path))")
+            } catch {
+                _ownerModel = DummyOwnerModelProvider()
+                print("⚠️  [WIRING] OwnerModel: FileSystemOwnerModelProvider failed (\(error)), falling back to dummy")
+            }
+        }
+        return self
+    }
+
     public func mimicry(_ impl: MimicryImpl) -> Self {
         switch impl {
         case .dummy:
@@ -182,6 +200,14 @@ public final class BackendBuilder: @unchecked Sendable {
         return self
     }
 
+    /// Override the product-level execution backend router.
+    /// Normal launches use the default router so Hermes, JROS, ARES-native,
+    /// local/cloud, and hybrid paths remain first-class.
+    public func executionRouter(_ router: ExecutionBackendRouter) -> Self {
+        _executionRouter = router
+        return self
+    }
+
     /// Factory for gateway providers (can be called from views/services).
     public static func gateway(_ impl: GatewayImpl) -> any GatewayProvider {
         switch impl {
@@ -223,6 +249,46 @@ public final class BackendBuilder: @unchecked Sendable {
         return builder._eventBus ?? DummyEventBus()
     }
 
+    public static func defaultExecutionBackendRouter() -> ExecutionBackendRouter {
+        ExecutionBackendRouter(backends: [
+            ExecutionBackendDescriptor(
+                kind: .aresNative,
+                displayName: "ARES Native Services",
+                capabilities: [.naturalLanguageInterface, .uiPresentation, .automationFlow, .memory, .verification],
+                health: ExecutionBackendHealth(state: .healthy),
+                notes: "Product-owned UX, automation, and continuity services."
+            ),
+            ExecutionBackendDescriptor(
+                kind: .hermes,
+                displayName: "Hermes Agent",
+                capabilities: [.agentTurn, .toolUse, .memory, .scheduling, .delegation, .sessionContinuity, .verification, .modelInference],
+                health: ExecutionBackendHealth(state: .degraded, message: "Configured framework adapter; verify live gateway health before execution."),
+                notes: "Peer full agentic framework."
+            ),
+            ExecutionBackendDescriptor(
+                kind: .jros,
+                displayName: "JROS",
+                capabilities: [.agentTurn, .toolUse, .voiceInput, .voiceOutput, .vision, .robotics, .eventBus, .hardwareSafety, .modelInference],
+                health: ExecutionBackendHealth(state: .degraded, message: "Configured framework adapter; verify bridge/client turn before execution."),
+                notes: "Peer full agentic framework with robotics and embodiment strengths."
+            ),
+            ExecutionBackendDescriptor(
+                kind: .localModel,
+                displayName: "Local Model Runner",
+                capabilities: [.modelInference],
+                health: ExecutionBackendHealth(state: .degraded, message: "Detected/configured at runtime."),
+                notes: "Inference backend, not an agentic framework by itself."
+            ),
+            ExecutionBackendDescriptor(
+                kind: .cloudProvider,
+                displayName: "Cloud Provider",
+                capabilities: [.modelInference],
+                health: ExecutionBackendHealth(state: .degraded, message: "Configured by provider settings."),
+                notes: "Remote model/tool provider behind ARES routing."
+            )
+        ])
+    }
+
     // MARK: - Build
     /// Build: construct the BackendStack.
     /// In production mode, warns loudly for every dummy subsystem and rejects
@@ -236,6 +302,7 @@ public final class BackendBuilder: @unchecked Sendable {
         let voice = _voice ?? { print("⚠️  [WIRING] Voice: no builder call, defaulting to DummyVoiceEngine"); return DummyVoiceEngine() }()
         let brain = _brain ?? { print("⚠️  [WIRING] Brain: no builder call, defaulting to DummyReasoningBrain"); return DummyReasoningBrain() }()
         let identity = _identity ?? { print("⚠️  [WIRING] Identity: no builder call, defaulting to DummyIdentity"); return DummyIdentity() }()
+        let ownerModel = _ownerModel ?? { print("⚠️  [WIRING] OwnerModel: no builder call, defaulting to DummyOwnerModelProvider"); return DummyOwnerModelProvider() }()
         let mimicry = _mimicry ?? { print("⚠️  [WIRING] Mimicry: no builder call, defaulting to DummyMimicry"); return DummyMimicry() }()
         let world = _world ?? { print("⚠️  [WIRING] WorldPerception: no builder call, defaulting to DummyWorldModel"); return DummyWorldModel() }()
         let eventBus = _eventBus ?? { print("⚠️  [WIRING] EventBus: no builder call, defaulting to DummyEventBus"); return DummyEventBus() }()
@@ -249,8 +316,9 @@ public final class BackendBuilder: @unchecked Sendable {
         }
         let workflow = _workflow ?? { print("⚠️  [WIRING] Workflow: no builder call, defaulting to DummyWorkflow"); return DummyWorkflow() }()
         let scheduler = _scheduler ?? { print("⚠️  [WIRING] Scheduler: no builder call, defaulting to DummyScheduler"); return DummyScheduler() }()
+        let executionRouter = _executionRouter ?? Self.defaultExecutionBackendRouter()
 
-        // Production safety: reject if critical subsystems are dummies
+        // Production safety: reject if critical subsystems are dummies.
         if checkProduction && env == .production {
             let criticalDummies: [(String, Bool)] = [
                 ("Memory", memory is DummyMemoryStore),
@@ -273,6 +341,7 @@ public final class BackendBuilder: @unchecked Sendable {
             ("Voice",        String(describing: type(of: voice)),       voice is DummyVoiceEngine),
             ("Brain",        String(describing: type(of: brain)),       brain is DummyReasoningBrain),
             ("Identity",     String(describing: type(of: identity)),    identity is DummyIdentity),
+            ("OwnerModel",   String(describing: type(of: ownerModel)),  ownerModel is DummyOwnerModelProvider),
             ("Mimicry",      String(describing: type(of: mimicry)),     mimicry is DummyMimicry),
             ("World",        String(describing: type(of: world)),       world is DummyWorldModel),
             ("EventBus",     String(describing: type(of: eventBus)),    eventBus is DummyEventBus),
@@ -293,11 +362,13 @@ public final class BackendBuilder: @unchecked Sendable {
             voice: voice,
             brain: brain,
             identity: identity,
+            ownerModel: ownerModel,
             mimicry: mimicry,
             world: world,
             eventBus: eventBus,
             workflow: workflow,
             scheduler: scheduler,
+            executionRouter: executionRouter,
             environment: env
         )
     }
@@ -332,6 +403,11 @@ public enum BrainImpl {
 }
 
 public enum IdentityImpl {
+    case dummy
+    case filesystem(path: String)
+}
+
+public enum OwnerModelImpl {
     case dummy
     case filesystem(path: String)
 }
@@ -380,11 +456,13 @@ public struct BackendStack {
     let voice: any VoiceEngine
     let brain: any ReasoningBrain
     let identity: any Identity
+    let ownerModel: any OwnerModelProvider
     let mimicry: any Mimicry
     let world: any WorldPerception
     let eventBus: any EventBus
     let workflow: any Workflow
     let scheduler: any Scheduler
+    let executionRouter: ExecutionBackendRouter
     let environment: RuntimeEnvironment
 }
 
@@ -435,6 +513,7 @@ extension BackendStack {
             .voice(.dummy)
             .brain(.dummy)
             .identity(.dummy)
+            .ownerModel(.dummy)
             .mimicry(.dummy)
             .world(.dummy)
             .eventBus(.dummy)
@@ -457,6 +536,7 @@ extension BackendStack {
             .voice(.system)
             .brain(.hermes(url: hermesURL))
             .identity(.filesystem(path: config.identityJSONPath))
+            .ownerModel(.filesystem(path: config.ownerModelJSONPath))
             .mimicry(.realistic)
             .world(.appleVision)
             .eventBus(.local)

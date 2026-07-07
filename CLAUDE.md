@@ -14,11 +14,13 @@ This file defines mandatory rules for AI agents working in the ARES repository.
 
 ARES = Autonomous Reasoning & Execution System.
 
-ARES is the persistent AI person/product layer: identity, memory, task continuity, self-audit, autonomous follow-through, embodiment state, voice/face/presence, and cross-session context.
+ARES is the human-facing UX/product layer over full agentic frameworks. It provides coherent UI, natural-language interaction, guided automation, owner-aware defaults, task continuity, self-audit, voice/face/presence, and cross-session context.
 
-- Hermes Agent is the current agent/runtime layer: tools, skills, gateway, sessions, cron, memory backend support, and model/provider routing.
-- JROS is the optional robotics/body layer: hardware abstraction, embodiment daemon/tools/personas, and robot control primitives.
-- ARES owns the user-facing identity and experience above both.
+- Hermes Agent is a full independent agentic framework ARES can use through an adapter: tools, skills, gateway, sessions, cron, memory backend support, model/provider routing, delegation, and automation.
+- JROS is a full independent agentic framework ARES can use through an adapter: agent loop, tools/skills, bridge/client protocol, voice/STT/TTS, character surfaces, event bus, hardware abstraction, embodiment, and robotics.
+- ARES-native services are product-owned UI/automation/services ARES builds directly when the experience should not depend on either framework.
+- Hybrid is first-class: ARES may use Hermes for one part of a request, JROS for another, and ARES-native UI/automation for the rest.
+- ARES owns the user-facing identity and experience above all backends.
 
 ## Public repo privacy boundary
 
@@ -58,7 +60,7 @@ Two Swift layers under `ARES-Desktop/Sources/`:
   - `Services/` — wiring, companion chat, agent tool routing, terminal, storage, browser services.
   - `Views/` — Companion, Hub, Kanban, Terminal, Files, Settings, widgets, and related UI.
 
-`ARES-Desktop/Sources/ARES/Services/WiringBuilder.swift` owns protocol-to-implementation wiring. Prefer configured providers first, native fallbacks second, and development dummies only where explicitly allowed.
+`ARES-Desktop/Sources/ARES/Services/WiringBuilder.swift` owns protocol-to-implementation wiring. `ExecutionBackendRouter` owns product-level backend planning by capability. Prefer configured providers first, native fallbacks second, and development dummies only where explicitly allowed.
 
 ## Code quality standards
 
@@ -106,9 +108,11 @@ External services must be optional/detected, not hardcoded:
 
 | Service | Default role | Expected configuration style |
 |---|---|---|
-| JROS | Robotics/embodiment backend | user-selected path/socket/env/template |
-| Hermes | Agent gateway/runtime | configured URL/API key/env/template |
-| Ollama | Local model inference | detected localhost or configured URL |
+| Hermes | Peer full agentic framework backend | configured URL/API key/env/template |
+| JROS | Peer full agentic framework backend | user-selected path/socket/env/template |
+| ARES-native services | Product-owned UI/automation features | bundled/detected/configured per user |
+| Ollama/local models | Local model inference backend | detected localhost or configured URL |
+| Cloud providers | Remote model/tool providers | configured provider credentials/templates |
 | Workflow tools | Automation/tool providers | detected/configured per user |
 
 ARES must degrade gracefully when optional services are absent.

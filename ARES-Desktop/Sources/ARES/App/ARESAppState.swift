@@ -84,11 +84,13 @@ final class ARESAppState: ObservableObject {
     var voice: any VoiceEngine
     var brain: any ReasoningBrain
     var identity: any Identity
+    var ownerModel: any OwnerModelProvider
     var mimicry: any Mimicry
     var world: any WorldPerception
     var eventBus: any EventBus
     var workflow: any Workflow
     var scheduler: any Scheduler
+    var executionRouter: ExecutionBackendRouter
 
     // Active implementations for UI Pickers
     @Published var activeVoiceImpl: VoiceImpl = .system
@@ -108,11 +110,13 @@ final class ARESAppState: ObservableObject {
         self.voice = stack.voice
         self.brain = stack.brain
         self.identity = stack.identity
+        self.ownerModel = stack.ownerModel
         self.mimicry = stack.mimicry
         self.world = stack.world
         self.eventBus = stack.eventBus
         self.workflow = stack.workflow
         self.scheduler = stack.scheduler
+        self.executionRouter = stack.executionRouter
         self.hasBootstrapped = UserDefaults.standard.bool(forKey: "ARES.hasBootstrapped")
         refreshLiveStats()
     }

@@ -79,18 +79,18 @@ ARES uses a batteries-included/pro-extensions architecture:
 
 - **Native interface:** SwiftUI Mission Control UI, dashboard, companion surfaces, terminal/files/kanban/skills/automation views.
 - **Native capabilities:** local SQLite memory, Apple voice/perception hooks, local event bus, configured provider routing.
-- **Optional backends:** Hermes for the current agent loop, JROS for embodiment/robotics, Ollama/cloud providers for models, and workflow tools when detected.
-- **Graceful fallback:** optional services are detected/configured rather than hardcoded; ARES must still boot without JROS or external workflow tools.
+- **Framework adapters:** Hermes and JROS are peer full agentic frameworks ARES can use alone or together. ARES-native services, Ollama/local models, cloud providers, and workflow tools can also provide capabilities when detected/configured.
+- **Graceful fallback:** optional services are detected/configured rather than hardcoded; ARES must still boot with whichever framework/backend set is available.
 
 ## Features
 
 - **Persistent Entity** — ARES is not a chatbot. It is a continuous intelligence with identity, memory, drives, and presence across sessions.
 - **Web UI** — Self-contained Python server with streaming, session management, hot-reload, password auth, and mobile/browser access.
-- **Backend Selector** — Switch between Hermes, JROS, or hybrid mode per conversation. JROS personas can inject into the agent loop.
+- **Backend Selector** — Switch between Hermes, JROS, ARES-native, or hybrid runtime modes per conversation. Framework choice is separate from real model/provider choice.
 - **Character Avatar Browser** — Visual character personas with card art, traits, lore, and active identity selection.
 - **Native macOS App** — SwiftUI app for native windowing, voice, dashboard, files, terminal, and embodied companion UI.
 - **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads.
-- **Hermes Agent Integration** — Tool system, terminal, file ops, web search, code execution, MCP, skills, memory, delegation, and cron jobs.
+- **Framework Integrations** — Hermes and JROS adapters expose full-framework capabilities: tools, terminal/file/web/code paths, MCP/skills/memory/scheduling, voice, event bus, robotics, delegation, and verification depending on runtime health.
 - **Multi-Model Routing** — Cloud/local model routing through configured providers with local fallback where available.
 - **Mail Butler** — IMAP-based mail cleaner/classifier without requiring Mail.app.
 - **Windows Wrapper** — Tauri/Electron wrapper surfaces for Windows packaging and install testing.
@@ -113,12 +113,13 @@ ARES exposes the persona system as a real product surface instead of a hidden dr
 ```text
 ┌──────────────────────────────────────────────────┐
 │                    ARES                          │
-│ Persistent identity, UX, task continuity, memory │
+│ Human UX/product layer: natural language, UI,     │
+│ automation, continuity, owner-aware defaults      │
 ├──────────────────────────────────────────────────┤
 │ Native app / WebUI / Windows wrapper             │
 ├──────────────────────────────────────────────────┤
-│ Hermes Agent runtime        JROS body layer       │
-│ tools, skills, sessions     robotics, embodiment  │
+│ Peer full frameworks: Hermes, JROS, ARES-native   │
+│ services, local/cloud providers, hybrid routing   │
 ├──────────────────────────────────────────────────┤
 │ Local/cloud model providers, user data, devices   │
 └──────────────────────────────────────────────────┘
@@ -126,11 +127,12 @@ ARES exposes the persona system as a real product surface instead of a hidden dr
 
 Key rules:
 
-1. **ARES owns the identity.** Hermes is the current runtime; JROS is the optional body layer.
-2. **LLM calls go through the configured agent/runtime path, not directly to raw inference by default.** The agent loop, tool dispatch, sessions, memory, streaming, context compression, and skills are the value.
-3. **JROS integration is additive.** JROS personas/tools/embodiment bridge into ARES; ARES still boots without JROS.
-4. **Native and WebUI surfaces share the same product identity.** Users should experience one ARES, not separate Hermes/JROS modes.
-5. **Public repo stays portable.** No private paths, secrets, OAuth tokens, local runtime DBs, or personal profile state.
+1. **ARES owns the human experience.** Hermes and JROS are peer full agentic frameworks; neither one is the ARES identity.
+2. **Natural language is the front door.** Users speak/type normally; ARES maps intent to framework/tool/model calls and presents the result.
+3. **Hybrid is first-class.** ARES can use Hermes, JROS, ARES-native services, local models, cloud providers, or combinations per request.
+4. **Framework selection and model/provider selection are separate.** Do not fake JROS as a model/provider; route to JROS as a runtime while preserving real model/provider settings.
+5. **Native and WebUI surfaces share the same product identity.** Users should experience one ARES, not separate Hermes/JROS apps taped together.
+6. **Public repo stays portable.** No private paths, secrets, OAuth tokens, local runtime DBs, or personal profile state.
 
 ## Repository Structure
 
@@ -162,8 +164,8 @@ ARES/
 The Web UI checks for updates across the configured stack:
 
 - **ARES** — this repo (`shuwalker/ARES`)
-- **Hermes** — the agent engine (`NousResearch/hermes-agent`)
-- **JROS** — robotics/embodiment (`JenkinsRobotics/JROS`)
+- **Hermes** — peer full agentic framework (`NousResearch/hermes-agent`)
+- **JROS** — peer full agentic framework with robotics/embodiment strengths (`JenkinsRobotics/JROS`)
 
 ## Credits
 

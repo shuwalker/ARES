@@ -34,7 +34,7 @@ cp Info.plist.template "${CONTENTS_DIR}/Info.plist"
 
 # 6. Copy Resources if any
 # Find the bundle containing resources (SwiftPM generates bundles)
-BUNDLE_DIR=$(find $(swift build -c release --show-bin-path) -name "*.bundle" | head -n 1)
+BUNDLE_DIR=$(find $(swift build -c release --show-bin-path) -name "ARES.bundle" | head -n 1)
 if [ -n "$BUNDLE_DIR" ]; then
     cp -R "$BUNDLE_DIR"/* "${RESOURCES_DIR}/" || true
     echo "✅ Resources copied"

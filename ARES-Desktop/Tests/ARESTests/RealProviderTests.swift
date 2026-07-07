@@ -46,6 +46,51 @@ final class FileSystemIdentityTests: XCTestCase {
     }
 }
 
+final class FileSystemOwnerModelProviderTests: XCTestCase {
+    private var tempDir: URL!
+
+    override func setUpWithError() throws {
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ares-owner-model-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    private var ownerModelPath: String { tempDir.appendingPathComponent("owner_model.json").path }
+
+    func testFirstLaunchCreatesBlankOwnerModelFile() throws {
+        _ = try FileSystemOwnerModelProvider(path: ownerModelPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ownerModelPath))
+    }
+
+    func testCorrectionsSurviveRelaunch() async throws {
+        let provider = try FileSystemOwnerModelProvider(path: ownerModelPath)
+        try await provider.recordCorrection(OwnerCorrection(
+            originalBehavior: "asked when it should act",
+            correctedBehavior: "queue durable implementation work directly",
+            evidence: "test"
+        ))
+
+        let reloaded = try FileSystemOwnerModelProvider(path: ownerModelPath)
+        let context = try await reloaded.buildContext(for: "implementation work")
+        XCTAssertTrue(context.recentCorrections.contains { $0.correctedBehavior.contains("queue durable") })
+        XCTAssertTrue(context.relevantAcceptedPatterns.contains { $0.summary.contains("queue durable") })
+    }
+
+    func testCorruptOwnerModelFileRecoversToValidBlankModel() async throws {
+        try Data("not json".utf8).write(to: URL(fileURLWithPath: ownerModelPath))
+        let provider = try FileSystemOwnerModelProvider(path: ownerModelPath)
+        let model = try await provider.getOwnerModel()
+        XCTAssertEqual(model.schemaVersion, 1)
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: ownerModelPath))
+        XCTAssertNoThrow(try JSONSerialization.jsonObject(with: data))
+    }
+}
+
 final class FileSystemWorkflowTests: XCTestCase {
     private var tempDir: URL!
 
@@ -174,8 +219,8 @@ final class ARESConfigurationTests: XCTestCase {
         let saved = config.hermesURL
         defer { config.hermesURL = saved }
 
-        config.hermesURL = "http://100.85.249.11:8642"
-        XCTAssertEqual(config.hermesBaseURL.host, "100.85.249.11")
+        config.hermesURL = "http://198.51.100.11:8642"
+        XCTAssertEqual(config.hermesBaseURL.host, "198.51.100.11")
         XCTAssertEqual(config.hermesBaseURL.port, 8642)
     }
 }

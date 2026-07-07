@@ -165,22 +165,24 @@ Swift 6 strict concurrency: all protocols are `Sendable`.
 
 ---
 
-## Backend Selection: Ollama vs Hermes
+## Backend Selection: Frameworks, Providers, and Hybrid Routing
 
-The **BackendPickerWidget** clarifies the fundamental choice:
+ARES separates three things that older docs mixed together:
 
-### Ollama (Pure LLM, No Tools)
-- Raw language model inference only
-- No memory, no tools, no services
-- Fast, lightweight, runs locally (localhost:11434)
-- **Use for:** Thinking engine, reasoning-only system
+### Agentic frameworks
+- **Hermes** — peer full agentic framework with tools, skills, sessions, memory, scheduling, delegation, provider routing, and gateway surfaces.
+- **JROS** — peer full agentic framework with agent turns, tools/skills, bridge/client protocol, voice/STT/TTS, character surfaces, event bus, robotics, hardware safety, and embodiment strengths.
 
-### Hermes (Independent Agentic Framework)
-- Full agent with tools, memory, skills, multi-turn reasoning
-- Can invoke filesystem, web, code execution, custom tools
-- Persistent sessions and episodic memory
-- Can delegate to Ollama internally
-- **Use for:** Autonomous system that acts, not just thinks
+### ARES-native services
+- Product-owned UI, guided setup, automation flows, Owner Model, continuity, presentation, and app-specific services.
+- Use these when the feature is part of the ARES experience rather than a backend framework responsibility.
+
+### Model providers
+- **Ollama/local models** and **cloud providers** provide inference.
+- They are not the same thing as agentic frameworks. ARES may route model calls through Hermes, JROS, ARES-native services, or direct provider adapters when appropriate.
+
+### Routing rule
+`ExecutionBackendRouter` plans the route by capability and health. A request may use pure Hermes, pure JROS, pure ARES-native, local/cloud provider paths, or a hybrid composition. There is no hardcoded “real backend vs accessory” hierarchy.
 
 ---
 
@@ -244,7 +246,48 @@ Everything else is archived or deleted. The codebase is clean, the build is fast
 
 ---
 
-**Status:** ✅ Clean, modular, production-ready  
-**Build:** 0.34s, 0 errors  
-**Tests:** 9/9 passing  
-**Last update:** 2026-06-07
+## ARES Control Plane: Owner Model, Backends, and Character Styles
+
+ARES is the product control layer. It should not depend on a single agent profile, prompt, model provider, or robotics runtime for its identity.
+
+### Direct Terms
+
+| Term | Meaning | Public or Private |
+|------|---------|-------------------|
+| **ARES Controller** | Product logic that decides how to handle a request, which backend to use, and what verification is required. | Public code |
+| **Owner Model** | Learned private model of the owner's preferences, standards, accepted/rejected patterns, and decision style. | Private runtime data |
+| **Execution Backend** | A capability provider that performs work: Hermes, JROS, ARES-native services, local model runners, cloud providers, future runtimes, or hybrid combinations. | Public adapter + private config |
+| **Character Style** | User-selected voice, avatar, visual theme, and response style. It changes presentation, not decisions. | Public templates + private selections |
+
+### Naming Rule
+
+`Mimicry` is reserved for avatar/face/expression animation in `ARESCore`. Do not use it for owner learning. The owner-learning feature is the **Owner Model**.
+
+### Control Flow
+
+```text
+Natural human request
+  -> ARES Product Layer interprets intent and UX needs
+  -> Character Style adds presentation context only
+  -> ARES Controller reads Owner Model and project state
+  -> ExecutionBackendRouter chooses Hermes, JROS, ARES-native, local/cloud, or hybrid by capability and health
+  -> Selected backend(s) perform work and return evidence
+  -> ARES Controller verifies the result
+  -> ARES UI presents the result clearly
+```
+
+### Backend Rules
+
+- Hermes and JROS are peer independent full agentic frameworks. Do not model one as the real backend and the other as an accessory.
+- ARES may run pure Hermes, pure JROS, pure ARES-native, local/cloud provider paths, or hybrid composition.
+- Route by capability fit, runtime health, UX fit, privacy, cost, safety, and verification path — never by hardcoded framework hierarchy.
+- Character Style must never override routing, safety, privacy, or verification rules. Selecting a character does not force a backend.
+- Public code ships adapters, schemas, defaults, tests, and templates. Private runtime data stores real owner preferences, secrets, sessions, and environment-specific settings.
+
+### ARESCore Features Required
+
+1. `OwnerModelProvider` — contract and file-backed private implementation for learned owner preferences.
+2. `ARESController` — service that composes Owner Model, Character Style, and Execution Backend routing.
+3. `ExecutionBackendRouter` — capability registry and routing layer for Hermes, JROS, ARES-native services, local/cloud providers, and hybrid plans.
+4. `CharacterStyleProvider` — presentation-only style provider, or a rename/clarification of `PersonaProvider` if that contract remains UI style only.
+5. Tests proving Character Style cannot alter backend routing, Owner Model state, safety gates, or verification requirements.

@@ -40,6 +40,10 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         return configDirectory.appendingPathComponent("identity.json").path
     }
 
+    public var ownerModelJSONPath: String {
+        return configDirectory.appendingPathComponent("owner_model.json").path
+    }
+
     public var workflowsPath: String {
         return configDirectory.appendingPathComponent("workflows").path
     }
@@ -81,10 +85,20 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
     // MARK: - Parsed URLs (fall back to defaults if the stored string is malformed)
 
     public var hermesBaseURL: URL {
-        URL(string: hermesURL) ?? URL(string: "http://localhost:8642")!
+        Self.validHTTPURL(from: hermesURL) ?? URL(string: "http://localhost:8642")!
     }
 
     public var ollamaBaseURL: URL {
-        URL(string: ollamaURL) ?? URL(string: "http://localhost:11434")!
+        Self.validHTTPURL(from: ollamaURL) ?? URL(string: "http://localhost:11434")!
+    }
+
+    private static func validHTTPURL(from rawValue: String) -> URL? {
+        guard let url = URL(string: rawValue),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              url.host != nil else {
+            return nil
+        }
+        return url
     }
 }
