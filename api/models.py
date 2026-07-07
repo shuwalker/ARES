@@ -1572,17 +1572,13 @@ def _process_wakeup_pause_lane(model=None, provider=None) -> tuple[str, str]:
     model_part = _process_wakeup_pause_part(model)
     provider_part = _process_wakeup_pause_provider_part(provider)
     try:
-        parsed_route_hint = _cfg._parse_provider_qualified_model_id(model)
+        resolved_model, resolved_provider = _cfg.canonical_model_provider_lane(model, provider)
     except Exception:
-        parsed_route_hint = None
-    if parsed_route_hint is not None:
-        bare_model, provider_hint = parsed_route_hint
-        provider_hint = _process_wakeup_pause_provider_part(provider_hint)
-        bare_model = _process_wakeup_pause_part(bare_model)
-        if provider_hint and not provider_part:
-            provider_part = provider_hint
-        if bare_model:
-            model_part = bare_model
+        resolved_model, resolved_provider = None, None
+    if resolved_model:
+        model_part = _process_wakeup_pause_part(resolved_model)
+    if resolved_provider:
+        provider_part = _process_wakeup_pause_provider_part(resolved_provider)
     return model_part, provider_part
 
 

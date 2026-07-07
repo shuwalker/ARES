@@ -2971,6 +2971,19 @@ def model_with_provider_context(model_id: str, model_provider: str | None = None
     return f"@{provider}:{model}"
 
 
+def canonical_model_provider_lane(model_id: str, model_provider: str | None = None) -> tuple[str, str | None]:
+    """Return the runtime-resolved model/provider pair used for lane comparisons."""
+    model = str(model_id or "").strip()
+    provider = str(model_provider or "").strip() or None
+    if not model:
+        return "", provider
+    resolved_model, resolved_provider, _ = resolve_model_provider(
+        model_with_provider_context(model, provider)
+    )
+    resolved_provider = str(resolved_provider or "").strip() or None
+    return str(resolved_model or "").strip(), resolved_provider
+
+
 def get_effective_default_model(config_data: dict | None = None) -> str:
     """Resolve the effective Hermes default model from config, then env overrides."""
     active_cfg = config_data if config_data is not None else cfg
