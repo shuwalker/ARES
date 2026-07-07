@@ -6410,10 +6410,25 @@ function initAresBackend() {
     _aresCurrentBackend = data.current || 'hermes';
     _aresJrosAvailable = (data.status && data.status.jros) || false;
     updateAresBackendUI();
+    // Fetch identity payload to keep assistantDisplayName in sync
+    _refreshAresIdentity();
   }).catch(() => {
     // Backend API not available — default to Hermes, hide the chip
     const wrap = $('aresBackendWrap');
     if (wrap) wrap.style.display = 'none';
+  });
+}
+
+function _refreshAresIdentity() {
+  api('/api/ares/identity').then(idData => {
+    window._aresIdentity = idData;
+    // Update the topbar title if it's showing the assistant name
+    const _tt = $('topbarTitle');
+    if (_tt && typeof assistantDisplayName === 'function') {
+      _tt.textContent = assistantDisplayName();
+    }
+  }).catch(() => {
+    // Identity API not available — fall back to legacy behavior
   });
 }
 
@@ -6505,6 +6520,7 @@ function setAresBackend(backend) {
   api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify({ backend }) })
     .then(data => {
       _aresCurrentBackend = (data && data.backend) || backend;
+      window._aresCurrentBackend = _aresCurrentBackend;
       updateAresBackendUI();
       if (typeof _refreshModelDropdownsAfterProviderChange === 'function') {
         _refreshModelDropdownsAfterProviderChange();
@@ -6513,6 +6529,8 @@ function setAresBackend(backend) {
       }
       closeAresBackendDropdown();
       showToast(`Backend switched to ${_aresBackendDisplayName(_aresCurrentBackend)}`);
+      // Refresh identity after backend switch
+      _refreshAresIdentity();
     })
     .catch(e => showToast('Failed to switch backend'));
 }

@@ -3,10 +3,10 @@
 // and cross-tab shutdown broadcasts as early as possible.
 (function(){
   // Clear stale stop-server flag on successful page load (server is reachable)
-  try{localStorage.removeItem('hermes-webui-server-stopped');}catch(_){}
+  try{localStorage.removeItem('ares-webui-server-stopped');}catch(_){}
   // Listen for shutdown broadcast from other tabs
   try {
-    var _stopChan = new BroadcastChannel('hermes-webui-shutdown');
+    var _stopChan = new BroadcastChannel('ares-webui-shutdown');
     _stopChan.onmessage = function() { _showServerStopped(); };
   } catch(_) {}
 })();
@@ -193,7 +193,7 @@ function _setWorkspacePanelMode(mode){
   // Persist open/closed across refreshes (browse/preview → open; closed → closed)
   // Do NOT overwrite the user's "keep open" preference — only track runtime state
   // so that toggleWorkspacePanel(false) from the toolbar doesn't clear the setting.
-  try{localStorage.setItem('hermes-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}
+  try{localStorage.setItem('ares-webui-workspace-panel', open ? 'open' : 'closed');}catch(_){}
   layout.classList.toggle('workspace-panel-collapsed',!open);
   if(_isCompactWorkspaceViewport()){
     panel.classList.toggle('mobile-open',open);
@@ -440,7 +440,7 @@ _installPwaSidebarSwipeGesture();
 // Mobile is unaffected: the sidebar is an overlay there, and every collapse
 // code path is gated on `_isDesktopWidth()` (min-width:641px).
 // State is persisted via localStorage and survives reloads + bfcache.
-const _SIDEBAR_COLLAPSED_KEY='hermes-webui-sidebar-collapsed';
+const _SIDEBAR_COLLAPSED_KEY='ares-webui-sidebar-collapsed';
 
 function _isDesktopWidth(){
   try{return window.matchMedia('(min-width:641px)').matches;}catch(_){return true;}
@@ -948,7 +948,7 @@ window._micPendingSend=window._micPendingSend||false;
 // back to 'queue', ignoring a saved 'steer'/'interrupt' preference (worse on
 // slow/contended environments like WSL2, see #5132). Mirror the resolved value
 // into localStorage — the same synchronous-source pattern used by hermes-lang /
-// hermes-theme — so the very first send after a reload honors the saved choice.
+// ares-theme — so the very first send after a reload honors the saved choice.
 const _BUSY_INPUT_MODES=['queue','interrupt','steer'];
 function _normalizeBusyInputMode(mode){
   return _BUSY_INPUT_MODES.includes(mode)?mode:'queue';
@@ -1676,7 +1676,7 @@ $('modelSelect').onchange=async()=>{
     : {model:selectedModel,model_provider:null};
   if(typeof closeModelDropdown==='function') closeModelDropdown();
   if(typeof _writePersistedModelState==='function') _writePersistedModelState(modelState.model,modelState.model_provider);
-  else try{localStorage.setItem('hermes-webui-model',modelState.model)}catch{}
+  else try{localStorage.setItem('ares-webui-model',modelState.model)}catch{}
   if(!S.session){
     if(typeof _rememberEmptyComposerModelOverride==='function') _rememberEmptyComposerModelOverride(modelState.model,modelState.model_provider);
     if(typeof syncModelChip==='function') syncModelChip();
@@ -2119,7 +2119,7 @@ function _syncThemeColorMeta(){
   try{
     const bg=getComputedStyle(document.documentElement).getPropertyValue('--sidebar').trim();
     if(!bg) return;
-    const known=document.getElementById('hermes-theme-color');
+    const known=document.getElementById('ares-theme-color');
     if(known){
       known.setAttribute('content',bg);
       known.removeAttribute('media');
@@ -2195,10 +2195,10 @@ function _applySkin(name){
 }
 
 function _pickTheme(name){
-  const currentSkin=localStorage.getItem('hermes-skin');
+  const currentSkin=localStorage.getItem('ares-skin');
   const appearance=_normalizeAppearance(name,currentSkin);
-  localStorage.setItem('hermes-theme',appearance.theme);
-  localStorage.setItem('hermes-skin',appearance.skin);
+  localStorage.setItem('ares-theme',appearance.theme);
+  localStorage.setItem('ares-skin',appearance.skin);
   _applyTheme(appearance.theme);
   _applySkin(appearance.skin);
   _syncThemePicker(appearance.theme);
@@ -2211,9 +2211,9 @@ function _pickTheme(name){
 }
 
 function _pickSkin(name){
-  const appearance=_normalizeAppearance(localStorage.getItem('hermes-theme'),name);
-  localStorage.setItem('hermes-theme',appearance.theme);
-  localStorage.setItem('hermes-skin',appearance.skin);
+  const appearance=_normalizeAppearance(localStorage.getItem('ares-theme'),name);
+  localStorage.setItem('ares-theme',appearance.theme);
+  localStorage.setItem('ares-skin',appearance.skin);
   _applyTheme(appearance.theme);
   _applySkin(appearance.skin);
   _syncThemePicker(appearance.theme);
@@ -2250,7 +2250,7 @@ function _applyFontSize(size){
 }
 
 function _pickFontSize(size){
-  localStorage.setItem('hermes-font-size',size);
+  localStorage.setItem('ares-font-size',size);
   _applyFontSize(size);
   _syncFontSizePicker(size);
   const hidden=$('settingsFontSize');
@@ -2399,10 +2399,10 @@ function registerHermesSkin(descriptor){
     _renderExtensionSkinStyles();
     // Refresh the picker if it's already built.
     if(document.getElementById('skinPickerGrid')){
-      _buildSkinPicker((localStorage.getItem('hermes-skin')||'default').toLowerCase());
+      _buildSkinPicker((localStorage.getItem('ares-skin')||'default').toLowerCase());
     }
     // If the user had previously selected this (now-available) skin, apply it.
-    if((localStorage.getItem('hermes-skin')||'').toLowerCase()===key){
+    if((localStorage.getItem('ares-skin')||'').toLowerCase()===key){
       _applySkin(key);
     }
     return true;
@@ -2666,8 +2666,8 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
     // server in charge for empty first-visit state while preserving explicit
     // light/dark/system choices after a failed autosave.
     const srvAppearance=_normalizeAppearance(s.theme,s.skin);
-    const lsTheme=(localStorage.getItem('hermes-theme')||'').trim().toLowerCase();
-    const lsSkin=(localStorage.getItem('hermes-skin')||'').trim().toLowerCase();
+    const lsTheme=(localStorage.getItem('ares-theme')||'').trim().toLowerCase();
+    const lsSkin=(localStorage.getItem('ares-skin')||'').trim().toLowerCase();
     const lsAppearance=_normalizeAppearance(lsTheme||null,lsSkin||null);
     // An unknown non-default persisted skin is most likely an extension-provided
     // skin (registerHermesSkin) whose extension script hasn't registered it yet
@@ -2680,9 +2680,9 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
     const lsHasExplicitTheme=lsTheme&&['system','light','dark'].includes(lsTheme);
     const theme=lsHasExplicitTheme?lsAppearance.theme:srvAppearance.theme;
     const skin=lsHasExplicitSkin?(lsSkinIsPendingExt?lsSkin:lsAppearance.skin):srvAppearance.skin;
-    localStorage.setItem('hermes-theme',theme);
+    localStorage.setItem('ares-theme',theme);
     _applyTheme(theme);
-    localStorage.setItem('hermes-skin',skin);
+    localStorage.setItem('ares-skin',skin);
     _applySkin(skin);
     // Reconcile: if localStorage and server disagree, push localStorage
     // values to the server so the next refresh won't revert. Skip the push for a
@@ -2693,8 +2693,8 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
         api('/api/settings',{method:'POST',body:JSON.stringify({theme,skin})});
       }catch(_){}
     }
-    const fontSize=(s.font_size||localStorage.getItem('hermes-font-size')||'default');
-    localStorage.setItem('hermes-font-size',fontSize);
+    const fontSize=(s.font_size||localStorage.getItem('ares-font-size')||'default');
+    localStorage.setItem('ares-font-size',fontSize);
     _applyFontSize(fontSize);
     if(typeof setLocale==='function'){
       const _lang=typeof resolvePreferredLocale==='function'
@@ -2766,7 +2766,7 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
     api(_checkUrl,{method:_testUpdates?'GET':'POST',body:_testUpdates?undefined:JSON.stringify({force:false})}).then(d=>{if(!_testUpdates)sessionStorage.setItem('hermes-update-checked','1');if((d.webui&&d.webui.behind>0)||(d.agent&&d.agent.behind>0))_showUpdateBanner(d);}).catch(()=>{});
   }
   const _bootActiveProfileUnauthRedirectBudget=(()=>{
-    const markerKey='hermes-webui-active-profile-bootstrap-401';
+    const markerKey='ares-webui-active-profile-bootstrap-401';
     let consumed=false;
     const readAttempted=(storage=sessionStorage)=>{
       try{
@@ -2879,7 +2879,7 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
       : null;
     const savedState=(typeof _readPersistedModelState==='function')
       ? _readPersistedModelState()
-      : (localStorage.getItem('hermes-webui-model')?{model:localStorage.getItem('hermes-webui-model'),model_provider:null}:null);
+      : (localStorage.getItem('ares-webui-model')?{model:localStorage.getItem('ares-webui-model'),model_provider:null}:null);
     // Active sessions are authoritative. On fresh boot without a restored
     // session, keep the profile/server default ahead of stale browser model
     // state when a default exists.
@@ -2900,8 +2900,8 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
       else if(!applied&&!sessionModelState&&$('modelSelect').value!==stateToApply.model){
         if(typeof _clearPersistedModelState==='function') _clearPersistedModelState();
         else {
-          localStorage.removeItem('hermes-webui-model');
-          localStorage.removeItem('hermes-webui-model-state');
+          localStorage.removeItem('ares-webui-model');
+          localStorage.removeItem('ares-webui-model-state');
         }
       }
       else if(typeof syncModelChip==='function') syncModelChip();
@@ -2972,7 +2972,7 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
       syncTopbar();syncWorkspacePanelState();await renderSessionList();await _finalizeComposerPrefillOnBoot(prefillIntent);if(typeof startGatewaySSE==='function')startGatewaySSE();return;
     }catch(e){console.warn('[pwa] new-chat launch action failed', e);}
   }
-  const savedLocal=localStorage.getItem('hermes-webui-session');
+  const savedLocal=localStorage.getItem('ares-webui-session');
   const saved=urlSession||savedLocal;
   if(saved){
     try{
@@ -2981,7 +2981,7 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
         : null;
       if(savedSidebarOnlyState&&savedSidebarOnlyState.sidebarOnly){
         if(savedSidebarOnlyState.archived){
-          try{localStorage.removeItem('hermes-webui-session');}catch(_){}
+          try{localStorage.removeItem('ares-webui-session');}catch(_){}
         }
         S.session=null; S.messages=[]; S.activeStreamId=null; S.busy=false;
         S._bootReady=true;
@@ -2993,8 +2993,8 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
       if(_rootPrefillNeedsFreshComposer(urlSession, savedLocal, prefillIntent)){
         S.session=null; S.messages=[]; S.activeStreamId=null; S.busy=false;
         S._bootReady=true;
-        const _ephPanelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-          || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+        const _ephPanelPref=localStorage.getItem('ares-webui-workspace-panel-pref')==='open'
+          || localStorage.getItem('ares-webui-workspace-panel')==='open';
         if(_ephPanelPref&&!_isCompactWorkspaceViewport()) _workspacePanelMode='browse';
         await _maybeBindFreshDefaultWorkspaceSession(prefillIntent);
         syncTopbar();syncWorkspacePanelState();
@@ -3031,8 +3031,8 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
         S._bootReady=true;
         // Restore panel pref before syncing so the workspace panel stays visible
         // even though there is no active session (#workspace-persist).
-        const _ephPanelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-          || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+        const _ephPanelPref=localStorage.getItem('ares-webui-workspace-panel-pref')==='open'
+          || localStorage.getItem('ares-webui-workspace-panel')==='open';
         if(_ephPanelPref&&!_isCompactWorkspaceViewport()) _workspacePanelMode='browse';
         await _maybeBindFreshDefaultWorkspaceSession(prefillIntent);
         syncTopbar();syncWorkspacePanelState();
@@ -3043,22 +3043,22 @@ window._applyTitlebarProfileVisibility=_applyTitlebarProfileVisibility;
       // Restore the panel from localStorage when the session has a workspace.
       // Preference key takes priority over runtime state so that closing
       // the panel via toolbar X doesn't suppress the "keep open" setting.
-      const panelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-        || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+      const panelPref=localStorage.getItem('ares-webui-workspace-panel-pref')==='open'
+        || localStorage.getItem('ares-webui-workspace-panel')==='open';
       if(S.session&&S.session.workspace&&panelPref&&!_isCompactWorkspaceViewport()){
         _workspacePanelMode='browse';
       }
       S._bootReady=true;
       syncTopbar();syncWorkspacePanelState();await renderSessionList();if(typeof startGatewaySSE==='function')startGatewaySSE();await checkInflightOnBoot(saved);await _finalizeComposerPrefillOnBoot(prefillIntent);return;}
-    catch(e){localStorage.removeItem('hermes-webui-session');}
+    catch(e){localStorage.removeItem('ares-webui-session');}
   }
   // no saved session - show empty state, wait for user to hit +
   S._bootReady=true;
   syncTopbar();
   // Restore panel pref so the workspace panel stays visible on a fresh load if the
   // user had it open during their last session (#workspace-persist).
-  const _freshPanelPref=localStorage.getItem('hermes-webui-workspace-panel-pref')==='open'
-    || localStorage.getItem('hermes-webui-workspace-panel')==='open';
+  const _freshPanelPref=localStorage.getItem('ares-webui-workspace-panel-pref')==='open'
+    || localStorage.getItem('ares-webui-workspace-panel')==='open';
   if(_freshPanelPref&&!_isCompactWorkspaceViewport()) _workspacePanelMode='browse';
   await _maybeBindFreshDefaultWorkspaceSession(prefillIntent);
   syncWorkspacePanelState();
@@ -3118,7 +3118,7 @@ window.addEventListener('pageshow', async (event) => {
   // frozen DOM but another tab may have toggled the sidebar in the meantime.
   if (typeof _isSidebarCollapsed === 'function' && typeof toggleSidebar === 'function') {
     try {
-      const _want = localStorage.getItem('hermes-webui-sidebar-collapsed') === '1';
+      const _want = localStorage.getItem('ares-webui-sidebar-collapsed') === '1';
       const _have = _isSidebarCollapsed();
       if (_want !== _have) toggleSidebar(_want);
       if (typeof _syncSidebarAria === 'function') _syncSidebarAria();
@@ -3134,8 +3134,8 @@ async function shutdownServer() {
     danger: true,
   });
   if (!ok) return;
-  localStorage.setItem('hermes-webui-server-stopped', '1');
-  try { var bc = new BroadcastChannel('hermes-webui-shutdown'); bc.postMessage('stop'); bc.close(); } catch(_) {}
+  localStorage.setItem('ares-webui-server-stopped', '1');
+  try { var bc = new BroadcastChannel('ares-webui-shutdown'); bc.postMessage('stop'); bc.close(); } catch(_) {}
   _showServerStopped();
   try { await api('/api/shutdown', { method: 'POST' }); } catch (_) {}
 }

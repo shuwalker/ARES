@@ -122,7 +122,7 @@ def _session_compact(row: dict) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _api_password() -> str | None:
-    """Return the plaintext webui password from HERMES_WEBUI_PASSWORD, or None.
+    """Return the plaintext webui password from env vars, or None.
 
     settings.json stores only the bcrypt hash, which the login endpoint cannot
     accept — it calls verify_password(plaintext) against the stored hash. So
@@ -130,7 +130,8 @@ def _api_password() -> str | None:
     in unauthenticated mode and any auth-protected mutation will fail clearly
     with the server's 401 instead of silently sending an unusable hash.
     """
-    pw = os.environ.get("HERMES_WEBUI_PASSWORD", "").strip()
+    pw = os.environ.get("ARES_WEBUI_PASSWORD", "").strip() or \
+         os.environ.get("HERMES_WEBUI_PASSWORD", "").strip()
     return pw or None
 
 

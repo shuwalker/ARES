@@ -11712,6 +11712,25 @@ def handle_get(handler, parsed) -> bool:
             return bad(handler, f"Failed to list ARES tools: {exc}")
         return j(handler, {"tools": tools})
 
+    # ARES: Identity — centralized assistant display name and backend badge
+    if parsed.path == "/api/ares/identity":
+        try:
+            from api.ares_identity import build_identity_payload
+            from api.backend_selector import get_active_backend
+            from api.config import get_config as _get_cfg
+            from api.config import load_settings
+            _cfg = _get_cfg()
+            backend = get_active_backend(_cfg)
+            settings = load_settings()
+            payload = build_identity_payload(
+                profile=settings.get("active_profile"),
+                bot_name=settings.get("bot_name"),
+                backend=backend,
+            )
+        except Exception as exc:
+            return bad(handler, f"Failed to build identity: {exc}")
+        return j(handler, payload)
+
     if parsed.path == "/api/git-info":
         qs = parse_qs(parsed.query)
         sid = qs.get("session_id", [""])[0]
@@ -18552,21 +18571,18 @@ def _active_run_stream_for_session(session_id: str | None) -> str | None:
 def _select_chat_worker_target():
     """Return the backend worker for a normal WebUI chat turn.
 
-    The ARES backend selector is the product-level router, so it must win over
-    transport details like gateway-chat.  ``jros`` routes to the real JROS
-    bridge; the ZMQ ping daemon is presence only and cannot execute turns.
-    ``hybrid`` intentionally falls through to the normal Hermes worker so
-    existing persona/tool injection remains additive.
+    Uses the ARES BackendRouter to select the active backend's worker target.
+    Falls back to Hermes if the router is unavailable.
     """
     try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
+        from api.backends.router import get_router
+        from api.backend_selector import get_active_backend
 
-        if get_active_backend(get_config()) == BACKEND_JROS:
-            from api.jros_bridge import run_jros_streaming
-
-            return run_jros_streaming, False, True
+        router = get_router()
+        backend = get_active_backend(get_config())
+        return router.select_worker(backend)
     except Exception:
-        logger.warning("Failed to resolve ARES backend; falling back to Hermes worker", exc_info=True)
+        logger.warning("Failed to resolve ARES backend via BackendRouter; falling back to Hermes worker", exc_info=True)
     backend_is_gateway = webui_gateway_chat_enabled(get_config())
     if backend_is_gateway:
         return _run_gateway_chat_streaming, True, False
@@ -18830,8 +18846,12 @@ def _start_run(
     )
 
     try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
-        if get_active_backend(get_config()) == BACKEND_JROS:
+        from api.backends.router import get_router
+        from api.backend_selector import get_active_backend
+
+        router = get_router()
+        backend = get_active_backend(get_config())
+        if backend == "jros":
             return _start_chat_stream_for_session(
                 s,
                 msg=msg,

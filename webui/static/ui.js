@@ -8,7 +8,10 @@
 const S={session:null,messages:[],entries:[],busy:false,pendingFiles:[],toolCalls:[],activeStreamId:null,currentDir:'.',activeProfile:'default',activeProfileIsDefault:true,showHiddenWorkspaceFiles:false,todos:[],todoStateMeta:null,_pendingSessionToolsets:null};
 
 function assistantDisplayName(){
+  // Prefer the identity API payload when available
+  if(window._aresIdentity && window._aresIdentity.display_name) return window._aresIdentity.display_name;
   if(S.activeProfile&&S.activeProfile!=='default') return S.activeProfile.charAt(0).toUpperCase()+S.activeProfile.slice(1);
+  if(typeof _aresCurrentBackend!=='undefined'&&_aresCurrentBackend==='jros') return 'JROS';
   return window._botName||'Hermes';
 }
 const INFLIGHT={};  // keyed by session_id while request in-flight
@@ -8960,10 +8963,14 @@ function _formatTurnTps(value){
 function isTpsDisplayEnabled(){
   return window._showTps===true;
 }
-function _assistantRoleHtml(tsTitle='', tpsText=''){
+function _assistantRoleHtml(tsTitle='', tpsText='', backend=''){
   const _bn=assistantDisplayName();
   const tps=(isTpsDisplayEnabled()&&tpsText)?`<span class="msg-tps-inline" title="Tokens per second">${esc(tpsText)}</span>`:'';
-  return `<div class="msg-role assistant" ${tsTitle?`title="${esc(tsTitle)}"`:''}><div class="role-icon assistant">${esc(_bn.charAt(0).toUpperCase())}</div><span style="font-size:12px">${esc(_bn)}</span>${tps}</div>`;
+  // Use identity layer for backend badge when available
+  const backendBadge=(window._aresIdentity && window._aresIdentity.backend_badge_html)
+    ? window._aresIdentity.backend_badge_html
+    : (backend==='jros'?' <span class="msg-backend-badge" title="JROS backend">JROS</span>':'');
+  return `<div class="msg-role assistant" ${tsTitle?`title="${esc(tsTitle)}"`:''}><div class="role-icon assistant">${esc(_bn.charAt(0).toUpperCase())}</div><span style="font-size:12px">${esc(_bn)}</span>${tps}${backendBadge}</div>`;
 }
 function _setAssistantTurnTps(turn, tpsText=''){
   if(!turn) return;
@@ -8983,17 +8990,18 @@ function _setAssistantTurnTps(turn, tpsText=''){
 function _setLiveAssistantTps(value){
   _setAssistantTurnTps($('liveAssistantTurn'), isTpsDisplayEnabled()?_formatTurnTps(value):'');
 }
-function _createAssistantTurn(tsTitle='', tpsText=''){
+function _createAssistantTurn(tsTitle='', tpsText='', backend=''){
   const row=document.createElement('div');
   row.className='msg-row assistant-turn';
   row.dataset.role='assistant';
   if(S.session) row.dataset.sessionId=S.session.session_id;
-  row.innerHTML=`${_assistantRoleHtml(tsTitle, tpsText)}<div class="assistant-turn-blocks"></div>`;
+  row.innerHTML=`${_assistantRoleHtml(tsTitle, tpsText, backend)}<div class="assistant-turn-blocks"></div>`;
   return row;
 }
 function _setLatestAssistantTurnLandmark(turn, isLatest){
   if(!turn) return;
-  const label='Latest Hermes response';
+  const backendName=typeof _aresCurrentBackend!=='undefined'&&_aresCurrentBackend==='jros'?'JROS':'Hermes';
+  const label='Latest '+backendName+' response';
   if(isLatest){
     if(typeof document!=='undefined'){
       document.querySelectorAll('.assistant-turn[data-latest-assistant-response="true"]').forEach(el=>{
@@ -10667,7 +10675,7 @@ function renderLiveAnchorActivityScene(streamId, scene, opts){
   $('emptyState').style.display='none';
   let turn=$('liveAssistantTurn');
   if(!turn){
-    turn=_createAssistantTurn();
+    turn=_createAssistantTurn('','',typeof _aresCurrentBackend!=='undefined'?_aresCurrentBackend:'');
     turn.id='liveAssistantTurn';
     $('msgInner').appendChild(turn);
   }
@@ -10729,7 +10737,7 @@ function _renderLiveAnchorActivitySceneTransparent(streamId, scene, opts){
   $('emptyState').style.display='none';
   let turn=$('liveAssistantTurn');
   if(!turn){
-    turn=_createAssistantTurn();
+    turn=_createAssistantTurn('','',typeof _aresCurrentBackend!=='undefined'?_aresCurrentBackend:'');
     turn.id='liveAssistantTurn';
     $('msgInner').appendChild(turn);
   }
@@ -12901,10 +12909,10 @@ function renderMessages(options){
         if(blocks) blocks.innerHTML='';
         for(const attr of _recycleResetAttrs) recycled.removeAttribute(attr);
         const role=recycled.querySelector('.msg-role.assistant');
-        if(role) role.outerHTML=_assistantRoleHtml(tsTitle, isTpsDisplayEnabled()?_formatTurnTps(m._turnTps):'');
+        if(role) role.outerHTML=_assistantRoleHtml(tsTitle, isTpsDisplayEnabled()?_formatTurnTps(m._turnTps):'', m.backend||'');
         currentAssistantTurn=recycled;
       }else{
-        currentAssistantTurn=_createAssistantTurn(tsTitle, isTpsDisplayEnabled()?_formatTurnTps(m._turnTps):'');
+        currentAssistantTurn=_createAssistantTurn(tsTitle, isTpsDisplayEnabled()?_formatTurnTps(m._turnTps):'', m.backend||'');
       }
       currentAssistantTurn.dataset.role='assistant';
       if(S.session) currentAssistantTurn.dataset.sessionId=S.session.session_id;
