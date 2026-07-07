@@ -8278,14 +8278,18 @@ def _run_agent_streaming(
                     # message but result['final_response'] carries a graceful fallback
                     # string, inject it as a final assistant turn so the user sees
                     # closure text instead of a bare tool_limit_reached error. Apply
-                    # the synthesis to result['messages'] AND _result_messages so
+                    # the synthesis to result['messages'] AND _result_messages so the
                     # downstream _all_result_messages checks (silent-failure detection
-                    # at #all_result_messages on the same turn) see the fallback too.
+                    # at api/streaming.py:_assistant_reply_added_after_current_turn)
+                    # see the fallback too. `finalize_turn` in the agent always returns
+                    # messages as a list, but we write back unconditionally so the
+                    # contract is "if we built a result-messages list, the silent-failure
+                    # classifier reads the augmented version."
                     if _tool_limit_reached:
                         _result_messages = _maybe_inject_max_iteration_summary_fallback(
                             _result_messages, result
                         )
-                        if isinstance(result, dict) and result.get('messages') is not None:
+                        if isinstance(result, dict):
                             result = {**result, 'messages': _result_messages}
                     if cancel_event.is_set():
                         _finalize_cancelled_turn(s, ephemeral=False)

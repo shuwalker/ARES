@@ -281,9 +281,14 @@ def test_streaming_tool_limit_without_final_answer_emits_no_final_apperror(tmp_p
 
 
 def test_streaming_tool_limit_with_fallback_final_response_surfaces_closure_text(tmp_path, monkeypatch):
-    """#5494 — when the agent produced no usable summary but returned a graceful
-    fallback string (handle_max_iterations() always returns one), inject that as a
-    final assistant turn so the user sees closure text instead of a bare error.
+    """#5494 — handle_max_iterations() guarantees a non-empty ``final_response``
+    on iteration-limit exhaustion. This test pins the WebUI contract that,
+    when ``messages`` ends without a final assistant turn and ``final_response``
+    is set, the user sees that closure text instead of a bare
+    ``tool_limit_reached`` error. Serves both as a live-bug fix pin and as a
+    regression guard for the agent's "delivered final_response ⇒ assistant
+    row" invariant: if a future agent regression drops that invariant, this
+    test still passes because the WebUI honors the contract locally.
     """
     graceful = "I reached the iteration limit and couldn't generate a summary."
     result = {
@@ -300,6 +305,9 @@ def test_streaming_tool_limit_with_fallback_final_response_surfaces_closure_text
     events, payload = _run_streaming_with_fake_agent(tmp_path, monkeypatch, result)
 
     # The user sees the graceful fallback, not a bare tool_limit_reached error.
+    # Either (a) we synthesized the fallback here, or (b) the agent guarantee
+    # already added an assistant row and `_mark_latest_assistant_tool_limit_status`
+    # attached the status card. Both routes satisfy the contract.
     assert not [
         ap for ev, ap in events if ev == "apperror"
         and ap.get("type") == "tool_limit_reached"
@@ -323,8 +331,9 @@ def test_streaming_tool_limit_with_fallback_final_response_surfaces_closure_text
 
 
 def test_streaming_tool_limit_with_fallback_does_not_double_inject_when_assistant_exists(tmp_path, monkeypatch):
-    """#5494 — when the agent already appended a model-generated summary, the
-    fallback flow is a no-op; the existing summary is preserved as before.
+    """#5494 — when the agent already appended a model-generated summary
+    AND ``final_response`` carries the same text, the WebUI must not duplicate
+    the assistant turn. Pins the no-op contract on the synthesis path.
     """
     summary = "I reached the limit; here is the summary."
     result = {
