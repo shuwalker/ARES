@@ -58,3 +58,7 @@ git diff --check
 swift build
 cd webui && ./scripts/test.sh tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py
 ```
+
+## Upstream / Contract Routing
+
+For contract-affecting PR or Contract Change proposals that impact the core API surface, we follow the Contract Routing protocol. These changes are reviewed and bundled together in a release batch.

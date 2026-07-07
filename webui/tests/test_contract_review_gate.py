@@ -2,7 +2,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRIBUTING = ROOT / "CONTRIBUTING.md"
+ROOT_DIR = ROOT.parent if (ROOT.parent / "CONTRIBUTING.md").exists() else ROOT
+CONTRIBUTING = ROOT_DIR / "CONTRIBUTING.md"
 CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
 
 

@@ -76,6 +76,7 @@ def _isolate_openrouter_cache(monkeypatch):
         },
         raising=False,
     )
+    monkeypatch.setattr(config, "_has_explicit_pool_credentials", lambda p: True)
     # Reset module-level cache
     try:
         config.invalidate_models_cache()
@@ -202,6 +203,7 @@ def test_free_tier_cap_prevents_picker_drowning(monkeypatch):
         pass
 
     grouped = _get_grouped_models()
+    print("DEBUG GROUPED:", grouped)
     or_group = next((g for g in grouped if g.get("provider_id") == "openrouter"), None)
     assert or_group is not None
     free_added_ids = {

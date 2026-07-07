@@ -255,6 +255,7 @@ def test_check_for_updates_can_skip_agent_repo(tmp_path):
     with patch.dict(updates._update_cache, cache_defaults, clear=True), \
          patch.object(updates, 'REPO_ROOT', webui_path), \
          patch.object(updates, '_AGENT_DIR', agent_path), \
+         patch.object(updates, '_JROS_DIR', None), \
          patch.object(updates, '_check_repo', side_effect=fake_check_repo):
         result = updates.check_for_updates(force=True, include_agent=False)
 
@@ -276,6 +277,7 @@ def test_update_cache_is_scoped_by_agent_inclusion(tmp_path):
     with patch.dict(updates._update_cache, {'webui': None, 'agent': None, 'checked_at': 0, 'include_agent': True}, clear=True), \
          patch.object(updates, 'REPO_ROOT', tmp_path), \
          patch.object(updates, '_AGENT_DIR', tmp_path), \
+         patch.object(updates, '_JROS_DIR', None), \
          patch.object(updates, '_check_repo', side_effect=fake_check_repo):
         ignored = updates.check_for_updates(force=True, include_agent=False)
         included = updates.check_for_updates(force=False, include_agent=True)

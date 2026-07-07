@@ -7,6 +7,8 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 def _make_executable(path):
@@ -15,7 +17,13 @@ def _make_executable(path):
 
 def test_github_actions_quotes_pyyaml_version_specifier():
     """Unquoted `pyyaml>=6.0` is parsed by the shell as stdout redirection."""
-    workflow = ROOT / ".github" / "workflows" / "tests.yml"
+    candidates = [
+        ROOT / ".github" / "workflows" / "tests.yml",
+        ROOT.parent / ".github" / "workflows" / "tests.yml",
+    ]
+    workflow = next((path for path in candidates if path.exists()), None)
+    if workflow is None:
+        pytest.skip("No GitHub Actions tests.yml workflow in this checkout")
     text = workflow.read_text(encoding="utf-8")
 
     assert '"pyyaml>=6.0"' in text or "'pyyaml>=6.0'" in text

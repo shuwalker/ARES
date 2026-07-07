@@ -215,9 +215,11 @@ class TestStreamingIntegration:
             build_runtime_context,
             render_context_prompt,
         )
+        from unittest.mock import patch
 
-        ctx = build_runtime_context(backend="jros")
-        prompt = render_context_prompt(ctx)
+        with patch("api.ares_runtime_context.is_jros_available", return_value=True):
+            ctx = build_runtime_context(backend="jros")
+            prompt = render_context_prompt(ctx)
         # Must contain backend designation
         assert "jros" in prompt.lower()
 
@@ -227,9 +229,11 @@ class TestStreamingIntegration:
             build_runtime_context,
             render_context_prompt,
         )
+        from unittest.mock import patch
 
-        ctx = build_runtime_context(backend="hybrid")
-        prompt = render_context_prompt(ctx)
+        with patch("api.ares_runtime_context.is_jros_available", return_value=True):
+            ctx = build_runtime_context(backend="hybrid")
+            prompt = render_context_prompt(ctx)
         # In hybrid mode, prompt should mention JROS embodiment
         assert "jros" in prompt.lower()
         # The context dict should have both backends

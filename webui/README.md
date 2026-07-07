@@ -62,6 +62,21 @@ The public website/README showcase image is generated from the same checked-in c
 - [Hermes Agent](https://hermes-agent.nousresearch.com/) (installed in editable mode)
 - See `requirements.txt` for Python deps
 
-## Docker
+## Compatibility
 
-For Docker-based deployments, see the [Docker Deployment Guide](docs/docker.md).
+The WebUI is coupled to Hermes Agent internals. In practice, version skew can cause import or behavior drift.
+- **Upgrade both together**: upgrade or pin WebUI and hermes-agent together (same release train/version/date), especially before enabling production traffic.
+- When running in Docker, you should pin both image tags together (e.g. same tag/date).
+- Running pinned older/newer combinations is untested and unsupported until the stable API boundary work in [docs/rfcs/agent-source-boundary.md](docs/rfcs/agent-source-boundary.md) / [#2491](#2491) is in place.
+- For Docker-based deployments and guides, see [docs/docker.md](docs/docker.md).
+
+## Advanced & Troubleshooting Documentation
+
+For more architectural and setup information, see:
+- [Why Hermes?](docs/why-hermes.md)
+- [WSL Autostart Guide](docs/wsl-autostart.md)
+
+### Common Local Host / Docker Failures
+
+- **Host API at `localhost` fails from WebUI**: Container `localhost` means the container itself, not the host machine. To connect to a local provider (like Ollama or Jaeger), use `host.docker.internal` instead of `localhost`.
+- **`sudo docker compose up -d` can make `${HOME}` expand to the root user's home**: Docker mounts the wrong `.hermes` directory instead of your real `~/.hermes`. To fix, explicitly run `HERMES_HOME=/home/you/.hermes` or set it in your environment.

@@ -20,10 +20,11 @@ import api.config as config  # noqa: E402
 
 
 class _FakeEntry:
-    def __init__(self, source="config_yaml", label="custom:bothub", key_source="config_yaml"):
+    def __init__(self, source="config_yaml", label="custom:bothub", key_source="config_yaml", runtime_api_key="fake-key-value"):
         self.source = source
         self.label = label
         self.key_source = key_source
+        self.runtime_api_key = runtime_api_key
 
 
 class _FakePool:
