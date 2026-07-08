@@ -15126,17 +15126,27 @@ def handle_post(handler, parsed) -> bool:
         target = body.get("target", "")
         if target not in ("webui", "agent"):
             return bad(handler, 'target must be "webui" or "agent"')
+        # Honor an explicit validated body channel (the client sends the channel
+        # the banner was offering) so a channel switch whose debounced autosave
+        # hasn't landed can't make apply read the OLD saved channel (Codex gate).
+        # Fall back to the saved setting when absent/invalid.
+        _apply_channel = body.get("channel") if isinstance(body, dict) else None
+        if _apply_channel not in ("stable", "experimental"):
+            _apply_channel = None
         from api.updates import apply_update
 
-        return j(handler, apply_update(target))
+        return j(handler, apply_update(target, _apply_channel))
 
     if parsed.path == "/api/updates/force":
         target = body.get("target", "")
         if target not in ("webui", "agent"):
             return bad(handler, 'target must be "webui" or "agent"')
+        _force_channel = body.get("channel") if isinstance(body, dict) else None
+        if _force_channel not in ("stable", "experimental"):
+            _force_channel = None
         from api.updates import apply_force_update
 
-        return j(handler, apply_force_update(target))
+        return j(handler, apply_force_update(target, _force_channel))
 
     if parsed.path == "/api/updates/clear_lock":
         # Manual-instruction recovery for the .git/index.lock case. The
