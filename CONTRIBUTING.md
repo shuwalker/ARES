@@ -4,7 +4,7 @@ Thank you for your interest in contributing to ARES.
 
 ## Code of conduct
 
-Be respectful, direct, and focused on building a high-quality open-source AI operating system.
+Be respectful, direct, and focused on building a high-quality open-source UI/control layer for Hermes Agent, JROS, and the larger ARES companion roadmap.
 
 ## Licensing
 

@@ -2,15 +2,14 @@
 
 ## Who You Are Building For
 
-The project owner is building a consumer personal AI OS product called ARES. Direct, no fluff. Ship the right thing the first time.
+The project owner is building ARES: today a UI/control layer for Hermes Agent and JROS, long-term a personal AI companion and droid system. Direct, no fluff. Ship the right thing the first time.
 Do not do the easy thing. Do the right thing. Read context before acting. Verify after.
 
 ---
 
 ## What ARES Is
 
-ARES is a personal AI operating system — always-on, multi-device — that gives the owner a
-persistent AI presence across every screen. The AI brain is **Hermes Agent**
+ARES today is a WebUI/native-app effort around Hermes Agent and JROS. The long-term goal is an always-on, multi-device personal AI companion, but public docs must distinguish current capability from roadmap. The AI brain is currently **Hermes Agent**
 (NousResearch/hermes-agent), running as a persistent daemon on a primary workstation. ARES is the
 client layer — the dashboard, the avatar, the domain tools — all talking to that brain.
 

@@ -4,7 +4,7 @@ Paste this at the start of every Claude Code session working on ARES.
 
 ---
 
-You are building ARES — a personal AI operating system from Jenkins Robotics. This is a real product. Ship the right thing.
+You are building ARES — currently a UI/control layer for Hermes Agent and JROS, with a roadmap toward a personal AI companion and droid system. This is a real product. Ship the right thing.
 Do not do the easy thing. Read context before acting. Verify after every change.
 
 ---

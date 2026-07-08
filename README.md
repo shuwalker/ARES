@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Artificial Reasoning Entity System</strong><br>
-  A persistent AI operating layer for local tools, agent frameworks, model routing, and embodied workflows.
+  The UI and control layer for Hermes Agent and JROS today — building toward a persistent AI companion and droid system.
 </p>
 
 <p align="center">
@@ -77,15 +77,15 @@ bash webui/scripts/install.sh --backend hybrid
 
 ## What ARES Is
 
-ARES is the product layer above agent frameworks. It gives the user one identity, one interface, and one continuity model while routing work to the right runtime underneath.
+ARES today is the public UI/control layer around Hermes Agent and JROS. It gives the user one place to install, configure, switch, and use those frameworks while the larger ARES companion/droid system is built up in public.
 
-- **Persistent AI identity:** sessions, memory surfaces, tasks, routines, and continuity live at the ARES layer.
 - **Web UI:** browser-based command center with streaming chat, settings, providers, tools, personas, and backend selection.
-- **Native macOS app:** SwiftUI Mission Control surface under `ARES-Desktop/`.
-- **Model routing:** cloud/local provider selection stays separate from framework/runtime selection.
-- **Embodied roadmap:** JROS integration provides the path toward robots, devices, characters, and embodied workflows.
+- **Backend selector:** Hermes, JROS, or hybrid mode without pretending JROS is a fake model/provider.
+- **Native macOS work:** SwiftUI Mission Control surface under `ARES-Desktop/`.
+- **Model/provider settings:** cloud/local provider selection stays separate from framework/runtime selection.
+- **Roadmap:** persistent identity, task continuity, embodied presence, robot/droid workflows, and ARES-native services.
 
-ARES is not just a rebrand of a chatbot UI. The WebUI is one surface in a broader operating model: ARES owns the human UX and delegates execution to peer frameworks such as Hermes Agent and JROS.
+ARES is not finished AI personhood yet. The repo is the path toward that: a working UI first, then deeper ARES-owned persistence and embodiment over time.
 
 ## Backends
 
