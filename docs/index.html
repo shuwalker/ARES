@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="ARES — Artificial Reasoning Entity System. A persistent AI operating layer for local tools, agent frameworks, model routing, and embodied workflows.">
-<title>ARES — Persistent AI Operating Layer</title>
+<meta name="description" content="ARES — an AI that lives on your machine, remembers you, and doesn't quit when you close the browser tab.">
+<title>ARES — an AI that doesn't forget</title>
 <link rel="icon" type="image/svg+xml" href="assets/ares-icon.svg">
 <style>
   :root {
@@ -79,24 +79,8 @@
   .hero-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 2s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: 0.5; } }
 
-  /* Acronym */
-  .acronym {
-    display: flex; justify-content: center; gap: clamp(8px, 3vw, 28px); margin-bottom: 24px;
-    flex-wrap: wrap;
-  }
-  .acronym .letter {
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
-  }
-  .acronym .letter .char {
-    font-size: clamp(32px, 6vw, 52px); font-weight: 900; color: var(--accent);
-    text-shadow: 0 0 30px rgba(255,68,68,0.4); line-height: 1;
-  }
-  .acronym .letter .word {
-    font-size: clamp(9px, 1.5vw, 12px); color: var(--muted); text-transform: uppercase; letter-spacing: 0.15em; font-weight: 600;
-  }
-  .hero .slogan { font-style: italic; color: var(--accent); font-size: clamp(14px, 2vw, 16px); margin: 0 0 28px; letter-spacing: 0.5px; opacity: 0.9; }
   .hero h1 {
-    font-size: clamp(26px, 4.5vw, 44px); line-height: 1.15; margin: 0 0 24px;
+    font-size: clamp(28px, 5vw, 48px); line-height: 1.15; margin: 0 0 20px;
     letter-spacing: -0.02em; font-weight: 700; color: var(--heading);
   }
   .hero h1 .grad {
@@ -308,7 +292,6 @@
     .preview-panel { flex: none; width: 100%; height: 200px; }
     .preview-panel:hover { height: 300px; }
     .previews:hover .preview-panel { height: 200px; }
-    .acronym { gap: 12px; }
   }
 </style>
 </head>
@@ -321,10 +304,9 @@
       ARES
     </div>
     <div class="nav-links">
+      <a href="#what">What</a>
       <a href="#features">Features</a>
       <a href="#characters">Characters</a>
-      <a href="#powered">Backends</a>
-      <a href="#previews">Screens</a>
       <a href="#start">Install</a>
       <a class="btn" href="https://github.com/shuwalker/ARES" target="_blank">GitHub</a>
     </div>
@@ -342,18 +324,11 @@
     <div style="margin-bottom: 24px;">
       <img src="assets/ares-icon.svg" alt="ARES" style="width: 96px; height: 96px; border-radius: 20px; box-shadow: 0 0 50px rgba(255,68,68,0.4); animation: float 4s ease-in-out infinite;">
     </div>
-    <div class="acronym">
-      <div class="letter"><span class="char">A</span><span class="word">Artificial</span></div>
-      <div class="letter"><span class="char">R</span><span class="word">Reasoning</span></div>
-      <div class="letter"><span class="char">E</span><span class="word">Entity</span></div>
-      <div class="letter"><span class="char">S</span><span class="word">System</span></div>
-    </div>
-    <p class="slogan">Persistent AI, routed to the right runtime.</p>
-    <h1>One ARES identity.<br>Many <span class="grad">agent frameworks</span> underneath.</h1>
+    <h1>An AI that lives on your machine<br>and <span class="grad">doesn't forget</span> who you are.</h1>
     <p class="lede">
-      ARES is an open-source AI operating layer for local tools, model routing, agent frameworks,
-      and embodied workflows. It gives users one product surface while delegating execution to
-      peer runtimes such as Hermes Agent and JROS.
+      ARES is an open-source AI operating system. It runs locally, remembers what you did yesterday,
+      and keeps working when you close the browser tab. Built because I wanted an AI that
+      actually persists &mdash; not a chatbot that resets every time you reload the page.
     </p>
     <div class="hero-cta">
       <a class="btn primary" href="#start">Get started</a>
@@ -362,8 +337,8 @@
   </div>
 </header>
 
-<!-- MYTHOLOGY -->
-<section id="mythology">
+<!-- WHAT -->
+<section id="what">
   <div class="wrap">
     <div class="center">
       <div class="eyebrow">&#x1F3DD;&#xFE0F; The Fighting Spirit</div>
@@ -403,55 +378,55 @@
 <section id="features">
   <div class="wrap">
     <div class="center">
-      <div class="eyebrow">Local-first command center</div>
-      <h2 class="h">One product layer, many execution backends</h2>
-      <p class="sub">ARES keeps identity, UI, continuity, and model selection in one place while routing work to the runtime best suited for the job.</p>
+      <div class="eyebrow">What it does</div>
+      <h2 class="h">One interface, two backends, your choice</h2>
+      <p class="sub">ARES is the UI layer. Underneath, it delegates to Hermes Agent or JROS &mdash; whichever runtime fits the job. You pick, it routes.</p>
     </div>
     <div class="grid">
       <div class="feature">
         <span class="ico">&#x1F9E0;</span>
         <h3>Persistent Identity</h3>
-        <p>ARES owns continuity across sessions: identity, tasks, routines, memory surfaces, and the human-facing product experience.</p>
+        <p>ARES remembers you between sessions. Tasks, routines, memory surfaces, and continuity live at the ARES layer, not in the backend.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F310;</span>
         <h3>Web UI</h3>
-        <p>Self-contained Python server with streaming, session management, provider settings, backend selection, and password auth. Works on any device over your private network.</p>
+        <p>Self-contained Python server. Streaming chat, provider settings, backend selection, password auth. Works on any device over your network.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F504;</span>
         <h3>Backend Selector<span class="tag">3 modes</span></h3>
-        <p>Switch between Hermes, JROS, or Hybrid mode per conversation. Runtime choice is separate from real provider/model selection.</p>
+        <p>Switch between Hermes, JROS, or Hybrid per conversation. Runtime choice is separate from model/provider selection.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F3AD;</span>
         <h3>Character Avatar Browser</h3>
-        <p>14 visual character personas &mdash; HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more. Card art, traits, lore, and active identity control.</p>
+        <p>14 visual personas &mdash; HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more. Card art, traits, lore, and one-click identity switching.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F4BB;</span>
         <h3>Native macOS App</h3>
-        <p>SwiftUI app wraps the Web UI in WKWebView with native window, voice (edge-tts), and animated 3D avatar eyes.</p>
+        <p>SwiftUI app wrapping the Web UI with native window, voice (edge-tts), and animated 3D avatar eyes.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x26A1;</span>
         <h3>Hot Reload</h3>
-        <p>Edit Python files &rarr; server auto-restarts in ~2s. Edit static files &rarr; browser auto-reloads. Zero downtime for static.</p>
+        <p>Edit Python files &rarr; server restarts in ~2s. Edit static files &rarr; browser reloads. Zero downtime for static assets.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F527;</span>
         <h3>Full Tool System</h3>
-        <p>Terminal, file ops, web search, code execution, MCP, skills, memory, delegation, cron jobs &mdash; all through Hermes Agent.</p>
+        <p>Terminal, file ops, web search, code execution, MCP, skills, memory, delegation, cron &mdash; all through Hermes Agent.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F916;</span>
         <h3>Multi-Model Routing</h3>
-        <p>Cloud-first (GLM-5.2, DeepSeek V4, Qwen 3.5) with local fallback (Gemma4). Reasoning effort configurable per-session.</p>
+        <p>Cloud-first (GLM-5.2, DeepSeek V4, Qwen 3.5) with local fallback (Gemma4). Reasoning effort configurable per session.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F512;</span>
-        <h3>Private by default</h3>
-        <p>Runs on your machine against your own endpoints. No telemetry, no cloud dependency unless you choose it. Your data stays yours.</p>
+        <h3>Private by Default</h3>
+        <p>Runs on your machine against your own endpoints. No telemetry, no cloud dependency unless you choose it.</p>
       </div>
     </div>
   </div>
@@ -462,13 +437,13 @@
   <div class="wrap">
     <div class="center">
       <div class="eyebrow">Character Browser</div>
-      <h2 class="h">The avatar tab is now part of the product story</h2>
-      <p class="sub">ARES can present itself through a visual character library: JROS personas, card art, trait maps, lore, and one-click active identity selection.</p>
+      <h2 class="h">Pick who answers before the model speaks</h2>
+      <p class="sub">The character tab turns persona selection into a visible product surface instead of a hidden config setting. Makes the entity feel embodied before the robot body exists.</p>
     </div>
     <div class="character-showcase">
       <div class="character-copy">
         <h3>Choose who answers before the model speaks.</h3>
-        <p>The character tab turns persona selection into a visible product surface instead of a hidden config setting. It makes the entity feel embodied before the robot body exists.</p>
+        <p>14 built-in characters with card art, traits, lore, backstory, and speech patterns. One click to switch the running personality.</p>
         <div class="character-points">
           <div class="character-point"><span class="mark">1</span><span><strong>14 built-in characters</strong><br>HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more.</span></div>
           <div class="character-point"><span class="mark">2</span><span><strong>JROS character/v1 data</strong><br>Roles, voice tone, traits, lore, backstory, and speech patterns load from the character schema.</span></div>
@@ -487,21 +462,20 @@
   <div class="wrap">
     <div class="center">
       <div class="eyebrow">Built on</div>
-      <h2 class="h">Powered by two open-source frameworks</h2>
-      <p class="sub">ARES is the human UX/product layer over full agentic frameworks &mdash;
-        swappable, composable, and never the identity.</p>
+      <h2 class="h">Two open-source frameworks, one product</h2>
+      <p class="sub">ARES is the UX layer. Hermes Agent and JROS are the runtimes underneath &mdash; swappable, composable, and never the identity.</p>
     </div>
     <div class="powered-grid">
       <div class="powered-card">
         <div class="name">Hermes Agent</div>
-        <div class="role">Peer Agentic Framework</div>
-        <div class="desc">The agent framework by Nous Research. Tools, skills, memory, streaming, context compression, cron jobs, MCP support, multi-model routing, delegation, and gateway surfaces that ARES can use through an adapter.</div>
+        <div class="role">Agent Framework</div>
+        <div class="desc">By Nous Research. Tools, skills, memory, streaming, context compression, cron, MCP, multi-model routing, delegation, and gateway surfaces.</div>
         <div class="link"><a href="https://github.com/NousResearch/hermes-agent" target="_blank">NousResearch/hermes-agent &rarr;</a></div>
       </div>
       <div class="powered-card">
         <div class="name">JROS</div>
-        <div class="role">Peer Agentic Framework</div>
-        <div class="desc">Jenkins Robotics Operating System. Agent loop, tools/skills, character surfaces, voice/STT/TTS paths, hardware abstraction, event bus, robot control, and device drivers that ARES can use through an adapter.</div>
+        <div class="role">Robotics OS</div>
+        <div class="desc">Jenkins Robotics Operating System. Agent loop, tools/skills, character surfaces, voice/STT/TTS, hardware abstraction, event bus, robot control, and device drivers.</div>
         <div class="link"><a href="https://github.com/JenkinsRobotics/JROS" target="_blank">JenkinsRobotics/JROS &rarr;</a></div>
       </div>
     </div>
@@ -516,10 +490,10 @@
   <div class="wrap" style="text-align:center;">
     <div class="eyebrow">Origin</div>
     <h2 class="h">How it started</h2>
-    <p class="sub" style="margin: 0 auto 24px;">ARES was born from a simple question: what if an AI wasn't just a chat window, but a persistent entity that lives on your machine, remembers you, and has its own presence?</p>
+    <p class="sub" style="margin: 0 auto 24px;">ARES started as a YouTube series about building an AI droid. It became an operating system for persistent AI. The YouTube series is still happening.</p>
     <div class="term">
       <div class="term-bar">
-        <span class="ttl">matthew@mac-studio: ~</span>
+        <span class="ttl">matthew@workstation: ~</span>
         <span class="winbtns"><span class="r"></span><span class="y"></span><span class="g"></span></span>
       </div>
 <pre><span class="cs">&gt;</span> <span class="accent">build me an AI that doesn't forget</span>
@@ -569,8 +543,8 @@
   <div class="wrap">
     <div class="center">
       <div class="eyebrow">Install</div>
-      <h2 class="h">Run ARES locally</h2>
-      <p class="sub" style="margin: 0 auto;">Use the one-command installer, then finish provider/backend setup in the browser onboarding wizard.</p>
+      <h2 class="h">Run it locally</h2>
+      <p class="sub" style="margin: 0 auto;">One command, then finish setup in the browser.</p>
     </div>
     <div class="cta-code">
       <div class="term-bar">
@@ -641,7 +615,6 @@ bash webui/scripts/install.sh --backend hybrid</pre>
     resize();
     window.addEventListener('resize', resize);
 
-    // Create particles
     const count = Math.min(60, Math.floor(w * h / 18000));
     for (let i = 0; i < count; i++) {
       particles.push({
