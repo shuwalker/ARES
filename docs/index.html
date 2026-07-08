@@ -423,7 +423,7 @@
       <div class="feature">
         <span class="ico">&#x1F504;</span>
         <h3>Backend Selector<span class="tag">3 modes</span></h3>
-        <p>Switch between Hermes, JROS, or Hybrid mode per-conversation. JROS personas inject into the agent loop in real-time.</p>
+        <p>Switch between Hermes, JROS, or Hybrid mode per conversation. JROS can run as the primary backend through the supported jaeger bridge.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F3AD;</span>
@@ -579,20 +579,20 @@
         <span class="ttl">bash</span>
         <span class="winbtns"><span class="r"></span><span class="y"></span><span class="g"></span></span>
       </div>
-<pre><span class="cm"># Clone</span>
+<pre><span class="cm"># Install ARES with your preferred backend</span>
 git clone https://github.com/shuwalker/ARES.git
-<span class="accent">cd</span> ARES/webui
+<span class="accent">cd</span> ARES
 
-<span class="cm"># Setup (Python 3.11+)</span>
-python3.11 -m venv .venv
-.venv/bin/pip install pyyaml cryptography edge-tts psutil watchdog
-.venv/bin/pip install -e ~/.hermes/hermes-agent
+<span class="cm"># Hermes mode (general agent orchestration)</span>
+bash webui/scripts/install.sh --backend hermes
 
-<span class="cm"># Configure</span>
-cp .env.example .env  <span class="cm"># set HERMES_WEBUI_PASSWORD</span>
+<span class="cm"># OR JROS mode (embodiment / robotics)</span>
+<span class="cm"># First install JROS once at ~/jaeger, then:</span>
+bash webui/scripts/install.sh --backend jros
 
 <span class="cm"># Run</span>
-.venv/bin/python server.py
+<span class="accent">cd</span> ~/.ares/webui
+./venv/bin/python server.py
 <span class="cs"># &rarr; http://localhost:8787</span></pre>
     </div>
     <div style="text-align:center; margin-top: 28px;">

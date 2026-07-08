@@ -3,9 +3,14 @@
 This is intentionally shaped like ``api.gateway_chat._run_gateway_chat_streaming``:
 /api/chat/start still creates a normal local WebUI stream, /api/chat/stream still
 receives WebUI SSE event names, and the final turn is persisted back into the
-same WebUI session model.  The only swapped piece is execution: instead of
-calling Hermes Gateway/OpenAI-compatible chat, this boots JROS and runs the turn
-through JROS' native ``run_for_voice`` API.
+same WebUI session model. The only swapped piece is execution: instead of
+calling Hermes Gateway/OpenAI-compatible chat, this talks to an existing JROS
+install over the supported ``jaeger bridge`` stdio NDJSON protocol via the
+stdlib-only ``api.jros_client`` helper.
+
+ARES does not pip-install JROS into its venv and does not clone a second JROS
+copy. It drives the operator's existing ``~/jaeger`` install, or the install
+pointed to by ``JAEGER_HOME`` / ``ARES_JAEGER_HOME``.
 """
 from __future__ import annotations
 
@@ -41,28 +46,53 @@ from api.run_journal import RunJournalWriter
 logger = logging.getLogger(__name__)
 
 _BOOT_LOCK = threading.RLock()
-_BOOT: Any | None = None
+_BOOT: Any | None = None  # legacy source-checkout boot cache
+_JROS_CLIENT: Any | None = None
 
 
 def _jros_repo_root() -> Path:
-    """Resolve the JROS repo checkout location.
+    """Resolve an optional JROS source checkout for character/assets access.
 
-    There is no universal install path to guess — JROS is installed wherever
-    the operator put it, not necessarily under any particular developer's
-    directory layout. ``ARES_JROS_DIR`` must be set explicitly.
+    Runtime turns no longer require this path: ARES talks to JROS through the
+    supported installed ``jaeger bridge`` client. ``ARES_JROS_DIR`` is still
+    honored for source-tree features such as character schema browsing.
     """
     override = os.environ.get("ARES_JROS_DIR", "").strip()
     if not override:
         raise RuntimeError(
-            "ARES_JROS_DIR is not set. Point it at your JROS checkout "
-            "(the directory containing jaeger_os/) to use the JROS backend "
-            "or character library."
+            "ARES_JROS_DIR is not set. Point it at your JROS source checkout "
+            "only if you want source-tree features such as the character library. "
+            "JROS chat uses ~/jaeger or $JAEGER_HOME via jaeger bridge."
         )
     return Path(override).expanduser().resolve()
 
 
-def _jros_instance_name() -> str:
-    return os.environ.get("ARES_JROS_INSTANCE", "jros-dev").strip() or "jros-dev"
+def _jaeger_home() -> Path:
+    raw = (
+        os.environ.get("ARES_JAEGER_HOME")
+        or os.environ.get("JAEGER_HOME")
+        or str(Path.home() / "jaeger")
+    )
+    return Path(raw).expanduser().resolve()
+
+
+def _jaeger_launcher() -> Path:
+    return _jaeger_home() / "jaeger"
+
+
+def is_jros_bridge_available() -> bool:
+    """Return True when ARES can spawn the supported JROS bridge.
+
+    This checks the installed launcher only. It deliberately does not check for
+    a Python package in ARES's venv because that is not the supported integration
+    model.
+    """
+    launcher = _jaeger_launcher()
+    return launcher.exists() and os.access(launcher, os.X_OK)
+
+
+def _jros_instance_name() -> str | None:
+    return os.environ.get("ARES_JROS_INSTANCE", "").strip() or None
 
 
 def _ensure_jros_import_path() -> None:
@@ -90,19 +120,39 @@ def _boot_jros() -> Any:
         return _BOOT
 
 
-def reset_jros_boot() -> None:
-    """Drop the cached JROS boot so the next turn re-boots from disk config.
+def _get_jros_client() -> Any:
+    """Start or reuse the supported single JROS bridge client."""
+    global _JROS_CLIENT
+    with _BOOT_LOCK:
+        if _JROS_CLIENT is not None:
+            return _JROS_CLIENT
+        from api.jros_client import JrosClient
 
-    JROS has no live model hot-swap (its client's model is fixed at
-    construction time), so picking a new model or failing over to a
-    fallback provider only takes effect after a re-boot. Call this after
-    writing new provider settings to JROS's config.yaml (see
-    api.ares_provider_sync) — the next chat turn on this backend pays one
-    boot's worth of latency and then runs the new model.
-    """
-    global _BOOT
+        if not is_jros_bridge_available():
+            raise RuntimeError(
+                f"JROS bridge launcher not found at {_jaeger_launcher()}. "
+                "Install JROS first (curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh | bash) "
+                "or set JAEGER_HOME/ARES_JAEGER_HOME."
+            )
+        _JROS_CLIENT = JrosClient(
+            jaeger_home=str(_jaeger_home()),
+            instance=_jros_instance_name(),
+        )
+        _JROS_CLIENT.start()
+        return _JROS_CLIENT
+
+
+def reset_jros_boot() -> None:
+    """Drop cached JROS bridge/source clients so the next turn starts fresh."""
+    global _BOOT, _JROS_CLIENT
     with _BOOT_LOCK:
         _BOOT = None
+        if _JROS_CLIENT is not None:
+            try:
+                _JROS_CLIENT.close()
+            except Exception:
+                logger.debug("Failed to close cached JROS client", exc_info=True)
+        _JROS_CLIENT = None
 
 
 def _stream_writeback_is_current(session: Any, stream_id: str) -> bool:
@@ -266,23 +316,40 @@ def _apply_jros_provider_entry(entry: dict) -> None:
     reset_jros_boot()
 
 
-def _attempt_jros_turn(msg_text: str, session_id: str, cancel_event: threading.Event) -> tuple[str, str, list[str]]:
-    """One boot+run attempt against JROS as currently configured.
+def _attempt_jros_turn(msg_text: str, session_id: str, cancel_event: threading.Event | None) -> tuple[str, str, list[str]]:
+    """One attempt against the supported JROS jaeger bridge.
 
-    Returns (assistant_text, error, tool_activity) — same shape as
-    _assistant_text_from_jros_result. Raises on a hard failure (boot crash,
-    import error, etc.) so the fallback loop can distinguish "JROS ran and
-    reported an error" from "JROS didn't run at all" — both are failures
-    worth falling back on, but only the latter needs the exception logged.
+    Returns (assistant_text, error, tool_activity). Raises on hard bridge boot
+    failures so the fallback loop can distinguish "JROS reported an error"
+    from "ARES could not reach JROS".
     """
-    boot = _boot_jros()
-    if cancel_event.is_set():
+    if cancel_event is not None and cancel_event.is_set():
         return "", "", []
-    from jaeger_os.main import run_for_voice
+    client = _get_jros_client()
+    tool_activity: list[str] = []
 
-    with contextlib.redirect_stdout(sys.stderr):
-        result = run_for_voice(boot.client, str(msg_text or ""), session_key=f"webui:{session_id}")
-    return _assistant_text_from_jros_result(result)
+    def on_event(frame: dict) -> None:
+        if not isinstance(frame, dict):
+            return
+        preview = (
+            frame.get("preview")
+            or frame.get("message")
+            or frame.get("name")
+            or frame.get("type")
+            or frame
+        )
+        tool_activity.append(str(preview))
+
+    result = client.turn(
+        str(msg_text or ""),
+        session=f"webui:{session_id}",
+        on_event=on_event,
+    )
+    return _assistant_text_from_jros_result({
+        "text": (result or {}).get("text") if isinstance(result, dict) else "",
+        "error": (result or {}).get("error") if isinstance(result, dict) else "",
+        "tool_activity": tool_activity,
+    })
 
 
 def _run_jros_turn_with_fallback(
@@ -471,7 +538,7 @@ def _run_jros_chat_streaming(
                 "label": "JROS returned no response",
                 "type": "jros_empty_response",
                 "message": "JROS returned no assistant message for this turn.",
-                "hint": f"Check the JROS {_jros_instance_name()} instance and model provider.",
+                "hint": "Check the active JROS instance and model provider.",
             })
             return
         # JROS currently returns a complete turn, not token deltas. Emit one token
@@ -509,7 +576,7 @@ def _run_jros_chat_streaming(
             "label": "JROS request failed",
             "type": "jros_bridge_error",
             "message": safe or "JROS request failed.",
-            "hint": f"Check the JROS {_jros_instance_name()} instance, import path, and provider health.",
+            "hint": "Check the JROS bridge launcher, active instance, and provider health.",
         })
     finally:
         if s is not None:

@@ -20,8 +20,8 @@ class JROSBackend(AgenticBackend):
 
     def is_available(self) -> bool:
         try:
-            from api.jros_bridge import _jros_repo_root
-            return (_jros_repo_root() / "jaeger_os").is_dir()
+            from api.jros_bridge import is_jros_bridge_available
+            return is_jros_bridge_available()
         except Exception:
             return False
 
@@ -34,12 +34,13 @@ class JROSBackend(AgenticBackend):
         return "JROS"
 
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
-        # Placeholder — real implementation will call the existing _run_jros_chat_streaming
-        return {
-            "text": "",
-            "error": "JROS adapter not yet wired to legacy bridge",
-            "tool_activity": [],
-        }
+        from api.jros_bridge import _attempt_jros_turn
+        return_text, error, tool_activity = _attempt_jros_turn(
+            message,
+            session_id,
+            kwargs.get("cancel_event"),
+        )
+        return {"text": return_text, "error": error, "tool_activity": tool_activity}
 
     def get_status(self) -> Dict[str, Any]:
         available = self.is_available()

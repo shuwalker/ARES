@@ -61,6 +61,36 @@ cp .env.example .env
 # → http://localhost:8787
 ```
 
+## Supported Backends: Hermes and JROS
+
+ARES is a human UX layer over peer agentic frameworks. Fresh installs can use Hermes, JROS, or hybrid mode. JROS is not installed inside the ARES virtual environment. ARES talks to an existing JROS install through the supported `jaeger bridge` NDJSON protocol.
+
+### JROS-first install
+
+```bash
+# 1. Install JROS once, outside the ARES venv
+curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh | bash
+cd ~/jaeger
+./jaeger agent create
+
+# 2. Install ARES and select JROS backend
+git clone https://github.com/shuwalker/ARES.git
+cd ARES
+bash webui/scripts/install.sh --backend jros
+
+# 3. Run ARES WebUI
+cd ~/.ares/webui
+./venv/bin/python server.py
+```
+
+### Backend modes
+
+- `hermes` — use Hermes Agent as the production agent framework. Best for ops, coding, tools, skills, cron, MCP, and provider routing.
+- `jros` — use JROS through `~/jaeger/jaeger bridge`. Best for embodied agent/persona/robotics workflows.
+- `hybrid` — use Hermes while injecting JROS persona/tool context where configured.
+
+You can also switch from the UI backend selector or by calling `/api/ares/backend/set` with `{"backend":"jros"}`.
+
 ## Native App
 
 The merged repo includes two Swift app surfaces:

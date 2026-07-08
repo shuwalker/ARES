@@ -8,20 +8,15 @@ Backends:
   - hybrid: Hermes loop + JROS persona injection + JROS tools (additive)
 
 This module is pure routing logic — no side effects on import. Execution
-itself happens in api/jros_bridge.py, which runs JROS in-process via a direct
-Python import of the operator's JROS checkout (ARES_JROS_DIR).
+itself happens in api/jros_bridge.py, which talks to an existing JROS
+installation over the supported `jaeger bridge` stdio NDJSON protocol.
 
 Availability is checked two ways, in order:
-  1. If ARES_JROS_BUS_ENDPOINT is set, an operator has chosen to run
-     scripts/jros_presence.py as a liveness sidecar (a real ZMQ REP daemon —
-     see that file). Ping it: a live daemon proves JROS is actually running,
-     and its reply carries the live model/provider for display.
-  2. Otherwise, fall back to a filesystem check: does ARES_JROS_DIR point at
-     a real jaeger_os/ checkout that api.jros_bridge could import?
-
-Note the sidecar only ever answers "is JROS alive" — turn execution always
-goes through the in-process bridge above, not through the sidecar, so a
-remote/separate-process JROS is not yet a runnable configuration end to end.
+  1. If ARES_JROS_BUS_ENDPOINT is set, ping the optional presence sidecar
+     for live model/provider display metadata.
+  2. Otherwise, check for a runnable `~/jaeger/jaeger` launcher (or
+     `$JAEGER_HOME/jaeger`). ARES never installs a second JROS copy inside
+     its own venv.
 """
 
 from __future__ import annotations
@@ -101,9 +96,9 @@ def is_jros_available() -> bool:
 
     if not result and not endpoint:
         try:
-            from api.jros_bridge import _jros_repo_root
+            from api.jros_bridge import is_jros_bridge_available
 
-            result = (_jros_repo_root() / "jaeger_os").is_dir()
+            result = is_jros_bridge_available()
         except Exception:
             result = False
 

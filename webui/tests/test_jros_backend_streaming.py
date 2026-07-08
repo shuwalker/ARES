@@ -16,6 +16,7 @@ def test_jros_backend_selects_real_jros_worker_without_presence_ping(monkeypatch
         return None
 
     fake_bridge.run_jros_streaming = fake_run_jros_streaming
+    setattr(fake_bridge, "is_jros_bridge_available", lambda: True)
     monkeypatch.setitem(sys.modules, "api.jros_bridge", fake_bridge)
     monkeypatch.setattr(routes, "get_config", fake_get_config)
     monkeypatch.setattr(routes, "webui_gateway_chat_enabled", lambda _cfg: False)
@@ -68,22 +69,16 @@ def test_jros_bridge_runs_voice_turn_and_persists_session(monkeypatch):
     with config.STREAMS_LOCK:
         config.STREAMS[stream_id] = stream
 
-    monkeypatch.setattr(jros_bridge, "_boot_jros", lambda: types.SimpleNamespace(client=object()))
-
-    fake_main = types.ModuleType("jaeger_os.main")
     calls = []
 
-    def fake_run_for_voice(client, text, session_key=None):
-        calls.append((text, session_key))
-        return {
-            "text": "JROS says hi",
-            "tool_activity": [{"tool": "demo", "status": "ok"}],
-            "error": None,
-            "elapsed_s": 0.01,
-        }
+    class FakeJrosClient:
+        def turn(self, text, session="", on_event=None, on_request=None):
+            calls.append((text, session))
+            if on_event:
+                on_event({"type": "tool", "name": "demo", "status": "ok"})
+            return {"text": "JROS says hi", "error": None}
 
-    fake_main.run_for_voice = fake_run_for_voice
-    monkeypatch.setitem(sys.modules, "jaeger_os.main", fake_main)
+    monkeypatch.setattr(jros_bridge, "_get_jros_client", lambda: FakeJrosClient())
 
     jros_bridge.run_jros_streaming(
         sid,

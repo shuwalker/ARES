@@ -49,6 +49,7 @@ JSON_OUTPUT=false
 STAGE_NAME=""
 MANIFEST_MODE=false
 NON_INTERACTIVE=false
+BACKEND_MODE="${ARES_BACKEND:-auto}"
 
 # Detect non-interactive mode
 if [ -t 0 ]; then
@@ -70,6 +71,7 @@ while [[ $# -gt 0 ]]; do
         --stage) STAGE_NAME="$2"; shift 2 ;;
         --json) JSON_OUTPUT=true; shift ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
+        --backend) BACKEND_MODE="$2"; shift 2 ;;
         -h|--help)
             echo "ARES Web UI Installer"
             echo ""
@@ -86,6 +88,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
+            echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto)"
             echo "  -h, --help      Show this help"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -168,6 +171,18 @@ prompt_yes_no() {
 # ============================================================================
 # System detection
 # ============================================================================
+
+detect_jros() {
+    JAEGER_HOME_DETECTED="${ARES_JAEGER_HOME:-${JAEGER_HOME:-$HOME/jaeger}}"
+    JAEGER_LAUNCHER="$JAEGER_HOME_DETECTED/jaeger"
+    if [ -x "$JAEGER_LAUNCHER" ]; then
+        JROS_DETECTED=true
+        log_success "JROS detected at $JAEGER_HOME_DETECTED"
+    else
+        JROS_DETECTED=false
+        log_info "JROS not detected at $JAEGER_HOME_DETECTED"
+    fi
+}
 
 detect_os() {
     case "$(uname -s)" in
@@ -342,6 +357,47 @@ setup_config() {
     # Create state directory
     mkdir -p "$ARES_HOME"
 
+    detect_jros
+    selected_backend="$BACKEND_MODE"
+    if [ "$selected_backend" = "auto" ]; then
+        selected_backend="hermes"
+        if [ "$JROS_DETECTED" = true ]; then
+            if prompt_yes_no "JROS was detected. Use JROS as the primary ARES backend?" "no"; then
+                selected_backend="jros"
+            fi
+        fi
+    fi
+    case "$selected_backend" in
+        hermes|jros|hybrid) ;;
+        *) log_error "Invalid backend mode: $selected_backend (expected auto, hermes, jros, or hybrid)"; exit 1 ;;
+    esac
+
+    CONFIG_PYTHON="${PYTHON_PATH:-}"
+    if [ -z "$CONFIG_PYTHON" ]; then
+        CONFIG_PYTHON="$(command -v python3 || command -v python || true)"
+    fi
+    if [ -z "$CONFIG_PYTHON" ]; then
+        log_error "Python not found; cannot write ARES backend settings"
+        exit 1
+    fi
+    "$CONFIG_PYTHON" - "$selected_backend" "$ARES_HOME" <<'PY'
+import json, sys
+from pathlib import Path
+backend = sys.argv[1]
+state_home = Path(sys.argv[2]) / "webui"
+state_home.mkdir(parents=True, exist_ok=True)
+settings = state_home / "settings.json"
+data = {}
+if settings.exists():
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+data["ares_backend"] = backend
+settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+    log_success "Configured ARES backend: $selected_backend"
+
     log_success "Configuration ready"
 }
 
@@ -390,6 +446,7 @@ fi
 # Full install
 print_banner
 detect_os
+detect_jros
 stage_prerequisites
 clone_repo
 setup_venv
