@@ -141,10 +141,11 @@ public final class FileSystemIdentity: Identity, @unchecked Sendable {
         sysctlbyname("hw.model", &model, &size, nil, 0)
         let modelStr = String(cString: model)
 
-        // Map hardware model codes to friendly names
+        // Prefer friendly names only when the model code identifies the family.
+        // Newer Apple Silicon desktop model identifiers (for example Mac14,*) do
+        // not uniquely map to one product line, so keep the detected model code
+        // instead of assuming this is the maintainer's machine type.
         switch modelStr {
-        case let m where m.hasPrefix("Mac14,") || m.hasPrefix("Mac15,"):
-            return "Mac Studio"
         case let m where m.hasPrefix("MacBookPro"):
             return "MacBook Pro"
         case let m where m.hasPrefix("MacBookAir"):

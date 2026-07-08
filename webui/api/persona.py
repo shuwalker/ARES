@@ -14,31 +14,21 @@ The persona is pure prompt text.
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 
+from api.jros_paths import character_dir, legacy_persona_dir
+
 logger = logging.getLogger(__name__)
 
-# JROS character/persona directories (checked in order).
-_CHARACTER_DIR = os.path.expanduser("~/GitHub/JROS/jaeger_os/personality/characters")
-_LEGACY_PERSONA_DIR = os.path.expanduser("~/GitHub/JROS/jaeger_os/agent/personas")
-
-# Env override for portability.
-_CHARACTER_DIR_ENV = "ARES_CHARACTER_DIR"
-_PERSONA_DIR_ENV = "ARES_PERSONA_DIR"
-
-
 def _character_dir() -> Path:
-    raw = os.getenv(_CHARACTER_DIR_ENV, _CHARACTER_DIR)
-    return Path(raw).expanduser()
+    return character_dir()
 
 
 def _legacy_persona_dir() -> Path:
-    raw = os.getenv(_PERSONA_DIR_ENV, _LEGACY_PERSONA_DIR)
-    return Path(raw).expanduser()
+    return legacy_persona_dir()
 
 
 def _parse_character_v1(data: dict, yml_path: Path) -> Optional[dict[str, Any]]:

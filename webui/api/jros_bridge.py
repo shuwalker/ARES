@@ -20,8 +20,9 @@ import os
 import sys
 import threading
 import time
-from pathlib import Path
 from typing import Any
+
+from api.jros_paths import jaeger_home, jaeger_launcher, jros_instance_name, jros_source_root
 
 from api.config import (
     CANCEL_FLAGS,
@@ -50,34 +51,17 @@ _BOOT: Any | None = None  # legacy source-checkout boot cache
 _JROS_CLIENT: Any | None = None
 
 
-def _jros_repo_root() -> Path:
-    """Resolve an optional JROS source checkout for character/assets access.
-
-    Runtime turns no longer require this path: ARES talks to JROS through the
-    supported installed ``jaeger bridge`` client. ``ARES_JROS_DIR`` is still
-    honored for source-tree features such as character schema browsing.
-    """
-    override = os.environ.get("ARES_JROS_DIR", "").strip()
-    if not override:
-        raise RuntimeError(
-            "ARES_JROS_DIR is not set. Point it at your JROS source checkout "
-            "only if you want source-tree features such as the character library. "
-            "JROS chat uses ~/jaeger or $JAEGER_HOME via jaeger bridge."
-        )
-    return Path(override).expanduser().resolve()
+def _jros_repo_root() -> Any:
+    """Compatibility wrapper for source-tree character/assets access."""
+    return jros_source_root()
 
 
-def _jaeger_home() -> Path:
-    raw = (
-        os.environ.get("ARES_JAEGER_HOME")
-        or os.environ.get("JAEGER_HOME")
-        or str(Path.home() / "jaeger")
-    )
-    return Path(raw).expanduser().resolve()
+def _jaeger_home() -> Any:
+    return jaeger_home()
 
 
-def _jaeger_launcher() -> Path:
-    return _jaeger_home() / "jaeger"
+def _jaeger_launcher() -> Any:
+    return jaeger_launcher()
 
 
 def is_jros_bridge_available() -> bool:
@@ -92,7 +76,7 @@ def is_jros_bridge_available() -> bool:
 
 
 def _jros_instance_name() -> str | None:
-    return os.environ.get("ARES_JROS_INSTANCE", "").strip() or None
+    return jros_instance_name()
 
 
 def _ensure_jros_import_path() -> None:

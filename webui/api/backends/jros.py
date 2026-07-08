@@ -47,4 +47,9 @@ class JROSBackend(AgenticBackend):
         return {
             "available": available,
             "label": "JROS" if available else "JROS (not found)",
+            "capabilities": {
+                "supports_tools": self.supports_tools,
+                "supports_persona": self.supports_persona,
+                "supports_hybrid": self.supports_hybrid,
+            }
         }

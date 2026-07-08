@@ -26,7 +26,7 @@ ARES is the human-facing UX/product layer over full agentic frameworks. It provi
 
 Public repo code/docs must not contain maintainer-specific runtime values: personal paths, real Tailscale IPs/hostnames/tailnet names, personal hardware requirements, `.hermes`, `.ares/config`, SOUL.md, auth files, tokens, API keys, cookies, or live profile assumptions.
 
-Use placeholders, detected values, or user-selected paths.
+Use placeholders, detected values, or user-selected paths. In source code, prefer environment variables/configuration over user-folder assumptions. For JROS integration specifically, use `ARES_JROS_DIR` for source-checkout features and `ARES_JAEGER_HOME` / `JAEGER_HOME` for installed runtime discovery; never assume `~/GitHub`, a maintainer username, or another developer-only clone layout.
 
 ## Repository structure
 

@@ -2,17 +2,16 @@
 
 ## Who You Are Building For
 
-Matthew Jenkins — founder of Jenkins Robotics. Propulsion engineer. Building a consumer
-personal AI OS product called ARES. Direct, no fluff. Ship the right thing the first time.
+The project owner is building a consumer personal AI OS product called ARES. Direct, no fluff. Ship the right thing the first time.
 Do not do the easy thing. Do the right thing. Read context before acting. Verify after.
 
 ---
 
 ## What ARES Is
 
-ARES is a personal AI operating system — always-on, multi-device — that gives Matthew a
+ARES is a personal AI operating system — always-on, multi-device — that gives the owner a
 persistent AI presence across every screen. The AI brain is **Hermes Agent**
-(NousResearch/hermes-agent), running as a persistent daemon on a Mac Studio. ARES is the
+(NousResearch/hermes-agent), running as a persistent daemon on a primary workstation. ARES is the
 client layer — the dashboard, the avatar, the domain tools — all talking to that brain.
 
 ARES is NOT:
@@ -33,7 +32,7 @@ ARES IS:
 
 ---
 
-## Repository Structure (~/Documents/GitHub/)
+## Repository Structure (<repos-root>/)
 
 ### Core ARES repos (primary work targets)
 
@@ -50,7 +49,7 @@ hermes-agent/          ← Hermes source reference ONLY (do not run, do not modi
 
 ```
 GPT-SoVITS/      ← Voice cloning / TTS (use with Open-LLM-VTuber TTS pipeline)
-ComfyUI/         ← Image generation (already at ~/Documents/ComfyUI)
+ComfyUI/         ← Image generation (already at <workspace>/ComfyUI)
 Open-Sora/       ← AI video generation
 n8n/             ← Workflow automation (YouTube pipeline orchestration)
 obsidian-importer/ ← Second brain tooling
@@ -77,7 +76,7 @@ aiavatarkit/   ← Avatar animation kit reference
 **Organize into:**
 
 ```
-~/Documents/GitHub/
+<repos-root>/
   ares/        ← hermes-desktop, Open-LLM-VTuber, airi, ARES-*
   generation/  ← GPT-SoVITS, ComfyUI, Open-Sora
   reference/   ← os1, Agent-S, aiavatarkit, hermes-agent, hermes-workspace
@@ -90,19 +89,19 @@ aiavatarkit/   ← Avatar animation kit reference
 
 ## Hermes Agent — How It Works (CRITICAL — Read This)
 
-**The live Hermes install is at `~/.hermes/` — do NOT touch this.**
-**The GitHub clone at `~/Documents/GitHub/hermes-agent/` is reference source only.**
+**The live Hermes install is at `<HERMES_HOME>/` — do NOT touch this.**
+**The GitHub clone at `<repos-root>/hermes-agent/` is reference source only.**
 
 Hermes Agent runs as a gateway daemon. It exposes:
 - **WebSocket gateway** on port 8644 (Discord/webhook messaging)
-- **HTTP API** on port 8642 (requires `API_SERVER_ENABLED=true` in `~/.hermes/.env`)
+- **HTTP API** on port 8642 (requires `API_SERVER_ENABLED=true` in `<HERMES_HOME>/.env`)
 - **OpenAI-compatible API** on port 8642 at `/v1` — use this for Open-LLM-VTuber
 - **Dashboard** on port 9119
-- **Config** at `~/.hermes/config.yaml`
-- **Profiles** at `~/.hermes/profiles/<name>/config.yaml`
+- **Config** at `<HERMES_HOME>/config.yaml`
+- **Profiles** at `<HERMES_HOME>/profiles/<name>/config.yaml`
 
 **Before calling any Hermes API endpoint, verify it exists in:**
-`~/Documents/GitHub/hermes-agent/docs/` or by reading the gateway source.
+`<repos-root>/hermes-agent/docs/` or by reading the gateway source.
 Never hallucinate endpoint paths.
 
 ---
@@ -131,13 +130,13 @@ transport to Hermes port 8642 alongside the existing SSH transport.
 1. `HTTPTransport` class (parallel to `SSHTransport`) — talks to Hermes port 8642 directly
 2. `TransportKind` enum on `ConnectionProfile` — `.ssh` for remote, `.local` for HTTP
 3. `WebSocketTransport` for streaming chat responses (token-by-token via port 8642 `/ws`)
-4. New `ConnectionProfile` fields: `httpBaseURL`, `wsBaseURL`, `apiKey` (from `~/.hermes/.env`)
+4. New `ConnectionProfile` fields: `httpBaseURL`, `wsBaseURL`, `apiKey` (from `<HERMES_HOME>/.env`)
 5. Rebranding: replace "Hermes Desktop" identity with ARES identity throughout
 6. Avatar panel placeholder in the split layout (three-column layout for: sidebar, dashboard
    content, avatar/tools panel) — `HermesThreeColumnSplitView` (does not exist yet)
 
 **What NOT to change in hermes-desktop:**
-- The SSH transport — keep it. MacBook → Mac Studio remote connection still uses SSH.
+- The SSH transport — keep it. MacBook → primary workstation remote connection still uses SSH.
 - The existing model layer — it's complete and well-structured.
 - The existing views — they work. Extend, don't rewrite.
 - The design system (`HermesUI.swift`) — extend it, don't replace it.
@@ -176,7 +175,7 @@ character_config:
     llm_configs:
       openai_compatible_llm:
         base_url: 'http://localhost:8642/v1'
-        llm_api_key: 'Bearer <API_SERVER_KEY from ~/.hermes/.env>'
+        llm_api_key: 'Bearer <API_SERVER_KEY from <HERMES_HOME>/.env>'
         model: 'hermes-3'
         temperature: 1.0
         interrupt_method: 'user'
@@ -233,7 +232,7 @@ Tool panels are Electron or native SwiftUI panels, not embedded webviews.
 
 ## Character / Persona System
 
-Persona system comes from `airi` (TypeScript monorepo, `~/Documents/GitHub/airi/`).
+Persona system comes from `airi` (TypeScript monorepo, `<repos-root>/airi/`).
 
 `airi` already has:
 - **CCC card format** (`@proj-airi/ccc`) — Character Card Spec v3, stores persona in PNG
@@ -274,7 +273,7 @@ system prompt deterministically. Build this as a character config extension in c
 
 ## iOS App — Build Spec
 
-Native SwiftUI. Connects to Mac Studio over Tailscale. Shares model layer with macOS.
+Native SwiftUI. Connects to primary workstation over Tailscale. Shares model layer with macOS.
 
 ```
 AresIOS (SwiftUI, iOS 17+, iPadOS 17+)
@@ -314,7 +313,7 @@ messages_send(to: String, body: String) -> Bool
 ```
 
 All via EventKit, CloudKit, and osascript where needed.
-Add to `~/.hermes/config.yaml` under `mcp.servers` after building.
+Add to `<HERMES_HOME>/config.yaml` under `mcp.servers` after building.
 
 ---
 
@@ -327,7 +326,7 @@ Hermes (orchestrator)
   → Generates script, title, description, tags
   → Creates n8n workflow via n8n API
   → n8n workflow:
-      1. Trigger: new script approved in ~/Documents/YouTube/Intake/
+      1. Trigger: new script approved in <workspace>/YouTube/Intake/
       2. Run ComfyUI for thumbnail generation
       3. Run GPT-SoVITS for AI voiceover (or flag for Matthew's voice)
       4. Notify Matthew for final approval (ARES iOS push notification)
@@ -342,16 +341,16 @@ n8n runs at `localhost:5678`. Matthew approves via ARES iOS app notification.
 
 ## Second Brain Integration
 
-LanceDB vector index at `~/.hermes/second_brain_lancedb/`
+LanceDB vector index at `<HERMES_HOME>/second_brain_lancedb/`
 Embedding model: `nomic-embed-text` via local Ollama
 8,600 files indexed across NAS volumes
 
 ```bash
 # Every 6 hours — incremental reindex
-python3 ~/.hermes/scripts/second_brain_indexer.py --incremental
+python3 <HERMES_HOME>/scripts/second_brain_indexer.py --incremental
 
 # Every morning 6am — semantic search health check
-python3 ~/.hermes/scripts/second_brain_indexer.py --query "active projects" --top 5
+python3 <HERMES_HOME>/scripts/second_brain_indexer.py --query "active projects" --top 5
 ```
 
 Hermes runs a semantic search before any task involving files, projects, or knowledge.
@@ -364,7 +363,7 @@ This is enforced in the `pre-task` hook.
 ### Phase 1 — Foundation
 
 1. **Organize GitHub folder** per the structure above
-2. **Enable Hermes HTTP API** — add `API_SERVER_ENABLED=true` to `~/.hermes/.env`,
+2. **Enable Hermes HTTP API** — add `API_SERVER_ENABLED=true` to `<HERMES_HOME>/.env`,
    restart gateway. Verify port 8642 responds at `/v1/models` or equivalent.
 3. **Wire LanceDB cron** — second brain indexer on 6-hour schedule via `hermes cron`
 4. **Wire Open-LLM-VTuber to Hermes** — configure `conf.yaml` with Hermes as LLM backend,
@@ -433,16 +432,16 @@ This is enforced in the `pre-task` hook.
 - New agent types: implement `AgentInterface` and register in `AgentFactory`
 
 ### Hermes integration rules
-- NEVER modify `~/.hermes/config.yaml` programmatically without reading it first
-- NEVER write to `~/.hermes/memories/` — Hermes owns that
+- NEVER modify `<HERMES_HOME>/config.yaml` programmatically without reading it first
+- NEVER write to `<HERMES_HOME>/memories/` — Hermes owns that
 - ALWAYS use the HTTP API (port 8642) for app→Hermes communication
 - WebSocket on port 8642 `/ws` for streaming responses
-- Auth token from `~/.hermes/.env` → `API_SERVER_KEY`
+- Auth token from `<HERMES_HOME>/.env` → `API_SERVER_KEY`
 - Open-LLM-VTuber connects to Hermes as `openai_compatible_llm` with `base_url: http://localhost:8642/v1`
 
 ### File naming
 - Swift: PascalCase files, matching type name
-- New skills: `~/.hermes/skills/<category>/<name>/SKILL.md` + supporting files
+- New skills: `<HERMES_HOME>/skills/<category>/<name>/SKILL.md` + supporting files
 - Second brain files: Denote style `YYYY-MM-DD--slug--tag1_tag2.md`
 - Character configs: `characters/<name>.yaml` in Open-LLM-VTuber root
 
@@ -451,19 +450,19 @@ This is enforced in the `pre-task` hook.
 ## Context Files To Read Before Starting Any Task
 
 ```
-~/.hermes/SOUL.md                    ← Hermes identity and behavioral rules
-~/.hermes/AGENTS.md                  ← Operational rules
-~/.hermes/memories/MEMORY.md         ← Current project state
-~/.hermes/MASTER_TODO.md             ← Active task list
-~/.hermes/NAS_STRUCTURE.md           ← Storage layout
-~/Documents/ARES_CODEBASE_AUDIT.md   ← Full audit of all three repos (read this first)
-~/Documents/GitHub/hermes-desktop/Sources/HermesDesktop/Services/SSH/SSHTransport.swift
-~/Documents/GitHub/hermes-desktop/Sources/HermesDesktop/App/AppState.swift
-~/Documents/GitHub/Open-LLM-VTuber/src/open_llm_vtuber/server.py
-~/Documents/GitHub/Open-LLM-VTuber/src/open_llm_vtuber/websocket_handler.py
-~/Documents/GitHub/Open-LLM-VTuber/src/open_llm_vtuber/agent/agents/agent_interface.py
-~/Documents/GitHub/Open-LLM-VTuber/conf.yaml
-~/Documents/GitHub/hermes-agent/docs/ (API reference — verify endpoints before calling)
+<HERMES_HOME>/SOUL.md                    ← Hermes identity and behavioral rules
+<HERMES_HOME>/AGENTS.md                  ← Operational rules
+<HERMES_HOME>/memories/MEMORY.md         ← Current project state
+<HERMES_HOME>/MASTER_TODO.md             ← Active task list
+<HERMES_HOME>/NAS_STRUCTURE.md           ← Storage layout
+<workspace>/ARES_CODEBASE_AUDIT.md   ← Full audit of all three repos (read this first)
+<repos-root>/hermes-desktop/Sources/HermesDesktop/Services/SSH/SSHTransport.swift
+<repos-root>/hermes-desktop/Sources/HermesDesktop/App/AppState.swift
+<repos-root>/Open-LLM-VTuber/src/open_llm_vtuber/server.py
+<repos-root>/Open-LLM-VTuber/src/open_llm_vtuber/websocket_handler.py
+<repos-root>/Open-LLM-VTuber/src/open_llm_vtuber/agent/agents/agent_interface.py
+<repos-root>/Open-LLM-VTuber/conf.yaml
+<repos-root>/hermes-agent/docs/ (API reference — verify endpoints before calling)
 ```
 
 ---
@@ -475,7 +474,7 @@ This is enforced in the `pre-task` hook.
 - Do not rewrite Open-LLM-VTuber from scratch — configure it, then extend
 - Do not use React Native or Flutter — native Swift for iOS/macOS
 - Do not build another full web dashboard — hermes-desktop is the dashboard shell
-- Do not hardcode model names — all model config lives in `~/.hermes/config.yaml`
-- Do not store secrets in code — all credentials in `~/.hermes/.env`
+- Do not hardcode model names — all model config lives in `<HERMES_HOME>/config.yaml`
+- Do not store secrets in code — all credentials in `<HERMES_HOME>/.env`
 - Do not add domain tool panels before Dashboard + Presence modes work end-to-end
-- Do not touch `~/.hermes/` directly — only read config files, never write to memories/
+- Do not touch `<HERMES_HOME>/` directly — only read config files, never write to memories/

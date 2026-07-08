@@ -3,25 +3,24 @@
 </p>
 
 <p align="center">
-  An open-source embodied AI operating system.<br>
-  Deploy a persistent intelligence to orchestrate your local stack, automate complex workflows, and interact through a native AI avatar.
+  <strong>Artificial Reasoning Entity System</strong><br>
+  A persistent AI operating layer for local tools, agent frameworks, model routing, and embodied workflows.
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
-  <a href="#features">Features</a> ·
-  <a href="#character-avatar-browser">Characters</a> ·
+  <a href="#what-ares-is">What ARES Is</a> ·
+  <a href="#backends">Backends</a> ·
   <a href="#native-app">Native App</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="webui/FORK_CHANGES.md">Changelog</a> ·
-  <a href="#credits">Credits</a>
+  <a href="#documentation">Docs</a> ·
+  <a href="#license-and-attribution">License</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/shuwalker/ARES/releases"><img src="https://img.shields.io/badge/status-beta-orange" alt="Status: Beta"></a>
   <a href="https://github.com/shuwalker/ARES/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
-  <a href="https://github.com/NousResearch/hermes-agent"><img src="https://img.shields.io/badge/powered%20by-Hermes%20Agent-purple" alt="Powered by Hermes Agent"></a>
-  <a href="https://github.com/JenkinsRobotics/JROS"><img src="https://img.shields.io/badge/robotics-JROS-cyan" alt="JROS Robotics"></a>
+  <a href="https://github.com/NousResearch/hermes-agent"><img src="https://img.shields.io/badge/backend-Hermes%20Agent-purple" alt="Hermes Agent"></a>
+  <a href="https://github.com/JenkinsRobotics/JROS"><img src="https://img.shields.io/badge/backend-JROS-cyan" alt="JROS"></a>
 </p>
 
 <p align="center">
@@ -36,181 +35,173 @@
 
 ## Quick Start
 
+### macOS / Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.sh | bash
+```
+
+Then open:
+
+```text
+http://localhost:8787
+```
+
+### Windows
+
+PowerShell:
+
+```powershell
+iex (irm https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.ps1)
+```
+
+No-terminal path: download `webui/start_ares.bat`, double-click it, and follow the browser onboarding flow.
+
+### Manual development install
+
 ```bash
 git clone https://github.com/shuwalker/ARES.git
 cd ARES/webui
-
-# Create venv (Python 3.11-3.13)
-python3.11 -m venv .venv
+python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-
-# Optional voice and system-health support
-.venv/bin/pip install edge-tts psutil
-
-# Install Hermes Agent (dependency)
-mkdir -p ~/.hermes
-git clone https://github.com/NousResearch/hermes-agent.git ~/.hermes/hermes-agent
-.venv/bin/pip install -e ~/.hermes/hermes-agent
-
-# Configure
-cp .env.example .env
-# Edit .env — set HERMES_WEBUI_PASSWORD
-
-# Run
 .venv/bin/python server.py
-# → http://localhost:8787
 ```
 
-## Supported Backends: Hermes and JROS
-
-ARES is a human UX layer over peer agentic frameworks. Fresh installs can use Hermes, JROS, or hybrid mode. JROS is not installed inside the ARES virtual environment. ARES talks to an existing JROS install through the supported `jaeger bridge` NDJSON protocol.
-
-### JROS-first install
+The browser onboarding wizard handles model/provider setup. If you want a specific backend at install time:
 
 ```bash
-# 1. Install JROS once, outside the ARES venv
-curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh | bash
-cd ~/jaeger
-./jaeger agent create
-
-# 2. Install ARES and select JROS backend
-git clone https://github.com/shuwalker/ARES.git
-cd ARES
+bash webui/scripts/install.sh --backend hermes
 bash webui/scripts/install.sh --backend jros
-
-# 3. Run ARES WebUI
-cd ~/.ares/webui
-./venv/bin/python server.py
+bash webui/scripts/install.sh --backend hybrid
 ```
 
-### Backend modes
+## What ARES Is
 
-- `hermes` — use Hermes Agent as the production agent framework. Best for ops, coding, tools, skills, cron, MCP, and provider routing.
-- `jros` — use JROS through `~/jaeger/jaeger bridge`. Best for embodied agent/persona/robotics workflows.
-- `hybrid` — use Hermes while injecting JROS persona/tool context where configured.
+ARES is the product layer above agent frameworks. It gives the user one identity, one interface, and one continuity model while routing work to the right runtime underneath.
 
-You can also switch from the UI backend selector or by calling `/api/ares/backend/set` with `{"backend":"jros"}`.
+- **Persistent AI identity:** sessions, memory surfaces, tasks, routines, and continuity live at the ARES layer.
+- **Web UI:** browser-based command center with streaming chat, settings, providers, tools, personas, and backend selection.
+- **Native macOS app:** SwiftUI Mission Control surface under `ARES-Desktop/`.
+- **Model routing:** cloud/local provider selection stays separate from framework/runtime selection.
+- **Embodied roadmap:** JROS integration provides the path toward robots, devices, characters, and embodied workflows.
+
+ARES is not just a rebrand of a chatbot UI. The WebUI is one surface in a broader operating model: ARES owns the human UX and delegates execution to peer frameworks such as Hermes Agent and JROS.
+
+## Backends
+
+ARES supports three runtime modes:
+
+| Mode | Purpose | Notes |
+| --- | --- | --- |
+| `hermes` | General agent orchestration | Best for tools, MCP, skills, cron, coding, file ops, provider routing, and operational workflows. |
+| `jros` | Embodied/persona/robotics runtime | Uses an existing JROS install through the supported `jaeger bridge` NDJSON protocol. JROS is not vendored into the ARES venv. |
+| `hybrid` | Hermes loop plus JROS context | Keeps Hermes as the execution loop while adding JROS persona/tool context where configured. |
+
+Backend selection is **not** model selection. ARES can run JROS while still using a real configured provider/model; it does not fake JROS as a model provider.
+
+### JROS path configuration
+
+ARES resolves JROS paths in one shared place: `webui/api/jros_paths.py`.
+
+Resolution order:
+
+1. `ARES_JAEGER_HOME` — ARES-specific installed Jaeger/JROS home override.
+2. `JAEGER_HOME` — JROS-wide installed Jaeger/JROS home override.
+3. standard installer path, normally `~/jaeger`.
+4. `ARES_JROS_DIR` — optional source checkout only for source-tree features such as character/schema browsing.
+5. `ARES_JROS_CONFIG_PATH` / `JAEGER_INSTANCE_DIR` — explicit instance config overrides.
+
+See [docs/jros-integration.md](docs/jros-integration.md) for setup, environment variables, and troubleshooting.
 
 ## Native App
 
-The merged repo includes two Swift app surfaces:
+The repo includes Swift surfaces for native macOS work:
 
-- `ARES` — primary native macOS Mission Control app under `ARES-Desktop/Sources/`.
-- `ARESLegacy` — earlier lightweight SwiftUI app under `Sources/ARES/`, kept for reference and migration.
+- `ARES-Desktop/` — primary SwiftUI Mission Control app.
+- `Sources/ARES/` — earlier lightweight Swift app target kept for migration/reference.
+- `ARES-Modules/` — local Swift module package.
+
+Build from the repo root:
 
 ```bash
-# from repo root
 swift build
 swift test
 swift run ARES
 ```
 
-ARES uses a batteries-included/pro-extensions architecture:
-
-- **Native interface:** SwiftUI Mission Control UI, dashboard, companion surfaces, terminal/files/kanban/skills/automation views.
-- **Native capabilities:** local SQLite memory, Apple voice/perception hooks, local event bus, configured provider routing.
-- **Framework adapters:** Hermes and JROS are peer full agentic frameworks ARES can use alone or together. ARES-native services, Ollama/local models, cloud providers, and workflow tools can also provide capabilities when detected/configured.
-- **Graceful fallback:** optional services are detected/configured rather than hardcoded; ARES must still boot with whichever framework/backend set is available.
-
-## Features
-
-- **Persistent Entity** — ARES is not a chatbot. It is a continuous intelligence with identity, memory, drives, and presence across sessions.
-- **Web UI** — Self-contained Python server with streaming, session management, hot-reload, password auth, and mobile/browser access.
-- **Backend Selector** — Switch between Hermes, JROS, ARES-native, or hybrid runtime modes per conversation. Framework choice is separate from real model/provider choice.
-- **Character Avatar Browser** — Visual character personas with card art, traits, lore, and active identity selection.
-- **Native macOS App** — SwiftUI app for native windowing, voice, dashboard, files, terminal, and embodied companion UI.
-- **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads.
-- **Framework Integrations** — Hermes and JROS adapters expose full-framework capabilities: tools, terminal/file/web/code paths, MCP/skills/memory/scheduling, voice, event bus, robotics, delegation, and verification depending on runtime health.
-- **Multi-Model Routing** — Cloud/local model routing through configured providers with local fallback where available.
-- **Mail Butler** — IMAP-based mail cleaner/classifier without requiring Mail.app.
-- **Windows Wrapper** — Tauri/Electron wrapper surfaces for Windows packaging and install testing.
-- **Built in Public** — The build is documented as part of the “Building Ares” series.
-
 ## Character Avatar Browser
 
-ARES exposes the persona system as a real product surface instead of a hidden dropdown. The character tab loads JROS `character/v1` YAML data, displays avatar card art, shows role/voice/trait/lore detail, and lets the user set the active ARES identity from the browser.
+The Characters panel turns persona selection into a first-class product surface:
 
-- **Visual roster:** built-in character cards are checked into `webui/static/persona-cards/` and `webui/static/characters/`.
-- **Schema-backed:** the browser reads JROS character data through `webui/api/characters.py` and `/api/ares/characters`.
-- **Runtime control:** selecting a character writes the active persona through the existing ARES persona API.
+- checked-in card art in `webui/static/persona-cards/` and `webui/static/characters/`
+- character/persona data loaded through `/api/ares/characters` and `/api/ares/persona/*`
+- active identity selection from the browser UI
 
-<p align="center">
-  <img src="docs/assets/character-tab-showcase.png" alt="ARES character tab with avatar cards and trait detail">
-</p>
-
-## Architecture
-
-```text
-┌──────────────────────────────────────────────────┐
-│                    ARES                          │
-│ Human UX/product layer: natural language, UI,     │
-│ automation, continuity, owner-aware defaults      │
-├──────────────────────────────────────────────────┤
-│ Native app / WebUI / Windows wrapper             │
-├──────────────────────────────────────────────────┤
-│ Peer full frameworks: Hermes, JROS, ARES-native   │
-│ services, local/cloud providers, hybrid routing   │
-├──────────────────────────────────────────────────┤
-│ Local/cloud model providers, user data, devices   │
-└──────────────────────────────────────────────────┘
-```
-
-Key rules:
-
-1. **ARES owns the human experience.** Hermes and JROS are peer full agentic frameworks; neither one is the ARES identity.
-2. **Natural language is the front door.** Users speak/type normally; ARES maps intent to framework/tool/model calls and presents the result.
-3. **Hybrid is first-class.** ARES can use Hermes, JROS, ARES-native services, local models, cloud providers, or combinations per request.
-4. **Framework selection and model/provider selection are separate.** Do not fake JROS as a model/provider; route to JROS as a runtime while preserving real model/provider settings.
-5. **Native and WebUI surfaces share the same product identity.** Users should experience one ARES, not separate Hermes/JROS apps taped together.
-6. **Public repo stays portable.** No private paths, secrets, OAuth tokens, local runtime DBs, or personal profile state.
-
-## Repository Structure
+## Repository Layout
 
 ```text
 ARES/
-├── Package.swift                 # Swift Package manifest
-├── Sources/                      # Legacy/lightweight Swift app + CLI
-│   ├── ARES/                     # ARESLegacy target
-│   └── AresTaskCLI/              # Task CLI
-├── ARES-Modules/                 # Local Swift module package
-├── ARES-Desktop/                 # Primary native macOS app
-│   ├── Sources/ARESCore/         # contracts, models, utilities
-│   ├── Sources/ARES/             # app, providers, services, views
-│   └── Tests/ARESTests/          # native tests
-├── webui/                        # ARES Web UI (Python server/frontend)
-│   ├── api/                      # server, streaming, auth, integrations
-│   ├── static/                   # frontend assets, icons, character art
-│   ├── server.py                 # entry point
-│   ├── requirements.txt          # Python dependencies
-│   └── tests/                    # WebUI test suite
-├── src-tauri/                    # Tauri wrapper
-├── windows-app/                  # Windows wrapper/installer work
-├── tools/                        # Standalone utilities
-└── docs/                         # public documentation/assets
+├── ARES-Desktop/          # Primary native macOS app
+├── ARES-Modules/          # Local Swift package modules
+├── Sources/               # Legacy Swift app + CLI targets
+├── webui/                 # Browser UI, Python server, frontend assets, tests
+├── docs/                  # Public website, docs, assets, RFCs
+├── tools/                 # Standalone utilities
+├── windows-app/           # Windows wrapper/installer work
+├── src-tauri/             # Tauri wrapper work
+├── Package.swift          # Swift package manifest
+└── LICENSE                # ARES AGPL-3.0 license
 ```
 
-## Update Checking
+## Documentation
 
-The Web UI checks for updates across the configured stack:
+- [ARES + JROS Integration](docs/jros-integration.md)
+- [Why Hermes?](docs/why-hermes.md)
+- [Remote Access](docs/remote-access.md)
+- [WSL Autostart](docs/wsl-autostart.md)
+- [Workspace + Git Notes](docs/workspace-git.md)
+- [Architecture](ARCHITECTURE.md)
+- [Fork Changes](webui/FORK_CHANGES.md)
 
-- **ARES** — this repo (`shuwalker/ARES`)
-- **Hermes** — peer full agentic framework (`NousResearch/hermes-agent`)
-- **JROS** — peer full agentic framework with robotics/embodiment strengths (`JenkinsRobotics/JROS`)
+Public landing page: <https://shuwalker.github.io/ARES/>
 
-## Credits
+## Development Checks
 
-The ARES Web UI (`webui/`) is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) by the Hermes Web UI contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `webui/LICENSE` for the preserved upstream MIT notice.
+Useful local checks before publishing changes:
+
+```bash
+# WebUI focused tests
+cd webui
+./scripts/test.sh tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py tests/test_characters_api.py
+
+# Python syntax for backend modules
+python3 -m py_compile api/jros_paths.py api/jros_client.py api/jros_bridge.py
+
+# Native app
+cd ..
+swift build
+
+# Git whitespace/conflict guard
+git diff --check
+```
+
+## Public Repo Safety
+
+ARES is a public repo. Do not commit:
+
+- private paths, hostnames, Tailscale IPs, or local machine assumptions
+- API keys, OAuth tokens, cookies, auth files, or runtime databases
+- user-specific `.hermes`, `.ares/config`, SOUL, profile, or workspace state
+- generated build outputs, caches, or local session state
+
+Use environment variables, config files, detected paths, or user-selected paths instead.
+
+## License and Attribution
+
+ARES is licensed under AGPL-3.0. See [LICENSE](LICENSE).
+
+The `webui/` surface is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) by the Hermes Web UI contributors. Its upstream MIT notice is preserved at [webui/LICENSE](webui/LICENSE). ARES integrates with [Hermes Agent](https://github.com/NousResearch/hermes-agent) and [JROS](https://github.com/JenkinsRobotics/JROS) as peer agentic frameworks.
 
 ## Owner
 
 Built by Jenkins Robotics.
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=shuwalker/ARES&type=date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=shuwalker/ARES&type=date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=shuwalker/ARES&type=date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=shuwalker/ARES&type=date" />
- </picture>
-</a>

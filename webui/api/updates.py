@@ -26,6 +26,7 @@ from urllib.parse import urlparse
 
 from api.gateway_restart import restart_active_profile_gateway
 from api.config import REPO_ROOT as WEBUI_SOURCE_ROOT, STREAMS, STREAMS_LOCK
+from api.jros_paths import jros_update_repo
 
 
 def _find_owning_git_repo(path: Path) -> Path:
@@ -61,16 +62,8 @@ try:
 except ImportError:
     _AGENT_DIR = None
 
-# ARES: discover JROS repo for update checking.
-# Override via ARES_JROS_DIR env var; default to ~/GitHub/JROS.
-_JROS_DIR: Path | None = None
-_jros_override = os.environ.get("ARES_JROS_DIR", "").strip()
-if _jros_override:
-    _JROS_DIR = Path(_jros_override).expanduser()
-else:
-    _jros_default = Path.home() / "GitHub" / "JROS"
-    if _jros_default.is_dir():
-        _JROS_DIR = _jros_default
+# ARES: discover JROS repo for update checking through the shared resolver.
+_JROS_DIR = jros_update_repo()
 
 _update_cache = {'webui': None, 'agent': None, 'jros': None, 'checked_at': 0, 'include_agent': True}
 _SUMMARY_CACHE_MAX = 16

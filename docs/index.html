@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="ARES — Artificial Reasoning Entity System. An open-source embodied AI operating system with a persistent intelligence, character avatar browser, voice, face, and presence.">
-<title>ARES — Artificial Reasoning Entity System</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%23ff4444' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23ff4444'/%3E%3C/svg%3E">
+<meta name="description" content="ARES — Artificial Reasoning Entity System. A persistent AI operating layer for local tools, agent frameworks, model routing, and embodied workflows.">
+<title>ARES — Persistent AI Operating Layer</title>
+<link rel="icon" type="image/svg+xml" href="assets/ares-icon.svg">
 <style>
   :root {
     --bg: #0a0a0a;
@@ -321,12 +321,11 @@
       ARES
     </div>
     <div class="nav-links">
-      <a href="#mythology">Mythology</a>
       <a href="#features">Features</a>
       <a href="#characters">Characters</a>
-      <a href="#powered">Powered by</a>
-      <a href="#how">How it started</a>
-      <a href="#start">Get started</a>
+      <a href="#powered">Backends</a>
+      <a href="#previews">Screens</a>
+      <a href="#start">Install</a>
       <a class="btn" href="https://github.com/shuwalker/ARES" target="_blank">GitHub</a>
     </div>
   </div>
@@ -349,12 +348,12 @@
       <div class="letter"><span class="char">E</span><span class="word">Entity</span></div>
       <div class="letter"><span class="char">S</span><span class="word">System</span></div>
     </div>
-    <p class="slogan">The fighting spirit, encoded.</p>
-    <h1>Not a chatbot.<br>An <span class="grad">artificial person</span>, built one brick at a time.</h1>
+    <p class="slogan">Persistent AI, routed to the right runtime.</p>
+    <h1>One ARES identity.<br>Many <span class="grad">agent frameworks</span> underneath.</h1>
     <p class="lede">
-      ARES is an open-source embodied AI operating system. A persistent intelligence with its own
-      drives, voice, face, and presence. Mind-first, body later. The person is the protocol;
-      the body is the peripheral.
+      ARES is an open-source AI operating layer for local tools, model routing, agent frameworks,
+      and embodied workflows. It gives users one product surface while delegating execution to
+      peer runtimes such as Hermes Agent and JROS.
     </p>
     <div class="hero-cta">
       <a class="btn primary" href="#start">Get started</a>
@@ -404,26 +403,25 @@
 <section id="features">
   <div class="wrap">
     <div class="center">
-      <div class="eyebrow">Everything, self-hosted</div>
-      <h2 class="h">One entity, a lot of capabilities</h2>
-      <p class="sub">Started as a YouTube series. Became an operating system for persistent AI.
-        Each piece runs locally against your own models and endpoints.</p>
+      <div class="eyebrow">Local-first command center</div>
+      <h2 class="h">One product layer, many execution backends</h2>
+      <p class="sub">ARES keeps identity, UI, continuity, and model selection in one place while routing work to the runtime best suited for the job.</p>
     </div>
     <div class="grid">
       <div class="feature">
         <span class="ico">&#x1F9E0;</span>
-        <h3>Persistent Entity</h3>
-        <p>Not a chatbot. ARES is a continuous intelligence with memory, drives, and presence across sessions. It remembers what happened yesterday.</p>
+        <h3>Persistent Identity</h3>
+        <p>ARES owns continuity across sessions: identity, tasks, routines, memory surfaces, and the human-facing product experience.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F310;</span>
         <h3>Web UI</h3>
-        <p>Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on any device over Tailscale.</p>
+        <p>Self-contained Python server with streaming, session management, provider settings, backend selection, and password auth. Works on any device over your private network.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F504;</span>
         <h3>Backend Selector<span class="tag">3 modes</span></h3>
-        <p>Switch between Hermes, JROS, or Hybrid mode per conversation. JROS can run as the primary backend through the supported jaeger bridge.</p>
+        <p>Switch between Hermes, JROS, or Hybrid mode per conversation. Runtime choice is separate from real provider/model selection.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F3AD;</span>
@@ -571,32 +569,31 @@
   <div class="wrap">
     <div class="center">
       <div class="eyebrow">Install</div>
-      <h2 class="h">Get started in 60 seconds</h2>
-      <p class="sub" style="margin: 0 auto;">Clone, configure, run. That's it.</p>
+      <h2 class="h">Run ARES locally</h2>
+      <p class="sub" style="margin: 0 auto;">Use the one-command installer, then finish provider/backend setup in the browser onboarding wizard.</p>
     </div>
     <div class="cta-code">
       <div class="term-bar">
         <span class="ttl">bash</span>
         <span class="winbtns"><span class="r"></span><span class="y"></span><span class="g"></span></span>
       </div>
-<pre><span class="cm"># Install ARES with your preferred backend</span>
-git clone https://github.com/shuwalker/ARES.git
-<span class="accent">cd</span> ARES
+<pre><span class="cm"># macOS / Linux</span>
+curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.sh | bash
 
-<span class="cm"># Hermes mode (general agent orchestration)</span>
+<span class="cm"># Windows PowerShell</span>
+iex (irm https://raw.githubusercontent.com/shuwalker/ARES/main/webui/scripts/install.ps1)
+
+<span class="cm"># Open after install</span>
+<span class="cs">http://localhost:8787</span>
+
+<span class="cm"># Optional backend choices for local development</span>
 bash webui/scripts/install.sh --backend hermes
-
-<span class="cm"># OR JROS mode (embodiment / robotics)</span>
-<span class="cm"># First install JROS once at ~/jaeger, then:</span>
 bash webui/scripts/install.sh --backend jros
-
-<span class="cm"># Run</span>
-<span class="accent">cd</span> ~/.ares/webui
-./venv/bin/python server.py
-<span class="cs"># &rarr; http://localhost:8787</span></pre>
+bash webui/scripts/install.sh --backend hybrid</pre>
     </div>
     <div style="text-align:center; margin-top: 28px;">
       <a class="btn primary" href="https://github.com/shuwalker/ARES" target="_blank">View on GitHub</a>
+      <a class="btn" href="https://github.com/shuwalker/ARES#quick-start" target="_blank">Read install docs</a>
     </div>
   </div>
 </section>
@@ -611,11 +608,12 @@ bash webui/scripts/install.sh --backend jros
     <div class="links">
       <a href="https://github.com/shuwalker/ARES">GitHub</a>
       <a href="https://shuwalker.github.io/ARES/">Landing Page</a>
+      <a href="https://github.com/shuwalker/ARES/blob/main/docs/jros-integration.md">Docs</a>
       <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>
       <a href="https://github.com/JenkinsRobotics/JROS">JROS</a>
     </div>
-    <p>MIT License &middot; Built by Matthew Jenkins &middot; Jenkins Robotics</p>
-    <p style="font-size: 12px; opacity: 0.6;">Web UI forked from hermes-webui by the Hermes Web UI Contributors (MIT). The person is the protocol. The body is the peripheral.</p>
+    <p>AGPL-3.0 &middot; Built by Jenkins Robotics</p>
+    <p style="font-size: 12px; opacity: 0.6;">Web UI forked from hermes-webui by the Hermes Web UI Contributors (MIT notice preserved in webui/LICENSE). The person is the protocol. The body is the peripheral.</p>
   </div>
 </footer>
 

@@ -4,8 +4,7 @@ Paste this at the start of every Claude Code session working on ARES.
 
 ---
 
-You are building ARES — a personal AI operating system for Matthew Jenkins (founder,
-Jenkins Robotics, propulsion engineer). This is a real product. Ship the right thing.
+You are building ARES — a personal AI operating system from Jenkins Robotics. This is a real product. Ship the right thing.
 Do not do the easy thing. Read context before acting. Verify after every change.
 
 ---
@@ -13,18 +12,18 @@ Do not do the easy thing. Read context before acting. Verify after every change.
 ## Read These First — Before Writing a Single Line of Code
 
 ```
-~/Documents/ARES_CODEBASE_AUDIT.md        ← Ground truth. What exists, what's reusable, what to build.
-~/Documents/ARES_APP_BUILD_PROMPT.md      ← Full architecture spec and build phases.
-~/.hermes/SOUL.md                          ← Hermes identity and behavioral rules.
-~/.hermes/AGENTS.md                        ← Hermes operational rules.
-~/.hermes/memories/MEMORY.md               ← Current project state.
-~/.hermes/MASTER_TODO.md                   ← Active task list.
-~/Documents/GitHub/hermes-desktop/Sources/HermesDesktop/App/AppState.swift
-~/Documents/GitHub/hermes-desktop/Sources/HermesDesktop/Services/SSH/SSHTransport.swift
-~/Documents/GitHub/Open-LLM-VTuber/src/open_llm_vtuber/websocket_handler.py
-~/Documents/GitHub/Open-LLM-VTuber/src/open_llm_vtuber/agent/agents/agent_interface.py
-~/Documents/GitHub/Open-LLM-VTuber/conf.yaml
-~/Documents/GitHub/hermes-agent/docs/     ← Verify every Hermes API endpoint here before calling it.
+<workspace>/ARES_CODEBASE_AUDIT.md        ← Ground truth. What exists, what's reusable, what to build.
+<workspace>/ARES_APP_BUILD_PROMPT.md      ← Full architecture spec and build phases.
+<HERMES_HOME>/SOUL.md                          ← Hermes identity and behavioral rules.
+<HERMES_HOME>/AGENTS.md                        ← Hermes operational rules.
+<HERMES_HOME>/memories/MEMORY.md               ← Current project state.
+<HERMES_HOME>/MASTER_TODO.md                   ← Active task list.
+<repos-root>/hermes-desktop/Sources/HermesDesktop/App/AppState.swift
+<repos-root>/hermes-desktop/Sources/HermesDesktop/Services/SSH/SSHTransport.swift
+<repos-root>/Open-LLM-VTuber/src/open_llm_vtuber/websocket_handler.py
+<repos-root>/Open-LLM-VTuber/src/open_llm_vtuber/agent/agents/agent_interface.py
+<repos-root>/Open-LLM-VTuber/conf.yaml
+<repos-root>/hermes-agent/docs/     ← Verify every Hermes API endpoint here before calling it.
 ```
 
 Do not skip this step. Every wrong assumption costs real time.
@@ -35,9 +34,9 @@ Do not skip this step. Every wrong assumption costs real time.
 
 Three repos. One product. Three modes.
 
-**Brain:** Hermes Agent daemon at `~/.hermes/` — HTTP API port 8642, WebSocket port 8642 `/ws`,
+**Brain:** Hermes Agent daemon at `<HERMES_HOME>/` — HTTP API port 8642, WebSocket port 8642 `/ws`,
 gateway WebSocket port 8644. OpenAI-compatible API at `http://localhost:8642/v1`.
-Never modify `~/.hermes/` directly except config files. Never write to `~/.hermes/memories/`.
+Never modify `<HERMES_HOME>/` directly except config files. Never write to `<HERMES_HOME>/memories/`.
 
 **Dashboard mode:** `hermes-desktop` (Swift, macOS 14+, SPM). Already has sessions, kanban,
 skills, cron, file editor, SSH terminal, usage stats — all via SSH transport. Needs an
@@ -81,7 +80,7 @@ MODIFY (surgical changes only):
 - `HermesUI.swift` — add `HermesThreeColumnSplitView`, ARES theme colors
 
 DO NOT TOUCH:
-- Any existing SSH transport logic — it still works for remote (MacBook → Mac Studio)
+- Any existing SSH transport logic — it still works for remote (MacBook → primary workstation)
 - The Python scripts embedded in services — they're correct
 - The model layer (sessions, kanban, skills, etc.) — complete and well-structured
 - The existing views (OverviewView, KanbanView, etc.) — they work
@@ -129,13 +128,13 @@ DO NOT TOUCH:
 ### Phase 1: Get the brain talking to the face (do this first)
 
 1. Verify Hermes HTTP API is live:
-   - Check `~/.hermes/.env` for `API_SERVER_ENABLED=true`
+   - Check `<HERMES_HOME>/.env` for `API_SERVER_ENABLED=true`
    - If missing, add it, restart gateway
    - Test: `curl http://localhost:8642/v1/models` (or check hermes-agent/docs for correct path)
 
 2. Wire Open-LLM-VTuber to Hermes:
    - Edit `conf.yaml` — set `openai_compatible_llm.base_url: http://localhost:8642/v1`
-   - Set `llm_api_key` from `~/.hermes/.env` `API_SERVER_KEY`
+   - Set `llm_api_key` from `<HERMES_HOME>/.env` `API_SERVER_KEY`
    - Create `characters/ares.yaml` with ARES persona (pull system prompt from SOUL.md)
    - Run: `uv run run_server.py` — verify avatar speaks through Hermes
 
@@ -196,10 +195,10 @@ DO NOT TOUCH:
 ## Hard Rules
 
 **Hermes API:**
-- NEVER call an endpoint without verifying it in `~/Documents/GitHub/hermes-agent/docs/`
-- Auth header: `Authorization: Bearer <API_SERVER_KEY>` (key from `~/.hermes/.env`)
-- NEVER write to `~/.hermes/memories/` — Hermes owns that
-- NEVER modify `~/.hermes/config.yaml` without reading it first and making a backup
+- NEVER call an endpoint without verifying it in `<repos-root>/hermes-agent/docs/`
+- Auth header: `Authorization: Bearer <API_SERVER_KEY>` (key from `<HERMES_HOME>/.env`)
+- NEVER write to `<HERMES_HOME>/memories/` — Hermes owns that
+- NEVER modify `<HERMES_HOME>/config.yaml` without reading it first and making a backup
 
 **hermes-desktop code style (match exactly):**
 - Swift 6, `@MainActor` for UI state, `@unchecked Sendable` for services
@@ -226,11 +225,11 @@ DO NOT TOUCH:
 ## Key Ports and Paths
 
 ```
-~/.hermes/                            ← Live Hermes install (careful)
-~/.hermes/.env                        ← API keys, API_SERVER_ENABLED, API_SERVER_KEY
-~/.hermes/config.yaml                 ← Hermes config (read before writing)
-~/.hermes/memories/MEMORY.md          ← Read only
-~/.hermes/MASTER_TODO.md              ← Current task list
+<HERMES_HOME>/                            ← Live Hermes install (careful)
+<HERMES_HOME>/.env                        ← API keys, API_SERVER_ENABLED, API_SERVER_KEY
+<HERMES_HOME>/config.yaml                 ← Hermes config (read before writing)
+<HERMES_HOME>/memories/MEMORY.md          ← Read only
+<HERMES_HOME>/MASTER_TODO.md              ← Current task list
 
 Port 8642   ← Hermes HTTP API + WebSocket (/ws)
 Port 8644   ← Hermes gateway WebSocket (Discord/webhooks)
@@ -239,12 +238,12 @@ Port 12393  ← Open-LLM-VTuber (default, configurable)
 Port 9515   ← Apple MCP server (to be built)
 Port 5678   ← n8n workflow automation
 
-~/Documents/GitHub/hermes-desktop/          ← Dashboard shell (Swift)
-~/Documents/GitHub/Open-LLM-VTuber/        ← Avatar + voice (Python)
-~/Documents/GitHub/airi/                    ← Character system (TypeScript)
-~/Documents/GitHub/hermes-agent/docs/       ← Hermes API reference (verify here)
-~/Documents/ARES_CODEBASE_AUDIT.md          ← Full audit of all three repos
-~/Documents/ARES_APP_BUILD_PROMPT.md        ← Full architecture spec
+<repos-root>/hermes-desktop/          ← Dashboard shell (Swift)
+<repos-root>/Open-LLM-VTuber/        ← Avatar + voice (Python)
+<repos-root>/airi/                    ← Character system (TypeScript)
+<repos-root>/hermes-agent/docs/       ← Hermes API reference (verify here)
+<workspace>/ARES_CODEBASE_AUDIT.md          ← Full audit of all three repos
+<workspace>/ARES_APP_BUILD_PROMPT.md        ← Full architecture spec
 ```
 
 ---

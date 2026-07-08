@@ -14,6 +14,8 @@ from typing import Any, Iterable
 
 import yaml
 
+from api.jros_paths import expand_path, jros_config_path
+
 
 PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
     "gemini": {
@@ -55,37 +57,9 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "xai-oauth": None,
 }
 
-JROS_CONFIG_ENV = "ARES_JROS_CONFIG_PATH"
-JROS_INSTANCE_DIR_ENV = "JAEGER_INSTANCE_DIR"
-
-
-def _expand_path(value: str | os.PathLike[str]) -> Path:
-    return Path(value).expanduser().resolve()
-
-
 def resolve_jros_config_path() -> Path:
-    """Resolve the most likely JROS instance config path without writing it."""
-    explicit = os.getenv(JROS_CONFIG_ENV, "").strip()
-    if explicit:
-        return _expand_path(explicit)
-
-    instance_dir = os.getenv(JROS_INSTANCE_DIR_ENV, "").strip()
-    if instance_dir:
-        return _expand_path(instance_dir) / "config.yaml"
-
-    active_instance = Path("~/.jaeger/active_instance").expanduser()
-    if active_instance.exists():
-        instance_name = active_instance.read_text(encoding="utf-8").strip()
-        if instance_name:
-            return _expand_path(Path("~/.jaeger/instances").expanduser() / instance_name / "config.yaml")
-
-    # Check the actual JROS repo install location first
-    repo_path = Path("~/jaeger/jaeger_os/instance/default/config.yaml").expanduser()
-    if repo_path.exists():
-        return _expand_path(repo_path)
-
-    # Default instance path (JROS uses ~/.jaeger/instances/<name>/config.yaml)
-    return _expand_path(Path("~/.jaeger/instances/default/config.yaml"))
+    """Compatibility wrapper for callers/tests; use api.jros_paths.jros_config_path."""
+    return jros_config_path()
 
 
 def load_yaml_config(path: str | os.PathLike[str]) -> dict[str, Any]:
@@ -267,7 +241,7 @@ def sync_provider(
     if "hermes" in normalized_targets:
         if hermes_config_path is None:
             raise ValueError("hermes_config_path is required when syncing Hermes")
-        path = _expand_path(hermes_config_path)
+        path = expand_path(hermes_config_path)
         current = load_yaml_config(path)
         updated = _sync_hermes_config(current, normalized_provider, normalized_model, resolved_base_url)
         changed = updated != current
@@ -278,7 +252,7 @@ def sync_provider(
             results["changed_targets"].append("hermes")
 
     if "jros" in normalized_targets:
-        path = _expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
+        path = expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
         current = load_yaml_config(path)
         updated = _sync_jros_config(
             current,
@@ -318,7 +292,7 @@ def sync_fallback_chain(
     if hermes_config_path is None:
         raise ValueError("hermes_config_path is required")
     
-    hermes_path = _expand_path(hermes_config_path)
+    hermes_path = expand_path(hermes_config_path)
     hermes_current = load_yaml_config(hermes_path)
     fallback_chain = hermes_current.get("fallback_providers", [])
     
@@ -333,7 +307,7 @@ def sync_fallback_chain(
     }
     
     if jros_config_path is not None or resolve_jros_config_path().exists():
-        jros_path = _expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
+        jros_path = expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
         jros_current = load_yaml_config(jros_path)
         
         updated = deepcopy(jros_current)

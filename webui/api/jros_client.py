@@ -1,19 +1,18 @@
 """jros_client — the single-file Python client for a JROS agent.
 
 Copy this ONE file into your app. Stdlib only, no dependencies, no JROS
-package in your venv: it drives an EXISTING JROS install (the ~/jaeger
-dir the one-line installer creates) by spawning its ``jaeger bridge``
-and speaking the v1 NDJSON client protocol over stdio.
+package in your venv: it drives an EXISTING JROS install by spawning its
+``jaeger bridge`` and speaking the v1 NDJSON client protocol over stdio.
 
     from jros_client import JrosClient
 
-    with JrosClient() as jros:                 # uses ~/jaeger (or $JAEGER_HOME)
+    with JrosClient() as jros:                 # uses env/configured JROS home
         reply = jros.turn("hello", session="myapp")
         print(reply["text"])
 
-Pick an agent:      JrosClient(instance="lilith")
+Pick an agent:       JrosClient(instance="lilith")
 Non-default install: JrosClient(jaeger_home="/opt/jaeger")
-Full control:       JrosClient(command=["/path/to/jaeger", "bridge"])
+Full control:        JrosClient(command=["/path/to/jaeger", "bridge"])
 
 The wire contract is jaeger_os/interfaces/protocol.py (v1); this file is
 tested against the same protocol_v1_fixtures.json that pins the Swift
@@ -28,6 +27,9 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from api.jros_paths import jaeger_home as resolve_jaeger_home
+from api.jros_paths import jaeger_launcher as resolve_jaeger_launcher
+
 PROTOCOL_VERSION = "1"
 
 
@@ -36,11 +38,14 @@ class JrosError(RuntimeError):
 
 
 def _default_command(jaeger_home: str | None) -> list[str]:
-    """The installed launcher: <home>/jaeger bridge. Home resolves from
-    the explicit arg, then $JAEGER_HOME, then ~/jaeger."""
-    home = Path(jaeger_home or os.environ.get("JAEGER_HOME")
-                or Path.home() / "jaeger")
-    launcher = home / "jaeger"
+    """Resolve the installed launcher: <home>/jaeger bridge.
+
+    Resolution order: explicit arg, ARES_JAEGER_HOME, JAEGER_HOME, then the
+    standard one-line installer location at ~/jaeger.
+    """
+    raw_home = resolve_jaeger_home() if jaeger_home is None else jaeger_home
+    launcher = resolve_jaeger_launcher() if jaeger_home is None else Path(str(raw_home)).expanduser() / "jaeger"
+    home = launcher.parent
     if not launcher.exists():
         raise JrosError(
             f"no JROS install at {home} — install first "

@@ -17,7 +17,7 @@ public final class DummyIdentity: Identity, @unchecked Sendable {
     public init() {
         _displayName = "ARES (Dummy)"
         _hardware = HardwareProfile(
-            deviceModel: "Mac Studio (Test)",
+            deviceModel: "Test Mac",
             macAddress: "00:11:22:33:44:55",
             serialNumber: "DUMMY12345",
             cpuCoreCount: 8,

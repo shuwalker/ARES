@@ -35,10 +35,17 @@ ARES/
 - Self-contained: own `.venv/`, own auth files (`.env`, `.pbkdf2_key`, `.signing_key`)
 - Server entry: `webui/server.py`
 - Runs on port 8787
-- Hermes Agent installed in editable mode from `~/.hermes/hermes-agent`
-- Update checker tracks: ARES (this repo), Hermes (agent), JROS (robotics)
+- Hermes Agent is an external peer backend discovered/configured through supported ARES/Hermes settings, not assumed to live in a maintainer runtime directory.
+- Update checker tracks: ARES (this repo), Hermes (agent), JROS (robotics) when configured or detected
 - All Hermes branding replaced with ARES (title, favicon, skin, manifest, server header)
-- `api/persona.py` — JROS persona injection module (built, not yet wired to streaming.py)
+- `api/persona.py` — JROS persona injection module
+
+## Public Repo Portability
+
+- This is a public repo. Never hardcode maintainer-specific paths, hostnames, IPs, mounts, or runtime folders in source code.
+- Use environment variables, user-selected paths, config files, or relative paths. For JROS, prefer `ARES_JROS_DIR` for source-checkout features and `ARES_JAEGER_HOME` / `JAEGER_HOME` for installed runtime discovery.
+- Before claiming WebUI/backend work is complete, run a portability scan for `/Users/`, `~/GitHub`, private volume names, real Tailscale IPs, and Matthew-specific strings. Matches in explicit regression tests are allowed; matches in production code are blockers.
+- Hermes and JROS are peer full frameworks behind ARES. Build adapter parity. Do not make Hermes-only assumptions for features that should also apply to JROS.
 
 ## Native App (Sources/ARES/)
 
@@ -49,8 +56,8 @@ ARES/
 
 ## Do Not
 
-1. Don't modify Hermes Agent source code (`~/.hermes/hermes-agent/`)
+1. Don't modify Hermes Agent source code inside user runtime directories; build ARES adapters/config/templates instead.
 2. Don't create a separate repo for the Web UI — it lives in `webui/`
-3. Don't run two agent loops — one loop (Hermes), inject JROS pieces into it
+3. Don't collapse ARES execution into a Hermes-only loop. Hermes and JROS are peer frameworks; use adapters and backend routing so features can reach parity across both.
 4. Don't commit `.venv/`, `.env`, `.pbkdf2_key`, `.signing_key`, `.ares_state/`
 5. Don't push without explicit permission from Matthew

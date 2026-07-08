@@ -11,25 +11,18 @@ character library lives somewhere other than a JROS checkout.
 
 from __future__ import annotations
 
-import os
 import logging
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 
+from api.jros_paths import character_dir
+
 logger = logging.getLogger(__name__)
 
-_CHARACTER_DIR_ENV = "ARES_CHARACTER_DIR"
-
-
 def _character_dir() -> Path:
-    explicit = os.environ.get(_CHARACTER_DIR_ENV, "").strip()
-    if explicit:
-        return Path(explicit).expanduser()
-    from api.jros_bridge import _jros_repo_root
-
-    return _jros_repo_root() / "jaeger_os" / "personality" / "characters"
+    return character_dir()
 
 
 def _parse_character(data: dict, yml_path: Path) -> Optional[dict[str, Any]]:

@@ -36,7 +36,7 @@ public struct GitHubRepo: Identifiable, Equatable, Sendable {
 
 // MARK: - GitHub discovery
 //
-// Scans ~/GitHub/ for local clones, parses their .git/config for
+// Scans configured or detected local clone folders, parses their .git/config for
 // remote URLs, then optionally queries `gh` CLI for live metadata
 // (stars, description, language, last commit, open PRs).
 //
@@ -51,8 +51,26 @@ public final class GitHubDiscovery: ObservableObject {
     @Published public var lastScanDate: Date? = nil
     @Published public var ghAvailable: Bool = false
 
-    /// Default location to scan for clones. User can override later.
-    var scanPaths: [String] = ["~/GitHub"]
+    /// Default locations to scan for clones. Users can override with the
+    /// ARES_GITHUB_SCAN_PATHS environment variable (colon-separated paths).
+    var scanPaths: [String] = GitHubDiscovery.defaultScanPaths()
+
+    private nonisolated static func defaultScanPaths() -> [String] {
+        if let configured = ProcessInfo.processInfo.environment["ARES_GITHUB_SCAN_PATHS"],
+           !configured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return configured
+                .split(separator: ":")
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+
+        let candidates = ["~/Developer", "~/Projects", "~/Code"]
+        return candidates.filter { candidate in
+            let expanded = NSString(string: candidate).expandingTildeInPath
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory) && isDirectory.boolValue
+        }
+    }
 
     public func scan() async {
         let available = checkGhAvailable()
@@ -76,7 +94,6 @@ public final class GitHubDiscovery: ObservableObject {
         for clone in localRepos {
             let owner = clone.owner ?? "local"
             let name = clone.name
-            let id = "\(owner)/\(name)"
 
             // 2. Try to enrich with `gh` if available
             let enriched = enrichFromGh(owner: owner, name: name, local: clone)
@@ -186,7 +203,7 @@ public final class GitHubDiscovery: ObservableObject {
             if parts.count == 2 { return (parts[0], parts[1]) }
         }
         // HTTPS format: https://github.com/owner/repo
-        if let url = URL(string: s), let host = url.host {
+        if let url = URL(string: s), url.host != nil {
             let parts = url.pathComponents.filter { $0 != "/" }
             if parts.count >= 2 { return (parts[0], parts[1]) }
         }

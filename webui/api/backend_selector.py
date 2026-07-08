@@ -14,9 +14,9 @@ installation over the supported `jaeger bridge` stdio NDJSON protocol.
 Availability is checked two ways, in order:
   1. If ARES_JROS_BUS_ENDPOINT is set, ping the optional presence sidecar
      for live model/provider display metadata.
-  2. Otherwise, check for a runnable `~/jaeger/jaeger` launcher (or
-     `$JAEGER_HOME/jaeger`). ARES never installs a second JROS copy inside
-     its own venv.
+  2. Otherwise, ask api.jros_paths for the installed `jaeger` launcher
+     resolved from ARES_JAEGER_HOME, JAEGER_HOME, or the standard installer
+     path. ARES never installs a second JROS copy inside its own venv.
 """
 
 from __future__ import annotations
@@ -77,8 +77,8 @@ def is_jros_available() -> bool:
     """Check whether JROS is usable right now.
 
     Prefers a live ping to the presence sidecar (see module docstring) when
-    ARES_JROS_BUS_ENDPOINT is configured; otherwise falls back to checking
-    that ARES_JROS_DIR points at a real jaeger_os/ checkout.
+    ARES_JROS_BUS_ENDPOINT is configured; otherwise falls back to the shared
+    bridge launcher availability check.
     """
     global _jros_available_cache, _jros_available_ts, _jros_presence_info
     now = time.time()

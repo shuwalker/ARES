@@ -40,4 +40,12 @@ class HermesBackend(AgenticBackend):
         }
 
     def get_status(self) -> Dict[str, Any]:
-        return {"available": True, "label": "Hermes Agent"}
+        return {
+            "available": True,
+            "label": "Hermes Agent",
+            "capabilities": {
+                "supports_tools": self.supports_tools,
+                "supports_persona": self.supports_persona,
+                "supports_hybrid": self.supports_hybrid,
+            }
+        }

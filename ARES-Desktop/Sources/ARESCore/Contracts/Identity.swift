@@ -10,7 +10,7 @@ public protocol Identity: AnyObject, Sendable {
     var id: UUID { get }
 
     /// User-facing name for this ARES instance.
-    /// Examples: "ARES (Mac Studio)", "ARES (MacBook)"
+    /// Examples: "ARES (Mac desktop)", "ARES (MacBook)"
     var displayName: String { get }
 
     /// Who's running this — user email, org, project ID, etc.
@@ -34,7 +34,7 @@ public protocol Identity: AnyObject, Sendable {
 
 /// Hardware profile bound to this ARES instance.
 public struct HardwareProfile: Codable, Sendable, Equatable {
-    public let deviceModel: String              // "Mac Studio", "MacBook Pro", etc.
+    public let deviceModel: String              // "Mac desktop", "MacBook Pro", etc.
     public let macAddress: String              // Primary network interface
     public let serialNumber: String             // Hardware serial
     public let cpuCoreCount: Int

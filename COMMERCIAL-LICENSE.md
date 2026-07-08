@@ -20,6 +20,6 @@ Typical scenarios:
 
 ## How to Obtain a Commercial License
 
-Contact the maintainer (Matthew Jenkins) to discuss commercial licensing terms.
+Contact Jenkins Robotics to discuss commercial licensing terms.
 
 This dual-licensing model allows ARES to remain fully open source under AGPL-3.0 while providing a sustainable path for commercial adoption.
