@@ -2786,7 +2786,6 @@ from api.config import (
     STREAM_LAST_EVENT_ID,
     SERVER_START_TIME,
     _resolve_cli_toolsets,
-    _INDEX_HTML_PATH,
     get_available_models,
     get_available_models_for_session_visit,
     _provider_is_known_or_configured,
@@ -2826,6 +2825,7 @@ from api.config import (
     _cfg_lock,
     PENDING_BG_TASK_COMPLETIONS,
 )
+from api import config as api_config
 from api.helpers import (
     require,
     bad,
@@ -11183,7 +11183,7 @@ def _serve_manifest(handler) -> bool:
     routes so Firefox Android can fetch the manifest when installing from
     a /session/<id> page.  See #2226.
     """
-    static_root = Path(__file__).parent.parent / "static"
+    static_root = api_config.get_static_root()
     manifest_path = (static_root / "manifest.json").resolve()
     if manifest_path.exists():
         data = manifest_path.read_bytes()
@@ -11244,8 +11244,9 @@ def _render_index_shell_base() -> str:
     """
     from api.updates import WEBUI_VERSION
 
-    st = _INDEX_HTML_PATH.stat()
-    sig = (st.st_size, st.st_mtime_ns)
+    index_path = api_config.get_index_html_path()
+    st = index_path.stat()
+    sig = (index_path, st.st_size, st.st_mtime_ns)
     with _INDEX_SHELL_CACHE_LOCK:
         cached = _INDEX_SHELL_CACHE.get("base")
         if cached and cached[0] == sig:
@@ -11254,7 +11255,7 @@ def _render_index_shell_base() -> str:
 
     version_token = quote(WEBUI_VERSION, safe="")
     base = (
-        _INDEX_HTML_PATH.read_text(encoding="utf-8")
+        index_path.read_text(encoding="utf-8")
         .replace("__WEBUI_VERSION__", version_token)
         .replace("__MAX_UPLOAD_BYTES__", str(MAX_UPLOAD_BYTES))
     )
@@ -11428,7 +11429,7 @@ def handle_get(handler, parsed) -> bool:
         return _serve_manifest(handler)
 
     if parsed.path == "/sw.js":
-        static_root = Path(__file__).parent.parent / "static"
+        static_root = api_config.get_static_root()
         sw_path = (static_root / "sw.js").resolve()
         if sw_path.exists():
             # Inject the current git-derived version as the cache name so the
@@ -11451,7 +11452,7 @@ def handle_get(handler, parsed) -> bool:
         return j(handler, {"error": "not found"}, status=404)
 
     if parsed.path == "/favicon.ico":
-        static_root = Path(__file__).parent.parent / "static"
+        static_root = api_config.get_static_root()
         ico_path = (static_root / "favicon.ico").resolve()
         if ico_path.exists() and ico_path.is_file():
             data = ico_path.read_bytes()
@@ -15715,7 +15716,7 @@ _STATIC_CACHE_LOCK = threading.Lock()
 
 
 def _serve_static(handler, parsed):
-    static_root = (Path(__file__).parent.parent / "static").resolve()
+    static_root = api_config.get_static_root().resolve()
     # Strip the leading '/static/' prefix, then resolve and sandbox
     rel = parsed.path[len("/static/") :]
     static_file = (static_root / rel).resolve()

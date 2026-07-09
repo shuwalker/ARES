@@ -5,6 +5,8 @@
 
 ### Internal
 
+- **Centralized WebUI static-asset resolution.** The app-shell (`index.html`), `/static/*`, manifest, service worker, and favicon now resolve through a single shared resolver instead of scattered `__file__`-relative logic — behavior-preserving (same bytes, headers, cache signature, CSRF-per-request injection, and path-traversal rejection), with new resolver regression tests. Thanks @rodboev. (#5557, #2695)
+
 - **Documented the lock-free GIL-atomic contract for the streaming `STREAM_*` buffers.** Added an in-code explanation of why the per-token hot path mirrors partial-text/reasoning/tool-call buffers without holding `STREAMS_LOCK` (single writer + GIL-atomic `STORE_SUBSCR` on immutable strings → readers see complete-but-possibly-stale values, never torn), and why snapshot readers do take the lock. No behavior change. Thanks @ai-ag2026. (#5800)
 
 ### Fixed
