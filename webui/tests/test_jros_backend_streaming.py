@@ -1,14 +1,22 @@
-"""JROS backend — worker selection + the gateway chat bridge.
+"""JROS backend — worker selection, the gateway chat bridge, and the
+in-process fallback.
 
-The JROS backend runs turns on a JROS gateway server (`jaeger gateway`)
-over HTTP, mirroring the Hermes Gateway bridge. These tests pin:
+The JROS backend prefers a JROS gateway server (`jaeger gateway`) over
+HTTP, mirroring the Hermes Gateway bridge; with no gateway reachable and
+ARES_JROS_DIR pointing at a local checkout, it boots JROS in-process
+instead. These tests pin:
   * routes still dispatch the jros backend to the gateway worker,
   * hybrid still falls through to the normal Hermes worker,
   * gateway URL resolution (env > config > localhost default),
   * a full turn against a REAL (in-test, faked-JROS) HTTP gateway —
     SSE relay, tool events, session persistence, stream teardown,
-  * an offline gateway surfaces an actionable apperror,
-  * backend availability = a live /v1/health answer.
+  * the in-process fallback: runs the turn locally, turns the instance
+    lock and missing-instance cases into actionable errors (never the
+    interactive wizard), and never runs while a gateway is up,
+  * an offline gateway with no local checkout surfaces an actionable
+    apperror,
+  * backend availability: gateway health → mode "gateway", local
+    checkout only → mode "local".
 """
 from __future__ import annotations
 
@@ -209,8 +217,10 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch):
     from api.models import Session
     from api import jros_gateway_chat
 
-    # A port nothing listens on — connection refused, fast.
+    # A port nothing listens on — connection refused, fast. No local
+    # checkout either, so the in-process fallback must not trigger.
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
+    monkeypatch.delenv("ARES_JROS_DIR", raising=False)
     sid = "jrosgw-down"
     stream_id = "stream-jrosgw-down"
     session = Session(session_id=sid, messages=[])
@@ -252,6 +262,7 @@ def test_backend_availability_follows_gateway_health(monkeypatch):
         server.server_close()
 
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
+    monkeypatch.delenv("ARES_JROS_DIR", raising=False)
     monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
     assert backend_selector.is_jros_available() is False
     assert backend_selector.backend_status()["jros"] is False
@@ -272,3 +283,174 @@ def test_reset_jros_boot_posts_reset_and_swallows_offline(monkeypatch):
 
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     jros_gateway_chat.reset_jros_boot()  # must not raise
+
+
+# ── in-process fallback (no gateway, local checkout) ─────────────────────
+
+def _setup_stream(sid, stream_id, pending="hello jros"):
+    from api import config
+    from api.config import create_stream_channel, register_stream_owner
+    from api.models import Session
+
+    session = Session(session_id=sid, messages=[])
+    session.active_stream_id = stream_id
+    session.pending_user_message = pending
+    session.save()
+    stream = create_stream_channel()
+    register_stream_owner(stream_id, sid)
+    with config.STREAMS_LOCK:
+        config.STREAMS[stream_id] = stream
+    return stream
+
+
+def _local_checkout(monkeypatch, tmp_path):
+    """A directory that looks like a JROS checkout, wired to ARES_JROS_DIR,
+    with the gateway pointed at a dead port so the fallback path runs."""
+    (tmp_path / "jaeger_os").mkdir()
+    monkeypatch.setenv("ARES_JROS_DIR", str(tmp_path))
+    monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
+
+
+def test_local_fallback_runs_turn_when_no_gateway(monkeypatch, tmp_path):
+    from api import jros_gateway_chat
+    from api.models import Session
+
+    _local_checkout(monkeypatch, tmp_path)
+    monkeypatch.setattr(jros_gateway_chat, "_BOOT", None)
+    monkeypatch.setattr(
+        jros_gateway_chat, "_boot_jros",
+        lambda: types.SimpleNamespace(client=object()),
+    )
+    calls = []
+    fake_main = types.ModuleType("jaeger_os.main")
+
+    def fake_run_for_voice(client, text, session_key=None):
+        calls.append((text, session_key))
+        return {"text": "local JROS says hi", "error": None,
+                "tool_activity": ["  ▸ demo(x)"], "elapsed_s": 0.01}
+
+    fake_main.run_for_voice = fake_run_for_voice
+    monkeypatch.setitem(sys.modules, "jaeger_os.main", fake_main)
+
+    sid, stream_id = "jroslocal1", "stream-jroslocal1"
+    stream = _setup_stream(sid, stream_id)
+    jros_gateway_chat.run_jros_streaming(
+        sid, "hello jros", "test-model", "/tmp", stream_id, [],
+        model_provider="test-provider",
+    )
+
+    assert calls == [("hello jros", f"webui:{sid}")]
+    events = [item[0] for item in stream._offline_buffer]
+    assert "tool" in events
+    assert any(
+        item[0] == "token" and item[1] == {"text": "local JROS says hi"}
+        for item in stream._offline_buffer
+    )
+    assert events[-2:] == ["done", "stream_end"]
+    saved = Session.load(sid)
+    assert saved.messages[-1]["content"] == "local JROS says hi"
+    assert saved.messages[-1]["backend"] == "jros"
+
+
+def _fake_jaeger_instance_modules(monkeypatch, *, exists=True):
+    """Install the module chain _boot_jros imports, with a controllable
+    InstanceLayout.exists()."""
+    pkg = types.ModuleType("jaeger_os")
+    core = types.ModuleType("jaeger_os.core")
+    inst_pkg = types.ModuleType("jaeger_os.core.instance")
+    inst = types.ModuleType("jaeger_os.core.instance.instance")
+    inst.default_instance_name = lambda: "testinst"
+    inst.resolve_instance_dir = lambda name: f"/nonexistent/{name}"
+    inst.InstanceLayout = lambda root: types.SimpleNamespace(
+        root=root, exists=lambda: exists)
+    for name, mod in (("jaeger_os", pkg), ("jaeger_os.core", core),
+                      ("jaeger_os.core.instance", inst_pkg),
+                      ("jaeger_os.core.instance.instance", inst)):
+        monkeypatch.setitem(sys.modules, name, mod)
+
+
+def test_local_fallback_lock_error_is_actionable(monkeypatch, tmp_path):
+    from api import jros_gateway_chat
+
+    _local_checkout(monkeypatch, tmp_path)
+    monkeypatch.setattr(jros_gateway_chat, "_BOOT", None)
+    _fake_jaeger_instance_modules(monkeypatch, exists=True)
+    fake_main = types.ModuleType("jaeger_os.main")
+
+    def locked_boot(**kwargs):
+        raise RuntimeError("instance 'testinst' is locked by pid 7 (still running).")
+
+    fake_main.boot_for_tui = locked_boot
+    monkeypatch.setitem(sys.modules, "jaeger_os.main", fake_main)
+
+    sid, stream_id = "jroslock1", "stream-jroslock1"
+    stream = _setup_stream(sid, stream_id)
+    jros_gateway_chat.run_jros_streaming(sid, "hi", "m", "/tmp", stream_id, [])
+
+    apperrors = [item[1] for item in stream._offline_buffer if item[0] == "apperror"]
+    assert len(apperrors) == 1
+    assert apperrors[0]["type"] == "jros_local_error"
+    assert "already running" in apperrors[0]["message"]
+    assert "jaeger gateway" in apperrors[0]["message"]
+
+
+def test_local_fallback_missing_instance_says_run_setup(monkeypatch, tmp_path):
+    from api import jros_gateway_chat
+
+    _local_checkout(monkeypatch, tmp_path)
+    monkeypatch.setattr(jros_gateway_chat, "_BOOT", None)
+    _fake_jaeger_instance_modules(monkeypatch, exists=False)
+    fake_main = types.ModuleType("jaeger_os.main")
+
+    def wizard_boot(**kwargs):  # the old bridge hung here — must never run
+        raise AssertionError("boot_for_tui must not be called without an instance")
+
+    fake_main.boot_for_tui = wizard_boot
+    monkeypatch.setitem(sys.modules, "jaeger_os.main", fake_main)
+
+    sid, stream_id = "jrossetup1", "stream-jrossetup1"
+    stream = _setup_stream(sid, stream_id)
+    jros_gateway_chat.run_jros_streaming(sid, "hi", "m", "/tmp", stream_id, [])
+
+    apperrors = [item[1] for item in stream._offline_buffer if item[0] == "apperror"]
+    assert len(apperrors) == 1
+    assert "jaeger setup" in apperrors[0]["message"]
+
+
+def test_gateway_wins_over_local_fallback(monkeypatch, tmp_path):
+    from api import jros_gateway_chat
+    from api.models import Session
+
+    server, base = _start_fake_gateway()
+    _FakeJrosGateway.seen = []
+    (tmp_path / "jaeger_os").mkdir()
+    monkeypatch.setenv("ARES_JROS_DIR", str(tmp_path))
+    monkeypatch.setenv("ARES_JROS_GATEWAY_URL", base)
+    monkeypatch.setattr(
+        jros_gateway_chat, "_run_local_jros_turn",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("local fallback must not run while the gateway is up")),
+    )
+    try:
+        sid, stream_id = "jrosboth1", "stream-jrosboth1"
+        _setup_stream(sid, stream_id)
+        jros_gateway_chat.run_jros_streaming(sid, "hello jros", "m", "/tmp", stream_id, [])
+        assert any(c["path"].endswith("/chat/completions") for c in _FakeJrosGateway.seen)
+        assert Session.load(sid).messages[-1]["content"] == "JROS says hi"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
+    from api import backend_selector
+
+    (tmp_path / "jaeger_os").mkdir()
+    monkeypatch.setenv("ARES_JROS_DIR", str(tmp_path))
+    monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
+    monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
+    monkeypatch.setattr(backend_selector, "_jros_gateway_info", {})
+    assert backend_selector.is_jros_available() is True
+    status = backend_selector.backend_status()
+    assert status["jros"] is True
+    assert status["jros_mode"] == "local"

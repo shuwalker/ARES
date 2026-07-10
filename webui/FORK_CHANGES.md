@@ -5,6 +5,24 @@ Each entry: date, what changed, which files, why, and rollback path.
 
 ---
 
+## 2026-07-10 — JROS in-process fallback when no gateway is running
+
+**What:** The JROS backend now resolves execution in two steps: gateway first (`ARES_JROS_GATEWAY_URL`), and when no gateway is reachable but `ARES_JROS_DIR` points at a local checkout, ARES boots JROS in-process and runs the turn directly.
+
+**Why:** The local single-machine case should be flip-the-toggle simple — no extra program to start. The gateway remains the path for remote machines and for sharing an already-running JROS. The two failure modes that sank the old in-process-only bridge are now guarded: an already-running JROS (exclusive instance lock) produces a message telling the user to close it or run `jaeger gateway` instead, and a missing instance says to run `jaeger setup` — the interactive wizard is never launched inside the web server.
+
+**Files changed:**
+- `webui/api/jros_gateway_chat.py` — `local_jros_root()`, `_boot_jros()` (cached, guarded), `_run_local_jros_turn()`; the chat worker falls back on gateway connection failure; `reset_jros_boot()` also drops the local boot cache (releasing the instance lock).
+- `webui/api/backend_selector.py` — availability = gateway health (mode "gateway") else local checkout (mode "local"); `backend_status()` gains `jros_mode`.
+- `webui/static/panels.js` — JROS status line reflects the mode.
+- `webui/tests/test_jros_backend_streaming.py` — fallback turn, lock/setup guard messages, gateway-wins precedence, local-mode availability.
+
+**Rollback:** Remove the fallback block in the chat worker and the local-boot helpers; drop `jros_mode` from `backend_selector.py`/`panels.js`.
+
+**Verification:** `pytest tests/test_jros_backend_streaming.py` — 13 passed.
+
+---
+
 ## 2026-07-10 — JROS backend rebuilt as a Hermes-style HTTP gateway bridge
 
 **What:** Replaced the in-process JROS bridge (`api/jros_bridge.py`) and the ZMQ presence sidecar (`scripts/jros_presence.py`) with `api/jros_gateway_chat.py`, an HTTP/SSE client for the new JROS gateway server (`jaeger gateway`, added to the JROS repo as `jaeger_os/interfaces/http_gateway.py`). Hid the Hybrid backend option in the UI (server still accepts the value).

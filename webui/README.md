@@ -82,11 +82,24 @@ python3 webui/scripts/jros_gateway.py --jros-dir /path/to/JROS --host 0.0.0.0
 
 It auto-delegates to the native `jaeger gateway` once the checkout ships it.
 
+**No gateway? It still works locally.** When no gateway answers and
+`ARES_JROS_DIR` points at a JROS checkout on the same machine, ARES boots
+JROS inside itself and runs the turn in-process — flip the toggle and go,
+no extra program. Two caveats, reported as plain messages instead of
+failures: JROS allows only one running copy per instance, so if the JROS
+app/TUI is already open you'll be asked to close it (or run `jaeger
+gateway` in its place); and a machine with no JROS instance yet is told to
+run `jaeger setup` first.
+
+Order of preference: gateway first (works for remote machines and alongside
+a running gateway), in-process fallback second (local convenience).
+
 Optional auth: set `JAEGER_GATEWAY_KEY` on the gateway and the same value in
 `ARES_JROS_GATEWAY_KEY` for ARES. The UI's JROS option lights up when the
-gateway answers `GET /v1/health`. `ARES_JROS_DIR` is still used by the
-character browser and update checker, but chat no longer needs a local JROS
-checkout.
+gateway answers `GET /v1/health` — or, with no gateway, when a local
+checkout is available for the fallback (the dropdown shows which mode
+you're in). `ARES_JROS_DIR` also still feeds the character browser and
+update checker.
 
 ## Dependencies
 

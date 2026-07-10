@@ -6407,11 +6407,13 @@ window.addEventListener('resize',()=>{
 
 let _aresCurrentBackend = 'hermes';
 let _aresJrosAvailable = false;
+let _aresJrosMode = '';   // 'gateway' | 'local' | '' — how JROS turns will run
 
 function initAresBackend() {
   api('/api/ares/backend').then(data => {
     _aresCurrentBackend = data.current || 'hermes';
     _aresJrosAvailable = (data.status && data.status.jros) || false;
+    _aresJrosMode = (data.status && data.status.jros_mode) || '';
     updateAresBackendUI();
   }).catch(() => {
     // Backend API not available — default to Hermes, hide the chip
@@ -6456,7 +6458,13 @@ function updateAresBackendUI() {
   // JROS status text
   const jrosStatus = $('aresBackendJrosStatus');
   const hybridStatus = $('aresBackendHybridStatus');
-  if (jrosStatus) jrosStatus.textContent = _aresJrosAvailable ? 'JROS gateway connected' : 'Start `jaeger gateway` where JROS is installed';
+  if (jrosStatus) {
+    jrosStatus.textContent = !_aresJrosAvailable
+      ? 'Start `jaeger gateway` where JROS is installed'
+      : _aresJrosMode === 'local'
+        ? 'Runs JROS on this machine (in-process)'
+        : 'JROS gateway connected';
+  }
   if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes loop + JROS persona/tools' : 'Needs the JROS gateway running';
 
   // JROS stays selectable while the gateway is offline (the user may start it

@@ -11,12 +11,14 @@ Backends:
     stays valid server-side so existing configs keep working.
 
 This module is pure routing logic — no side effects on import. Execution
-itself happens in api/jros_gateway_chat.py, which POSTs the turn to the
-configured JROS gateway (ARES_JROS_GATEWAY_URL, default localhost:8643) —
-the same integration shape as the Hermes Gateway bridge in api/gateway_chat.py.
+itself happens in api/jros_gateway_chat.py: gateway first (POST to
+ARES_JROS_GATEWAY_URL, default localhost:8643 — same integration shape as
+the Hermes Gateway bridge in api/gateway_chat.py), and when no gateway is
+reachable, an in-process fallback boots the local ARES_JROS_DIR checkout.
 
-Availability = a live `GET /v1/health` answer from that gateway. A JROS on
-another machine is just a different base URL.
+Availability = a live `GET /v1/health` answer from the gateway (mode
+"gateway"), else a usable local checkout (mode "local"). A JROS on another
+machine is just a different base URL.
 """
 
 from __future__ import annotations
@@ -49,9 +51,11 @@ def get_active_backend(config: dict) -> str:
 
 
 def is_jros_available() -> bool:
-    """Check whether JROS is usable right now: does the configured JROS
-    gateway answer /v1/health? (See api.jros_gateway_chat for how the
-    gateway URL resolves.)"""
+    """Check whether JROS is usable right now.
+
+    Prefers a live /v1/health answer from the configured JROS gateway
+    (mode "gateway"); otherwise a local ARES_JROS_DIR checkout that the
+    in-process fallback could boot counts too (mode "local")."""
     global _jros_available_cache, _jros_available_ts, _jros_gateway_info
     now = time.time()
     if _jros_available_cache is not None and (now - _jros_available_ts) < _JROS_CACHE_TTL:
@@ -60,19 +64,23 @@ def is_jros_available() -> bool:
     result = False
     presence_info: dict = {}
     try:
-        from api.jros_gateway_chat import jros_gateway_health
+        from api.jros_gateway_chat import jros_gateway_health, local_jros_root
 
         reply = jros_gateway_health(timeout=1.0)
         if reply is not None:
             result = True
             presence_info = {
+                "mode": "gateway",
                 "model": reply.get("model"),
                 "provider": reply.get("provider"),
                 "booted": bool(reply.get("booted")),
                 "instance": reply.get("instance"),
             }
+        elif local_jros_root() is not None:
+            result = True
+            presence_info = {"mode": "local"}
     except Exception:
-        logger.debug("JROS gateway health probe failed", exc_info=True)
+        logger.debug("JROS availability probe failed", exc_info=True)
 
     _jros_available_cache = result
     _jros_available_ts = now
@@ -89,6 +97,7 @@ def backend_status() -> dict:
         "hybrid": jros_up,  # hybrid needs JROS too
     }
     if jros_up and _jros_gateway_info:
+        status["jros_mode"] = _jros_gateway_info.get("mode")
         status["jros_model"] = _jros_gateway_info.get("model")
         status["jros_provider"] = _jros_gateway_info.get("provider")
         status["jros_booted"] = _jros_gateway_info.get("booted")
