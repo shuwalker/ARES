@@ -14,6 +14,7 @@ Each entry: date, what changed, which files, why, and rollback path.
 **Files changed:**
 - `webui/api/jros_gateway_chat.py` — **NEW**. Gateway chat worker (`run_jros_streaming`), health probe (`jros_gateway_health`), remote reboot (`reset_jros_boot` → `POST /v1/reset`). Env: `ARES_JROS_GATEWAY_URL`, `ARES_JROS_GATEWAY_KEY`; config: `jros_gateway_url`.
 - `webui/api/jros_bridge.py`, `webui/scripts/jros_presence.py` — **REMOVED** (superseded; `ARES_JROS_BUS_ENDPOINT` no longer read).
+- `webui/scripts/jros_gateway.py` — **NEW**. Standalone single-file gateway launcher for JROS checkouts that don't ship `jaeger gateway` yet (the upstream JROS change is pending); vendored copy of the submitted module, auto-delegates to the native one when present.
 - `webui/api/backend_selector.py` — availability = live `GET /v1/health` from the gateway (5s TTL cache); ZMQ probe and `ARES_JROS_DIR` execution fallback removed.
 - `webui/api/characters.py` — now owns the `ARES_JROS_DIR` repo-root helper (character browser only).
 - `webui/api/routes.py` — worker/reset imports point at `api.jros_gateway_chat`.

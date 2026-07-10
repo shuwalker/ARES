@@ -72,6 +72,16 @@ jaeger gateway --host 0.0.0.0 --port 8643   # reachable from other machines
 export ARES_JROS_GATEWAY_URL=http://<jros-host>:8643
 ```
 
+If your JROS checkout doesn't have the `jaeger gateway` command yet (it's
+pending upstream), use the standalone twin shipped here — copy this ONE file
+to the machine where JROS lives and run it there:
+
+```bash
+python3 webui/scripts/jros_gateway.py --jros-dir /path/to/JROS --host 0.0.0.0
+```
+
+It auto-delegates to the native `jaeger gateway` once the checkout ships it.
+
 Optional auth: set `JAEGER_GATEWAY_KEY` on the gateway and the same value in
 `ARES_JROS_GATEWAY_KEY` for ARES. The UI's JROS option lights up when the
 gateway answers `GET /v1/health`. `ARES_JROS_DIR` is still used by the
