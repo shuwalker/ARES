@@ -70,7 +70,7 @@ swift run ARES
 
 - **Persistent Entity** — ARES is not a chatbot. It's a continuous intelligence with memory, drives, and presence across sessions.
 - **Web UI** — Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on any device over Tailscale.
-- **Backend Selector** — Switch between Hermes, JROS, or Hybrid mode per-conversation. JROS personas inject into the agent loop.
+- **Backend Selector** — Switch between the Hermes agent and JROS. JROS turns run on a JROS gateway server (`jaeger gateway`) over HTTP — on the same machine or a different one. (A Hybrid mode exists server-side but is hidden in the UI while it's being defined.)
 - **Character Avatar Browser** — 14 visual character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more) with card art, traits, lore, and active identity selection.
 - **Native macOS App** — SwiftUI app wraps the Web UI in WKWebView with native window, voice (edge-tts), and animated 3D avatar eyes.
 - **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads. Zero downtime for static, ~2s blip for Python.
@@ -114,9 +114,9 @@ ARES now exposes the persona system as a real product surface instead of a hidde
          │                         │
          ▼                         ▼
    ┌──────────┐            ┌──────────────┐
-   │ Ollama   │            │ JROS Daemon  │
-   │ Cloud    │            │ (NDJSON      │
-   │ (GLM-5.2)│            │  Unix socket) │
+   │ Ollama   │            │ JROS Gateway │
+   │ Cloud    │            │ (HTTP /v1,   │
+   │ (GLM-5.2)│            │ local/remote)│
    └──────────┘            └──────────────┘
 ```
 

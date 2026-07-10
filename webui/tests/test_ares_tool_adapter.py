@@ -228,7 +228,13 @@ class TestStreamingIntegration:
             render_context_prompt,
         )
 
-        ctx = build_runtime_context(backend="hybrid")
+        # Hermetic: availability is a live JROS gateway health probe now,
+        # so pin it instead of depending on the test machine's setup.
+        with patch(
+            "api.ares_runtime_context.is_jros_available",
+            return_value=True,
+        ):
+            ctx = build_runtime_context(backend="hybrid")
         prompt = render_context_prompt(ctx)
         # In hybrid mode, prompt should mention JROS embodiment
         assert "jros" in prompt.lower()

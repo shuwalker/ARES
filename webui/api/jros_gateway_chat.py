@@ -1,21 +1,31 @@
-"""Default-off JROS bridge for browser-originated ARES chat turns.
+"""Default-off JROS gateway bridge for browser-originated ARES chat turns.
 
-This is intentionally shaped like ``api.gateway_chat._run_gateway_chat_streaming``:
-/api/chat/start still creates a normal local WebUI stream, /api/chat/stream still
-receives WebUI SSE event names, and the final turn is persisted back into the
-same WebUI session model.  The only swapped piece is execution: instead of
-calling Hermes Gateway/OpenAI-compatible chat, this boots JROS and runs the turn
-through JROS' native ``run_for_voice`` API.
+This is the JROS twin of ``api.gateway_chat`` (the Hermes Gateway bridge)
+and is deliberately shaped like it: /api/chat/start still creates a normal
+local WebUI stream, /api/chat/stream still receives WebUI SSE event names,
+and the final turn is persisted back into the same WebUI session model.
+The only swapped piece is execution: the turn is POSTed to a JROS gateway
+server (``jaeger gateway`` — jaeger_os/interfaces/http_gateway.py in the
+JROS repo) over HTTP, and its SSE reply is relayed back.
+
+Because JROS runs as its own server process, this works with a JROS on the
+same machine (no instance-lock conflict with a running agent — the gateway
+IS the agent process) or on another machine entirely:
+
+    # where JROS is installed
+    jaeger gateway --host 0.0.0.0 --port 8643
+    # where ARES runs
+    export ARES_JROS_GATEWAY_URL=http://<jros-host>:8643
 """
 from __future__ import annotations
 
-import contextlib
+import json
 import logging
 import os
-import sys
 import threading
 import time
-from pathlib import Path
+import urllib.error
+import urllib.request
 from typing import Any
 
 from api.config import (
@@ -40,69 +50,75 @@ from api.run_journal import RunJournalWriter
 
 logger = logging.getLogger(__name__)
 
-_BOOT_LOCK = threading.RLock()
-_BOOT: Any | None = None
+_JROS_GATEWAY_URL_ENV = "ARES_JROS_GATEWAY_URL"
+_JROS_GATEWAY_KEY_ENV = "ARES_JROS_GATEWAY_KEY"
+DEFAULT_JROS_GATEWAY_URL = "http://127.0.0.1:8643"
+
+_START_GATEWAY_HINT = (
+    "Start the JROS gateway where JROS is installed (`jaeger gateway`, add "
+    "`--host 0.0.0.0` for another machine) and point ARES_JROS_GATEWAY_URL "
+    "at it."
+)
 
 
-def _jros_repo_root() -> Path:
-    """Resolve the JROS repo checkout location.
-
-    There is no universal install path to guess — JROS is installed wherever
-    the operator put it, not necessarily under any particular developer's
-    directory layout. ``ARES_JROS_DIR`` must be set explicitly.
-    """
-    override = os.environ.get("ARES_JROS_DIR", "").strip()
-    if not override:
-        raise RuntimeError(
-            "ARES_JROS_DIR is not set. Point it at your JROS checkout "
-            "(the directory containing jaeger_os/) to use the JROS backend "
-            "or character library."
-        )
-    return Path(override).expanduser().resolve()
+def jros_gateway_base_url(config_data=None, environ: dict[str, str] | None = None) -> str:
+    """Resolve the JROS gateway base URL: env override, then config, then
+    the localhost default (same precedence as the Hermes gateway bridge)."""
+    source = os.environ if environ is None else environ
+    cfg = config_data if isinstance(config_data, dict) else {}
+    raw = str(
+        source.get(_JROS_GATEWAY_URL_ENV)
+        or cfg.get("jros_gateway_url")
+        or DEFAULT_JROS_GATEWAY_URL
+    ).strip()
+    return raw.rstrip("/") or DEFAULT_JROS_GATEWAY_URL
 
 
-def _jros_instance_name() -> str:
-    return os.environ.get("ARES_JROS_INSTANCE", "jros-dev").strip() or "jros-dev"
+def _jros_gateway_api_key(environ: dict[str, str] | None = None) -> str:
+    source = os.environ if environ is None else environ
+    return str(source.get(_JROS_GATEWAY_KEY_ENV) or "").strip()
 
 
-def _ensure_jros_import_path() -> None:
-    root = str(_jros_repo_root())
-    if root not in sys.path:
-        sys.path.insert(0, root)
+def _auth_headers() -> dict[str, str]:
+    key = _jros_gateway_api_key()
+    return {"Authorization": f"Bearer {key}"} if key else {}
 
 
-def _boot_jros() -> Any:
-    """Boot and cache the JROS TUI pipeline for WebUI-originated turns."""
-    global _BOOT
-    with _BOOT_LOCK:
-        if _BOOT is not None:
-            return _BOOT
-        _ensure_jros_import_path()
-        from jaeger_os.main import boot_for_tui
+def jros_gateway_health(timeout: float = 1.0, config_data=None) -> dict | None:
+    """GET /v1/health from the configured JROS gateway.
 
-        with contextlib.redirect_stdout(sys.stderr):
-            _BOOT = boot_for_tui(
-                instance_name=_jros_instance_name(),
-                with_memory=True,
-                warmup=False,
-                prewarm_model=False,
-            )
-        return _BOOT
+    Returns the health payload dict when a live gateway answers, or None
+    when unreachable — the availability signal api.backend_selector uses
+    to light up the JROS option in the UI."""
+    url = f"{jros_gateway_base_url(config_data)}/v1/health"
+    req = urllib.request.Request(url, headers=_auth_headers(), method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return payload if isinstance(payload, dict) and payload.get("ok") else None
+    except Exception:
+        return None
 
 
 def reset_jros_boot() -> None:
-    """Drop the cached JROS boot so the next turn re-boots from disk config.
+    """Ask the JROS gateway to drop its cached boot and re-boot.
 
     JROS has no live model hot-swap (its client's model is fixed at
-    construction time), so picking a new model or failing over to a
-    fallback provider only takes effect after a re-boot. Call this after
-    writing new provider settings to JROS's config.yaml (see
-    api.ares_provider_sync) — the next chat turn on this backend pays one
-    boot's worth of latency and then runs the new model.
-    """
-    global _BOOT
-    with _BOOT_LOCK:
-        _BOOT = None
+    construction time), so provider/model changes written to JROS's
+    config.yaml (see api.ares_provider_sync) only apply after a re-boot.
+    Best-effort: an unreachable gateway just means the next operator-run
+    gateway boots fresh from disk anyway."""
+    url = f"{jros_gateway_base_url()}/v1/reset"
+    req = urllib.request.Request(
+        url, data=b"{}",
+        headers={"Content-Type": "application/json", **_auth_headers()},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+    except Exception:
+        logger.debug("JROS gateway reset skipped (gateway unreachable)", exc_info=True)
 
 
 def _stream_writeback_is_current(session: Any, stream_id: str) -> bool:
@@ -118,16 +134,6 @@ def _clear_jros_pending_state(session: Any, stream_id: str) -> None:
     session.pending_started_at = None
     session.pending_user_source = None
     session.save()
-
-
-def _assistant_text_from_jros_result(result: Any) -> tuple[str, str, list[str]]:
-    payload = dict(result or {}) if isinstance(result, dict) else {}
-    error = str(payload.get("error") or "").strip()
-    text = str(payload.get("text") or payload.get("content") or payload.get("response") or "").strip()
-    tool_activity = payload.get("tool_activity") or []
-    if not isinstance(tool_activity, list):
-        tool_activity = [str(tool_activity)]
-    return text, error, [str(item) for item in tool_activity if str(item).strip()]
 
 
 def _merge_and_save_jros_turn(
@@ -221,115 +227,6 @@ def _merge_and_save_jros_turn(
         return s
 
 
-def _jros_fallback_chain() -> list[dict]:
-    """Read the fallback_providers chain already synced into JROS's config.
-
-    api.ares_provider_sync.sync_fallback_chain() writes this list (mirrored
-    from Hermes's own fallback_providers, translated to JROS-runnable
-    providers). JROS itself never reads it — nothing about "no provider
-    negotiation" in jaeger_os changes because of this list existing — so
-    this bridge is what actually walks it on failure.
-    """
-    try:
-        from api.ares_provider_sync import load_yaml_config, resolve_jros_config_path
-
-        cfg = load_yaml_config(resolve_jros_config_path())
-        chain = cfg.get("fallback_providers") if isinstance(cfg, dict) else None
-        return [e for e in chain if isinstance(e, dict) and e.get("provider") and e.get("model")] if isinstance(chain, list) else []
-    except Exception:
-        logger.debug("Failed to read JROS fallback chain", exc_info=True)
-        return []
-
-
-def _apply_jros_provider_entry(entry: dict) -> None:
-    """Write a fallback entry into JROS's external_model config and reboot.
-
-    Raises on failure to write config; the caller decides whether to try the
-    next entry or give up.
-    """
-    from api.ares_provider_sync import load_yaml_config, resolve_jros_config_path, save_yaml_config
-
-    path = resolve_jros_config_path()
-    cfg = load_yaml_config(path)
-    external_model = cfg.get("external_model")
-    if not isinstance(external_model, dict):
-        external_model = {}
-        cfg["external_model"] = external_model
-    external_model["enabled"] = True
-    external_model["provider"] = entry["provider"]
-    external_model["model"] = entry["model"]
-    if entry.get("base_url"):
-        external_model["base_url"] = entry["base_url"]
-    if entry.get("key_env") or entry.get("api_key_env"):
-        external_model["api_key_env"] = entry.get("key_env") or entry.get("api_key_env")
-    save_yaml_config(path, cfg)
-    reset_jros_boot()
-
-
-def _attempt_jros_turn(msg_text: str, session_id: str, cancel_event: threading.Event) -> tuple[str, str, list[str]]:
-    """One boot+run attempt against JROS as currently configured.
-
-    Returns (assistant_text, error, tool_activity) — same shape as
-    _assistant_text_from_jros_result. Raises on a hard failure (boot crash,
-    import error, etc.) so the fallback loop can distinguish "JROS ran and
-    reported an error" from "JROS didn't run at all" — both are failures
-    worth falling back on, but only the latter needs the exception logged.
-    """
-    boot = _boot_jros()
-    if cancel_event.is_set():
-        return "", "", []
-    from jaeger_os.main import run_for_voice
-
-    with contextlib.redirect_stdout(sys.stderr):
-        result = run_for_voice(boot.client, str(msg_text or ""), session_key=f"webui:{session_id}")
-    return _assistant_text_from_jros_result(result)
-
-
-def _run_jros_turn_with_fallback(
-    msg_text: str, session_id: str, cancel_event: threading.Event, put_jros_event
-) -> tuple[str, str, list[str]]:
-    """Try the active JROS provider; on failure, walk the synced fallback
-    chain (each attempt costs a reboot) until one succeeds or it's exhausted.
-
-    Mirrors Hermes's exhaust-the-chain behavior, implemented here because
-    JROS has no native fallback/retry concept of its own.
-    """
-    try:
-        assistant_text, error, tool_activity = _attempt_jros_turn(msg_text, session_id, cancel_event)
-        if not error and assistant_text:
-            return assistant_text, error, tool_activity
-        last_error = error or "JROS returned no response"
-    except Exception as exc:
-        last_error = str(exc)
-        logger.warning("JROS turn failed on active provider: %s", last_error, exc_info=True)
-
-    chain = _jros_fallback_chain()
-    if not chain:
-        return "", last_error, []
-
-    for i, entry in enumerate(chain):
-        if cancel_event.is_set():
-            return "", last_error, []
-        put_jros_event("apperror", {
-            "label": "JROS falling back",
-            "type": "jros_fallback",
-            "message": f"{entry['provider']}/{entry['model']} failed; trying fallback {i + 1}/{len(chain)}: "
-                       f"switching to next configured provider.",
-            "hint": last_error,
-        })
-        try:
-            _apply_jros_provider_entry(entry)
-            assistant_text, error, tool_activity = _attempt_jros_turn(msg_text, session_id, cancel_event)
-            if not error and assistant_text:
-                return assistant_text, error, tool_activity
-            last_error = error or "JROS returned no response"
-        except Exception as exc:
-            last_error = str(exc)
-            logger.warning("JROS fallback attempt %s (%s/%s) failed: %s", i + 1, entry.get("provider"), entry.get("model"), last_error, exc_info=True)
-
-    return "", f"All JROS providers exhausted. Last error: {last_error}", []
-
-
 def _run_jros_goal_hook(*, session_id: str, stream_id: str, goal_related: bool, assistant_text: str, put_jros_event) -> None:
     try:
         from api.goals import evaluate_goal_after_turn, has_active_goal
@@ -377,6 +274,29 @@ def _run_jros_goal_hook(*, session_id: str, stream_id: str, goal_related: bool, 
         logger.debug("JROS goal continuation hook failed for session %s: %s", session_id, goal_exc)
 
 
+def _jros_http_error_event(exc: urllib.error.HTTPError, err_body: str) -> dict:
+    safe = _redact_text(err_body or str(exc))[:500]
+    if exc.code == 401:
+        key_configured = bool(_jros_gateway_api_key())
+        return {
+            "label": "JROS gateway authentication failed",
+            "type": "jros_auth_error",
+            "message": "JROS gateway rejected the request (HTTP 401).",
+            "hint": (
+                "Set ARES_JROS_GATEWAY_KEY to the same value as the gateway's "
+                "JAEGER_GATEWAY_KEY."
+                if not key_configured
+                else "Check that ARES_JROS_GATEWAY_KEY matches the gateway's JAEGER_GATEWAY_KEY."
+            ),
+        }
+    return {
+        "label": "JROS gateway request failed",
+        "type": "jros_http_error",
+        "message": f"JROS gateway returned HTTP {exc.code}.",
+        "hint": safe or _START_GATEWAY_HINT,
+    }
+
+
 def _run_jros_chat_streaming(
     session_id,
     msg_text,
@@ -388,7 +308,9 @@ def _run_jros_chat_streaming(
     model_provider=None,
     goal_related=False,
 ):
-    """Bridge a WebUI chat turn through JROS using the Hermes worker contract."""
+    """Bridge a WebUI chat turn through the JROS gateway using the Hermes
+    worker contract (same signature routes._select_chat_worker_target
+    dispatches to)."""
     q = STREAMS.get(stream_id)
     if q is None:
         unregister_stream_owner(stream_id)
@@ -441,29 +363,115 @@ def _run_jros_chat_streaming(
     s = None
     usage = {"input_tokens": 0, "output_tokens": 0, "estimated_cost": 0}
     try:
+        try:
+            from api.config import get_config
+
+            cfg = get_config()
+        except Exception:
+            cfg = {}
+        base_url = jros_gateway_base_url(cfg)
         s = get_session(session_id)
         put_jros_event("context_status", {
             "session_id": session_id,
             "prefill": {"status": "jros", "source": "jros", "label": "JROS", "message_count": 0},
         })
-        update_active_run(stream_id, phase="jros-booting")
         update_active_run(stream_id, phase="jros-request")
-        assistant_text, error, tool_activity = _run_jros_turn_with_fallback(
-            msg_text, session_id, cancel_event, put_jros_event
+
+        url = f"{base_url}/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            **_auth_headers(),
+        }
+        body = {
+            "model": model or "jros",
+            "stream": True,
+            # The gateway keeps per-session context server-side; ``user`` is
+            # the session key, so each WebUI conversation stays its own JROS
+            # conversation.
+            "user": f"webui:{session_id}",
+            "messages": [{"role": "user", "content": str(msg_text or "")}],
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            method="POST",
         )
+
+        # Reuse the Hermes gateway SSE translators — the JROS gateway
+        # deliberately speaks the same dialect.
+        from api.gateway_chat import (
+            _gateway_sse_delta,
+            _gateway_stream_usage,
+            _gateway_tool_progress_event,
+        )
+
+        final_text = ""
+        turn_error = ""
+        sse_event = "message"
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            for raw_line in resp:
+                if cancel_event.is_set():
+                    put_jros_event("cancel", {"message": "Cancelled by user"})
+                    return
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    sse_event = "message"
+                    continue
+                if line.startswith("event:"):
+                    sse_event = line[6:].strip() or "message"
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    payload = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                if sse_event == "jros.status":
+                    update_active_run(stream_id, phase="jros-running")
+                    sse_event = "message"
+                    continue
+                if sse_event == "jros.error":
+                    turn_error = str(payload.get("message") or "JROS turn failed")
+                    sse_event = "message"
+                    continue
+                if sse_event == "hermes.tool.progress":
+                    translated = _gateway_tool_progress_event(payload)
+                    if translated:
+                        event_name, event_payload = translated
+                        if event_name != "reasoning" and stream_id in STREAM_LIVE_TOOL_CALLS:
+                            STREAM_LIVE_TOOL_CALLS[stream_id].append({
+                                "name": event_payload.get("name"),
+                                "args": event_payload.get("args") or {},
+                                "done": event_payload.get("event_type") == "tool.completed",
+                            })
+                        # The WebUI stream contract uses "tool" for progress rows.
+                        put_jros_event("tool" if event_name in ("tool", "tool_complete") else event_name, event_payload)
+                        update_active_run(stream_id, phase="jros-tool", latest_tool=event_payload.get("name"))
+                    sse_event = "message"
+                    continue
+                delta = _gateway_sse_delta(payload)
+                if delta:
+                    final_text += delta
+                    if stream_id in STREAM_PARTIAL_TEXT:
+                        STREAM_PARTIAL_TEXT[stream_id] += delta
+                    put_jros_event("token", {"text": delta})
+                usage.update({k: v for k, v in _gateway_stream_usage(payload).items() if v})
+
         if cancel_event.is_set():
             put_jros_event("cancel", {"message": "Cancelled by user"})
             return
-        for activity in tool_activity:
-            if stream_id in STREAM_LIVE_TOOL_CALLS:
-                STREAM_LIVE_TOOL_CALLS[stream_id].append({"name": "jros", "args": {"activity": activity}, "done": True})
-            put_jros_event("tool", {"event_type": "tool.progress", "name": "jros", "preview": activity, "is_error": False})
-        if error:
+        assistant_text = final_text.strip()
+        if turn_error and not assistant_text:
             put_jros_event("apperror", {
                 "label": "JROS request failed",
                 "type": "jros_error",
-                "message": _redact_text(error)[:500],
-                "hint": "ARES reached the JROS backend. Check JROS provider config/quota if the model call failed.",
+                "message": _redact_text(turn_error)[:500],
+                "hint": "ARES reached the JROS gateway. Check JROS provider config/quota if the model call failed.",
             })
             return
         if not assistant_text:
@@ -471,14 +479,9 @@ def _run_jros_chat_streaming(
                 "label": "JROS returned no response",
                 "type": "jros_empty_response",
                 "message": "JROS returned no assistant message for this turn.",
-                "hint": f"Check the JROS {_jros_instance_name()} instance and model provider.",
+                "hint": f"Check the JROS gateway at {base_url} and its model provider.",
             })
             return
-        # JROS currently returns a complete turn, not token deltas. Emit one token
-        # event so the browser keeps the exact Hermes WebUI stream contract.
-        STREAM_PARTIAL_TEXT[stream_id] = assistant_text
-        usage["output_tokens"] = max(1, len(assistant_text.split()))
-        put_jros_event("token", {"text": assistant_text})
         saved_session = _merge_and_save_jros_turn(
             session_id=session_id,
             stream_id=stream_id,
@@ -503,13 +506,26 @@ def _run_jros_chat_streaming(
         payload = _session_payload_with_full_messages(saved_session, tool_calls=[])
         put_jros_event("done", {"session": redact_session_data(payload), "usage": usage})
         put_jros_event("stream_end", {"session_id": session_id})
+    except urllib.error.HTTPError as exc:
+        try:
+            err_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            err_body = ""
+        put_jros_event("apperror", _jros_http_error_event(exc, err_body))
+    except urllib.error.URLError as exc:
+        put_jros_event("apperror", {
+            "label": "JROS gateway unreachable",
+            "type": "jros_gateway_offline",
+            "message": _redact_text(str(exc.reason if hasattr(exc, "reason") else exc))[:500],
+            "hint": _START_GATEWAY_HINT,
+        })
     except Exception as exc:
         safe = _redact_text(str(exc))[:500]
         put_jros_event("apperror", {
             "label": "JROS request failed",
-            "type": "jros_bridge_error",
+            "type": "jros_gateway_error",
             "message": safe or "JROS request failed.",
-            "hint": f"Check the JROS {_jros_instance_name()} instance, import path, and provider health.",
+            "hint": _START_GATEWAY_HINT,
         })
     finally:
         if s is not None:
@@ -529,5 +545,5 @@ def _run_jros_chat_streaming(
         unregister_active_run(stream_id)
 
 
-# Backwards-compatible name used by early route patches/tests.
+# The worker name routes.py dispatches to (kept from the old bridge).
 run_jros_streaming = _run_jros_chat_streaming

@@ -828,7 +828,10 @@
                 <span class="ares-backend-desc" id="aresBackendJrosStatus">Full replacement runtime</span>
               </span>
             </button>
-            <button class="ares-backend-action" data-backend="hybrid" id="aresBackendOptionHybrid" onclick="setAresBackend('hybrid')">
+            <!-- Hybrid (Hermes loop + JROS persona/tools) is hidden until the
+                 mode is fully defined; the server still accepts the value so a
+                 config that already says "hybrid" keeps working. -->
+            <button class="ares-backend-action" data-backend="hybrid" id="aresBackendOptionHybrid" onclick="setAresBackend('hybrid')" style="display:none" aria-hidden="true">
               <span class="ares-backend-check" data-check-for="hybrid"></span>
               <span class="ares-backend-copy">
                 <span class="ares-backend-name">Hybrid</span>

@@ -4,9 +4,11 @@ Reads character YAMLs from <JROS repo>/jaeger_os/personality/characters/<id>/cha
 (schema: character/v1).  Designed as a companion to api.persona — persona handles
 prompt rendering, this module exposes the raw data for the WebUI character browser.
 
-The JROS repo location is never assumed: it comes from ``ARES_JROS_DIR`` (the same
-override ``api.jros_bridge`` uses), or ``ARES_CHARACTER_DIR`` directly if the
-character library lives somewhere other than a JROS checkout.
+The JROS repo location is never assumed: it comes from ``ARES_JROS_DIR``, or
+``ARES_CHARACTER_DIR`` directly if the character library lives somewhere other
+than a JROS checkout. (Chat execution no longer needs a local checkout at all —
+it goes through the JROS gateway, see ``api.jros_gateway_chat`` — so these env
+vars only feed the character browser and update checks.)
 """
 
 from __future__ import annotations
@@ -21,14 +23,30 @@ import yaml
 logger = logging.getLogger(__name__)
 
 _CHARACTER_DIR_ENV = "ARES_CHARACTER_DIR"
+_JROS_DIR_ENV = "ARES_JROS_DIR"
+
+
+def _jros_repo_root() -> Path:
+    """Resolve the JROS repo checkout location.
+
+    There is no universal install path to guess — JROS is installed wherever
+    the operator put it, not necessarily under any particular developer's
+    directory layout. ``ARES_JROS_DIR`` must be set explicitly.
+    """
+    override = os.environ.get(_JROS_DIR_ENV, "").strip()
+    if not override:
+        raise RuntimeError(
+            "ARES_JROS_DIR is not set. Point it at your JROS checkout "
+            "(the directory containing jaeger_os/) to use the JROS "
+            "character library."
+        )
+    return Path(override).expanduser().resolve()
 
 
 def _character_dir() -> Path:
     explicit = os.environ.get(_CHARACTER_DIR_ENV, "").strip()
     if explicit:
         return Path(explicit).expanduser()
-    from api.jros_bridge import _jros_repo_root
-
     return _jros_repo_root() / "jaeger_os" / "personality" / "characters"
 
 

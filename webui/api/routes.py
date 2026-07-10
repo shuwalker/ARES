@@ -1775,7 +1775,7 @@ def _sync_main_model_to_jros(result: dict) -> None:
             targets=["jros"],
             hermes_config_path=_active_profile_config_path(),
         )
-        from api.jros_bridge import reset_jros_boot
+        from api.jros_gateway_chat import reset_jros_boot
 
         reset_jros_boot()
     except Exception:
@@ -18551,16 +18551,17 @@ def _select_chat_worker_target():
     """Return the backend worker for a normal WebUI chat turn.
 
     The ARES backend selector is the product-level router, so it must win over
-    transport details like gateway-chat.  ``jros`` routes to the real JROS
-    bridge; the ZMQ ping daemon is presence only and cannot execute turns.
-    ``hybrid`` intentionally falls through to the normal Hermes worker so
-    existing persona/tool injection remains additive.
+    transport details like gateway-chat.  ``jros`` routes to the JROS gateway
+    bridge (api/jros_gateway_chat.py), which POSTs the turn to a local or
+    remote `jaeger gateway` server. ``hybrid`` intentionally falls through to
+    the normal Hermes worker so existing persona/tool injection remains
+    additive.
     """
     try:
         from api.backend_selector import BACKEND_JROS, get_active_backend
 
         if get_active_backend(get_config()) == BACKEND_JROS:
-            from api.jros_bridge import run_jros_streaming
+            from api.jros_gateway_chat import run_jros_streaming
 
             return run_jros_streaming, False, True
     except Exception:
