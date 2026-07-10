@@ -577,6 +577,67 @@ def test_session_route_live_delivery_skips_replayed_active_run_items(monkeypatch
     assert stream.unsubscribed is True
 
 
+def test_session_route_breaks_on_terminal_even_when_reconciliation_replayed_it(monkeypatch):
+    """CORE regression (#5677 gate r3): if reconciliation replays the active run's
+    TERMINAL event at the subscribe cutoff, the live queue's copy is deduped — but
+    the loop must STILL break on it and unsubscribe. Otherwise the handler stays
+    blocked on the dead run's queue and misses subsequent session runs."""
+    import api.routes as routes
+
+    class _FakeStream:
+        def __init__(self):
+            self.q = queue.Queue()
+            # The live queue re-delivers the terminal event that reconciliation
+            # already replayed at/below the cutoff (same event_id) — it must be
+            # deduped for output yet still end the loop.
+            self.q.put_nowait(("stream_end", {"status": "done"}, "run_active:1"))
+            self.unsubscribed = False
+
+        def subscribe_with_snapshot(self):
+            return self.q, {"last_event_id": "run_active:1", "offline_buffered_events": 0}
+
+        def unsubscribe(self, q):
+            self.unsubscribed = q is self.q
+
+    stream = _FakeStream()
+    monkeypatch.setattr(routes, "_session_id_visible_to_request_profile", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        routes,
+        "get_session",
+        lambda sid, metadata_only=False: SimpleNamespace(
+            session_id=sid,
+            compact=lambda **_kwargs: {"session_id": sid, "title": "Session"},
+        ),
+    )
+    monkeypatch.setattr(routes, "_active_run_stream_for_session", lambda *_a, **_k: "run_active")
+    monkeypatch.setattr(routes, "STREAMS", {"run_active": stream})
+    # Reconciliation replays the active run's terminal event (run_active:1) — same id
+    # as the queued live copy, at the cutoff.
+    monkeypatch.setattr(
+        routes,
+        "read_session_run_events",
+        lambda *_a, **_k: {
+            "status": "ok",
+            "events": [
+                {"run_id": "run_active", "seq": 1, "event": "stream_end", "payload": {"status": "done"}, "event_id": "run_active:1"},
+            ],
+        },
+    )
+
+    handler = _FakeHandler()
+    # If the fix regresses, the loop never breaks and blocks on subscriber.get();
+    # the _stop_after_first_heartbeat safety turns an unexpected wait into a failure.
+    _stop_after_first_heartbeat(monkeypatch)
+    routes._handle_session_sse_stream_for_session(
+        handler,
+        urlparse("/api/sessions/session_1/events?after_event_id=run_active:0"),
+        "session_1",
+    )
+
+    # The handler must have exited cleanly and unsubscribed — not hung on the queue.
+    assert stream.unsubscribed is True, "handler must unsubscribe after a terminal, even when deduped"
+
+
 def test_session_route_unsubscribes_when_replay_disconnects(monkeypatch):
     import api.routes as routes
 

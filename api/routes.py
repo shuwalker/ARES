@@ -16985,16 +16985,26 @@ def _handle_session_run_journal_stream_for_session(handler, parsed, session_id):
                     queued_event_id = STREAM_LAST_EVENT_ID.get(active_stream_id)
                 event_id = queued_event_id or STREAM_LAST_EVENT_ID.get(active_stream_id)
                 event_seq = _run_journal_same_run_seq(event_id, active_stream_id)
-                if replay_cutoff_seq is not None and event_seq is not None and event_seq <= replay_cutoff_seq:
-                    continue
-                if event_id and event_id in sent_event_ids:
+                _is_terminal = event in ("stream_end", "error", "cancel")
+                _already_sent = (
+                    (replay_cutoff_seq is not None and event_seq is not None and event_seq <= replay_cutoff_seq)
+                    or (event_id and event_id in sent_event_ids)
+                )
+                if _already_sent:
+                    # Already delivered via replay/reconciliation (cutoff or dedup).
+                    # A terminal event still has to end this loop — otherwise, when
+                    # reconciliation replayed the active run's terminal at the cutoff,
+                    # the live copy would be skipped here and the handler would stay
+                    # blocked on a dead run's queue and miss subsequent session runs.
+                    if _is_terminal:
+                        break
                     continue
                 if event_id:
                     _sse_with_id(handler, event, data, event_id)
                     note_sent_event_id(event_id)
                 else:
                     _sse(handler, event, data)
-                if event in ("stream_end", "error", "cancel"):
+                if _is_terminal:
                     break
         except _CLIENT_DISCONNECT_ERRORS:
             pass
