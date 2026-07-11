@@ -41,7 +41,7 @@ const APP_TITLEBAR_KEYS = {
   memory: 'tab_memory', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', characters: 'tab_characters', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','finance','logs','characters','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','logs','characters','plugin'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -418,7 +418,6 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'profiles') await loadProfilesPanel();
   if (nextPanel === 'todos') await loadTodos();
   if (nextPanel === 'insights') await loadInsights();
-  if (nextPanel === 'finance' && typeof onFinancePanelActivate === 'function') onFinancePanelActivate();
   if (nextPanel === 'characters') AresCharacters.load();
   if (nextPanel === 'logs') await loadLogs();
   _syncLogsAutoRefresh();
@@ -6401,35 +6400,25 @@ window.addEventListener('resize',()=>{
 
 // ── ARES Backend Selector ─────────────────────────────────────
 // The core ARES feature: pick which AI backend runs your agent.
-// Hermes, JROS as the full replacement backend, or Hybrid as the additive mode.
+// Hermes, or JROS as the full replacement backend (turns run on a JROS
+// gateway server — `jaeger gateway` — local or on another machine).
+// Hybrid (the additive mode) is hidden in the UI until it's fully defined;
+// a config that already says "hybrid" still works server-side.
 
 let _aresCurrentBackend = 'hermes';
 let _aresJrosAvailable = false;
+let _aresJrosMode = '';   // 'gateway' | 'local' | '' — how JROS turns will run
 
 function initAresBackend() {
   api('/api/ares/backend').then(data => {
     _aresCurrentBackend = data.current || 'hermes';
     _aresJrosAvailable = (data.status && data.status.jros) || false;
+    _aresJrosMode = (data.status && data.status.jros_mode) || '';
     updateAresBackendUI();
-    // Fetch identity payload to keep assistantDisplayName in sync
-    _refreshAresIdentity();
   }).catch(() => {
     // Backend API not available — default to Hermes, hide the chip
     const wrap = $('aresBackendWrap');
     if (wrap) wrap.style.display = 'none';
-  });
-}
-
-function _refreshAresIdentity() {
-  api('/api/ares/identity').then(idData => {
-    window._aresIdentity = idData;
-    // Update the topbar title if it's showing the assistant name
-    const _tt = $('topbarTitle');
-    if (_tt && typeof assistantDisplayName === 'function') {
-      _tt.textContent = assistantDisplayName();
-    }
-  }).catch(() => {
-    // Identity API not available — fall back to legacy behavior
   });
 }
 
@@ -6469,16 +6458,19 @@ function updateAresBackendUI() {
   // JROS status text
   const jrosStatus = $('aresBackendJrosStatus');
   const hybridStatus = $('aresBackendHybridStatus');
-  if (jrosStatus) jrosStatus.textContent = _aresJrosAvailable ? 'Full replacement runtime ready' : 'JROS backend — full agent replacement';
-  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes loop + JROS persona/tools' : 'Hermes + JROS combined runtime';
+  if (jrosStatus) {
+    jrosStatus.textContent = !_aresJrosAvailable
+      ? 'Start `jaeger gateway` where JROS is installed'
+      : _aresJrosMode === 'local'
+        ? 'Runs JROS on this machine (in-process)'
+        : 'JROS gateway connected';
+  }
+  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes loop + JROS persona/tools' : 'Needs the JROS gateway running';
 
-  // Direct JROS is allowed even when the presence daemon is offline because the
-  // real JROS bridge boots JROS in-process on first use. Hybrid still depends on
-  // the presence/tool bridge.
+  // JROS stays selectable while the gateway is offline (the user may start it
+  // right after switching); the dimmed row signals it isn't reachable yet.
   const jrosOpt = $('aresBackendOptionJros');
-  const hybridOpt = $('aresBackendOptionHybrid');
-  if (jrosOpt) jrosOpt.style.opacity = '1';
-  if (hybridOpt) hybridOpt.style.opacity = _aresJrosAvailable ? '1' : '0.5';
+  if (jrosOpt) jrosOpt.style.opacity = _aresJrosAvailable ? '1' : '0.5';
 
   _syncAresBackendDependentUI();
 }
@@ -6515,13 +6507,12 @@ function closeAresBackendDropdown() {
 
 function setAresBackend(backend) {
   if (backend === 'hybrid' && !_aresJrosAvailable) {
-    showToast('Hybrid needs the JROS presence bridge running');
+    showToast('Hybrid needs the JROS gateway running');
     return;
   }
   api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify({ backend }) })
     .then(data => {
       _aresCurrentBackend = (data && data.backend) || backend;
-      window._aresCurrentBackend = _aresCurrentBackend;
       updateAresBackendUI();
       if (typeof _refreshModelDropdownsAfterProviderChange === 'function') {
         _refreshModelDropdownsAfterProviderChange();
@@ -6530,8 +6521,6 @@ function setAresBackend(backend) {
       }
       closeAresBackendDropdown();
       showToast(`Backend switched to ${_aresBackendDisplayName(_aresCurrentBackend)}`);
-      // Refresh identity after backend switch
-      _refreshAresIdentity();
     })
     .catch(e => showToast('Failed to switch backend'));
 }

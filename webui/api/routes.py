@@ -1775,7 +1775,7 @@ def _sync_main_model_to_jros(result: dict) -> None:
             targets=["jros"],
             hermes_config_path=_active_profile_config_path(),
         )
-        from api.jros_bridge import reset_jros_boot
+        from api.jros_gateway_chat import reset_jros_boot
 
         reset_jros_boot()
     except Exception:
@@ -10877,7 +10877,7 @@ def handle_get(handler, parsed) -> bool:
         # precedence in api.auth.get_password_hash(), but until now the UI
         # had no way to know — see issue #1139 / #1560.
         settings["password_env_var"] = bool(
-            os.getenv("ARES_WEBUI_PASSWORD", "").strip() or os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
+            os.getenv("HERMES_WEBUI_PASSWORD", "").strip()
         )
         # Auth-state fields for frontend safety badge / confirmation flows
         from api.auth import get_password_hash, is_auth_enabled
@@ -11712,24 +11712,6 @@ def handle_get(handler, parsed) -> bool:
             return bad(handler, f"Failed to list ARES tools: {exc}")
         return j(handler, {"tools": tools})
 
-    # ARES: Identity — centralized assistant display name and backend badge
-    if parsed.path == "/api/ares/identity":
-        try:
-            from api.ares_identity import build_identity_payload
-            from api.backend_selector import get_active_backend
-            from api.config import get_config as _get_cfg
-            _cfg = _get_cfg()
-            backend = get_active_backend(_cfg)
-            settings = load_settings()
-            payload = build_identity_payload(
-                profile=settings.get("active_profile"),
-                bot_name=settings.get("bot_name"),
-                backend=backend,
-            )
-        except Exception as exc:
-            return bad(handler, f"Failed to build identity: {exc}")
-        return j(handler, payload)
-
     if parsed.path == "/api/git-info":
         qs = parse_qs(parsed.query)
         sid = qs.get("session_id", [""])[0]
@@ -12294,29 +12276,6 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/email/thread":
         from api.email_routes import handle_email_thread_get
         return handle_email_thread_get(handler, parsed)
-
-    # ── Monarch Money API routes (GET) ──
-    if parsed.path == "/api/monarch/status":
-        from api.monarch_routes import handle_monarch_status_get
-        return handle_monarch_status_get(handler, parsed)
-    if parsed.path == "/api/monarch/accounts":
-        from api.monarch_routes import handle_monarch_accounts_get
-        return handle_monarch_accounts_get(handler, parsed)
-    if parsed.path == "/api/monarch/transactions":
-        from api.monarch_routes import handle_monarch_transactions_get
-        return handle_monarch_transactions_get(handler, parsed)
-    if parsed.path == "/api/monarch/budgets":
-        from api.monarch_routes import handle_monarch_budgets_get
-        return handle_monarch_budgets_get(handler, parsed)
-    if parsed.path == "/api/monarch/cashflow":
-        from api.monarch_routes import handle_monarch_cashflow_get
-        return handle_monarch_cashflow_get(handler, parsed)
-    if parsed.path == "/api/monarch/recurring":
-        from api.monarch_routes import handle_monarch_recurring_get
-        return handle_monarch_recurring_get(handler, parsed)
-    if parsed.path == "/api/monarch/holdings":
-        from api.monarch_routes import handle_monarch_holdings_get
-        return handle_monarch_holdings_get(handler, parsed)
 
     return False  # 404
 
@@ -13848,7 +13807,7 @@ def handle_post(handler, parsed) -> bool:
         # succeeding — the previous behaviour returned 200 + a green save toast
         # while every subsequent login still required the env-var password.
         if requested_password or requested_clear_password:
-            if os.getenv("ARES_WEBUI_PASSWORD", "").strip() or os.getenv("HERMES_WEBUI_PASSWORD", "").strip():
+            if os.getenv("HERMES_WEBUI_PASSWORD", "").strip():
                 return bad(
                     handler,
                     "HERMES_WEBUI_PASSWORD env var is set — it overrides the settings password. "
@@ -13916,9 +13875,7 @@ def handle_post(handler, parsed) -> bool:
         if max_tokens_provided:
             max_tokens_status = set_max_tokens(max_tokens_value)
         saved.pop("password_hash", None)  # never expose hash to client
-        _status = max_tokens_status if (max_tokens_provided and max_tokens_status is not None) else get_max_tokens_status()
-        if isinstance(_status, dict):
-            saved.update(_status)
+        saved.update(max_tokens_status if max_tokens_provided else get_max_tokens_status())
 
         # Settings that change which sessions appear in the sidebar must
         # invalidate the session-list cache directly. Relying on the cache's
@@ -14697,29 +14654,6 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/email/save_nas":
         from api.email_routes import handle_email_save_nas_post
         return handle_email_save_nas_post(handler, parsed, body)
-
-    # ── Monarch Money API routes (POST) ──
-    if parsed.path == "/api/monarch/connect":
-        from api.monarch_routes import handle_monarch_connect_post
-        return handle_monarch_connect_post(handler, parsed, body)
-    if parsed.path == "/api/monarch/disconnect":
-        from api.monarch_routes import handle_monarch_disconnect_post
-        return handle_monarch_disconnect_post(handler, parsed, body)
-    if parsed.path == "/api/monarch/reconnect":
-        from api.monarch_routes import handle_monarch_reconnect_post
-        return handle_monarch_reconnect_post(handler, parsed, body)
-    if parsed.path == "/api/monarch/budget/set":
-        from api.monarch_routes import handle_monarch_budget_set_post
-        return handle_monarch_budget_set_post(handler, parsed, body)
-    if parsed.path == "/api/monarch/refresh":
-        from api.monarch_routes import handle_monarch_refresh_post
-        return handle_monarch_refresh_post(handler, parsed, body)
-    if parsed.path == "/api/monarch/transaction/create":
-        from api.monarch_routes import handle_monarch_transaction_create_post
-        return handle_monarch_transaction_create_post(handler, parsed, body)
-    if parsed.path == "/api/monarch/transaction/update":
-        from api.monarch_routes import handle_monarch_transaction_update_post
-        return handle_monarch_transaction_update_post(handler, parsed, body)
 
     return False  # 404
 
@@ -18616,18 +18550,22 @@ def _active_run_stream_for_session(session_id: str | None) -> str | None:
 def _select_chat_worker_target():
     """Return the backend worker for a normal WebUI chat turn.
 
-    Uses the ARES BackendRouter to select the active backend's worker target.
-    Falls back to Hermes if the router is unavailable.
+    The ARES backend selector is the product-level router, so it must win over
+    transport details like gateway-chat.  ``jros`` routes to the JROS gateway
+    bridge (api/jros_gateway_chat.py), which POSTs the turn to a local or
+    remote `jaeger gateway` server. ``hybrid`` intentionally falls through to
+    the normal Hermes worker so existing persona/tool injection remains
+    additive.
     """
     try:
-        from api.backends.router import get_router
-        from api.backend_selector import get_active_backend
+        from api.backend_selector import BACKEND_JROS, get_active_backend
 
-        router = get_router()
-        backend = get_active_backend(get_config())
-        return router.select_worker(backend)
+        if get_active_backend(get_config()) == BACKEND_JROS:
+            from api.jros_gateway_chat import run_jros_streaming
+
+            return run_jros_streaming, False, True
     except Exception:
-        logger.warning("Failed to resolve ARES backend via BackendRouter; falling back to Hermes worker", exc_info=True)
+        logger.warning("Failed to resolve ARES backend; falling back to Hermes worker", exc_info=True)
     backend_is_gateway = webui_gateway_chat_enabled(get_config())
     if backend_is_gateway:
         return _run_gateway_chat_streaming, True, False
@@ -18891,12 +18829,8 @@ def _start_run(
     )
 
     try:
-        from api.backends.router import get_router
-        from api.backend_selector import get_active_backend
-
-        router = get_router()
-        backend = get_active_backend(get_config())
-        if backend == "jros":
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+        if get_active_backend(get_config()) == BACKEND_JROS:
             return _start_chat_stream_for_session(
                 s,
                 msg=msg,

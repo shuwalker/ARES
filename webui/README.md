@@ -84,6 +84,51 @@ Runtime paths:
 
 The public showcase image lives at `../docs/assets/character-tab-showcase.png`.
 
+## JROS Backend (gateway)
+
+The backend selector's JROS mode runs each chat turn on a **JROS gateway
+server** over HTTP — the same integration shape as the Hermes Gateway bridge.
+JROS runs as its own process (so it never fights a running JROS TUI/app for
+the instance lock), and it can live on a different machine:
+
+```bash
+# on the machine where JROS is installed (same box, or a PC on your network)
+jaeger gateway                          # localhost only, port 8643
+jaeger gateway --host 0.0.0.0 --port 8643   # reachable from other machines
+
+# on the machine running ARES (skip if JROS is on the same box)
+export ARES_JROS_GATEWAY_URL=http://<jros-host>:8643
+```
+
+If your JROS checkout doesn't have the `jaeger gateway` command yet (it's
+pending upstream), use the standalone twin shipped here — copy this ONE file
+to the machine where JROS lives and run it there:
+
+```bash
+python3 webui/scripts/jros_gateway.py --jros-dir /path/to/JROS --host 0.0.0.0
+```
+
+It auto-delegates to the native `jaeger gateway` once the checkout ships it.
+
+**No gateway? It still works locally.** When no gateway answers and
+`ARES_JROS_DIR` points at a JROS checkout on the same machine, ARES boots
+JROS inside itself and runs the turn in-process — flip the toggle and go,
+no extra program. Two caveats, reported as plain messages instead of
+failures: JROS allows only one running copy per instance, so if the JROS
+app/TUI is already open you'll be asked to close it (or run `jaeger
+gateway` in its place); and a machine with no JROS instance yet is told to
+run `jaeger setup` first.
+
+Order of preference: gateway first (works for remote machines and alongside
+a running gateway), in-process fallback second (local convenience).
+
+Optional auth: set `JAEGER_GATEWAY_KEY` on the gateway and the same value in
+`ARES_JROS_GATEWAY_KEY` for ARES. The UI's JROS option lights up when the
+gateway answers `GET /v1/health` — or, with no gateway, when a local
+checkout is available for the fallback (the dropdown shows which mode
+you're in). `ARES_JROS_DIR` also still feeds the character browser and
+update checker.
+
 ## Dependencies
 
 - Python 3.11+

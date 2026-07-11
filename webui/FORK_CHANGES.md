@@ -5,6 +5,47 @@ Each entry: date, what changed, which files, why, and rollback path.
 
 ---
 
+## 2026-07-10 — JROS in-process fallback when no gateway is running
+
+**What:** The JROS backend now resolves execution in two steps: gateway first (`ARES_JROS_GATEWAY_URL`), and when no gateway is reachable but `ARES_JROS_DIR` points at a local checkout, ARES boots JROS in-process and runs the turn directly.
+
+**Why:** The local single-machine case should be flip-the-toggle simple — no extra program to start. The gateway remains the path for remote machines and for sharing an already-running JROS. The two failure modes that sank the old in-process-only bridge are now guarded: an already-running JROS (exclusive instance lock) produces a message telling the user to close it or run `jaeger gateway` instead, and a missing instance says to run `jaeger setup` — the interactive wizard is never launched inside the web server.
+
+**Files changed:**
+- `webui/api/jros_gateway_chat.py` — `local_jros_root()`, `_boot_jros()` (cached, guarded), `_run_local_jros_turn()`; the chat worker falls back on gateway connection failure; `reset_jros_boot()` also drops the local boot cache (releasing the instance lock).
+- `webui/api/backend_selector.py` — availability = gateway health (mode "gateway") else local checkout (mode "local"); `backend_status()` gains `jros_mode`.
+- `webui/static/panels.js` — JROS status line reflects the mode.
+- `webui/tests/test_jros_backend_streaming.py` — fallback turn, lock/setup guard messages, gateway-wins precedence, local-mode availability.
+
+**Rollback:** Remove the fallback block in the chat worker and the local-boot helpers; drop `jros_mode` from `backend_selector.py`/`panels.js`.
+
+**Verification:** `pytest tests/test_jros_backend_streaming.py` — 13 passed.
+
+---
+
+## 2026-07-10 — JROS backend rebuilt as a Hermes-style HTTP gateway bridge
+
+**What:** Replaced the in-process JROS bridge (`api/jros_bridge.py`) and the ZMQ presence sidecar (`scripts/jros_presence.py`) with `api/jros_gateway_chat.py`, an HTTP/SSE client for the new JROS gateway server (`jaeger gateway`, added to the JROS repo as `jaeger_os/interfaces/http_gateway.py`). Hid the Hybrid backend option in the UI (server still accepts the value).
+
+**Why:** The in-process bridge booted JROS via `boot_for_tui()`, which takes JROS's exclusive instance lock — so with JROS already running on the machine, every ARES turn failed with "instance is locked". And a JROS on another machine was unreachable by design: the ZMQ sidecar only answered pings and never executed turns (plus `pyzmq` was never a declared dependency). Running JROS as its own gateway server — the same integration shape as the Hermes Gateway bridge in `api/gateway_chat.py` — fixes both: no lock conflict, and a remote JROS is just `ARES_JROS_GATEWAY_URL=http://<jros-host>:8643`.
+
+**Files changed:**
+- `webui/api/jros_gateway_chat.py` — **NEW**. Gateway chat worker (`run_jros_streaming`), health probe (`jros_gateway_health`), remote reboot (`reset_jros_boot` → `POST /v1/reset`). Env: `ARES_JROS_GATEWAY_URL`, `ARES_JROS_GATEWAY_KEY`; config: `jros_gateway_url`.
+- `webui/api/jros_bridge.py`, `webui/scripts/jros_presence.py` — **REMOVED** (superseded; `ARES_JROS_BUS_ENDPOINT` no longer read).
+- `webui/scripts/jros_gateway.py` — **NEW**. Standalone single-file gateway launcher for JROS checkouts that don't ship `jaeger gateway` yet (the upstream JROS change is pending); vendored copy of the submitted module, auto-delegates to the native one when present.
+- `webui/api/backend_selector.py` — availability = live `GET /v1/health` from the gateway (5s TTL cache); ZMQ probe and `ARES_JROS_DIR` execution fallback removed.
+- `webui/api/characters.py` — now owns the `ARES_JROS_DIR` repo-root helper (character browser only).
+- `webui/api/routes.py` — worker/reset imports point at `api.jros_gateway_chat`.
+- `webui/static/index.html`, `webui/static/panels.js` — Hybrid option hidden; JROS status strings describe the gateway.
+- `webui/README.md`, `README.md` — JROS gateway setup section (placeholder hostnames).
+- `webui/tests/test_jros_backend_streaming.py` — rewritten against a fake in-test JROS gateway (real HTTP round-trip).
+
+**Rollback:** Restore `api/jros_bridge.py` + `scripts/jros_presence.py` from git history, revert the import sites in `routes.py`/`backend_selector.py`/`characters.py`, and unhide the Hybrid button in `index.html`.
+
+**Verification:** `pytest tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py`.
+
+---
+
 ## 2026-07-05 — Onboarding wizard, MCP bootstrap, provider sync, JROS bridge
 
 **What:** Expanded the first-run onboarding wizard with agent-prompt, Tailscale/iPhone, connect-test, and MCP-placement steps. Added MCP bootstrap CLIs (`tools/mcp-bootstrap/`, `tools/safari-mcp-bootstrap/`), Hermes/JROS provider sync (`api/ares_provider_sync.py`, `/api/ares/provider/sync`), and a default-off JROS chat bridge (`api/jros_bridge.py`).
