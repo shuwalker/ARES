@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from api.models import Session
-from api.streaming import _normalize_gateway_routing_metadata
+from api.streaming import _normalize_gateway_routing_metadata, _runtime_model_provider_from_gateway_routing
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -49,6 +49,32 @@ def test_gateway_routing_metadata_is_safely_normalized_from_response_metadata():
         ],
     }
     assert "fake_credential" not in repr(normalized)
+    assert _runtime_model_provider_from_gateway_routing(
+        normalized,
+        fallback_model="deepseek-v3.2",
+        fallback_provider="CanopyWave",
+    ) == ("deepseek-v3.2", "Alibaba Cloud")
+
+
+def test_gateway_runtime_model_provider_falls_back_to_selected_attempt():
+    routing = _normalize_gateway_routing_metadata(
+        {
+            "requested_provider": "openai-codex",
+            "requested_model": "gpt-5.5",
+            "routing": [
+                {"provider": "openai-codex", "model": "gpt-5.5", "status": "failed"},
+                {"provider": "ollama-cloud", "model": "deepseek-v4-flash", "status": "selected"},
+            ],
+        },
+        requested_model="gpt-5.5",
+        requested_provider="openai-codex",
+    )
+
+    assert _runtime_model_provider_from_gateway_routing(
+        routing,
+        fallback_model="gpt-5.5",
+        fallback_provider="openai-codex",
+    ) == ("deepseek-v4-flash", "ollama-cloud")
 
 
 def test_gateway_routing_metadata_absent_returns_none_without_placeholder_noise():
@@ -87,14 +113,20 @@ def test_session_persists_latest_gateway_routing_and_history_across_reload():
 
 def test_streaming_captures_gateway_metadata_into_usage_payload_and_assistant_turn():
     assert "_extract_gateway_routing_metadata" in STREAMING_PY
+    assert "_runtime_model_provider_from_gateway_routing" in STREAMING_PY
     assert "usage['gateway_routing']" in STREAMING_PY
     assert "_dm['_gatewayRouting']" in STREAMING_PY
+    assert "s.model = _runtime_model" in STREAMING_PY
+    assert "s.model_provider = _runtime_provider" in STREAMING_PY
     assert "s.gateway_routing_history" in STREAMING_PY
 
 
 def test_frontend_copies_and_formats_gateway_metadata_without_absent_noise():
     assert "d.usage.gateway_routing" in MESSAGES_JS
     assert "lastAsst._gatewayRouting" in MESSAGES_JS
+    assert "S.session.model=_runtimeModel" in MESSAGES_JS
+    assert "S.session.model_provider=_runtimeProvider" in MESSAGES_JS
+    assert "_writePersistedModelState(_persistRuntimeModel,S.session.model_provider||null)" in MESSAGES_JS
     assert "_formatGatewayModelLabel" in UI_JS
     assert "_gatewayRoutingLabel" in UI_JS
     assert "msg-gateway-inline" in UI_JS

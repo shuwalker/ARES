@@ -1715,6 +1715,45 @@ def _normalize_gateway_routing_metadata(payload, requested_model=None, requested
     return normalized
 
 
+def _runtime_model_provider_from_gateway_routing(gateway_routing, *, fallback_model=None, fallback_provider=None):
+    """Return the authoritative served model/provider from safe gateway metadata.
+
+    ``model`` / ``model_provider`` on a WebUI session start as the requested route.
+    Gateway/fallback providers can serve a different model/provider and expose that
+    as ``used_model`` / ``used_provider``. Once present, those served values are the
+    runtime source of truth for future turns and for UI answers like "what model is
+    active?".
+    """
+    model = str(fallback_model or '').strip() or None
+    provider = str(fallback_provider or '').strip() or None
+    if not isinstance(gateway_routing, dict):
+        return model, provider
+
+    def _runtime_string(value):
+        cleaned = _clean_gateway_routing_scalar(value)
+        if isinstance(cleaned, str):
+            cleaned = cleaned.strip()
+            return cleaned or None
+        return None
+
+    used_model = _runtime_string(gateway_routing.get('used_model'))
+    used_provider = _runtime_string(gateway_routing.get('used_provider'))
+
+    if not (used_model and used_provider):
+        for attempt in gateway_routing.get('routing') or []:
+            if not isinstance(attempt, dict):
+                continue
+            status = str(attempt.get('status') or '').strip().lower()
+            selected = attempt.get('selected') is True or status in {'selected', 'success', 'succeeded', 'ok'}
+            if not selected:
+                continue
+            used_model = used_model or _runtime_string(attempt.get('model'))
+            used_provider = used_provider or _runtime_string(attempt.get('provider'))
+            break
+
+    return used_model or model, used_provider or provider
+
+
 def _extract_gateway_routing_metadata(agent, result, requested_model=None, requested_provider=None):
     candidates = []
     if isinstance(result, dict):
@@ -8996,6 +9035,15 @@ def _run_agent_streaming(
                     requested_provider=resolved_provider,
                 )
                 if _gateway_routing:
+                    _runtime_model, _runtime_provider = _runtime_model_provider_from_gateway_routing(
+                        _gateway_routing,
+                        fallback_model=resolved_model or model,
+                        fallback_provider=resolved_provider,
+                    )
+                    if _runtime_model:
+                        s.model = _runtime_model
+                    if _runtime_provider:
+                        s.model_provider = _runtime_provider
                     s.gateway_routing = _gateway_routing
                     _history = list(getattr(s, 'gateway_routing_history', None) or [])
                     _history.append(_gateway_routing)

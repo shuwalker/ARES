@@ -5445,7 +5445,20 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
               }
               if(d.usage.gateway_routing){
                 lastAsst._gatewayRouting=d.usage.gateway_routing;
-                if(S.session)S.session.gateway_routing=d.usage.gateway_routing;
+                if(S.session){
+                  S.session.gateway_routing=d.usage.gateway_routing;
+                  const _runtimeModel=typeof d.usage.gateway_routing.used_model==='string'?d.usage.gateway_routing.used_model.trim():'';
+                  const _runtimeProvider=typeof d.usage.gateway_routing.used_provider==='string'?d.usage.gateway_routing.used_provider.trim():'';
+                  if(_runtimeModel)S.session.model=_runtimeModel;
+                  if(_runtimeProvider)S.session.model_provider=_runtimeProvider;
+                  const _persistRuntimeModel=_runtimeModel||(S.session.model||'');
+                  if((_runtimeModel||_runtimeProvider)&&_persistRuntimeModel&&typeof _writePersistedModelState==='function')_writePersistedModelState(_persistRuntimeModel,S.session.model_provider||null);
+                  if(_persistRuntimeModel&&$('modelSelect')&&typeof _applyModelToDropdown==='function')_applyModelToDropdown(_persistRuntimeModel,$('modelSelect'),S.session.model_provider||null);
+                  if(_runtimeModel||_runtimeProvider){
+                    if(typeof syncModelChip==='function')syncModelChip();
+                    if(typeof syncTopbar==='function')syncTopbar();
+                  }
+                }
                 if(S.session&&Array.isArray(S.session.gateway_routing_history))S.session.gateway_routing_history.push(d.usage.gateway_routing);
                 else if(S.session)S.session.gateway_routing_history=[d.usage.gateway_routing];
               }

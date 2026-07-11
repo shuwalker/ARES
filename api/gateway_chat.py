@@ -188,15 +188,30 @@ def _gateway_sse_reasoning_delta(payload: dict) -> str:
         return ""
 
 
-def _gateway_stream_usage(payload: dict) -> dict:
+def _gateway_stream_usage(payload: dict, *, requested_model=None, requested_provider=None) -> dict:
     usage = payload.get("usage") if isinstance(payload, dict) else None
     if not isinstance(usage, dict):
-        return {}
-    return {
+        usage = {}
+    data = {
         "input_tokens": int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
         "output_tokens": int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
         "estimated_cost": usage.get("estimated_cost") or usage.get("estimated_cost_usd") or 0,
     }
+    try:
+        from api.streaming import _normalize_gateway_routing_metadata
+
+        gateway_routing = _normalize_gateway_routing_metadata(
+            payload,
+            requested_model=requested_model,
+            requested_provider=requested_provider,
+        )
+        if gateway_routing:
+            data["gateway_routing"] = gateway_routing
+    except Exception:
+        logger.debug("Failed to normalize gateway routing metadata from stream usage", exc_info=True)
+    if not isinstance(payload, dict) or not usage and "gateway_routing" not in data:
+        return {}
+    return data
 
 
 def _gateway_reasoning_delta(payload: dict) -> str:
@@ -443,7 +458,11 @@ def _run_gateway_runs_api_streaming(
                     final_text = output
                     if stream_id in STREAM_PARTIAL_TEXT:
                         STREAM_PARTIAL_TEXT[stream_id] = output
-                usage.update({k: v for k, v in _gateway_stream_usage(payload).items() if v})
+                usage.update({k: v for k, v in _gateway_stream_usage(
+                    payload,
+                    requested_model=model,
+                    requested_provider=body_extras.get("provider"),
+                ).items() if v})
                 sse_event = "message"
                 continue
             if payload_event == "run.failed":
@@ -462,7 +481,11 @@ def _run_gateway_runs_api_streaming(
                 if stream_id in STREAM_PARTIAL_TEXT:
                     STREAM_PARTIAL_TEXT[stream_id] += delta
                 put_gateway_event("token", {"text": delta})
-            usage.update({k: v for k, v in _gateway_stream_usage(payload).items() if v})
+            usage.update({k: v for k, v in _gateway_stream_usage(
+                payload,
+                requested_model=model,
+                requested_provider=body_extras.get("provider"),
+            ).items() if v})
     return final_text, usage
 
 
@@ -811,8 +834,16 @@ def _run_gateway_chat_streaming(
                         if stream_id in STREAM_PARTIAL_TEXT:
                             STREAM_PARTIAL_TEXT[stream_id] += delta
                         put_gateway_event("token", {"text": delta})
-                    usage.update({k: v for k, v in _gateway_stream_usage(payload).items() if v})
-            usage.update({k: v for k, v in _gateway_stream_usage(last_payload).items() if v})
+                    usage.update({k: v for k, v in _gateway_stream_usage(
+                        payload,
+                        requested_model=model,
+                        requested_provider=model_provider,
+                    ).items() if v})
+            usage.update({k: v for k, v in _gateway_stream_usage(
+                last_payload,
+                requested_model=model,
+                requested_provider=model_provider,
+            ).items() if v})
         assistant_text = final_text.strip()
         if not assistant_text:
             put_gateway_event("apperror", {
@@ -839,6 +870,11 @@ def _run_gateway_chat_streaming(
             if attachments:
                 user_msg["attachments"] = list(attachments)
             assistant_msg = {"role": "assistant", "content": assistant_text, "timestamp": assistant_ts}
+            gateway_routing = usage.get("gateway_routing") if isinstance(usage, dict) else None
+            if not isinstance(gateway_routing, dict):
+                gateway_routing = None
+            if gateway_routing:
+                assistant_msg["_gatewayRouting"] = gateway_routing
             saved_reasoning = STREAM_REASONING_TEXT.get(stream_id, "")
             if saved_reasoning:
                 assistant_msg["reasoning"] = saved_reasoning
@@ -899,8 +935,25 @@ def _run_gateway_chat_streaming(
             s.pending_started_at = None
             s.pending_user_source = None
             s.workspace = str(workspace)
-            s.model = model
-            s.model_provider = model_provider
+            runtime_model = model
+            runtime_provider = model_provider
+            if gateway_routing:
+                try:
+                    from api.streaming import _runtime_model_provider_from_gateway_routing
+
+                    runtime_model, runtime_provider = _runtime_model_provider_from_gateway_routing(
+                        gateway_routing,
+                        fallback_model=model,
+                        fallback_provider=model_provider,
+                    )
+                except Exception:
+                    logger.debug("Failed to promote gateway runtime model/provider", exc_info=True)
+                s.gateway_routing = gateway_routing
+                history = list(getattr(s, "gateway_routing_history", None) or [])
+                history.append(gateway_routing)
+                s.gateway_routing_history = history[-50:]
+            s.model = runtime_model
+            s.model_provider = runtime_provider
             s.save()
         try:
             from api.goals import evaluate_goal_after_turn, has_active_goal

@@ -12295,6 +12295,29 @@ def handle_get(handler, parsed) -> bool:
         from api.email_routes import handle_email_thread_get
         return handle_email_thread_get(handler, parsed)
 
+    # ── Monarch Money API routes (GET) ──
+    if parsed.path == "/api/monarch/status":
+        from api.monarch_routes import handle_monarch_status_get
+        return handle_monarch_status_get(handler, parsed)
+    if parsed.path == "/api/monarch/accounts":
+        from api.monarch_routes import handle_monarch_accounts_get
+        return handle_monarch_accounts_get(handler, parsed)
+    if parsed.path == "/api/monarch/transactions":
+        from api.monarch_routes import handle_monarch_transactions_get
+        return handle_monarch_transactions_get(handler, parsed)
+    if parsed.path == "/api/monarch/budgets":
+        from api.monarch_routes import handle_monarch_budgets_get
+        return handle_monarch_budgets_get(handler, parsed)
+    if parsed.path == "/api/monarch/cashflow":
+        from api.monarch_routes import handle_monarch_cashflow_get
+        return handle_monarch_cashflow_get(handler, parsed)
+    if parsed.path == "/api/monarch/recurring":
+        from api.monarch_routes import handle_monarch_recurring_get
+        return handle_monarch_recurring_get(handler, parsed)
+    if parsed.path == "/api/monarch/holdings":
+        from api.monarch_routes import handle_monarch_holdings_get
+        return handle_monarch_holdings_get(handler, parsed)
+
     return False  # 404
 
 
@@ -14674,6 +14697,29 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/email/save_nas":
         from api.email_routes import handle_email_save_nas_post
         return handle_email_save_nas_post(handler, parsed, body)
+
+    # ── Monarch Money API routes (POST) ──
+    if parsed.path == "/api/monarch/connect":
+        from api.monarch_routes import handle_monarch_connect_post
+        return handle_monarch_connect_post(handler, parsed, body)
+    if parsed.path == "/api/monarch/disconnect":
+        from api.monarch_routes import handle_monarch_disconnect_post
+        return handle_monarch_disconnect_post(handler, parsed, body)
+    if parsed.path == "/api/monarch/reconnect":
+        from api.monarch_routes import handle_monarch_reconnect_post
+        return handle_monarch_reconnect_post(handler, parsed, body)
+    if parsed.path == "/api/monarch/budget/set":
+        from api.monarch_routes import handle_monarch_budget_set_post
+        return handle_monarch_budget_set_post(handler, parsed, body)
+    if parsed.path == "/api/monarch/refresh":
+        from api.monarch_routes import handle_monarch_refresh_post
+        return handle_monarch_refresh_post(handler, parsed, body)
+    if parsed.path == "/api/monarch/transaction/create":
+        from api.monarch_routes import handle_monarch_transaction_create_post
+        return handle_monarch_transaction_create_post(handler, parsed, body)
+    if parsed.path == "/api/monarch/transaction/update":
+        from api.monarch_routes import handle_monarch_transaction_update_post
+        return handle_monarch_transaction_update_post(handler, parsed, body)
 
     return False  # 404
 
