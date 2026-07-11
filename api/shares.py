@@ -77,7 +77,12 @@ def _share_message_text(message: dict) -> str:
                 # never stringify them into the public snapshot.
                 continue
             if item.get("type") == "text":
-                parts.append(str(item.get("text") or ""))
+                # Only append genuine string text — a dict-valued "text" (possible
+                # via /api/session/import) must NOT be str()'d into the public
+                # snapshot (that would publish structured/tool payload verbatim).
+                _t = item.get("text")
+                if isinstance(_t, str):
+                    parts.append(_t)
         return "".join(parts).strip()
     if isinstance(content, str):
         return content.strip()
@@ -176,7 +181,11 @@ def build_share_snapshot(session) -> dict:
             safe_messages.append(sanitized)
     if not safe_messages:
         raise ValueError("This conversation has no shareable messages yet.")
-    title = _force_redact_credentials(str(safe_session.get("title") or "Untitled"))
+    # Only accept a genuine string title — a dict-valued title (possible via
+    # /api/session/import) must not be str()'d into the public snapshot.
+    _raw_title = safe_session.get("title")
+    _raw_title = _raw_title if isinstance(_raw_title, str) else "Untitled"
+    title = _force_redact_credentials(_raw_title or "Untitled")
     title = _redact_share_paths(title, redact_paths) or "Untitled"
     return {
         "title": title,
