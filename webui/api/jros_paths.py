@@ -99,9 +99,50 @@ def legacy_persona_dir() -> Path:
     return jros_source_root() / "jaeger_os" / "agent" / "personas"
 
 
+def _read_first_existing_text(paths: list[Path]) -> str | None:
+    """Return stripped text from the first readable file in ``paths``."""
+    for path in paths:
+        try:
+            if path.exists():
+                value = path.read_text(encoding="utf-8").strip()
+                if value:
+                    return value
+        except OSError:
+            continue
+    return None
+
+
+def _active_instance_files() -> list[Path]:
+    """Known JROS active-instance marker locations, newest runtime first."""
+    home = jaeger_home()
+    return [
+        home / ".jaeger_os" / "active_instance",
+        home / ".jaeger" / "active_instance",
+        Path("~/.jaeger/active_instance").expanduser(),
+    ]
+
+
 def jros_instance_name() -> str | None:
-    """Return the requested JROS instance name, if configured."""
-    return os.environ.get(ARES_JROS_INSTANCE_ENV, "").strip() or None
+    """Return the requested JROS instance name, if configured.
+
+    Resolution order:
+      1. ARES_JROS_INSTANCE env var (ARES-specific override)
+      2. JAEGER_INSTANCE_NAME env var (JROS-native override)
+      3. ``<JAEGER_HOME>/.jaeger_os/active_instance`` (JROS 0.7 runtime)
+      4. legacy active-instance marker files
+      5. None (last-resort JROS bridge default)
+
+    ARES passes this value as ``jaeger bridge <instance>`` because JROS 0.7 can
+    emit a ready frame from the implicit default while the first real turn still
+    stalls. The explicit instance argument is the verified working contract.
+    """
+    explicit = os.environ.get(ARES_JROS_INSTANCE_ENV, "").strip()
+    if explicit:
+        return explicit
+    native = os.environ.get("JAEGER_INSTANCE_NAME", "").strip()
+    if native:
+        return native
+    return _read_first_existing_text(_active_instance_files())
 
 
 def jros_config_path() -> Path:
@@ -114,13 +155,16 @@ def jros_config_path() -> Path:
     if instance_dir:
         return expand_path(instance_dir) / "config.yaml"
 
-    active_instance = Path("~/.jaeger/active_instance").expanduser()
-    if active_instance.exists():
-        instance_name = active_instance.read_text(encoding="utf-8").strip()
-        if instance_name:
-            return expand_path(Path("~/.jaeger/instances").expanduser() / instance_name / "config.yaml")
+    instance_name = jros_instance_name()
+    if instance_name:
+        runtime_config = jaeger_home() / ".jaeger_os" / "instances" / instance_name / "config.yaml"
+        if runtime_config.exists():
+            return expand_path(runtime_config)
+        legacy_config = Path("~/.jaeger/instances").expanduser() / instance_name / "config.yaml"
+        if legacy_config.exists():
+            return expand_path(legacy_config)
 
-    installed_config = jros_install_tree() / "instance" / "default" / "config.yaml"
+    installed_config = jaeger_home() / ".jaeger_os" / "instances" / "default" / "config.yaml"
     if installed_config.exists():
         return expand_path(installed_config)
 

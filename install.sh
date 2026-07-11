@@ -1,54 +1,64 @@
 #!/usr/bin/env bash
 # ARES Installation Script
-# Run: bash install.sh
+# Thin wrapper that delegates to webui/scripts/install.sh
+#
+# Usage:
+#   bash install.sh [--backend auto|hermes|jros|hybrid] [--no-start]
+#
+# Options:
+#   --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto)
+#   --no-start      Skip auto-starting the server after installation
 
 set -e
+
+# Collect extra args to pass through to the webui installer
+EXTRA_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --backend)
+            EXTRA_ARGS+=("--backend" "$2")
+            shift 2
+            ;;
+        --no-start)
+            EXTRA_ARGS+=("--no-start")
+            shift
+            ;;
+        -h|--help)
+            echo "ARES Installation Script"
+            echo ""
+            echo "Usage: bash install.sh [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto)"
+            echo "  --no-start      Skip auto-starting the server after installation"
+            echo "  -h, --help      Show this help"
+            echo ""
+            echo "For full options, see: webui/scripts/install.sh --help"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: bash install.sh [--backend auto|hermes|jros|hybrid] [--no-start]"
+            exit 1
+            ;;
+    esac
+done
+
+# Find the webui installer relative to this script's location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WEBUI_INSTALLER="$SCRIPT_DIR/webui/scripts/install.sh"
+
+if [ ! -f "$WEBUI_INSTALLER" ]; then
+    echo "ERROR: WebUI installer not found at $WEBUI_INSTALLER"
+    echo "Make sure this script is run from the root of the ARES repository."
+    exit 1
+fi
 
 echo "======================================"
 echo "  ARES — Installation"
 echo "======================================"
 echo ""
 
-# Check Python
-if ! command -v python3 &>/dev/null; then
-    echo "ERROR: Python 3.11+ required. Install via: brew install python@3.11"
-    exit 1
-fi
-
-PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-echo "Python: $PYTHON_VERSION"
-
-# Check pip
-if ! command -v pip3 &>/dev/null; then
-    echo "ERROR: pip3 not found."
-    exit 1
-fi
-
-# Install in editable mode
-echo ""
-echo "Installing ARES..."
-pip3 install -e ".[screen]" 2>/dev/null || pip3 install -e .
-
-echo ""
-echo "Initializing ARES directories..."
-ares init
-
-echo ""
-echo "======================================"
-echo "  Installation complete."
-echo "======================================"
-echo ""
-echo "Next steps:"
-echo "  1. Set your Anthropic API key:"
-echo "     export ANTHROPIC_API_KEY=sk-ant-..."
-echo "     (add to ~/.zshrc or ~/.bash_profile)"
-echo ""
-echo "  2. Run first-time setup:"
-echo "     ares setup"
-echo ""
-echo "  3. Start the daemon:"
-echo "     ares start"
-echo ""
-echo "  4. Give ARES a goal:"
-echo '     ares goal "make a YouTube video about productivity hacks"'
-echo ""
+# Delegate to the webui installer with any extra args
+exec bash "$WEBUI_INSTALLER" "${EXTRA_ARGS[@]}"

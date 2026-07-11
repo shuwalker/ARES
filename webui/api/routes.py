@@ -11718,7 +11718,6 @@ def handle_get(handler, parsed) -> bool:
             from api.ares_identity import build_identity_payload
             from api.backend_selector import get_active_backend
             from api.config import get_config as _get_cfg
-            from api.config import load_settings
             _cfg = _get_cfg()
             backend = get_active_backend(_cfg)
             settings = load_settings()

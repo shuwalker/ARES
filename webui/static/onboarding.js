@@ -339,13 +339,13 @@ function _renderOnboardingBody(){
   }
 
   if(key==='agentPrompt'){
-    _setOnboardingNotice(t('onboarding_notice_agent_prompt')||'Copy this prompt into the agent running on the machine that will host ARES. It installs WebUI, password auth, private-network access, auto-start, and MCP bootstrap checks. If no agent backend is installed, use the Hermes Agent install link below.','info');
+    _setOnboardingNotice(t('onboarding_notice_agent_prompt')||'Copy this prompt into the agent running on the machine that will host ARES. It installs WebUI, password auth, private-network access, auto-start, and MCP bootstrap checks. If no backend exists yet, install ARES Web UI or connect to an existing agent backend.','info');
     body.innerHTML=`
       <div class="onboarding-hero-icon">›_</div>
       <div class="onboarding-centered-copy">
         <div class="onboarding-kicker">${t('onboarding_kicker_step_1')||'STEP 1'}</div>
         <h3>${t('onboarding_agent_prompt_heading')||'Set up ARES Web UI'}</h3>
-        <p>${t('onboarding_agent_prompt_body')||'Send this prompt to the agent backend on the target machine. If no backend exists yet, install Hermes Agent first or connect ARES to an existing backend URL.'}</p><div class="onboarding-command-card"><code>curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash</code><a class="onboarding-secondary-wide" href="https://hermes-agent.nousresearch.com/docs" target="_blank" rel="noopener">${t('onboarding_hermes_docs_link')||'Open Hermes Agent docs'}</a></div>
+        <p>${t('onboarding_agent_prompt_body')||'Send this prompt to the agent backend on the target machine. If no backend exists yet, install ARES Web UI or connect to an existing agent backend.'}</p><div class="onboarding-command-card"><code>curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash</code><a class="onboarding-secondary-wide" href="https://hermes-agent.nousresearch.com/docs" target="_blank" rel="noopener">${t('onboarding_hermes_docs_link')||'Open ARES Web UI docs'}</a></div>
       </div>
       <div class="onboarding-prompt-card">
         <pre>${esc(_aresOnboardingPrompt())}</pre>

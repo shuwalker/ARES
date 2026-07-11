@@ -12,6 +12,7 @@ from typing import Dict
 from .base import AgenticBackend, BackendRouter
 from .hermes import HermesBackend
 from .jros import JROSBackend
+from .hybrid import HybridBackend
 
 
 def get_default_router() -> BackendRouter:
@@ -19,6 +20,7 @@ def get_default_router() -> BackendRouter:
     backends: Dict[str, AgenticBackend] = {
         "hermes": HermesBackend(),
         "jros": JROSBackend(),
+        "hybrid": HybridBackend(),
     }
     return BackendRouter(backends)
 

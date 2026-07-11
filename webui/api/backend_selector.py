@@ -99,7 +99,8 @@ def is_jros_available() -> bool:
             from api.jros_bridge import is_jros_bridge_available
 
             result = is_jros_bridge_available()
-        except Exception:
+        except Exception as exc:
+            logger.warning("JROS bridge availability check failed: %s", exc, exc_info=True)
             result = False
 
     _jros_available_cache = result

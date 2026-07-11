@@ -22,7 +22,11 @@ class JROSBackend(AgenticBackend):
         try:
             from api.jros_bridge import is_jros_bridge_available
             return is_jros_bridge_available()
-        except Exception:
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "JROSBackend.is_available() probe failed: %s", exc, exc_info=True
+            )
             return False
 
     def get_worker_target(self) -> tuple:

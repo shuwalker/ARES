@@ -41,7 +41,7 @@ const APP_TITLEBAR_KEYS = {
   memory: 'tab_memory', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', characters: 'tab_characters', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','logs','characters','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','finance','logs','characters','plugin'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -418,6 +418,7 @@ async function switchPanel(name, opts = {}) {
   if (nextPanel === 'profiles') await loadProfilesPanel();
   if (nextPanel === 'todos') await loadTodos();
   if (nextPanel === 'insights') await loadInsights();
+  if (nextPanel === 'finance' && typeof onFinancePanelActivate === 'function') onFinancePanelActivate();
   if (nextPanel === 'characters') AresCharacters.load();
   if (nextPanel === 'logs') await loadLogs();
   _syncLogsAutoRefresh();
@@ -6468,8 +6469,8 @@ function updateAresBackendUI() {
   // JROS status text
   const jrosStatus = $('aresBackendJrosStatus');
   const hybridStatus = $('aresBackendHybridStatus');
-  if (jrosStatus) jrosStatus.textContent = _aresJrosAvailable ? 'Full replacement runtime ready' : 'Full replacement bridge boots on next turn';
-  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes loop + JROS persona/tools' : 'Needs JROS presence bridge';
+  if (jrosStatus) jrosStatus.textContent = _aresJrosAvailable ? 'Full replacement runtime ready' : 'JROS backend — full agent replacement';
+  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes loop + JROS persona/tools' : 'Hermes + JROS combined runtime';
 
   // Direct JROS is allowed even when the presence daemon is offline because the
   // real JROS bridge boots JROS in-process on first use. Hybrid still depends on

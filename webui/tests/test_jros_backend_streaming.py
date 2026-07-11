@@ -51,6 +51,59 @@ def test_jros_repo_root_honors_ares_jros_dir_override(monkeypatch, tmp_path):
     assert jros_bridge._jros_repo_root() == override.resolve()
 
 
+def test_jros_instance_name_reads_runtime_active_instance(monkeypatch, tmp_path):
+    from api import jros_paths
+
+    home = tmp_path / "jaeger-home"
+    active_dir = home / ".jaeger_os"
+    instance_dir = active_dir / "instances" / "jros-dev"
+    instance_dir.mkdir(parents=True)
+    (active_dir / "active_instance").write_text("jros-dev\n", encoding="utf-8")
+    config_path = instance_dir / "config.yaml"
+    config_path.write_text("instance_name: jros-dev\n", encoding="utf-8")
+
+    monkeypatch.setenv("ARES_JAEGER_HOME", str(home))
+    monkeypatch.delenv("JAEGER_HOME", raising=False)
+    monkeypatch.delenv("ARES_JROS_INSTANCE", raising=False)
+    monkeypatch.delenv("JAEGER_INSTANCE_NAME", raising=False)
+    monkeypatch.delenv("ARES_JROS_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("JAEGER_INSTANCE_DIR", raising=False)
+
+    assert jros_paths.jros_instance_name() == "jros-dev"
+    assert jros_paths.jros_config_path() == config_path.resolve()
+
+
+def test_jros_client_appends_resolved_instance_to_bridge_command(monkeypatch, tmp_path):
+    from api.jros_client import JrosClient
+
+    home = tmp_path / "jaeger-home"
+    (home / ".jaeger_os").mkdir(parents=True)
+    (home / ".jaeger_os" / "active_instance").write_text("jros-dev\n", encoding="utf-8")
+    launcher = home / "jaeger"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+
+    monkeypatch.setenv("ARES_JAEGER_HOME", str(home))
+    monkeypatch.delenv("JAEGER_HOME", raising=False)
+    monkeypatch.delenv("ARES_JROS_INSTANCE", raising=False)
+    monkeypatch.delenv("JAEGER_INSTANCE_NAME", raising=False)
+
+    client = JrosClient()
+    assert client._command == [str(launcher.resolve()), "bridge", "jros-dev"]
+
+
+def test_jros_client_appends_instance_to_explicit_jaeger_bridge_command(monkeypatch, tmp_path):
+    from api.jros_client import JrosClient
+
+    launcher = tmp_path / "jaeger"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("ARES_JROS_INSTANCE", "jros-dev")
+
+    client = JrosClient(command=[str(launcher), "bridge"])
+    assert client._command == [str(launcher), "bridge", "jros-dev"]
+
+
 def test_jros_bridge_runs_voice_turn_and_persists_session(monkeypatch):
     from api import config
     from api.config import create_stream_channel, register_stream_owner

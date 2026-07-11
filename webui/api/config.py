@@ -2370,9 +2370,9 @@ def _base_url_points_at_local_server(base_url: str) -> bool:
 def _custom_slug_rest_looks_like_host_port(rest: str) -> bool:
     """True when ``custom:<rest>`` is an endpoint-style slug ``host:port``.
 
-    WebUI sometimes derives ``custom:10.8.71.41:8080`` from ``base_url`` authority.
+    WebUI sometimes derives ``custom:10.0.0.1:8080`` from ``base_url`` authority.
     The #1776 peel must not treat that middle colon as part of an eaten model
-    segment — otherwise ``@custom:10.8.71.41:8080:Qwen3`` wrongly becomes model
+    segment — otherwise ``@custom:10.0.0.1:8080:Qwen3`` wrongly becomes model
     ``8080:Qwen3``.
     """
     rest = str(rest or "").strip()

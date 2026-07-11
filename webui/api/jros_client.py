@@ -24,11 +24,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
 from api.jros_paths import jaeger_home as resolve_jaeger_home
 from api.jros_paths import jaeger_launcher as resolve_jaeger_launcher
+from api.jros_paths import jros_instance_name as resolve_jros_instance_name
 
 PROTOCOL_VERSION = "1"
 
@@ -37,11 +39,12 @@ class JrosError(RuntimeError):
     """The bridge failed to boot, died mid-turn, or returned a fatal."""
 
 
-def _default_command(jaeger_home: str | None) -> list[str]:
-    """Resolve the installed launcher: <home>/jaeger bridge.
+def _default_command(jaeger_home: str | None, instance: str | None = None) -> list[str]:
+    """Resolve the installed launcher command: <home>/jaeger bridge [instance].
 
-    Resolution order: explicit arg, ARES_JAEGER_HOME, JAEGER_HOME, then the
-    standard one-line installer location at ~/jaeger.
+    JROS 0.7's implicit default bridge can emit ``ready`` and still stall on
+    the first real turn. ARES therefore passes the resolved instance as a
+    positional bridge argument whenever it knows one.
     """
     raw_home = resolve_jaeger_home() if jaeger_home is None else jaeger_home
     launcher = resolve_jaeger_launcher() if jaeger_home is None else Path(str(raw_home)).expanduser() / "jaeger"
@@ -51,7 +54,20 @@ def _default_command(jaeger_home: str | None) -> list[str]:
             f"no JROS install at {home} — install first "
             "(https://github.com/JenkinsRobotics/JROS) or pass "
             "jaeger_home=/path/to/install")
-    return [str(launcher), "bridge"]
+    command = [str(launcher), "bridge"]
+    if instance:
+        command.append(instance)
+    return command
+
+
+def _append_instance_arg_if_bridge(command: list[str], instance: str | None) -> list[str]:
+    """Append instance to explicit ``jaeger bridge`` commands when absent."""
+    out = list(command)
+    if not instance or len(out) != 2:
+        return out
+    if Path(out[0]).name == "jaeger" and out[1] == "bridge":
+        out.append(instance)
+    return out
 
 
 # ── wire helpers (client side of jaeger_os/interfaces/protocol.py) ──
@@ -96,12 +112,18 @@ class JrosClient:
                  instance: str | None = None,
                  command: list[str] | None = None,
                  env: dict | None = None, cwd: str | None = None) -> None:
-        self._command = command or _default_command(jaeger_home)
+        resolved_instance = instance or resolve_jros_instance_name()
+        self._command = (
+            _append_instance_arg_if_bridge(command, resolved_instance)
+            if command is not None else _default_command(jaeger_home, resolved_instance)
+        )
         self._env = dict(env) if env is not None else os.environ.copy()
-        if instance:
-            self._env["JAEGER_INSTANCE_NAME"] = instance
+        if resolved_instance:
+            self._env["JAEGER_INSTANCE_NAME"] = resolved_instance
         self._cwd = cwd
         self._proc: subprocess.Popen | None = None
+        self._stderr_lines: list[str] = []
+        self._stderr_thread: threading.Thread | None = None
         self.ready: dict[str, Any] | None = None
 
     # ── lifecycle ─────────────────────────────────────────────────
@@ -111,9 +133,20 @@ class JrosClient:
         self._proc = subprocess.Popen(
             self._command,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,        # boot/model logs → discarded
+            stderr=subprocess.PIPE,        # capture stderr for diagnostics
             text=True, bufsize=1, env=self._env, cwd=self._cwd,
         )
+        # Drain stderr on a background thread so it doesn't block stdout reads
+        self._stderr_lines = []
+        if self._proc.stderr is not None:
+            def _drain_stderr():
+                try:
+                    for line in self._proc.stderr:
+                        self._stderr_lines.append(line.rstrip())
+                except Exception:
+                    pass
+            self._stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            self._stderr_thread.start()
         for line in self._proc.stdout:        # type: ignore[union-attr]
             frame = _parse(line)
             if frame is None:
@@ -123,19 +156,38 @@ class JrosClient:
                               "model": frame.get("model")}
                 return self.ready
             if frame.get("type") == "fatal":
-                raise JrosError(str(frame.get("error", "boot failed")))
-        raise JrosError("bridge exited before ready")
+                # Surface stderr in the error message for diagnostics
+                stderr_tail = "\n".join(self._stderr_lines[-10:]) if self._stderr_lines else ""
+                msg = str(frame.get("error", "boot failed"))
+                if stderr_tail:
+                    msg = f"{msg}\nBridge stderr:\n{stderr_tail}"
+                raise JrosError(msg)
+        # Bridge exited before ready — include stderr for diagnostics
+        stderr_tail = "\n".join(self._stderr_lines[-10:]) if self._stderr_lines else ""
+        msg = "bridge exited before ready"
+        if stderr_tail:
+            msg = f"{msg}\nBridge stderr:\n{stderr_tail}"
+        raise JrosError(msg)
 
     def close(self) -> None:
-        if self._proc is not None and self._proc.poll() is None:
+        proc = self._proc
+        if proc is not None and proc.poll() is None:
             try:
                 self._write(quit_op())
             except Exception:  # noqa: BLE001
                 pass
             try:
-                self._proc.terminate()
+                proc.wait(timeout=3)
             except Exception:  # noqa: BLE001
-                pass
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=3)
+                except Exception:  # noqa: BLE001
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=3)
+                    except Exception:  # noqa: BLE001
+                        pass
         self._proc = None
 
     def __enter__(self) -> "JrosClient":

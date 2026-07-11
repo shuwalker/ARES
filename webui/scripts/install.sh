@@ -50,6 +50,7 @@ STAGE_NAME=""
 MANIFEST_MODE=false
 NON_INTERACTIVE=false
 BACKEND_MODE="${ARES_BACKEND:-auto}"
+NO_START=false
 
 # Detect non-interactive mode
 if [ -t 0 ]; then
@@ -72,6 +73,7 @@ while [[ $# -gt 0 ]]; do
         --json) JSON_OUTPUT=true; shift ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --backend) BACKEND_MODE="$2"; shift 2 ;;
+        --no-start) NO_START=true; shift ;;
         -h|--help)
             echo "ARES Web UI Installer"
             echo ""
@@ -89,6 +91,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
             echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto)"
+            echo "  --no-start      Skip auto-starting the server after installation"
             echo "  -h, --help      Show this help"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -469,3 +472,12 @@ echo "  For remote access over Tailscale:"
 echo "    Install Tailscale on both machines, sign into the same tailnet,"
 echo "    then access via http://<tailscale-ip>:$PORT"
 echo ""
+
+if [ "$NO_START" = false ] && [ -t 0 ]; then
+    echo -e "${CYAN}→ Starting ARES Web UI...${NC}"
+    cd "$WEBUI_DIR"
+    HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
+else
+    echo -e "${CYAN}→ To start the server later, run:${NC}"
+    echo "  cd $WEBUI_DIR && HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
+fi

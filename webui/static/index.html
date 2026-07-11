@@ -685,7 +685,7 @@
             <div id="aresBackendWrap" class="composer-profile-wrap">
               <button class="composer-profile-chip ares-backend-chip" id="aresBackendChip" type="button" onclick="toggleAresBackendDropdown()" title="Select AI backend">
                 <span class="composer-profile-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.07 7.07l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.07-7.07l4.24-4.24"/></svg></span>
-                <span class="composer-profile-label" id="aresBackendLabel">Hermes</span>
+                <span class="composer-profile-label" id="aresBackendLabel">ARES</span>
                 <span class="composer-profile-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
               </button>
             </div>
@@ -819,7 +819,7 @@
               <span class="ares-backend-check" data-check-for="hermes">✓</span>
               <span class="ares-backend-copy">
                 <span class="ares-backend-name">Hermes</span>
-                <span class="ares-backend-desc">Hermes Agent backend</span>
+                <span class="ares-backend-desc">Default ARES agent backend</span>
               </span>
             </button>
             <button class="ares-backend-action" data-backend="jros" id="aresBackendOptionJros" onclick="setAresBackend('jros')">
@@ -989,6 +989,21 @@
         <div class="insights-card wiki-status-card" id="llmWikiStatusCard">
           <div style="color:var(--muted);font-size:12px" data-i18n="loading">Loading...</div>
         </div>
+      </div>
+    </div>
+    <div id="mainFinance" class="main-view">
+      <div class="main-view-header">
+        <div>
+          <div class="main-view-title" data-i18n="tab_finance">Finance</div>
+          <div class="settings-section-meta">Personal CFO powered by Monarch Money</div>
+        </div>
+        <div class="main-view-actions">
+          <span id="financeStatusBadge" class="finance-status-badge disconnected"><span class="dot"></span> Checking...</span>
+          <button type="button" class="finance-connect-btn" id="financeConnectBtn" onclick="_financeToggleConnect()">Connect</button>
+        </div>
+      </div>
+      <div class="main-view-content finance-main-content" id="financeContent">
+        <div class="finance-loading"><div class="spinner"></div> Initializing...</div>
       </div>
     </div>
     <div id="mainLogs" class="main-view">

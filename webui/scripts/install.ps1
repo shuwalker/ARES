@@ -14,6 +14,10 @@
     Git branch (default: main)
 .PARAMETER SkipSetup
     Skip the setup wizard
+.PARAMETER Backend
+    Backend mode: auto, hermes, jros, or hybrid (default: auto)
+.PARAMETER NoStart
+    Skip auto-starting the server after installation
 #>
 
 param(
@@ -21,7 +25,9 @@ param(
     [string]$Host = '',
     [string]$InstallDir = '',
     [string]$Branch = 'main',
-    [switch]$SkipSetup
+    [switch]$SkipSetup,
+    [string]$Backend = 'auto',
+    [switch]$NoStart
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,6 +68,44 @@ if (-not $Python) {
 }
 $PyVersion = & $Python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 Write-Host "✓ Python $PyVersion found" -ForegroundColor Green
+
+# === JROS detection ===
+function Detect-JROS {
+    $jaegerHome = if ($env:ARES_JAEGER_HOME) { $env:ARES_JAEGER_HOME } `
+        elseif ($env:JAEGER_HOME) { $env:JAEGER_HOME } `
+        else { Join-Path $env:USERPROFILE 'jaeger' }
+    $jaegerExe = Join-Path $jaegerHome 'jaeger.exe'
+    if (Test-Path $jaegerExe) {
+        Write-Host "✓ JROS detected at $jaegerHome" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "→ JROS not detected at $jaegerHome" -ForegroundColor Cyan
+        return $false
+    }
+}
+$JrosDetected = Detect-JROS
+
+# Resolve backend mode
+$SelectedBackend = $Backend.ToLower()
+if ($SelectedBackend -eq 'auto') {
+    $SelectedBackend = 'hermes'
+    if ($JrosDetected) {
+        Write-Host "JROS detected. Use JROS as the primary ARES backend? (default: No)" -ForegroundColor Yellow
+        $response = Read-Host "  [y/N]"
+        if ($response -match '^[yY]') {
+            $SelectedBackend = 'jros'
+        }
+    }
+}
+switch ($SelectedBackend) {
+    'hermes' { }
+    'jros' { }
+    'hybrid' { }
+    default {
+        Write-Error "✗ Invalid backend mode: $Backend (expected auto, hermes, jros, or hybrid)"
+        exit 1
+    }
+}
 
 # === Clone / update repo ===
 Write-Host "→ Installing to $InstallDirFinal..." -ForegroundColor Cyan
@@ -143,6 +187,20 @@ if (-not (Test-Path ".env") -and (Test-Path ".env.example")) {
 }
 $stateDir = Join-Path $AresHome 'webui'
 if (-not (Test-Path $stateDir)) { New-Item -ItemType Directory -Force -Path $stateDir | Out-Null }
+
+# Write backend settings
+$settingsPath = Join-Path $stateDir 'settings.json'
+$settings = @{}
+if (Test-Path $settingsPath) {
+    try {
+        $settings = Get-Content $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
+    } catch {
+        $settings = @{}
+    }
+}
+$settings['ares_backend'] = $SelectedBackend
+$settings | ConvertTo-Json -Depth 4 | Out-File $settingsPath -Encoding UTF8
+Write-Host "✓ Configured ARES backend: $SelectedBackend" -ForegroundColor Green
 Write-Host "✓ Configuration ready" -ForegroundColor Green
 
 # === Complete ===
@@ -156,10 +214,13 @@ if (-not $SkipSetup) {
     Write-Host "  The onboarding wizard will open in your browser."
 }
 
-# Auto-start if interactive
-if ($Host.UI.RawUI -and -not $SkipSetup) {
+# Auto-start if interactive and not skipped
+if ($Host.UI.RawUI -and -not $SkipSetup -and -not $NoStart) {
     Write-Host "Starting ARES Web UI..." -ForegroundColor Cyan
     $env:HERMES_WEBUI_HOST = $HostFinal
     $env:HERMES_WEBUI_PORT = "$PortFinal"
     & $VenvPython (Join-Path $WebuiDir 'server.py')
+} elseif ($NoStart) {
+    Write-Host "→ To start the server later, run:" -ForegroundColor Cyan
+    Write-Host "  cd $WebuiDir && `$env:HERMES_WEBUI_HOST=`"$HostFinal`" `$env:HERMES_WEBUI_PORT=`"$PortFinal`" .venv\Scripts\python server.py"
 }

@@ -13,6 +13,7 @@ Public exports:
 from .base import AgenticBackend, BackendRouter
 from .hermes import HermesBackend
 from .jros import JROSBackend
+from .hybrid import HybridBackend
 from .router import get_router, get_default_router
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "BackendRouter",
     "HermesBackend",
     "JROSBackend",
+    "HybridBackend",
     "get_router",
     "get_default_router",
 ]

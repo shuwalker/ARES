@@ -15,8 +15,11 @@ pointed to by ``JAEGER_HOME`` / ``ARES_JAEGER_HOME``.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
+import selectors
+import subprocess
 import sys
 import threading
 import time
@@ -67,12 +70,148 @@ def _jaeger_launcher() -> Any:
 def is_jros_bridge_available() -> bool:
     """Return True when ARES can spawn the supported JROS bridge.
 
-    This checks the installed launcher only. It deliberately does not check for
-    a Python package in ARES's venv because that is not the supported integration
-    model.
+    This performs a real probe — not just a filesystem check — so the
+    availability result matches what a chat turn would actually experience.
+    The probe checks:
+      1. The launcher binary exists and is executable.
+      2. A test bridge subprocess can boot and return its ``ready`` handshake
+         within 10 seconds (same contract Hermes gets for free by being
+         in-process).
+      3. The test subprocess is killed after the handshake regardless.
+
+    This mirrors how Hermes availability works: Hermes is "available" because
+    it's in-process and will raise immediately if broken. JROS should prove
+    the same — a file on disk doesn't mean the bridge can actually boot.
     """
     launcher = _jaeger_launcher()
-    return launcher.exists() and os.access(launcher, os.X_OK)
+    if not (launcher.exists() and os.access(launcher, os.X_OK)):
+        logger.debug("JROS launcher not found or not executable: %s", launcher)
+        return False
+
+    # Real probe: spawn the bridge, wait for the ready handshake, then kill it.
+    # This is the same contract a real chat turn uses (JrosClient.start()),
+    # so if this fails, a chat turn would fail too.
+    # Resolve instance name the same way a real turn would.
+    instance = _jros_instance_name()
+    env = os.environ.copy()
+    command = [str(launcher), "bridge"]
+    if instance:
+        env["JAEGER_INSTANCE_NAME"] = instance
+        command.append(instance)
+
+    try:
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,  # capture stderr instead of discarding
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+    except Exception as exc:
+        logger.warning("JROS bridge probe: failed to spawn %s: %s", launcher, exc)
+        return False
+
+    try:
+        ready = None
+        stderr_lines: list[str] = []
+        deadline = time.time() + 10  # 10s handshake timeout (same as JrosClient)
+
+        while time.time() < deadline:
+            # Check if process exited
+            if proc.poll() is not None:
+                # Read any remaining stderr for diagnostics
+                remaining_err = (proc.stderr.read() or "") if proc.stderr else ""
+                if remaining_err:
+                    stderr_lines.append(remaining_err)
+                break
+
+            # Read stdout lines (ready handshake comes on stdout)
+            result_holder: dict = {"ready": None, "error": None}
+
+            def _read_ready():
+                try:
+                    for line in proc.stdout:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except (json.JSONDecodeError, ValueError):
+                            continue
+                        if not isinstance(obj, dict):
+                            continue
+                        if obj.get("type") == "ready":
+                            result_holder["ready"] = obj
+                            return
+                        if obj.get("type") == "fatal":
+                            result_holder["error"] = str(obj.get("error", "bridge fatal"))
+                            return
+                except Exception as exc:
+                    result_holder["error"] = str(exc)
+
+            reader = threading.Thread(target=_read_ready, daemon=True)
+            reader.start()
+            reader.join(timeout=max(0.1, deadline - time.time()))
+
+            if result_holder["ready"] is not None:
+                ready = result_holder["ready"]
+                break
+            if result_holder["error"] is not None:
+                logger.warning(
+                    "JROS bridge probe: bridge reported fatal during handshake: %s",
+                    result_holder["error"],
+                )
+                break
+        else:
+            logger.warning("JROS bridge probe: timed out waiting for ready handshake")
+
+        # Drain stderr for diagnostics (non-blocking)
+        try:
+            if proc.stderr and not proc.stderr.closed:
+                sel = selectors.PollSelector()
+                sel.register(proc.stderr, selectors.EVENT_READ)
+                for _ in range(50):  # max 50 lines
+                    events = sel.select(timeout=0.05)
+                    if not events:
+                        break
+                    err_line = proc.stderr.readline()
+                    if err_line:
+                        stderr_lines.append(err_line.rstrip())
+                    else:
+                        break
+                sel.unregister(proc.stderr)
+        except Exception:
+            pass
+
+        if stderr_lines:
+            logger.debug("JROS bridge probe stderr: %s", "\\n".join(stderr_lines[-5:]))
+
+        if ready is not None:
+            instance_name = ready.get("instance", "?")
+            model_name = ready.get("model", "?")
+            logger.info(
+                "JROS bridge probe succeeded: instance=%s model=%s",
+                instance_name,
+                model_name,
+            )
+            return True
+
+        logger.warning("JROS bridge probe: no ready handshake received")
+        return False
+
+    finally:
+        # Always kill the probe subprocess
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
 
 def _jros_instance_name() -> str | None:
