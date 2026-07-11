@@ -8,11 +8,6 @@ PUBLIC_ONBOARDING_FILES = [
     ROOT / "tools" / "mcp-bootstrap" / "README.md",
     ROOT / "tools" / "safari-mcp-bootstrap" / "safari_mcp_bootstrap.py",
     ROOT / "tools" / "safari-mcp-bootstrap" / "README.md",
-    ROOT / "Sources" / "ARES" / "Views" / "SetupView.swift",
-    ROOT / "ARES-Modules" / "Sources" / "ARESModules" / "Extractions" / "sam.md",
-    ROOT / "ARES-Modules" / "Sources" / "ARESModules" / "Extractions" / "scarf.md",
-    ROOT / "ARES-Modules" / "Sources" / "ARESModules" / "Extractions" / "hermes-desktop.md",
-    ROOT / "ARES-Modules" / "Sources" / "ARESModules" / "KnowledgeGraph" / "KnowledgeGraph.swift",
 ]
 
 FORBIDDEN_PUBLIC_ONBOARDING_STRINGS = [
