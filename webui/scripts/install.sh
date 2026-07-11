@@ -37,6 +37,7 @@ BOLD='\033[1m'
 REPO_URL_SSH="git@github.com:shuwalker/ARES.git"
 REPO_URL_HTTPS="https://github.com/shuwalker/ARES.git"
 ARES_HOME="${ARES_HOME:-$HOME/.ares}"
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME}"
 WEBUI_DIR="$INSTALL_DIR/webui"
 PYTHON_VERSION="3.11"
@@ -383,22 +384,76 @@ setup_config() {
         log_error "Python not found; cannot write ARES backend settings"
         exit 1
     fi
-    "$CONFIG_PYTHON" - "$selected_backend" "$ARES_HOME" <<'PY'
-import json, sys
+    "$CONFIG_PYTHON" - "$selected_backend" "$ARES_HOME" "$HERMES_HOME" <<'PY'
+import json
+import sys
 from pathlib import Path
+
 backend = sys.argv[1]
 state_home = Path(sys.argv[2]) / "webui"
+hermes_home = Path(sys.argv[3])
 state_home.mkdir(parents=True, exist_ok=True)
 settings = state_home / "settings.json"
 data = {}
 if settings.exists():
     try:
+        import json
         data = json.loads(settings.read_text(encoding="utf-8"))
     except Exception:
         data = {}
 data["ares_backend"] = backend
 settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+# Runtime reads the selected backend from Hermes config.yaml, not settings.json.
+# Keep this line-oriented and dependency-free so it works even if PyYAML is absent.
+hermes_home.mkdir(parents=True, exist_ok=True)
+config_path = hermes_home / "config.yaml"
+lines = config_path.read_text(encoding="utf-8").splitlines() if config_path.exists() else []
+out = []
+seen = False
+for line in lines:
+    if line.startswith("ares_backend:"):
+        out.append(f"ares_backend: {backend}")
+        seen = True
+    else:
+        out.append(line)
+if not seen:
+    if out and out[-1].strip():
+        out.append("")
+    out.append(f"ares_backend: {backend}")
+config_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 PY
+    if [ "${JROS_DETECTED:-false}" = true ]; then
+        "$CONFIG_PYTHON" - "$WEBUI_DIR/.env" "$JAEGER_HOME_DETECTED" <<'PY'
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1])
+jros_home = sys.argv[2]
+updates = {
+    "ARES_JAEGER_HOME": jros_home,
+    "JAEGER_HOME": jros_home,
+}
+lines = []
+seen = set()
+if env_path.exists():
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+out = []
+for line in lines:
+    stripped = line.strip()
+    key = stripped.split("=", 1)[0] if "=" in stripped and not stripped.startswith("#") else None
+    if key in updates:
+        out.append(f'{key}="{updates[key]}"')
+        seen.add(key)
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f'{key}="{value}"')
+env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+PY
+        log_success "Persisted JROS runtime path: $JAEGER_HOME_DETECTED"
+    fi
     log_success "Configured ARES backend: $selected_backend"
 
     log_success "Configuration ready"
@@ -461,10 +516,18 @@ echo ""
 echo -e "${GREEN}${BOLD}ARES Web UI installation complete!${NC}"
 echo ""
 echo "  Start the server:"
-echo "    cd $WEBUI_DIR && ./venv/bin/python server.py"
+if [ "${JROS_DETECTED:-false}" = true ]; then
+    echo "    cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED ./venv/bin/python server.py"
+else
+    echo "    cd $WEBUI_DIR && ./venv/bin/python server.py"
+fi
 echo ""
 echo "  Or set env and run:"
-echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
+if [ "${JROS_DETECTED:-false}" = true ]; then
+    echo "    ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
+else
+    echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
+fi
 echo ""
 echo "  Then open: http://localhost:$PORT"
 echo ""
@@ -476,8 +539,16 @@ echo ""
 if [ "$NO_START" = false ] && [ -t 0 ]; then
     echo -e "${CYAN}→ Starting ARES Web UI...${NC}"
     cd "$WEBUI_DIR"
-    HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
+    if [ "${JROS_DETECTED:-false}" = true ]; then
+        ARES_JAEGER_HOME="$JAEGER_HOME_DETECTED" JAEGER_HOME="$JAEGER_HOME_DETECTED" HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
+    else
+        HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
+    fi
 else
     echo -e "${CYAN}→ To start the server later, run:${NC}"
-    echo "  cd $WEBUI_DIR && HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
+    if [ "${JROS_DETECTED:-false}" = true ]; then
+        echo "  cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED JAEGER_HOME=$JAEGER_HOME_DETECTED HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
+    else
+        echo "  cd $WEBUI_DIR && HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
+    fi
 fi

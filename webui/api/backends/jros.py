@@ -1,13 +1,12 @@
-"""
-JROS Backend Adapter for ARES.
+"""JROS Backend Adapter for ARES.
 
-This adapter wraps the existing JROS bridge (api.jros_bridge).
-JROS itself is never modified — this is pure ARES-side routing.
+This adapter wraps the ARES-side JROS gateway bridge
+(``api.jros_gateway_chat``). JROS itself is never modified.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 from .base import AgenticBackend
 
@@ -20,8 +19,9 @@ class JROSBackend(AgenticBackend):
 
     def is_available(self) -> bool:
         try:
-            from api.jros_bridge import is_jros_bridge_available
-            return is_jros_bridge_available()
+            from api.backend_selector import is_jros_available
+
+            return is_jros_available()
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning(
@@ -31,18 +31,24 @@ class JROSBackend(AgenticBackend):
 
     def get_worker_target(self) -> tuple:
         """Return the JROS streaming worker target."""
-        from api.jros_bridge import run_jros_streaming
+        from api.jros_gateway_chat import run_jros_streaming
+
         return run_jros_streaming, False, True
 
     def get_backend_name(self) -> str:
         return "JROS"
 
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
-        from api.jros_bridge import _attempt_jros_turn
-        return_text, error, tool_activity = _attempt_jros_turn(
+        import threading
+
+        from api.jros_gateway_chat import _run_local_jros_turn
+
+        cancel_event = kwargs.get("cancel_event")
+        event = cancel_event if hasattr(cancel_event, "is_set") else threading.Event()
+        return_text, error, tool_activity = _run_local_jros_turn(
             message,
             session_id,
-            kwargs.get("cancel_event"),
+            cast(Any, event),
         )
         return {"text": return_text, "error": error, "tool_activity": tool_activity}
 

@@ -83,6 +83,17 @@ def test_jros_repo_root_still_honors_ares_jros_dir_for_characters(monkeypatch, t
     assert characters._jros_repo_root() == override.resolve()
 
 
+def test_local_jros_root_uses_standard_jaeger_home(monkeypatch, tmp_path):
+    from api import jros_gateway_chat as jgc
+
+    jaeger_home = tmp_path / "jaeger"
+    (jaeger_home / "jaeger_os").mkdir(parents=True)
+    monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+    monkeypatch.setenv("ARES_JAEGER_HOME", str(jaeger_home))
+
+    assert jgc.local_jros_root() == jaeger_home.resolve()
+
+
 class _FakeJrosGateway(BaseHTTPRequestHandler):
     """A canned `jaeger gateway`: health + one streamed turn in the same
     SSE dialect the real jaeger_os/interfaces/http_gateway.py emits."""
@@ -211,7 +222,7 @@ def test_jros_gateway_turn_streams_and_persists_session(monkeypatch):
         server.server_close()
 
 
-def test_offline_gateway_surfaces_actionable_apperror(monkeypatch):
+def test_offline_gateway_surfaces_actionable_apperror(monkeypatch, tmp_path):
     from api import config
     from api.config import create_stream_channel, register_stream_owner
     from api.models import Session
@@ -221,6 +232,7 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch):
     # checkout either, so the in-process fallback must not trigger.
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+    monkeypatch.setenv("ARES_JAEGER_HOME", str(tmp_path / "missing-jaeger"))
     sid = "jrosgw-down"
     stream_id = "stream-jrosgw-down"
     session = Session(session_id=sid, messages=[])
@@ -244,7 +256,7 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch):
     assert all(m.get("role") != "assistant" for m in saved.messages)
 
 
-def test_backend_availability_follows_gateway_health(monkeypatch):
+def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     from api import backend_selector
 
     server, base = _start_fake_gateway()
@@ -263,6 +275,7 @@ def test_backend_availability_follows_gateway_health(monkeypatch):
 
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+    monkeypatch.setenv("ARES_JAEGER_HOME", str(tmp_path / "missing-jaeger"))
     monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
     assert backend_selector.is_jros_available() is False
     assert backend_selector.backend_status()["jros"] is False

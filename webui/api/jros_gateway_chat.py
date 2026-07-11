@@ -16,10 +16,12 @@ The only swapped piece is execution, which resolves in this order:
        # where ARES runs
        export ARES_JROS_GATEWAY_URL=http://<jros-host>:8643
 
-2. **In-process fallback** — when no gateway is reachable but
-   ``ARES_JROS_DIR`` points at a local JROS checkout, ARES boots JROS
-   inside itself and runs the turn directly, so the local flip-the-toggle
-   case needs no extra program at all. The two failure modes that sank the
+2. **In-process fallback** — when no gateway is reachable but a local
+   Jaeger/JROS install is discoverable from ``ARES_JAEGER_HOME``,
+   ``JAEGER_HOME``, the standard ``~/jaeger`` install path, or the legacy
+   ``ARES_JROS_DIR`` source-checkout override, ARES boots JROS inside
+   itself and runs the turn directly, so the local flip-the-toggle case
+   needs no extra program at all. The two failure modes that sank the
    old in-process-only bridge surface as actionable errors instead of
    crashes: an already-running JROS (its exclusive instance lock) says
    close it or run ``jaeger gateway``, and a missing instance says run
@@ -59,6 +61,7 @@ from api.config import (
 from api.helpers import _redact_text, redact_session_data
 from api.models import get_session, merge_session_messages_append_only
 from api.run_journal import RunJournalWriter
+from api.jros_paths import jaeger_home, jros_instance_name
 
 logger = logging.getLogger(__name__)
 
@@ -146,19 +149,28 @@ _BOOT: Any | None = None
 
 
 def local_jros_root() -> Path | None:
-    """The local JROS checkout for in-process fallback, or None.
+    """The local JROS runtime/source root for in-process fallback, or None.
 
-    Requires ``ARES_JROS_DIR`` to point at a directory containing
-    ``jaeger_os/`` — never guessed, per the public-portability rule."""
+    Resolution order keeps explicit source checkouts first, then the installed
+    Jaeger/JROS runtime path. This is what the installer detects as ``~/jaeger``
+    on a normal user machine, and what ``ARES_JAEGER_HOME`` / ``JAEGER_HOME``
+    override for nonstandard installs.
+    """
     raw = os.environ.get(_JROS_DIR_ENV, "").strip()
-    if not raw:
+    if raw:
+        root = Path(raw).expanduser().resolve()
+        if (root / "jaeger_os").is_dir():
+            return root
+
+    try:
+        root = jaeger_home()
+    except Exception:
         return None
-    root = Path(raw).expanduser().resolve()
     return root if (root / "jaeger_os").is_dir() else None
 
 
 def _jros_instance_name() -> str | None:
-    return os.environ.get(_JROS_INSTANCE_ENV, "").strip() or None
+    return os.environ.get(_JROS_INSTANCE_ENV, "").strip() or jros_instance_name()
 
 
 def _boot_jros() -> Any:
@@ -175,8 +187,10 @@ def _boot_jros() -> Any:
         root = local_jros_root()
         if root is None:
             raise RuntimeError(
-                "ARES_JROS_DIR is not set (or does not contain jaeger_os/). "
-                "Point it at your JROS checkout, or start a JROS gateway."
+                "No local JROS runtime was found. Install JROS at ~/jaeger, "
+                "set ARES_JAEGER_HOME/JAEGER_HOME to your Jaeger install, "
+                "set ARES_JROS_DIR to a source checkout containing jaeger_os/, "
+                "or start a JROS gateway."
             )
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
