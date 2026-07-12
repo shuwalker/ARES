@@ -40,6 +40,9 @@ public final class WebUIServerManager: ObservableObject {
         
         serverHealth = "Checking port..."
         
+        // Reclaim port if held by orphaned server.py process
+        reclaimPort(port)
+        
         // Check if port is in use
         let inUse = await isPortInUse(port, host: host)
         if inUse {
@@ -209,5 +212,49 @@ public final class WebUIServerManager: ObservableObject {
             return devPath
         }
         return nil
+    }
+
+    private func reclaimPort(_ port: Int) {
+        let lsofTask = Process()
+        lsofTask.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsofTask.arguments = ["-t", "-i", "tcp:\(port)"]
+        
+        let pipe = Pipe()
+        lsofTask.standardOutput = pipe
+        
+        do {
+            try lsofTask.run()
+            lsofTask.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !output.isEmpty {
+                let pids = output.components(separatedBy: .newlines).compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+                for pid in pids {
+                    let psTask = Process()
+                    psTask.executableURL = URL(fileURLWithPath: "/bin/ps")
+                    psTask.arguments = ["-o", "command=", "-p", String(pid)]
+                    
+                    let psPipe = Pipe()
+                    psTask.standardOutput = psPipe
+                    
+                    try psTask.run()
+                    psTask.waitUntilExit()
+                    
+                    let psData = psPipe.fileHandleForReading.readDataToEndOfFile()
+                    if let command = String(data: psData, encoding: .utf8),
+                       command.contains("server.py") {
+                        print("[ARES] Reclaiming port \(port) from orphaned process \(pid)")
+                        let killTask = Process()
+                        killTask.executableURL = URL(fileURLWithPath: "/bin/kill")
+                        killTask.arguments = ["-9", String(pid)]
+                        try killTask.run()
+                        killTask.waitUntilExit()
+                    }
+                }
+            }
+        } catch {
+            print("[ARES] Error reclaiming port \(port): \(error)")
+        }
     }
 }

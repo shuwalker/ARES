@@ -48,6 +48,7 @@ public struct ARESSettingsView: View {
     // Safety & Approvals
     @State private var pendingApprovals: [PendingApproval] = []
     @State private var auditLogs: [AuditLogEntry] = []
+    @State private var pathMonitor: NWPathMonitor? = nil
     
     public init() {}
     
@@ -83,9 +84,19 @@ public struct ARESSettingsView: View {
             refreshNetworkIPs()
             startLivenessChecks()
             refreshApprovalsAndLogs()
+            
+            let monitor = NWPathMonitor()
+            monitor.pathUpdateHandler = { _ in
+                DispatchQueue.main.async {
+                    self.refreshNetworkIPs()
+                }
+            }
+            monitor.start(queue: .global())
+            self.pathMonitor = monitor
         }
         .onDisappear {
             checkTimer?.invalidate()
+            pathMonitor?.cancel()
         }
     }
     

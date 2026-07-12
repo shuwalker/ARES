@@ -90,6 +90,12 @@ struct WebViewRepresentable: NSViewRepresentable {
             self.parent = parent
         }
 
+        private var pollingTimer: DispatchSourceTimer? = nil
+
+        deinit {
+            pollingTimer?.cancel()
+        }
+
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             showFallback(webView)
         }
@@ -110,6 +116,36 @@ struct WebViewRepresentable: NSViewRepresentable {
             </div></body></html>
             """
             webView.loadHTMLString(fallbackHTML, baseURL: parent.url)
+            startPollingForRecovery(webView: webView)
+        }
+
+        private func startPollingForRecovery(webView: WKWebView) {
+            pollingTimer?.cancel()
+            
+            let checkURL = self.parent.url.appendingPathComponent("health")
+            let mainURL = self.parent.url
+            
+            let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+            timer.schedule(deadline: .now(), repeating: 2.0)
+            timer.setEventHandler { [weak self, weak webView] in
+                guard let self = self, let webView = webView else { return }
+                
+                var request = URLRequest(url: checkURL)
+                request.timeoutInterval = 1.0
+                
+                URLSession.shared.dataTask(with: request) { [weak self, weak webView] _, response, error in
+                    if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                        DispatchQueue.main.async {
+                            guard let self = self, let webView = webView else { return }
+                            self.pollingTimer?.cancel()
+                            self.pollingTimer = nil
+                            webView.load(URLRequest(url: mainURL))
+                        }
+                    }
+                }.resume()
+            }
+            timer.resume()
+            self.pollingTimer = timer
         }
     }
 }
