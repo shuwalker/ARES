@@ -22,63 +22,134 @@ struct ARESApp: App {
                     NSApp.orderFrontStandardAboutPanel(nil)
                 }
             }
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    openSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
+        
+        Settings {
+            ARESSettingsView()
+        }
+    }
+    
+    private func openSettings() {
+        if #available(macOS 13.0, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
         }
     }
 }
 
 // MARK: - WKWebView Wrapper
 
-struct ARESWebView: NSViewRepresentable {
+struct ARESWebView: View {
+    @ObservedObject var serverManager = WebUIServerManager.shared
+    @ObservedObject var config = ARESConfiguration.shared
+
+    var body: some View {
+        if let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") {
+            WebViewRepresentable(url: url)
+        } else {
+            Text("Invalid Server URL")
+                .foregroundColor(.red)
+        }
+    }
+}
+
+struct WebViewRepresentable: NSViewRepresentable {
+    let url: URL
+
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.applicationNameForUserAgent = "ARES/1.0"
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
 
-        if let url = URL(string: "http://127.0.0.1:8787") {
-            webView.load(URLRequest(url: url))
-        }
+        webView.load(URLRequest(url: url))
         return webView
     }
 
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    class Coordinator: NSObject, WKNavigationDelegate {
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            // WebUI not running yet — show a placeholder
-            if (error as NSError).code == -1003 {
-                webView.loadHTMLString(fallbackHTML, baseURL: URL(string: "http://127.0.0.1:8787"))
-            }
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        if let currentURL = nsView.url, currentURL.host == url.host, currentURL.port == url.port {
+            // Keep current page, do not reload
+        } else {
+            nsView.load(URLRequest(url: url))
         }
     }
 
-    static let fallbackHTML = """
-    <html><body style="background:#101014;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-    <div style="text-align:center">
-    <h1 style="color:#d9b256;font-weight:300">ARES</h1>
-    <p style="color:#888">Starting WebUI server…</p>
-    <p style="color:#555;font-size:12px">http://127.0.0.1:8787</p>
-    </div></body></html>
-    """
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: WebViewRepresentable
+
+        init(_ parent: WebViewRepresentable) {
+            self.parent = parent
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            showFallback(webView)
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            showFallback(webView)
+        }
+
+        private func showFallback(_ webView: WKWebView) {
+            let host = parent.url.host ?? "127.0.0.1"
+            let port = parent.url.port ?? 8787
+            let fallbackHTML = """
+            <html><body style="background:#101014;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+            <div style="text-align:center">
+            <h1 style="color:#d9b256;font-weight:300">ARES</h1>
+            <p style="color:#888">Waiting for WebUI server to respond…</p>
+            <p style="color:#555;font-size:12px">http://\(host):\(port)</p>
+            </div></body></html>
+            """
+            webView.loadHTMLString(fallbackHTML, baseURL: parent.url)
+        }
+    }
 }
 
 // MARK: - App Delegate
 
 @MainActor
 final class ARESAppDelegate: NSObject, NSApplicationDelegate {
-    private var webuiProcess: Process?
     private var menuBarController: ARESMenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        launchWebUIServer()
+        NSApp.setActivationPolicy(.accessory)
+        
+        let config = ARESConfiguration.shared
+        if config.autoLaunchOnStart {
+            Task {
+                await WebUIServerManager.shared.start()
+            }
+        }
         setupMenuBar()
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowWillClose),
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
+    }
+
+    @objc private func windowWillClose(_ notification: Notification) {
+        DispatchQueue.main.async {
+            let visibleWindows = NSApp.windows.filter { $0.isVisible && $0.title != "" && $0.className != "NSStatusBarWindow" }
+            if visibleWindows.isEmpty {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        webuiProcess?.terminate()
+        WebUIServerManager.shared.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -87,59 +158,6 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         }
         return true
     }
-
-    // MARK: - WebUI Server
-
-    private func launchWebUIServer() {
-        let webuiDir = findWebUIDir()
-        guard let dir = webuiDir else {
-            print("[ARES] WebUI directory not found")
-            return
-        }
-
-        let process = Process()
-        process.currentDirectoryURL = dir
-        process.executableURL = dir.appendingPathComponent(".venv/bin/python")
-        process.arguments = ["server.py"]
-        process.environment = [
-            "HERMES_WEBUI_HOST": "127.0.0.1",
-            "HERMES_WEBUI_PORT": "8787",
-            "ARES_WEBUI_RELOAD": "0",
-        ]
-        // Inherit PATH, HOME, etc.
-        var env = ProcessInfo.processInfo.environment
-        env["HERMES_WEBUI_HOST"] = "127.0.0.1"
-        env["HERMES_WEBUI_PORT"] = "8787"
-        env["ARES_WEBUI_RELOAD"] = "0"
-        process.environment = env
-
-        do {
-            try process.run()
-            webuiProcess = process
-            print("[ARES] WebUI server started on http://127.0.0.1:8787")
-        } catch {
-            print("[ARES] Failed to start WebUI server: \(error)")
-        }
-    }
-
-    private func findWebUIDir() -> URL? {
-        // Check relative to the app bundle first
-        if let bundlePath = Bundle.main.resourceURL?.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() {
-            let webuiPath = bundlePath.appendingPathComponent("webui")
-            if FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path) {
-                return webuiPath
-            }
-        }
-        // Fallback: check ~/GitHub/ARES/webui
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let devPath = home.appendingPathComponent("GitHub/ARES/webui")
-        if FileManager.default.fileExists(atPath: devPath.appendingPathComponent("server.py").path) {
-            return devPath
-        }
-        return nil
-    }
-
-    // MARK: - Menu Bar
 
     private func setupMenuBar() {
         menuBarController = ARESMenuBarController()
@@ -167,7 +185,11 @@ final class ARESMenuBarController: NSObject {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Open ARES", action: #selector(openWindow), keyEquivalent: "o"))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "WebUI Status", action: #selector(showStatus), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "WebUI: Start Server", action: #selector(startServer), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "WebUI: Stop Server", action: #selector(stopServer), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "WebUI: Restart Server", action: #selector(restartServer), keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit ARES", action: #selector(terminate), keyEquivalent: "q"))
 
@@ -188,25 +210,37 @@ final class ARESMenuBarController: NSObject {
     }
 
     @objc private func openWindow() {
-        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        NSApp.setActivationPolicy(.regular)
+        if let window = NSApp.windows.first {
+            window.makeKeyAndOrderFront(nil)
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func showStatus() {
-        let task = Process()
-        task.launchPath = "/usr/bin/curl"
-        task.arguments = ["-s", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:8787/health"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        try? task.run()
-        task.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let code = String(data: data, encoding: .utf8) ?? "?"
+    @objc private func startServer() {
+        Task {
+            await WebUIServerManager.shared.start()
+        }
+    }
 
-        let alert = NSAlert()
-        alert.messageText = "ARES WebUI Status"
-        alert.informativeText = code == "200" ? "Running on http://127.0.0.1:8787" : "Not responding (HTTP \(code))"
-        alert.runModal()
+    @objc private func stopServer() {
+        WebUIServerManager.shared.stop()
+    }
+
+    @objc private func restartServer() {
+        Task {
+            await WebUIServerManager.shared.restart()
+        }
+    }
+
+    @objc private func openSettings() {
+        NSApp.setActivationPolicy(.regular)
+        if #available(macOS 13.0, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func terminate() {
@@ -217,23 +251,45 @@ final class ARESMenuBarController: NSObject {
 // MARK: - Menu Bar Popover
 
 struct MenuBarPopoverView: View {
+    @ObservedObject var serverManager = WebUIServerManager.shared
+    @ObservedObject var config = ARESConfiguration.shared
+
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "spartan-helmet")
                 .font(.largeTitle)
                 .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
-            Text("ARES")
+            
+            Text("ARES WebUI Server")
                 .font(.headline)
-            Text("http://127.0.0.1:8787")
+            
+            Text("http://\(config.webuiHost):\(config.webuiPort)")
                 .font(.caption)
                 .foregroundColor(.secondary)
+            
+            Text("Status: \(serverManager.serverHealth)")
+                .font(.footnote)
+                .foregroundColor(serverManager.isRunning ? .green : .red)
+            
             Divider()
-            Button("Open WebUI") {
-                NSWorkspace.shared.open(URL(string: "http://127.0.0.1:8787")!)
+            
+            HStack {
+                if serverManager.isRunning {
+                    Button("Open WebUI") {
+                        if let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Start Server") {
+                        Task { await serverManager.start() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             }
-            .buttonStyle(.borderedProminent)
         }
         .padding()
-        .frame(width: 200)
+        .frame(width: 220)
     }
 }

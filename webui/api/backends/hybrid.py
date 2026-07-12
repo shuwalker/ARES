@@ -8,7 +8,7 @@ This is pure ARES-side routing — neither Hermes nor JROS is modified.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .base import AgenticBackend
 from .hermes import HermesBackend
@@ -42,6 +42,62 @@ class HybridBackend(AgenticBackend):
 
     def get_backend_name(self) -> str:
         return "Hybrid"
+
+    def health(self) -> Dict[str, Any]:
+        hermes_health = self._hermes.health()
+        jros_health = self._jros.health()
+        
+        status = "ok"
+        if hermes_health.get("status") == "error" or jros_health.get("status") == "error":
+            status = "error"
+        elif jros_health.get("status") == "degraded":
+            status = "degraded"
+            
+        return {
+            "status": status,
+            "latency_ms": max(hermes_health.get("latency_ms", 0.0), jros_health.get("latency_ms", 0.0)),
+            "message": f"Hybrid runtime status: Hermes is {hermes_health.get('status')}, JROS is {jros_health.get('status')}",
+        }
+
+    def identity_projection(self) -> Dict[str, Any]:
+        # Returns JROS character details since JROS defines identity in hybrid mode
+        return self._jros.identity_projection()
+
+    def capabilities(self) -> Dict[str, Any]:
+        hermes_caps = self._hermes.capabilities()
+        jros_caps = self._jros.capabilities()
+        
+        # Merge capabilities
+        merged = dict(hermes_caps)
+        merged.update(jros_caps)
+        merged["hybrid"] = True
+        return merged
+
+    def chat_session_support(self) -> Dict[str, Any]:
+        # Return merged settings: supports JROS context window and multimodal features
+        return {
+            "streaming": True,
+            "context_window": min(self._hermes.chat_session_support().get("context_window", 32768), 
+                                  self._jros.chat_session_support().get("context_window", 8192)),
+            "multimodal": True,
+        }
+
+    def tools(self) -> List[Dict[str, Any]]:
+        # Returns both Hermes and JROS tools
+        return self._hermes.tools() + self._jros.tools()
+
+    def settings_schema(self) -> Dict[str, Any]:
+        hermes_schema = self._hermes.settings_schema().get("properties", {})
+        jros_schema = self._jros.settings_schema().get("properties", {})
+        
+        merged = {}
+        merged.update(hermes_schema)
+        merged.update(jros_schema)
+        
+        return {
+            "type": "object",
+            "properties": merged,
+        }
 
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
         """Execute a turn using both Hermes and JROS.

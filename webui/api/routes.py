@@ -13189,6 +13189,83 @@ def handle_get(handler, parsed) -> bool:
         except Exception as exc:
             return bad(handler, f"Failed to list ARES tools: {exc}")
         return j(handler, {"tools": tools})
+    if parsed.path == "/api/ares/identity":
+        try:
+            from api.ares_identity import build_identity_payload
+            from api.config import get_config as _get_cfg, _active_profile
+            _cfg = _get_cfg()
+            backend = str(_cfg.get("ares_backend", "hermes")).strip().lower()
+            persona_id = str(_cfg.get("ares_persona", "") or "").strip()
+            bot_name = str((_cfg.get("agent") or {}).get("name", "")) or None
+            payload = build_identity_payload(
+                profile=_active_profile,
+                bot_name=bot_name,
+                backend=backend,
+                persona_id=persona_id if persona_id else None
+            )
+        except Exception as exc:
+            return bad(handler, f"Failed to build identity: {exc}")
+        return j(handler, payload)
+
+    if parsed.path == "/api/ares/adapters":
+        try:
+            from api.backends.router import get_router
+            router = get_router()
+            adapters_payload = {}
+            for name, backend in router.backends.items():
+                adapters_payload[name] = {
+                    "available": backend.is_available(),
+                    "label": backend.get_backend_name(),
+                    "health": backend.health(),
+                    "identity_projection": backend.identity_projection(),
+                    "capabilities": backend.capabilities(),
+                    "chat_session_support": backend.chat_session_support(),
+                    "tools": backend.tools(),
+                    "settings_schema": backend.settings_schema()
+                }
+        except Exception as exc:
+            return bad(handler, f"Failed to list ARES adapters: {exc}")
+        return j(handler, adapters_payload)
+
+    if parsed.path == "/api/ares/approvals/pending":
+        try:
+            from api.route_approvals import _pending, _lock
+            all_pending = []
+            with _lock:
+                for session_id, entries in _pending.items():
+                    if isinstance(entries, list):
+                        for entry in entries:
+                            all_pending.append({
+                                "session_id": session_id,
+                                "approval_id": entry.get("approval_id"),
+                                "command": entry.get("command") or entry.get("message") or "",
+                                "type": entry.get("type") or "tool",
+                                "created_at": entry.get("created_at") or "",
+                                "tool_name": entry.get("tool_name") or entry.get("name") or ""
+                            })
+        except Exception as exc:
+            return bad(handler, f"Failed to fetch pending approvals: {exc}")
+        return j(handler, {"approvals": all_pending})
+
+    if parsed.path == "/api/ares/audit/logs":
+        try:
+            from api.paths import HOME
+            import json
+            audit_file = HOME / ".ares" / "audit.log"
+            logs = []
+            if audit_file.is_file():
+                with open(audit_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                logs.append(json.loads(line))
+                            except Exception:
+                                continue
+            logs = logs[-100:]
+        except Exception as exc:
+            return bad(handler, f"Failed to fetch audit logs: {exc}")
+        return j(handler, {"logs": logs})
 
     if parsed.path == "/api/git-info":
         qs = parse_qs(parsed.query)
@@ -23741,6 +23818,16 @@ def _resolve_approval_legacy(sid: str, approval_id: str, choice: str) -> bool:
     resolved = bool(pending) or bool(gateway_resolved) or not bool(approval_id)
     if resolved:
         publish_session_list_changed("attention_resolved")
+        try:
+            from api.ares_identity import log_audit_event
+            cmd = ""
+            if pending:
+                cmd = pending.get("command") or pending.get("message") or ""
+            else:
+                cmd = "Gateway command/action"
+            log_audit_event(sid, "resolve_approval", f"Command: {cmd}", choice)
+        except Exception:
+            pass
     return resolved
 
 

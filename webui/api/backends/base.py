@@ -8,7 +8,7 @@ ARES uses these adapters to route execution without owning or modifying either b
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class AgenticBackend(ABC):
@@ -33,6 +33,44 @@ class AgenticBackend(ABC):
             {"text": str, "error": Optional[str], "tool_activity": list}
         """
         ...
+
+    def health(self) -> Dict[str, Any]:
+        """Return health details for this backend."""
+        return {"status": "ok" if self.is_available() else "error", "latency_ms": 0.0}
+
+    def identity_projection(self) -> Dict[str, Any]:
+        """Project the backend's current persona or identity."""
+        return {"name": self.get_backend_name(), "description": "", "avatar_state": "idle"}
+
+    def capabilities(self) -> Dict[str, Any]:
+        """Return the capabilities dictionary of this backend."""
+        return {
+            "chat": True,
+            "tools": self.supports_tools,
+            "persona": self.supports_persona,
+            "hybrid": self.supports_hybrid,
+            "voice": False,
+            "embodiment": False
+        }
+
+    def chat_session_support(self) -> Dict[str, Any]:
+        """Return metadata for session and chat support."""
+        return {"streaming": True, "context_window": 8192, "multimodal": False}
+
+    def tools(self) -> List[Dict[str, Any]]:
+        """Return schema definitions of the tools supported/exposed by this backend."""
+        return []
+
+    def presence_events(self) -> List[Dict[str, Any]]:
+        """Return list of active presence events (avatar animations, speech, etc.)."""
+        return []
+
+    def settings_schema(self) -> Dict[str, Any]:
+        """Return JSON Schema for the backend's customizable settings."""
+        return {
+            "type": "object",
+            "properties": {}
+        }
 
     def get_worker_target(self) -> tuple:
         """

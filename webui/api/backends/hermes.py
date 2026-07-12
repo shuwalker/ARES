@@ -7,7 +7,7 @@ Hermes itself is never modified — this is pure ARES-side routing.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .base import AgenticBackend
 
@@ -30,6 +30,65 @@ class HermesBackend(AgenticBackend):
     def get_backend_name(self) -> str:
         return "Hermes"
 
+    def health(self) -> Dict[str, Any]:
+        return {"status": "ok", "latency_ms": 0.0, "message": "In-process runtime ready"}
+
+    def identity_projection(self) -> Dict[str, Any]:
+        from api.config import get_config
+        cfg = get_config()
+        bot_name = (cfg.get("agent") or {}).get("name") or "Hermes"
+        return {
+            "name": bot_name,
+            "description": "Hermes Agent in-process runtime",
+            "avatar_state": "idle",
+        }
+
+    def capabilities(self) -> Dict[str, Any]:
+        return {
+            "chat": True,
+            "tools": self.supports_tools,
+            "persona": self.supports_persona,
+            "hybrid": self.supports_hybrid,
+            "voice": True,
+            "embodiment": False,
+        }
+
+    def chat_session_support(self) -> Dict[str, Any]:
+        return {"streaming": True, "context_window": 32768, "multimodal": False}
+
+    def tools(self) -> List[Dict[str, Any]]:
+        try:
+            from api.ares_tools import ARES_TOOL_DEFS
+            return [
+                {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": t["args_model"].schema() if hasattr(t["args_model"], "schema") else (t["args_model"].model_json_schema() if hasattr(t["args_model"], "model_json_schema") else {}),
+                }
+                for t in ARES_TOOL_DEFS
+            ]
+        except Exception:
+            return []
+
+    def settings_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "temperature": {
+                    "type": "number",
+                    "title": "Temperature",
+                    "default": 0.7,
+                    "minimum": 0.0,
+                    "maximum": 2.0,
+                },
+                "system_instructions": {
+                    "type": "string",
+                    "title": "System Instructions",
+                    "default": "",
+                },
+            },
+        }
+
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
         """
         Execute one agent turn via the Hermes streaming path.
@@ -42,9 +101,6 @@ class HermesBackend(AgenticBackend):
         Falls back to the existing streaming pathway when called
         without a real stream channel by returning a guidance message.
         """
-        # The streaming path is wired via get_worker_target() ->
-        # _run_agent_streaming(). For synchronous programmatic use,
-        # create a temporary stream and collect the output.
         from api.config import create_stream_channel, register_stream_owner
         from api.streaming import _run_agent_streaming
         from api.config import STREAMS, STREAMS_LOCK

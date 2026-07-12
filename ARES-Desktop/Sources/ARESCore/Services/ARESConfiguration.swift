@@ -54,6 +54,22 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
 
     // MARK: - Network Endpoints
 
+    @Published public var webuiHost: String = UserDefaults.standard.string(forKey: "ares.config.webuiHost") ?? "127.0.0.1" {
+        didSet { UserDefaults.standard.set(webuiHost, forKey: "ares.config.webuiHost") }
+    }
+
+    @Published public var webuiPort: Int = UserDefaults.standard.integer(forKey: "ares.config.webuiPort") == 0 ? 8787 : UserDefaults.standard.integer(forKey: "ares.config.webuiPort") {
+        didSet { UserDefaults.standard.set(webuiPort, forKey: "ares.config.webuiPort") }
+    }
+
+    @Published public var autoLaunchOnStart: Bool = UserDefaults.standard.object(forKey: "ares.config.autoLaunchOnStart") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoLaunchOnStart, forKey: "ares.config.autoLaunchOnStart") }
+    }
+
+    @Published public var reloadDevMode: Bool = UserDefaults.standard.bool(forKey: "ares.config.reloadDevMode") {
+        didSet { UserDefaults.standard.set(reloadDevMode, forKey: "ares.config.reloadDevMode") }
+    }
+
     @Published public var hermesURL: String = UserDefaults.standard.string(forKey: "ares.config.hermesURL") ?? "http://localhost:8642" {
         didSet { UserDefaults.standard.set(hermesURL, forKey: "ares.config.hermesURL") }
     }
