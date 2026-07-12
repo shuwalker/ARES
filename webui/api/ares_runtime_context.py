@@ -1,11 +1,11 @@
 """ARES Runtime Context — builds live operating state every turn.
 
-ARES owns the person layer. This module produces a compact context
+ARES projects the active backend's identity. This module produces a compact context
 packet that gets injected into the agent's system prompt every turn,
 regardless of which backend (Hermes or JROS) is active.
 
 The context tells the agent:
-  - Who it is (ARES identity)
+  - Who it is (projected backend identity)
   - Which backend is running
   - What capabilities are available
   - What open promises/tasks exist

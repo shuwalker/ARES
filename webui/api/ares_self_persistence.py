@@ -79,10 +79,10 @@ def render_self_persistence_prompt(config: dict[str, Any] | None) -> str:
     contract = build_self_persistence_contract(config)
     capabilities = ", ".join(contract["capabilities"])
     return (
-        "ARES owns the self-persistent person layer. "
+        "ARES owns the experience layer and task continuity. "
         "Hermes supplies the agent loop. "
-        "JROS supplies robotics and embodiment primitives. "
-        "Do not bury identity or task continuity inside a swappable backend.\n\n"
+        "JROS supplies robotics, embodiment, and canonical persona identity. "
+        "Do not bury task continuity inside a swappable backend.\n\n"
         f"Active backend mode: {contract['active_backend']}\n"
         "Adapter policy: adapter-first; fork decision deferred.\n"
         f"ARES-owned capabilities: {capabilities}.\n"
