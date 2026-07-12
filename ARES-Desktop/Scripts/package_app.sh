@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Change directory to repository root
+cd "$(dirname "$0")/../.."
+
 echo "📦 Packaging ARES.app..."
 
 APP_NAME="ARES.app"
@@ -30,7 +33,7 @@ else
 fi
 
 # 5. Copy Info.plist
-cp Info.plist.template "${CONTENTS_DIR}/Info.plist"
+cp ARES-Desktop/Info.plist.template "${CONTENTS_DIR}/Info.plist"
 
 # 6. Copy Resources if any
 # Find the bundle containing resources (SwiftPM generates bundles)
