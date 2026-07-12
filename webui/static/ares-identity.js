@@ -51,9 +51,13 @@
       migrateKey(LEGACY_PREFIX + key, NEW_PREFIX + key);
     });
 
-    // Special case: active session key
-    migrateKey('hermes-webui-session', 'ares-webui-session');
-    migrateKey('hermes-webui-model', 'ares-webui-model');
+    // Special case: active session/model keys. The live code standardizes on
+    // the upstream 'hermes-webui-*' names (sessions.js/messages.js/ui.js all
+    // read them; a partial rename to 'ares-webui-*' split the state and broke
+    // session restore). Carry any value saved under the short-lived ares-*
+    // names back to the canonical keys.
+    migrateKey('ares-webui-session', 'hermes-webui-session');
+    migrateKey('ares-webui-model', 'hermes-webui-model');
   }
 
   // Expose a clean getter that prefers the new namespace

@@ -910,10 +910,12 @@ function _addNamedContextBlock(text){
 
 function _removeNamedContextBlock(id){
   _pendingSelections=_pendingSelections.filter(s=>s.id!==id);
+  if(!_pendingSelections.length)_selectionIdCounter=0;
   _renderSelectionChips();
 }
 
 function _clearPendingSelections(){
+  _selectionIdCounter=0;
   if(!_pendingSelections.length)return false;
   _pendingSelections=[];
   _renderSelectionChips();
@@ -1457,9 +1459,41 @@ async function send(){
   const activeSid=S.session.session_id;
   _sendInProgressSid=activeSid;
 
-  setComposerStatus(S.pendingFiles&&S.pendingFiles.length?'Uploading…':'');
+  // Salvage of #4750 (@harryazj): capture the composer text and clear the
+  // textarea NOW — immediately after capture and BEFORE the uploadPendingFiles()
+  // / forced-skill-directive awaits below. send() re-reads the LIVE composer when
+  // it is re-entered while a send is in flight (the _sendInProgress guard at the
+  // top of this function reads _composerTextWithPendingSelections()). If we
+  // cleared only after the async work — as the pre-fix code did, down at the
+  // _clearComposerDraft site — a re-entrant/interrupt-mode send during the upload
+  // window would read the still-populated DOM and double-submit the same message.
+  // _submittedDraftTextForClear is the sole authority for the send-time draft
+  // signature from here down; no code path below re-reads $('msg').value on the
+  // happy path.
+  const _submittedDraftTextForClear=$('msg').value||'';
+  $('msg').value='';autoResize();
+
+  // #5912 gate CORE fix: snapshot the pending files that belong to THIS send
+  // BEFORE the await, and upload exactly that snapshot. Otherwise a re-entrant /
+  // interrupt-mode send during the upload window inherits the still-live
+  // S.pendingFiles and later re-uploads the first send's attachment. Detach the
+  // snapshot from S.pendingFiles now so files staged AFTER this point belong to
+  // the next send only.
+  const _submittedFiles=[...(S.pendingFiles||[])];
+  const _submittedDraftFilesForClear=[..._submittedFiles];
+  S.pendingFiles=[];
+  if(typeof renderTray==='function')renderTray();
+
+  // #5912 gate SILENT fix: clear the PERSISTED draft here — alongside the
+  // textarea clear, BEFORE any await — so a new draft typed during the upload
+  // window is not clobbered by a delayed text:'' post. Keep the promise so the
+  // #5472 failed-send restore can chain its re-persist after this clear resolves.
+  let _composerDraftClearPromise=null;
+  if (activeSid && typeof _clearComposerDraft === 'function') _composerDraftClearPromise=_clearComposerDraft(activeSid,_submittedDraftTextForClear,_submittedDraftFilesForClear);
+
+  setComposerStatus(_submittedFiles.length?'Uploading…':'');
   let uploaded=[];
-  try{uploaded=await uploadPendingFiles();}
+  try{uploaded=await uploadPendingFiles({files:_submittedFiles, sessionId:activeSid, clearPending:false});}
   catch(e){if(!text){setComposerStatus(`Upload error: ${e.message}`);return;}}
   // Clear the uploading status now that upload is done — if we don't clear here
   // it stays visible for the entire duration of the agent stream, since
@@ -1494,10 +1528,11 @@ async function send(){
     }
   }
   if(!msgText){setComposerStatus('Nothing to send');return;}
-
-  $('msg').value='';autoResize();
-  // Clear persisted composer draft since message was sent.
-  if (activeSid && typeof _clearComposerDraft === 'function') _clearComposerDraft(activeSid);
+  // Composer textarea + persisted draft were already captured and cleared
+  // immediately after capture (above, salvage of #4750 + #5912 gate fix) to close
+  // the re-entrant double-send race AND avoid clobbering a draft typed during the
+  // upload window. _composerDraftClearPromise / _submittedDraftFilesForClear are
+  // set there; nothing to re-declare here.
   const displayText=_slashDisplayTextOverride||text||(uploaded.length?`Uploaded: ${uploadedNames.join(', ')}`:'(file upload)');
   const userMsg={role:'user',content:displayText,attachments:uploaded.length?uploadedNames:undefined,_ts:Date.now()/1000};
   S.toolCalls=[];  // clear tool calls from previous turn
@@ -2482,6 +2517,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     const sourceEvent={
       ...raw,
       source_event_type:sourceEventType,
+      // Persist a creation timestamp the FIRST time we see this source event, so
+      // the worklog event timestamp (#5700/#5739) survives settlement. Reasoning
+      // events carry no server timestamp; without this, the live DOM shows a
+      // fallback time but the settled scene row rebuilds with created_at:null and
+      // the timestamp disappears. Prefer any real server-supplied stamp; fall back
+      // to now only when none exists. (#5739 gate finding.)
+      created_at:raw.created_at??raw.timestamp??raw.ts??(Date.now()/1000),
       activitySegmentSeq:raw.activitySegmentSeq??raw.activity_segment_seq??_assistantSegmentSeq,
       activityBurstId:raw.activityBurstId??raw.activity_burst_id??_currentActivityBurstId,
     };
@@ -2587,6 +2629,30 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
   function _anchorSegmentSeq(){
     const seq=Number(_assistantSegmentSeq||_currentLiveSegmentSeq||0);
     return Number.isFinite(seq)&&seq>0?seq:1;
+  }
+  function _anchorSceneActiveMode(){
+    const normalize=value=>value==='transparent_stream'||value==='compact_worklog'||value==='hide_all_activity'?value:'';
+    if(typeof window!=='undefined'){
+      if(typeof window.chatActivityMode==='function'){
+        try{
+          const mode=normalize(window.chatActivityMode());
+          if(mode) return mode;
+        }catch(_){}
+      }
+      const displayMode=normalize(window._chatActivityDisplayMode);
+      if(displayMode) return displayMode;
+      if(window._transparentStream) return 'transparent_stream';
+    }
+    return 'compact_worklog';
+  }
+  function _anchorSceneRowDisplayHintForMode(row, sceneMode){
+    const hints=row&&typeof row==='object'&&row.display_hints&&typeof row.display_hints==='object'
+      ? row.display_hints
+      : null;
+    if(sceneMode==='transparent_stream') return (hints&&hints.transparent_stream)||'chronological_activity';
+    if(sceneMode==='compact_worklog') return (hints&&hints.compact_worklog)||row.display_hint||'activity_row';
+    if(sceneMode==='hide_all_activity') return (hints&&hints.hidden_activity)||'hidden_activity';
+    return row&&row.display_hint||'activity_row';
   }
   function _renderAnchorLiveScene(){
     if(!_anchorRegistry||!_isActiveSession()) return false;
@@ -3340,6 +3406,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       }
     }
     const base=(projectedScene&&typeof projectedScene==='object')?projectedScene:{};
+    const sceneMode=base.mode==='transparent_stream'||base.mode==='hide_all_activity' ? base.mode : _anchorSceneActiveMode();
     const messageFinalAnswer=_anchorSceneFinalAnswerText(lastAsst);
     const finalAnswer=_anchorSceneCleanText(messageFinalAnswer)
       ? messageFinalAnswer
@@ -3350,11 +3417,27 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     const rows=[];
     const seen=new Set();
     const seenTextKeys=[];
-    const pushRow=(row)=>{
+    const projectedRows=Array.isArray(base.activity_rows)?base.activity_rows:[];
+    const orderedRows=[];
+    for(const row of projectedRows){
+      if(row&&row.role==='terminal') continue;
+      orderedRows.push(row);
+    }
+    for(let idx=turnStart+1;idx<=lastAsstIndex;idx+=1){
+      const bucket=messageRows.get(idx)||[];
+      for(const row of bucket) orderedRows.push(row);
+    }
+    for(const row of projectedRows){
+      if(row&&row.role==='terminal') orderedRows.push(row);
+    }
+    const lastNonTerminalWorkRowIndex=orderedRows.reduce((last,row,idx)=>(row&&row.role==='tool')?idx:last,-1);
+    const rowIsLiveTokenFinalPrefix=(row,textKey,finalSegmentEligible)=>finalSegmentEligible&&row&&row.role==='prose'&&row.kind==='process_prose'&&String(row.source_event_type||'')==='token'&&String(row.local_id||'').startsWith('live-prose:')&&textKey&&finalKey&&textKey.length<finalKey.length&&finalKey.startsWith(textKey);
+    const pushRow=(row,rowIndex)=>{
       if(!row||typeof row!=='object') return;
       row=_anchorSceneSettleLiveRunningRow(row,hasSettledThinking);
       if(!row||typeof row!=='object') return;
       const textKey=_anchorSceneTextKey(row.text);
+      if(rowIsLiveTokenFinalPrefix(row,textKey,rowIndex>lastNonTerminalWorkRowIndex)) return;
       const isTextual=row.role==='prose'||row.role==='thinking';
       if(isTextual&&_anchorSceneRowLooksLikeFinalAnswer(textKey,finalKey)) return;
       if(isTextual&&_anchorSceneRowTextOverlapsExisting(textKey,seenTextKeys)) return;
@@ -3364,18 +3447,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       if(isTextual&&textKey) seenTextKeys.push(textKey);
       rows.push({...row,order_index:rows.length,seq:rows.length});
     };
-    const projectedRows=Array.isArray(base.activity_rows)?base.activity_rows:[];
-    for(const row of projectedRows){
-      if(row&&row.role==='terminal') continue;
-      pushRow(row);
-    }
-    for(let idx=turnStart+1;idx<=lastAsstIndex;idx+=1){
-      const bucket=messageRows.get(idx)||[];
-      for(const row of bucket) pushRow(row);
-    }
-    for(const row of projectedRows){
-      if(row&&row.role==='terminal') pushRow(row);
-    }
+    orderedRows.forEach((row,idx)=>pushRow(row,idx));
     const scene={
       ...base,
       version:'activity_scene_v1',
@@ -3438,6 +3510,8 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     }
   }
   function _anchorSceneHasWorklogWorthyRows(scene){
+    if(scene&&scene.mode==='hide_all_activity') return false;
+    if(typeof window!=='undefined'&&typeof window.isFinalAnswerOnlyMode==='function'&&window.isFinalAnswerOnlyMode()) return false;
     // A worklog (the collapsible "已处理 …" rail) is only meaningful when the turn
     // actually DID worklog-worthy work — a tool call, a thinking/reasoning pass, or
     // a compression lifecycle card. A turn that only streamed prose (e.g. a long
@@ -3475,12 +3549,14 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     if(!lastAsst) return false;
     const projectedScene=_projectLiveAnchorActivityScene();
     const scene=_completeSettledAnchorSceneForTurn(messages,lastAsstIndex,projectedScene);
-    if(scene&&Array.isArray(scene.activity_rows)&&scene.activity_rows.length
-        &&_anchorSceneHasWorklogWorthyRows(scene)){
+    if(scene&&Array.isArray(scene.activity_rows)&&scene.activity_rows.length){
+      const hasWorklogRows=_anchorSceneHasWorklogWorthyRows(scene);
+      const shouldPersistScene=hasWorklogRows||scene.mode==='hide_all_activity';
+      if(!shouldPersistScene) return false;
       lastAsst._anchor_stream_id=streamId;
       lastAsst._anchor_activity_scene=scene;
       _persistSettledAnchorScene(lastAsst, scene, lastAsstIndex);
-      return true;
+      return hasWorklogRows;
     }
     return false;
   }
@@ -3685,6 +3761,10 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         status:row.status||undefined,
         stream_id:row.stream_id||streamId,
         run_id:row.run_id||streamId,
+        // Carry the row's persisted creation timestamp through hydration so the
+        // worklog event timestamp (#5700/#5739) survives a settled-snapshot rebuild
+        // (payload may not carry created_at even when the row does). (#5739 gate.)
+        created_at:payload.created_at??row.created_at??undefined,
       };
       try{
         _anchorApi.applyAssistantTurnAnchorSourceEvent(_anchorRegistry,sourceEvent,{session_id:activeSid,stream_id:streamId,run_id:streamId});
@@ -4745,8 +4825,10 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       if(d.text&&S.session&&S.session.session_id===activeSid) _completeAutomaticCompressionOnLiveProgress(activeSid);
       syncInflightAssistantMessage();
       if(text&&S.session&&S.session.session_id===activeSid){
-        _upsertAnchorReasoning(_liveThinkingText());
-        _updateLiveThinkingCard(_liveThinkingText());
+        const liveThinkingText=_liveThinkingText();
+        if(!_upsertAnchorReasoning(liveThinkingText)){
+          _updateLiveThinkingCard(liveThinkingText);
+        }
       }
     });
 
@@ -5125,7 +5207,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           if(d.usage){
             const _doneUsageFallback={...(S.lastUsage||{})};
             if(S.session){
-              for(const _usageField of ['context_length','threshold_tokens','last_prompt_tokens']){
+              for(const _usageField of ['context_length','threshold_tokens','last_prompt_tokens','post_compression_context_tokens_estimate']){
                 if(_doneUsageFallback[_usageField]==null&&S.session[_usageField]!=null){
                   _doneUsageFallback[_usageField]=S.session[_usageField];
                 }
@@ -5588,7 +5670,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
             const st=await api(`/api/chat/stream/status?stream_id=${encodeURIComponent(streamId)}`);
             if(st&&st.active){
               setComposerStatus('Reconnected');
-              _wireSSE(new EventSource(new URL(`api/chat/stream?stream_id=${encodeURIComponent(streamId)}`,document.baseURI||location.href).href,{withCredentials:true}));
+              _wireSSE(new EventSource(new URL(`api/chat/stream?stream_id=${encodeURIComponent(streamId)}${_runJournalReplayParams()}`,document.baseURI||location.href).href,{withCredentials:true}));
               return;
             }
             if(st&&st.replay_available){
@@ -5997,9 +6079,38 @@ function autoResize(){
     _composerAutoResizeRaf=0;
   }
   const el=$('msg');
+  const _prevComposerH=el.offsetHeight;
+  // #5514: autoResize() momentarily sets the textarea to height:'auto' (collapses
+  // a multi-row composer toward its 1-row min) before reading scrollHeight and
+  // restoring the measured height. That transient collapse GROWS the flex:1
+  // #messages viewport, and reading scrollHeight forces a synchronous reflow — so
+  // the browser CLAMPS a bottom-anchored scrollTop DOWN by the collapse delta and
+  // does NOT restore it when the height snaps back. The reader is left stranded
+  // Δpx above the bottom on EVERY keystroke while the composer is multi-row (Δ ∝
+  // composer height), and the clamp's async scroll event also sticky-unpins the
+  // reader (_messageUserUnpinned=true), dead-ending the grow-path re-pin below and
+  // stream auto-follow until they manually scroll back. #5516's net-growth gate
+  // never caught this because a steady-state keystroke has no NET height change.
+  // Root-cause fix: snapshot the transcript's scrollTop BEFORE the height
+  // round-trip and restore it AFTER, undoing the transient clamp within the same
+  // synchronous task so the poisoning scroll event never fires. This protects
+  // pinned readers AND near-bottom readers who scrolled up to re-read (their exact
+  // position is preserved), takes no _programmaticScroll latch, and is inert to
+  // iOS dynamic-toolbar reflows. A genuine NET grow/shrink still lands the reader
+  // Δnet off-bottom; the grow-gated re-pin below (and the #composerWrap
+  // ResizeObserver) then snap a still-pinned reader to the true bottom.
+  const _msgs=$('messages');
+  const _prevScrollTop=_msgs?_msgs.scrollTop:0;
   el.style.height='auto';
   el.style.height=Math.min(el.scrollHeight,200)+'px';
+  if(_msgs&&_msgs.scrollTop!==_prevScrollTop) _msgs.scrollTop=_prevScrollTop;
   updateSendBtn();
+  // Genuine NET growth (a new row that keeps the composer taller than before)
+  // still shrinks the settled viewport, so a pinned reader must be re-pinned to
+  // the true bottom. Guarded to fire only on real growth and only when genuinely
+  // pinned (the helper no-ops for a scrolled-away reader). The #composerWrap
+  // ResizeObserver is the safety net for growth paths that don't route here.
+  if(el.offsetHeight>_prevComposerH && typeof _repinMessagesAfterComposerResize==='function') _repinMessagesAfterComposerResize();
 }
 function scheduleComposerAutoResize(){
   if(typeof requestAnimationFrame!=='function'){autoResize();return;}

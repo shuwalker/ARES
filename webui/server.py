@@ -100,7 +100,7 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-from api.auth import check_auth
+from api.auth import check_auth, reset_trusted_auth_request_state
 from api.config import HOST, PORT, STATE_DIR, SESSION_DIR, DEFAULT_WORKSPACE
 from api.helpers import (
     j,
@@ -109,7 +109,7 @@ from api.helpers import (
     _CLIENT_DISCONNECT_ERRORS,
 )
 from api.profiles import set_request_profile, clear_request_profile
-from api.routes import handle_delete, handle_get, handle_patch, handle_post, handle_put
+from api.routes import handle_delete, handle_get, handle_patch, handle_post, handle_put, apply_cors_preflight_headers
 from api.startup import auto_install_agent_deps, fix_credential_permissions
 from api.updates import WEBUI_VERSION
 
@@ -372,7 +372,7 @@ class Handler(BaseHTTPRequestHandler):
         self._safe_webui_print(f'[webui] {record}')
 
     def do_GET(self) -> None:
-        self._req_t0 = time.time()
+        self._req_t0 = time.time(); reset_trusted_auth_request_state(self)
         cookie_profile = get_profile_cookie(self)
         if cookie_profile:
             set_request_profile(cookie_profile)
@@ -397,7 +397,7 @@ class Handler(BaseHTTPRequestHandler):
             clear_request_profile()
 
     def _handle_write(self, route_func) -> None:
-        self._req_t0 = time.time()
+        self._req_t0 = time.time(); reset_trusted_auth_request_state(self)
         cookie_profile = get_profile_cookie(self)
         if cookie_profile:
             set_request_profile(cookie_profile)
@@ -437,9 +437,10 @@ class Handler(BaseHTTPRequestHandler):
         """Handle CORS preflight requests."""
         self._req_t0 = time.time()
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        apply_cors_preflight_headers(self)
+        # Frame the empty preflight: without Content-Length an HTTP/1.1 keep-alive
+        # 200 is read-until-close, hanging the client until the 30s timeout.
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def do_DELETE(self) -> None:

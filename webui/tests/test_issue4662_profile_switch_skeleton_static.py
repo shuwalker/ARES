@@ -46,7 +46,7 @@ class TestSwitchWiring:
         # (Codex gate #4662). The skeletons shown up front already provide the
         # immediate cross-surface feedback.
         body = _switch_body()
-        guard = "if (_switchGen !== _profileSwitchGeneration) return;"
+        guard = "if (_switchGen !== _profileSwitchGeneration) return false;"
         # In the non-sessionInProgress branch, the loadDir('.') call must come
         # after an occurrence of the guard.
         dir_idx = body.index("const dirLoad = loadDir('.');")
@@ -78,7 +78,7 @@ class TestSwitchWiring:
         body = _switch_body()
         head = body[: body.index("showSessionListSkeleton()")]
         assert "name === S.activeProfile" in head, "missing no-op self-switch early-return"
-        assert "return;" in head
+        assert "return true;" in head
 
     def test_dismisses_rename_and_menu_before_skeleton(self):
         # Opus gate #4662: renderSessionListFromCache() early-returns while
@@ -118,7 +118,7 @@ class TestSwitchWiring:
         # rapid second switch could have its workspace skeleton cleared / a stale
         # toast popped by the slower earlier switch. Mirror the no-messages guard.
         body = _switch_body()
-        guard = "if (_switchGen !== _profileSwitchGeneration) return;"
+        guard = "if (_switchGen !== _profileSwitchGeneration) return false;"
         # Inside the sessionInProgress branch: locate its "await renderSessionList()"
         # then the profile_switched_new_conversation toast; a guard must sit between.
         new_toast_idx = body.index("profile_switched_new_conversation")

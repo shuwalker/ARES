@@ -3,6 +3,7 @@ import collections
 import copy
 import datetime
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -26,6 +27,7 @@ from api.agent_sessions import (
     _is_continuation_session,
     is_cli_session_row,
     normalize_agent_session_source,
+    open_state_db_readonly,
     read_importable_agent_session_rows,
     read_session_lineage_metadata,
 )
@@ -90,6 +92,17 @@ _CLAUDE_CODE_PARSE_CACHE_MAX = 1000
 _SIDECAR_METADATA_CACHE_LOCK = threading.Lock()
 _SIDECAR_METADATA_CACHE: "collections.OrderedDict[tuple, dict]" = collections.OrderedDict()
 _SIDECAR_METADATA_CACHE_MAX = 2000
+
+# #5854: authoritative facts for a LEGACY (pre-#5854) sidecar whose scenes
+# serialize before `messages`, so the cheap metadata-prefix read can't recover
+# its message_count or scene fingerprint. Without this, an unchanged legacy
+# large-scene session would full-parse on every poll (recreating the #4633
+# churn for legacy files) and could not be LRU-evicted. Populated once per file
+# from a full Session.load(); keyed by the sidecar's stat signature so any edit
+# invalidates it. Bounded. Value: {"message_count": int, "scene_index": dict}.
+_LEGACY_SIDECAR_FACTS_LOCK = threading.Lock()
+_LEGACY_SIDECAR_FACTS: "collections.OrderedDict[tuple, dict]" = collections.OrderedDict()
+_LEGACY_SIDECAR_FACTS_MAX = 2000
 
 # ---------------------------------------------------------------------------
 # Stale temp-file cleanup
@@ -159,6 +172,7 @@ _SESSION_INDEX_REBUILD_THREAD_TARGET: tuple[Path, Path] | None = None
 # WebUI sidebar polling path is single-process) but must wrap the WHOLE
 # load-modify-write/unlink sequence in both helpers.
 _WEBUI_ZERO_MESSAGE_ORPHAN_TOMBSTONE_LOCK = threading.Lock()
+_WEBUI_DELETED_SESSION_TOMBSTONE_LOCK = threading.Lock()
 
 # Path-safety contract for session IDs.  Accept alphanumerics, underscore, and
 # hyphen so API/gateway-issued ids (``api-*``, ``reachy-voice-*``) round-trip
@@ -390,7 +404,7 @@ def _write_session_index(updates=None, *, session_dir: Path | None = None, sessi
             # Avoid N filesystem exists() checks under LOCK by collecting
             # on-disk IDs once before entering the critical section.
             on_disk_ids = _persisted_session_ids_snapshot()
-            existing = json.loads(session_index_file.read_text(encoding='utf-8'))
+            existing = json.loads(session_index_file.read_bytes())
             if not isinstance(existing, list):
                 raise ValueError("session index must be a list")
             with LOCK:
@@ -454,7 +468,7 @@ def prune_session_from_index(session_id: str) -> None:
     with _INDEX_WRITE_LOCK:
         try:
             with LOCK:
-                existing = json.loads(SESSION_INDEX_FILE.read_text(encoding='utf-8'))
+                existing = json.loads(SESSION_INDEX_FILE.read_bytes())
                 if not isinstance(existing, list):
                     raise ValueError("session index must be a list")
                 pruned = [e for e in existing if e.get('session_id') != sid]
@@ -512,6 +526,8 @@ def prune_session_from_index(session_id: str) -> None:
 
 WEBUI_ZERO_MESSAGE_ORPHAN_TOMBSTONE_CAP = 500
 WEBUI_ZERO_MESSAGE_ORPHAN_TOMBSTONE_VERSION = 1
+WEBUI_DELETED_SESSION_TOMBSTONE_CAP = 1000
+WEBUI_DELETED_SESSION_TOMBSTONE_VERSION = 1
 
 
 def _webui_zero_message_orphan_tombstone_file() -> "Path":
@@ -675,6 +691,98 @@ def _clear_webui_zero_message_orphan_tombstone(sid: str) -> None:
             )
 
 
+def _webui_deleted_session_tombstone_file() -> "Path":
+    return SESSION_DIR / "_deleted_webui_sessions.json"
+
+
+def _load_webui_deleted_session_tombstone() -> frozenset[str]:
+    p = _webui_deleted_session_tombstone_file()
+    if not p.exists():
+        return frozenset()
+    try:
+        raw = json.loads(p.read_text(encoding='utf-8'))
+    except Exception:
+        logger.debug("Failed to load webui deleted-session tombstone", exc_info=True)
+        return frozenset()
+    if not isinstance(raw, dict):
+        return frozenset()
+    try:
+        if int(raw.get("version", 0)) != WEBUI_DELETED_SESSION_TOMBSTONE_VERSION:
+            return frozenset()
+    except (TypeError, ValueError):
+        return frozenset()
+    ids = raw.get("ids", [])
+    if not isinstance(ids, list):
+        return frozenset()
+    return frozenset(
+        str(sid).strip() for sid in ids if str(sid or "").strip()
+    )
+
+
+def _save_webui_deleted_session_tombstone(ids) -> None:
+    try:
+        sorted_ids = sorted(set(
+            str(sid).strip() for sid in (ids or []) if str(sid or "").strip()
+        ))
+    except TypeError:
+        return
+    if len(sorted_ids) > WEBUI_DELETED_SESSION_TOMBSTONE_CAP:
+        sorted_ids = sorted_ids[-WEBUI_DELETED_SESSION_TOMBSTONE_CAP:]
+    payload = {
+        "version": WEBUI_DELETED_SESSION_TOMBSTONE_VERSION,
+        "ids": sorted_ids,
+    }
+    p = _webui_deleted_session_tombstone_file()
+    _tmp = None
+    try:
+        SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        _tmp = p.with_suffix(
+            f'.tmp.{os.getpid()}.{threading.current_thread().ident}'
+        )
+        with open(_tmp, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(_tmp, p)
+    except Exception:
+        logger.debug("Failed to save webui deleted-session tombstone", exc_info=True)
+        if _tmp is not None:
+            try:
+                _tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def _record_webui_deleted_session_tombstone(sid: str) -> None:
+    sid = str(sid or "").strip()
+    if not sid:
+        return
+    with _WEBUI_DELETED_SESSION_TOMBSTONE_LOCK:
+        current = set(_load_webui_deleted_session_tombstone())
+        if sid in current:
+            return
+        current.add(sid)
+        _save_webui_deleted_session_tombstone(current)
+
+
+def _clear_webui_deleted_session_tombstone(sid: str) -> None:
+    sid = str(sid or "").strip()
+    if not sid:
+        return
+    with _WEBUI_DELETED_SESSION_TOMBSTONE_LOCK:
+        current = set(_load_webui_deleted_session_tombstone())
+        if sid not in current:
+            return
+        current.discard(sid)
+        if current:
+            _save_webui_deleted_session_tombstone(current)
+            return
+        try:
+            _webui_deleted_session_tombstone_file().unlink(missing_ok=True)
+        except Exception:
+            logger.debug("Failed to remove empty webui deleted-session tombstone", exc_info=True)
+
+
 def _active_stream_ids():
     with STREAMS_LOCK:
         active_ids = set(STREAMS.keys())
@@ -780,9 +888,40 @@ def _is_empty_partial_activity_message(message):
     return not str(content or '').strip()
 
 
-def _last_message_timestamp(messages):
+def _last_message_timestamp(messages, *, tail_window: int = 8):
+    """perf(session-load-latency) Priority 1: bounded tail-scan.
+
+    Old behavior: reversed-iterate ALL messages until a non-tool, non-empty
+    message's timestamp is found. For a 2,730-message session on eMMC, that's
+    ~500ms of Python attribute lookups, repeated on every /api/session
+    response.
+
+    New behavior: the messages array is chronologically ordered, so the
+    last non-tool message is at the very end. We scan only the last
+    ``tail_window`` messages — covers the realistic case where 1-3 tool
+    rows sit after the last assistant/user message. Falls back to a full
+    scan only when no timestamp is found in the window, which preserves
+    exact correctness for messages with very large trailing tool clusters
+    (rare in practice; we'd need >8 consecutive tool rows to hit it).
+    """
     if not isinstance(messages, list):
         return None
+    n = len(messages)
+    start = max(0, n - max(1, int(tail_window)))
+    # Walk from the end backwards. reversed() over a slice still creates
+    # a full reverse iterator, but only the slice's elements are touched.
+    for message in reversed(messages[start:]):
+        if isinstance(message, dict) and message.get('role') == 'tool':
+            continue
+        if _is_empty_partial_activity_message(message):
+            continue
+        ts = _message_timestamp(message)
+        if ts:
+            return ts
+    # Window miss — fall back to the original full-reversed scan. The
+    # caller pays this cost only when the heuristic didn't find a hit,
+    # which means the session is unusual (long tool tail or all-empty
+    # messages).
     for message in reversed(messages):
         if isinstance(message, dict) and message.get('role') == 'tool':
             continue
@@ -851,7 +990,18 @@ def _read_file_head(path: Path, max_prefix_bytes: int = 4096) -> str:
 
 
 def _read_metadata_json_prefix(path, max_prefix_bytes=65536):
-    """Read only the metadata portion before the top-level messages array."""
+    """Read only the metadata portion before the large arrays.
+
+    #5854: stop at the top-level ``messages`` key OR the top-level
+    ``anchor_activity_scenes`` key, whichever appears first. On the modern
+    layout scenes serialize AFTER ``messages`` so this stops at ``messages`` as
+    before (the prefix is now small — scene bodies are no longer in it). On the
+    LEGACY layout scenes serialize BEFORE ``messages`` and can be 250-480KB, so
+    stopping at ``anchor_activity_scenes`` keeps the read cheap and — critically
+    — still captures ``message_count`` (which is written before both). Without
+    the scenes-stop a legacy large-scene sidecar overflows ``max_prefix_bytes``
+    and forces a full multi-MB parse on every poll (the #4633 churn).
+    """
     buf = ''
     with open(path, 'r', encoding='utf-8') as f:
         while len(buf.encode('utf-8')) < max_prefix_bytes:
@@ -859,10 +1009,13 @@ def _read_metadata_json_prefix(path, max_prefix_bytes=65536):
             if not chunk:
                 return None
             buf += chunk
-            messages_pos = _find_top_level_json_key(buf, 'messages')
-            if messages_pos is None:
+            stop_pos = _find_top_level_json_key(buf, 'messages')
+            scenes_pos = _find_top_level_json_key(buf, 'anchor_activity_scenes')
+            if scenes_pos is not None and (stop_pos is None or scenes_pos < stop_pos):
+                stop_pos = scenes_pos
+            if stop_pos is None:
                 continue
-            prefix = buf[:messages_pos].rstrip()
+            prefix = buf[:stop_pos].rstrip()
             if prefix.endswith(','):
                 prefix = prefix[:-1].rstrip()
             return f'{prefix}\n}}'
@@ -895,7 +1048,7 @@ def _index_message_count_map(entries=None) -> dict[str, int]:
     """
     if entries is None:
         try:
-            entries = json.loads(SESSION_INDEX_FILE.read_text(encoding='utf-8'))
+            entries = json.loads(SESSION_INDEX_FILE.read_bytes())
         except Exception:
             return {}
     if not isinstance(entries, list):
@@ -955,8 +1108,14 @@ class Session:
                  context_engine_state=None,
                  context_length=None, threshold_tokens=None,
                  last_prompt_tokens=None,
+                 post_compression_context_tokens_estimate=None,
+                 compression_recovery=None,
+                 recommended_recovery_action=None,
+                 compression_recovery_source_session_id=None,
+                 compression_recovery_action=None,
                  truncation_watermark=None,
                  truncation_boundary=None,
+                 clear_generation=None,
                  gateway_routing=None, gateway_routing_history=None,
                  llm_title_generated: bool=False,
                  manual_title: bool=False,
@@ -968,6 +1127,9 @@ class Session:
                  enabled_toolsets=None,
                  composer_draft=None,
                  anchor_activity_scenes=None,
+                 process_wakeup_pause=None,
+                 share_token=None,
+                 share_created_at=None,
                  **kwargs):
         self.session_id = session_id or uuid.uuid4().hex[:12]
         self.title = title
@@ -1006,8 +1168,25 @@ class Session:
         self.context_length = context_length
         self.threshold_tokens = threshold_tokens
         self.last_prompt_tokens = last_prompt_tokens
+        _post_compression_tokens = _parse_nonnegative_int(post_compression_context_tokens_estimate)
+        self.post_compression_context_tokens_estimate = (
+            _post_compression_tokens if _post_compression_tokens and _post_compression_tokens > 0 else None
+        )
+        self.compression_recovery = compression_recovery if isinstance(compression_recovery, dict) else {}
+        self.recommended_recovery_action = recommended_recovery_action
+        self.compression_recovery_source_session_id = (
+            str(compression_recovery_source_session_id).strip()
+            if compression_recovery_source_session_id
+            else None
+        )
+        self.compression_recovery_action = (
+            str(compression_recovery_action).strip()
+            if compression_recovery_action
+            else None
+        )
         self.truncation_watermark = truncation_watermark
         self.truncation_boundary = truncation_boundary
+        self.clear_generation = clear_generation
         self.gateway_routing = gateway_routing if isinstance(gateway_routing, dict) else None
         self.gateway_routing_history = gateway_routing_history if isinstance(gateway_routing_history, list) else []
         self.llm_title_generated = bool(llm_title_generated)
@@ -1026,6 +1205,17 @@ class Session:
         self.enabled_toolsets = enabled_toolsets  # List[str] or None — per-session toolset override
         self.composer_draft = composer_draft if isinstance(composer_draft, dict) else {}
         self.anchor_activity_scenes = anchor_activity_scenes if isinstance(anchor_activity_scenes, dict) else {}
+        self.process_wakeup_pause = process_wakeup_pause if isinstance(process_wakeup_pause, dict) else {}
+        self.share_token = str(share_token).strip() if share_token else None
+        self.share_created_at = share_created_at
+        # #5854: a compact fingerprint of anchor_activity_scenes ({scene_key:
+        # updated_at}) persisted BEFORE the messages array so the sidebar-poll
+        # freshness check can compare scene freshness without parsing the full
+        # (often 250-480KB) scene bodies, which serialize AFTER messages. None
+        # on legacy sidecars (scenes-before-messages, no fingerprint) — callers
+        # fall back to reading keys/updated_at off anchor_activity_scenes.
+        _raw_scene_index = kwargs.get('anchor_scene_index')
+        self._anchor_scene_index = _raw_scene_index if isinstance(_raw_scene_index, dict) else None
         raw_message_count = kwargs.get('message_count')
         parsed_message_count = None
         if raw_message_count is not None:
@@ -1076,21 +1266,43 @@ class Session:
             'context_engine', 'compression_anchor_engine', 'compression_anchor_mode',
             'compression_anchor_details', 'context_engine_state',
             'context_length', 'threshold_tokens', 'last_prompt_tokens',
+            'post_compression_context_tokens_estimate',
+            'compression_recovery', 'recommended_recovery_action',
+            'compression_recovery_source_session_id', 'compression_recovery_action',
             'truncation_watermark',
             'truncation_boundary',
+            'clear_generation',
             'gateway_routing', 'gateway_routing_history', 'llm_title_generated', 'manual_title',
             'parent_session_id',
             'worktree_path', 'worktree_branch', 'worktree_repo_root', 'worktree_created_at',
             'is_cli_session', 'source_tag', 'raw_source', 'session_source', 'source_label', 'read_only',
-            'enabled_toolsets', 'composer_draft', 'anchor_activity_scenes',
+            'enabled_toolsets', 'composer_draft',
+            'process_wakeup_pause',
+            'share_token', 'share_created_at',
         ]
         meta = {k: getattr(self, k, None) for k in METADATA_FIELDS}
+        # #5854: message_count and a compact anchor-scene fingerprint go in the
+        # metadata prefix (BEFORE messages) so load_metadata_only() and the
+        # sidebar-poll freshness check never have to parse the full (250-480KB)
+        # scene bodies. message_count is placed BEFORE anchor_scene_index so a
+        # legacy-format reader that stops at a scene key still finds the count.
+        # The full anchor_activity_scenes bodies serialize AFTER messages.
         meta['message_count'] = len(self.messages or [])
+        meta['anchor_scene_index'] = _anchor_scene_index_from_records(self.anchor_activity_scenes)
+        # Keep the in-memory fingerprint aligned with what we just persisted, so a
+        # later metadata-only reload of THIS object (or any fingerprint reader)
+        # sees the current value rather than a stale load-time snapshot (#5854
+        # defense-in-depth; the cached-side freshness check reads real records,
+        # not this, so this is belt-and-suspenders).
+        self._anchor_scene_index = dict(meta['anchor_scene_index'])
         meta['messages'] = self.messages
         meta['tool_calls'] = self.tool_calls
-        # Fields not in METADATA_FIELDS (e.g. last_usage) go at the end
+        meta['anchor_activity_scenes'] = self.anchor_activity_scenes if isinstance(self.anchor_activity_scenes, dict) else {}
+        # Fields not in METADATA_FIELDS (e.g. last_usage) go at the end. Exclude
+        # the keys we placed explicitly above so they aren't emitted twice.
+        _placed = {'message_count', 'anchor_scene_index', 'messages', 'tool_calls', 'anchor_activity_scenes'}
         extra = {k: v for k, v in self.__dict__.items()
-                 if k not in METADATA_FIELDS and k not in ('messages', 'tool_calls')
+                 if k not in METADATA_FIELDS and k not in _placed
                  and not k.startswith('_')}
         payload = json.dumps({**meta, **extra}, ensure_ascii=False, indent=2)
 
@@ -1189,9 +1401,10 @@ class Session:
         if self.messages:
             try:
                 _clear_webui_zero_message_orphan_tombstone(self.session_id)
+                _clear_webui_deleted_session_tombstone(self.session_id)
             except Exception:
                 logger.debug(
-                    "Failed to clear webui zero-message orphan tombstone for %s",
+                    "Failed to clear webui tombstone for %s",
                     self.session_id,
                     exc_info=True,
                 )
@@ -1206,6 +1419,10 @@ class Session:
         p = SESSION_DIR / f'{sid}.json'
         if not p.exists():
             return None
+        # #5854: snapshot the stat signature BEFORE reading so a legacy-facts
+        # cache write is only committed if the file didn't change under us
+        # during the parse (TOCTOU guard against an atomic replace mid-read).
+        _pre_read_sig = _sidecar_stat_signature(p)
         data = json.loads(p.read_text(encoding='utf-8'))
         data['messages'], _collapsed_partials = _collapse_adjacent_duplicate_partials(data.get('messages'))
         session = cls(**data)
@@ -1217,6 +1434,27 @@ class Session:
                 session.save(touch_updated_at=False, skip_index=True)
             except Exception:
                 logger.debug("Failed to persist collapsed duplicate partials for %s", sid, exc_info=True)
+        else:
+            # #5854: for a LEGACY sidecar (no modern anchor_scene_index key), the
+            # cheap metadata-prefix read cannot recover message_count/scenes when
+            # scenes serialize before them, so cache the authoritative facts we
+            # just parsed. This keeps the metadata-only path and the eviction
+            # check from full-parsing this unchanged file again on every poll.
+            # Keyed by stat signature, so any edit invalidates it; the next
+            # save() rewrites the modern layout and the fallback stops firing.
+            # expected_sig guards against an atomic replace during the read.
+            # (When _collapsed_partials fired, save() above already rewrote the
+            # modern layout, so no legacy caching is needed.)
+            if 'anchor_scene_index' not in data:
+                try:
+                    _legacy_sidecar_facts_put(
+                        sid,
+                        len(getattr(session, 'messages', None) or []),
+                        _anchor_scene_index_from_records(getattr(session, 'anchor_activity_scenes', None)),
+                        expected_sig=_pre_read_sig,
+                    )
+                except Exception:
+                    logger.debug("legacy sidecar facts cache populate failed for %s", sid, exc_info=True)
         return session
 
     @classmethod
@@ -1253,6 +1491,38 @@ class Session:
                     index_message_count = index_message_counts.get(str(sid))
                 else:
                     index_message_count = _lookup_index_message_count(sid)
+            # #5854 legacy-layout recovery: a pre-#5854 sidecar serialized
+            # anchor_activity_scenes BEFORE message_count, so on a large-scene
+            # legacy file the cheap prefix now stops at the scenes key and
+            # captures NO message_count. The sidebar _index.json count can lag
+            # behind external sidecar appends, so trusting it here would report a
+            # stale/zero count and could drop an unsaved user tail on the next
+            # get_session cache-replace. When the prefix carries NEITHER
+            # message_count NOR the modern anchor_scene_index key (⇒ a legacy
+            # file whose count fell after the scenes), recover the authoritative
+            # facts. To avoid re-parsing an unchanged legacy file on every poll
+            # (which would recreate the #4633 churn for legacy sidecars that are
+            # never re-saved), consult a bounded stat-signature cache first and
+            # only full-load on a miss, caching the result. The next save()
+            # rewrites the modern layout so the fallback stops firing entirely.
+            # A MODERN file always carries message_count in the prefix, so it
+            # never reaches here — a genuine 0 stays 0.
+            if (
+                sidecar_message_count is None
+                and 'anchor_scene_index' not in parsed
+            ):
+                _facts = _legacy_sidecar_facts_get(sid)
+                if _facts is not None:
+                    parsed['anchor_scene_index'] = _facts.get('scene_index') or {}
+                    session = cls(**parsed)
+                    session._metadata_message_count = _parse_nonnegative_int(_facts.get('message_count'))
+                    session._loaded_metadata_only = True
+                    return session
+                # Cache miss → full-load. cls.load() itself populates the legacy
+                # facts cache with a TOCTOU-guarded write (expected_sig), so we
+                # do NOT re-cache here (an unguarded second write could stamp
+                # stale facts under a replacement file's signature — Codex r5).
+                return cls.load(sid)
             # Modern sidecars carry an accurate message_count, so it is the
             # source of truth and we skip the per-row _index.json read in the
             # common case. The sidebar index is only a cache (it can lag behind
@@ -1275,6 +1545,42 @@ class Session:
         except Exception:
             # Corrupt prefix or decode error — fall back to full load
             return cls.load(sid)
+
+    @staticmethod
+    def _compute_user_message_count(messages) -> int:
+        """perf(session-load-latency) Priority 1: bounded in-memory count.
+
+        Returns the number of messages with role='user' in ``messages``.
+        Pre-patch compact() did the same O(N) walk inline; the walk is
+        extracted here so it can be measured and bounded independently.
+
+        On the test corpus (a 2,400-message sidecar) this walk runs in
+        tens of milliseconds on a Celeron N3350 with eMMC. Cost is
+        proportional to the sidecar length the caller already loaded, not
+        to anything new we read from disk.
+
+        Critical: this walks ``messages`` (the sidecar) and NOT state.db.
+        A previous version of this helper queried state.db for the same
+        count, but the two sources can diverge by hundreds of messages
+        during recovery / mid-flight writes / pending_user_message, and
+        the sidebar's stale-row detection (see
+        ``_looks_like_stale_zero_message_row`` and
+        ``_row_may_need_sidecar_metadata_refresh``) consumes this field as
+        if the sidecar were the source of truth. Mixing the two sources
+        would silently flip the field's semantics.
+        """
+        if not isinstance(messages, list):
+            return 0
+        n = 0
+        for m in messages:
+            if isinstance(m, dict):
+                # Inline role check to avoid the _message_role helper call
+                # on every iteration. dict.get('role') with default '' is
+                # materially faster than a function call for the hot loop.
+                role = m.get('role')
+                if isinstance(role, str) and role == 'user':
+                    n += 1
+        return n
 
     def compact(self, include_runtime=False, active_stream_ids=None) -> dict:
         active_stream_ids = active_stream_ids if active_stream_ids is not None else set()
@@ -1322,6 +1628,9 @@ class Session:
             'context_length': self.context_length,
             'threshold_tokens': self.threshold_tokens,
             'last_prompt_tokens': self.last_prompt_tokens,
+            'post_compression_context_tokens_estimate': self.post_compression_context_tokens_estimate,
+            'compression_recovery': self.compression_recovery,
+            'recommended_recovery_action': self.recommended_recovery_action,
             'gateway_routing': self.gateway_routing,
             'gateway_routing_history': self.gateway_routing_history,
             'manual_title': self.manual_title,
@@ -1329,14 +1638,16 @@ class Session:
             # Sessions without a fork must not leak None — see test_session_lineage_metadata_api.
             **({'parent_session_id': self.parent_session_id} if self.parent_session_id else {}),
             **({
+                'compression_recovery_source_session_id': self.compression_recovery_source_session_id,
+                'compression_recovery_action': self.compression_recovery_action,
+            } if (self.compression_recovery_source_session_id or self.compression_recovery_action) else {}),
+            **({
                 'worktree_path': self.worktree_path,
                 'worktree_branch': self.worktree_branch,
                 'worktree_repo_root': self.worktree_repo_root,
                 'worktree_created_at': self.worktree_created_at,
             } if self.worktree_path else {}),
-            'user_message_count': sum(
-                1 for message in self.messages if _message_role(message) == 'user'
-            ) if isinstance(self.messages, list) else 0,
+            'user_message_count': Session._compute_user_message_count(self.messages),
             'active_stream_id': self.active_stream_id,
             'pending_user_message': self.pending_user_message,
             'has_pending_user_message': has_pending_user_message,
@@ -1348,10 +1659,340 @@ class Session:
             'read_only': self.read_only,
             'enabled_toolsets': self.enabled_toolsets,
             'composer_draft': self.composer_draft if isinstance(self.composer_draft, dict) else {},
+            'process_wakeup_pause': self.process_wakeup_pause if isinstance(self.process_wakeup_pause, dict) else {},
+            'share_token': self.share_token,
+            'share_created_at': self.share_created_at,
             'is_streaming': _is_streaming_session(
                 self.active_stream_id, active_stream_ids
             ) if include_runtime else False,
         }
+
+
+PROCESS_WAKEUP_PROVIDER_UNAVAILABLE_TYPES = frozenset({
+    'credential_pool_empty',
+})
+PROCESS_WAKEUP_PAUSE_ERROR = 'process_wakeup_paused'
+_PROCESS_WAKEUP_PAUSE_VERSION = 1
+
+
+def _process_wakeup_pause_part(value) -> str:
+    return str(value or '').strip().lower()
+
+
+def _process_wakeup_pause_provider_part(value) -> str:
+    provider = _process_wakeup_pause_part(value)
+    if not provider:
+        return ''
+    try:
+        return _process_wakeup_pause_part(_cfg._resolve_provider_alias(provider))
+    except Exception:
+        return provider
+
+
+def _process_wakeup_pause_lane(model=None, provider=None) -> tuple[str, str]:
+    model_part = _process_wakeup_pause_part(model)
+    provider_part = _process_wakeup_pause_provider_part(provider)
+    try:
+        resolved_model, resolved_provider = _cfg.canonical_model_provider_lane(model, provider)
+    except Exception:
+        logger.debug(
+            "failed to canonicalize process_wakeup pause lane for model=%r provider=%r",
+            model,
+            provider,
+            exc_info=True,
+        )
+        resolved_model, resolved_provider = None, None
+    if resolved_model:
+        model_part = _process_wakeup_pause_part(resolved_model)
+    if resolved_provider:
+        provider_part = _process_wakeup_pause_provider_part(resolved_provider)
+    return model_part, provider_part
+
+
+def _process_wakeup_pause_int(value, default: int = 0) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0 else default
+
+
+def _process_wakeup_pause_float(value, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _process_wakeup_pause_key(model=None, provider=None, classification=None) -> dict:
+    model_part, provider_part = _process_wakeup_pause_lane(model, provider)
+    return {
+        'model': model_part,
+        'provider': provider_part,
+        'classification': _process_wakeup_pause_part(classification),
+    }
+
+
+def process_wakeup_pause_matches(session, *, model=None, provider=None, classification=None) -> bool:
+    """Return True when the session has an active pause for this wakeup lane."""
+    pause = getattr(session, 'process_wakeup_pause', None)
+    if not isinstance(pause, dict) or not pause.get('paused'):
+        return False
+    expected = _process_wakeup_pause_key(model, provider, classification)
+    for key, expected_value in expected.items():
+        if key == 'classification' and not expected_value:
+            continue
+        if _process_wakeup_pause_part(pause.get(key)) != expected_value:
+            return False
+    return True
+
+
+def clear_process_wakeup_pause(session, *, reason: str = '') -> bool:
+    """Clear any persisted process-wakeup pause metadata.
+
+    Returns True when a pause was present. Callers decide whether and how to
+    persist, because some paths are already inside a larger session writeback.
+    """
+    pause = getattr(session, 'process_wakeup_pause', None)
+    if not isinstance(pause, dict) or not pause:
+        return False
+    session.process_wakeup_pause = {}
+    if reason:
+        session._last_process_wakeup_pause_clear_reason = str(reason)
+    return True
+
+
+def clear_process_wakeup_pause_if_model_changed(session, *, model=None, provider=None) -> bool:
+    """Reset a wakeup pause when the resolved model/provider lane changed."""
+    pause = getattr(session, 'process_wakeup_pause', None)
+    if not isinstance(pause, dict) or not pause.get('paused'):
+        return False
+    current = _process_wakeup_pause_key(model, provider, pause.get('classification'))
+    if (
+        _process_wakeup_pause_part(pause.get('model')) == current['model']
+        and _process_wakeup_pause_part(pause.get('provider')) == current['provider']
+    ):
+        return False
+    return clear_process_wakeup_pause(session, reason='model_or_provider_changed')
+
+
+def record_process_wakeup_provider_unavailable_pause(
+    session,
+    *,
+    classification: str,
+    model=None,
+    provider=None,
+) -> dict | None:
+    """Record the first visible provider-unavailable wakeup failure.
+
+    The persisted object is deliberately metadata-only: it records the lane and
+    counters, not the wakeup prompt or provider response body, so it remains
+    auditable without copying process output or credentials into diagnostics.
+    """
+    classification = _process_wakeup_pause_part(classification)
+    if classification not in PROCESS_WAKEUP_PROVIDER_UNAVAILABLE_TYPES:
+        return None
+    now = time.time()
+    key = _process_wakeup_pause_key(model, provider, classification)
+    credential_state_fingerprint = process_wakeup_credential_state_fingerprint(session)
+    existing = getattr(session, 'process_wakeup_pause', None)
+    same_window = (
+        isinstance(existing, dict)
+        and existing.get('paused')
+        and _process_wakeup_pause_part(existing.get('model')) == key['model']
+        and _process_wakeup_pause_part(existing.get('provider')) == key['provider']
+        and _process_wakeup_pause_part(existing.get('classification')) == key['classification']
+    )
+    visible_error_count = 1
+    suppressed_count = 0
+    first_paused_at = now
+    if same_window:
+        first_paused_at = _process_wakeup_pause_float(existing.get('first_paused_at'), now)
+        visible_error_count = _process_wakeup_pause_int(
+            existing.get('visible_error_count'),
+            1,
+        ) + 1
+        suppressed_count = _process_wakeup_pause_int(existing.get('suppressed_count'), 0)
+    session.process_wakeup_pause = {
+        'version': _PROCESS_WAKEUP_PAUSE_VERSION,
+        'paused': True,
+        'source': 'process_wakeup',
+        'classification': key['classification'],
+        'model': key['model'],
+        'provider': key['provider'],
+        'first_paused_at': first_paused_at,
+        'last_error_at': now,
+        'visible_error_count': visible_error_count,
+        'suppressed_count': suppressed_count,
+        'credential_state_fingerprint': credential_state_fingerprint,
+    }
+    return session.process_wakeup_pause
+
+
+def suppress_process_wakeup_for_provider_pause(
+    session,
+    *,
+    model=None,
+    provider=None,
+    classification: str = 'credential_pool_empty',
+) -> dict | None:
+    """Increment suppression metadata if this automatic wakeup is paused."""
+    if not process_wakeup_pause_matches(
+        session,
+        model=model,
+        provider=provider,
+        classification=classification,
+    ):
+        return None
+    pause = dict(getattr(session, 'process_wakeup_pause', {}) or {})
+    pause['suppressed_count'] = _process_wakeup_pause_int(pause.get('suppressed_count'), 0) + 1
+    pause['last_suppressed_at'] = time.time()
+    pause['last_suppressed_reason'] = 'provider_unavailable_pause'
+    session.process_wakeup_pause = pause
+    return pause
+
+
+_PROCESS_WAKEUP_AUTH_ROTATION_KEYS = frozenset({
+    'expires_at',
+    'expires_at_ms',
+    'expires_in',
+    'last_status',
+    'last_status_at',
+    'last_error_code',
+    'last_error_reason',
+    'last_error_message',
+    'last_error_reset_at',
+    'request_count',
+    'updated_at',
+})
+_PROCESS_WAKEUP_AUTH_SECRET_PRESENCE_KEYS = frozenset({
+    'access_token',
+    'refresh_token',
+    'id_token',
+    'api_key',
+    'secret',
+    'client_secret',
+    'runtime_api_key',
+    'token',
+})
+
+
+def _process_wakeup_secret_presence(value):
+    if isinstance(value, str):
+        return bool(value.strip())
+    return bool(value)
+
+
+def _process_wakeup_auth_fingerprint_payload(value):
+    if isinstance(value, dict):
+        payload = {}
+        for key, child in value.items():
+            key_text = str(key)
+            key_norm = key_text.strip().lower()
+            if key_norm in _PROCESS_WAKEUP_AUTH_ROTATION_KEYS:
+                continue
+            if key_norm in _PROCESS_WAKEUP_AUTH_SECRET_PRESENCE_KEYS:
+                payload[key_text] = _process_wakeup_secret_presence(child)
+            else:
+                payload[key_text] = _process_wakeup_auth_fingerprint_payload(child)
+        return payload
+    if isinstance(value, list):
+        return [_process_wakeup_auth_fingerprint_payload(item) for item in value]
+    return value
+
+
+def _process_wakeup_auth_store_fingerprint(path: Path) -> dict:
+    p = Path(path).expanduser()
+    payload: dict = {'path': str(p)}
+    try:
+        stat = p.stat()
+    except FileNotFoundError:
+        payload['missing'] = True
+        return payload
+    except OSError as exc:
+        payload['error'] = exc.__class__.__name__
+        return payload
+    if not p.is_file():
+        payload['kind'] = 'other'
+        return payload
+    try:
+        raw = json.loads(p.read_text(encoding='utf-8'))
+    except Exception:
+        payload['kind'] = 'file'
+        payload['semantic'] = 'unparsed-fallback'
+        payload['mtime_ns'] = int(stat.st_mtime_ns)
+        payload['size'] = int(stat.st_size)
+        return payload
+    sanitized = _process_wakeup_auth_fingerprint_payload(raw)
+    try:
+        encoded = json.dumps(
+            sanitized,
+            sort_keys=True,
+            separators=(',', ':'),
+            ensure_ascii=True,
+            default=str,
+        ).encode('utf-8')
+        payload['semantic_sha256'] = hashlib.sha256(encoded).hexdigest()
+    except Exception:
+        payload['kind'] = 'file'
+        payload['semantic'] = 'encode-fallback'
+        payload['mtime_ns'] = int(stat.st_mtime_ns)
+        payload['size'] = int(stat.st_size)
+    return payload
+
+
+def process_wakeup_credential_state_fingerprint(session) -> str:
+    """Return a metadata-only fingerprint for credential/config state.
+
+    auth.json is rewritten by OAuth/token-refresh and request telemetry churn.
+    Hash its semantic content instead of mtime/size so those rewrites do not
+    clear a credential-exhausted process-wakeup pause. Secret fields are
+    represented only by presence booleans: adding a credential changes the
+    fingerprint, while rotating an existing token value does not persist or
+    compare secret material.
+    """
+    try:
+        hermes_home = _get_profile_home(getattr(session, 'profile', None))
+    except Exception:
+        hermes_home = Path(os.environ.get('HERMES_HOME') or HOME).expanduser()
+    files = []
+    for name in ('auth.json', 'config.yaml', 'config.yml', '.env'):
+        path = hermes_home / name
+        if name == 'auth.json':
+            files.append((name, _process_wakeup_auth_store_fingerprint(path)))
+            continue
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            files.append((name, 'missing'))
+        except OSError as exc:
+            files.append((name, 'error', exc.__class__.__name__))
+        else:
+            kind = 'file' if path.is_file() else 'other'
+            files.append((name, kind, int(stat.st_mtime_ns), int(stat.st_size)))
+    payload = {
+        'version': 2,
+        'profile': _process_wakeup_pause_part(getattr(session, 'profile', None)),
+        'files': files,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def process_wakeup_pause_credential_state_changed(session) -> bool:
+    """Return True when a stored credential pause should be revalidated."""
+    pause = getattr(session, 'process_wakeup_pause', None)
+    if not isinstance(pause, dict) or not pause.get('paused'):
+        return False
+    classification = _process_wakeup_pause_part(pause.get('classification'))
+    if classification not in PROCESS_WAKEUP_PROVIDER_UNAVAILABLE_TYPES:
+        return False
+    previous = str(pause.get('credential_state_fingerprint') or '').strip()
+    if not previous:
+        return True
+    return process_wakeup_credential_state_fingerprint(session) != previous
+
 
 def _get_profile_home(profile) -> Path:
     """Resolve the hermes agent home directory for the given profile.
@@ -2447,7 +3088,7 @@ def _has_compression_continuation(session) -> bool:
 
     try:
         if SESSION_INDEX_FILE.exists():
-            entries = json.loads(SESSION_INDEX_FILE.read_text(encoding='utf-8'))
+            entries = json.loads(SESSION_INDEX_FILE.read_bytes())
             if isinstance(entries, list) and any(_row_is_continuation(e) for e in entries):
                 return True
     except Exception:
@@ -2874,6 +3515,136 @@ def _cache_has_stale_unsaved_user_tail(cached, disk_session) -> bool:
     return _message_content_text(cached_tail) == _message_content_text(previous_disk_user)
 
 
+def _anchor_scene_index_from_records(records) -> dict:
+    """Build the compact anchor-scene fingerprint {scene_key: updated_at} (#5854).
+
+    This is the freshness signal the sidebar-poll comparison needs — scene keys
+    plus each scene's ``updated_at`` — WITHOUT the 250-480KB bodies. Persisted in
+    the metadata prefix (before ``messages``) so ``load_metadata_only`` and
+    ``_persisted_session_meta_prefix`` stay cheap. Mirrors exactly what
+    ``_anchor_scene_record_keys`` / ``_anchor_scene_records_updated_at`` read off
+    the full records, so the fingerprint comparison is behavior-identical.
+    """
+    if not isinstance(records, dict):
+        return {}
+    index = {}
+    for key, value in records.items():
+        if not key or not isinstance(value, dict):
+            continue
+        try:
+            updated_at = float(value.get('updated_at') or 0)
+        except (TypeError, ValueError):
+            updated_at = 0.0
+        index[str(key)] = updated_at
+    return index
+
+
+def _disk_scene_fingerprint(disk_meta_prefix: dict):
+    """Resolve the (scene_keys, max_updated_at) freshness signal from a parsed
+    metadata prefix dict, preferring the modern ``anchor_scene_index`` and
+    falling back to the full ``anchor_activity_scenes`` bodies for legacy files.
+
+    Returns ``None`` when the prefix carries NEITHER field, so callers can tell
+    "no scenes" (empty dict/index present) apart from "couldn't determine"
+    (legacy file whose scenes serialize after ``messages`` and so aren't in the
+    prefix) and fall through to the full metadata load instead of assuming zero.
+    """
+    if not isinstance(disk_meta_prefix, dict):
+        return None
+    if 'anchor_scene_index' in disk_meta_prefix:
+        raw = disk_meta_prefix.get('anchor_scene_index')
+        raw = raw if isinstance(raw, dict) else {}
+        keys = {str(k) for k in raw}
+        latest = 0.0
+        for v in raw.values():
+            try:
+                fv = float(v or 0)
+            except (TypeError, ValueError):
+                fv = 0.0
+            if fv > latest:
+                latest = fv
+        return keys, latest
+    if 'anchor_activity_scenes' in disk_meta_prefix:
+        records = disk_meta_prefix.get('anchor_activity_scenes')
+        records = records if isinstance(records, dict) else {}
+        keys = {str(k) for k, val in records.items() if k and isinstance(val, dict)}
+        latest = 0.0
+        for val in records.values():
+            if not isinstance(val, dict):
+                continue
+            try:
+                fv = float(val.get('updated_at') or 0)
+            except (TypeError, ValueError):
+                fv = 0.0
+            if fv > latest:
+                latest = fv
+        return keys, latest
+    return None
+
+
+def _sidecar_stat_signature(path):
+    """Stat signature for a sidecar path, or None if it can't be stat'd.
+
+    Any edit (atomic-rename or in-place) changes at least one component, so a
+    cached entry keyed by this signature is auto-invalidated on the next write.
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (str(path), int(getattr(st, 'st_mtime_ns', int(st.st_mtime * 1_000_000_000))),
+            int(st.st_size), int(getattr(st, 'st_ctime_ns', int(st.st_ctime * 1_000_000_000))))
+
+
+def _legacy_sidecar_facts_get(sid):
+    """Return cached authoritative facts for a LEGACY sidecar, or None (#5854).
+
+    Only returns a hit when the file's current stat signature matches the cached
+    one, so a stale entry can never be served after an edit.
+    """
+    if not is_safe_session_id(sid):
+        return None
+    sig = _sidecar_stat_signature(SESSION_DIR / f'{sid}.json')
+    if sig is None:
+        return None
+    with _LEGACY_SIDECAR_FACTS_LOCK:
+        hit = _LEGACY_SIDECAR_FACTS.get(sig)
+        if hit is not None:
+            _LEGACY_SIDECAR_FACTS.move_to_end(sig)
+            return dict(hit)
+    return None
+
+
+def _legacy_sidecar_facts_put(sid, message_count, scene_index, *, expected_sig):
+    """Cache authoritative facts for a legacy sidecar keyed by its stat signature.
+
+    #5854 TOCTOU guard: ``expected_sig`` (MANDATORY) is the signature captured
+    BEFORE the caller parsed the file. The facts were derived from that snapshot,
+    so we only cache when the file's CURRENT signature still equals it —
+    otherwise the file was atomically replaced during the parse and these facts
+    describe the old content; caching them under the new signature would serve
+    stale data. Pass ``None`` explicitly only if the caller genuinely has no
+    snapshot (then this is a no-op, refusing to cache unverified facts).
+    """
+    if not is_safe_session_id(sid):
+        return
+    if expected_sig is None:
+        return
+    sig = _sidecar_stat_signature(SESSION_DIR / f'{sid}.json')
+    if sig is None:
+        return
+    if sig != expected_sig:
+        # File changed under us during the parse — do not cache stale facts.
+        return
+    entry = {"message_count": message_count,
+             "scene_index": dict(scene_index) if isinstance(scene_index, dict) else {}}
+    with _LEGACY_SIDECAR_FACTS_LOCK:
+        _LEGACY_SIDECAR_FACTS[sig] = entry
+        _LEGACY_SIDECAR_FACTS.move_to_end(sig)
+        while len(_LEGACY_SIDECAR_FACTS) > _LEGACY_SIDECAR_FACTS_MAX:
+            _LEGACY_SIDECAR_FACTS.popitem(last=False)
+
+
 def _anchor_scene_record_keys(session) -> set[str]:
     records = getattr(session, 'anchor_activity_scenes', None)
     if not isinstance(records, dict):
@@ -2898,6 +3669,44 @@ def _anchor_scene_records_updated_at(session) -> float:
     return latest
 
 
+def _session_scene_keys(session) -> set[str]:
+    """Scene keys for a session object, fingerprint-aware (#5854).
+
+    The ``_anchor_scene_index`` fingerprint is authoritative ONLY on a
+    metadata-only stub (whose full ``anchor_activity_scenes`` are not
+    materialized because they serialize after ``messages``). A FULLY-LOADED
+    session carries a load-time fingerprint that goes stale the moment its
+    records are mutated in place (the scene-persist path does exactly that
+    without refreshing it), so for a full session we MUST read the real records.
+    """
+    if getattr(session, '_loaded_metadata_only', False):
+        index = getattr(session, '_anchor_scene_index', None)
+        if isinstance(index, dict):
+            return {str(k) for k in index}
+    return _anchor_scene_record_keys(session)
+
+
+def _session_scene_updated_at(session) -> float:
+    """Max scene ``updated_at`` for a session object, fingerprint-aware (#5854).
+
+    Fingerprint is authoritative only on a metadata-only stub; a fully-loaded
+    session always compares its real records (see ``_session_scene_keys``).
+    """
+    if getattr(session, '_loaded_metadata_only', False):
+        index = getattr(session, '_anchor_scene_index', None)
+        if isinstance(index, dict):
+            latest = 0.0
+            for v in index.values():
+                try:
+                    fv = float(v or 0)
+                except (TypeError, ValueError):
+                    fv = 0.0
+                if fv > latest:
+                    latest = fv
+            return latest
+    return _anchor_scene_records_updated_at(session)
+
+
 def _cached_session_lags_disk(cached) -> bool:
     """Return True when a cached full session is older than its sidecar.
 
@@ -2906,35 +3715,334 @@ def _cached_session_lags_disk(cached) -> bool:
     id. Serving the cache then makes recent assistant results disappear from
     GET /api/session even though disk and _index.json are correct. Compare only
     cheap metadata here; full reload happens only if disk is strictly ahead.
+
+    perf(webui/session-load-latency) cheap-first ordering: the function used to
+    call Session.load_metadata_only(sid) on every cache hit, which parses the
+    full sidecar JSON (~15-20ms even for 1.3MB sidecars on Celeron+ eMMC).
+    For draft auto-saves that hit get_session() on every keystroke debounce
+    (every ~400ms while typing), that 15-20ms multiplied out to ~75% of the
+    request's wall time on the Chromebook. We now do a single fast check
+    first: read only the JSON metadata prefix to compare message counts.
+    The full Session.load_metadata_only() and its anchor-scene comparisons
+    only run when the count check is inconclusive or when disk appears to be
+    ahead of cache.
     """
     if cached is None:
         return False
     sid = getattr(cached, 'session_id', None)
     if not sid:
         return False
+    cached_count = len(getattr(cached, 'messages', None) or [])
+    # Fast path: prefix read of just the metadata header.
+    disk_count = _persisted_message_count(sid)
+    if disk_count is not None:
+        if disk_count > cached_count:
+            return True
+        # Disk is at most as far as cache. Even when counts match, anchor scene
+        # records can advance independently (api/routes.py saves a session
+        # with `s.save(touch_updated_at=False, skip_index=True)` after editing
+        # only the scene dict; message_count is len(messages) so it stays the
+        # same). Greptile flagged this in PR review. Cheaply check the disk's
+        # scene records from the same prefix we already read.
+        cached_scenes = getattr(cached, 'anchor_activity_scenes', None) or {}
+        if not isinstance(cached_scenes, dict):
+            cached_scenes = {}
+        # Track whether the cheap scene check was inconclusive — when it is,
+        # we must fall through to the full metadata comparison instead of
+        # returning False for inactive sessions with matching counts.
+        _scene_check_inconclusive = False
+        if cached_scenes:
+            disk_meta_quick = _persisted_session_meta_prefix(sid)
+            # #5854: modern prefixes carry only the anchor_scene_index
+            # fingerprint (keys + updated_at), not the full scene bodies (those
+            # now serialize after `messages`). _disk_scene_fingerprint resolves
+            # the (keys, max_updated_at) signal from either the modern
+            # fingerprint or a legacy file's inline bodies, and returns None
+            # when the prefix carries NEITHER (a legacy large-scene file whose
+            # scenes fall after the prefix) so we fall through rather than
+            # assuming "no scenes".
+            disk_fp = _disk_scene_fingerprint(disk_meta_quick) if disk_meta_quick is not None else None
+            if disk_fp is not None:
+                disk_keys, disk_latest = disk_fp
+                if disk_keys:
+                    # Directional: only reload when disk is strictly ahead
+                    # of cache. Mirror master's subset comparison — cache
+                    # that is ahead of disk must NOT force a reload, or
+                    # un-persisted scene data is silently dropped.
+                    cached_keys = _anchor_scene_record_keys(cached)
+                    if not disk_keys.issubset(cached_keys):
+                        return True
+                    # Same key set (or disk is subset): check the latest
+                    # updated_at timestamp.
+                    if disk_latest > _anchor_scene_records_updated_at(cached):
+                        return True
+                # disk has no scenes, cache does -> cache is ahead; keep it.
+            else:
+                # Can't cheaply verify scene freshness from disk (prefix carried
+                # neither fingerprint nor inline scenes, or the prefix read
+                # failed while _persisted_message_count succeeded via index
+                # fallback). Fall through to the full metadata load so we don't
+                # serve stale scenes on the next equal-count inactive path.
+                # Greptile P1.
+                _scene_check_inconclusive = True
+        else:
+            # Cached session has no scene records. Check if disk has gained
+            # the first scene record — without this the fast-path would miss
+            # a newly persisted scene and return the stale cache. Greptile P1.
+            disk_meta_quick = _persisted_session_meta_prefix(sid)
+            disk_fp = _disk_scene_fingerprint(disk_meta_quick) if disk_meta_quick is not None else None
+            if disk_fp is not None:
+                disk_keys, _disk_latest = disk_fp
+                if disk_keys:
+                    return True
+            else:
+                # Prefix read failed / carried no scene signal (may still
+                # succeed via index fallback for message count). Mark
+                # inconclusive so we fall through to the full metadata
+                # comparison instead of returning False with stale cache.
+                # Greptile P1 (discussion_r3548650345).
+                _scene_check_inconclusive = True
+        if getattr(cached, 'active_stream_id', None) or getattr(cached, 'pending_user_message', None):
+            # Active session: messages may be in flight; fall through to the
+            # full check to be safe.
+            pass
+        elif _scene_check_inconclusive:
+            # Could not cheaply verify scene freshness from disk; fall through
+            # to the full metadata comparison rather than returning False
+            # (which would serve a potentially stale cache). Greptile P1.
+            pass
+        else:
+            # Inactive session, count matches, scene records match — cache is
+            # at parity with disk.
+            return False
     try:
         disk_meta = Session.load_metadata_only(sid)
     except Exception:
         return False
     if disk_meta is None:
         return False
-    cached_count = len(getattr(cached, 'messages', None) or [])
-    disk_count = _parse_nonnegative_int(getattr(disk_meta, '_metadata_message_count', None))
     if disk_count is None:
-        disk_count = _lookup_index_message_count(sid)
-    if disk_count is not None and disk_count > cached_count:
-        return True
+        disk_count = _parse_nonnegative_int(getattr(disk_meta, '_metadata_message_count', None))
+        if disk_count is None:
+            disk_count = _lookup_index_message_count(sid)
+        if disk_count is not None and disk_count > cached_count:
+            return True
     if not getattr(cached, 'active_stream_id', None) and not getattr(cached, 'pending_user_message', None):
+        # #5854: disk_meta is a metadata-only stub whose scenes now live after
+        # `messages` and so are NOT materialized on it — read its scene freshness
+        # from the _anchor_scene_index fingerprint. `cached` is ALWAYS a full
+        # in-memory session (get_session never caches metadata-only stubs), and
+        # its records are mutated in place by the scene-persist path without
+        # refreshing the load-time fingerprint — so the cached side must read the
+        # REAL records (master parity), never the fingerprint, or a parity cache
+        # looks disk-behind after a scene write and forces a spurious full reload.
+        #
+        # A LEGACY stub (no anchor_scene_index fingerprint AND scenes not in the
+        # prefix) carries no scene signal at all — comparing it blind would miss
+        # a genuine disk-ahead scene change (stale worklog served). Full-load the
+        # sidecar once to compare real scene records; the next save() rewrites
+        # the modern layout so this legacy full-load doesn't recur.
+        if (
+            getattr(disk_meta, '_loaded_metadata_only', False)
+            and getattr(disk_meta, '_anchor_scene_index', None) is None
+        ):
+            try:
+                disk_full = Session.load(sid)
+            except Exception:
+                disk_full = None
+            if disk_full is not None:
+                disk_meta = disk_full
         cached_scene_keys = _anchor_scene_record_keys(cached)
-        disk_scene_keys = _anchor_scene_record_keys(disk_meta)
+        disk_scene_keys = _session_scene_keys(disk_meta)
         if disk_scene_keys and not disk_scene_keys.issubset(cached_scene_keys):
             return True
         if (
             disk_scene_keys
-            and _anchor_scene_records_updated_at(disk_meta) > _anchor_scene_records_updated_at(cached)
+            and _session_scene_updated_at(disk_meta) > _anchor_scene_records_updated_at(cached)
         ):
             return True
     return False
+
+
+def _persisted_message_count(sid) -> int | None:
+    """Return the on-disk message count for *sid* without a full load (#4765).
+
+    Reads only the sidecar metadata prefix (and falls back to the sidebar
+    ``_index.json`` count) so the eviction safety check stays cheap even while
+    the global ``LOCK`` is held. Returns ``None`` when the sidecar is missing or
+    its count cannot be determined — callers treat that as "do not evict",
+    because we must never drop an in-memory session we cannot prove is on disk.
+    """
+    if not is_safe_session_id(sid):
+        return None
+    p = SESSION_DIR / f'{sid}.json'
+    if not p.exists():
+        return None
+    try:
+        prefix = _read_metadata_json_prefix(p)
+        if prefix:
+            parsed = json.loads(prefix)
+            count = _parse_nonnegative_int(parsed.get('message_count'))
+            if count is not None:
+                return count
+            # #5854: a legacy sidecar (scenes-before-count) yields a prefix with
+            # no message_count and no modern anchor_scene_index. The _index.json
+            # count can lag behind external appends, so trusting it here risks
+            # under-reporting (and dropping an unsaved tail on cache-replace).
+            # Consult the authoritative legacy-facts cache (populated by a full
+            # load) before giving up; only return None (→ caller full-loads) on
+            # a miss. This keeps clean legacy sessions LRU-evictable without
+            # trusting a stale index. A MODERN prefix always carries
+            # message_count, so it returns above.
+            if 'anchor_scene_index' not in parsed:
+                _facts = _legacy_sidecar_facts_get(sid)
+                if _facts is not None:
+                    cached_count = _parse_nonnegative_int(_facts.get('message_count'))
+                    if cached_count is not None:
+                        return cached_count
+                # Cache miss (never full-loaded yet, or the facts LRU evicted
+                # this entry). Returning None here would make the session
+                # non-evictable (the eviction check treats an unknown disk count
+                # as "do not evict"), which can let new_session() evict its own
+                # unsaved session and 404 the first send. Full-parse to get the
+                # authoritative count (Session.load re-caches the facts for
+                # legacy files under a TOCTOU-guarded signature). Re-verify the
+                # stat signature is stable across the parse so we never return a
+                # count from a file that was atomically replaced mid-read; retry
+                # boundedly on mismatch, then fall through to None. Bounded
+                # overall: the next save() rewrites the modern layout.
+                for _attempt in range(3):
+                    sig_before = _sidecar_stat_signature(p)
+                    try:
+                        _full = Session.load(sid)
+                    except Exception:
+                        _full = None
+                    sig_after = _sidecar_stat_signature(p)
+                    if _full is None:
+                        return None
+                    if sig_before is not None and sig_before == sig_after:
+                        return len(getattr(_full, 'messages', None) or [])
+                    # File changed during the parse — the count is uncertain;
+                    # retry with a fresh snapshot.
+                return None
+    except Exception:
+        # Fall through to the index-based fallback below.
+        pass
+    return _parse_nonnegative_int(_lookup_index_message_count(sid))
+
+
+def _persisted_session_meta_prefix(sid) -> dict | None:
+    """Return the parsed metadata prefix dict for *sid*, or None on error.
+
+    Used by ``_cached_session_lags_disk`` to compare additional fields (e.g.
+    anchor scene records) cheaply against the cached in-memory session without
+    paying for a full ``Session.load_metadata_only`` parse. Returns the same
+    shape as ``_persisted_message_count`` callers would expect — a dict that
+    only contains the metadata-prefix fields, NOT ``messages`` / ``tool_calls``.
+    """
+    if not is_safe_session_id(sid):
+        return None
+    p = SESSION_DIR / f'{sid}.json'
+    if not p.exists():
+        return None
+    try:
+        prefix = _read_metadata_json_prefix(p)
+        if not prefix:
+            return None
+        return json.loads(prefix)
+    except Exception:
+        return None
+
+
+def _session_is_evictable(s) -> bool:
+    """Return True only when *s* can be safely dropped from the LRU (#4765).
+
+    Eviction must never lose data or interrupt a live turn. A session is
+    evictable ONLY when ALL of the following hold:
+
+      * It is not streaming (no ``active_stream_id``).
+      * It has no in-flight/queued turn (no ``pending_user_message`` and no
+        ``pending_started_at``).
+      * Its full state is already persisted to the JSON sidecar, proven by the
+        on-disk ``message_count`` being at least the in-memory message count.
+        A metadata-only stub is inherently backed by disk, so it is evictable.
+
+    Anything we cannot positively prove is safe stays resident. Using slightly
+    more RAM for a session we are unsure about is strictly better than evicting
+    an active or unsaved session (task safety invariant: a half-done memory fix
+    that loses a session is worse than none).
+    """
+    if s is None:
+        return True  # nothing to protect; let the caller drop it
+    if getattr(s, 'active_stream_id', None):
+        return False
+    if getattr(s, 'pending_user_message', None):
+        return False
+    if getattr(s, 'pending_started_at', None):
+        return False
+    sid = getattr(s, 'session_id', None)
+    if not sid:
+        return False
+    # Metadata-only stubs never carry unsaved messages (messages=[] by design),
+    # so they are always disk-backed and safe to drop.
+    if getattr(s, '_loaded_metadata_only', False):
+        return True
+    in_memory_count = len(getattr(s, 'messages', None) or [])
+    if in_memory_count == 0:
+        # A zero-message session has nothing to lose. If it was never persisted
+        # (brand new, no sidecar) dropping it only discards an empty shell; the
+        # next access recreates it. If it is persisted, it is trivially clean.
+        return True
+    disk_count = _persisted_message_count(sid)
+    if disk_count is None:
+        return False  # cannot prove it is on disk → keep it resident
+    return disk_count >= in_memory_count
+
+
+def _evict_sessions_over_cap(cap: int | None = None) -> int:
+    """Evict clean, persisted, non-active sessions until len(SESSIONS) <= cap.
+
+    Replaces the previous blind ``SESSIONS.popitem(last=False)`` loops (#4765).
+    The blind loops could evict the least-recently-used entry even if it was
+    actively streaming or held unsaved messages, risking a dropped turn or lost
+    conversation. This walks the LRU from oldest to newest and removes only
+    entries that ``_session_is_evictable()`` proves are safe. An evicted session
+    transparently lazily reloads from its sidecar on the next ``get_session()``.
+
+    CALLER CONTRACT: the global ``LOCK`` MUST already be held (every call site
+    mutates ``SESSIONS`` under ``LOCK``). This function never acquires ``LOCK``
+    or any stream lock itself, so it cannot introduce a lock-ordering deadlock.
+
+    Returns the number of sessions evicted. If every over-cap candidate is
+    active/unsaved, the cache may temporarily exceed ``cap`` — that is the
+    intended safe behavior (never lose an active/unsaved session).
+    """
+    if cap is None:
+        try:
+            cap = _cfg.get_sessions_cache_max()
+        except Exception:
+            cap = SESSIONS_MAX
+    if not isinstance(cap, int) or cap < 1:
+        cap = SESSIONS_MAX if isinstance(SESSIONS_MAX, int) and SESSIONS_MAX >= 1 else 1
+    evicted = 0
+    # Iterate over a snapshot of ids in LRU order (oldest first). We stop as
+    # soon as we are at/below the cap. Skipping a non-evictable oldest entry and
+    # moving on lets us reclaim a slightly-newer clean entry instead of blocking
+    # eviction entirely behind one pinned active session.
+    for sid in list(SESSIONS.keys()):
+        if len(SESSIONS) <= cap:
+            break
+        candidate = SESSIONS.get(sid)
+        if _session_is_evictable(candidate):
+            SESSIONS.pop(sid, None)
+            evicted += 1
+    if len(SESSIONS) > cap:
+        logger.debug(
+            "SESSIONS cache above cap (%d > %d) after eviction pass: remaining "
+            "entries are active or unsaved and were preserved (#4765)",
+            len(SESSIONS), cap,
+        )
+    return evicted
 
 
 def get_session(sid, metadata_only=False):
@@ -3018,8 +4126,7 @@ def get_session(sid, metadata_only=False):
         with LOCK:
             SESSIONS[sid] = s
             SESSIONS.move_to_end(sid)
-            while len(SESSIONS) > SESSIONS_MAX:
-                SESSIONS.popitem(last=False)  # evict least recently used
+            _evict_sessions_over_cap()  # #4765: safe LRU eviction (never active/unsaved)
         if not metadata_only:
             try:
                 synced_from_state = _sync_sidecar_from_state_db_if_newer(s)
@@ -3051,6 +4158,97 @@ def get_session(sid, metadata_only=False):
                 pass  # repair is best-effort
         return s
     raise KeyError(sid)
+
+
+_COMPRESSION_RECOVERY_PROFILE_UNSET = object()
+
+
+def _compression_recovery_child_matches(
+    session,
+    source_session_id: str,
+    action: str,
+    source_profile=_COMPRESSION_RECOVERY_PROFILE_UNSET,
+) -> bool:
+    if source_profile is not _COMPRESSION_RECOVERY_PROFILE_UNSET:
+        try:
+            from api.profiles import _profiles_match
+        except (ImportError, AttributeError):
+            logger.debug("Failed to profile-check compression recovery session", exc_info=True)
+            return False
+        if not _profiles_match(getattr(session, "profile", None), source_profile):
+            return False
+    return (
+        str(getattr(session, "compression_recovery_source_session_id", "") or "").strip() == source_session_id
+        and str(getattr(session, "compression_recovery_action", "") or "").strip() == action
+    )
+
+
+def find_compression_recovery_session(
+    source_session_id: str,
+    action: str,
+    source_profile=_COMPRESSION_RECOVERY_PROFILE_UNSET,
+):
+    """Return an existing focused recovery child for ``source_session_id``.
+
+    The recovery-start endpoint is a retryable UI action. A persisted marker on
+    the child session makes double-clicks, repeated calls, and cache reloads
+    converge on the same continuation instead of creating duplicate siblings.
+    """
+
+    source_sid = str(source_session_id or "").strip()
+    recovery_action = str(action or "").strip()
+    if not source_sid or not recovery_action:
+        return None
+
+    matches = []
+    seen_ids: set[str] = set()
+    try:
+        with LOCK:
+            memory_sessions = list(SESSIONS.values())
+        for session in memory_sessions:
+            sid = str(getattr(session, "session_id", "") or "").strip()
+            if sid:
+                seen_ids.add(sid)
+            if _compression_recovery_child_matches(session, source_sid, recovery_action, source_profile):
+                matches.append(session)
+    except Exception:
+        logger.debug("Failed to scan cached compression recovery sessions", exc_info=True)
+
+    try:
+        persisted_ids = _persisted_session_ids_snapshot()
+    except Exception:
+        persisted_ids = frozenset()
+    for sid in persisted_ids:
+        if sid in seen_ids:
+            continue
+        try:
+            meta = Session.load_metadata_only(sid)
+        except Exception:
+            logger.debug("Failed to inspect compression recovery session %s", sid, exc_info=True)
+            continue
+        if not meta or not _compression_recovery_child_matches(meta, source_sid, recovery_action, source_profile):
+            continue
+        try:
+            matches.append(get_session(sid))
+        except Exception:
+            matches.append(meta)
+
+    if not matches:
+        return None
+
+    def _sort_key(session):
+        try:
+            created_at = float(getattr(session, "created_at", 0) or 0)
+        except (TypeError, ValueError):
+            created_at = 0.0
+        try:
+            updated_at = float(getattr(session, "updated_at", 0) or 0)
+        except (TypeError, ValueError):
+            updated_at = 0.0
+        return (created_at, updated_at, str(getattr(session, "session_id", "") or ""))
+
+    return sorted(matches, key=_sort_key)[0]
+
 
 def _profile_default_model_state(profile=None):
     """Return the default model/provider configured for *profile*."""
@@ -3135,17 +4333,17 @@ def new_session(workspace=None, model=None, profile=None, model_provider=None, p
     # must never block new-session creation.
     try:
         _clear_webui_zero_message_orphan_tombstone(s.session_id)
+        _clear_webui_deleted_session_tombstone(s.session_id)
     except Exception:
         logger.debug(
-            "Failed to clear webui zero-message orphan tombstone for %s",
+            "Failed to clear webui tombstone for %s",
             s.session_id,
             exc_info=True,
         )
     with LOCK:
         SESSIONS[s.session_id] = s
         SESSIONS.move_to_end(s.session_id)
-        while len(SESSIONS) > SESSIONS_MAX:
-            SESSIONS.popitem(last=False)
+        _evict_sessions_over_cap()  # #4765: safe LRU eviction (never active/unsaved)
     if wt:
         s.save()
     return s
@@ -3622,7 +4820,7 @@ def state_db_has_session(sid: str) -> bool:
     if not db_path.exists():
         return False
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1 FROM sessions WHERE id = ? LIMIT 1", (str(sid),))
             return cur.fetchone() is not None
@@ -3728,7 +4926,7 @@ def agent_session_rows_existing(
     if db_path is None:
         return frozenset(wanted)
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             cur = conn.cursor()
             cur.execute("PRAGMA table_info(sessions)")
             cols = {str(row[1]) for row in cur.fetchall()}
@@ -3784,7 +4982,7 @@ def agent_session_zero_message_sids(
     if db_path is None:
         return frozenset()
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             cur = conn.cursor()
             cur.execute("PRAGMA table_info(sessions)")
             sessions_cols = {str(row[1]) for row in cur.fetchall()}
@@ -3881,7 +5079,7 @@ def _read_state_db_sidebar_overrides(
     except ImportError:
         return {}
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("PRAGMA table_info(sessions)")
@@ -4028,6 +5226,20 @@ def _apply_sidebar_state_db_override_metadata(sessions: list[dict], metadata: di
             session['session_source'] = state_db_session_source
             session['source_label'] = state_db_source_label
             session['is_cli_session'] = False
+        # Overlay the real state.db message count for WebUI-owned rows AND for
+        # delegated subagent children (#5308). A subagent child
+        # (state_db_source == 'subagent') is backed by the delegate runner's
+        # state.db session, but its sidebar row is built from a stale sidecar
+        # that often reports message_count == 0. Without overlaying the true
+        # count, the front-end visibility predicate
+        # (_sidebarRowHasVisibleMessages) drops the row and the subagent
+        # session vanishes from the sidebar entirely (regression seam behind
+        # #5308, same state.db-blind-metadata root as the #5307 transcript
+        # recovery). The count overlay keeps the same conservative
+        # anti-resurrection guard used for WebUI rows. The source-tag / title
+        # reassignment above stays WebUI-only — a subagent child keeps its
+        # subagent classification.
+        if state_db_source in ('webui', 'subagent'):
             try:
                 current_count = max(0, int(session.get('message_count') or 0))
                 state_count = max(0, int(state_db_message_count or 0))
@@ -4133,7 +5345,7 @@ def all_sessions(diag=None, *, include_lineage_metadata: bool = True):
     if SESSION_INDEX_FILE.exists():
         try:
             _diag_stage(diag, "all_sessions.read_index")
-            index = json.loads(SESSION_INDEX_FILE.read_text(encoding='utf-8'))
+            index = json.loads(SESSION_INDEX_FILE.read_bytes())
             _diag_stage(diag, "all_sessions.prune_index")
             with LOCK:
                 in_memory_ids = set(SESSIONS.keys())
@@ -4375,7 +5587,7 @@ def _backfill_project_profiles_if_needed(projects: list) -> bool:
     session_profile_by_project: dict[str, str] = {}
     if SESSION_INDEX_FILE.exists():
         try:
-            entries = json.loads(SESSION_INDEX_FILE.read_text(encoding='utf-8'))
+            entries = json.loads(SESSION_INDEX_FILE.read_bytes())
             untagged_ids = {p['project_id'] for p in untagged if p.get('project_id')}
             for e in entries:
                 pid = e.get('project_id')
@@ -4442,7 +5654,7 @@ CRON_PROJECT_NAME = 'Cron Jobs'
 _CRON_PROJECT_LOCK = threading.Lock()
 
 
-def ensure_cron_project() -> str:
+def ensure_cron_project(create: bool = True) -> str | None:
     """Return the project_id of the system "Cron Jobs" project for the active profile.
 
     Each profile gets its own "Cron Jobs" project so cron-spawned sessions in
@@ -4451,7 +5663,16 @@ def ensure_cron_project() -> str:
     `profile` field) is treated as belonging to whichever profile first calls
     this in a given install, then re-tagged.
 
-    Thread-safe and idempotent.  Returns a 12-char hex project_id string.
+    When `create` is False, only an EXISTING per-profile cron project is
+    resolved (exact tag, renamed-root alias, or legacy-untagged back-tag);
+    no new project is minted and None is returned instead. Callers gate
+    `create` on `_profile_has_user_projects()` so cron sessions don't force
+    a "Cron Jobs" chip onto installs that never opted into project
+    organization (#5379). Direct callers that omit `create` keep today's
+    unconditional-create behavior.
+
+    Thread-safe and idempotent.  Returns a 12-char hex project_id string, or
+    None if `create` is False and no existing cron project resolves.
     """
     from api.profiles import get_active_profile_name, _is_root_profile
 
@@ -4476,6 +5697,8 @@ def ensure_cron_project() -> str:
                 p['profile'] = active
                 save_projects(projects)
                 return p['project_id']
+        if not create:
+            return None
         # Otherwise create a new one tagged with the active profile.
         project_id = uuid.uuid4().hex[:12]
         projects.append({
@@ -4523,6 +5746,32 @@ def ensure_webhook_project() -> str:
         })
         save_projects(projects)
         return project_id
+
+
+def _profile_has_user_projects() -> bool:
+    """True if the active profile already has at least one real (non-system) project.
+
+    "Opted into project organization" means `load_projects()` contains a
+    project whose name is not a reserved system name (`CRON_PROJECT_NAME`,
+    `WEBHOOK_PROJECT_NAME`), tagged to the active profile or its renamed-root
+    alias. Profile/alias matching mirrors `ensure_cron_project`'s own lookup
+    so the two never disagree about which profile a project belongs to.
+
+    Read-only: never mutates projects.json, safe to call as often as needed.
+    """
+    from api.profiles import get_active_profile_name, _is_root_profile
+
+    active = get_active_profile_name() or 'default'
+    reserved = {CRON_PROJECT_NAME, WEBHOOK_PROJECT_NAME}
+    for p in load_projects():
+        if p.get('name') in reserved:
+            continue
+        row_profile = p.get('profile')
+        if row_profile == active:
+            return True
+        if _is_root_profile(row_profile or 'default') and _is_root_profile(active):
+            return True
+    return False
 
 
 def is_cron_session(session_id: str, source_tag: str | None = None) -> bool:
@@ -4573,9 +5822,10 @@ def import_cli_session(
     # an import.
     try:
         _clear_webui_zero_message_orphan_tombstone(s.session_id)
+        _clear_webui_deleted_session_tombstone(s.session_id)
     except Exception:
         logger.debug(
-            "Failed to clear webui zero-message orphan tombstone for %s",
+            "Failed to clear webui tombstone for %s",
             s.session_id,
             exc_info=True,
         )
@@ -5097,6 +6347,19 @@ def _path_stat_cache_key(path):
         return None
 
 
+def _callable_accepts_include_claude_code(callable_obj) -> bool:
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return True
+    if 'include_claude_code' in signature.parameters:
+        return True
+    return any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
 def _sqlite_content_fingerprint(db_path: Path):
     """Return a commit-reliable content fingerprint for a state.db.
 
@@ -5222,7 +6485,7 @@ def _cli_sessions_streaming_freeze_marker():
         return ("streaming",)
 
 
-def _resolve_cli_sessions_context(source_filter=None):
+def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool = True):
     # Use the active WebUI profile's HERMES_HOME to find state.db.
     # The active profile is determined by what the user has selected in the UI
     # (stored in the server's runtime config). This means:
@@ -5259,6 +6522,7 @@ def _resolve_cli_sessions_context(source_filter=None):
         str(db_path),
         str(source_filter or ''),
         db_state_key,
+        bool(include_claude_code),
         _path_cache_key(projects_dir),
         _path_stat_cache_key(projects_dir),
         _path_stat_cache_key(SESSION_INDEX_FILE),
@@ -5408,11 +6672,17 @@ def _load_cli_sessions_uncached(
     # Memoize the cron project ID for this scan so we don't pay a lock-acquire +
     # disk-read of projects.json per cron session in the loop below.
     # Resolved lazily on the first cron session we encounter.
-    _cron_pid_cache = [None]  # list-as-cell so the closure can mutate
+    # [resolved, project_id_or_None] — a plain `[None]` sentinel can't tell
+    # "not yet resolved" apart from "resolved to None" (the gated-closed
+    # case), which would re-pay the load_projects() read on every cron row
+    # in a cron-heavy zero-user-project scan — the exact I/O blowup #4842
+    # fixed, reintroduced by this gate if left as a bare None check.
+    _cron_pid_cache: list = [False, None]
     def _cron_pid():
-        if _cron_pid_cache[0] is None:
-            _cron_pid_cache[0] = ensure_cron_project()
-        return _cron_pid_cache[0]
+        if not _cron_pid_cache[0]:
+            _cron_pid_cache[0] = True
+            _cron_pid_cache[1] = ensure_cron_project(create=_profile_has_user_projects())
+        return _cron_pid_cache[1]
 
     # Memoize the cron jobs.json job_id -> name map for this scan. The two row
     # loops below each looked up a cron job's friendly name by re-reading and
@@ -5470,6 +6740,16 @@ def _load_cli_sessions_uncached(
         return None
 
     profile_value = _cli_profile or 'default'
+    # A deleted WebUI session is tombstoned (see _record_webui_deleted_session_tombstone)
+    # so recovery/audit/claim treat it as gone. The sidebar's own state.db projection
+    # must honor the same tombstone, or a deleted WebUI session reappears here as an
+    # "Agent" ghost the moment non-WebUI sessions are shown (#5498, second path). Only
+    # suppress genuine WebUI rows with no live sidecar — a re-created/re-imported sid
+    # (live {sid}.json) always beats a stale tombstone.
+    try:
+        _deleted_webui_tombstone = _load_webui_deleted_session_tombstone()
+    except Exception:
+        _deleted_webui_tombstone = frozenset()
     for row in read_importable_agent_session_rows(
         db_path,
         limit=visible_session_limit if visible_session_limit is not None else (
@@ -5488,6 +6768,14 @@ def _load_cli_sessions_uncached(
         profile = profile_value  # CLI DB has no profile column; use active profile
 
         _source = row['source'] or 'cli'
+        # Honor the deleted-WebUI tombstone: a WebUI row the user deleted must
+        # not resurface in this projection (the #5498 ghost). Live sidecar wins.
+        if (
+            _source == 'webui'
+            and sid in _deleted_webui_tombstone
+            and not (SESSION_DIR / f"{sid}.json").exists()
+        ):
+            continue
         _source_meta = normalize_agent_session_source(_source)
         _title = row['title']
         if not _title and _source == 'cron':
@@ -5684,7 +6972,12 @@ def _load_cli_sessions_uncached(
     return cli_sessions
 
 
-def get_cli_sessions(source_filter=None, *, all_profiles: bool = False) -> list:
+def get_cli_sessions(
+    source_filter=None,
+    *,
+    all_profiles: bool = False,
+    include_claude_code: bool = True,
+) -> list:
     """Read CLI sessions from the agent's SQLite store and return them as
     dicts in a format the WebUI sidebar can render alongside local sessions.
 
@@ -5704,34 +6997,61 @@ def get_cli_sessions(source_filter=None, *, all_profiles: bool = False) -> list:
         cache_key = (
             'all_profiles',
             source_filter or '',
+            bool(include_claude_code),
             context_cache_key,
             _path_cache_key(_default_claude_code_projects_dir()),
             _path_stat_cache_key(_default_claude_code_projects_dir()),
             _path_stat_cache_key(SESSION_INDEX_FILE),
         )
     else:
-        hermes_home, db_path, cli_profile, cache_key = _resolve_cli_sessions_context(source_filter)
+        resolve_kwargs = {}
+        resolve_supports_include_claude_code = _callable_accepts_include_claude_code(
+            _resolve_cli_sessions_context
+        )
+        if resolve_supports_include_claude_code:
+            resolve_kwargs['include_claude_code'] = include_claude_code
+        hermes_home, db_path, cli_profile, cache_key = _resolve_cli_sessions_context(
+            source_filter,
+            **resolve_kwargs,
+        )
+        if not resolve_supports_include_claude_code:
+            cache_key = cache_key + (bool(include_claude_code),)
     ttl = _cli_sessions_cache_ttl_seconds()
     now = time.monotonic()
 
     def _load_sessions():
+        loader_supports_include_claude_code = _callable_accepts_include_claude_code(
+            _load_cli_sessions_uncached
+        )
         if all_profiles:
             merged: list[dict] = []
             for idx, (ctx_home, ctx_db_path, ctx_profile) in enumerate(contexts):
+                load_kwargs = {
+                    'source_filter': source_filter,
+                    'visible_session_limit': None,
+                    'cron_project_limit': None,
+                    'webhook_project_limit': None,
+                }
+                if loader_supports_include_claude_code:
+                    load_kwargs['include_claude_code'] = include_claude_code and idx == 0
                 merged.extend(
                     _load_cli_sessions_uncached(
                         ctx_home,
                         ctx_db_path,
                         ctx_profile,
-                        source_filter=source_filter,
-                        visible_session_limit=None,
-                        cron_project_limit=None,
-                        webhook_project_limit=None,
-                        include_claude_code=(idx == 0),
+                        **load_kwargs,
                     )
                 )
             return merged
-        return _load_cli_sessions_uncached(hermes_home, db_path, cli_profile, source_filter=source_filter)
+        load_kwargs = {'source_filter': source_filter}
+        if loader_supports_include_claude_code:
+            load_kwargs['include_claude_code'] = include_claude_code
+        return _load_cli_sessions_uncached(
+            hermes_home,
+            db_path,
+            cli_profile,
+            **load_kwargs,
+        )
 
     if ttl > 0:
         stale_sessions = None
@@ -5804,6 +7124,7 @@ def get_state_db_session_messages(
     stitch_continuations: bool = False,
     profile=None,
     since_timestamp=None,
+    include_inactive: bool = False,
 ) -> list:
     """Read messages for a Hermes session from state.db.
 
@@ -5819,6 +7140,13 @@ def get_state_db_session_messages(
     raw state.db scan to rows at or after a sidecar-derived timestamp floor while
     preserving the caller's normal merge/window logic.  Full-history callers must
     leave it unset.
+
+    When the messages table exposes an ``active`` column, inactive rows are
+    compacted/archived history and are intentionally excluded by default. WebUI
+    reconciliation feeds this reader straight into the next model context; pulling
+    ``active=0`` archive rows back in resurrects pre-compaction history and can
+    make every later turn re-trigger compression. Pass ``include_inactive=True``
+    only for explicit recovery/audit views.
     """
     try:
         import sqlite3
@@ -5835,7 +7163,7 @@ def get_state_db_session_messages(
         return []
 
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("PRAGMA table_info(messages)")
@@ -5910,11 +7238,15 @@ def get_state_db_session_messages(
                 if since_ts is not None:
                     since_clause = " AND (timestamp IS NULL OR timestamp >= ?)"
                     params.append(since_ts)
+            active_clause = ""
+            if 'active' in available and not include_inactive:
+                active_clause = " AND (active IS NULL OR active != 0)"
             cur.execute(f"""
                 SELECT {', '.join(selected)}, session_id
                 FROM messages
                 WHERE session_id IN ({placeholders})
                 {since_clause}
+                {active_clause}
                 ORDER BY timestamp ASC, id ASC
             """, params)
             msgs = []
@@ -5977,7 +7309,7 @@ def get_state_db_session_message_keys_before_timestamp(
         return []
 
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("PRAGMA table_info(messages)")
@@ -6027,7 +7359,7 @@ def get_state_db_session_summary(sid, *, profile=None) -> dict:
         return {"message_count": 0, "last_message_at": 0.0}
 
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("PRAGMA table_info(messages)")
@@ -6192,9 +7524,31 @@ def _loose_session_message_content(value: str) -> str:
 def _session_message_content_key(msg: dict):
     if not isinstance(msg, dict):
         return ("non_dict", repr(msg))
+    role = str(msg.get("role") or "")
+    content = _normalized_session_message_content(msg)
+    if role == "user":
+        # WebUI sends the model a workspace-prefixed user_message
+        # ("[Workspace::v1: /path]\n<text>") while the visible/optimistic
+        # bubble and the WebUI sidecar row carry only the bare "<text>". The
+        # streaming dedup identity (_message_identity in api/streaming.py)
+        # strips this prefix for user turns, so this reconciliation key must
+        # do the same. Otherwise a state.db row (prefixed) and a sidecar row
+        # (bare) key DIFFERENTLY, the alignment loop in
+        # state_db_delta_after_context fails to match them, treats the
+        # state.db copy as a NEW row, and appends a duplicate user turn. The
+        # agent then merges the two adjacent user rows into a permanent
+        # composite -- the post-restart stale-user-prepend bug (#5339). Reuse
+        # the SAME helper as the streaming side (imported lazily to avoid a
+        # circular import; api.streaming imports api.models at module load) so
+        # the two dedup layers can't drift apart again.
+        from api.streaming import _strip_workspace_prefix
+
+        content = " ".join(
+            _strip_workspace_prefix(content, include_legacy=True).split()
+        )
     return (
-        str(msg.get("role") or ""),
-        _normalized_session_message_content(msg),
+        role,
+        content,
         str(msg.get("tool_call_id") or ""),
         str(msg.get("tool_name") or msg.get("name") or ""),
     )
@@ -7036,7 +8390,7 @@ def count_conversation_rounds(sid: str, since: float | None = None) -> int:
         return 0
 
     try:
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(open_state_db_readonly(db_path)) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute(

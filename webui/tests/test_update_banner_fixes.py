@@ -81,6 +81,37 @@ def _stub_pycache_purge(monkeypatch):
     monkeypatch.setattr(upd, "_purge_agent_pycache", lambda *a, **k: None)
 
 
+def _extract_summary_cache_js():
+    src = read('static/ui.js')
+    function_names = [
+        '_summaryStorageByteLength',
+        '_summaryCacheEntriesSortedByRecency',
+        '_loadStoredUpdateSummaries',
+        '_persistGeneratedSummaries',
+        '_rememberGeneratedSummary',
+    ]
+    declarations = [
+        line.strip()
+        for line in src.splitlines()
+        if line.startswith('const WHATS_NEW_SUMMARY_STORAGE_KEY')
+        or line.startswith('const WHATS_NEW_SUMMARY_STORAGE_MAX_BYTES')
+    ]
+    functions = [extract_js_function(src, name) for name in function_names]
+    return '\n'.join(declarations + functions)
+
+
+def _parse_byte_expr(expr):
+    expr = expr.strip()
+    if re.fullmatch(r"\d+", expr):
+        return int(expr)
+    if re.fullmatch(r"(?:\d+\s*\*\s*)+\d+", expr):
+        result = 1
+        for piece in re.split(r"\s*\*\s*", expr):
+            result *= int(piece)
+        return result
+    return None
+
+
 # ── api/updates.py ────────────────────────────────────────────────────────────
 
 class TestUpdateChecker:
@@ -410,7 +441,6 @@ class TestScheduleRestart:
         original_execv = _os.execv
 
         monkeypatch.setattr(sys, 'platform', 'linux')
-        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(_os, 'execv', fake_execv)
 
@@ -443,7 +473,6 @@ class TestScheduleRestart:
 
         # Override the autouse no-op stub with a recording spy.
         monkeypatch.setattr(sys, 'platform', 'linux')
-        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(upd, "_purge_agent_pycache", spy_purge)
         monkeypatch.setattr(os, "execv", fake_execv)
@@ -1736,8 +1765,8 @@ class TestUpdateBannerUx:
         assert 'info.release_based' in src
         assert 'info.current_version' in src
         assert 'info.latest_version' in src
-        assert "_formatUpdateTargetStatus('ARES',data.webui)" in src
-        assert "_formatUpdateTargetStatus('Hermes',data.agent)" in src
+        assert "_formatUpdateTargetStatus('WebUI',data.webui)" in src
+        assert "_formatUpdateTargetStatus('Agent',data.agent)" in src
 
     def test_settings_update_check_uses_same_repo_branch_formatter(self):
         src = read('static/panels.js')
@@ -1745,8 +1774,141 @@ class TestUpdateBannerUx:
         assert m, "checkUpdatesNow() not found"
         fn = m.group(0)
         assert '_formatUpdateTargetStatus' in fn
-        assert "formatUpdatePart('ARES',data.webui)" in fn
-        assert "formatUpdatePart('Hermes',data.agent)" in fn
+        assert "formatUpdatePart('WebUI',data.webui)" in fn
+        assert "formatUpdatePart('Agent',data.agent)" in fn
+        assert "data.webui&&data.webui.no_git&&!data.webui.manual_update" in fn
+
+    def test_manual_webui_no_git_updates_are_bannerable_but_plain_no_git_stays_hidden(self):
+        src = read('static/ui.js')
+        format_fn = extract_js_function(src, '_formatUpdateTargetStatus')
+        instruction_fn = extract_js_function(src, '_formatManualUpdateInstruction')
+        script = f"""
+function t(key, ...args) {{
+  const values = {{ settings_update_manual_docker: 'Manual update required: run {{0}}, then recreate the container.' }};
+  return (values[key] || key).replace(/\{{(\d+)\}}/g, (_, i) => args[Number(i)] ?? '');
+}}
+{format_fn}
+{instruction_fn}
+const manual=_formatUpdateTargetStatus('WebUI', {{
+  no_git: true,
+  manual_update: true,
+  behind: 1,
+  release_based: true,
+  current_version: 'v0.51.833',
+  latest_version: 'v0.51.913',
+}});
+if(manual !== 'WebUI (v0.51.833 -> v0.51.913): 1 release') throw new Error('manual webui update must be bannerable: '+manual);
+const instruction=_formatManualUpdateInstruction({{ no_git: true, manual_update: true, behind: 1 }});
+if(!instruction || instruction.indexOf('docker pull ghcr.io/nesquena/hermes-webui:latest') === -1) throw new Error('manual webui update must include pull guidance: '+instruction);
+if(_formatManualUpdateInstruction({{ no_git: true, behind: 1 }}) !== null) throw new Error('plain no-git webui must not show manual guidance');
+if(_formatUpdateTargetStatus('WebUI', {{ no_git: true, behind: 1 }}) !== null) throw new Error('plain no-git webui must stay hidden');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+    def test_manual_webui_banner_hides_apply_button(self):
+        src = read('static/ui.js')
+        format_fn = extract_js_function(src, '_formatUpdateTargetStatus')
+        instruction_fn = extract_js_function(src, '_formatManualUpdateInstruction')
+        show_fn = extract_js_function(src, '_showUpdateBanner')
+        script = f"""
+const state = {{
+  updateBanner: {{ classList: {{ added: false, add() {{ this.added = true; }}, remove() {{ this.removed = true; }} }} }},
+  updateMsg: {{ textContent: '' }},
+  btnApplyUpdate: {{ disabled: false, style: {{ display: '' }} }},
+  btnForceUpdate: {{ disabled: false, style: {{ display: 'inline-block' }}, dataset: {{ target: 'agent' }} }},
+  btnClearUpdateLock: {{ disabled: false, style: {{ display: 'inline-block' }}, dataset: {{ target: 'agent' }} }},
+  updateWhatsNewLinks: {{ style: {{ display: 'none' }}, replaceChildren() {{ this.cleared = true; }} }},
+}};
+global.window = {{}};
+global.$ = (id) => state[id] || null;
+global._renderUpdateWhatsNewLinks = () => {{}};
+global.t = (key, ...args) => {{
+  const values = {{ settings_update_manual_docker: 'Manual update required: run {{0}}, then recreate the container.' }};
+  return (values[key] || key).replace(/\{{(\d+)\}}/g, (_, i) => args[Number(i)] ?? '');
+}};
+{format_fn}
+{instruction_fn}
+{show_fn}
+_showUpdateBanner({{
+  webui: {{
+    no_git: true,
+    manual_update: true,
+    behind: 1,
+    release_based: true,
+    current_version: 'v0.51.833',
+    latest_version: 'v0.51.913',
+    compare_url: 'https://github.com/nesquena/hermes-webui/compare/current-sha...latest-sha',
+  }},
+  agent: null,
+}});
+if(state.updateMsg.textContent.indexOf('WebUI') === -1) throw new Error('manual update must still render banner text');
+if(state.updateMsg.textContent.indexOf('docker pull ghcr.io/nesquena/hermes-webui:latest') === -1) throw new Error('manual update must render pull guidance');
+if(state.btnApplyUpdate.style.display !== 'none') throw new Error('manual webui update must hide the apply button');
+if(state.btnApplyUpdate.disabled !== true) throw new Error('manual webui update must disable the apply button');
+if(state.btnForceUpdate.style.display !== 'none') throw new Error('manual webui update must hide the force button');
+if(state.btnForceUpdate.disabled !== true) throw new Error('manual webui update must disable the force button');
+if(state.btnClearUpdateLock.style.display !== 'none') throw new Error('manual webui update must hide the clear lock button');
+if(state.btnClearUpdateLock.disabled !== true) throw new Error('manual webui update must disable the clear lock button');
+if(state.updateBanner.classList.added !== true) throw new Error('manual update must show the banner');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+    def test_settings_manual_webui_update_includes_pull_guidance(self):
+        ui_src = read('static/ui.js')
+        panels_src = read('static/panels.js')
+        format_fn = extract_js_function(ui_src, '_formatUpdateTargetStatus')
+        instruction_fn = extract_js_function(ui_src, '_formatManualUpdateInstruction')
+        error_fn = extract_js_function(ui_src, '_formatUpdateCheckError')
+        check_fn = extract_js_function(panels_src, 'checkUpdatesNow')
+        script = f"""
+const state = {{
+  btnCheckUpdatesNow: {{ disabled: false }},
+  checkUpdatesLabel: {{ textContent: '' }},
+  checkUpdatesSpinner: {{ style: {{ display: 'none' }} }},
+  checkUpdatesStatus: {{ textContent: '', style: {{ color: '' }} }},
+}};
+let apiData = {{
+  webui: {{
+    no_git: true,
+    manual_update: true,
+    behind: 1,
+    release_based: true,
+    current_version: 'v0.51.833',
+    latest_version: 'v0.51.913',
+  }},
+  agent: null,
+}};
+function $(id) {{ return state[id] || null; }}
+function t(key, ...args) {{
+  const values = {{
+    settings_checking: 'Checking',
+    settings_check_now: 'Check now',
+    settings_updates_available: '{{count}} update(s) available',
+    settings_update_no_git: 'Cannot check for updates',
+    settings_update_manual_docker: 'Manual update required: run {{0}}, then recreate the container.',
+    settings_up_to_date: 'Up to date',
+    settings_update_check_failed: 'Check failed',
+  }};
+  return (values[key] || key).replace(/\{{(\d+)\}}/g, (_, i) => args[Number(i)] ?? '');
+}}
+async function api() {{ return apiData; }}
+function _showUpdateBanner() {{}}
+{format_fn}
+{instruction_fn}
+{error_fn}
+{check_fn}
+(async () => {{
+  await checkUpdatesNow();
+  if(state.checkUpdatesStatus.textContent.indexOf('docker pull ghcr.io/nesquena/hermes-webui:latest') === -1) throw new Error('settings manual update must render pull guidance: '+state.checkUpdatesStatus.textContent);
+  if(state.checkUpdatesStatus.style.color !== 'var(--accent)') throw new Error('manual update should stay in available state');
+  apiData = {{ webui: {{ no_git: true, behind: 1 }}, agent: null }};
+  state.checkUpdatesStatus.textContent = '';
+  await checkUpdatesNow();
+  if(state.checkUpdatesStatus.textContent.indexOf('docker pull') !== -1) throw new Error('plain no-git must not show manual guidance');
+  if(state.checkUpdatesStatus.textContent !== 'Cannot check for updates') throw new Error('plain no-git should keep cannot-check status: '+state.checkUpdatesStatus.textContent);
+}})().catch(err => {{ console.error(err.message); process.exit(1); }});
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
 
 
 # ── static/index.html ─────────────────────────────────────────────────────────
@@ -1773,6 +1935,39 @@ class TestIndexHtmlBanner:
         tag = m.group(0)
         assert 'display:none' in tag, (
             "#btnForceUpdate must be hidden by default (display:none)"
+        )
+
+
+class TestClearLockButton:
+    """PR #5688 follow-up: clear-lock button must exist in index.html and be
+    hidden by default. Without this, the v2 frontend recovery path is dead --
+    $('btnClearUpdateLock') returns null at runtime so the lock-only error
+    branch in _showUpdateError() never reveals a clickable affordance (P1).
+    """
+
+    def test_clear_lock_button_exists(self):
+        src = read('static/index.html')
+        assert 'id="btnClearUpdateLock"' in src, (
+            "index.html must have #btnClearUpdateLock button (hidden by "
+            "default) -- PR #5688 v2 frontend path"
+        )
+
+    def test_clear_lock_button_hidden_by_default(self):
+        src = read('static/index.html')
+        m = re.search(r'id="btnClearUpdateLock"[^>]*>', src)
+        assert m, "#btnClearUpdateLock not found"
+        tag = m.group(0)
+        assert 'display:none' in tag, (
+            "#btnClearUpdateLock must be hidden by default (display:none)"
+        )
+
+    def test_clear_lock_button_calls_applyClearUpdateLock_handler(self):
+        src = read('static/index.html')
+        m = re.search(r'id="btnClearUpdateLock"[^>]*>', src)
+        assert m, "#btnClearUpdateLock not found"
+        tag = m.group(0)
+        assert 'applyClearUpdateLock(this)' in tag, (
+            "#btnClearUpdateLock onclick must invoke applyClearUpdateLock"
         )
 
 
@@ -1805,7 +2000,6 @@ class TestSequentialUpdateRestartCoordination:
             execv_called.set()
 
         monkeypatch.setattr(sys, 'platform', 'linux')
-        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(os, 'execv', fake_execv)
 
@@ -1855,7 +2049,6 @@ class TestSequentialUpdateRestartCoordination:
         def fake_execv(exe, args):
             execv_called.append(True)
         monkeypatch.setattr(sys, 'platform', 'linux')
-        monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
         monkeypatch.setattr(upd, '_wait_until_restart_safe', lambda *a, **k: {'restart_blocked': False})
         monkeypatch.setattr(os, 'execv', fake_execv)
 
@@ -1970,6 +2163,183 @@ class TestWhatsNewSummaryToggle:
         assert 'target:target||null' in src
         assert '_renderUpdateWhatsNewLinks(data,{mode' in src
         assert 'window._whatsNewSummaryEnabled' in src
+
+    def test_update_banner_summary_cache_has_byte_cap_constant_within_bounds(self):
+        src = read('static/ui.js')
+        assert "const WHATS_NEW_SUMMARY_STORAGE_KEY='hermes-whats-new-generated-summaries';" in src
+        cap_match = re.search(r"const WHATS_NEW_SUMMARY_STORAGE_MAX_BYTES\s*=\s*([^;\n]+)", src)
+        assert cap_match, "cap constant should be declared in static/ui.js"
+        key_index = src.find("const WHATS_NEW_SUMMARY_STORAGE_KEY='hermes-whats-new-generated-summaries';")
+        cap_index = src.find("const WHATS_NEW_SUMMARY_STORAGE_MAX_BYTES", key_index)
+        assert cap_index != -1 and cap_index > key_index and cap_index - key_index < 200
+        cap_value = _parse_byte_expr(cap_match.group(1))
+        assert cap_value is not None
+        assert 200 * 1024 <= cap_value <= 256 * 1024
+
+    def test_summary_storage_byte_length_fallback_counts_utf8_bytes(self):
+        runtime = _extract_summary_cache_js()
+        script = f"""
+{runtime}
+global.TextEncoder = undefined;
+if(_summaryStorageByteLength('abc') !== 3) throw new Error('ASCII byte count should match length');
+if(_summaryStorageByteLength('é') !== 2) throw new Error('Latin-1 should count as two UTF-8 bytes');
+if(_summaryStorageByteLength('漢') !== 3) throw new Error('BMP CJK should count as three UTF-8 bytes');
+if(_summaryStorageByteLength('😀') !== 4) throw new Error('astral symbols should count as four UTF-8 bytes');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+    def test_summary_cache_recency_sort_does_not_mutate_input_entries(self):
+        runtime = _extract_summary_cache_js()
+        script = f"""
+{runtime}
+const entries = [
+  ['zeta', {{ updatedAt: 1 }}],
+  ['webui', {{}}],
+  ['agent', {{}}],
+];
+const sorted = _summaryCacheEntriesSortedByRecency(entries);
+if(entries[0][0] !== 'zeta' || entries[1][0] !== 'webui' || entries[2][0] !== 'agent') throw new Error('sort helper must not mutate caller entries');
+if(sorted[0][0] !== 'zeta') throw new Error('updated entries should sort before legacy fallback entries');
+if(sorted[1][0] !== 'webui' || sorted[2][0] !== 'agent') throw new Error('legacy fallback order should prefer webui then agent');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+    def test_persist_generated_summaries_bounds_aggregate_cache_size(self):
+        runtime = _extract_summary_cache_js()
+        script = f"""
+const store = {{}};
+{runtime}
+global.window = {{}};
+global.sessionStorage = {{
+  getItem: (key) => {{
+    return Object.prototype.hasOwnProperty.call(store,key)?store[key]:null;
+  }},
+  setItem: (key, value) => {{
+    store[key] = value;
+  }},
+  removeItem: (key) => {{
+    delete store[key];
+  }},
+}};
+const summarySize = Math.floor(WHATS_NEW_SUMMARY_STORAGE_MAX_BYTES * 0.5);
+window._whatsNewGeneratedSummaries = {{
+  webui: {{
+    signature: 'abc|def|1|https://example.test/webui',
+    payload: {{ summary: 'w'.repeat(summarySize) }},
+    updatedAt: 200,
+  }},
+  agent: {{
+    signature: 'abc|def|1|https://example.test/agent',
+    payload: {{ summary: 'a'.repeat(summarySize) }},
+    updatedAt: 100,
+  }},
+}};
+_persistGeneratedSummaries();
+const stored = sessionStorage.getItem(WHATS_NEW_SUMMARY_STORAGE_KEY);
+if(!stored) throw new Error('expected persisted summary cache');
+if(_summaryStorageByteLength(stored) > WHATS_NEW_SUMMARY_STORAGE_MAX_BYTES) throw new Error('summary cache exceeds max bytes');
+const parsed = JSON.parse(stored);
+if(!parsed.webui) throw new Error('expected most recent summary to persist');
+if(Object.keys(parsed).length !== 1) throw new Error('expected cap-pruned aggregate cache to retain one entry');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+    def test_persist_generated_summaries_skips_single_oversized_summary(self):
+        runtime = _extract_summary_cache_js()
+        script = f"""
+const store = {{}};
+{runtime}
+global.window = {{}};
+global.sessionStorage = {{
+  getItem: (key) => {{
+    return Object.prototype.hasOwnProperty.call(store,key)?store[key]:null;
+  }},
+  setItem: (key, value) => {{
+    store[key] = value;
+  }},
+  removeItem: (key) => {{
+    delete store[key];
+  }},
+}};
+window._whatsNewGeneratedSummaries = {{
+  webui: {{
+    signature: 'abc|def|1|https://example.test/webui',
+    payload: {{ summary: 'z'.repeat(WHATS_NEW_SUMMARY_STORAGE_MAX_BYTES + 1000) }},
+    updatedAt: 200,
+  }},
+}};
+_persistGeneratedSummaries();
+const stored = sessionStorage.getItem(WHATS_NEW_SUMMARY_STORAGE_KEY);
+if(stored === null) throw new Error('expected persist to run');
+const parsed = JSON.parse(stored);
+if(parsed && Object.keys(parsed).length) throw new Error('expected oversized entry to be skipped');
+if(window._whatsNewGeneratedSummaries && Object.keys(window._whatsNewGeneratedSummaries).length) throw new Error('expected oversized entry removed from memory');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+    def test_persist_generated_summaries_keeps_small_webui_and_agent_summaries(self):
+        runtime = _extract_summary_cache_js()
+        script = f"""
+const store = {{}};
+{runtime}
+global.window = {{}};
+global.sessionStorage = {{
+  getItem: (key) => {{
+    return Object.prototype.hasOwnProperty.call(store,key)?store[key]:null;
+  }},
+  setItem: (key, value) => {{
+    store[key] = value;
+  }},
+  removeItem: (key) => {{
+    delete store[key];
+  }},
+}};
+window._whatsNewGeneratedSummaries = {{
+  webui: {{
+    signature: 'abc|def|1|https://example.test/webui',
+    payload: {{ summary: 'webui summary' }},
+    updatedAt: 300,
+  }},
+  agent: {{
+    signature: 'abc|def|1|https://example.test/agent',
+    payload: {{ summary: 'agent summary' }},
+    updatedAt: 200,
+  }},
+}};
+_persistGeneratedSummaries();
+const loaded = _loadStoredUpdateSummaries();
+if(!loaded.webui || !loaded.agent) throw new Error('expected both small summaries');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+    def test_persist_generated_summaries_tolerates_setitem_failure(self):
+        runtime = _extract_summary_cache_js()
+        script = f"""
+const store = {{}};
+{runtime}
+global.window = {{}};
+global.sessionStorage = {{
+  getItem: (key) => {{
+    return Object.prototype.hasOwnProperty.call(store,key)?store[key]:null;
+  }},
+  setItem: () => {{
+    throw new Error('quota exceeded');
+  }},
+  removeItem: (key) => {{
+    delete store[key];
+  }},
+}};
+window._whatsNewGeneratedSummaries = {{
+  webui: {{
+    signature: 'abc|def|1|https://example.test/webui',
+    payload: {{ summary: 'ok' }},
+    updatedAt: 100,
+  }},
+}};
+_persistGeneratedSummaries();
+if(!window._whatsNewGeneratedSummaries || !window._whatsNewGeneratedSummaries.webui) throw new Error('expected in-memory cache to remain after storage failure');
+""".strip()
+        subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
 
     def test_summary_endpoint_and_prompt_are_human_readable_not_technical(self):
         routes = read('api/routes.py')
@@ -2124,7 +2494,8 @@ class TestWhatsNewSummaryToggle:
     def test_update_summary_panel_is_scrollable_for_long_summaries(self):
         style = read('static/style.css')
 
-        assert '#updateSummaryPanel{max-height:min(34vh,260px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;}' in style
+        assert '#updateSummaryScroll{max-height:min(34vh,260px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:var(--accent) transparent;}' in style
+        assert '#updateSummaryPanel.update-summary-expanded #updateSummaryScroll{max-height:min(75vh,560px);}' in style
 
     def test_update_summary_many_updates_caps_commit_input_and_discloses_scope(self, monkeypatch):
         import api.updates as upd
@@ -2175,7 +2546,7 @@ class TestWhatsNewSummaryToggle:
         ]
         assert sections['Worth knowing'] == [
             'Some lower-level cleanup supports the visible update changes.',
-            'ARES has 57 updates; this summary uses the latest 24 commit subjects, with the full comparison still available in the diff link.',
+            'WebUI has 57 updates; this summary uses the latest 24 commit subjects, with the full comparison still available in the diff link.',
         ]
         assert result['targets'][0]['commits_truncated'] is True
 
@@ -2259,7 +2630,7 @@ class TestWhatsNewSummaryToggle:
 
         def fake_llm(_system, prompt):
             calls.append(prompt)
-            if 'Hermes:' in prompt:
+            if 'Agent:' in prompt:
                 return '- Agent startup is clearer.'
             return '- WebUI settings are easier to use.'
 
