@@ -33,16 +33,15 @@ Use placeholders, detected values, or user-selected paths. In source code, prefe
 Keep the merged layout intentional:
 
 - `Package.swift` — Swift package manifest for the native app targets.
-- `Sources/ARES/` — legacy/lightweight Swift app surface kept as `ARESLegacy`.
-- `Sources/AresTaskCLI/` — task CLI.
-- `ARES-Modules/` — local Swift package used by legacy/native support code.
 - `ARES-Desktop/Sources/ARESCore/` — protocol contracts, shared models, utilities.
-- `ARES-Desktop/Sources/ARES/` — primary native macOS app target.
+- `ARES-Desktop/Sources/ARES/` — native macOS app target (WKWebView shell over the web app).
 - `ARES-Desktop/Tests/ARESTests/` — native app tests.
-- `webui/` — Python web server and frontend adapted from Hermes WebUI.
-- `windows-app/` and `src-tauri/` — Windows/Tauri wrapper surfaces.
+- `webui/` — the ARES web app (Python server + frontend, adapted from Hermes WebUI). This is the ONLY web app tree: server, api/, static/, tests/, scripts/, Docker packaging, and env templates all live here. Never recreate api/, static/, server.py, or tests/ at the repo root — a stale root-level duplicate of this tree was retired on 2026-07-12.
+- `src-tauri/` — Windows/Tauri wrapper surface.
 - `tools/` — standalone utilities.
 - `docs/` — public documentation and assets.
+
+Thin wrappers at the repo root (`install.sh`, `start.sh`, `ctl.sh`) delegate into `webui/`; keep them as delegators, not implementations.
 
 Do not create new top-level directories without explicit approval. Do not modify Hermes Agent source code under a user runtime directory; build ARES adapters/config/templates instead.
 
@@ -55,18 +54,15 @@ Two Swift layers under `ARES-Desktop/Sources/`:
   - `Dummies/` — safe no-op implementations for development/testing only.
   - `Models/`, `Services/`, `Utilities/` — shared types, discovery, hub readers, registry, and support code.
 - **ARES**
-  - `App/` — entry point, app state, runtime, app delegate.
-  - `Providers/` — concrete implementations for Hermes, JROS, Ollama, Claude, OpenAI, storage, voice, perception, and local event bus.
-  - `Services/` — wiring, companion chat, agent tool routing, terminal, storage, browser services.
-  - `Views/` — Companion, Hub, Kanban, Terminal, Files, Settings, widgets, and related UI.
+  - `App/ARESApp.swift` — WKWebView shell: launches `webui/server.py` (via `webui/.venv`), wraps the web app in a native window with menu bar. The native provider layer (gateway providers, SQLite memory, voice, perception) was removed in the WKWebView pivot; product features belong in `webui/`.
 
-`ARES-Desktop/Sources/ARES/Services/WiringBuilder.swift` owns protocol-to-implementation wiring. `ExecutionBackendRouter` owns product-level backend planning by capability. Prefer configured providers first, native fallbacks second, and development dummies only where explicitly allowed.
+`ExecutionBackendRouter` (ARESCore) owns product-level backend planning by capability. Prefer configured providers first, native fallbacks second, and development dummies only where explicitly allowed.
 
 ## Code quality standards
 
 - Write production-quality, tested code.
 - No stubs or placeholder implementations for user-facing setup paths.
-- Follow existing patterns in `webui/api/`, `webui/static/`, `Sources/ARES/`, and `ARES-Desktop/Sources/`.
+- Follow existing patterns in `webui/api/`, `webui/static/`, and `ARES-Desktop/Sources/`.
 - New WebUI API endpoints must include proper authentication/owner-scope checks.
 - Preserve hot-reload behavior (`ARES_WEBUI_RELOAD=1`).
 - System-category or approval-required native tools must go through the approval broker/consent path.
