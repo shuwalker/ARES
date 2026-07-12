@@ -67,9 +67,14 @@ public final class WebUIServerManager: ObservableObject {
         env["ARES_WEBUI_RELOAD"] = config.reloadDevMode ? "1" : "0"
         process.environment = env
 
-        // Redirect logs to webui.log
+        // Redirect logs to webui.log (truncate if > 10MB to avoid disk bloat)
         let logFileURL = config.configDirectory.appendingPathComponent("webui.log")
-        if !FileManager.default.fileExists(atPath: logFileURL.path) {
+        if FileManager.default.fileExists(atPath: logFileURL.path) {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: logFileURL.path),
+               let size = attrs[.size] as? UInt64, size > 10 * 1024 * 1024 {
+                try? "".write(to: logFileURL, atomically: true, encoding: .utf8)
+            }
+        } else {
             FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
         }
         if let logFileHandle = try? FileHandle(forWritingTo: logFileURL) {
@@ -179,12 +184,25 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     private func findWebUIDir() -> URL? {
-        if let bundlePath = Bundle.main.resourceURL?.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent() {
+        // 1. Packaged App resources check
+        if let bundlePath = Bundle.main.resourceURL {
             let webuiPath = bundlePath.appendingPathComponent("webui")
             if FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path) {
                 return webuiPath
             }
         }
+        // 2. Traversal up from executable to support swift run / Xcode dev
+        var dir = Bundle.main.executableURL?.deletingLastPathComponent()
+        for _ in 0..<5 {
+            if let currentDir = dir {
+                let webuiPath = currentDir.appendingPathComponent("webui")
+                if FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path) {
+                    return webuiPath
+                }
+                dir = currentDir.deletingLastPathComponent()
+            }
+        }
+        // 3. Fallback check for user's default dev path if present
         let home = FileManager.default.homeDirectoryForCurrentUser
         let devPath = home.appendingPathComponent("GitHub/ARES/webui")
         if FileManager.default.fileExists(atPath: devPath.appendingPathComponent("server.py").path) {
