@@ -438,6 +438,17 @@ def _resolve_git_executable():
         return git_executable
     if sys.platform == 'darwin' and os.path.exists('/usr/bin/git'):
         return '/usr/bin/git'
+    if sys.platform == 'win32':
+        from_registry = _windows_git_from_registry()
+        if from_registry:
+            return from_registry
+        for candidate in (
+            os.path.expandvars(r'%ProgramFiles%\Git\cmd\git.exe'),
+            os.path.expandvars(r'%ProgramFiles(x86)%\Git\cmd\git.exe'),
+            os.path.expandvars(r'%LocalAppData%\Programs\Git\cmd\git.exe'),
+        ):
+            if candidate and os.path.exists(candidate):
+                return candidate
     return None
 
 
@@ -493,7 +504,7 @@ def _detect_webui_version() -> str:
     # Docker / baked-image fallback: api/_version.py written by CI at build time.
     # Parse with regex rather than exec() — the file holds exactly one assignment
     # and regex is sufficient; exec() on a build artifact is an unnecessary surface.
-    version_file = REPO_ROOT / 'api' / '_version.py' if (REPO_ROOT / 'api').exists() else WEBUI_SOURCE_ROOT / 'api' / '_version.py'
+    version_file = REPO_ROOT / 'api' / '_version.py' if (REPO_ROOT / 'api').exists() else WEBUI_SOURCE_ROOT / 'api' / '_version.py' 
     if version_file.exists():
         try:
             import re as _re
@@ -1322,8 +1333,6 @@ def cached_update_status(*, include_agent=True, channel=None):
         if not include_agent:
             cached['agent'] = _ignored_agent_update_info()
     cached['cached'] = True
-    if 'jros' not in cached:
-        cached['jros'] = None
     return cached
 
 
@@ -1368,7 +1377,6 @@ def check_for_updates(force=False, *, include_agent=True, channel=None):
         with _cache_lock:
             _update_cache['webui'] = webui_info
             _update_cache['agent'] = agent_info
-            _update_cache['jros'] = jros_info
             _update_cache['checked_at'] = time.time()
             _update_cache['include_agent'] = include_agent
             _update_cache['channel'] = channel
@@ -1382,8 +1390,6 @@ def _repo_path_for_update_target(target: str):
         return REPO_ROOT
     if target == 'agent':
         return _AGENT_DIR
-    if target == 'jros':
-        return _JROS_DIR
     return None
 
 
@@ -1398,7 +1404,7 @@ def _commit_subjects_for_update_with_limit(info: dict, *, limit: int = 24) -> tu
     if not isinstance(info, dict):
         return [], False
     target = info.get('name')
-    if target not in ('webui', 'agent', 'jros'):
+    if target not in ('webui', 'agent'):
         target = 'webui' if info.get('repo_url', '').endswith('hermes-webui') else target
     path = _repo_path_for_update_target(target)
     if path is None or not (Path(path) / '.git').exists():
@@ -1609,9 +1615,9 @@ def summarize_update_payload(updates: dict, llm_callback=None, *, target: str | 
     """
     if not isinstance(updates, dict):
         updates = {}
-    requested_target = target if target in ('webui', 'agent', 'jros') else None
+    requested_target = target if target in ('webui', 'agent') else None
     details = []
-    for key, label in (('webui', 'ARES'), ('agent', 'Hermes'), ('jros', 'JROS')):
+    for key, label in (('webui', 'WebUI'), ('agent', 'Agent')):
         if requested_target and key != requested_target:
             continue
         info = updates.get(key)
@@ -1914,6 +1920,15 @@ def apply_force_update(target: str, channel=None) -> dict:
         if path is None or not (path / '.git').exists():
             return {'ok': False, 'message': 'Not a git repository'}
 
+        # NOTE: v2 of PR #5688 removed the prior stale-lock cleanup loop from
+        # this entry point. The mtime-based heuristic was empirically proven
+        # unsafe (a live `git add` was shown to hold .git/index.lock past 31 s
+        # with unchanged mtime) and unconditional pre-cleanup clobbered locks
+        # for force-update retries that had nothing to do with a lock error.
+        # Lock cleanup is now ONLY performed by the explicit
+        # /api/updates/clear_lock endpoint, where the user has opted in to
+        # a non-destructive retry.
+
         # --force so a remote re-tag (e.g. squash-merge that re-points an
         # existing release tag) doesn't jam the apply path with "would clobber
         # existing tag". See #2756.
@@ -2084,6 +2099,12 @@ def _apply_update_inner(target, channel=DEFAULT_UPDATE_CHANNEL):
     # --force so a remote re-tag doesn't block the update path (see #2756).
     fetch_out, fetch_ok = _run_git(['fetch', 'origin', '--quiet', '--tags', '--force'], path, timeout=15)
     if not fetch_ok:
+        if _is_git_lock_error(fetch_out):
+            return {
+                'ok': False,
+                'message': f'Fetch failed due to a repository lock: {fetch_out.strip()}',
+                'lock_conflict': True,
+            }
         return {
             'ok': False,
             'message': _apply_fetch_failure_message(
@@ -2112,6 +2133,12 @@ def _apply_update_inner(target, channel=DEFAULT_UPDATE_CHANNEL):
         ['status', '--porcelain', '--untracked-files=no'], path
     )
     if not status_ok:
+        if _is_git_lock_error(status_out):
+            return {
+                'ok': False,
+                'message': f'Failed to inspect repo status due to a repository lock: {status_out.strip()}',
+                'lock_conflict': True,
+            }
         return {'ok': False, 'message': f'Failed to inspect repo status: {status_out[:200]}'}
     # Fail early on unresolved merge conflicts
     if any(line[:2] in {'DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'}
@@ -2144,6 +2171,24 @@ def _apply_update_inner(target, channel=DEFAULT_UPDATE_CHANNEL):
         pull_args.extend(['origin', compare_ref])
     pull_out, pull_ok = _run_git(pull_args, path, timeout=30)
     if not pull_ok:
+        if _is_git_lock_error(pull_out):
+            # Lock conflict during pull. If a stash was pushed for the local
+            # modifications, attempt to restore it before returning so the
+            # user's working tree is not silently left empty with changes
+            # stranded in the stash (Greptile P1 on PR #5688).
+            stash_recovery_note = ''
+            if stashed:
+                stash_recovery_note = _restore_stash_after_pull_failure(
+                    target, path, pull_out
+                )
+            message = f'Pull failed due to a repository lock: {pull_out.strip()}'
+            if stash_recovery_note:
+                message = f'{message} {stash_recovery_note}'
+            return {
+                'ok': False,
+                'message': message,
+                'lock_conflict': True,
+            }
         pull_lower = pull_out.lower()
         detail = pull_out.strip()[:300] if pull_out.strip() else '(no output from git)'
         untracked_collision = (

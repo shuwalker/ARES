@@ -247,6 +247,16 @@ function _providerStatusLabel(system){
   return t('onboarding_check_provider_pending');
 }
 
+function _localizedOnboardingProviderNote(system){
+  const key=system&&system.provider_note_key;
+  if(key){
+    const args=Array.isArray(system&&system.provider_note_args)?system.provider_note_args:[];
+    const localized=t(key,...args);
+    if(localized&&localized!==key&&!/\{\d+\}/.test(localized))return localized;
+  }
+  return (system&&system.provider_note)||'';
+}
+
 function _aresOnboardingServerUrl(){
   try{return window.location.origin||'';}catch{return '';}
 }
@@ -303,16 +313,6 @@ async function testAresOnboardingConnection(){
   }catch(e){
     _setOnboardingNotice(`Connection test failed: ${(e&&e.message)||String(e)}`, 'warn');
   }
-}
-
-function _localizedOnboardingProviderNote(system){
-  const key=system&&system.provider_note_key;
-  if(key){
-    const args=Array.isArray(system&&system.provider_note_args)?system.provider_note_args:[];
-    const localized=t(key,...args);
-    if(localized&&localized!==key&&!/\{\d+\}/.test(localized))return localized;
-  }
-  return (system&&system.provider_note)||'';
 }
 
 function _renderOnboardingBody(){

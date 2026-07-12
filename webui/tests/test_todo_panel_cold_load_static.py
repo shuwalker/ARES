@@ -20,11 +20,17 @@ def test_ensure_messages_loaded_hydrates_session_todo_state_sidecar():
 
 def test_load_todos_renders_single_source_of_truth_before_legacy_scan():
     src = (REPO_ROOT / "static" / "panels.js").read_text(encoding="utf-8")
-    start = src.find("function loadTodos")
+    start = src.find("function loadTodos()")
     end = src.find("function _legacyTodosFromMessages()")
 
     assert start != -1
     assert end != -1
+    load_todos = src[start:end]
+
+    assert "if (S.todoStateMeta)" in load_todos
+    assert "todos = Array.isArray(S.todos) ? S.todos : [];" in load_todos
+    assert "todos = _legacyTodosFromMessages();" in load_todos
+    assert load_todos.find("todos = Array.isArray(S.todos) ? S.todos : [];") < load_todos.find("todos = _legacyTodosFromMessages();")
 
 
 def test_legacy_todos_fallback_still_uses_raw_session_messages():
@@ -63,7 +69,7 @@ def test_todo_panels_delegate_rendering_to_shared_helpers():
     assert "function renderTodoRows(todos,options={})" in ui
     assert "function renderTodoEmptyState(options={})" in ui
 
-    left_start = panels.find("function loadTodos")
+    left_start = panels.find("function loadTodos()")
     left_end = panels.find("function _legacyTodosFromMessages()", left_start)
     workspace_start = workspace.find("function _loadWorkspacePanelTodos()")
     workspace_end = workspace.find("const ARTIFACT_IGNORE_RE", workspace_start)
@@ -74,6 +80,7 @@ def test_todo_panels_delegate_rendering_to_shared_helpers():
     workspace_block = workspace[workspace_start:workspace_end]
 
     assert "renderTodoEmptyState()" in left_block
+    assert "renderTodoRows(todos, {metadata:true})" in left_block
     assert "renderTodoEmptyState({centered:true})" in workspace_block
     assert "renderTodoRows(todos, {metadata:true})" in workspace_block
 

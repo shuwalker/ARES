@@ -185,7 +185,7 @@ class TestPluginModelProvidersPanelFilter:
         src = open("static/panels.js", encoding="utf-8").read()
         assert "p.is_plugin_provider" in src
         assert "p.has_key" in src
-        assert "filter(p=>p.configurable||p.is_oauth||p.is_custom||p.is_plugin_provider||p.has_key)" in src
+        assert "filter(p=>p.configurable||p.is_oauth||p.is_custom||p.is_plugin_provider||p.is_self_hosted||p.has_key)" in src
 
 
 class TestPluginModelProvidersPicker:

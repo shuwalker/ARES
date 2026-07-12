@@ -1,24 +1,30 @@
 /**
  * ARES Identity & State Migration Layer
  *
- * This file owns all ARES product identity and performs a one-time migration
- * from legacy "hermes-*" localStorage keys to "ares-*" keys.
+ * The live code standardizes on upstream's canonical "hermes-*" localStorage
+ * names — a partial rename to "ares-*" split persisted state across files and
+ * broke session/model/panel restore. This layer performs a one-time migration
+ * of any value saved under the short-lived "ares-*" names BACK to the
+ * canonical keys, so users of the renamed builds lose nothing.
  *
  * Everything here is ARES-owned. Hermes and JROS are untouched.
  */
 
 (function() {
-  const LEGACY_PREFIX = 'hermes-';
-  const NEW_PREFIX = 'ares-';
+  const CANONICAL_PREFIX = 'hermes-';
+  const RETIRED_PREFIX = 'ares-';
 
   const KEYS_TO_MIGRATE = [
     'theme',
+    'theme-color',
     'skin',
     'font-size',
     'webui-session',
     'webui-model',
+    'webui-model-state',
     'webui-workspace-panel',
     'webui-workspace-panel-pref',
+    'webui-sidebar-collapsed',
     'rtl',
     'lang',
     'pref-send_key',
@@ -34,12 +40,12 @@
 
   function migrateKey(oldKey, newKey) {
     try {
-      const legacyValue = localStorage.getItem(oldKey);
-      const newValue = localStorage.getItem(newKey);
+      const retiredValue = localStorage.getItem(oldKey);
+      const canonicalValue = localStorage.getItem(newKey);
 
-      if (legacyValue !== null && newValue === null) {
-        localStorage.setItem(newKey, legacyValue);
-        // Keep legacy for now (safe one-way migration)
+      if (retiredValue !== null && canonicalValue === null) {
+        localStorage.setItem(newKey, retiredValue);
+        // Keep the old key for now (safe one-way migration)
         console.log(`[ARES] Migrated localStorage: ${oldKey} → ${newKey}`);
       }
     } catch (_) {}
@@ -48,22 +54,15 @@
   // Run migration once on load
   function runMigration() {
     KEYS_TO_MIGRATE.forEach(key => {
-      migrateKey(LEGACY_PREFIX + key, NEW_PREFIX + key);
+      migrateKey(RETIRED_PREFIX + key, CANONICAL_PREFIX + key);
     });
-
-    // Special case: active session/model keys. The live code standardizes on
-    // the upstream 'hermes-webui-*' names (sessions.js/messages.js/ui.js all
-    // read them; a partial rename to 'ares-webui-*' split the state and broke
-    // session restore). Carry any value saved under the short-lived ares-*
-    // names back to the canonical keys.
-    migrateKey('ares-webui-session', 'hermes-webui-session');
-    migrateKey('ares-webui-model', 'hermes-webui-model');
   }
 
-  // Expose a clean getter that prefers the new namespace
+  // Expose a clean getter that reads the canonical namespace (with a fallback
+  // to any not-yet-migrated retired key)
   window.aresGet = function(key, fallback = null) {
     try {
-      return localStorage.getItem(NEW_PREFIX + key) ?? localStorage.getItem(LEGACY_PREFIX + key) ?? fallback;
+      return localStorage.getItem(CANONICAL_PREFIX + key) ?? localStorage.getItem(RETIRED_PREFIX + key) ?? fallback;
     } catch (_) {
       return fallback;
     }
@@ -71,7 +70,7 @@
 
   window.aresSet = function(key, value) {
     try {
-      localStorage.setItem(NEW_PREFIX + key, value);
+      localStorage.setItem(CANONICAL_PREFIX + key, value);
     } catch (_) {}
   };
 

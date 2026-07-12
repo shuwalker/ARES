@@ -129,6 +129,7 @@
     const id = msgId(message);
     const body = msgBody(message) || '(No plain-text body returned.)';
     const draft = options && options.draft;
+    const read = message.is_read;
     const cls = message._classification;
     const clsMethod = message._classificationMethod;
     detail.innerHTML = `

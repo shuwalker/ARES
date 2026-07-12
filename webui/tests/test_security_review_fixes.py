@@ -260,7 +260,8 @@ def test_first_password_setup_is_gated_against_public_clients(monkeypatch):
 
     saved = {"called": False}
     monkeypatch.setattr(
-        "api.config.save_settings",
+        routes,
+        "save_settings",
         lambda body: saved.__setitem__("called", True) or dict(body),
     )
 
@@ -294,7 +295,7 @@ def test_first_password_setup_allows_genuine_loopback_client(monkeypatch):
         auth_state["enabled"] = True
         return {"theme": "dark", "password_hash": "redacted"}
 
-    monkeypatch.setattr("api.config.save_settings", fake_save_settings)
+    monkeypatch.setattr(routes, "save_settings", fake_save_settings)
 
     body = b'{"_set_password":"local-owner-password"}'
     handler = _Handler(
@@ -322,7 +323,8 @@ def test_first_password_setup_uses_initial_auth_state_for_gate(monkeypatch):
 
     saved = {"called": False}
     monkeypatch.setattr(
-        "api.config.save_settings",
+        routes,
+        "save_settings",
         lambda body: saved.__setitem__("called", True) or dict(body),
     )
 
@@ -355,7 +357,7 @@ def test_first_password_setup_allows_public_client_with_open_onboarding(monkeypa
         auth_state["enabled"] = True
         return {"theme": "dark", "password_hash": "redacted"}
 
-    monkeypatch.setattr("api.config.save_settings", fake_save_settings)
+    monkeypatch.setattr(routes, "save_settings", fake_save_settings)
 
     body = b'{"_set_password":"remote-owner-password"}'
     handler = _Handler(

@@ -133,7 +133,7 @@ def test_sync_main_model_to_jros_success(monkeypatch):
         called_reset.append(True)
 
     monkeypatch.setattr("api.ares_provider_sync.sync_provider", mock_sync_provider)
-    monkeypatch.setattr("api.jros_bridge.reset_jros_boot", mock_reset_jros_boot)
+    monkeypatch.setattr("api.jros_gateway_chat.reset_jros_boot", mock_reset_jros_boot)
     monkeypatch.setattr("api.routes._active_profile_config_path", lambda: "/path/to/hermes/config.yaml")
 
     # Call with a model mapped in JROS_FALLBACK_PROVIDER_MAP (e.g. "openai")
@@ -157,7 +157,7 @@ def test_sync_main_model_to_jros_no_mapping(monkeypatch):
         called_reset.append(True)
 
     monkeypatch.setattr("api.ares_provider_sync.sync_provider", mock_sync_provider)
-    monkeypatch.setattr("api.jros_bridge.reset_jros_boot", mock_reset_jros_boot)
+    monkeypatch.setattr("api.jros_gateway_chat.reset_jros_boot", mock_reset_jros_boot)
     monkeypatch.setattr("api.routes._active_profile_config_path", lambda: "/path/to/hermes/config.yaml")
 
     # Call with an unmapped provider
@@ -178,7 +178,7 @@ def test_sync_main_model_to_jros_handles_exception(monkeypatch):
         called_reset.append(True)
 
     monkeypatch.setattr("api.ares_provider_sync.sync_provider", mock_sync_provider_fail)
-    monkeypatch.setattr("api.jros_bridge.reset_jros_boot", mock_reset_jros_boot)
+    monkeypatch.setattr("api.jros_gateway_chat.reset_jros_boot", mock_reset_jros_boot)
     monkeypatch.setattr("api.routes._active_profile_config_path", lambda: "/path/to/hermes/config.yaml")
 
     # Should not raise exception

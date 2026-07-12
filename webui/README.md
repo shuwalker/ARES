@@ -1,8 +1,12 @@
 # ARES Web UI
 
-Browser command center for ARES — Artificial Reasoning Entity System.
+Browser surface for ARES — Artificial Reasoning Entity System.
 
-The WebUI is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) and extended into an ARES surface: ARES branding, backend selection, character/persona browsing, model/provider management, and peer-framework routing for Hermes Agent and JROS.
+The WebUI is forked from [hermes-webui](https://github.com/nesquena/hermes-webui)
+and extended into the remote-access face of ARES: chat, sessions, backend
+adapters, character projection, model/provider management, and presence controls
+for one assistant interface assembled from JROS, Hermes, OpenAI-compatible
+providers, local tools, and future body/avatar renderers.
 
 ## Install
 
@@ -41,15 +45,18 @@ python3 -m venv .venv
 
 | Mode | Purpose |
 | --- | --- |
-| `hermes` | Hermes Agent runtime for tools, MCP, skills, cron, coding, provider routing, and operations. |
-| `jros` | JROS runtime through an existing `jaeger bridge` install. Best for characters, personas, robotics, and embodied workflows. |
-| `hybrid` | Hermes execution loop with JROS context/tool/persona integration where configured. |
+| `jros` | Embodied JROS/Jaeger runtime through an existing gateway/bridge. Best for character, voice, robotics, and body-aware workflows. |
+| `hermes` | Hermes Agent runtime for coding, terminal work, MCP, skills, cron, provider routing, and operations. |
+| `hybrid` | Explicit composition: one clear turn owner with extra capabilities borrowed from another runtime only when configured. |
 
 Backend selection is independent from provider/model selection. Do not add fake `jros` model entries; JROS mode still uses real configured providers/models.
 
 ## JROS Integration
 
-ARES does **not** install JROS into the WebUI venv and does **not** clone a second copy. Runtime chat uses the installed `jaeger bridge` process through `api/jros_client.py`.
+ARES does **not** install JROS into the WebUI venv and does **not** clone a
+second copy. Runtime chat uses the installed JROS/Jaeger process through the
+gateway/bridge adapter. JROS keeps its own runtime and UI; ARES provides an
+additional Mac and web client surface.
 
 Path resolution is centralized in `api/jros_paths.py`:
 
@@ -73,7 +80,9 @@ See [`../docs/jros-integration.md`](../docs/jros-integration.md).
 
 ## Character Avatar Tab
 
-The Characters panel is the visual front door for ARES identity selection.
+The Characters panel is the visual entry point for assistant presentation. It
+shows the character/avatar projection ARES should present while leaving
+canonical behavior with the active runtime.
 
 Runtime paths:
 

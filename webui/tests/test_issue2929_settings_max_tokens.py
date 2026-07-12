@@ -270,7 +270,7 @@ def test_post_settings_bridges_max_tokens_without_polluting_settings_payload(mon
         captured["body"] = dict(body)
         return {"send_key": body.get("send_key")}
 
-    monkeypatch.setattr("api.config.save_settings", _fake_save_settings)
+    monkeypatch.setattr("api.routes.save_settings", _fake_save_settings)
     monkeypatch.setattr(
         "api.config.set_max_tokens",
         lambda value: {
@@ -300,7 +300,7 @@ def test_post_settings_keeps_current_max_tokens_on_unrelated_save(monkeypatch):
     monkeypatch.setattr(auth, "get_password_hash", lambda: None)
     monkeypatch.setattr(auth, "parse_cookie", lambda handler: "")
     monkeypatch.setattr(auth, "verify_session", lambda cookie: False)
-    monkeypatch.setattr("api.config.save_settings", lambda body: {"language": body.get("language")})
+    monkeypatch.setattr("api.routes.save_settings", lambda body: {"language": body.get("language")})
     monkeypatch.setattr(
         "api.config.get_max_tokens_status",
         lambda: {
@@ -341,7 +341,7 @@ def test_post_settings_does_not_write_max_tokens_before_auth_failures(monkeypatc
         lambda value: saw_set_max_tokens.__setitem__("called", True),
     )
     monkeypatch.setattr(
-        "api.config.save_settings",
+        "api.routes.save_settings",
         lambda body: (_ for _ in ()).throw(AssertionError("save_settings should not run")),
     )
 
@@ -374,7 +374,7 @@ def test_post_settings_does_not_write_max_tokens_when_save_settings_fails(monkey
     monkeypatch.setattr(auth, "parse_cookie", lambda handler: "")
     monkeypatch.setattr(auth, "verify_session", lambda cookie: False)
     monkeypatch.setattr(
-        "api.config.save_settings",
+        "api.routes.save_settings",
         lambda body: (_ for _ in ()).throw(RuntimeError("save_settings failed")),
     )
     monkeypatch.setattr(

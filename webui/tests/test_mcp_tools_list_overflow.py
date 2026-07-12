@@ -85,6 +85,6 @@ def test_mcp_tool_pagination_strings_are_i18n_backed():
 
 
 def test_changelog_mentions_large_mcp_tool_inventory_fix():
-    assert "Large MCP tool inventories" in CHANGELOG
+    assert "large MCP tool inventories" in CHANGELOG
     assert "5-item default pages" in CHANGELOG
     assert "per-page selector up to 40 tools" in CHANGELOG

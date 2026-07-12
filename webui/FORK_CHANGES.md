@@ -5,6 +5,36 @@ Each entry: date, what changed, which files, why, and rollback path.
 
 ---
 
+## 2026-07-12 — Full upstream sync (~338 commits) + storage-key repair
+
+**What:** First full synchronization with upstream since the webui/ baseline
+(2026-07-01). Subtree merge of upstream/master plus a repair pass for changes
+the 3-way base silently dropped (upstream's Jul 1–7 additions), then ARES's
+deltas re-applied on top of upstream latest. Full method, conflict policy,
+and the plan for making the next sync cheap: `docs/upstream-sync-2026-07-12.md`
+(repo root docs/).
+
+**Notable ARES-side fixes bundled in:**
+- Session/model localStorage keys standardized back on upstream's
+  `hermes-webui-*` names. The partial `ares-webui-*` rename lived only in
+  boot.js while sessions.js/messages.js/ui.js read the hermes names — session
+  and model restore were broken. `ares-identity.js` migrates any values saved
+  under the short-lived `ares-*` names back to the canonical keys.
+- `webui/docs/` restored (the docs strip had deleted files the test suite
+  asserts on; every CI shard died at collection).
+- `tests/test_characters_api.py` monkeypatch targets updated from the removed
+  `api.jros_bridge` to `api.jros_gateway_chat`.
+- Provider panel filter is the union of upstream's and ours:
+  `…||p.is_self_hosted||p.has_key` (tests updated to match).
+
+**Rollback:** revert the sync merge commit on `sync/upstream-2026-07-12`.
+
+**Verification:** `python -m compileall` clean over api/server/scripts/tests;
+`node --check` clean over static/*.js; full pytest suite counts recorded in
+the sync doc.
+
+---
+
 ## 2026-07-10 — JROS in-process fallback when no gateway is running
 
 **What:** The JROS backend now resolves execution in two steps: gateway first (`ARES_JROS_GATEWAY_URL`), and when no gateway is reachable but `ARES_JROS_DIR` points at a local checkout, ARES boots JROS in-process and runs the turn directly.

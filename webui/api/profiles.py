@@ -1060,6 +1060,41 @@ def _resolve_secret_scope_module():
     return None
 
 
+# #5567: hermes-agent v0.18.0+ exposes a CONTEXT-LOCAL Hermes-home override
+# (`hermes_constants.set_hermes_home_override`) that `get_hermes_home()` — and
+# therefore `hermes_cli.config.get_config_path()` / `load_config()` — consults
+# BEFORE the process-global `os.environ["HERMES_HOME"]`. Installing it inside the
+# profile worker scope eliminates the cross-profile HERMES_HOME race at the
+# reader (a config read resolves the task-local profile home even if another
+# thread clobbers os.environ mid-body) WITHOUT serializing workers or mutating
+# shared state. Resolved lazily + optionally so OLDER agents (no override symbol)
+# degrade gracefully to the pre-existing os.environ-mirror behavior — unchanged.
+_hermes_home_override_available = None
+
+
+def _resolve_hermes_home_override():
+    """Return the hermes_constants module iff it exposes the v0.18.0+ context-local
+    home override (set/reset), else None. Cached; import-safe on older agents."""
+    global _hermes_home_override_available
+    import sys as _sys
+    if _hermes_home_override_available is False:
+        return None
+    mod = _sys.modules.get('hermes_constants')
+    if mod is None and _hermes_home_override_available is None:
+        try:
+            import hermes_constants as mod  # noqa: F811
+        except Exception:
+            _hermes_home_override_available = False
+            return None
+    if mod is not None and hasattr(mod, 'set_hermes_home_override') and hasattr(
+        mod, 'reset_hermes_home_override'
+    ):
+        _hermes_home_override_available = True
+        return mod
+    _hermes_home_override_available = False
+    return None
+
+
 @contextmanager
 def profile_env_for_background_worker(
     session,
@@ -1117,6 +1152,10 @@ def profile_env_for_background_worker(
     )
     _scope_token = None
     _has_scope = False
+    # #5567: context-local Hermes-home override (hermes-agent v0.18.0+). None on
+    # older agents → graceful no-op (falls back to the os.environ mirror below).
+    _home_override_mod = None
+    _home_override_token = None
     try:
         _set_thread_env(**thread_env)
         _thread_ctx.block_process_env_fallback = True
@@ -1129,6 +1168,20 @@ def profile_env_for_background_worker(
                 _has_scope = True
             except Exception:
                 pass
+        # #5567: install the context-local Hermes-home override so the agent
+        # config reader (get_hermes_home -> get_config_path/load_config) resolves
+        # THIS profile's home from task-local state, immune to a concurrent
+        # cross-profile os.environ["HERMES_HOME"] clobber during the worker body.
+        # No-op on agents < v0.18.0 (resolver returns None) → os.environ mirror
+        # below remains the behavior, exactly as today.
+        _home_override_mod = _resolve_hermes_home_override()
+        if _home_override_mod is not None:
+            try:
+                _home_override_token = _home_override_mod.set_hermes_home_override(
+                    str(profile_home_path)
+                )
+            except Exception:
+                _home_override_token = None
         with _ENV_LOCK:
             old_runtime_env = _apply_profile_env_to_process(
                 os.environ,
@@ -1151,6 +1204,12 @@ def profile_env_for_background_worker(
                 )
         yield
     finally:
+        # #5567: pop the context-local home override first (reverse of setup order).
+        if _home_override_mod is not None and _home_override_token is not None:
+            try:
+                _home_override_mod.reset_hermes_home_override(_home_override_token)
+            except Exception:
+                pass
         if _has_scope and _secret_scope_mod is not None:
             try:
                 _secret_scope_mod.reset_secret_scope(_scope_token)
@@ -1584,6 +1643,31 @@ def switch_profile(name: str, *, process_wide: bool = True) -> dict:
 _SKILLS_STATS_CACHE: dict[Path, tuple[int, int, int, float]] = {}
 _SKILLS_STATS_CACHE_TTL = 300.0  # seconds — long because .clear() handles programmatic changes
 
+# Per-profile compute locks (#5364). Without these, concurrent cold-startup
+# requests (ThreadingHTTPServer runs one OS thread per request) all miss the
+# unlocked _SKILLS_STATS_CACHE at once and each walks + parses the whole skill
+# tree simultaneously — a thundering herd that stalled workers 57–70s under
+# Docker overlay2. A per-profile lock lets independent profiles compute in
+# parallel while collapsing concurrent misses on the SAME profile to a single
+# shared compute (double-checked locking below). The lock registry is guarded by
+# its own meta-lock and is bounded by the (small) number of profiles.
+_SKILLS_STATS_LOCKS: dict[Path, threading.Lock] = {}
+_SKILLS_STATS_LOCKS_GUARD = threading.Lock()
+
+
+def _skills_stats_lock_for(profile_dir: Path) -> threading.Lock:
+    """Return (creating if needed) the per-profile compute lock for profile_dir.
+
+    profile_dir must already be resolved so distinct spellings of the same
+    directory share one lock.
+    """
+    with _SKILLS_STATS_LOCKS_GUARD:
+        lock = _SKILLS_STATS_LOCKS.get(profile_dir)
+        if lock is None:
+            lock = threading.Lock()
+            _SKILLS_STATS_LOCKS[profile_dir] = lock
+        return lock
+
 
 def _skill_tree_max_mtime_ns(skills_dir: Path, config_path: Path) -> int:
     """Return the max st_mtime_ns across config.yaml, skill dirs, and SKILL.md files."""
@@ -1725,19 +1809,33 @@ def _get_profile_skills_stats(profile_dir: Path) -> tuple[int, int]:
         if current_mtime_ns == cached_mtime_ns and now < expiry:
             return enabled, compat
 
-    # Cache miss, mtime changed, or TTL expired — snapshot mtime BEFORE compute
-    # so any concurrent SKILL.md write during the compute window causes a mismatch
-    # on the next probe instead of silently serving stale data (TOCTOU).
-    new_mtime_ns = _skill_tree_max_mtime_ns(skills_dir, config_path)
-    res = _compute_profile_skills_stats(profile_dir)
-    _SKILLS_STATS_CACHE[profile_dir] = (res[0], res[1], new_mtime_ns, now + _SKILLS_STATS_CACHE_TTL)
-    return res
+    # Cache miss, mtime changed, or TTL expired — serialize per-profile so a
+    # burst of concurrent misses (cold startup) collapses to ONE compute instead
+    # of a thundering herd of simultaneous os.walk + SKILL.md parses (#5364).
+    lock = _skills_stats_lock_for(profile_dir)
+    with lock:
+        # Double-checked locking: another thread may have populated a fresh entry
+        # while we waited for the lock. Reuse it when the mtime we already probed
+        # still matches and the entry is within its TTL — no second compute.
+        cached = _SKILLS_STATS_CACHE.get(profile_dir)
+        if cached is not None:
+            enabled, compat, cached_mtime_ns, expiry = cached
+            if current_mtime_ns == cached_mtime_ns and time.time() < expiry:
+                return enabled, compat
+
+        # Snapshot mtime BEFORE compute so any concurrent SKILL.md write during
+        # the compute window causes a mismatch on the next probe instead of
+        # silently serving stale data (TOCTOU).
+        new_mtime_ns = _skill_tree_max_mtime_ns(skills_dir, config_path)
+        res = _compute_profile_skills_stats(profile_dir)
+        _SKILLS_STATS_CACHE[profile_dir] = (
+            res[0], res[1], new_mtime_ns, time.time() + _SKILLS_STATS_CACHE_TTL
+        )
+        return res
 
 
 _LIST_PROFILES_CACHE: tuple[list, float] | None = None
-_LIST_PROFILES_CACHE_TTL = 4.0  # seconds — short enough that gateway dots / new
-                                # profiles stay near-live, long enough that rapid
-                                # re-opens of the dropdown are free.
+_LIST_PROFILES_CACHE_TTL = 4.0  # seconds. The perf(session-load-latency) pass bumped this to 60s, but that was reverted: profile-row mutations (defaults / providers / skills / gateway config) do NOT invalidate this cache, so a 60s TTL served stale profile rows for too long after such a change. 4s keeps the os.walk frequent enough that mutation→poll staleness is negligible while still making rapid dropdown re-opens free. The create/delete invalidation hooks below clear the cache immediately on those specific mutations.
 _LIST_PROFILES_CACHE_LOCK = threading.Lock()
 
 
@@ -1890,14 +1988,21 @@ def list_profiles_api() -> list:
             'total_skills': total_count,
         }]
 
+    # Single-flight the build (#5364): hold the cache lock across the row build
+    # so a cold-startup burst of concurrent requests collapses to ONE build while
+    # the others wait and then serve the freshly-cached rows — instead of every
+    # thread rebuilding (each walking all profiles' skill trees) at once. The
+    # per-profile skills locks taken inside _build_profile_rows_fast are always
+    # acquired AFTER this lock (never the reverse), so there is no deadlock.
     with _LIST_PROFILES_CACHE_LOCK:
         cached = _LIST_PROFILES_CACHE
-    if cached is not None and now - cached[1] < _LIST_PROFILES_CACHE_TTL:
-        active = get_active_profile_name()
-        # Return a fresh copy with is_active recomputed (cheap, per-request).
-        return [{**p, 'is_active': p['name'] == active} for p in cached[0]]
+        if cached is not None and now - cached[1] < _LIST_PROFILES_CACHE_TTL:
+            rows = cached[0]
+        else:
+            rows = _build_profile_rows_fast()
+            if rows is not None:
+                _LIST_PROFILES_CACHE = (rows, now)
 
-    rows = _build_profile_rows_fast()
     if rows is None:
         # Fallback: cheap helpers unavailable — use the original (slow) path,
         # or the default-only dict if hermes_cli isn't importable at all.
@@ -1930,9 +2035,6 @@ def list_profiles_api() -> list:
                 'total_skills': total_count,
             })
         return result
-
-    with _LIST_PROFILES_CACHE_LOCK:
-        _LIST_PROFILES_CACHE = (rows, now)
 
     active = get_active_profile_name()
     return [{**p, 'is_active': p['name'] == active} for p in rows]
@@ -2216,7 +2318,8 @@ def _profile_model_selection_exists(
             continue
         if model_provider and provider_id == model_provider:
             provider_seen = True
-        for model in group.get("models", []) or []:
+        all_group_models = (group.get("models") or []) + (group.get("extra_models") or [])
+        for model in all_group_models:
             if not isinstance(model, dict):
                 continue
             model_id = str(model.get("id") or "").strip()

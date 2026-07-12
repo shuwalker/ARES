@@ -161,8 +161,8 @@ def test_i18n_locked_string_mentions_env_var_name_in_all_locales():
         # Take the rest of that line (the message string)
         line_end = block.index('\n', idx)
         line = block[idx:line_end]
-        assert 'ARES_WEBUI_PASSWORD' in line, \
-            f"{loc}: banner must literally name ARES_WEBUI_PASSWORD"
+        assert 'HERMES_WEBUI_PASSWORD' in line, \
+            f"{loc}: banner must literally name HERMES_WEBUI_PASSWORD"
 
 
 # ── Live HTTP smoke test (env var NOT set in pytest) ──────────────────────

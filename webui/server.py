@@ -1,4 +1,4 @@
-"""ARES Web UI server entry point."""
+"""Hermes Web UI server entry point."""
 import logging
 import os
 import re
@@ -112,6 +112,7 @@ from api.profiles import set_request_profile, clear_request_profile
 from api.routes import handle_delete, handle_get, handle_patch, handle_post, handle_put, apply_cors_preflight_headers
 from api.startup import auto_install_agent_deps, fix_credential_permissions
 from api.updates import WEBUI_VERSION
+from api.crash_visibility import install_crash_visibility
 
 
 class QuietHTTPServer(ThreadingHTTPServer):
@@ -319,7 +320,7 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
     _ver_suffix = WEBUI_VERSION.removeprefix('v')
-    server_version = ('ARESWebUI/' + _ver_suffix) if _ver_suffix != 'unknown' else 'ARESWebUI'
+    server_version = ('HermesWebUI/' + _ver_suffix) if _ver_suffix != 'unknown' else 'HermesWebUI'
     _CSP_REPORT_TO = '{"group":"csp-endpoint","max_age":10886400,"endpoints":[{"url":"/api/csp-report"}]}'
 
     @classmethod
@@ -434,7 +435,7 @@ class Handler(BaseHTTPRequestHandler):
         self._handle_write(handle_patch)
 
     def do_OPTIONS(self) -> None:
-        """Handle CORS preflight requests."""
+        """Handle CORS preflight requests (headers emitted by api.routes)."""
         self._req_t0 = time.time()
         self.send_response(200)
         apply_cors_preflight_headers(self)
@@ -546,6 +547,12 @@ def _abort_if_already_serving(host: str, port: int) -> None:
 
 def main() -> None:
     from api.config import print_startup_config, verify_hermes_imports, _HERMES_FOUND
+
+    # Crash visibility FIRST (issue #4633): enable faulthandler + excepthooks +
+    # exit audit before any heavy startup work so a native crash or a daemon /
+    # handler-thread exception during startup or serving produces a diagnostic
+    # instead of a silent death. The paired memory root-cause is #4765.
+    install_crash_visibility()
 
     print_startup_config()
 
@@ -689,11 +696,41 @@ def main() -> None:
             print(f'[!!] WARNING: TLS setup failed ({e}), falling back to HTTP', flush=True)
             scheme = 'http'
 
-    print(f'  ARES Web UI listening on {scheme}://{HOST}:{PORT}', flush=True)
+    print(f'  Hermes Web UI listening on {scheme}://{HOST}:{PORT}', flush=True)
     if HOST in ('127.0.0.1', '::1') or within_container:
         print(f'  Remote access: ssh -N -L {PORT}:127.0.0.1:{PORT} <user>@<your-server>', flush=True)
     print(f'  Then open:     {scheme}://localhost:{PORT}', flush=True)
     print('', flush=True)
+
+    # ctl.sh stops the WebUI with SIGTERM. Python's default SIGTERM handler
+    # terminates the process WITHOUT unwinding the try/finally around
+    # serve_forever(), so drain_all_on_shutdown() (which flushes in-flight
+    # fire-and-forget memory commits) would never run on the normal managed
+    # stop. Install a handler that requests an orderly shutdown so
+    # serve_forever() returns and the existing `finally` block drains cleanly.
+    #
+    # httpd.shutdown() blocks until serve_forever() has exited and MUST NOT be
+    # called from the thread running serve_forever() (it would deadlock), so we
+    # dispatch it from a short-lived helper thread. The handler is idempotent
+    # and guards against double-shutdown (e.g. repeated SIGTERM/SIGINT).
+    _shutdown_requested = threading.Event()
+
+    def _request_shutdown(signum, _frame):
+        if _shutdown_requested.is_set():
+            return
+        _shutdown_requested.set()
+        threading.Thread(
+            target=httpd.shutdown,
+            name="webui-sigterm-shutdown",
+            daemon=True,
+        ).start()
+
+    try:
+        signal.signal(signal.SIGTERM, _request_shutdown)
+    except (ValueError, OSError):
+        # Not on the main thread (e.g. embedded/test harness); skip handler.
+        logger.debug("Could not install SIGTERM handler", exc_info=True)
+
     try:
         httpd.serve_forever()
     finally:

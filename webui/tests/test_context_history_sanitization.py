@@ -6,7 +6,11 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from api.streaming import _sanitize_messages_for_api, _strip_oob_blocks
+from api.streaming import (
+    _restore_reasoning_metadata,
+    _sanitize_messages_for_api,
+    _strip_oob_blocks,
+)
 
 
 OOB_BLOCK = (
@@ -97,6 +101,45 @@ def test_sanitize_messages_for_api_preserves_tool_chains():
     assert sanitized[2]["tool_call_id"] == "call-1"
     assert "result" in sanitized[2]["content"]
     assert not _contains_oob(sanitized)
+
+
+def test_sanitize_messages_drops_empty_tool_calls_array():
+    """#5737: strict providers (DeepSeek v4, newer OpenAI) reject an assistant
+    message carrying `tool_calls: []` with HTTP 400. A stored assistant message
+    can literally have an empty list (not None, not missing), which the orphan
+    linker doesn't catch. The sanitizer must drop the empty key while leaving a
+    populated tool_calls chain intact."""
+    messages = [
+        {"role": "user", "content": "hi"},
+        # Empty tool_calls: [] must be dropped (would 400 on strict providers).
+        {"role": "assistant", "content": "thinking out loud", "tool_calls": []},
+        {"role": "user", "content": "go on"},
+        # Populated tool_calls (+ its tool result) must be preserved untouched.
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"type": "function", "id": "call-9",
+                 "function": {"name": "terminal", "arguments": "{}"}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call-9", "content": "ok"},
+    ]
+
+    sanitized = _sanitize_messages_for_api(messages)
+
+    # The empty-tool_calls assistant message survives, but WITHOUT the key.
+    empty_asst = next(m for m in sanitized if m.get("content") == "thinking out loud")
+    assert empty_asst["role"] == "assistant"
+    assert "tool_calls" not in empty_asst, "empty tool_calls: [] must be dropped (strict-provider 400)"
+    # The populated chain is preserved.
+    populated = next(m for m in sanitized if m.get("role") == "assistant" and m.get("tool_calls"))
+    assert populated["tool_calls"][0]["id"] == "call-9"
+    assert any(m.get("tool_call_id") == "call-9" for m in sanitized)
+    # No message that reaches the API carries an empty tool_calls array.
+    for m in sanitized:
+        assert not ("tool_calls" in m and not m["tool_calls"]), \
+            "no message may ship an empty tool_calls array"
 
 
 def test_gateway_conversation_history_no_oob():
@@ -261,3 +304,34 @@ def test_strip_oob_blocks_incomplete_block_preserved():
 
     # Incomplete block should remain untouched
     assert "[OUT-OF-BAND USER MESSAGE" in cleaned
+
+
+def test_restore_metadata_aligns_row_with_empty_tool_calls():
+    """#5737 third site: _restore_reasoning_metadata aligns previous vs updated
+    rows by their API-safe projection. A row stored with tool_calls: [] must
+    project identically on both sides (empty key dropped) so its reasoning /
+    stable id / timestamp still carry forward — otherwise the projections diverge
+    and the row silently loses its metadata on every turn."""
+    previous = [
+        {"role": "user", "content": "q"},
+        {
+            "role": "assistant",
+            "content": "answer",
+            "tool_calls": [],            # empty — the strict-provider case
+            "reasoning": "prior reasoning",
+            "id": "msg-42",
+            "timestamp": 1234,
+        },
+    ]
+    # The agent echoes the row back WITHOUT our metadata (and without tool_calls).
+    updated = [
+        {"role": "user", "content": "q"},
+        {"role": "assistant", "content": "answer"},
+    ]
+
+    restored = _restore_reasoning_metadata(previous, updated)
+
+    asst = restored[1]
+    assert asst["reasoning"] == "prior reasoning", "reasoning must carry forward across the empty-tool_calls row"
+    assert asst["id"] == "msg-42", "stable id must carry forward"
+    assert asst["timestamp"] == 1234, "timestamp must carry forward (row must not re-mint / drift)"

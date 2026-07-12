@@ -104,6 +104,8 @@ PROJECT_DYNAMIC_GLOBALS = {
     "placeLiveToolCardsHost": "typeof-guarded optional (ui/sessions/messages call sites)",
     "watchInflightSession": "typeof-guarded optional fallback (sessions.js)",
     "_applyMediaPlaybackPreferences": "typeof-guarded optional (ui.js / workspace.js)",
+    "_hydrateMissionControlPrefs": "typeof-guarded optional ARES mission-control prefs hook (panels.js loadTodos)",
+    "_persistMissionControlPrefs": "typeof-guarded optional ARES mission-control prefs hook (panels.js loadTodos)",
 }
 
 

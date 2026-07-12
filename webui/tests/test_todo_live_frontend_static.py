@@ -81,10 +81,10 @@ function run(panelActive) {
 function assert(cond, msg){ if(!cond) throw new Error(msg); }
 let active = run(true);
 assert(active.raf === 1, 'scheduler must use RAF coalescing');
-assert(active.load === 0, 'active sidebar Todos no longer calls loadTodos');
+assert(active.load === 1, 'active sidebar Todos must still call loadTodos');
 assert(active.workspace === 1, 'scheduler must fan out to workspace refresh helper');
 let inactive = run(false);
-assert(inactive.load === 0, 'inactive sidebar Todos must not call loadTodos');
+assert(inactive.load === 0, 'inactive sidebar Todos must not call loadTodos from RAF path');
 assert(inactive.workspace === 1, 'workspace helper remains responsible for workspace visibility gating');
 '''
     script_path = tmp_path / "todo_scheduler_test.js"

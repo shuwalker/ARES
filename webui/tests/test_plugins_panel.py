@@ -264,7 +264,7 @@ class TestPluginsSettingsUi:
 
         assert 'id="pluginsList"' in html
         assert 'id="pluginsEmpty"' in html
-        assert "No plugins are currently visible" in html
+        assert "No Hermes plugins are currently visible" in html
 
     def test_plugins_panel_fetches_api_and_renders_hook_badges_safely(self):
         js = read("static/panels.js")

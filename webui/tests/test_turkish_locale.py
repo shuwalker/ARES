@@ -112,7 +112,7 @@ def test_turkish_settings_detail_descriptions_are_translated():
         "settings_desc_sidebar_density: 'Oturum listesinin sol kenar çubuğunda ne kadar meta veri göstereceğini kontrol eder.'",
         "settings_desc_auto_title_refresh: 'Oturum başlıklarını en son konuşmaya göre otomatik olarak yeniden oluşturarak konuşma ilerledikçe başlıkların alakalı kalmasını sağlar. LLM başlık oluşturma modeli yapılandırması gerektirir.'",
         "settings_desc_external_sessions: 'Oturum listesinde CLI, Telegram, Discord, Slack ve diğer kanallardan gelen konuşmaları gösterin. İçe aktarmak ve devam etmek için tıklayın.'",
-        "settings_desc_sync_insights: 'WebUI belirteci kullanımını state.db\\'ye yansıtır, böylece /insights tarayıcı oturum verilerini içerir. Varsayılan olarak kapalıdır.'",
+        "settings_desc_sync_insights: 'WebUI belirteci kullanımını state.db\\'ye yansıtır, böylece hermes /insights tarayıcı oturum verilerini içerir. Varsayılan olarak kapalıdır.'",
         "settings_desc_check_updates: 'WebUI veya Agent\\'ın daha yeni sürümleri mevcut olduğunda bir banner gösterin. Periyodik olarak bir arka plan git getirme işlemi çalıştırır.'",
         "settings_desc_bot_name: 'Yalnızca varsayılan profil için kullanılır. Diğer profiller kendi profil adlarını kullanır.'",
         "settings_desc_password: 'Ayarlamak veya değiştirmek için yeni bir şifre girin. Geçerli ayarı korumak için boş bırakın.'",
@@ -125,7 +125,7 @@ def test_turkish_locale_matches_english_key_coverage():
     src = read(REPO / "static" / "i18n.js")
     en_keys = set(locale_keys(src, "en"))
     tr_keys = set(locale_keys(src, "tr"))
-    assert sorted([k for k in (en_keys - tr_keys) if not k.startswith("onboarding_")]) == []
+    assert sorted(en_keys - tr_keys) == []
     assert sorted(tr_keys - en_keys) == []
 
 
