@@ -11,9 +11,14 @@ name: Browser smoke
 
 on:
   pull_request:
-    branches: [master]
+    branches: [main]
   push:
-    branches: [master]
+    branches: [main]
+
+# The ARES web app lives entirely under webui/ — the smoke boots webui/server.py.
+defaults:
+  run:
+    working-directory: webui
 
 jobs:
   browser-smoke:

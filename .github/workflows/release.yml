@@ -43,11 +43,12 @@ jobs:
             type=match,pattern=v(\d+\.\d+(?:\.\d+)?),group=1
             type=raw,value=latest
 
-      # Build and push multi-arch image (amd64 + arm64)
+      # Build and push multi-arch image (amd64 + arm64).
+      # The web app + its Docker packaging live under webui/.
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: webui
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

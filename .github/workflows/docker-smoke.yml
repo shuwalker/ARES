@@ -27,28 +27,33 @@ name: Docker smoke
 
 on:
   pull_request:
-    branches: [master]
+    branches: [main]
     paths:
-      - 'Dockerfile'
-      - 'docker_init.bash'
-      - 'docker-compose*.yml'
-      - '.dockerignore'
-      - '.env.docker.example'
+      - 'webui/Dockerfile'
+      - 'webui/docker_init.bash'
+      - 'webui/docker-compose*.yml'
+      - 'webui/.dockerignore'
+      - 'webui/.env.docker.example'
       - '.github/workflows/docker-smoke.yml'
   push:
-    branches: [master]
+    branches: [main]
     paths:
-      - 'Dockerfile'
-      - 'docker_init.bash'
-      - 'docker-compose*.yml'
-      - '.dockerignore'
-      - '.env.docker.example'
+      - 'webui/Dockerfile'
+      - 'webui/docker_init.bash'
+      - 'webui/docker-compose*.yml'
+      - 'webui/.dockerignore'
+      - 'webui/.env.docker.example'
       - '.github/workflows/docker-smoke.yml'
   workflow_dispatch:
 
 # Fork PRs run with no secrets — that's the right model. Pin to least privilege.
 permissions:
   contents: read
+
+# The ARES web app (and its Docker packaging) lives entirely under webui/.
+defaults:
+  run:
+    working-directory: webui
 
 jobs:
   compose-config:
@@ -81,7 +86,7 @@ jobs:
       - name: Build and cache Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: webui
           load: true
           tags: ghcr.io/nesquena/hermes-webui:latest
           cache-from: type=gha
@@ -110,7 +115,7 @@ jobs:
       - name: Restore Docker image from cache
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: webui
           load: true
           tags: ghcr.io/nesquena/hermes-webui:latest
           cache-from: type=gha
