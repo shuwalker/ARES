@@ -142,16 +142,30 @@ struct ARESWebView: View {
                 Text("Invalid Server URL").foregroundColor(.red)
             }
         } else {
-            VStack(spacing: 14) {
-                ProgressView()
-                    .scaleEffect(1.4)
-                    .padding(.bottom, 2)
-                Text(serverManager.isRunning ? serverManager.serverHealth : "Starting ARES…")
-                    .foregroundColor(.secondary)
-                    .font(.callout)
+            ZStack {
+                Color(red: 0.063, green: 0.063, blue: 0.078)
+                    .ignoresSafeArea()
+                VStack(spacing: 0) {
+                    Spacer()
+                    Text("✦")
+                        .font(.system(size: 52))
+                        .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
+                        .padding(.bottom, 12)
+                    Text("ARES")
+                        .font(.system(size: 32, weight: .light, design: .default))
+                        .foregroundColor(.white)
+                        .tracking(6)
+                    Spacer()
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .colorMultiply(.white)
+                        .padding(.bottom, 8)
+                    Text(serverManager.isRunning ? serverManager.serverHealth : "Starting up…")
+                        .foregroundColor(Color.white.opacity(0.4))
+                        .font(.system(size: 12))
+                    Spacer().frame(height: 48)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
         }
     }
 }

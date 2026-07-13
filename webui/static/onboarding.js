@@ -1,4 +1,4 @@
-const ONBOARDING={status:null,step:0,steps:['system','companion','password','iphone','connect','workspace','setup','mcp','agentPrompt','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
+const ONBOARDING={status:null,step:0,steps:['system','mcp','companion','password','connect','workspace','setup','agentPrompt','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
 
 // ── Onboarding base-URL probe (#1499) ───────────────────────────────────────
 // Probes <base_url>/models so the wizard can validate the configured endpoint
@@ -127,11 +127,11 @@ const ARES_PROVIDER_SYNC_IDS={
 
 function _onboardingStepMeta(key){
   return ({
-    system:{title:t('onboarding_step_system_title')||'Welcome',desc:t('onboarding_step_system_desc')||'What ARES is, and whether your Companion runtime (JaegerAI) is ready.'},
+    system:{title:t('onboarding_step_system_title')||'Install JaegerAI',desc:t('onboarding_step_system_desc')||'Install the JaegerAI Companion runtime — required before continuing.'},
     companion:{title:t('onboarding_step_companion_title')||'Name your Companion',desc:t('onboarding_step_companion_desc')||'Name your Synthetic Intelligence Companion and describe who they are.'},
     agentPrompt:{title:t('onboarding_step_agent_prompt_title')||'Agent prompt',desc:t('onboarding_step_agent_prompt_desc')||'Copy the setup request for a local or remote agent.'},
     iphone:{title:t('onboarding_step_iphone_title')||'iPhone access',desc:t('onboarding_step_iphone_desc')||'Install Tailscale and join the same private network.'},
-    connect:{title:t('onboarding_step_connect_title')||'Connect anywhere',desc:t('onboarding_step_connect_desc')||'Talk to your Companion from every device, over Tailscale.'},
+    connect:{title:t('onboarding_step_connect_title')||'Remote access',desc:t('onboarding_step_connect_desc')||'Install Tailscale and reach your Companion from any device.'},
     mcp:{title:t('onboarding_step_mcp_title')||'Optional: MCP servers',desc:t('onboarding_step_mcp_desc')||'Choose local-only vs remote/server automation.'},
     setup:{title:t('onboarding_step_setup_title')||'Optional: Hermes + providers',desc:t('onboarding_step_setup_desc')||'Add Hermes Agent or a cloud provider for extra capability. Skippable — your Companion already works.'},
     workspace:{title:t('onboarding_step_workspace_title')||'Workspace + model',desc:t('onboarding_step_workspace_desc')||'Pick defaults for new sessions and chat.'},
@@ -403,33 +403,21 @@ function _renderOnboardingBody(){
     return;
   }
 
-  if(key==='iphone'){
-    _setOnboardingNotice(t('onboarding_notice_iphone')||'ARES mobile access is designed around Tailscale/private networking, not public Cloudflare exposure.','info');
-    body.innerHTML=`
-      <div class="onboarding-hero-icon">⇥</div>
-      <div class="onboarding-centered-copy">
-        <div class="onboarding-kicker">${t('onboarding_kicker_step_2')||'STEP 2'}</div>
-        <h3>${t('onboarding_iphone_heading')||'Install Tailscale on iPhone'}</h3>
-        <p>${t('onboarding_iphone_body')||'Install Tailscale on your iPhone and sign into the same tailnet/private network as the computer or server running ARES.'}</p>
-      </div>
-      <div class="onboarding-number-list">
-        <div><span>1</span><p>${t('onboarding_iphone_step_1')||'Install Tailscale from the App Store.'}</p></div>
-        <div><span>2</span><p>${t('onboarding_iphone_step_2')||'Sign in with the same account/tailnet used by the ARES host.'}</p></div>
-        <div><span>3</span><p>${t('onboarding_iphone_step_3')||'Keep Tailscale connected while using ARES from Safari, the WebClip, or the native shell.'}</p></div>
-      </div>
-      <a class="onboarding-secondary-wide" href="https://apps.apple.com/app/tailscale/id1470499037" target="_blank" rel="noopener">↗ ${t('onboarding_tailscale_app_store')||'Get Tailscale on the App Store'}</a>`;
-    return;
-  }
-
   if(key==='connect'){
     const url=_aresOnboardingServerUrl()||'http://<tailscale-ip>:8787';
-    _setOnboardingNotice(t('onboarding_notice_connect')||'Use the private-network IP/hostname URL from the host machine. If this page is already loaded over Tailscale, the URL below is ready to copy.','info');
+    _setOnboardingNotice(t('onboarding_notice_connect')||'ARES uses Tailscale for private-network access. Install it on each device and sign into the same tailnet.','info');
     body.innerHTML=`
       <div class="onboarding-centered-copy onboarding-connect-head">
-        <h3>${t('onboarding_connect_heading')||'Connect'}</h3>
-        <p>${t('onboarding_connect_body')||'Enter this server URL in the mobile app or open it directly from another device after the private network is connected.'}</p>
+        <h3>${t('onboarding_connect_heading')||'Remote access'}</h3>
+        <p>${t('onboarding_connect_body')||'Install Tailscale on your iPhone and other devices, then use the URL below to reach your Companion from anywhere.'}</p>
       </div>
-      <div class="onboarding-connect-fields">
+      <div class="onboarding-number-list">
+        <div><span>1</span><p>${t('onboarding_iphone_step_1')||'Install Tailscale from the App Store on your iPhone or other devices.'}</p></div>
+        <div><span>2</span><p>${t('onboarding_iphone_step_2')||'Sign in with the same account/tailnet used by the ARES host.'}</p></div>
+        <div><span>3</span><p>${t('onboarding_iphone_step_3')||'Keep Tailscale connected while using ARES from Safari or the native shell.'}</p></div>
+      </div>
+      <a class="onboarding-secondary-wide" href="https://apps.apple.com/app/tailscale/id1470499037" target="_blank" rel="noopener">↗ ${t('onboarding_tailscale_app_store')||'Get Tailscale on the App Store'}</a>
+      <div class="onboarding-connect-fields" style="margin-top:20px">
         <div class="onboarding-connect-field"><div class="onboarding-connect-icon">🔗</div><div><strong>${t('onboarding_connect_server_url')||'Server URL'}</strong><span>${esc(url)}</span></div><button type="button" onclick="copyAresConnectUrl()">${t('onboarding_copy')||'Copy'}</button></div>
         <div class="onboarding-connect-field"><div class="onboarding-connect-icon">🔑</div><div><strong>${t('onboarding_connect_password')||'Password'}</strong><span>${settings.password_enabled?(t('onboarding_connect_password_enabled')||'Password auth is enabled'):(t('onboarding_connect_password_pending')||'Set one on the password step before sharing this URL')}</span></div></div>
       </div>
