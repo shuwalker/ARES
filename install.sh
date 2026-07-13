@@ -362,19 +362,73 @@ PLIST_EOF
 
 _setup_launchd
 
-# ── 12. Launch ───────────────────────────────────────────────────────────────
+# ── 12. Build and install the `ares` command ─────────────────────────────────
+_install_ares_command() {
+    [ "$OS" != "Darwin" ] && return 0
+    [ "$HAS_SWIFT" != true ] && return 0
+
+    info "Building ARES app..."
+    cd "$SCRIPT_DIR"
+    if swift build 2>&1 | grep -v "^Build\|^Compiling\|^Linking\|^Emitting\|^Applying\|^Write\|^\[" | head -5; then
+        :
+    fi
+    # Wait for build to actually finish (swift build above already waited)
+    local bin="$SCRIPT_DIR/.build/debug/ARES"
+    if [ ! -f "$bin" ]; then
+        warn "Build output not found — skipping app launch"
+        return 0
+    fi
+
+    # Install `ares` command so the app can be launched/reopened from anywhere
+    local cmd_dir="$HOME/.local/bin"
+    mkdir -p "$cmd_dir"
+    cat > "$cmd_dir/ares" << CMD_EOF
+#!/usr/bin/env bash
+# ARES launcher — opens the companion app or brings it forward
+ARES_BIN="$bin"
+if [ ! -f "\$ARES_BIN" ]; then
+    echo "ARES binary not found at \$ARES_BIN"
+    echo "Re-run: cd $SCRIPT_DIR && bash install.sh"
+    exit 1
+fi
+if pgrep -qf "\$ARES_BIN" 2>/dev/null; then
+    # Already running — bring window forward
+    osascript -e 'tell application "ARES" to activate' 2>/dev/null || true
+else
+    nohup "\$ARES_BIN" >/dev/null 2>&1 &
+    disown
+    echo "ARES started — look for the shield icon in your menu bar"
+fi
+CMD_EOF
+    chmod +x "$cmd_dir/ares"
+    ok "Command installed: ares  (type 'ares' to open or bring it forward)"
+
+    # Ensure ~/.local/bin is in PATH hint
+    if ! echo "$PATH" | grep -q "$cmd_dir"; then
+        info "Add to your shell: export PATH=\"\$HOME/.local/bin:\$PATH\""
+    fi
+}
+
+_install_ares_command
+
+# ── 13. Launch ────────────────────────────────────────────────────────────────
 echo ""
 if [ "$USE_MAC_APP" = true ]; then
-    info "Launching ARES..."
-    cd "$SCRIPT_DIR"
-    swift run ARES
+    local_bin="$HOME/.local/bin/ares"
+    if [ -f "$local_bin" ]; then
+        info "Launching ARES (detached — stays open when this terminal closes)..."
+        bash "$local_bin"
+    else
+        # Fallback: foreground launch
+        cd "$SCRIPT_DIR" && swift run ARES
+    fi
 else
     echo -e "${GREEN}${BOLD}ARES installed.${NC}"
     echo ""
     echo "  Start the server:  cd ~/.ares/webui && ./venv/bin/python server.py"
     echo "  Open in browser:   http://localhost:8787"
     if command -v tailscale >/dev/null 2>&1; then
-        local_ts_ip=$(tailscale ip -4 2>/dev/null || true)
-        [ -n "$local_ts_ip" ] && echo "  Tailscale URL:     http://$local_ts_ip:8787"
+        _ts_ip=$(tailscale ip -4 2>/dev/null || true)
+        [ -n "$_ts_ip" ] && echo "  Tailscale URL:     http://$_ts_ip:8787"
     fi
 fi

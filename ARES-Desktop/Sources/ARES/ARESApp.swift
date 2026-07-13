@@ -361,7 +361,7 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        
+
         let config = ARESConfiguration.shared
         if config.autoLaunchOnStart {
             Task {
@@ -369,6 +369,11 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         setupMenuBar()
+
+        // Open the main window on first launch so the onboarding wizard is visible.
+        // The window is closed by the user, not hidden — subsequent launches stay
+        // tray-only until the user clicks "Open ARES" from the menu bar.
+        openMainWindow()
         
         NotificationCenter.default.addObserver(
             self,
@@ -376,6 +381,16 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.willCloseNotification,
             object: nil
         )
+    }
+
+    func openMainWindow() {
+        NSApp.setActivationPolicy(.regular)
+        if let window = NSApp.windows.first(where: { $0.title != "" && $0.className != "NSStatusBarWindow" }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func windowWillClose(_ notification: Notification) {
@@ -452,11 +467,11 @@ final class ARESMenuBarController: NSObject {
     }
 
     @objc private func openWindow() {
-        NSApp.setActivationPolicy(.regular)
-        if let window = NSApp.windows.first {
-            window.makeKeyAndOrderFront(nil)
-        }
-        NSApp.activate(ignoringOtherApps: true)
+        appDelegate?.openMainWindow()
+    }
+
+    private var appDelegate: ARESAppDelegate? {
+        NSApp.delegate as? ARESAppDelegate
     }
 
     @objc private func startServer() {
