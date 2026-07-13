@@ -1,4 +1,4 @@
-const ONBOARDING={status:null,step:0,steps:['system','companion','agentPrompt','iphone','connect','mcp','setup','workspace','password','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionCharacter:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
+const ONBOARDING={status:null,step:0,steps:['system','companion','agentPrompt','iphone','connect','mcp','setup','workspace','password','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
 
 // ── Onboarding base-URL probe (#1499) ───────────────────────────────────────
 // Probes <base_url>/models so the wizard can validate the configured endpoint
@@ -360,27 +360,11 @@ function _renderOnboardingBody(){
       body.innerHTML=`<p class="onboarding-copy">${t('onboarding_companion_blocked')||'ARES requires JaegerAI as its Companion runtime. Install JaegerAI, then reload this page.'}</p>`;
       return;
     }
-    const characters=cd.characters||[];
-    if(!ONBOARDING.form.companionCharacter){
-      ONBOARDING.form.companionCharacter=cd.default_character||(characters[0]&&characters[0].id)||'';
-    }
     if(!ONBOARDING.form.companionVoice){
       ONBOARDING.form.companionVoice=(cd.voices&&cd.voices[0]&&cd.voices[0].id)||'';
     }
-    const noneLabel=t('onboarding_companion_character_none')||'Custom — no preset character';
-    const characterOptions=`<option value=""${!ONBOARDING.form.companionCharacter?' selected':''}>${esc(noneLabel)}</option>`+characters.map(c=>`<option value="${esc(c.id)}"${c.id===ONBOARDING.form.companionCharacter?' selected':''}>${esc(c.name)}${c.role?' — '+esc(c.role):''}</option>`).join('');
     const voiceOptions=(cd.voices||[]).map(v=>`<option value="${esc(v.id)}"${v.id===ONBOARDING.form.companionVoice?' selected':''}>${esc(v.label)}</option>`).join('');
     const permOptions=(cd.permission_modes||[{id:'confirm',label:'Ask me before each action'},{id:'allow',label:'Auto-allow everything'}]).map(p=>`<option value="${esc(p.id)}"${p.id===ONBOARDING.form.companionPermissionMode?' selected':''}>${esc(p.label)}</option>`).join('');
-    const hasPreset=!!ONBOARDING.form.companionCharacter;
-    const personalityLabel=hasPreset
-      ?(t('onboarding_companion_personality_label_preset')||'Personality / soul (optional)')
-      :(t('onboarding_companion_personality_label_custom')||'Personality / soul');
-    const personalityPlaceholder=hasPreset
-      ?(t('onboarding_companion_personality_placeholder_preset')||'Who is your AI? A sentence or two. Leave blank to use the preset character default.')
-      :(t('onboarding_companion_personality_placeholder_custom')||'Who is your AI? A sentence or two about its personality and purpose.');
-    const personalityHint=hasPreset
-      ?''
-      :`<p class="onboarding-copy" style="margin-top:0.25rem;font-size:0.85em;color:var(--text-secondary,#888)">${t('onboarding_companion_personality_hint_custom')||'Since you chose Custom, this description becomes your AI identity.'}</p>`;
     _setOnboardingNotice(t('onboarding_notice_companion')||'This creates your Companion — name it, describe its soul, and pick a voice. Skills, memory, and model live with JROS from here on.','info');
     body.innerHTML=`
       <label class="onboarding-field">
@@ -388,13 +372,8 @@ function _renderOnboardingBody(){
         <input id="onboardingCompanionNameInput" value="${esc(ONBOARDING.form.companionName||'')}" placeholder="${t('onboarding_companion_name_placeholder')||'e.g. Jarvis'}" oninput="ONBOARDING.form.companionName=this.value">
       </label>
       <label class="onboarding-field">
-        <span>${t('onboarding_companion_character_label')||'Preset character'}</span>
-        <select id="onboardingCompanionCharacterSelect" onchange="ONBOARDING.form.companionCharacter=this.value;_renderOnboardingBody();">${characterOptions}</select>
-      </label>
-      <label class="onboarding-field">
-        <span>${personalityLabel}</span>
-        <input id="onboardingCompanionPersonalityInput" value="${esc(ONBOARDING.form.companionPersonality||'')}" placeholder="${personalityPlaceholder}" oninput="ONBOARDING.form.companionPersonality=this.value">
-        ${personalityHint}
+        <span>${t('onboarding_companion_personality_label')||'Personality / soul'}</span>
+        <input id="onboardingCompanionPersonalityInput" value="${esc(ONBOARDING.form.companionPersonality||'')}" placeholder="${t('onboarding_companion_personality_placeholder')||'Who is your AI? A sentence or two about its personality and purpose.'}" oninput="ONBOARDING.form.companionPersonality=this.value">
       </label>
       <label class="onboarding-field">
         <span>${t('onboarding_companion_voice_label')||'Voice'}</span>
@@ -857,16 +836,16 @@ async function nextOnboardingStep(){
       const cd=ONBOARDING.companionDefaults;
       if(!cd||!cd.available) throw new Error(t('onboarding_companion_blocked')||'ARES requires JaegerAI as its Companion runtime. Install JaegerAI, then reload this page.');
       ONBOARDING.form.companionName=(($('onboardingCompanionNameInput')||{}).value||ONBOARDING.form.companionName||'').trim();
-      ONBOARDING.form.companionCharacter=(($('onboardingCompanionCharacterSelect')||{}).value||ONBOARDING.form.companionCharacter||'').trim();
       ONBOARDING.form.companionPersonality=(($('onboardingCompanionPersonalityInput')||{}).value||ONBOARDING.form.companionPersonality||'').trim();
       ONBOARDING.form.companionVoice=(($('onboardingCompanionVoiceSelect')||{}).value||ONBOARDING.form.companionVoice||'').trim();
       ONBOARDING.form.companionPermissionMode=(($('onboardingCompanionPermissionSelect')||{}).value||ONBOARDING.form.companionPermissionMode||'confirm').trim();
       if(!ONBOARDING.form.companionName) throw new Error(t('onboarding_error_companion_name_required')||'Give your Companion a name.');
-      // Preset character is optional — a blank choice creates a custom AI from the personality text.
+      // No preset picker here — the user is creating this Companion, so
+      // character_id stays blank and the backend builds it from name/personality.
       if(!ONBOARDING._companionCreated){
         await api('/api/onboarding/companion/create',{method:'POST',body:JSON.stringify({
           display_name:ONBOARDING.form.companionName,
-          character_id:ONBOARDING.form.companionCharacter,
+          character_id:'',
           personality:ONBOARDING.form.companionPersonality||undefined,
           voice_id:ONBOARDING.form.companionVoice||undefined,
           permission_mode:ONBOARDING.form.companionPermissionMode,
