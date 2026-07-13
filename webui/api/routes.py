@@ -12314,6 +12314,37 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/onboarding/status":
         return j(handler, get_onboarding_status())
 
+    if parsed.path == "/api/onboarding/companion/hermes-tools":
+        # Read-only status for the "let your Companion use Hermes tools"
+        # toggle: is there a local JROS + a Hermes checkout to wire together,
+        # and is it currently on.
+        from api.jros_hermes_mcp import hermes_mcp_available
+        from api.config import get_config
+
+        try:
+            enabled = bool(get_config().get("jros_hermes_tools_enabled"))
+        except Exception:
+            enabled = False
+        return j(handler, {"available": hermes_mcp_available(), "enabled": enabled})
+
+    if parsed.path == "/api/onboarding/companion/defaults":
+        # Read-only: host-tier model recommendation, voices, permission
+        # modes, and the character roster for the "Name your Companion"
+        # step — the same data `jaeger agent create`'s terminal wizard
+        # prints, served for ARES's web onboarding instead.
+        from api.jros_companion import companion_available, companion_setup_defaults, list_characters
+
+        if not companion_available():
+            return j(handler, {"available": False})
+        try:
+            return j(handler, {
+                "available": True,
+                **companion_setup_defaults(),
+                "characters": list_characters(),
+            })
+        except Exception as e:
+            return bad(handler, f"companion defaults failed: {e}", 500)
+
     if parsed.path == "/api/extensions/status":
         from api.extensions import get_extension_status
 
@@ -13125,32 +13156,68 @@ def handle_get(handler, parsed) -> bool:
     # ARES: Backend selector endpoints
     if parsed.path == "/api/ares/backend":
         try:
-            from api.backend_selector import get_active_backend, backend_status
+            from api.backend_selector import get_active_backend, get_session_backend, backend_status
+            from api.ares_capabilities import capabilities_for_backend
             from api.config import get_config as _get_cfg
+            qs = parse_qs(parsed.query)
+            session_id = str((qs.get("session_id", [""])[0]) or "").strip()
             _cfg = _get_cfg()
-            current = get_active_backend(_cfg)
+            default_backend = get_active_backend(_cfg)
+            current = default_backend
+            scope = "default"
+            if session_id:
+                s = get_session(session_id)
+                if s is None:
+                    return bad(handler, "Session not found", 404)
+                current = get_session_backend(s, _cfg)
+                scope = "session"
             status = backend_status()
+            capabilities = capabilities_for_backend(current)
         except Exception as exc:
             return bad(handler, f"Failed to get backend status: {exc}")
         return j(handler, {
             "current": current,
+            "default": default_backend,
+            "scope": scope,
+            "session_id": session_id or None,
             "status": status,
+            "capabilities": capabilities,
         })
 
     if parsed.path == "/api/ares/backend/set":
         body = read_body(handler)
         backend = str(body.get("backend", "")).strip().lower()
         if backend not in ("hermes", "jros", "hybrid"):
-            return bad(handler, f"Invalid backend: {backend}. Must be hermes, jros, or hybrid.")
+            return bad(handler, f"Invalid backend: {backend}. Must be Hermes Agent, JROS, or Hybrid.")
+        session_id = str(body.get("session_id", "") or "").strip()
         try:
-            config_path = _get_config_path()
-            _cfg = _load_yaml_config_file(config_path)
-            _cfg["ares_backend"] = backend
-            _save_yaml_config_file(config_path, _cfg)
-            reload_config()
+            if session_id:
+                s = _get_or_materialize_session(session_id)
+                s.ares_backend = backend
+                s.save(touch_updated_at=False)
+                _publish_session_list_changed(
+                    "ares_backend_change",
+                    profile=getattr(s, "profile", None),
+                    session_id=getattr(s, "session_id", session_id),
+                )
+                from api.ares_capabilities import capabilities_for_backend
+                return j(handler, {
+                    "ok": True,
+                    "backend": backend,
+                    "scope": "session",
+                    "session_id": session_id,
+                    "capabilities": capabilities_for_backend(backend),
+                })
+            else:
+                config_path = _get_config_path()
+                _cfg = _load_yaml_config_file(config_path)
+                _cfg["ares_backend"] = backend
+                _save_yaml_config_file(config_path, _cfg)
+                reload_config()
         except Exception as exc:
             return bad(handler, f"Failed to save backend: {exc}")
-        return j(handler, {"ok": True, "backend": backend})
+        from api.ares_capabilities import capabilities_for_backend
+        return j(handler, {"ok": True, "backend": backend, "scope": "default", "capabilities": capabilities_for_backend(backend)})
 
     if parsed.path == "/api/ares/self-persistence":
         try:
@@ -13192,13 +13259,22 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/ares/identity":
         try:
             from api.ares_identity import build_identity_payload
-            from api.config import get_config as _get_cfg, _active_profile
+            from api.backend_selector import get_active_backend, get_session_backend
+            from api.config import get_config as _get_cfg, load_settings as _load_settings
+            from api.profiles import get_active_profile_name as _get_active_profile_name
+            qs = parse_qs(parsed.query)
+            session_id = str((qs.get("session_id", [""])[0]) or "").strip()
             _cfg = _get_cfg()
-            backend = str(_cfg.get("ares_backend", "hermes")).strip().lower()
+            backend = get_active_backend(_cfg)
+            if session_id:
+                s = get_session(session_id)
+                if s is None:
+                    return bad(handler, "Session not found", 404)
+                backend = get_session_backend(s, _cfg)
             persona_id = str(_cfg.get("ares_persona", "") or "").strip()
-            bot_name = str((_cfg.get("agent") or {}).get("name", "")) or None
+            bot_name = str((_load_settings() or {}).get("bot_name", "") or "").strip() or None
             payload = build_identity_payload(
-                profile=_active_profile,
+                profile=_get_active_profile_name(),
                 bot_name=bot_name,
                 backend=backend,
                 persona_id=persona_id if persona_id else None
@@ -13250,7 +13326,6 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/ares/audit/logs":
         try:
             from api.paths import HOME
-            import json
             audit_file = HOME / ".ares" / "audit.log"
             logs = []
             if audit_file.is_file():
@@ -14587,16 +14662,36 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/ares/backend/set":
         backend = str(body.get("backend", "")).strip().lower()
         if backend not in ("hermes", "jros", "hybrid"):
-            return bad(handler, f"Invalid backend: {backend}. Must be hermes, jros, or hybrid.")
+            return bad(handler, f"Invalid backend: {backend}. Must be Hermes Agent, JROS, or Hybrid.")
+        session_id = str(body.get("session_id", "") or "").strip()
         try:
-            config_path = _get_config_path()
-            _cfg = _load_yaml_config_file(config_path)
-            _cfg["ares_backend"] = backend
-            _save_yaml_config_file(config_path, _cfg)
-            reload_config()
+            if session_id:
+                s = _get_or_materialize_session(session_id)
+                s.ares_backend = backend
+                s.save(touch_updated_at=False)
+                _publish_session_list_changed(
+                    "ares_backend_change",
+                    profile=getattr(s, "profile", None),
+                    session_id=getattr(s, "session_id", session_id),
+                )
+                from api.ares_capabilities import capabilities_for_backend
+                return j(handler, {
+                    "ok": True,
+                    "backend": backend,
+                    "scope": "session",
+                    "session_id": session_id,
+                    "capabilities": capabilities_for_backend(backend),
+                })
+            else:
+                config_path = _get_config_path()
+                _cfg = _load_yaml_config_file(config_path)
+                _cfg["ares_backend"] = backend
+                _save_yaml_config_file(config_path, _cfg)
+                reload_config()
         except Exception as exc:
             return bad(handler, f"Failed to save backend: {exc}")
-        return j(handler, {"ok": True, "backend": backend})
+        from api.ares_capabilities import capabilities_for_backend
+        return j(handler, {"ok": True, "backend": backend, "scope": "default", "capabilities": capabilities_for_backend(backend)})
 
     if parsed.path == "/api/ares/provider/sync":
         # Writes Hermes/JROS config.yaml provider metadata — same local-network
@@ -15750,7 +15845,7 @@ def handle_post(handler, parsed) -> bool:
         elif is_auth_enabled() or requested_password:
             body["auth_disabled_acknowledged"] = False
 
-        from api.config import get_max_tokens_status, set_max_tokens, save_settings
+        from api.config import get_max_tokens_status, set_max_tokens
 
         saved = save_settings(body)
         saved["persisted_speech_keys"] = persisted_speech_settings_keys()
@@ -15861,6 +15956,71 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, str(e))
         except RuntimeError as e:
             return bad(handler, str(e), 500)
+
+    if parsed.path == "/api/onboarding/companion/create":
+        # Writes a new JROS instance to disk — same local-network gate as
+        # /api/onboarding/setup, for the same reason (first-run, likely
+        # unauthenticated request carrying user-chosen identity data).
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "Naming your Companion is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        from api.jros_companion import create_companion
+
+        b = body or {}
+        try:
+            display_name = str(b.get("display_name") or "").strip() or None
+            result = create_companion(
+                character_id=str(b.get("character_id") or ""),
+                name=str(b.get("name") or "").strip() or None,
+                display_name=display_name,
+                personality=str(b.get("personality") or "").strip() or None,
+                voice_id=str(b.get("voice_id") or "").strip() or None,
+                permission_mode=str(b.get("permission_mode") or "confirm").strip() or "confirm",
+                make_default=bool(b.get("make_default", True)),
+            )
+            if display_name:
+                try:
+                    from api.config import load_settings as _load_settings, save_settings as _save_settings
+
+                    _save_settings({**(_load_settings() or {}), "bot_name": display_name})
+                except Exception:
+                    logger.debug("Failed to mirror Companion name into WebUI bot_name", exc_info=True)
+            return j(handler, result)
+        except ValueError as e:
+            return bad(handler, str(e))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    if parsed.path == "/api/onboarding/companion/hermes-tools":
+        # Writes JROS's mcp_config.json and the ares config flag — same
+        # local-network gate as the other onboarding mutators.
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "This setting is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        from api.jros_hermes_mcp import set_hermes_tools_enabled
+
+        b = body or {}
+        try:
+            return j(handler, set_hermes_tools_enabled(bool(b.get("enabled", True))))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
+    if parsed.path == "/api/onboarding/jros/install":
+        # Triggers JROS installation from the onboarding wizard.
+        # Delegates to JROS's own installer (the same one the bash installer
+        # calls), so ARES never reimplements JROS setup logic.
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "JROS installation is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        from api.jros_companion import install_jros_if_missing
+
+        b = body or {}
+        try:
+            result = install_jros_if_missing(
+                jaeger_home=str(b.get("jaeger_home") or "").strip() or None,
+            )
+            return j(handler, result)
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+        except Exception as e:
+            return bad(handler, f"JROS install failed: {e}", 500)
 
     if parsed.path == "/api/onboarding/complete":
         # Marking onboarding complete flips the first-run wizard off (persists
@@ -21064,7 +21224,7 @@ def _active_run_stream_for_session(session_id: str | None) -> str | None:
     return None
 
 
-def _select_chat_worker_target():
+def _select_chat_worker_target(session=None):
     """Return the backend worker for a normal WebUI chat turn.
 
     The ARES backend selector is the product-level router, so it must win over
@@ -21075,9 +21235,9 @@ def _select_chat_worker_target():
     additive.
     """
     try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
+        from api.backend_selector import BACKEND_JROS, get_session_backend
 
-        if get_active_backend(get_config()) == BACKEND_JROS:
+        if get_session_backend(session, get_config()) == BACKEND_JROS:
             from api.jros_gateway_chat import run_jros_streaming
 
             return run_jros_streaming, False, True
@@ -21222,7 +21382,7 @@ def _start_chat_stream_for_session(
     if goal_related:
         STREAM_GOAL_RELATED[stream_id] = True
     diag.stage("worker_thread_start") if diag else None
-    worker_target, backend_is_gateway, backend_is_jros = _select_chat_worker_target()
+    worker_target, backend_is_gateway, backend_is_jros = _select_chat_worker_target(s)
     worker_kwargs = {"model_provider": model_provider, "goal_related": goal_related}
     if moa_config and not backend_is_gateway and not backend_is_jros:
         worker_kwargs["moa_config"] = moa_config
@@ -21346,8 +21506,8 @@ def _start_run(
     )
 
     try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
-        if get_active_backend(get_config()) == BACKEND_JROS:
+        from api.backend_selector import BACKEND_JROS, get_session_backend
+        if get_session_backend(s, get_config()) == BACKEND_JROS:
             return _start_chat_stream_for_session(
                 s,
                 msg=msg,

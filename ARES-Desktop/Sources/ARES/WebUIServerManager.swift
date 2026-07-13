@@ -68,6 +68,14 @@ public final class WebUIServerManager: ObservableObject {
         env["HERMES_WEBUI_HOST"] = host
         env["HERMES_WEBUI_PORT"] = String(port)
         env["ARES_WEBUI_RELOAD"] = config.reloadDevMode ? "1" : "0"
+        env["HERMES_API_URL"] = config.hermesURL
+        env["ARES_JROS_GATEWAY_URL"] = config.jrosURL
+        if !config.hermesAPIKey.isEmpty {
+            env["HERMES_WEBUI_GATEWAY_API_KEY"] = config.hermesAPIKey
+        }
+        if !config.jrosAPIKey.isEmpty {
+            env["ARES_JROS_GATEWAY_KEY"] = config.jrosAPIKey
+        }
         process.environment = env
 
         // Redirect logs to webui.log (truncate if > 10MB to avoid disk bloat)
@@ -205,8 +213,21 @@ public final class WebUIServerManager: ObservableObject {
                 dir = currentDir.deletingLastPathComponent()
             }
         }
-        // 3. Fallback check for user's default dev path if present
+        // 3. Production install — installer default: ~/.ares/webui
         let home = FileManager.default.homeDirectoryForCurrentUser
+        let prodPath = home.appendingPathComponent(".ares/webui")
+        if FileManager.default.fileExists(atPath: prodPath.appendingPathComponent("server.py").path) {
+            return prodPath
+        }
+        // 4. ARES_HOME override — respect explicit install location
+        if let aresHome = ProcessInfo.processInfo.environment["ARES_HOME"],
+           !aresHome.isEmpty {
+            let overridePath = URL(fileURLWithPath: aresHome).appendingPathComponent("webui")
+            if FileManager.default.fileExists(atPath: overridePath.appendingPathComponent("server.py").path) {
+                return overridePath
+            }
+        }
+        // 5. Dev checkout fallback — only used during development
         let devPath = home.appendingPathComponent("GitHub/ARES/webui")
         if FileManager.default.fileExists(atPath: devPath.appendingPathComponent("server.py").path) {
             return devPath

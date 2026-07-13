@@ -1,4 +1,4 @@
-const ONBOARDING={status:null,step:0,steps:['system','agentPrompt','iphone','connect','mcp','setup','workspace','password','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:''},active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
+const ONBOARDING={status:null,step:0,steps:['system','companion','agentPrompt','iphone','connect','mcp','setup','workspace','password','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionCharacter:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
 
 // ── Onboarding base-URL probe (#1499) ───────────────────────────────────────
 // Probes <base_url>/models so the wizard can validate the configured endpoint
@@ -127,12 +127,13 @@ const ARES_PROVIDER_SYNC_IDS={
 
 function _onboardingStepMeta(key){
   return ({
-    system:{title:t('onboarding_step_system_title')||'System check',desc:t('onboarding_step_system_desc')||'Verify the ARES agent backend and config visibility.'},
+    system:{title:t('onboarding_step_system_title')||'Welcome',desc:t('onboarding_step_system_desc')||'What ARES is, and whether your Companion runtime (JROS) is ready.'},
+    companion:{title:t('onboarding_step_companion_title')||'Name your Companion',desc:t('onboarding_step_companion_desc')||'Give your Synthetic Intelligence Companion a name and a character.'},
     agentPrompt:{title:t('onboarding_step_agent_prompt_title')||'Agent prompt',desc:t('onboarding_step_agent_prompt_desc')||'Copy the setup request for a local or remote agent.'},
     iphone:{title:t('onboarding_step_iphone_title')||'iPhone access',desc:t('onboarding_step_iphone_desc')||'Install Tailscale and join the same private network.'},
-    connect:{title:t('onboarding_step_connect_title')||'Connect',desc:t('onboarding_step_connect_desc')||'Test the URL and password you will use from mobile.'},
-    mcp:{title:t('onboarding_step_mcp_title')||'MCP servers',desc:t('onboarding_step_mcp_desc')||'Choose local-only vs remote/server automation.'},
-    setup:{title:t('onboarding_step_setup_title')||'Provider setup',desc:t('onboarding_step_setup_desc')||'Save the minimum ARES provider config.'},
+    connect:{title:t('onboarding_step_connect_title')||'Connect anywhere',desc:t('onboarding_step_connect_desc')||'Talk to your Companion from every device, over Tailscale.'},
+    mcp:{title:t('onboarding_step_mcp_title')||'Optional: MCP servers',desc:t('onboarding_step_mcp_desc')||'Choose local-only vs remote/server automation.'},
+    setup:{title:t('onboarding_step_setup_title')||'Optional: Hermes + providers',desc:t('onboarding_step_setup_desc')||'Add Hermes Agent or a cloud provider for extra capability. Skippable — your Companion already works.'},
     workspace:{title:t('onboarding_step_workspace_title')||'Workspace + model',desc:t('onboarding_step_workspace_desc')||'Pick defaults for new sessions and chat.'},
     password:{title:t('onboarding_step_password_title')||'Optional password',desc:t('onboarding_step_password_desc')||'Protect the Web UI before sharing it.'},
     finish:{title:t('onboarding_step_finish_title')||'Finish',desc:t('onboarding_step_finish_desc')||'Review and enter the app.'}
@@ -328,24 +329,62 @@ function _renderOnboardingBody(){
   if(nextBtn) nextBtn.textContent=key==='finish'?t('onboarding_open'):t('onboarding_continue');
 
   if(key==='system'){
-    const hermesOk=system.hermes_found&&system.imports_ok;
-    const setupOk=!!system.chat_ready;
-    const providerNote=_localizedOnboardingProviderNote(system);
-    _setOnboardingNotice(providerNote|| (setupOk?t('onboarding_notice_system_ready'):t('onboarding_notice_system_unavailable')),setupOk?'success':(hermesOk?'info':'warn'));
+    const companionUp=!!(ONBOARDING.companionDefaults&&ONBOARDING.companionDefaults.available);
+    _setOnboardingNotice(companionUp?(t('onboarding_notice_companion_ready')||'JROS is installed. Your Companion runtime is ready.'):(t('onboarding_notice_companion_missing')||'JROS was not found. Install it before continuing — ARES requires JROS as its Companion runtime.'),companionUp?'success':'warn');
     body.innerHTML=`
+      <div class="onboarding-hero-icon">✦</div>
+      <div class="onboarding-centered-copy">
+        <h3>${t('onboarding_welcome_heading')||'Welcome to ARES'}</h3>
+        <p>${t('onboarding_welcome_body')||'ARES gives you a Synthetic Intelligence Companion — here to help you become the best version of yourself, and reachable from every device you own.'}</p>
+      </div>
       <div class="onboarding-panel-grid">
-        <div class="onboarding-check ${hermesOk?'ok':'warn'}"><strong>${t('onboarding_check_agent')}</strong><span>${hermesOk?t('onboarding_check_agent_ready'):t('onboarding_check_agent_missing')}</span></div>
-        <div class="onboarding-check ${(setupOk?'ok':system.provider_configured?'warn':'muted')}"><strong>${t('onboarding_check_provider')}</strong><span>${_providerStatusLabel(system)}</span></div>
+        <div class="onboarding-check ${companionUp?'ok':'warn'}"><strong>${t('onboarding_check_companion')||'Companion runtime (JROS)'}</strong><span>${companionUp?(t('onboarding_check_companion_ready')||'Installed and ready'):(t('onboarding_check_companion_missing')||'Not found — required')}</span></div>
         <div class="onboarding-check ${(settings.password_enabled?'ok':'muted')}"><strong>${t('onboarding_check_password')}</strong><span>${settings.password_enabled?t('onboarding_check_password_enabled'):t('onboarding_check_password_disabled')}</span></div>
       </div>
-      <div class="onboarding-copy">
-        <p><strong>${t('onboarding_config_file')}</strong> ${esc(system.config_path||t('onboarding_unknown'))}</p>
-        <p><strong>${t('onboarding_env_file')}</strong> ${esc(system.env_path||t('onboarding_unknown'))}</p>
-        ${providerNote?`<p>${esc(providerNote)}</p>`:''}
-        ${system.current_provider?`<p><strong>${t('onboarding_current_provider')}</strong> ${esc(system.current_provider)}${system.current_model?` — ${esc(system.current_model)}`:''}</p>`:''}
-        ${system.current_base_url?`<p><strong>${t('onboarding_base_url_label')}</strong> ${esc(system.current_base_url)}</p>`:''}
-        ${system.missing_modules&&system.missing_modules.length?`<p><strong>${t('onboarding_missing_imports')}</strong> ${esc(system.missing_modules.join(', '))}</p>`:''}
-      </div>`;
+      ${companionUp?'':`<div class="onboarding-command-card"><button class="onboarding-primary-wide" id="onboardingInstallJrosBtn" type="button" onclick="installJrosFromOnboarding()">${t('onboarding_install_jros_btn')||'Install JROS automatically'}</button><p class="onboarding-copy" style="text-align:center;margin-top:0.5em">${t('onboarding_install_jros_help')||'Or install manually:'}</p><code>curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh | bash</code></div><p class="onboarding-copy">${t('onboarding_companion_install_help')||'Run this on the machine that will host your Companion, then reload this page.'}</p>`}`;
+    return;
+  }
+
+  if(key==='companion'){
+    const cd=ONBOARDING.companionDefaults;
+    if(!cd||!cd.available){
+      _setOnboardingNotice(t('onboarding_notice_companion_missing')||'JROS was not found. Go back and install it before naming your Companion.','warn');
+      body.innerHTML=`<p class="onboarding-copy">${t('onboarding_companion_blocked')||'ARES requires JROS as its Companion runtime. Install JROS, then reload this page.'}</p>`;
+      return;
+    }
+    const characters=cd.characters||[];
+    if(!ONBOARDING.form.companionCharacter){
+      ONBOARDING.form.companionCharacter=cd.default_character||(characters[0]&&characters[0].id)||'';
+    }
+    if(!ONBOARDING.form.companionVoice){
+      ONBOARDING.form.companionVoice=(cd.voices&&cd.voices[0]&&cd.voices[0].id)||'';
+    }
+    const characterOptions=characters.map(c=>`<option value="${esc(c.id)}"${c.id===ONBOARDING.form.companionCharacter?' selected':''}>${esc(c.name)}${c.role?' — '+esc(c.role):''}</option>`).join('');
+    const voiceOptions=(cd.voices||[]).map(v=>`<option value="${esc(v.id)}"${v.id===ONBOARDING.form.companionVoice?' selected':''}>${esc(v.label)}</option>`).join('');
+    const permOptions=(cd.permission_modes||[{id:'confirm',label:'Ask me before each action'},{id:'allow',label:'Auto-allow everything'}]).map(p=>`<option value="${esc(p.id)}"${p.id===ONBOARDING.form.companionPermissionMode?' selected':''}>${esc(p.label)}</option>`).join('');
+    _setOnboardingNotice(t('onboarding_notice_companion')||'This creates your Companion — its name, character, and voice. Skills, memory, and model live with JROS from here on.','info');
+    body.innerHTML=`
+      <label class="onboarding-field">
+        <span>${t('onboarding_companion_name_label')||'Companion name'}</span>
+        <input id="onboardingCompanionNameInput" value="${esc(ONBOARDING.form.companionName||'')}" placeholder="${t('onboarding_companion_name_placeholder')||'e.g. Jarvis'}" oninput="ONBOARDING.form.companionName=this.value">
+      </label>
+      <label class="onboarding-field">
+        <span>${t('onboarding_companion_character_label')||'Character'}</span>
+        <select id="onboardingCompanionCharacterSelect" onchange="ONBOARDING.form.companionCharacter=this.value">${characterOptions}</select>
+      </label>
+      <label class="onboarding-field">
+        <span>${t('onboarding_companion_personality_label')||'Personality (optional)'}</span>
+        <input id="onboardingCompanionPersonalityInput" value="${esc(ONBOARDING.form.companionPersonality||'')}" placeholder="${t('onboarding_companion_personality_placeholder')||'A sentence or two — leave blank to use the character default'}" oninput="ONBOARDING.form.companionPersonality=this.value">
+      </label>
+      <label class="onboarding-field">
+        <span>${t('onboarding_companion_voice_label')||'Voice'}</span>
+        <select id="onboardingCompanionVoiceSelect" onchange="ONBOARDING.form.companionVoice=this.value">${voiceOptions}</select>
+      </label>
+      <label class="onboarding-field">
+        <span>${t('onboarding_companion_permission_label')||'Permissions'}</span>
+        <select id="onboardingCompanionPermissionSelect" onchange="ONBOARDING.form.companionPermissionMode=this.value">${permOptions}</select>
+      </label>
+      <p class="onboarding-copy">${t('onboarding_companion_help')||'You can rename your Companion or change its character later.'}</p>`;
     return;
   }
 
@@ -477,7 +516,7 @@ function _renderOnboardingBody(){
       return;
     }
 
-    _setOnboardingNotice(system.chat_ready?t('onboarding_notice_setup_already_ready'):t('onboarding_notice_setup_required'),system.chat_ready?'success':'info');
+    _setOnboardingNotice(system.chat_ready?t('onboarding_notice_setup_already_ready'):(t('onboarding_notice_setup_optional')||'Optional: your Companion already works without this. Add Hermes Agent or a cloud provider here only if you want extra coding/automation capability.'),system.chat_ready?'success':'info');
     body.innerHTML=`
       <label class="onboarding-field">
         <span>${t('onboarding_provider_label')}</span>
@@ -488,7 +527,10 @@ function _renderOnboardingBody(){
       ${_renderOnboardingBaseUrlField(showBaseUrl)}
       <p class="onboarding-copy">${keyHelp}</p>
       ${showBaseUrl?`<p class="onboarding-copy">${t('onboarding_base_url_help')}</p>`:''}
-      <p class="onboarding-copy">${esc(setup.unsupported_note||'')||''}</p>`;
+      <p class="onboarding-copy">${esc(setup.unsupported_note||'')||''}</p>
+      ${_renderHermesToolsToggle()}
+      ${system.chat_ready?'':`<button class="onboarding-secondary-wide" type="button" onclick="skipOnboardingProviderStep()">${t('onboarding_skip_addition')||'Skip — my Companion already works'}</button>`}`;
+    _loadHermesToolsStatus();
     return;
   }
 
@@ -580,6 +622,80 @@ function syncOnboardingProvider(value){
   _renderOnboardingBody();
 }
 
+let _hermesToolsStatus={loaded:false,available:false,enabled:false};
+
+function _renderHermesToolsToggle(){
+  if(!_hermesToolsStatus.loaded)return '';
+  if(!_hermesToolsStatus.available)return '';
+  const checked=_hermesToolsStatus.enabled?'checked':'';
+  return `<label class="onboarding-field onboarding-checkbox-field">
+    <input type="checkbox" id="onboardingHermesToolsToggle" ${checked} onchange="toggleHermesTools(this.checked)">
+    <span>${t('onboarding_hermes_tools_label')||'Let your Companion use Hermes tools (web search, browser, images, skills) over MCP'}</span>
+  </label>`;
+}
+
+async function _loadHermesToolsStatus(){
+  try{
+    const res=await api('/api/onboarding/companion/hermes-tools');
+    _hermesToolsStatus={loaded:true,available:!!(res&&res.available),enabled:!!(res&&res.enabled)};
+  }catch(e){
+    _hermesToolsStatus={loaded:true,available:false,enabled:false};
+  }
+  if(ONBOARDING.steps[ONBOARDING.step]==='setup')_renderOnboardingBody();
+}
+
+async function toggleHermesTools(enabled){
+  try{
+    const res=await api('/api/onboarding/companion/hermes-tools',{method:'POST',body:JSON.stringify({enabled})});
+    _hermesToolsStatus.enabled=!!(res&&res.enabled);
+    showToast(enabled?(t('onboarding_hermes_tools_on')||'Companion will use Hermes tools'):(t('onboarding_hermes_tools_off')||'Hermes tools disabled'));
+  }catch(e){
+    _setOnboardingNotice((e&&e.message)||String(e),'warn');
+  }
+}
+
+function skipOnboardingProviderStep(){
+  // The Hermes/provider step is an optional addition — the Companion (JROS)
+  // already works without it, unlike the required steps that validate in
+  // nextOnboardingStep(). Just advance without posting /api/onboarding/setup,
+  // and remember the skip so _finishOnboarding() doesn't force it later.
+  ONBOARDING._providerSetupSkipped=true;
+  ONBOARDING.step++;
+  _renderOnboardingSteps();
+  _renderOnboardingBody();
+}
+
+async function installJrosFromOnboarding(){
+  const btn=document.getElementById('onboardingInstallJrosBtn');
+  if(btn){
+    btn.disabled=true;
+    btn.textContent=t('onboarding_install_jros_installing')||'Installing JROS…';
+  }
+  _setOnboardingNotice(t('onboarding_install_jros_progress')||'Downloading and installing JROS — this may take a few minutes…','info');
+  try{
+    const res=await api('/api/onboarding/jros/install','POST',{});
+    if(res.installed){
+      _setOnboardingNotice(res.already_present
+        ?(t('onboarding_install_jros_already_present')||'JROS is already installed!')
+        :(t('onboarding_install_jros_success')||'JROS installed successfully!'), 'success');
+      // Re-check companion availability and re-render
+      try{
+        const cd=await api('/api/onboarding/companion/defaults');
+        ONBOARDING.companionDefaults=cd;
+        ONBOARDING.status.system={...(ONBOARDING.status.system||{}),chat_ready:true};
+      }catch(e){}
+      _renderOnboardingSteps();
+      _renderOnboardingBody();
+    }else{
+      _setOnboardingNotice(t('onboarding_install_jros_failed')||'JROS installation failed. Try the manual command below.','warn');
+      if(btn){btn.disabled=false;btn.textContent=t('onboarding_install_jros_btn')||'Install JROS automatically';}
+    }
+  }catch(e){
+    _setOnboardingNotice((t('onboarding_install_jros_error')||'JROS installation error: ')+e.message,'warn');
+    if(btn){btn.disabled=false;btn.textContent=t('onboarding_install_jros_btn')||'Install JROS automatically';}
+  }
+}
+
 async function loadOnboardingWizard(){
   try{
     const status=await api('/api/onboarding/status');
@@ -591,6 +707,12 @@ async function loadOnboardingWizard(){
     ONBOARDING.form.password='';
     ONBOARDING.form.apiKey='';
     ONBOARDING.form.baseUrl=current.base_url||'';
+    try{
+      ONBOARDING.companionDefaults=await api('/api/onboarding/companion/defaults');
+    }catch(e){
+      console.warn('companion defaults failed',e);
+      ONBOARDING.companionDefaults={available:false};
+    }
     ONBOARDING.active=!status.completed;
     if(!ONBOARDING.active) return false;
     $('onboardingOverlay').style.display='flex';
@@ -680,7 +802,9 @@ async function _saveOnboardingDefaults(){
 }
 
 async function _finishOnboarding(){
-  await _saveOnboardingProviderSetup();
+  if(!ONBOARDING._providerSetupSkipped){
+    await _saveOnboardingProviderSetup();
+  }
   await _saveOnboardingDefaults();
   const done=await api('/api/onboarding/complete',{method:'POST',body:'{}'});
   ONBOARDING.status=done;
@@ -709,6 +833,27 @@ async function skipOnboarding(){
 
 async function nextOnboardingStep(){
   try{
+    if(ONBOARDING.steps[ONBOARDING.step]==='companion'){
+      const cd=ONBOARDING.companionDefaults;
+      if(!cd||!cd.available) throw new Error(t('onboarding_companion_blocked')||'ARES requires JROS as its Companion runtime. Install JROS, then reload this page.');
+      ONBOARDING.form.companionName=(($('onboardingCompanionNameInput')||{}).value||ONBOARDING.form.companionName||'').trim();
+      ONBOARDING.form.companionCharacter=(($('onboardingCompanionCharacterSelect')||{}).value||ONBOARDING.form.companionCharacter||'').trim();
+      ONBOARDING.form.companionPersonality=(($('onboardingCompanionPersonalityInput')||{}).value||ONBOARDING.form.companionPersonality||'').trim();
+      ONBOARDING.form.companionVoice=(($('onboardingCompanionVoiceSelect')||{}).value||ONBOARDING.form.companionVoice||'').trim();
+      ONBOARDING.form.companionPermissionMode=(($('onboardingCompanionPermissionSelect')||{}).value||ONBOARDING.form.companionPermissionMode||'confirm').trim();
+      if(!ONBOARDING.form.companionName) throw new Error(t('onboarding_error_companion_name_required')||'Give your Companion a name.');
+      if(!ONBOARDING.form.companionCharacter) throw new Error(t('onboarding_error_companion_character_required')||'Pick a character.');
+      if(!ONBOARDING._companionCreated){
+        await api('/api/onboarding/companion/create',{method:'POST',body:JSON.stringify({
+          display_name:ONBOARDING.form.companionName,
+          character_id:ONBOARDING.form.companionCharacter,
+          personality:ONBOARDING.form.companionPersonality||undefined,
+          voice_id:ONBOARDING.form.companionVoice||undefined,
+          permission_mode:ONBOARDING.form.companionPermissionMode,
+        })});
+        ONBOARDING._companionCreated=true;
+      }
+    }
     if(ONBOARDING.steps[ONBOARDING.step]==='setup'){
       ONBOARDING.form.provider=(($('onboardingProviderSelect')||{}).value||ONBOARDING.form.provider||'').trim();
       ONBOARDING.form.apiKey=(($('onboardingApiKeyInput')||{}).value||'').trim();
