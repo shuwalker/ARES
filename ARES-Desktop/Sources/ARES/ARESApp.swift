@@ -45,9 +45,86 @@ struct ARESApp: App {
     }
 }
 
-struct ARESMainView: View {
+// MARK: - Tab Model
+
+enum ARESTab: String, CaseIterable {
+    case companion, terminal, jros
+
+    var label: String {
+        switch self {
+        case .companion: return "Companion"
+        case .terminal: return "Terminal"
+        case .jros: return "JROS"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .companion: return "bubble.left.and.bubble.right.fill"
+        case .terminal: return "terminal.fill"
+        case .jros: return "cpu"
+        }
+    }
+}
+
+// MARK: - Tab Bar
+
+struct ARESTabBar: View {
+    @Binding var activeTab: ARESTab
+
     var body: some View {
-        ARESWebView()
+        HStack(spacing: 2) {
+            ForEach(ARESTab.allCases, id: \.self) { tab in
+                Button(action: { activeTab = tab }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 11))
+                        Text(tab.label)
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(activeTab == tab ? .white : Color.white.opacity(0.35))
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 14)
+                    .background(activeTab == tab ? Color.white.opacity(0.1) : Color.clear)
+                    .cornerRadius(5)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Color(red: 0.063, green: 0.063, blue: 0.078))
+        .overlay(
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color.white.opacity(0.12)),
+            alignment: .bottom
+        )
+    }
+}
+
+// MARK: - Main View
+
+struct ARESMainView: View {
+    @State private var activeTab: ARESTab = .companion
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ARESTabBar(activeTab: $activeTab)
+            // ZStack keeps all three views alive so terminals don't restart on tab switch
+            ZStack {
+                ARESWebView()
+                    .opacity(activeTab == .companion ? 1 : 0)
+                    .zIndex(activeTab == .companion ? 1 : 0)
+                RuntimeTerminalView(title: "Terminal", command: RuntimeTerminalCommand.hermes)
+                    .opacity(activeTab == .terminal ? 1 : 0)
+                    .zIndex(activeTab == .terminal ? 1 : 0)
+                RuntimeTerminalView(title: "JROS", command: RuntimeTerminalCommand.jros)
+                    .opacity(activeTab == .jros ? 1 : 0)
+                    .zIndex(activeTab == .jros ? 1 : 0)
+            }
+        }
     }
 }
 

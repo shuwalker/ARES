@@ -28,78 +28,63 @@
 
 ## Quick Start
 
-### How To Run ARES Today
+### Install
 
-ARES currently has three supported local run paths and two planned packaging
-paths:
-
-- **Developer mode:** run `swift run ARES` from the repo root. This launches
-  the native macOS shell, which wraps and controls the Web UI.
-- **Web mode:** run `./start.sh` from the repo root, then open
-  `http://localhost:8787` in a browser.
-- **Windows companion app mode:** run the Web UI, then run the Tauri wrapper
-  from `ARES-Windows/`. This is the Windows native shell path for wrapping the
-  Web UI and adding Windows desktop integrations.
-- **Future standalone modes:** package `ARES.app` on macOS and a Windows
-  installer from `ARES-Windows/`, each with `webui/`, a Python
-  runtime/environment, dependencies, and first-run setup. This is not complete
-  yet, so current native builds are for local/developer use.
-
-For a first local setup:
+One command — works whether or not you have the repo yet:
 
 ```bash
-git clone https://github.com/shuwalker/ARES.git
-cd ARES
-
-# Run the installer
-bash install.sh
+curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/install.sh | bash
 ```
 
-The installer handles everything automatically:
-- Detects or installs JROS (required Companion runtime)
-- Creates a Python virtual environment
-- Installs Python dependencies
-- Configures the backend (defaults to JROS)
+Or clone first if you prefer:
+
+```bash
+git clone https://github.com/shuwalker/ARES && cd ARES && bash install.sh
+```
+
+The installer handles everything:
+- Detects your OS and checks prerequisites
+- Prompts for machine role: **Primary** (always-on Mac) or **Client** (MacBook that falls back to local model when primary is unreachable)
+- Detects or installs JaegerAI (required Companion runtime)
+- Detects or installs Tailscale via Homebrew (macOS — for iPhone and cross-device access)
+- Creates `~/Desktop/ARES/companion/` — your Companion profile, synced across Macs via iCloud Desktop
+- Sets up the Python virtual environment and dependencies
+- Registers a launchd service so the server starts at login (macOS)
+- Launches the ARES menu bar app, which opens the onboarding wizard
 
 **Options:**
+- `--role primary|client` — set machine role without being prompted
+- `--primary-url URL` — primary machine URL for client mode (e.g. `http://100.x.y.z:8787`)
 - `--with-hermes` — also install Hermes Agent (optional coding/terminal addition)
-- `--no-start` — skip auto-starting the server after install
-- `--backend jros|hermes|hybrid` — set the default backend mode
+- `--no-start` — skip launching after install
+- `--backend jros|hermes|hybrid` — override default backend
 
-After install, run the Web UI:
+### macOS: what you get
+
+ARES lives in your **menu bar** (shield icon). Clicking it shows server status and controls. The main window has three tabs:
+
+- **Companion** — embedded web UI: chat, onboarding wizard, settings, all your sessions
+- **Terminal** — Hermes Agent TUI (if installed), falls back to a shell
+- **JROS** — JaegerAI TUI, falls back to a shell
+
+You can keep talking to your Companion in the Terminal tab even while the web UI is being modified or reloaded.
+
+### Linux / Windows
 
 ```bash
-./start.sh
-# → http://localhost:8787
+# Linux
+bash install.sh   # from clone, or pipe from curl above
+
+# Windows (WSL recommended)
+bash install.sh
+# Then open: http://localhost:8787
 ```
 
-### Native macOS App
-
-```bash
-cd ARES
-swift run ARES
-```
-
-### Windows Companion App
+Windows native app (Tauri wrapper):
 
 ```powershell
-cd ARES
-cd webui
-.\.venv\Scripts\python.exe server.py
+cd ARES-Windows && cargo tauri dev
 ```
-
-In a second PowerShell window:
-
-```powershell
-cd ARES
-cd ARES-Windows
-cargo tauri dev
-```
-
-The Windows app currently loads the running Web UI from
-`http://127.0.0.1:8787`. Its goal is to become the Windows version of the ARES
-native shell, including native start/stop control for the Web UI and Windows
-tray/menu integrations.
 
 ## Features
 
