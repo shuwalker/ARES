@@ -211,12 +211,18 @@ public final class WebUIServerManager: ObservableObject {
                 return webuiPath
             }
         }
-        // 2. Traversal up from executable to support swift run / Xcode dev
+        // 2. Traversal up from executable to support swift run / Xcode dev.
+        // Only accept a webui dir here if a venv also exists — otherwise the
+        // dev-checkout webui/ (which has server.py but no venv) silently wins
+        // over the production install at ~/.ares/webui where the venv lives.
         var dir = Bundle.main.executableURL?.deletingLastPathComponent()
         for _ in 0..<5 {
             if let currentDir = dir {
                 let webuiPath = currentDir.appendingPathComponent("webui")
-                if FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path) {
+                let hasServer = FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path)
+                let hasVenv = FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("venv/bin/python").path)
+                    || FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent(".venv/bin/python").path)
+                if hasServer && hasVenv {
                     return webuiPath
                 }
                 dir = currentDir.deletingLastPathComponent()
