@@ -131,7 +131,7 @@ def test_run_in_jros_venv_raises_without_local_jros(monkeypatch):
 
     _fake_local_jros_root(None, monkeypatch)
 
-    with pytest.raises(RuntimeError, match="No local JROS install"):
+    with pytest.raises(RuntimeError, match="No local JaegerAI install"):
         jros_companion._run_in_jros_venv("...")
 
 

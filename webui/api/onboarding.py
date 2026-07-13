@@ -32,9 +32,10 @@ from api.providers import _write_env_file  # shared impl with _ENV_LOCK (#1164)
 from api.workspace import get_last_workspace, load_workspaces
 
 try:
-    from api.jros_companion import companion_available
+    from api.jros_companion import companion_available, companion_exists
 except Exception:
     companion_available = lambda: False  # type: ignore[misc,assignment]
+    companion_exists = lambda: False  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -926,13 +927,19 @@ def get_onboarding_status() -> dict:
         except Exception:
             logger.debug("Failed to persist onboarding_completed", exc_info=True)
 
-    # ARES: when backend is jros, onboarding is not complete until a companion exists.
+    # ARES: when backend is jros and JaegerAI is installed but no companion instance
+    # exists yet, onboarding is not complete. If JaegerAI isn't installed at all
+    # (e.g. test env or Hermes-only setup), don't block onboarding.
     try:
         from api.backend_selector import BACKEND_JROS, get_active_backend
-        if get_active_backend(get_config()) == BACKEND_JROS and not companion_available():
+        if (
+            get_active_backend(get_config()) == BACKEND_JROS
+            and companion_available()
+            and not companion_exists()
+        ):
             settings["onboarding_completed"] = False
     except Exception:
-        logger.debug("Companion availability check failed", exc_info=True)
+        logger.debug("Companion guard failed in get_onboarding_status", exc_info=True)
 
     return {
         "completed": bool(settings.get("onboarding_completed")) or auto_completed or config_auto_completed,
@@ -1144,10 +1151,16 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
 
 
 def complete_onboarding() -> dict:
-    # ARES: when backend is jros, do not allow skipping onboarding without a companion.
+    # ARES: when backend is jros and JaegerAI is installed but no companion instance
+    # exists yet, do not allow skipping onboarding. If JaegerAI isn't installed,
+    # skip the guard so test environments and Hermes-only setups can still complete.
     try:
         from api.backend_selector import BACKEND_JROS, get_active_backend
-        if get_active_backend(get_config()) == BACKEND_JROS and not companion_available():
+        if (
+            get_active_backend(get_config()) == BACKEND_JROS
+            and companion_available()
+            and not companion_exists()
+        ):
             raise RuntimeError(
                 "Onboarding cannot be skipped. Create your Companion first by completing "
                 "the onboarding wizard, or switch to Hermes-only backend."

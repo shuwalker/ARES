@@ -260,7 +260,7 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch, tmp_path):
     apperrors = [item[1] for item in stream._offline_buffer if item[0] == "apperror"]
     assert len(apperrors) == 1
     assert apperrors[0]["type"] == "jros_gateway_offline"
-    assert "jaeger gateway" in apperrors[0]["hint"]
+    assert "jaeger bridge" in apperrors[0]["hint"]
     # No assistant message was fabricated for the failed turn.
     saved = Session.load(sid)
     assert all(m.get("role") != "assistant" for m in saved.messages)
@@ -413,7 +413,7 @@ def test_local_fallback_lock_error_is_actionable(monkeypatch, tmp_path):
     assert len(apperrors) == 1
     assert apperrors[0]["type"] == "jros_local_error"
     assert "already running" in apperrors[0]["message"]
-    assert "jaeger gateway" in apperrors[0]["message"]
+    assert "JaegerAI" in apperrors[0]["message"]
 
 
 def test_local_fallback_missing_instance_says_run_setup(monkeypatch, tmp_path):
