@@ -1,4 +1,4 @@
-const ONBOARDING={status:null,step:0,steps:['system','mcp','companion','password','connect','workspace','setup','agentPrompt','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
+const ONBOARDING={status:null,step:0,steps:['companion','password','setup','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
 
 // ── Onboarding base-URL probe (#1499) ───────────────────────────────────────
 // Probes <base_url>/models so the wizard can validate the configured endpoint
@@ -568,15 +568,14 @@ function _renderOnboardingBody(){
   }
 
   const provider=_getOnboardingSetupProvider(ONBOARDING.form.provider);
+  const providerConfigured=!!(ONBOARDING.form.provider&&ONBOARDING.form.provider!=='openrouter'&&!ONBOARDING._providerSetupSkipped);
   _setOnboardingNotice(t('onboarding_notice_finish'), 'success');
   body.innerHTML=`
     <div class="onboarding-summary">
-      <div><strong>${t('onboarding_provider_label')}</strong><span>${esc((provider&&provider.label)||ONBOARDING.form.provider||t('onboarding_not_set'))}</span></div>
-      <div><strong>${t('onboarding_model_label')}</strong><span>${esc(_getOnboardingSelectedModel()||t('onboarding_not_set'))}</span></div>
-      <div><strong>${t('onboarding_workspace_label')}</strong><span>${esc(ONBOARDING.form.workspace||t('onboarding_not_set'))}</span></div>
+      <div><strong>${t('onboarding_companion_name_label')||'Companion name'}</strong><span>${esc(ONBOARDING.form.companionName||t('onboarding_not_set'))}</span></div>
       <div><strong>${t('onboarding_check_password')}</strong><span>${t(_getOnboardingPasswordSummaryKey(settings))}</span></div>
+      ${providerConfigured?`<div><strong>${t('onboarding_provider_label')}</strong><span>${esc((provider&&provider.label)||ONBOARDING.form.provider)}</span></div>`:''}
     </div>
-    ${ONBOARDING.form.baseUrl?`<p class="onboarding-copy"><strong>${t('onboarding_base_url_label')}</strong> ${esc(ONBOARDING.form.baseUrl)}</p>`:''}
     <p class="onboarding-copy">${t('onboarding_finish_help')}</p>`;
 }
 
@@ -768,24 +767,20 @@ async function _saveOnboardingProviderSetup(){
 }
 
 async function _saveOnboardingDefaults(){
-  const workspace=(ONBOARDING.form.workspace||'').trim();
-  const model=(ONBOARDING.form.model||'').trim();
   const password=(ONBOARDING.form.password||'').trim();
-  if(!workspace) throw new Error(t('onboarding_error_choose_workspace'));
-  if(!model) throw new Error(t('onboarding_error_choose_model'));
-  const known=_getOnboardingWorkspaceChoices().some(ws=>ws.path===workspace);
-  if(!known){
-    await api('/api/workspaces/add',{method:'POST',body:JSON.stringify({path:workspace})});
-  }
-  // Model persisted by /api/onboarding/setup — no /api/default-model call needed here
-  const body={default_workspace:workspace};
+  const model=(ONBOARDING.form.model||'').trim();
+  const body={};
   if(password) body._set_password=password;
-  const saved=await api('/api/settings',{method:'POST',body:JSON.stringify(body)});
-  if(ONBOARDING.status){
-    ONBOARDING.status.settings={...(ONBOARDING.status.settings||{}),password_enabled:!!saved.auth_enabled};
+  if(Object.keys(body).length){
+    const saved=await api('/api/settings',{method:'POST',body:JSON.stringify(body)});
+    if(ONBOARDING.status){
+      ONBOARDING.status.settings={...(ONBOARDING.status.settings||{}),password_enabled:!!saved.auth_enabled};
+    }
   }
-  try{localStorage.setItem('hermes-webui-model',model)}catch{}
-  if($('modelSelect')) _applyModelToDropdown(model,$('modelSelect'));
+  if(model){
+    try{localStorage.setItem('hermes-webui-model',model)}catch{}
+    if($('modelSelect')) _applyModelToDropdown(model,$('modelSelect'));
+  }
 }
 
 async function _finishOnboarding(){
@@ -864,12 +859,6 @@ async function nextOnboardingStep(){
           throw new Error(msg);
         }
       }
-    }
-    if(ONBOARDING.steps[ONBOARDING.step]==='workspace'){
-      ONBOARDING.form.workspace=(($('onboardingWorkspaceInput')||{}).value||ONBOARDING.form.workspace||'').trim();
-      ONBOARDING.form.model=(($('onboardingModelInput')||{}).value||($('onboardingModelSelect')||{}).value||ONBOARDING.form.model||'').trim();
-      if(!ONBOARDING.form.workspace) throw new Error(t('onboarding_error_workspace_required'));
-      if(!ONBOARDING.form.model) throw new Error(t('onboarding_error_model_required'));
     }
     if(ONBOARDING.steps[ONBOARDING.step]==='password'){
       ONBOARDING.form.password=(($('onboardingPasswordInput')||{}).value||'').trim();
