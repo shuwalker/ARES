@@ -3,7 +3,7 @@ non-interactive instance-creation core.
 
 JaegerAI already owns identity creation end to end: ``jaeger agent create``'s
 terminal wizard and the native Jaeger app's onboarding both write through
-``jaeger_os.core.instance.setup_wizard.create_instance``, documented there as
+``jaeger_ai.core.instance.setup_wizard.create_instance``, documented there as
 "THE single write path for first-run setup". ARES does not re-implement any
 of that — this module calls straight through to it.
 
@@ -44,7 +44,7 @@ _NO_LOCAL_JROS = (
 
 _DEFAULTS_SCRIPT = """
 import json
-from jaeger_os.core.instance.setup_wizard import setup_defaults, _character_rows
+from jaeger_ai.core.instance.setup_wizard import setup_defaults, _character_rows
 
 data = setup_defaults()
 data["characters"] = [
@@ -56,7 +56,7 @@ print(json.dumps(data, default=str))
 
 _EXISTS_SCRIPT = """
 import json, os
-from jaeger_os.core.instance.instance import default_instance_name, resolve_instance_dir
+from jaeger_ai.core.instance.instance import default_instance_name, resolve_instance_dir
 
 name = os.environ.get("ARES_JROS_INSTANCE") or default_instance_name()
 print(json.dumps({"exists": resolve_instance_dir(name).exists()}))
@@ -64,7 +64,7 @@ print(json.dumps({"exists": resolve_instance_dir(name).exists()}))
 
 _CREATE_SCRIPT = """
 import json, sys
-from jaeger_os.core.instance.setup_wizard import create_instance
+from jaeger_ai.core.instance.setup_wizard import create_instance
 
 payload = json.loads(sys.stdin.read())
 try:
