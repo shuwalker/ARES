@@ -68,9 +68,8 @@ _JROS_GATEWAY_KEY_ENV = "ARES_JROS_GATEWAY_KEY"
 DEFAULT_JROS_GATEWAY_URL = "http://127.0.0.1:8643"
 
 _START_GATEWAY_HINT = (
-    "Start the JROS gateway where JROS is installed (`jaeger gateway`, add "
-    "`--host 0.0.0.0` for another machine) and point ARES_JROS_GATEWAY_URL "
-    "at it."
+    "JaegerAI runs through the local bridge (`jaeger bridge`). "
+    "Make sure JaegerAI is installed and an agent instance exists."
 )
 
 
@@ -148,25 +147,26 @@ _BRIDGE_TURN_LOCKS: dict[str, threading.RLock] = {}
 
 
 def local_jros_root() -> Path | None:
-    """The local JROS runtime/source root for bridge fallback, or None.
+    """The local JaegerAI/JROS runtime/source root for bridge fallback, or None.
 
     Resolution order keeps explicit source checkouts first, then the installed
-    Jaeger/JROS runtime path. This is what the installer detects as ``~/jaeger``
+    Jaeger/JaegerAI runtime path. This is what the installer detects as ``~/jaeger``
     on a normal user machine, and what ``ARES_JAEGER_HOME`` / ``JAEGER_HOME``
     override for nonstandard installs.
     """
     raw = os.environ.get(_JROS_DIR_ENV, "").strip()
     if raw:
         root = Path(raw).expanduser().resolve()
-        if (root / "jaeger_os").is_dir():
+        if (root / "jaeger_os").is_dir() or (root / "jaeger_ai").is_dir() or (root / "jaeger").exists():
             return root
 
     try:
         root = jaeger_home()
     except Exception:
         root = None
-    if root is not None and (root / "jaeger_os").is_dir():
-        return root
+    if root is not None:
+        if (root / "jaeger_os").is_dir() or (root / "jaeger_ai").is_dir() or (root / "jaeger").exists():
+            return root
     return discover_jros_source_root()
 
 
@@ -191,13 +191,13 @@ def _bridge_error_message(exc: Exception) -> str:
     lower = message.lower()
     if "lock" in lower:
         return (
-            "JROS is already running on this machine, so ARES can't start a "
-            "second copy (JROS allows one process per instance). Close the "
-            "running JROS app/TUI, or run `jaeger gateway` instead of it so "
-            f"ARES can talk to JROS over the gateway. (Original error: {message})"
+            "JaegerAI is already running on this machine, so ARES can't start a "
+            "second copy (JaegerAI allows one process per instance). Close the "
+            "running JaegerAI app/TUI, or use a different instance name so "
+            f"ARES can start its own bridge. (Original error: {message})"
         )
     if "no instance" in lower or "instance" in lower and ("not found" in lower or "does not exist" in lower):
-        return f"{message} — run `jaeger setup` on the machine where JROS is installed first."
+        return f"{message} — run `jaeger setup` on the machine where JaegerAI is installed first."
     return message
 
 
@@ -234,7 +234,7 @@ def _get_or_start_bridge_client(instance: str | None = None) -> JrosClient:
 
 
 def _reset_local_bridge_clients() -> None:
-    """Drop cached bridge clients, releasing JROS's instance lock."""
+    """Drop cached bridge clients, releasing JaegerAI's instance lock."""
     with _BOOT_LOCK:
         clients = list(_BRIDGE_CLIENTS.values())
         _BRIDGE_CLIENTS.clear()
@@ -335,7 +335,7 @@ def _run_local_jros_turn(
                 client.close()
             except Exception:
                 logger.debug("Failed to close errored JROS bridge", exc_info=True)
-        logger.warning("Local JROS bridge turn failed: %s", exc, exc_info=True)
+        logger.warning("Local JaegerAI bridge turn failed: %s", exc, exc_info=True)
         return "", _bridge_error_message(exc), []
     payload = dict(result or {}) if isinstance(result, dict) else {}
     error = str(payload.get("error") or "").strip()
@@ -493,7 +493,7 @@ def _run_jros_goal_hook(*, session_id: str, stream_id: str, goal_related: bool, 
                         "decision": decision,
                     })
     except Exception as goal_exc:
-        logger.debug("JROS goal continuation hook failed for session %s: %s", session_id, goal_exc)
+        logger.debug("JaegerAI goal continuation hook failed for session %s: %s", session_id, goal_exc)
 
 
 def _jros_http_error_event(exc: urllib.error.HTTPError, err_body: str) -> dict:
@@ -530,7 +530,7 @@ def _run_jros_chat_streaming(
     model_provider=None,
     goal_related=False,
 ):
-    """Bridge a WebUI chat turn through the JROS gateway using the Hermes
+    """Bridge a WebUI chat turn through JaegerAI using the Hermes
     worker contract (same signature routes._select_chat_worker_target
     dispatches to)."""
     q = STREAMS.get(stream_id)
@@ -595,7 +595,7 @@ def _run_jros_chat_streaming(
         s = get_session(session_id)
         put_jros_event("context_status", {
             "session_id": session_id,
-            "prefill": {"status": "jros", "source": "jros", "label": "JROS", "message_count": 0},
+            "prefill": {"status": "jros", "source": "jros", "label": "JaegerAI", "message_count": 0},
         })
         update_active_run(stream_id, phase="jros-request")
 
@@ -633,17 +633,14 @@ def _run_jros_chat_streaming(
         turn_error = ""
         ran_locally = False
         sse_event = "message"
-        try:
-            resp_ctx = urllib.request.urlopen(req, timeout=600)
-        except urllib.error.URLError as exc:
-            # HTTPError means the gateway IS reachable and answered with an
-            # error — no fallback, let the outer handler explain it.
-            if isinstance(exc, urllib.error.HTTPError):
-                raise
-            if local_jros_root() is None:
-                raise
-            # No gateway, but JROS lives on this machine: run the turn through
-            # the local JROS bridge (flip-the-toggle-and-it-works locally).
+        resp_ctx = None
+
+        # JaegerAI has no HTTP gateway — default to local bridge. Only try the
+        # legacy HTTP gateway path when the operator has explicitly configured one.
+        explicit_gateway = bool(
+            os.environ.get(_JROS_GATEWAY_URL_ENV) or cfg.get("jros_gateway_url")
+        )
+        if not explicit_gateway and local_jros_root() is not None:
             ran_locally = True
             update_active_run(stream_id, phase="jros-local")
             final_text, turn_error, tool_activity = _run_local_jros_turn(
@@ -667,7 +664,42 @@ def _run_jros_chat_streaming(
                 STREAM_PARTIAL_TEXT[stream_id] = final_text
                 usage["output_tokens"] = max(1, len(final_text.split()))
                 put_jros_event("token", {"text": final_text})
-            resp_ctx = None
+        else:
+            try:
+                resp_ctx = urllib.request.urlopen(req, timeout=600)
+            except urllib.error.URLError as exc:
+                # HTTPError means the gateway IS reachable and answered with an
+                # error — no fallback, let the outer handler explain it.
+                if isinstance(exc, urllib.error.HTTPError):
+                    raise
+                if local_jros_root() is None:
+                    raise
+                # Gateway unreachable, but JaegerAI lives on this machine:
+                # fall back to the local bridge.
+                ran_locally = True
+                update_active_run(stream_id, phase="jros-local")
+                final_text, turn_error, tool_activity = _run_local_jros_turn(
+                    msg_text, session_id, cancel_event, put_jros_event, stream_id
+                )
+                if cancel_event.is_set():
+                    put_jros_event("cancel", {"message": "Cancelled by user"})
+                    return
+                for activity in tool_activity:
+                    if stream_id in STREAM_LIVE_TOOL_CALLS:
+                        STREAM_LIVE_TOOL_CALLS[stream_id].append(
+                            {"name": "jros", "args": {"activity": activity}, "done": True}
+                        )
+                    put_jros_event("tool", {
+                        "event_type": "tool.completed",
+                        "name": "jros",
+                        "preview": activity,
+                        "is_error": False,
+                    })
+                if final_text:
+                    STREAM_PARTIAL_TEXT[stream_id] = final_text
+                    usage["output_tokens"] = max(1, len(final_text.split()))
+                    put_jros_event("token", {"text": final_text})
+                resp_ctx = None
         if resp_ctx is not None:
             with resp_ctx as resp:
                 for raw_line in resp:
@@ -727,25 +759,25 @@ def _run_jros_chat_streaming(
         assistant_text = final_text.strip()
         if turn_error and not assistant_text:
             put_jros_event("apperror", {
-                "label": "JROS request failed",
+                "label": "JaegerAI request failed",
                 "type": "jros_local_error" if ran_locally else "jros_error",
                 "message": _redact_text(turn_error)[:500],
                 "hint": (
-                    "ARES ran JROS through the local bridge on this machine (no gateway was reachable)."
+                    "ARES ran JaegerAI through the local bridge on this machine."
                     if ran_locally
-                    else "ARES reached the JROS gateway. Check JROS provider config/quota if the model call failed."
+                    else "ARES reached the JaegerAI gateway. Check provider config/quota if the model call failed."
                 ),
             })
             return
         if not assistant_text:
             put_jros_event("apperror", {
-                "label": "JROS returned no response",
+                "label": "JaegerAI returned no response",
                 "type": "jros_empty_response",
-                "message": "JROS returned no assistant message for this turn.",
+                "message": "JaegerAI returned no assistant message for this turn.",
                 "hint": (
-                    "JROS ran on this machine through the local bridge but produced no reply. Check its model provider."
+                    "JaegerAI ran on this machine through the local bridge but produced no reply. Check its model provider."
                     if ran_locally
-                    else f"Check the JROS gateway at {base_url} and its model provider."
+                    else f"Check the JaegerAI gateway at {base_url} and its model provider."
                 ),
             })
             return
@@ -781,7 +813,7 @@ def _run_jros_chat_streaming(
         put_jros_event("apperror", _jros_http_error_event(exc, err_body))
     except urllib.error.URLError as exc:
         put_jros_event("apperror", {
-            "label": "JROS gateway unreachable",
+            "label": "JaegerAI gateway unreachable",
             "type": "jros_gateway_offline",
             "message": _redact_text(str(exc.reason if hasattr(exc, "reason") else exc))[:500],
             "hint": _START_GATEWAY_HINT,
@@ -789,9 +821,9 @@ def _run_jros_chat_streaming(
     except Exception as exc:
         safe = _redact_text(str(exc))[:500]
         put_jros_event("apperror", {
-            "label": "JROS request failed",
+            "label": "JaegerAI request failed",
             "type": "jros_gateway_error",
-            "message": safe or "JROS request failed.",
+            "message": safe or "JaegerAI request failed.",
             "hint": _START_GATEWAY_HINT,
         })
     finally:

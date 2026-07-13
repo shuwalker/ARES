@@ -1,30 +1,29 @@
-"""ARES Backend Selector — routes agent execution to JROS or Hermes.
+"""ARES Backend Selector — routes agent execution to JaegerAI or Hermes.
 
 The core feature of ARES WebUI: the user picks which AI backend runs their agent.
 
 Backends:
-  - jros (default): JROS is the required Companion runtime — the brain,
+  - jros (default): JaegerAI is the required Companion runtime — the brain,
     memory, character, and local model that "name your Companion" onboarding
-    creates. Turns run on a JROS gateway server (`jaeger gateway`), local or
-    remote, over HTTP. See api/jros_gateway_chat.py.
+    creates. Turns run through the local ``jaeger bridge`` over stdio (NDJSON).
+    JaegerAI has no HTTP gateway; the bridge is the primary and only path.
+    See api/jros_gateway_chat.py.
   - hermes: Hermes Agent in-process — an optional addition for coding/
     terminal/skills capability, identical to hermes-webui behavior. Only
     meaningful once the operator has installed Hermes (it is not installed
     by default; see webui/scripts/install.sh --with-hermes).
-  - hybrid: JROS persona/tools layered onto the Hermes loop (additive).
+  - hybrid: JaegerAI persona/tools layered onto the Hermes loop (additive).
     Currently hidden in the UI while the mode is being defined; the value
     stays valid server-side so existing configs keep working.
 
 This module is pure routing logic — no side effects on import. Execution
-itself happens in api/jros_gateway_chat.py: gateway first (POST to
-ARES_JROS_GATEWAY_URL, default localhost:8643 — same integration shape as
-the Hermes Gateway bridge in api/gateway_chat.py), and when no gateway is
-reachable, a local bridge fallback spawns ``jaeger bridge`` from the JROS
-install.
+itself happens in api/jros_gateway_chat.py: local bridge first
+(spawns ``jaeger bridge`` from the JaegerAI install), with a legacy gateway
+fallback only when ARES_JROS_GATEWAY_URL is explicitly configured.
 
-Availability = a live `GET /v1/health` answer from the gateway (mode
-"gateway"), else a usable local checkout (mode "local"). A JROS on another
-machine is just a different base URL.
+Availability = a usable local JaegerAI install (mode "local"), or a live
+`GET /v1/health` answer from an explicitly configured remote gateway
+(mode "gateway").
 """
 
 from __future__ import annotations
@@ -71,11 +70,11 @@ def get_session_backend(session: object, config: dict) -> str:
 
 
 def is_jros_available() -> bool:
-    """Check whether JROS is usable right now.
+    """Check whether JaegerAI is usable right now.
 
-    Prefers a live /v1/health answer from the configured JROS gateway
-    (mode "gateway"); otherwise a local JROS install/source checkout that the
-    bridge fallback can spawn counts too (mode "local")."""
+    Prefers a local JaegerAI install that the bridge can spawn (mode "local");
+    falls back to a live /v1/health answer only when an explicit remote gateway
+    is configured (backward compatibility, mode "gateway")."""
     global _jros_available_cache, _jros_available_ts, _jros_gateway_info
     now = time.time()
     if _jros_available_cache is not None and (now - _jros_available_ts) < _JROS_CACHE_TTL:
@@ -86,21 +85,24 @@ def is_jros_available() -> bool:
     try:
         from api.jros_gateway_chat import jros_gateway_health, local_jros_root
 
-        reply = jros_gateway_health(timeout=1.0)
-        if reply is not None:
-            result = True
-            presence_info = {
-                "mode": "gateway",
-                "model": reply.get("model"),
-                "provider": reply.get("provider"),
-                "booted": bool(reply.get("booted")),
-                "instance": reply.get("instance"),
-            }
-        elif local_jros_root() is not None:
+        # JaegerAI has no HTTP gateway — local bridge is the primary path.
+        if local_jros_root() is not None:
             result = True
             presence_info = {"mode": "local"}
+        else:
+            # Legacy: remote gateway check for backward compatibility
+            reply = jros_gateway_health(timeout=1.0)
+            if reply is not None:
+                result = True
+                presence_info = {
+                    "mode": "gateway",
+                    "model": reply.get("model"),
+                    "provider": reply.get("provider"),
+                    "booted": bool(reply.get("booted")),
+                    "instance": reply.get("instance"),
+                }
     except Exception:
-        logger.debug("JROS availability probe failed", exc_info=True)
+        logger.debug("JaegerAI availability probe failed", exc_info=True)
 
     _jros_available_cache = result
     _jros_available_ts = now

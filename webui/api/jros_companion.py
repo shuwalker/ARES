@@ -1,26 +1,25 @@
-"""Name your Companion — ARES onboarding's call into JROS's own
+"""Name your Companion — ARES onboarding's call into JaegerAI's own
 non-interactive instance-creation core.
 
-JROS already owns identity creation end to end: ``jaeger agent create``'s
+JaegerAI already owns identity creation end to end: ``jaeger agent create``'s
 terminal wizard and the native Jaeger app's onboarding both write through
 ``jaeger_os.core.instance.setup_wizard.create_instance``, documented there as
 "THE single write path for first-run setup". ARES does not re-implement any
 of that — this module calls straight through to it.
 
-Critically, that call runs as a **subprocess using JROS's own venv**
-(``<jros_root>/.venv/bin/python``), not an in-process ``sys.path`` import into
+Critically, that call runs as a **subprocess using JaegerAI's own venv**
+(``<jaeger_home>/.venv/bin/python``), not an in-process ``sys.path`` import into
 ARES's interpreter. Cross-importing ``jaeger_os`` into ARES's webui venv
 reliably fails with ``ModuleNotFoundError`` (msgspec, llama-cpp-python, ...)
 because ``webui/scripts/install.sh`` only ever sets up ARES's own venv —
-JROS's native/ML dependencies are never installed there, and never should be
-(they're heavy and JROS already manages them in its own venv). Running
-through JROS's interpreter is exactly what its ``jaeger`` launcher does, so
+JaegerAI's native/ML dependencies are never installed there, and never should be
+(they're heavy and JaegerAI already manages them in its own venv). Running
+through JaegerAI's interpreter is exactly what its ``jaeger`` launcher does, so
 this reuses that same working environment instead of duplicating it.
 
-Only the local-JROS-on-this-machine path is wired here. A remote JROS
-(reached only through ``jaeger gateway``'s HTTP API) has no gateway endpoint
-for instance creation today, so naming a Companion against a remote-only JROS
-is not yet supported — callers get an actionable error instead of a silent
+Only the local-JaegerAI-on-this-machine path is wired here. JaegerAI has no
+HTTP gateway for instance creation, so naming a Companion against a remote-only
+runtime is not supported — callers get an actionable error instead of a silent
 no-op.
 """
 from __future__ import annotations
@@ -38,7 +37,7 @@ from api.jros_paths import jros_instance_name
 logger = logging.getLogger(__name__)
 
 _NO_LOCAL_JROS = (
-    "No local JROS install was found. ARES requires JROS as its Companion "
+    "No local JaegerAI install was found. ARES requires JaegerAI as its Companion "
     "runtime — install it first (the onboarding step before this one), or "
     "point ARES_JAEGER_HOME/JAEGER_HOME at an existing install."
 )
@@ -95,9 +94,9 @@ def _jros_root() -> Path:
 
 
 def _jros_python(root: Path) -> Path:
-    """The interpreter with JROS's own dependencies installed. Falls back to
-    ARES's own interpreter only if JROS has no venv yet (e.g. a `--no-venv`
-    JROS install), in which case the caller's ModuleNotFoundError will be a
+    """The interpreter with JaegerAI's own dependencies installed. Falls back to
+    ARES's own interpreter only if JaegerAI has no venv yet (e.g. a `--no-venv`
+    install), in which case the caller's ModuleNotFoundError will be a
     more actionable signal than silently picking the wrong python."""
     candidate = root / ".venv" / "bin" / "python"
     return candidate if candidate.exists() else Path(sys.executable)
@@ -123,17 +122,17 @@ def _run_in_jros_venv(script: str, *, stdin_payload: dict[str, Any] | None = Non
             timeout=60,
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("JROS did not respond within 60s.") from exc
+        raise RuntimeError("JaegerAI did not respond within 60s.") from exc
     if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip()[-2000:] or f"JROS exited with code {proc.returncode}")
+        raise RuntimeError(proc.stderr.strip()[-2000:] or f"JaegerAI exited with code {proc.returncode}")
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Unexpected JROS output: {proc.stdout[:500]!r}") from exc
+        raise RuntimeError(f"Unexpected JaegerAI output: {proc.stdout[:500]!r}") from exc
 
 
 def companion_available() -> bool:
-    """True when a local JROS install is present for the naming step."""
+    """True when a local JaegerAI install is present for the naming step."""
     try:
         return local_jros_root() is not None
     except Exception:
@@ -142,11 +141,11 @@ def companion_available() -> bool:
 
 
 def install_jros_if_missing(jaeger_home: str | None = None) -> dict[str, Any]:
-    """Check whether JROS is installed and, if not, download and run JROS's
+    """Check whether JaegerAI is installed and, if not, download and run JaegerAI's
     own installer.  Returns a status dict:
 
-      {"installed": True, "already_present": True}  — JROS already installed
-      {"installed": True, "already_present": False} — JROS freshly installed
+      {"installed": True, "already_present": True}  — JaegerAI already installed
+      {"installed": True, "already_present": False} — JaegerAI freshly installed
       {"installed": False, "error": "..."}           — installation failed
 
     The installer URL and JAEGER_HOME resolution use the same env vars as
@@ -165,22 +164,22 @@ def install_jros_if_missing(jaeger_home: str | None = None) -> dict[str, Any]:
     if launcher.exists() and os.access(str(launcher), os.X_OK):
         return {"installed": True, "already_present": True, "jaeger_home": str(resolved_home)}
 
-    # JROS not found — download and run its own installer.
+    # JaegerAI not found — download and run its own installer.
     install_url = os.environ.get(
         "JROS_INSTALL_URL",
-        "https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh",
+        "https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh",
     )
     env = dict(os.environ)
     env["JAEGER_HOME"] = str(resolved_home)
     env["ARES_JAEGER_HOME"] = str(resolved_home)
 
     try:
-        logger.info("Downloading JROS installer from %s", install_url)
+        logger.info("Downloading JaegerAI installer from %s", install_url)
         req = urllib.request.Request(install_url, headers={"User-Agent": "ARES-WebUI/1.0"})
         with urllib.request.urlopen(req, timeout=120) as resp:
             script = resp.read().decode("utf-8", errors="replace")
     except Exception as exc:
-        raise RuntimeError(f"Failed to download JROS installer: {exc}") from exc
+        raise RuntimeError(f"Failed to download JaegerAI installer: {exc}") from exc
 
     try:
         result = subprocess.run(
@@ -191,13 +190,13 @@ def install_jros_if_missing(jaeger_home: str | None = None) -> dict[str, Any]:
             timeout=600,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("JROS installer timed out after 10 minutes.")
+        raise RuntimeError("JaegerAI installer timed out after 10 minutes.")
     except Exception as exc:
-        raise RuntimeError(f"Failed to run JROS installer: {exc}") from exc
+        raise RuntimeError(f"Failed to run JaegerAI installer: {exc}") from exc
 
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()[-2000:]
-        raise RuntimeError(f"JROS installer exited with code {result.returncode}: {stderr}")
+        raise RuntimeError(f"JaegerAI installer exited with code {result.returncode}: {stderr}")
 
     # Verify installation succeeded.
     if launcher.exists() and os.access(str(launcher), os.X_OK):
@@ -208,7 +207,7 @@ def install_jros_if_missing(jaeger_home: str | None = None) -> dict[str, Any]:
     if found is not None:
         return {"installed": True, "already_present": False, "jaeger_home": str(found)}
     raise RuntimeError(
-        "JROS installer completed but no launcher was found. "
+        "JaegerAI installer completed but no launcher was found. "
         "Check the installer output and ensure JAEGER_HOME is set correctly."
     )
 

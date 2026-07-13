@@ -69,10 +69,10 @@ bash install.sh
 ```
 
 The installer:
-- Detects or installs JROS (required Companion runtime)
+- Detects or installs JaegerAI (required Companion runtime)
 - Creates a Python virtual environment in `webui/.venv`
 - Installs Python dependencies
-- Configures the backend (defaults to JROS)
+- Configures the backend (defaults to jros)
 
 **Options:**
 - `--with-hermes` — also install Hermes Agent (optional coding/terminal addition)

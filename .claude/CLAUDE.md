@@ -25,13 +25,13 @@ independent runtimes and capability providers.
 - ARES composes runtimes, tools, perception inputs, memory providers, voice
   services, avatar renderers, and device integrations behind one consistent
   user-facing assistant interface.
-- JROS is the required Companion runtime: agent loop, bridge/client protocol,
+- JaegerAI is the required Companion runtime: agent loop, bridge/client protocol,
   characters, voice/STT/TTS, tools/skills, event bus, hardware abstraction,
   robotics, and local/cloud task routing. ARES has no Companion without it —
-  "Name your Companion" onboarding writes directly through JROS's own
+  "Name your Companion" onboarding writes directly through JaegerAI's own
   `create_instance` (see `webui/api/jros_companion.py`), and `ares_backend`
   defaults to `jros` (`api/backend_selector.py`). ARES never re-implements
-  JROS; it only detects an install or delegates to JROS's own installer.
+  JaegerAI; it only detects an install or delegates to JaegerAI's own installer.
 - Hermes Agent is an optional addition ARES can call on for coding, terminal
   work, skills, sessions, cron, model/provider routing, delegation,
   memory-backed automation, and operations. Not installed by default —
@@ -55,7 +55,7 @@ independent runtimes and capability providers.
   integrations launches and wraps the Web UI. The same Web UI remains available
   over Tailscale/LAN for phones, tablets, and other devices until native apps
   exist for them.
-- Character/avatar systems are presence renderers. They may render JROS
+- Character/avatar systems are presence renderers. They may render JaegerAI
   characters through 2D/3D/VR sprite rigs, Live2D-style surfaces, desktop modes,
   or future robotic bodies, while behavior comes from the active runtime.
 
@@ -63,7 +63,7 @@ independent runtimes and capability providers.
 
 Public repo code/docs must not contain maintainer-specific runtime values: personal paths, real Tailscale IPs/hostnames/tailnet names, personal hardware requirements, `.hermes`, `.ares/config`, SOUL.md, auth files, tokens, API keys, cookies, or live profile assumptions.
 
-Use placeholders, detected values, or user-selected paths. In source code, prefer environment variables/configuration over user-folder assumptions. For JROS integration specifically, use `ARES_JROS_DIR` for source-checkout features and `ARES_JAEGER_HOME` / `JAEGER_HOME` for installed runtime discovery; never assume `~/GitHub`, a maintainer username, or another developer-only clone layout.
+Use placeholders, detected values, or user-selected paths. In source code, prefer environment variables/configuration over user-folder assumptions. For JaegerAI integration specifically, use `ARES_JROS_DIR` for source-checkout features and `ARES_JAEGER_HOME` / `JAEGER_HOME` for installed runtime discovery; never assume `~/GitHub`, a maintainer username, or another developer-only clone layout.
 
 ## Repository structure
 
@@ -141,13 +141,13 @@ External services must be optional/detected, not hardcoded:
 
 | Service | Default role | Expected configuration style |
 |---|---|---|
-| JROS | Required Companion runtime | installed via `webui/scripts/install.sh`'s `jros` stage (delegates to JROS's own installer); path via `ARES_JAEGER_HOME`/`JAEGER_HOME` |
+| JaegerAI | Required Companion runtime | installed via `webui/scripts/install.sh`'s `jros` stage (delegates to JaegerAI's own installer); path via `ARES_JAEGER_HOME`/`JAEGER_HOME` |
 | Hermes | Optional addition backend | opt-in via `--with-hermes`; configured URL/API key/env/template |
 | ARES-native services | Product-owned UI/automation features | bundled/detected/configured per user |
 | Ollama/local models | Local model inference backend | detected localhost or configured URL |
-| Cloud providers | Remote model/tool providers for the Companion's `external_model` (JROS) or Hermes, synced via `api/ares_provider_sync.py` — never the key itself, only provider/model/env-var name | configured provider credentials/templates |
+| Cloud providers | Remote model/tool providers for the Companion's `external_model` (JaegerAI) or Hermes, synced via `api/ares_provider_sync.py` — never the key itself, only provider/model/env-var name | configured provider credentials/templates |
 | Workflow tools | Automation/tool providers | detected/configured per user |
 
 ARES must degrade gracefully when optional services (Hermes, cloud providers)
-are absent. JROS is the one exception: it is not optional, and onboarding
+are absent. JaegerAI is the one exception: it is not optional, and onboarding
 must not silently proceed as if a Companion exists without it.

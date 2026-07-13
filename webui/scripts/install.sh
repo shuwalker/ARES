@@ -53,12 +53,12 @@ NON_INTERACTIVE=false
 BACKEND_MODE="${ARES_BACKEND:-auto}"
 NO_START=false
 
-# JROS is ARES's required Companion runtime — the brain, memory, character,
+# JaegerAI is ARES's required Companion runtime — the brain, memory, character,
 # and local model. ARES never forks or reimplements it; the installer only
-# ever detects an existing install or delegates to JROS's own installer,
+# ever detects an existing install or delegates to JaegerAI's own installer,
 # the same way hermes-workspace's installer delegates to Nous's upstream
 # hermes-agent installer instead of reimplementing it.
-JROS_INSTALL_URL="${JROS_INSTALL_URL:-https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh}"
+JROS_INSTALL_URL="${JROS_INSTALL_URL:-https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh}"
 SKIP_JROS=false
 
 # Hermes Agent is an optional addition (coding/terminal/skills capability),
@@ -107,8 +107,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --non-interactive  Skip stages that require user input"
             echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto → jros)"
             echo "  --no-start      Skip auto-starting the server after installation"
-            echo "  --skip-jros     Skip installing JROS (advanced/CI use — ARES has no"
-            echo "                  Companion runtime until JROS is installed separately)"
+            echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — ARES has no"
+            echo "                  Companion runtime until JaegerAI is installed separately)"
             echo "  --with-hermes   Also install Hermes Agent, the optional coding/terminal addition"
             echo "  -h, --help      Show this help"
             exit 0 ;;
@@ -143,7 +143,7 @@ json_escape() {
 }
 
 emit_manifest() {
-    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"jros","title":"Install JROS (required Companion runtime)","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
+    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"jros","title":"Install JaegerAI (required Companion runtime)","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
     printf '\n'
 }
 
@@ -198,35 +198,35 @@ detect_jros() {
     JAEGER_LAUNCHER="$JAEGER_HOME_DETECTED/jaeger"
     if [ -x "$JAEGER_LAUNCHER" ]; then
         JROS_DETECTED=true
-        log_success "JROS detected at $JAEGER_HOME_DETECTED"
+        log_success "JaegerAI detected at $JAEGER_HOME_DETECTED"
     else
         JROS_DETECTED=false
-        log_info "JROS not detected at $JAEGER_HOME_DETECTED"
+        log_info "JaegerAI not detected at $JAEGER_HOME_DETECTED"
     fi
 }
 
-# JROS is ARES's required Companion runtime (the brain, memory, character,
-# local model). This stage never reimplements JROS — it only detects an
-# existing install or delegates to JROS's own installer, exactly the way
+# JaegerAI is ARES's required Companion runtime (the brain, memory, character,
+# local model). This stage never reimplements JaegerAI — it only detects an
+# existing install or delegates to JaegerAI's own installer, exactly the way
 # ARES already delegates to Nous's own installer for the optional Hermes
 # addition (see install_deps below).
 stage_jros() {
     detect_jros
     if [ "$JROS_DETECTED" = true ]; then
-        log_success "JROS already installed at $JAEGER_HOME_DETECTED — skipping install"
+        log_success "JaegerAI already installed at $JAEGER_HOME_DETECTED — skipping install"
         return 0
     fi
     if [ "$SKIP_JROS" = true ]; then
-        log_warn "Skipping JROS install (--skip-jros). ARES has no Companion runtime until"
-        log_warn "JROS is installed separately at $JAEGER_HOME_DETECTED."
+        log_warn "Skipping JaegerAI install (--skip-jros). ARES has no Companion runtime until"
+        log_warn "JaegerAI is installed separately at $JAEGER_HOME_DETECTED."
         return 0
     fi
 
-    log_info "JROS not found — installing the required Companion runtime..."
-    log_info "  Delegating to JROS's own installer: $JROS_INSTALL_URL"
+    log_info "JaegerAI not found — installing the required Companion runtime..."
+    log_info "  Delegating to JaegerAI's own installer: $JROS_INSTALL_URL"
     if ! curl -fsSL "$JROS_INSTALL_URL" | JAEGER_HOME="$JAEGER_HOME_DETECTED" bash; then
-        log_error "JROS install failed."
-        log_error "ARES requires JROS as its Companion runtime — retry manually with:"
+        log_error "JaegerAI install failed."
+        log_error "ARES requires JaegerAI as its Companion runtime — retry manually with:"
         log_error "  curl -fsSL $JROS_INSTALL_URL | bash"
         log_error "or pass --skip-jros to continue without a Companion (not recommended)."
         exit 1
@@ -234,12 +234,12 @@ stage_jros() {
 
     detect_jros
     if [ "$JROS_DETECTED" != true ]; then
-        log_error "JROS installer finished but no launcher was found at $JAEGER_HOME_DETECTED."
+        log_error "JaegerAI installer finished but no launcher was found at $JAEGER_HOME_DETECTED."
         log_error "Check the installer output above, or set ARES_JAEGER_HOME/JAEGER_HOME"
-        log_error "to the location JROS actually installed to."
+        log_error "to the location JaegerAI actually installed to."
         exit 1
     fi
-    log_success "JROS installed at $JAEGER_HOME_DETECTED"
+    log_success "JaegerAI installed at $JAEGER_HOME_DETECTED"
 }
 
 detect_os() {
@@ -283,7 +283,7 @@ check_python() {
     # to macOS's ancient system stub (/usr/bin/python3, still 3.9.x) ahead of
     # a newer Homebrew/pyenv install in a script's PATH — a bare `curl | bash`
     # gets exactly this PATH, so this isn't just a local dev-shell quirk.
-    # Mirrors JROS's own installer's search order.
+    # Mirrors JaegerAI's own installer's search order.
     for cmd in python3.13 python3.12 python3.11 python3 python; do
         if command -v "$cmd" >/dev/null 2>&1; then
             if "$cmd" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
@@ -402,7 +402,7 @@ install_deps() {
     fi
 
     # Hermes Agent is an optional addition (coding/terminal/skills capability),
-    # not the Companion runtime — JROS already covers that. Only install it
+    # not the Companion runtime — JaegerAI already covers that. Only install it
     # when explicitly requested via --with-hermes, or the operator opts in
     # here on an interactive terminal.
     if [ "$WITH_HERMES" != true ] && [ "$NON_INTERACTIVE" != true ] && [ "$IS_INTERACTIVE" = true ]; then
@@ -446,7 +446,7 @@ setup_config() {
     detect_jros
     selected_backend="$BACKEND_MODE"
     if [ "$selected_backend" = "auto" ]; then
-        # JROS is the required Companion runtime — it is always the default,
+        # JaegerAI is the required Companion runtime — it is always the default,
         # regardless of whether Hermes was also installed as an addition.
         selected_backend="jros"
     fi
@@ -460,8 +460,8 @@ setup_config() {
         selected_backend="jros"
     fi
     if [ "$selected_backend" = "jros" ] && [ "${JROS_DETECTED:-false}" != true ]; then
-        log_error "Backend 'jros' selected but no JROS install was found at $JAEGER_HOME_DETECTED."
-        log_error "Re-run without --skip-jros, or install JROS manually and re-run."
+        log_error "Backend 'jros' selected but no JaegerAI install was found at $JAEGER_HOME_DETECTED."
+        log_error "Re-run without --skip-jros, or install JaegerAI manually and re-run."
         exit 1
     fi
 
@@ -541,7 +541,7 @@ for key, value in updates.items():
         out.append(f'{key}="{value}"')
 env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 PY
-        log_success "Persisted JROS runtime path: $JAEGER_HOME_DETECTED"
+        log_success "Persisted JaegerAI runtime path: $JAEGER_HOME_DETECTED"
     fi
     log_success "Configured ARES backend: $selected_backend"
 
@@ -556,7 +556,7 @@ run_setup_wizard() {
 
     log_info "Setup wizard..."
     log_info "Open http://localhost:$PORT in your browser to complete setup."
-    log_info "The onboarding wizard will walk you through naming your Companion (JROS),"
+    log_info "The onboarding wizard will walk you through naming your Companion (JaegerAI),"
     log_info "connecting from your other devices over Tailscale, and any optional"
     log_info "additions (Hermes, cloud providers, MCP servers)."
 }

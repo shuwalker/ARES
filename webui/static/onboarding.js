@@ -127,7 +127,7 @@ const ARES_PROVIDER_SYNC_IDS={
 
 function _onboardingStepMeta(key){
   return ({
-    system:{title:t('onboarding_step_system_title')||'Welcome',desc:t('onboarding_step_system_desc')||'What ARES is, and whether your Companion runtime (JROS) is ready.'},
+    system:{title:t('onboarding_step_system_title')||'Welcome',desc:t('onboarding_step_system_desc')||'What ARES is, and whether your Companion runtime (JaegerAI) is ready.'},
     companion:{title:t('onboarding_step_companion_title')||'Name your Companion',desc:t('onboarding_step_companion_desc')||'Give your Synthetic Intelligence Companion a name and a character.'},
     agentPrompt:{title:t('onboarding_step_agent_prompt_title')||'Agent prompt',desc:t('onboarding_step_agent_prompt_desc')||'Copy the setup request for a local or remote agent.'},
     iphone:{title:t('onboarding_step_iphone_title')||'iPhone access',desc:t('onboarding_step_iphone_desc')||'Install Tailscale and join the same private network.'},
@@ -330,7 +330,7 @@ function _renderOnboardingBody(){
 
   if(key==='system'){
     const companionUp=!!(ONBOARDING.companionDefaults&&ONBOARDING.companionDefaults.available);
-    _setOnboardingNotice(companionUp?(t('onboarding_notice_companion_ready')||'JROS is installed. Your Companion runtime is ready.'):(t('onboarding_notice_companion_missing')||'JROS was not found. Install it before continuing — ARES requires JROS as its Companion runtime.'),companionUp?'success':'warn');
+    _setOnboardingNotice(companionUp?(t('onboarding_notice_companion_ready')||'JaegerAI is installed. Your Companion runtime is ready.'):(t('onboarding_notice_companion_missing')||'JaegerAI was not found. Install it before continuing — ARES requires JaegerAI as its Companion runtime.'),companionUp?'success':'warn');
     body.innerHTML=`
       <div class="onboarding-hero-icon">✦</div>
       <div class="onboarding-centered-copy">
@@ -338,18 +338,18 @@ function _renderOnboardingBody(){
         <p>${t('onboarding_welcome_body')||'ARES gives you a Synthetic Intelligence Companion — here to help you become the best version of yourself, and reachable from every device you own.'}</p>
       </div>
       <div class="onboarding-panel-grid">
-        <div class="onboarding-check ${companionUp?'ok':'warn'}"><strong>${t('onboarding_check_companion')||'Companion runtime (JROS)'}</strong><span>${companionUp?(t('onboarding_check_companion_ready')||'Installed and ready'):(t('onboarding_check_companion_missing')||'Not found — required')}</span></div>
+        <div class="onboarding-check ${companionUp?'ok':'warn'}"><strong>${t('onboarding_check_companion')||'Companion runtime (JaegerAI)'}</strong><span>${companionUp?(t('onboarding_check_companion_ready')||'Installed and ready'):(t('onboarding_check_companion_missing')||'Not found — required')}</span></div>
         <div class="onboarding-check ${(settings.password_enabled?'ok':'muted')}"><strong>${t('onboarding_check_password')}</strong><span>${settings.password_enabled?t('onboarding_check_password_enabled'):t('onboarding_check_password_disabled')}</span></div>
       </div>
-      ${companionUp?'':`<div class="onboarding-command-card"><button class="onboarding-primary-wide" id="onboardingInstallJrosBtn" type="button" onclick="installJrosFromOnboarding()">${t('onboarding_install_jros_btn')||'Install JROS automatically'}</button><p class="onboarding-copy" style="text-align:center;margin-top:0.5em">${t('onboarding_install_jros_help')||'Or install manually:'}</p><code>curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh | bash</code></div><p class="onboarding-copy">${t('onboarding_companion_install_help')||'Run this on the machine that will host your Companion, then reload this page.'}</p>`}`;
+      ${companionUp?'':`<div class="onboarding-command-card"><button class="onboarding-primary-wide" id="onboardingInstallJrosBtn" type="button" onclick="installJrosFromOnboarding()">${t('onboarding_install_jros_btn')||'Install JaegerAI automatically'}</button><p class="onboarding-copy" style="text-align:center;margin-top:0.5em">${t('onboarding_install_jros_help')||'Or install manually:'}</p><code>curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash</code></div><p class="onboarding-copy">${t('onboarding_companion_install_help')||'Run this on the machine that will host your Companion, then reload this page.'}</p>`}`;
     return;
   }
 
   if(key==='companion'){
     const cd=ONBOARDING.companionDefaults;
     if(!cd||!cd.available){
-      _setOnboardingNotice(t('onboarding_notice_companion_missing')||'JROS was not found. Go back and install it before naming your Companion.','warn');
-      body.innerHTML=`<p class="onboarding-copy">${t('onboarding_companion_blocked')||'ARES requires JROS as its Companion runtime. Install JROS, then reload this page.'}</p>`;
+      _setOnboardingNotice(t('onboarding_notice_companion_missing')||'JaegerAI was not found. Go back and install it before naming your Companion.','warn');
+      body.innerHTML=`<p class="onboarding-copy">${t('onboarding_companion_blocked')||'ARES requires JaegerAI as its Companion runtime. Install JaegerAI, then reload this page.'}</p>`;
       return;
     }
     const characters=cd.characters||[];
@@ -655,7 +655,7 @@ async function toggleHermesTools(enabled){
 }
 
 function skipOnboardingProviderStep(){
-  // The Hermes/provider step is an optional addition — the Companion (JROS)
+  // The Hermes/provider step is an optional addition — the Companion (JaegerAI)
   // already works without it, unlike the required steps that validate in
   // nextOnboardingStep(). Just advance without posting /api/onboarding/setup,
   // and remember the skip so _finishOnboarding() doesn't force it later.
@@ -669,15 +669,15 @@ async function installJrosFromOnboarding(){
   const btn=document.getElementById('onboardingInstallJrosBtn');
   if(btn){
     btn.disabled=true;
-    btn.textContent=t('onboarding_install_jros_installing')||'Installing JROS…';
+    btn.textContent=t('onboarding_install_jros_installing')||'Installing JaegerAI…';
   }
-  _setOnboardingNotice(t('onboarding_install_jros_progress')||'Downloading and installing JROS — this may take a few minutes…','info');
+  _setOnboardingNotice(t('onboarding_install_jros_progress')||'Downloading and installing JaegerAI — this may take a few minutes…','info');
   try{
     const res=await api('/api/onboarding/jros/install','POST',{});
     if(res.installed){
       _setOnboardingNotice(res.already_present
-        ?(t('onboarding_install_jros_already_present')||'JROS is already installed!')
-        :(t('onboarding_install_jros_success')||'JROS installed successfully!'), 'success');
+        ?(t('onboarding_install_jros_already_present')||'JaegerAI is already installed!')
+        :(t('onboarding_install_jros_success')||'JaegerAI installed successfully!'), 'success');
       // Re-check companion availability and re-render
       try{
         const cd=await api('/api/onboarding/companion/defaults');
@@ -687,12 +687,12 @@ async function installJrosFromOnboarding(){
       _renderOnboardingSteps();
       _renderOnboardingBody();
     }else{
-      _setOnboardingNotice(t('onboarding_install_jros_failed')||'JROS installation failed. Try the manual command below.','warn');
-      if(btn){btn.disabled=false;btn.textContent=t('onboarding_install_jros_btn')||'Install JROS automatically';}
+      _setOnboardingNotice(t('onboarding_install_jros_failed')||'JaegerAI installation failed. Try the manual command below.','warn');
+      if(btn){btn.disabled=false;btn.textContent=t('onboarding_install_jros_btn')||'Install JaegerAI automatically';}
     }
   }catch(e){
-    _setOnboardingNotice((t('onboarding_install_jros_error')||'JROS installation error: ')+e.message,'warn');
-    if(btn){btn.disabled=false;btn.textContent=t('onboarding_install_jros_btn')||'Install JROS automatically';}
+    _setOnboardingNotice((t('onboarding_install_jros_error')||'JaegerAI installation error: ')+e.message,'warn');
+    if(btn){btn.disabled=false;btn.textContent=t('onboarding_install_jros_btn')||'Install JaegerAI automatically';}
   }
 }
 
@@ -835,7 +835,7 @@ async function nextOnboardingStep(){
   try{
     if(ONBOARDING.steps[ONBOARDING.step]==='companion'){
       const cd=ONBOARDING.companionDefaults;
-      if(!cd||!cd.available) throw new Error(t('onboarding_companion_blocked')||'ARES requires JROS as its Companion runtime. Install JROS, then reload this page.');
+      if(!cd||!cd.available) throw new Error(t('onboarding_companion_blocked')||'ARES requires JaegerAI as its Companion runtime. Install JaegerAI, then reload this page.');
       ONBOARDING.form.companionName=(($('onboardingCompanionNameInput')||{}).value||ONBOARDING.form.companionName||'').trim();
       ONBOARDING.form.companionCharacter=(($('onboardingCompanionCharacterSelect')||{}).value||ONBOARDING.form.companionCharacter||'').trim();
       ONBOARDING.form.companionPersonality=(($('onboardingCompanionPersonalityInput')||{}).value||ONBOARDING.form.companionPersonality||'').trim();

@@ -48,11 +48,12 @@ def jaeger_launcher() -> Path:
 
 
 def discover_jros_source_root() -> Path | None:
-    """Best-effort discovery for a local JROS source checkout.
+    """Best-effort discovery for a local JaegerAI/JROS source checkout.
 
     ``ARES_JROS_DIR`` remains the explicit override. The fallback candidates
     cover the common developer layouts used by ARES itself: sibling checkouts
-    under the same GitHub folder, ``~/GitHub/JROS``, and ``~/JROS``.
+    under the same GitHub folder, ``~/GitHub/JaegerAI``, ``~/JaegerAI``, and
+    the legacy ``~/GitHub/JROS`` / ``~/JROS`` paths.
     """
     override = os.environ.get(ARES_JROS_DIR_ENV, "").strip()
     candidates: list[Path] = []
@@ -61,6 +62,9 @@ def discover_jros_source_root() -> Path | None:
 
     ares_root = Path(__file__).resolve().parents[2]
     candidates.extend([
+        ares_root.parent / "JaegerAI",
+        Path("~/GitHub/JaegerAI").expanduser(),
+        Path("~/JaegerAI").expanduser(),
         ares_root.parent / "JROS",
         Path("~/GitHub/JROS").expanduser(),
         Path("~/JROS").expanduser(),
@@ -75,7 +79,7 @@ def discover_jros_source_root() -> Path | None:
         if root in seen:
             continue
         seen.add(root)
-        if (root / "jaeger_os").is_dir():
+        if (root / "jaeger_os").is_dir() or (root / "jaeger_ai").is_dir():
             return root
     return None
 

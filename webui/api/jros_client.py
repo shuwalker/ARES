@@ -51,8 +51,8 @@ def _default_command(jaeger_home: str | None, instance: str | None = None) -> li
     home = launcher.parent
     if not launcher.exists():
         raise JrosError(
-            f"no JROS install at {home} — install first "
-            "(https://github.com/JenkinsRobotics/JROS) or pass "
+            f"no JaegerAI install at {home} — install first "
+            "(https://github.com/JenkinsRobotics/JaegerAI) or pass "
             "jaeger_home=/path/to/install")
     command = [str(launcher), "bridge"]
     if instance:
