@@ -61,7 +61,8 @@ public final class WebUIServerManager: ObservableObject {
 
         let process = Process()
         process.currentDirectoryURL = dir
-        process.executableURL = dir.appendingPathComponent(".venv/bin/python")
+        let venvPython = dir.appendingPathComponent("venv/bin/python")
+        process.executableURL = venvPython
         process.arguments = ["server.py"]
         
         var env = ProcessInfo.processInfo.environment

@@ -47,28 +47,7 @@ struct ARESApp: App {
 
 struct ARESMainView: View {
     var body: some View {
-        TabView {
-            ARESWebView()
-                .tabItem {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
-                }
-
-            RuntimeTerminalView(
-                title: "Hermes Agent",
-                command: RuntimeTerminalCommand.hermes
-            )
-            .tabItem {
-                Label("Hermes Agent", systemImage: "terminal")
-            }
-
-            RuntimeTerminalView(
-                title: "JROS",
-                command: RuntimeTerminalCommand.jros
-            )
-            .tabItem {
-                Label("JROS", systemImage: "rectangle.connected.to.line.below")
-            }
-        }
+        ARESWebView()
     }
 }
 
@@ -157,7 +136,7 @@ struct ARESWebView: View {
 
     var body: some View {
         if let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") {
-            WebViewRepresentable(url: url)
+            WebViewRepresentable(url: url, serverManager: serverManager)
         } else {
             Text("Invalid Server URL")
                 .foregroundColor(.red)
@@ -167,10 +146,14 @@ struct ARESWebView: View {
 
 struct WebViewRepresentable: NSViewRepresentable {
     let url: URL
+    @ObservedObject var serverManager: WebUIServerManager
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.applicationNameForUserAgent = "ARES/1.0"
+        // Use a non-persistent store so stale service-worker offline pages
+        // from previous sessions cannot block the fresh server load.
+        config.websiteDataStore = WKWebsiteDataStore.nonPersistent()
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
 
@@ -179,6 +162,17 @@ struct WebViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
+        let isHealthy = serverManager.serverHealth == "Running (Healthy)"
+        if !isHealthy {
+            context.coordinator.hasReloadedForHealthyServer = false
+        } else if !context.coordinator.hasReloadedForHealthyServer {
+            context.coordinator.hasReloadedForHealthyServer = true
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            nsView.load(request)
+            return
+        }
+
         if let currentURL = nsView.url, currentURL.host == url.host, currentURL.port == url.port {
             // Keep current page, do not reload
         } else {
@@ -190,6 +184,7 @@ struct WebViewRepresentable: NSViewRepresentable {
 
     class Coordinator: NSObject, WKNavigationDelegate {
         var parent: WebViewRepresentable
+        var hasReloadedForHealthyServer = false
 
         init(_ parent: WebViewRepresentable) {
             self.parent = parent
@@ -230,7 +225,7 @@ struct WebViewRepresentable: NSViewRepresentable {
             let checkURL = self.parent.url.appendingPathComponent("health")
             let mainURL = self.parent.url
             
-            let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+            let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
             timer.schedule(deadline: .now(), repeating: 2.0)
             timer.setEventHandler { [weak self, weak webView] in
                 guard let self = self, let webView = webView else { return }
@@ -318,8 +313,11 @@ final class ARESMenuBarController: NSObject {
     }
 
     private func setupStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem?.button?.image = NSImage(systemSymbolName: "spartan-helmet", accessibilityDescription: "ARES")
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let icon = NSImage(systemSymbolName: "shield", accessibilityDescription: "ARES")
+            ?? NSImage(systemSymbolName: "gear", accessibilityDescription: "ARES")
+        icon?.isTemplate = true
+        statusItem?.button?.image = icon
         statusItem?.button?.action = #selector(togglePopover)
         statusItem?.button?.target = self
 
@@ -397,7 +395,7 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "spartan-helmet")
+            Image(systemName: "shield")
                 .font(.largeTitle)
                 .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
             
