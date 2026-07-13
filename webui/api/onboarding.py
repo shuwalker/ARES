@@ -31,6 +31,11 @@ from api.config import (
 from api.providers import _write_env_file  # shared impl with _ENV_LOCK (#1164)
 from api.workspace import get_last_workspace, load_workspaces
 
+try:
+    from api.jros_companion import companion_available
+except Exception:
+    companion_available = lambda: False  # type: ignore[misc,assignment]
+
 logger = logging.getLogger(__name__)
 
 
@@ -921,6 +926,14 @@ def get_onboarding_status() -> dict:
         except Exception:
             logger.debug("Failed to persist onboarding_completed", exc_info=True)
 
+    # ARES: when backend is jros, onboarding is not complete until a companion exists.
+    try:
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+        if get_active_backend(get_config()) == BACKEND_JROS and not companion_available():
+            settings["onboarding_completed"] = False
+    except Exception:
+        logger.debug("Companion availability check failed", exc_info=True)
+
     return {
         "completed": bool(settings.get("onboarding_completed")) or auto_completed or config_auto_completed,
         "settings": {
@@ -1131,5 +1144,17 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
 
 
 def complete_onboarding() -> dict:
+    # ARES: when backend is jros, do not allow skipping onboarding without a companion.
+    try:
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+        if get_active_backend(get_config()) == BACKEND_JROS and not companion_available():
+            raise RuntimeError(
+                "Onboarding cannot be skipped. Create your Companion first by completing "
+                "the onboarding wizard, or switch to Hermes-only backend."
+            )
+    except RuntimeError:
+        raise
+    except Exception:
+        logger.debug("Companion guard failed during complete_onboarding", exc_info=True)
     save_settings({"onboarding_completed": True})
     return get_onboarding_status()

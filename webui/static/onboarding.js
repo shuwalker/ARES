@@ -325,8 +325,16 @@ function _renderOnboardingBody(){
   const setup=ONBOARDING.status.setup||{};
   const nextBtn=$('onboardingNextBtn');
   const backBtn=$('onboardingBackBtn');
+  const skipBtn=$('onboardingSkipBtn');
   if(backBtn) backBtn.style.display=ONBOARDING.step>0?'':'none';
   if(nextBtn) nextBtn.textContent=key==='finish'?t('onboarding_open'):t('onboarding_continue');
+  // ARES: hide Skip when JaegerAI companion is required but not available.
+  if(skipBtn){
+    const companionUp=!!(ONBOARDING.companionDefaults&&ONBOARDING.companionDefaults.available);
+    const aresBackend=((ONBOARDING.status||{}).settings||{}).ares_backend||'jros';
+    const needsCompanion=(aresBackend==='jros'||aresBackend==='hybrid')&&!companionUp;
+    skipBtn.style.display=needsCompanion?'none':'';
+  }
 
   if(key==='system'){
     const companionUp=!!(ONBOARDING.companionDefaults&&ONBOARDING.companionDefaults.available);
