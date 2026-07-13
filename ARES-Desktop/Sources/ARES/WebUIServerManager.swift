@@ -33,22 +33,40 @@ public final class WebUIServerManager: ObservableObject {
 
     public func start() async {
         guard process == nil else { return }
-        
+
         let config = ARESConfiguration.shared
         let host = config.webuiHost
         let port = config.webuiPort
-        
+
         serverHealth = "Checking port..."
-        
-        // Reclaim port if held by orphaned server.py process
-        reclaimPort(port)
-        
-        // Check if port is in use
+
+        // Check if the port is already in use before touching anything
         let inUse = await isPortInUse(port, host: host)
         if inUse {
-            portConflict = true
-            serverHealth = "Port \(port) conflict detected"
-            return
+            // A healthy server is already there (launchd or prior session) — adopt it
+            if await isServerHealthy(host: host, port: port) {
+                portConflict = false
+                isRunning = true
+                serverHealth = "Running (Healthy)"
+                print("[ARES] Adopted existing WebUI server on http://\(host):\(port)")
+                return
+            }
+            // Our server.py is on the port but still starting — don't kill it
+            if isPortHeldByOurServer(port) {
+                portConflict = false
+                isRunning = true
+                serverHealth = "Starting..."
+                print("[ARES] WebUI server starting on port \(port) — waiting for health")
+                return
+            }
+            // Something else is holding the port — reclaim and start fresh
+            reclaimPort(port)
+            let stillInUse = await isPortInUse(port, host: host)
+            if stillInUse {
+                portConflict = true
+                serverHealth = "Port \(port) conflict detected"
+                return
+            }
         }
         portConflict = false
         serverHealth = "Starting..."
@@ -130,6 +148,7 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     private func checkHealth() async {
+        // If we own the process and it exited, mark as exited
         if let p = process, !p.isRunning {
             isRunning = false
             process = nil
@@ -137,21 +156,19 @@ public final class WebUIServerManager: ObservableObject {
             return
         }
 
-        guard isRunning, let _ = process else {
-            if process == nil && (serverHealth.hasPrefix("Running") || serverHealth == "Starting...") {
+        guard isRunning else {
+            if serverHealth.hasPrefix("Running") || serverHealth == "Starting..." {
                 serverHealth = "Stopped"
-                isRunning = false
             }
             return
         }
 
+        // Always confirm via HTTP — works whether process was spawned by us or launchd
         let config = ARESConfiguration.shared
         let urlString = "http://\(config.webuiHost):\(config.webuiPort)/health"
         guard let url = URL(string: urlString) else { return }
-        
         var request = URLRequest(url: url)
         request.timeoutInterval = 1.0
-        
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
@@ -160,6 +177,7 @@ public final class WebUIServerManager: ObservableObject {
                 serverHealth = "Running (Degraded)"
             }
         } catch {
+            // Keep isRunning true so the timer retries — launchd will restart the server
             serverHealth = "Running (Unreachable)"
         }
     }
@@ -248,6 +266,42 @@ public final class WebUIServerManager: ObservableObject {
             return devPath
         }
         return nil
+    }
+
+    private func isServerHealthy(host: String, port: Int) async -> Bool {
+        guard let url = URL(string: "http://\(host):\(port)/health") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 1.0
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
+    }
+
+    private func isPortHeldByOurServer(_ port: Int) -> Bool {
+        let lsof = Process()
+        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsof.arguments = ["-t", "-i", "tcp:\(port)"]
+        let pipe = Pipe()
+        lsof.standardOutput = pipe
+        try? lsof.run()
+        lsof.waitUntilExit()
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let pids = output.components(separatedBy: .newlines).compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        for pid in pids {
+            let ps = Process()
+            ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+            ps.arguments = ["-o", "command=", "-p", String(pid)]
+            let psPipe = Pipe()
+            ps.standardOutput = psPipe
+            try? ps.run()
+            ps.waitUntilExit()
+            let cmd = String(data: psPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            if cmd.contains("server.py") { return true }
+        }
+        return false
     }
 
     private func reclaimPort(_ port: Int) {

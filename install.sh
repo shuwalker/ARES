@@ -68,8 +68,8 @@ echo "======================================"
 echo ""
 
 # On macOS with Swift available, launch the Mac app after install —
-# it starts the web server itself via WebUIServerManager, so we suppress
-# the webui installer's own server launch to avoid a duplicate start.
+# the Mac app adopts the already-running launchd server immediately
+# instead of starting its own copy, so there is no duplicate start.
 USE_MAC_APP=false
 if [ "$NO_START" = false ] \
    && [ "$(uname -s)" = "Darwin" ] \
@@ -85,7 +85,89 @@ if [ "$NO_START" = true ]; then
     exit 0
 fi
 
+# ── macOS: install a launchd service so the web server pre-starts at login ────
+# This lets the Mac app open to the companion interface instantly — the server
+# is already running by the time the app window appears.
+_setup_launchd() {
+    local plist_dir="$HOME/Library/LaunchAgents"
+    local plist="$plist_dir/com.ares.webui.plist"
+    local python="$HOME/.ares/webui/venv/bin/python"
+    local server="$HOME/.ares/webui/server.py"
+    local workdir="$HOME/.ares/webui"
+    local logfile="$HOME/.ares/webui.log"
+
+    if [ ! -f "$python" ]; then
+        echo "→ launchd setup skipped (venv not found at $python)"
+        return 0
+    fi
+
+    # Detect JAEGER_HOME from installed config or common paths
+    local jaeger_home=""
+    local cfg="$HOME/.ares/config.yaml"
+    if [ -f "$cfg" ]; then
+        local cfg_val
+        cfg_val=$(grep -E '^ares_jaeger_home:' "$cfg" 2>/dev/null | sed 's/^ares_jaeger_home:[[:space:]]*//' | tr -d '"' | tr -d "'" | xargs)
+        [ -n "$cfg_val" ] && [ -d "$cfg_val" ] && jaeger_home="$cfg_val"
+    fi
+    if [ -z "$jaeger_home" ]; then
+        for p in "$HOME/jaeger" "$HOME/.jaeger"; do
+            [ -d "$p" ] && jaeger_home="$p" && break
+        done
+    fi
+
+    mkdir -p "$plist_dir"
+    cat > "$plist" << PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ares.webui</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$python</string>
+        <string>$server</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ARES_JAEGER_HOME</key>
+        <string>$jaeger_home</string>
+        <key>JAEGER_HOME</key>
+        <string>$jaeger_home</string>
+        <key>HERMES_WEBUI_HOST</key>
+        <string>0.0.0.0</string>
+        <key>HERMES_WEBUI_PORT</key>
+        <string>8787</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>WorkingDirectory</key>
+    <string>$workdir</string>
+    <key>StandardOutPath</key>
+    <string>$logfile</string>
+    <key>StandardErrorPath</key>
+    <string>$logfile</string>
+</dict>
+</plist>
+PLIST_EOF
+
+    # Reload so the updated plist takes effect
+    launchctl unload "$plist" 2>/dev/null || true
+    if launchctl load "$plist" 2>/dev/null; then
+        echo "→ ARES web server: auto-start at login enabled (com.ares.webui)"
+        # Start it right now so the Mac app opens to the companion immediately
+        launchctl start com.ares.webui 2>/dev/null || true
+        echo "→ Starting ARES web server in background..."
+        sleep 3  # Give Python server time to boot before Mac app tries to connect
+    else
+        echo "→ launchd load failed — Mac app will start the server on first open"
+    fi
+}
+
 if [ "$USE_MAC_APP" = true ]; then
+    _setup_launchd
     echo ""
     echo "→ Launching ARES Mac app (builds if needed, then opens)..."
     cd "$SCRIPT_DIR"
