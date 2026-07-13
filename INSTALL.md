@@ -61,17 +61,25 @@ start/stop the Web UI itself, similar to the Mac developer app.
 
 ## First Local Setup
 
-Prepare the Web UI environment before using any run mode:
+Run the installer from the repo root:
 
 ```bash
-cd /path/to/ARES/webui
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-cp .env.example .env
+cd /path/to/ARES
+bash install.sh
 ```
 
-Install/configure Hermes Agent and optional JROS separately as described in
-[README.md](README.md) and [webui/README.md](webui/README.md).
+The installer:
+- Detects or installs JROS (required Companion runtime)
+- Creates a Python virtual environment in `webui/.venv`
+- Installs Python dependencies
+- Configures the backend (defaults to JROS)
+
+**Options:**
+- `--with-hermes` — also install Hermes Agent (optional coding/terminal addition)
+- `--no-start` — skip auto-starting the server after install
+- `--backend jros|hermes|hybrid` — set the default backend mode
+
+After install, use any of the run modes above (Web, Mac app, or Windows).
 
 ## Future Standalone App Modes
 

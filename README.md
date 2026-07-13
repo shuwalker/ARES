@@ -52,30 +52,31 @@ paths:
   runtime/environment, dependencies, and first-run setup. This is not complete
   yet, so current native builds are for local/developer use.
 
-For a first local setup, prepare the Web UI environment first:
+For a first local setup:
 
 ```bash
 git clone https://github.com/shuwalker/ARES.git
-cd ARES/webui
+cd ARES
 
-# Create venv (Python 3.11-3.13)
-python3.11 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+# Run the installer
+bash install.sh
+```
 
-# Optional voice and system-health support
-.venv/bin/pip install edge-tts psutil
+The installer handles everything automatically:
+- Detects or installs JROS (required Companion runtime)
+- Creates a Python virtual environment
+- Installs Python dependencies
+- Configures the backend (defaults to JROS)
 
-# Install Hermes Agent (dependency)
-mkdir -p ~/.hermes
-git clone https://github.com/NousResearch/hermes-agent.git ~/.hermes/hermes-agent
-.venv/bin/pip install -e ~/.hermes/hermes-agent  # Hermes Agent (editable)
+**Options:**
+- `--with-hermes` — also install Hermes Agent (optional coding/terminal addition)
+- `--no-start` — skip auto-starting the server after install
+- `--backend jros|hermes|hybrid` — set the default backend mode
 
-# Configure
-cp .env.example .env
-# Edit .env — set HERMES_WEBUI_PASSWORD
+After install, run the Web UI:
 
-# Run
-.venv/bin/python server.py
+```bash
+./start.sh
 # → http://localhost:8787
 ```
 
