@@ -1,32 +1,36 @@
-# ARES Mac App — Four-Tab Model
+# ARES Desktop
 
-## Tabs
+ARES Desktop is the native macOS control shell for the ARES Web UI and adapter
+layer. It launches or attaches to the local Web UI, presents it in a `WKWebView`,
+and provides native settings, menu bar status, server control, remote access,
+runtime status, and approval surfaces.
 
-| Tab | Purpose | Implementation status |
-|---|---|---|
-| **Companion** | ARES's desk. One chat surface, one voice, no model picker. Streams real responses from the Hermes gateway. | Chat UI + history wired; companion config loaded from `~/.hermes`; session persistence via Hermes API |
-| **Hub** | User's desk for other AI tools. Auto-discovers installed tools, renders as cards with launch buttons. No re-skin, no impersonation. | Tool discovery (filesystem + Process), GitHub repo discovery, Bonjour device discovery. Cards show status. |
-| **Office** | ARES's animated virtual office. Top-down 2D view of 4-5 sub-agents with three visible states (idle/working/waiting). | Agent card grid with live status. Not yet wired to real Kanban — uses `ARESAppState.officeAgents` placeholder. |
-| **Settings** | Configuration that's actually needed. Integrations, Quick Launch, Runtime Status, Diagnostics. | Full four-section UI. Integrations toggle list, Quick Launch with NSWorkspace open, Runtime Status shows gateway/state, Diagnostics runs live health check. |
+## Current Surface
 
-## What's real vs scaffolded
+- SwiftUI macOS app launched with `swift run ARES`.
+- Main window wraps the Web UI at the configured host and port.
+- Menu bar item opens ARES, starts/stops/restarts the Web UI server, opens
+  settings, and quits the app.
+- Settings expose:
+  - Web UI host, port, auto-launch, and reload/dev mode.
+  - Server health and recent logs.
+  - Active backend selector for Hermes, JROS, and hybrid mode.
+  - Hermes and JROS gateway URL/key fields.
+  - LAN and Tailscale URLs with QR code for phone/tablet access.
+  - Browser microphone constraints for remote HTTP access.
+  - Pending approvals and recent audit log entries.
 
-**Real (functional):**
-- ARESCore library compiles and links as a separate Swift package target
-- ToolDiscovery scans filesystem for AI tools and classifies them
-- IntegrationRegistry provides hand-curated tool catalog with binary/data probes
-- GitHubDiscovery scans `~/GitHub/` for local clones and enriches via `gh api`
-- BonjourBrowser discovers SSH-advertising Macs on the local network (macOS only)
-- Hub auto-discovery cards render with real data
-- Companion chat connects to Hermes gateway HTTP endpoint
-- Session readers (Claude, Gemini, Hermes, Odysseus) parse real session files
-- Settings Diagnostics runs live health checks against Ollama, Hermes gateway, config files, IntegrationRegistry
+## Responsibility Boundary
 
-**Scaffolded (UI present, data not yet real):**
-- Office agent states come from `ARESAppState.officeAgents` mock data, not the live Hermes Kanban board
-- Companion model routing (ARES picks the model) — currently uses configured Hermes endpoint only
+ARES Desktop does not replace Hermes, JROS, or the Web UI. It is a native
+presentation and control layer over those systems:
 
-## Build & run
+- Hermes owns Hermes runtime state.
+- JROS owns JROS runtime, embodiment, and canonical character/persona state.
+- ARES projects active runtime identity and owns user-facing presentation,
+  permissions, settings, server control, and continuity surfaces.
+
+## Build And Run
 
 ```bash
 cd ~/GitHub/ARES
@@ -34,11 +38,15 @@ swift build
 swift run ARES
 ```
 
-## Intentionally out of scope for 0.0 alpha
+The app starts the Web UI automatically when `Start WebUI Server on App Launch`
+is enabled. Server launch exports the native Hermes/JROS gateway settings into
+the Web UI process environment.
 
-- ARES writing into another tool's data store (v1 is read-only regarding peer tools)
-- ARES proxying the user into another tool's UI
-- Multi-user / shared Companion sessions
-- iPad/iPhone Companion apps (ARESCore compiles for iOS but the app target is macOS only)
-- Voice synthesis / avatar rendering pipeline
-- n8n workflow integration
+## Archived Notes
+
+Older experimental desktop plans that do not describe the current app have been
+moved out of the repo to:
+
+```text
+/Users/matthewjenkins/Desktop/ARES-misaligned-archive/
+```

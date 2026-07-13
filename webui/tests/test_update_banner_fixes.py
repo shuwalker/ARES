@@ -78,6 +78,7 @@ def _stub_pycache_purge(monkeypatch):
     recording spy.
     """
     import api.updates as upd
+    monkeypatch.setenv("ARES_WEBUI_AUTO_RESTART", "1")
     monkeypatch.setattr(upd, "_purge_agent_pycache", lambda *a, **k: None)
 
 

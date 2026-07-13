@@ -33,16 +33,17 @@ class TestRuntimeContext:
         ctx = build_runtime_context()
         assert isinstance(ctx, dict)
         # Required keys for ARES operating state
-        assert "identity" in ctx
+        assert "identity_projection" in ctx
         assert "active_backend" in ctx
         assert "capabilities" in ctx
 
-    def test_identity_is_ares(self):
-        """ARES identity is always 'ARES', regardless of backend."""
+    def test_identity_is_backend_projection(self):
+        """Identity is a backend projection, not an ARES-owned canonical soul."""
         from api.ares_runtime_context import build_runtime_context
 
         ctx = build_runtime_context()
-        assert ctx["identity"] == "ARES"
+        assert isinstance(ctx["identity_projection"], dict)
+        assert "name" in ctx["identity_projection"]
 
     def test_backend_hermes_when_jros_down(self):
         """When JROS is unavailable, backend defaults to hermes."""
@@ -79,7 +80,7 @@ class TestRuntimeContext:
         ctx = build_runtime_context(backend="hermes")
         prompt = render_context_prompt(ctx)
         assert isinstance(prompt, str)
-        assert "ARES" in prompt
+        assert "Projected identity" in prompt
         assert len(prompt) > 0
         # Must be compact — under 500 chars for injection
         assert len(prompt) < 500
@@ -167,7 +168,7 @@ class TestAresTools:
         result = ares_get_runtime_context()
         parsed = json.loads(result)
         assert isinstance(parsed, dict)
-        assert "identity" in parsed
+        assert "identity_projection" in parsed
 
     def test_create_task_returns_confirmation(self):
         """ares_create_task creates a task and returns confirmation."""

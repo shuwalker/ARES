@@ -1,4 +1,4 @@
-"""Hermes Web UI server entry point."""
+"""ARES Web UI server entry point."""
 import logging
 import os
 import re
@@ -91,7 +91,6 @@ if os.environ.get("HERMES_WEBUI_TEST_NETWORK_BLOCK", "").strip() in ("1", "true"
     socket.create_connection = _blocked_create_connection
     socket.socket.connect = _blocked_socket_connect
 
-
 try:
     import resource
 except ImportError:  # pragma: no cover - resource is Unix-only
@@ -113,7 +112,6 @@ from api.routes import handle_delete, handle_get, handle_patch, handle_post, han
 from api.startup import auto_install_agent_deps, fix_credential_permissions
 from api.updates import WEBUI_VERSION
 from api.crash_visibility import install_crash_visibility
-
 
 class QuietHTTPServer(ThreadingHTTPServer):
     """Custom HTTP server that silently handles common network errors."""
@@ -290,7 +288,6 @@ class QuietHTTPServer(ThreadingHTTPServer):
                 return
         super().handle_error(request, client_address)
 
-
 class Handler(BaseHTTPRequestHandler):
     # HTTP/1.1 keep-alive stays on, so every response must declare framing.
     protocol_version = "HTTP/1.1"
@@ -447,7 +444,6 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         self._handle_write(handle_delete)
 
-
 def _raise_fd_soft_limit(target: int = 4096) -> dict:
     """Best-effort raise of RLIMIT_NOFILE for persistent WebUI hosts."""
     if resource is None:
@@ -468,10 +464,8 @@ def _raise_fd_soft_limit(target: int = 4096) -> dict:
         return {"status": "error", "soft": soft, "hard": hard, "error": str(exc)}
     return {"status": "raised", "soft": desired, "hard": hard, "previous_soft": soft}
 
-
 _SHUTDOWN_AUDIT_LOGGED = False
 _SHUTDOWN_LOG_VALUE_RE = re.compile(r"[\x00-\x1f\x7f]+")
-
 
 def _shutdown_log_value(value, *, default: str = "unknown", max_len: int = 160) -> str:
     """Return a bounded single-line value safe for shutdown diagnostics."""
@@ -487,7 +481,6 @@ def _shutdown_log_value(value, *, default: str = "unknown", max_len: int = 160) 
     if len(text) > max_len:
         text = f"{text[:max_len]}…"
     return text
-
 
 def _log_shutdown_audit(reason: str = "serve_forever_exit") -> None:
     """Log runtime context when the WebUI server is exiting."""
@@ -525,7 +518,6 @@ def _log_shutdown_audit(reason: str = "serve_forever_exit") -> None:
         "; ".join(active_sessions) if active_sessions else "none",
     )
 
-
 def _abort_if_already_serving(host: str, port: int) -> None:
     """Refuse to start if a live HTTP server is already responding on this port."""
     probe_host = '127.0.0.1' if host in ('0.0.0.0', '', '::') else host
@@ -543,7 +535,6 @@ def _abort_if_already_serving(host: str, port: int) -> None:
                 sys.exit(1)
     except (ConnectionRefusedError, ConnectionResetError, OSError, socket.timeout):
         pass
-
 
 def main() -> None:
     from api.config import print_startup_config, verify_hermes_imports, _HERMES_FOUND
@@ -696,7 +687,7 @@ def main() -> None:
             print(f'[!!] WARNING: TLS setup failed ({e}), falling back to HTTP', flush=True)
             scheme = 'http'
 
-    print(f'  Hermes Web UI listening on {scheme}://{HOST}:{PORT}', flush=True)
+    print(f'  ARES Web UI listening on {scheme}://{HOST}:{PORT}', flush=True)
     if HOST in ('127.0.0.1', '::1') or within_container:
         print(f'  Remote access: ssh -N -L {PORT}:127.0.0.1:{PORT} <user>@<your-server>', flush=True)
     print(f'  Then open:     {scheme}://localhost:{PORT}', flush=True)
@@ -714,7 +705,6 @@ def main() -> None:
     # dispatch it from a short-lived helper thread. The handler is idempotent
     # and guards against double-shutdown (e.g. repeated SIGTERM/SIGINT).
     _shutdown_requested = threading.Event()
-
     def _request_shutdown(signum, _frame):
         if _shutdown_requested.is_set():
             return
@@ -724,13 +714,11 @@ def main() -> None:
             name="webui-sigterm-shutdown",
             daemon=True,
         ).start()
-
     try:
         signal.signal(signal.SIGTERM, _request_shutdown)
     except (ValueError, OSError):
         # Not on the main thread (e.g. embedded/test harness); skip handler.
         logger.debug("Could not install SIGTERM handler", exc_info=True)
-
     try:
         httpd.serve_forever()
     finally:
@@ -756,6 +744,5 @@ def main() -> None:
             stop_session_channel_reaper()
         except Exception:
             logger.debug("Failed to stop SessionChannel reaper during shutdown", exc_info=True)
-
 if __name__ == '__main__':
     main()

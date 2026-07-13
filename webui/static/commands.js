@@ -859,6 +859,7 @@ async function _applyManualCompressionResult(data, focusTopic, visibleCount, com
       await loadSession(data.session.session_id);
     }else{
       S.session=data.session;
+      if(typeof refreshAresBackendForSession==='function') refreshAresBackendForSession();
       S.messages=data.session.messages||[];
       S.toolCalls=data.session.tool_calls||[];
       clearLiveToolCards();

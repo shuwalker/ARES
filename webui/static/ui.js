@@ -11,7 +11,6 @@ function assistantDisplayName(){
   // Prefer the identity API payload when available
   if(window._aresIdentity && window._aresIdentity.display_name) return window._aresIdentity.display_name;
   if(S.activeProfile&&S.activeProfile!=='default') return S.activeProfile.charAt(0).toUpperCase()+S.activeProfile.slice(1);
-  if(typeof _aresCurrentBackend!=='undefined'&&_aresCurrentBackend==='jros') return 'JROS';
   return window._botName||'Hermes';
 }
 const INFLIGHT={};  // keyed by session_id while request in-flight
@@ -8802,11 +8801,13 @@ function scheduleTodosRefresh(){
   if(_todosRenderRafId) return;
   if(typeof requestAnimationFrame!=='function'){
     if(typeof _refreshWorkspacePanelTodos==='function') _refreshWorkspacePanelTodos();
+    if(_todosPanelIsActive() && typeof loadTodos==='function') loadTodos();
     return;
   }
   _todosRenderRafId=requestAnimationFrame(()=>{
     _todosRenderRafId=0;
     if(typeof _refreshWorkspacePanelTodos==='function') _refreshWorkspacePanelTodos();
+    if(_todosPanelIsActive() && typeof loadTodos==='function') loadTodos();
   });
 }
 
@@ -9201,6 +9202,7 @@ async function refreshSession() {
   try {
     const data = await api(`/api/session?session_id=${encodeURIComponent(S.session.session_id)}`);
     S.session = data.session;
+    if(typeof refreshAresBackendForSession==='function') refreshAresBackendForSession();
     S.messages = data.session.messages || [];
     _messagesTruncated = !!data.session._messages_truncated;
     _oldestIdx = data.session._messages_offset || 0;
@@ -10290,13 +10292,14 @@ function _formatTurnTps(value){
 function isTpsDisplayEnabled(){
   return window._showTps===true;
 }
+// _assistantRoleHtml(tsTitle='', tpsText='')
 function _assistantRoleHtml(tsTitle='', tpsText='', backend=''){
   const _bn=assistantDisplayName();
   const tps=(isTpsDisplayEnabled()&&tpsText)?`<span class="msg-tps-inline" title="Tokens per second">${esc(tpsText)}</span>`:'';
   // Use identity layer for backend badge when available
   const backendBadge=(window._aresIdentity && window._aresIdentity.backend_badge_html)
     ? window._aresIdentity.backend_badge_html
-    : (typeof backend!=='undefined'&&backend==='jros'?' <span class="msg-backend-badge" title="JROS backend">JROS</span>':'');
+    : (typeof backend!=='undefined'&&backend?` <span class="msg-backend-badge" title="${esc(backend)} runtime">${esc(String(backend).toUpperCase())}</span>`:'');
   return `<div class="msg-role assistant" ${tsTitle?`title="${esc(tsTitle)}"`:''}><div class="role-icon assistant">${esc(_bn.charAt(0).toUpperCase())}</div><span class="msg-role-name">${esc(_bn)}</span>${tps}${backendBadge}</div>`;
 }
 function _setAssistantTurnTps(turn, tpsText=''){
@@ -10327,7 +10330,11 @@ function _createAssistantTurn(tsTitle='', tpsText='', backend=''){
 }
 function _setLatestAssistantTurnLandmark(turn, isLatest){
   if(!turn) return;
-  const backendName=typeof _aresCurrentBackend!=='undefined'&&_aresCurrentBackend==='jros'?'JROS':'Hermes';
+  const backendName=(window._aresIdentity&&window._aresIdentity.backend_label)
+    ? window._aresIdentity.backend_label
+    : (typeof _aresCurrentBackend!=='undefined'&&_aresCurrentBackend
+      ? (_aresCurrentBackend==='jros'?'JROS':_aresCurrentBackend.charAt(0).toUpperCase()+_aresCurrentBackend.slice(1))
+      : 'Hermes');
   const label='Latest '+backendName+' response';
   if(isLatest){
     if(typeof document!=='undefined'){

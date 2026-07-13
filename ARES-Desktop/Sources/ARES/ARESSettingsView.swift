@@ -30,6 +30,15 @@ struct AuditLogResponse: Codable {
     let logs: [AuditLogEntry]
 }
 
+struct BackendStatusResponse: Codable {
+    let current: String
+}
+
+struct BackendSetResponse: Codable {
+    let ok: Bool?
+    let backend: String?
+}
+
 public struct ARESSettingsView: View {
     @ObservedObject var config = ARESConfiguration.shared
     @ObservedObject var serverManager = WebUIServerManager.shared
@@ -41,6 +50,8 @@ public struct ARESSettingsView: View {
     @State private var tailscaleIP: String? = nil
     
     // Backends status
+    @State private var activeBackend = UserDefaults.standard.string(forKey: "ares.backend.selected") ?? "hermes"
+    @State private var backendSelectionError: String? = nil
     @State private var jrosLive = false
     @State private var hermesLive = false
     @State private var checkTimer: Timer? = nil
@@ -82,6 +93,7 @@ public struct ARESSettingsView: View {
         .padding()
         .onAppear {
             refreshNetworkIPs()
+            refreshBackendSelection()
             startLivenessChecks()
             refreshApprovalsAndLogs()
             
@@ -168,16 +180,10 @@ public struct ARESSettingsView: View {
     // MARK: - Backends Tab
     private var backendsTab: some View {
         Form {
-            Section(header: Text("Active Runtime Selection").font(.headline)) {
-                Picker("Active Backend", selection: Binding(
-                    get: {
-                        // Dynamically read from the webui configuration file
-                        // or default value.
-                        UserDefaults.standard.string(forKey: "ares.backend.selected") ?? "hermes"
-                    },
+            Section(header: Text("Default Runtime Selection").font(.headline)) {
+                Picker("Default Chat Runtime", selection: Binding(
+                    get: { activeBackend },
                     set: { val in
-                        UserDefaults.standard.set(val, forKey: "ares.backend.selected")
-                        // In a real flow, write to backend config.yaml and reload
                         writeBackendSelection(val)
                     }
                 )) {
@@ -186,12 +192,23 @@ public struct ARESSettingsView: View {
                     Text("Hybrid (Hermes loop + JROS)").tag("hybrid")
                 }
                 .pickerStyle(.radioGroup)
+                .disabled(!serverManager.isRunning)
+
+                if !serverManager.isRunning {
+                    Text("Start the Web UI server to change the default runtime.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else if let backendSelectionError {
+                    Text(backendSelectionError)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
             }
             
             Section(header: Text("Backend Liveness").font(.headline)) {
                 HStack(spacing: 24) {
                     statusCard(title: "Hermes Gateway", isLive: hermesLive, url: config.hermesURL)
-                    statusCard(title: "JROS Gateway", isLive: jrosLive, url: "http://127.0.0.1:8643")
+                    statusCard(title: "JROS Gateway", isLive: jrosLive, url: config.jrosURL)
                 }
             }
             
@@ -199,6 +216,10 @@ public struct ARESSettingsView: View {
                 TextField("Hermes Gateway URL", text: $config.hermesURL)
                     .textFieldStyle(.roundedBorder)
                 SecureField("Hermes API Key", text: $config.hermesAPIKey)
+                    .textFieldStyle(.roundedBorder)
+                TextField("JROS Gateway URL", text: $config.jrosURL)
+                    .textFieldStyle(.roundedBorder)
+                SecureField("JROS Gateway Key", text: $config.jrosAPIKey)
                     .textFieldStyle(.roundedBorder)
             }
         }
@@ -477,6 +498,7 @@ public struct ARESSettingsView: View {
         checkTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { _ in
             Task { @MainActor in
                 await performLivenessProbes()
+                refreshBackendSelection()
                 refreshApprovalsAndLogs()
             }
         }
@@ -487,7 +509,7 @@ public struct ARESSettingsView: View {
     
     private func performLivenessProbes() async {
         // Probe Hermes
-        if let hermesUrl = URL(string: config.hermesURL + "/health") {
+        if let hermesUrl = endpointURL(base: config.hermesURL, path: "/health") {
             var request = URLRequest(url: hermesUrl)
             request.timeoutInterval = 1.0
             do {
@@ -505,7 +527,7 @@ public struct ARESSettingsView: View {
         }
         
         // Probe JROS
-        if let jrosUrl = URL(string: "http://127.0.0.1:8643/v1/health") {
+        if let jrosUrl = endpointURL(base: config.jrosURL, path: "/v1/health") {
             var request = URLRequest(url: jrosUrl)
             request.timeoutInterval = 1.0
             do {
@@ -586,6 +608,9 @@ public struct ARESSettingsView: View {
     private func writeBackendSelection(_ val: String) {
         let host = config.webuiHost
         let port = config.webuiPort
+        let previous = activeBackend
+        activeBackend = val
+        backendSelectionError = nil
         
         guard let url = URL(string: "http://\(host):\(port)/api/ares/backend/set") else { return }
         var request = URLRequest(url: url)
@@ -595,7 +620,51 @@ public struct ARESSettingsView: View {
         let body = ["backend": val]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
-        URLSession.shared.dataTask(with: request).resume()
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    activeBackend = previous
+                    backendSelectionError = "Failed to save default runtime: \(error.localizedDescription)"
+                    return
+                }
+                if let data,
+                   let decoded = try? JSONDecoder().decode(BackendSetResponse.self, from: data),
+                   decoded.ok == false {
+                    activeBackend = previous
+                    backendSelectionError = "Failed to save default runtime."
+                    return
+                }
+                let confirmed = (data.flatMap { try? JSONDecoder().decode(BackendSetResponse.self, from: $0) }?.backend) ?? val
+                activeBackend = confirmed
+                UserDefaults.standard.set(confirmed, forKey: "ares.backend.selected")
+            }
+        }.resume()
+    }
+
+    private func refreshBackendSelection() {
+        guard serverManager.isRunning else { return }
+        let host = config.webuiHost
+        let port = config.webuiPort
+        guard let url = URL(string: "http://\(host):\(port)/api/ares/backend") else { return }
+
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            if let data,
+               let decoded = try? JSONDecoder().decode(BackendStatusResponse.self, from: data) {
+                DispatchQueue.main.async {
+                    activeBackend = decoded.current
+                    UserDefaults.standard.set(decoded.current, forKey: "ares.backend.selected")
+                }
+            }
+        }.resume()
+    }
+
+    private func endpointURL(base: String, path: String) -> URL? {
+        var trimmedBase = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmedBase.hasSuffix("/") {
+            trimmedBase.removeLast()
+        }
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        return URL(string: trimmedBase + normalizedPath)
     }
     
     private func formatTime(_ raw: String) -> String {

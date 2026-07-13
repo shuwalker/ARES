@@ -18,7 +18,6 @@ via JaegerAgent system_prompt).
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import sqlite3
@@ -110,7 +109,7 @@ def build_runtime_context(
     """Build the ARES runtime context packet.
 
     This is injected into the agent's system prompt every turn so
-    the agent knows its identity, backend, and available capabilities.
+    the agent knows the projected identity, backend, and available capabilities.
 
     Args:
         backend: Active backend mode — 'hermes', 'jros', or 'hybrid'.
@@ -156,7 +155,7 @@ def build_runtime_context(
         "ares": {
             "available": True,
             "provides": [
-                "identity", "tasks", "self_audit",
+                "identity_projection", "tasks", "self_audit",
                 "followthrough", "continuity",
             ],
         },
@@ -196,7 +195,7 @@ def build_runtime_context(
         pass
 
     context: dict[str, Any] = {
-        "identity": "ARES",
+        "identity_projection": _identity_projection_for_backend(effective_backend),
         "active_backend": effective_backend,
         "session_id": session_id or "",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -219,17 +218,18 @@ def render_context_prompt(context: dict[str, Any]) -> str:
     """Render the runtime context into a compact system prompt block.
 
     This is injected above persona/backend-specific prompts so ARES
-    identity and state take priority.
+    operating state is visible without claiming canonical persona ownership.
 
     Designed to be under 500 chars to minimize context window impact.
     """
     backend = context.get("active_backend", "hermes")
-    identity = context.get("identity", "ARES")
+    identity = context.get("identity_projection", {})
+    if not isinstance(identity, dict):
+        identity = {}
+    identity_name = str(identity.get("name") or backend.title())
     jros_up = context.get("capabilities", {}).get("jros", {}).get("available", False)
-    embodiment = context.get("embodiment", {}).get("body", "desktop")
-
     lines = [
-        f"Active identity: {identity}. Backend: {backend}.",
+        f"Projected identity: {identity_name}. Backend: {backend}.",
     ]
 
     if jros_up:
@@ -247,3 +247,29 @@ def render_context_prompt(context: dict[str, Any]) -> str:
         lines.append(f"Unresolved promises: {len(promises)}.")
 
     return "\n".join(lines)
+
+
+def _identity_projection_for_backend(backend: str) -> dict[str, Any]:
+    """Return the active backend identity projection without making ARES canonical."""
+
+    normalized = backend if backend in {"hermes", "jros", "hybrid"} else "hermes"
+    try:
+        from api.backends.router import get_router
+
+        selected = get_router().backends.get(normalized)
+        if selected is not None:
+            projection = selected.identity_projection()
+            if isinstance(projection, dict):
+                return projection
+    except Exception:
+        pass
+
+    return {
+        "name": {
+            "hermes": "Hermes",
+            "jros": "JROS",
+            "hybrid": "Hybrid",
+        }.get(normalized, normalized.title()),
+        "description": "Fallback identity projection",
+        "avatar_state": "idle",
+    }

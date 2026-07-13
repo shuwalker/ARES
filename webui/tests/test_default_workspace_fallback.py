@@ -54,16 +54,29 @@ def test_save_settings_rewrites_bad_default_workspace_to_fallback(monkeypatch, t
     assert on_disk["default_workspace"] == str(preferred.resolve())
 
 
-def test_resolve_default_workspace_creates_home_workspace_when_missing(monkeypatch, tmp_path):
-    """When no preferred dir exists, resolve falls back to creating ~/workspace."""
+def test_resolve_default_workspace_creates_desktop_ares_when_missing(monkeypatch, tmp_path):
+    """When no preferred dir exists, resolve falls back to creating ~/Desktop/ARES
+    (iCloud Desktop sync gives cross-device redundancy for new installs)."""
     state_dir = tmp_path / "state"
     monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
     monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
     # Neither ~/work nor ~/workspace exists yet
     resolved = config.resolve_default_workspace(None)
-    assert resolved == (tmp_path / "workspace").resolve()
+    assert resolved == (tmp_path / "Desktop" / "ARES").resolve()
     assert resolved.is_dir()
+
+
+def test_resolve_default_workspace_prefers_existing_home_workspace_over_desktop(monkeypatch, tmp_path):
+    """An existing ~/workspace still wins over the new Desktop/ARES default —
+    the Desktop default only applies to installs with nothing set up yet."""
+    state_dir = tmp_path / "state"
+    (tmp_path / "workspace").mkdir()
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    monkeypatch.setattr(config, "STATE_DIR", state_dir)
+    monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+    resolved = config.resolve_default_workspace(None)
+    assert resolved == (tmp_path / "workspace").resolve()
 
 
 def test_resolve_default_workspace_raises_when_all_candidates_fail(monkeypatch, tmp_path):

@@ -7128,26 +7128,57 @@ function _openProfileSwitchSessionBrowser(){
 
 // ── ARES Backend Selector ─────────────────────────────────────
 // The core ARES feature: pick which AI backend runs your agent.
-// Hermes, or JROS as the full replacement backend (turns run on a JROS
-// gateway server — `jaeger gateway` — local or on another machine).
+// Hermes, or JROS as the companion runtime path (turns run on a JROS gateway
+// server — `jaeger gateway` — local or on another machine, with a local
+// in-process fallback where supported).
 // Hybrid (the additive mode) is hidden in the UI until it's fully defined;
 // a config that already says "hybrid" still works server-side.
 
 let _aresCurrentBackend = 'hermes';
 let _aresJrosAvailable = false;
 let _aresJrosMode = '';   // 'gateway' | 'local' | '' — how JROS turns will run
+let _aresCapabilities = {};
+
+function _aresBackendSessionId() {
+  try {
+    return (typeof S !== 'undefined' && S.session && S.session.session_id) ? S.session.session_id : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function refreshAresIdentity() {
+  const sid = _aresBackendSessionId();
+  const url = sid ? `/api/ares/identity?session_id=${encodeURIComponent(sid)}` : '/api/ares/identity';
+  return api(url, { timeoutToast: false }).then(data => {
+    window._aresIdentity = data || null;
+    if (typeof applyBotName === 'function') applyBotName();
+    if (typeof syncTopbar === 'function') syncTopbar();
+    if (typeof syncAppTitlebar === 'function') syncAppTitlebar();
+    return data;
+  }).catch(() => null);
+}
+window.refreshAresIdentity = refreshAresIdentity;
 
 function initAresBackend() {
-  api('/api/ares/backend').then(data => {
+  const sid = _aresBackendSessionId();
+  const url = sid ? `/api/ares/backend?session_id=${encodeURIComponent(sid)}` : '/api/ares/backend';
+  api(url).then(data => {
     _aresCurrentBackend = data.current || 'hermes';
     _aresJrosAvailable = (data.status && data.status.jros) || false;
     _aresJrosMode = (data.status && data.status.jros_mode) || '';
+    _aresCapabilities = (data && data.capabilities) || {};
     updateAresBackendUI();
+    refreshAresIdentity();
   }).catch(() => {
     // Backend API not available — default to Hermes, hide the chip
     const wrap = $('aresBackendWrap');
     if (wrap) wrap.style.display = 'none';
   });
+}
+
+function refreshAresBackendForSession() {
+  initAresBackend();
 }
 
 function _aresBackendDisplayName(backend) {
@@ -7156,17 +7187,53 @@ function _aresBackendDisplayName(backend) {
 
 function _syncAresBackendDependentUI() {
   const personaWrap = $('aresPersonaWrap');
-  if (personaWrap) personaWrap.style.display = (_aresCurrentBackend === 'hybrid') ? '' : 'none';
+  if (personaWrap) personaWrap.style.display = (_aresCurrentBackend === 'jros' || _aresCurrentBackend === 'hybrid') ? '' : 'none';
 
   const chip = $('aresBackendChip');
   if (chip) {
     chip.dataset.backend = _aresCurrentBackend;
     chip.title = _aresCurrentBackend === 'jros'
-      ? 'JROS is running this conversation'
+      ? 'JROS runtime is running this conversation'
       : _aresCurrentBackend === 'hybrid'
-        ? 'Hybrid mode: Hermes loop with JROS persona/tools'
-        : 'Hermes is running this conversation';
+        ? 'Hybrid mode: Hermes runtime with selected JROS identity/tools'
+        : 'Hermes runtime is running this conversation';
   }
+}
+
+function _aresCapabilityDisabledMessage(capability) {
+  const backend = _aresBackendDisplayName(_aresCurrentBackend);
+  const labels = {
+    cloud_provider_model_settings: 'Cloud/provider model settings are handled by Hermes. Use provider sync for JROS model changes.',
+    mcp_server_config: 'This panel configures Hermes MCP. JROS has its own MCP configuration.',
+    messaging_gateway: 'Messaging gateways are Hermes-only for this backend.',
+    kanban: 'Kanban is Hermes-native. Enable Hermes tools for your Companion to expose it through JROS.',
+    delegate_task: 'Subagents and delegate_task are Hermes-only for this backend.',
+    character_persona_editing: 'Character/persona editing is available when JROS is active.',
+    voice_settings: 'These voice controls configure Hermes/browser TTS. JROS voice uses its own Kokoro/Whisper settings.',
+  };
+  return labels[capability] || `Not supported by ${backend}.`;
+}
+
+function _applyAresCapabilities() {
+  document.querySelectorAll('[data-capability]').forEach(el => {
+    const cap = el.getAttribute('data-capability') || '';
+    const disabled = _aresCapabilities && Object.prototype.hasOwnProperty.call(_aresCapabilities, cap)
+      ? !_aresCapabilities[cap]
+      : false;
+    el.classList.toggle('capability-disabled', disabled);
+    if (disabled) {
+      const message = _aresCapabilityDisabledMessage(cap);
+      el.setAttribute('aria-disabled', 'true');
+      el.setAttribute('data-capability-disabled-reason', message);
+      if (el.classList.contains('has-tooltip')) el.setAttribute('data-tooltip', message);
+      if ('disabled' in el && (el.tagName === 'SELECT' || el.tagName === 'INPUT')) el.disabled = true;
+    } else {
+      el.removeAttribute('aria-disabled');
+      el.removeAttribute('data-capability-disabled-reason');
+      if ('disabled' in el && el.dataset.capabilityWasDisabled === '1') el.disabled = false;
+    }
+    if ('disabled' in el) el.dataset.capabilityWasDisabled = disabled ? '1' : '0';
+  });
 }
 
 function updateAresBackendUI() {
@@ -7193,7 +7260,7 @@ function updateAresBackendUI() {
         ? 'Runs JROS on this machine (in-process)'
         : 'JROS gateway connected';
   }
-  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes loop + JROS persona/tools' : 'Needs the JROS gateway running';
+  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes runtime + selected JROS identity/tools' : 'Needs the JROS gateway running';
 
   // JROS stays selectable while the gateway is offline (the user may start it
   // right after switching); the dimmed row signals it isn't reachable yet.
@@ -7201,6 +7268,7 @@ function updateAresBackendUI() {
   if (jrosOpt) jrosOpt.style.opacity = _aresJrosAvailable ? '1' : '0.5';
 
   _syncAresBackendDependentUI();
+  _applyAresCapabilities();
 }
 
 function toggleAresBackendDropdown() {
@@ -7238,17 +7306,24 @@ function setAresBackend(backend) {
     showToast('Hybrid needs the JROS gateway running');
     return;
   }
-  api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify({ backend }) })
+  const sid = _aresBackendSessionId();
+  const payload = sid ? { backend, session_id: sid } : { backend };
+  api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify(payload) })
     .then(data => {
       _aresCurrentBackend = (data && data.backend) || backend;
+      if (data && data.capabilities) _aresCapabilities = data.capabilities;
+      if (typeof S !== 'undefined' && S.session && sid && S.session.session_id === sid) S.session.ares_backend = _aresCurrentBackend;
       updateAresBackendUI();
       if (typeof _refreshModelDropdownsAfterProviderChange === 'function') {
         _refreshModelDropdownsAfterProviderChange();
       } else if (typeof populateModelDropdown === 'function') {
         populateModelDropdown();
       }
+      refreshAresIdentity();
       closeAresBackendDropdown();
-      showToast(`Backend switched to ${_aresBackendDisplayName(_aresCurrentBackend)}`);
+      showToast(sid
+        ? `This chat now uses ${_aresBackendDisplayName(_aresCurrentBackend)}`
+        : `Default runtime set to ${_aresBackendDisplayName(_aresCurrentBackend)}`);
     })
     .catch(e => showToast('Failed to switch backend'));
 }
@@ -7258,14 +7333,23 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#aresBackendWrap') && !e.target.closest('#aresBackendDropdown')) closeAresBackendDropdown();
 });
 
+document.addEventListener('click', e => {
+  const disabled = e.target.closest('[data-capability].capability-disabled');
+  if (!disabled) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const reason = disabled.getAttribute('data-capability-disabled-reason');
+  if (reason && typeof showToast === 'function') showToast(reason);
+}, true);
+
 // Init on page load
 window.addEventListener('DOMContentLoaded', () => {
   setTimeout(initAresBackend, 500);
 });
 
 // ── ARES Persona Selector ──────────────────────────────────────
-// Pick a JROS character/persona to inject into the system prompt.
-// Only active in Hybrid backend mode. Uses identical chip+dropdown
+// Pick the active JROS character/person the user is messaging.
+// Active in JROS and Hybrid backend modes. Uses identical chip+dropdown
 // pattern as the backend selector and profile picker for visual
 // consistency in the composer footer.
 
@@ -7282,9 +7366,11 @@ function initAresPersona() {
       _aresCurrentPersona = cfg.persona_id || '';
     }).catch(() => {});
 
-    // Only show if backend is hybrid (personas are hybrid-only)
-    api('/api/ares/backend').then(backendData => {
-      if (backendData.current === 'hybrid') {
+    // Only show if backend is JROS or Hybrid.
+    const sid = _aresBackendSessionId();
+    const backendUrl = sid ? `/api/ares/backend?session_id=${encodeURIComponent(sid)}` : '/api/ares/backend';
+    api(backendUrl).then(backendData => {
+      if (backendData.current === 'jros' || backendData.current === 'hybrid') {
         const wrap = $('aresPersonaWrap');
         if (wrap) wrap.style.display = '';
       }
@@ -7298,18 +7384,18 @@ function initAresPersona() {
 function updateAresPersonaUI() {
   const label = $('aresPersonaLabel');
   const current = _aresPersonas.find(p => p.id === _aresCurrentPersona);
-  if (label) label.textContent = current ? current.name : 'None';
+  if (label) label.textContent = current ? current.name : 'Default';
 
   // Rebuild dropdown
   const dd = $('aresPersonaDropdown');
   if (!dd) return;
   dd.innerHTML = '';
 
-  // "None" option — clears persona
+  // Default option — clears selected character/persona.
   const noneBtn = document.createElement('button');
   noneBtn.className = 'ares-backend-action';
   noneBtn.setAttribute('data-persona', '');
-  noneBtn.innerHTML = `<span class="ares-backend-check" data-check-for="">${_aresCurrentPersona === '' ? '✓' : ''}</span><span class="ares-backend-copy"><span class="ares-backend-name">None</span><span class="ares-backend-desc">No persona injection</span></span>`;
+  noneBtn.innerHTML = `<span class="ares-backend-check" data-check-for="">${_aresCurrentPersona === '' ? '✓' : ''}</span><span class="ares-backend-copy"><span class="ares-backend-name">Default assistant</span><span class="ares-backend-desc">Use your default AI identity</span></span>`;
   noneBtn.onclick = () => setAresPersona('');
   dd.appendChild(noneBtn);
 
@@ -7353,9 +7439,10 @@ function setAresPersona(personaId) {
     .then(() => {
       _aresCurrentPersona = personaId;
       updateAresPersonaUI();
+      refreshAresIdentity();
       closeAresPersonaDropdown();
       const current = _aresPersonas.find(p => p.id === personaId);
-      showToast(`Persona set to ${current ? current.name : 'None'}`);
+      showToast(`Identity set to ${current ? current.name : 'Default assistant'}`);
     })
     .catch(e => showToast('Failed to set persona'));
 }

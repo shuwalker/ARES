@@ -1,12 +1,17 @@
-"""ARES Backend Selector — routes agent execution to Hermes or JROS.
+"""ARES Backend Selector — routes agent execution to JROS or Hermes.
 
 The core feature of ARES WebUI: the user picks which AI backend runs their agent.
 
 Backends:
-  - hermes (default): Hermes Agent in-process — identical to hermes-webui behavior
-  - jros: JROS agent — turns run on a JROS gateway server (`jaeger gateway`),
-    local or remote, over HTTP. See api/jros_gateway_chat.py.
-  - hybrid: Hermes loop + JROS persona injection + JROS tools (additive).
+  - jros (default): JROS is the required Companion runtime — the brain,
+    memory, character, and local model that "name your Companion" onboarding
+    creates. Turns run on a JROS gateway server (`jaeger gateway`), local or
+    remote, over HTTP. See api/jros_gateway_chat.py.
+  - hermes: Hermes Agent in-process — an optional addition for coding/
+    terminal/skills capability, identical to hermes-webui behavior. Only
+    meaningful once the operator has installed Hermes (it is not installed
+    by default; see webui/scripts/install.sh --with-hermes).
+  - hybrid: JROS persona/tools layered onto the Hermes loop (additive).
     Currently hidden in the UI while the mode is being defined; the value
     stays valid server-side so existing configs keep working.
 
@@ -14,7 +19,8 @@ This module is pure routing logic — no side effects on import. Execution
 itself happens in api/jros_gateway_chat.py: gateway first (POST to
 ARES_JROS_GATEWAY_URL, default localhost:8643 — same integration shape as
 the Hermes Gateway bridge in api/gateway_chat.py), and when no gateway is
-reachable, an in-process fallback boots the local ARES_JROS_DIR checkout.
+reachable, a local bridge fallback spawns ``jaeger bridge`` from the JROS
+install.
 
 Availability = a live `GET /v1/health` answer from the gateway (mode
 "gateway"), else a usable local checkout (mode "local"). A JROS on another
@@ -42,20 +48,34 @@ _jros_gateway_info: dict = {}
 _JROS_CACHE_TTL = 5.0
 
 
-def get_active_backend(config: dict) -> str:
-    """Read the selected backend from config. Defaults to hermes."""
-    raw = str(config.get("ares_backend", "") or "").strip().lower()
+def normalize_backend(value: object, *, fallback: str = BACKEND_JROS) -> str:
+    raw = str(value or "").strip().lower()
     if raw in VALID_BACKENDS:
         return raw
-    return BACKEND_HERMES
+    return fallback if fallback in VALID_BACKENDS else BACKEND_JROS
+
+
+def get_active_backend(config: dict) -> str:
+    """Read the default backend from config.
+
+    The config value is the default for new/unset chats. Individual sessions may
+    carry their own ``ares_backend`` override.
+    """
+    return normalize_backend((config or {}).get("ares_backend", ""))
+
+
+def get_session_backend(session: object, config: dict) -> str:
+    """Return the backend selected for one chat session."""
+    default_backend = get_active_backend(config)
+    return normalize_backend(getattr(session, "ares_backend", None), fallback=default_backend)
 
 
 def is_jros_available() -> bool:
     """Check whether JROS is usable right now.
 
     Prefers a live /v1/health answer from the configured JROS gateway
-    (mode "gateway"); otherwise a local ARES_JROS_DIR checkout that the
-    in-process fallback could boot counts too (mode "local")."""
+    (mode "gateway"); otherwise a local JROS install/source checkout that the
+    bridge fallback can spawn counts too (mode "local")."""
     global _jros_available_cache, _jros_available_ts, _jros_gateway_info
     now = time.time()
     if _jros_available_cache is not None and (now - _jros_available_ts) < _JROS_CACHE_TTL:
@@ -88,13 +108,24 @@ def is_jros_available() -> bool:
     return result
 
 
+def _is_hermes_available() -> bool:
+    """Hermes is an optional addition — only available once installed."""
+    try:
+        from api.config import _HERMES_FOUND
+
+        return bool(_HERMES_FOUND)
+    except Exception:
+        logger.debug("Hermes availability probe failed", exc_info=True)
+        return False
+
+
 def backend_status() -> dict:
     """Return current backend availability for UI display."""
     jros_up = is_jros_available()
     status = {
-        "hermes": True,  # always available (in-process)
+        "hermes": _is_hermes_available(),  # optional addition, not guaranteed
         "jros": jros_up,
-        "hybrid": jros_up,  # hybrid needs JROS too
+        "hybrid": jros_up and _is_hermes_available(),  # hybrid needs both
     }
     if jros_up and _jros_gateway_info:
         status["jros_mode"] = _jros_gateway_info.get("mode")
@@ -130,7 +161,7 @@ def should_register_jros_tools(config: dict) -> bool:
 def backend_label(backend: str) -> str:
     """Human-readable label for the backend selector dropdown."""
     return {
-        BACKEND_HERMES: "Hermes",
+        BACKEND_HERMES: "Hermes Agent",
         BACKEND_JROS: "JROS",
         BACKEND_HYBRID: "Hybrid",
     }.get(backend, backend.title())

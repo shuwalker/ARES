@@ -47,21 +47,54 @@ def jaeger_launcher() -> Path:
     return jaeger_home() / "jaeger"
 
 
+def discover_jros_source_root() -> Path | None:
+    """Best-effort discovery for a local JROS source checkout.
+
+    ``ARES_JROS_DIR`` remains the explicit override. The fallback candidates
+    cover the common developer layouts used by ARES itself: sibling checkouts
+    under the same GitHub folder, ``~/GitHub/JROS``, and ``~/JROS``.
+    """
+    override = os.environ.get(ARES_JROS_DIR_ENV, "").strip()
+    candidates: list[Path] = []
+    if override:
+        candidates.append(expand_path(override))
+
+    ares_root = Path(__file__).resolve().parents[2]
+    candidates.extend([
+        ares_root.parent / "JROS",
+        Path("~/GitHub/JROS").expanduser(),
+        Path("~/JROS").expanduser(),
+    ])
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            root = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        if root in seen:
+            continue
+        seen.add(root)
+        if (root / "jaeger_os").is_dir():
+            return root
+    return None
+
+
 def jros_source_root() -> Path:
     """Return the optional JROS source checkout root.
 
     Source-checkout access is only needed for source-tree features such as raw
     character library browsing. Runtime chat uses ``jaeger bridge`` instead.
     """
-    override = os.environ.get(ARES_JROS_DIR_ENV, "").strip()
-    if not override:
+    root = discover_jros_source_root()
+    if root is None:
         raise RuntimeError(
             "ARES_JROS_DIR is not set. Point it at your JROS source checkout "
             "only if you want source-tree features such as the character library. "
             "JROS chat uses the installed bridge resolved from ARES_JAEGER_HOME, "
             "JAEGER_HOME, or the standard installer path."
         )
-    return expand_path(override)
+    return root
 
 
 def jros_install_tree() -> Path:
@@ -173,9 +206,9 @@ def jros_config_path() -> Path:
 
 def jros_update_repo() -> Path | None:
     """Return a git checkout to use for JROS update checks, if discoverable."""
-    override = os.environ.get(ARES_JROS_DIR_ENV, "").strip()
-    if override:
-        return expand_path(override)
+    source = discover_jros_source_root()
+    if source is not None:
+        return source
 
     home = jaeger_home()
     return home if home.is_dir() else None

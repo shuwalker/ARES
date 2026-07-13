@@ -53,6 +53,18 @@ NON_INTERACTIVE=false
 BACKEND_MODE="${ARES_BACKEND:-auto}"
 NO_START=false
 
+# JROS is ARES's required Companion runtime — the brain, memory, character,
+# and local model. ARES never forks or reimplements it; the installer only
+# ever detects an existing install or delegates to JROS's own installer,
+# the same way hermes-workspace's installer delegates to Nous's upstream
+# hermes-agent installer instead of reimplementing it.
+JROS_INSTALL_URL="${JROS_INSTALL_URL:-https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/scripts/install.sh}"
+SKIP_JROS=false
+
+# Hermes Agent is an optional addition (coding/terminal/skills capability),
+# never installed unless the operator asks for it.
+WITH_HERMES=false
+
 # Detect non-interactive mode
 if [ -t 0 ]; then
     IS_INTERACTIVE=true
@@ -75,6 +87,8 @@ while [[ $# -gt 0 ]]; do
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --backend) BACKEND_MODE="$2"; shift 2 ;;
         --no-start) NO_START=true; shift ;;
+        --skip-jros) SKIP_JROS=true; shift ;;
+        --with-hermes) WITH_HERMES=true; shift ;;
         -h|--help)
             echo "ARES Web UI Installer"
             echo ""
@@ -91,8 +105,11 @@ while [[ $# -gt 0 ]]; do
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
-            echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto)"
+            echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto → jros)"
             echo "  --no-start      Skip auto-starting the server after installation"
+            echo "  --skip-jros     Skip installing JROS (advanced/CI use — ARES has no"
+            echo "                  Companion runtime until JROS is installed separately)"
+            echo "  --with-hermes   Also install Hermes Agent, the optional coding/terminal addition"
             echo "  -h, --help      Show this help"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -126,7 +143,7 @@ json_escape() {
 }
 
 emit_manifest() {
-    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure provider and settings","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
+    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"jros","title":"Install JROS (required Companion runtime)","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
     printf '\n'
 }
 
@@ -188,6 +205,43 @@ detect_jros() {
     fi
 }
 
+# JROS is ARES's required Companion runtime (the brain, memory, character,
+# local model). This stage never reimplements JROS — it only detects an
+# existing install or delegates to JROS's own installer, exactly the way
+# ARES already delegates to Nous's own installer for the optional Hermes
+# addition (see install_deps below).
+stage_jros() {
+    detect_jros
+    if [ "$JROS_DETECTED" = true ]; then
+        log_success "JROS already installed at $JAEGER_HOME_DETECTED — skipping install"
+        return 0
+    fi
+    if [ "$SKIP_JROS" = true ]; then
+        log_warn "Skipping JROS install (--skip-jros). ARES has no Companion runtime until"
+        log_warn "JROS is installed separately at $JAEGER_HOME_DETECTED."
+        return 0
+    fi
+
+    log_info "JROS not found — installing the required Companion runtime..."
+    log_info "  Delegating to JROS's own installer: $JROS_INSTALL_URL"
+    if ! curl -fsSL "$JROS_INSTALL_URL" | JAEGER_HOME="$JAEGER_HOME_DETECTED" bash; then
+        log_error "JROS install failed."
+        log_error "ARES requires JROS as its Companion runtime — retry manually with:"
+        log_error "  curl -fsSL $JROS_INSTALL_URL | bash"
+        log_error "or pass --skip-jros to continue without a Companion (not recommended)."
+        exit 1
+    fi
+
+    detect_jros
+    if [ "$JROS_DETECTED" != true ]; then
+        log_error "JROS installer finished but no launcher was found at $JAEGER_HOME_DETECTED."
+        log_error "Check the installer output above, or set ARES_JAEGER_HOME/JAEGER_HOME"
+        log_error "to the location JROS actually installed to."
+        exit 1
+    fi
+    log_success "JROS installed at $JAEGER_HOME_DETECTED"
+}
+
 detect_os() {
     case "$(uname -s)" in
         Linux*) OS="linux"; DISTRO="linux" ;;
@@ -225,7 +279,12 @@ check_git() {
 check_python() {
     log_info "Checking Python $PYTHON_VERSION..."
     PYTHON_PATH=""
-    for cmd in python3 python; do
+    # Versioned binaries first: a plain `python3`/`python` lookup can resolve
+    # to macOS's ancient system stub (/usr/bin/python3, still 3.9.x) ahead of
+    # a newer Homebrew/pyenv install in a script's PATH — a bare `curl | bash`
+    # gets exactly this PATH, so this isn't just a local dev-shell quirk.
+    # Mirrors JROS's own installer's search order.
+    for cmd in python3.13 python3.12 python3.11 python3 python; do
         if command -v "$cmd" >/dev/null 2>&1; then
             if "$cmd" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
                 PYTHON_PATH=$(command -v "$cmd")
@@ -235,10 +294,11 @@ check_python() {
     done
     if [ -z "$PYTHON_PATH" ]; then
         log_error "Python 3.10+ not found. Install from https://python.org"
+        log_info "  macOS: brew install python@3.12"
         exit 1
     fi
     PYTHON_FOUND_VERSION=$("$PYTHON_PATH" --version 2>/dev/null)
-    log_success "Python found: $PYTHON_FOUND_VERSION"
+    log_success "Python found: $PYTHON_FOUND_VERSION ($PYTHON_PATH)"
 }
 
 # ============================================================================
@@ -302,6 +362,14 @@ setup_venv() {
         return 0
     fi
 
+    # PYTHON_PATH is set by check_python(), called from stage_prerequisites().
+    # In a full sequential run that already happened in this same process, but
+    # `--stage venv` runs standalone (the desktop bootstrap drives stages one
+    # at a time) — re-derive it here so this stage works in isolation too.
+    if [ -z "${PYTHON_PATH:-}" ]; then
+        check_python
+    fi
+
     log_info "Creating virtual environment..."
 
     if [ -d "venv" ]; then
@@ -333,15 +401,29 @@ install_deps() {
         exit 1
     fi
 
-    # Install Hermes Agent (needed for WebUI imports)
-    log_info "Installing Hermes Agent..."
-    if ! "$PIP_PYTHON" -m pip install hermes-agent 2>/dev/null; then
-        log_warn "hermes-agent not found via pip"
-        log_info "Trying git install..."
-        if ! "$PIP_PYTHON" -m pip install git+https://github.com/nousresearch/hermes-agent.git 2>/dev/null; then
-            log_warn "Could not install hermes-agent. WebUI will have limited functionality."
-            log_info "Install manually: pip install hermes-agent"
+    # Hermes Agent is an optional addition (coding/terminal/skills capability),
+    # not the Companion runtime — JROS already covers that. Only install it
+    # when explicitly requested via --with-hermes, or the operator opts in
+    # here on an interactive terminal.
+    if [ "$WITH_HERMES" != true ] && [ "$NON_INTERACTIVE" != true ] && [ "$IS_INTERACTIVE" = true ]; then
+        if prompt_yes_no "Also install Hermes Agent (optional coding/terminal addition)?" "no"; then
+            WITH_HERMES=true
         fi
+    fi
+
+    if [ "$WITH_HERMES" = true ]; then
+        log_info "Installing Hermes Agent (optional addition)..."
+        if ! "$PIP_PYTHON" -m pip install hermes-agent 2>/dev/null; then
+            log_warn "hermes-agent not found via pip"
+            log_info "Trying git install..."
+            if ! "$PIP_PYTHON" -m pip install git+https://github.com/nousresearch/hermes-agent.git 2>/dev/null; then
+                log_warn "Could not install hermes-agent. The Hermes addition will be unavailable."
+                log_info "Install manually later: pip install hermes-agent"
+                WITH_HERMES=false
+            fi
+        fi
+    else
+        log_info "Skipping Hermes Agent (optional addition — add later with --with-hermes)"
     fi
 
     log_success "All dependencies installed"
@@ -364,22 +446,29 @@ setup_config() {
     detect_jros
     selected_backend="$BACKEND_MODE"
     if [ "$selected_backend" = "auto" ]; then
-        selected_backend="hermes"
-        if [ "$JROS_DETECTED" = true ]; then
-            if prompt_yes_no "JROS was detected. Use JROS as the primary ARES backend?" "no"; then
-                selected_backend="jros"
-            fi
-        fi
+        # JROS is the required Companion runtime — it is always the default,
+        # regardless of whether Hermes was also installed as an addition.
+        selected_backend="jros"
     fi
     case "$selected_backend" in
         hermes|jros|hybrid) ;;
         *) log_error "Invalid backend mode: $selected_backend (expected auto, hermes, jros, or hybrid)"; exit 1 ;;
     esac
-
-    CONFIG_PYTHON="${PYTHON_PATH:-}"
-    if [ -z "$CONFIG_PYTHON" ]; then
-        CONFIG_PYTHON="$(command -v python3 || command -v python || true)"
+    if [ "$selected_backend" != "jros" ] && [ "$WITH_HERMES" != true ]; then
+        log_warn "Backend '$selected_backend' needs the Hermes addition, which was not installed."
+        log_warn "Falling back to jros. Re-run with --with-hermes --backend $selected_backend to use it."
+        selected_backend="jros"
     fi
+    if [ "$selected_backend" = "jros" ] && [ "${JROS_DETECTED:-false}" != true ]; then
+        log_error "Backend 'jros' selected but no JROS install was found at $JAEGER_HOME_DETECTED."
+        log_error "Re-run without --skip-jros, or install JROS manually and re-run."
+        exit 1
+    fi
+
+    if [ -z "${PYTHON_PATH:-}" ]; then
+        check_python
+    fi
+    CONFIG_PYTHON="${PYTHON_PATH:-}"
     if [ -z "$CONFIG_PYTHON" ]; then
         log_error "Python not found; cannot write ARES backend settings"
         exit 1
@@ -467,7 +556,9 @@ run_setup_wizard() {
 
     log_info "Setup wizard..."
     log_info "Open http://localhost:$PORT in your browser to complete setup."
-    log_info "The onboarding wizard will guide you through provider, password, and workspace configuration."
+    log_info "The onboarding wizard will walk you through naming your Companion (JROS),"
+    log_info "connecting from your other devices over Tailscale, and any optional"
+    log_info "additions (Hermes, cloud providers, MCP servers)."
 }
 
 # ============================================================================
@@ -485,6 +576,7 @@ if [ -n "$STAGE_NAME" ]; then
     case "$STAGE_NAME" in
         prerequisites) stage_prerequisites ;;
         repository) clone_repo ;;
+        jros) stage_jros ;;
         venv) setup_venv ;;
         python-deps) install_deps ;;
         config) setup_config ;;
@@ -504,9 +596,9 @@ fi
 # Full install
 print_banner
 detect_os
-detect_jros
 stage_prerequisites
 clone_repo
+stage_jros
 setup_venv
 install_deps
 setup_config

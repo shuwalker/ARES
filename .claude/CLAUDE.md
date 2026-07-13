@@ -15,20 +15,29 @@ This file defines mandatory rules for AI agents working in the ARES repository.
 ARES = Autonomous Reasoning & Execution System.
 
 ARES is a Mac-first presentation and integration layer for one user-facing AI
-assistant experience. It is not a multi-agent company simulator, and it is not
-a replacement for JROS or Hermes. It provides client applications, adapter
-configuration, identity projection, permission handling, remote access, and
-presence rendering over independent runtimes and capability providers.
+assistant experience: a Synthetic Intelligence Companion, named by its
+operator during onboarding, reachable from every device over Tailscale. It is
+not a multi-agent company simulator, and it is not a replacement for JROS or
+Hermes. It provides client applications, adapter configuration, identity
+projection, permission handling, remote access, and presence rendering over
+independent runtimes and capability providers.
 
 - ARES composes runtimes, tools, perception inputs, memory providers, voice
   services, avatar renderers, and device integrations behind one consistent
   user-facing assistant interface.
-- JROS is the primary embodied runtime candidate: agent loop, bridge/client
-  protocol, characters, voice/STT/TTS, tools/skills, event bus, hardware
-  abstraction, robotics, and local/cloud task routing.
-- Hermes Agent is an independent agent runtime ARES can call on for coding,
-  terminal work, skills, sessions, cron, model/provider routing, delegation,
-  memory-backed automation, and operations.
+- JROS is the required Companion runtime: agent loop, bridge/client protocol,
+  characters, voice/STT/TTS, tools/skills, event bus, hardware abstraction,
+  robotics, and local/cloud task routing. ARES has no Companion without it —
+  "Name your Companion" onboarding writes directly through JROS's own
+  `create_instance` (see `webui/api/jros_companion.py`), and `ares_backend`
+  defaults to `jros` (`api/backend_selector.py`). ARES never re-implements
+  JROS; it only detects an install or delegates to JROS's own installer.
+- Hermes Agent is an optional addition ARES can call on for coding, terminal
+  work, skills, sessions, cron, model/provider routing, delegation,
+  memory-backed automation, and operations. Not installed by default —
+  `webui/scripts/install.sh` only installs it with `--with-hermes` or an
+  explicit interactive opt-in. A missing Hermes must never block onboarding
+  or degrade the Companion; it only adds capability when present.
 - OpenAI/ChatGPT-compatible services are model, reasoning, tool, or macOS
   integration providers. They may supply capabilities, but they do not define
   the assistant identity by themselves.
@@ -132,11 +141,13 @@ External services must be optional/detected, not hardcoded:
 
 | Service | Default role | Expected configuration style |
 |---|---|---|
-| Hermes | Peer full agentic framework backend | configured URL/API key/env/template |
-| JROS | Peer full agentic framework backend | user-selected path/socket/env/template |
+| JROS | Required Companion runtime | installed via `webui/scripts/install.sh`'s `jros` stage (delegates to JROS's own installer); path via `ARES_JAEGER_HOME`/`JAEGER_HOME` |
+| Hermes | Optional addition backend | opt-in via `--with-hermes`; configured URL/API key/env/template |
 | ARES-native services | Product-owned UI/automation features | bundled/detected/configured per user |
 | Ollama/local models | Local model inference backend | detected localhost or configured URL |
-| Cloud providers | Remote model/tool providers | configured provider credentials/templates |
+| Cloud providers | Remote model/tool providers for the Companion's `external_model` (JROS) or Hermes, synced via `api/ares_provider_sync.py` — never the key itself, only provider/model/env-var name | configured provider credentials/templates |
 | Workflow tools | Automation/tool providers | detected/configured per user |
 
-ARES must degrade gracefully when optional services are absent.
+ARES must degrade gracefully when optional services (Hermes, cloud providers)
+are absent. JROS is the one exception: it is not optional, and onboarding
+must not silently proceed as if a Companion exists without it.

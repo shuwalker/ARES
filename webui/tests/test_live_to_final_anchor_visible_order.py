@@ -638,7 +638,7 @@ def test_recycled_assistant_turn_clears_live_anchor_attrs_before_role_refresh():
     recycle = recycle[recycle.index("if(!currentAssistantTurn){"):]
 
     loop_idx = recycle.index("for(const attr of _recycleResetAttrs) recycled.removeAttribute(attr);")
-    refresh_idx = recycle.index("if(role) role.outerHTML=_assistantRoleHtml(tsTitle, isTpsDisplayEnabled()?_formatTurnTps(m._turnTps):'');")
+    refresh_idx = recycle.index("if(role) role.outerHTML=_assistantRoleHtml(tsTitle, isTpsDisplayEnabled()?_formatTurnTps(m._turnTps):'', m.backend||'');")
     assert loop_idx < refresh_idx
 
 

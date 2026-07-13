@@ -1116,6 +1116,7 @@ class Session:
                  truncation_watermark=None,
                  truncation_boundary=None,
                  clear_generation=None,
+                 ares_backend=None,
                  gateway_routing=None, gateway_routing_history=None,
                  llm_title_generated: bool=False,
                  manual_title: bool=False,
@@ -1187,6 +1188,11 @@ class Session:
         self.truncation_watermark = truncation_watermark
         self.truncation_boundary = truncation_boundary
         self.clear_generation = clear_generation
+        self.ares_backend = (
+            str(ares_backend).strip().lower()
+            if str(ares_backend or "").strip().lower() in {"hermes", "jros", "hybrid"}
+            else None
+        )
         self.gateway_routing = gateway_routing if isinstance(gateway_routing, dict) else None
         self.gateway_routing_history = gateway_routing_history if isinstance(gateway_routing_history, list) else []
         self.llm_title_generated = bool(llm_title_generated)
@@ -1272,6 +1278,7 @@ class Session:
             'truncation_watermark',
             'truncation_boundary',
             'clear_generation',
+            'ares_backend',
             'gateway_routing', 'gateway_routing_history', 'llm_title_generated', 'manual_title',
             'parent_session_id',
             'worktree_path', 'worktree_branch', 'worktree_repo_root', 'worktree_created_at',
@@ -1631,6 +1638,7 @@ class Session:
             'post_compression_context_tokens_estimate': self.post_compression_context_tokens_estimate,
             'compression_recovery': self.compression_recovery,
             'recommended_recovery_action': self.recommended_recovery_action,
+            'ares_backend': self.ares_backend,
             'gateway_routing': self.gateway_routing,
             'gateway_routing_history': self.gateway_routing_history,
             'manual_title': self.manual_title,

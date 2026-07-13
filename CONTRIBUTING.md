@@ -24,7 +24,7 @@ By contributing to ARES, you agree that your contribution is compatible with the
 ## Before you start
 
 1. Read `CLAUDE.md`.
-2. Read `AGENTS.md`.
+2. Read `.claude/CLAUDE.md`.
 3. Read `README.md`.
 4. If working in WebUI, read the relevant files under `webui/` and run focused tests through `webui/scripts/test.sh`.
 

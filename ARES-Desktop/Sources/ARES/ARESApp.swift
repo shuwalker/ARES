@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import WebKit
 import ARESCore
+import SwiftTerm
 
 @MainActor
 @main
@@ -10,7 +11,7 @@ struct ARESApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ARESWebView()
+            ARESMainView()
                 .frame(minWidth: 1024, minHeight: 700)
                 .preferredColorScheme(.dark)
         }
@@ -41,6 +42,110 @@ struct ARESApp: App {
         } else {
             NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
         }
+    }
+}
+
+struct ARESMainView: View {
+    var body: some View {
+        TabView {
+            ARESWebView()
+                .tabItem {
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                }
+
+            RuntimeTerminalView(
+                title: "Hermes Agent",
+                command: RuntimeTerminalCommand.hermes
+            )
+            .tabItem {
+                Label("Hermes Agent", systemImage: "terminal")
+            }
+
+            RuntimeTerminalView(
+                title: "JROS",
+                command: RuntimeTerminalCommand.jros
+            )
+            .tabItem {
+                Label("JROS", systemImage: "rectangle.connected.to.line.below")
+            }
+        }
+    }
+}
+
+private enum RuntimeTerminalCommand {
+    static let hermes = """
+    clear
+    printf '\\033[1;33mHermes Agent TUI\\033[0m\\n'
+    printf 'ARES developer tab. Starting Hermes Agent if it is installed.\\n\\n'
+    if command -v hermes-agent >/dev/null 2>&1; then
+      exec hermes-agent
+    elif command -v hermes >/dev/null 2>&1; then
+      exec hermes
+    else
+      printf 'Hermes Agent CLI was not found on PATH.\\n'
+      printf 'Install/start Hermes Agent, then run hermes or hermes-agent here.\\n\\n'
+      exec /bin/zsh -l
+    fi
+    """
+
+    static let jros = """
+    clear
+    printf '\\033[1;36mJROS TUI\\033[0m\\n'
+    printf 'ARES developer tab. Starting JROS/Jaeger if it is installed.\\n\\n'
+    if command -v jaeger >/dev/null 2>&1; then
+      exec jaeger
+    elif [ -d "$HOME/GitHub/JROS" ]; then
+      cd "$HOME/GitHub/JROS"
+      printf 'Found JROS at ~/GitHub/JROS. Start its built-in UI or gateway from this shell.\\n'
+      printf 'Common next step: jaeger gateway\\n\\n'
+      exec /bin/zsh -l
+    else
+      printf 'JROS was not found on PATH or at ~/GitHub/JROS.\\n'
+      printf 'Install JROS, then run jaeger or jaeger gateway here.\\n\\n'
+      exec /bin/zsh -l
+    fi
+    """
+}
+
+struct RuntimeTerminalView: View {
+    let title: String
+    let command: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color(nsColor: .windowBackgroundColor))
+
+            RuntimeTerminalRepresentable(command: command)
+        }
+        .background(Color.black)
+    }
+}
+
+struct RuntimeTerminalRepresentable: NSViewRepresentable {
+    let command: String
+
+    func makeNSView(context: Context) -> LocalProcessTerminalView {
+        let terminal = LocalProcessTerminalView(frame: .zero)
+        terminal.caretViewTracksFocus = true
+        terminal.startProcess(
+            executable: "/bin/zsh",
+            args: ["-lc", command],
+            currentDirectory: FileManager.default.homeDirectoryForCurrentUser.path
+        )
+        return terminal
+    }
+
+    func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {}
+
+    static func dismantleNSView(_ nsView: LocalProcessTerminalView, coordinator: ()) {
+        nsView.terminate()
     }
 }
 

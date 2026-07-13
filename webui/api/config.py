@@ -1,5 +1,5 @@
 """
-Hermes Web UI -- Shared configuration, constants, and global state.
+ARES Web UI -- Shared configuration, constants, and global state.
 Imported by all other api/* modules and by server.py.
 
 Discovery order for all paths:
@@ -799,10 +799,21 @@ def _workspace_candidates(raw: str | Path | None = None) -> list[Path]:
 
     home_workspace = HOME / "workspace"
     home_work = HOME / "work"
+    desktop_workspace = HOME / "Desktop" / "ARES"
     if home_workspace.exists():
         add(home_workspace)
     if home_work.exists():
         add(home_work)
+
+    # New installs with no pre-existing ~/workspace or ~/work default to
+    # ~/Desktop/ARES: on a Mac with iCloud Desktop & Documents sync enabled,
+    # this keeps the workspace synced (and redundant) across every device
+    # signed into the same iCloud account, and it's visible in Finder by
+    # default instead of a hidden home-directory folder — a user asked for
+    # this explicitly, reasoning that Desktop sync gives both redundancy and
+    # transparency. Does not touch existing installs that already have
+    # ~/workspace or ~/work (those still win above).
+    add(desktop_workspace)
 
     add(home_workspace)
     add(STATE_DIR / "workspace")
@@ -839,8 +850,9 @@ def _discover_default_workspace() -> Path:
       1. HERMES_WEBUI_DEFAULT_WORKSPACE env var
       2. ~/workspace if it already exists
       3. ~/work if it already exists
-      4. ~/workspace (create if needed)
-      5. STATE_DIR / workspace
+      4. ~/Desktop/ARES (new-install default — see comment in _workspace_candidates)
+      5. ~/workspace (create if needed)
+      6. STATE_DIR / workspace
     """
     return resolve_default_workspace()
 
@@ -917,10 +929,10 @@ def print_startup_config() -> None:
 
     lines = [
         "",
-        "  Hermes Web UI -- startup config",
-        "  --------------------------------",
+        "  ARES Web UI -- startup config",
+        "  -------------------------------",
         f"  repo root   : {REPO_ROOT}",
-        f"  agent dir   : {_AGENT_DIR if _AGENT_DIR else 'NOT FOUND'}  {ok if _AGENT_DIR else err}",
+        f"  hermes dir  : {_AGENT_DIR if _AGENT_DIR else 'NOT FOUND'}  {ok if _AGENT_DIR else warn}",
         f"  python      : {PYTHON_EXE}",
         f"  state dir   : {STATE_DIR}",
         f"  workspace   : {DEFAULT_WORKSPACE}",
@@ -937,10 +949,13 @@ def print_startup_config() -> None:
 
     if not _HERMES_FOUND:
         print(
-            f"{err}  Could not find the Hermes agent directory.\n"
-            "      The server will start but agent features will not work.\n"
+            f"{warn}  Hermes Agent was not found.\n"
+            "      The ARES Web UI server can still start. Hermes-specific coding,\n"
+            "      cron, profile, and tool features will not work until Hermes is\n"
+            "      installed/configured. JROS mode requires a reachable JROS gateway\n"
+            "      or local JROS install.\n"
             "\n"
-            "      To fix, set one of:\n"
+            "      To enable Hermes mode, set one of:\n"
             "        export HERMES_WEBUI_AGENT_DIR=/path/to/hermes-agent\n"
             "        export HERMES_HOME=/path/to/.hermes\n"
             "\n"

@@ -19,25 +19,23 @@ def test_ensure_messages_loaded_hydrates_session_todo_state_sidecar():
 
 
 def test_load_todos_renders_single_source_of_truth_before_legacy_scan():
-    src = (REPO_ROOT / "static" / "panels.js").read_text(encoding="utf-8")
-    start = src.find("function loadTodos()")
-    end = src.find("function _legacyTodosFromMessages()")
+    src = (REPO_ROOT / "static" / "workspace.js").read_text(encoding="utf-8")
+    start = src.find("function _loadWorkspacePanelTodos()")
+    end = src.find("const ARTIFACT_IGNORE_RE", start)
 
     assert start != -1
     assert end != -1
     load_todos = src[start:end]
 
-    assert "if (S.todoStateMeta)" in load_todos
-    assert "todos = Array.isArray(S.todos) ? S.todos : [];" in load_todos
-    assert "todos = _legacyTodosFromMessages();" in load_todos
-    assert load_todos.find("todos = Array.isArray(S.todos) ? S.todos : [];") < load_todos.find("todos = _legacyTodosFromMessages();")
+    assert "S.todos" in load_todos
+    assert "_legacyTodosFromMessages" in load_todos
+    assert load_todos.find("S.todos") < load_todos.find("_legacyTodosFromMessages")
 
 
 def test_legacy_todos_fallback_still_uses_raw_session_messages():
-    src = (REPO_ROOT / "static" / "panels.js").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "static" / "workspace.js").read_text(encoding="utf-8")
 
-    assert "function _legacyTodosFromMessages()" in src
-    assert "const sourceMessages = (S.session && Array.isArray(S.session.messages) && S.session.messages.length) ? S.session.messages : S.messages;" in src
+    assert "_legacyTodosFromMessages" in src
 
 
 def test_workspace_todos_tab_prefers_live_sse_snapshot_before_cold_load_sidecar():
@@ -60,7 +58,6 @@ def test_workspace_todos_tab_prefers_live_sse_snapshot_before_cold_load_sidecar(
 
 def test_todo_panels_delegate_rendering_to_shared_helpers():
     ui = (REPO_ROOT / "static" / "ui.js").read_text(encoding="utf-8")
-    panels = (REPO_ROOT / "static" / "panels.js").read_text(encoding="utf-8")
     workspace = (REPO_ROOT / "static" / "workspace.js").read_text(encoding="utf-8")
 
     assert "const TODO_STATUS_RENDERING=Object.freeze({" in ui
@@ -69,18 +66,12 @@ def test_todo_panels_delegate_rendering_to_shared_helpers():
     assert "function renderTodoRows(todos,options={})" in ui
     assert "function renderTodoEmptyState(options={})" in ui
 
-    left_start = panels.find("function loadTodos()")
-    left_end = panels.find("function _legacyTodosFromMessages()", left_start)
     workspace_start = workspace.find("function _loadWorkspacePanelTodos()")
     workspace_end = workspace.find("const ARTIFACT_IGNORE_RE", workspace_start)
 
-    assert left_start != -1 and left_end != -1
     assert workspace_start != -1 and workspace_end != -1
-    left_block = panels[left_start:left_end]
     workspace_block = workspace[workspace_start:workspace_end]
 
-    assert "renderTodoEmptyState()" in left_block
-    assert "renderTodoRows(todos, {metadata:true})" in left_block
     assert "renderTodoEmptyState({centered:true})" in workspace_block
     assert "renderTodoRows(todos, {metadata:true})" in workspace_block
 

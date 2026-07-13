@@ -16,25 +16,22 @@ The only swapped piece is execution, which resolves in this order:
        # where ARES runs
        export ARES_JROS_GATEWAY_URL=http://<jros-host>:8643
 
-2. **In-process fallback** — when no gateway is reachable but a local
+2. **Bridge fallback** — when no gateway is reachable but a local
    Jaeger/JROS install is discoverable from ``ARES_JAEGER_HOME``,
    ``JAEGER_HOME``, the standard ``~/jaeger`` install path, or the legacy
-   ``ARES_JROS_DIR`` source-checkout override, ARES boots JROS inside
-   itself and runs the turn directly, so the local flip-the-toggle case
-   needs no extra program at all. The two failure modes that sank the
-   old in-process-only bridge surface as actionable errors instead of
-   crashes: an already-running JROS (its exclusive instance lock) says
-   close it or run ``jaeger gateway``, and a missing instance says run
-   ``jaeger setup`` — the interactive wizard is never launched inside the
-   web server.
+   ``ARES_JROS_DIR`` source-checkout override, ARES spawns JROS's
+   ``jaeger bridge`` and speaks the documented v1 NDJSON client protocol
+   over stdio. That keeps JROS inside its own venv/native dependency
+   environment while preserving the local flip-the-toggle case. Bridge
+   failures surface as actionable errors instead of crashes: an
+   already-running JROS (its exclusive instance lock) says close it or run
+   ``jaeger gateway``, and a missing instance says run ``jaeger setup``.
 """
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import os
-import sys
 import threading
 import time
 import urllib.error
@@ -59,9 +56,10 @@ from api.config import (
     update_active_run,
 )
 from api.helpers import _redact_text, redact_session_data
+from api.jros_client import JrosClient, JrosError
 from api.models import get_session, merge_session_messages_append_only
 from api.run_journal import RunJournalWriter
-from api.jros_paths import jaeger_home, jros_instance_name
+from api.jros_paths import discover_jros_source_root, jaeger_home, jros_instance_name
 
 logger = logging.getLogger(__name__)
 
@@ -121,11 +119,11 @@ def reset_jros_boot() -> None:
     JROS has no live model hot-swap (its client's model is fixed at
     construction time), so provider/model changes written to JROS's
     config.yaml (see api.ares_provider_sync) only apply after a re-boot.
-    Covers both execution paths: the in-process fallback's cached boot is
+    Covers both execution paths: the bridge fallback's cached client is
     dropped here, and the gateway is asked to re-boot via POST /v1/reset.
     Best-effort: an unreachable gateway just means the next operator-run
     gateway boots fresh from disk anyway."""
-    _reset_local_boot()
+    _reset_local_bridge_clients()
     url = f"{jros_gateway_base_url()}/v1/reset"
     req = urllib.request.Request(
         url, data=b"{}",
@@ -139,17 +137,18 @@ def reset_jros_boot() -> None:
         logger.debug("JROS gateway reset skipped (gateway unreachable)", exc_info=True)
 
 
-# ── in-process fallback (no gateway, JROS on this machine) ──────────────
+# ── bridge fallback (no gateway, JROS on this machine) ──────────────────
 
 _JROS_DIR_ENV = "ARES_JROS_DIR"
 _JROS_INSTANCE_ENV = "ARES_JROS_INSTANCE"
 
 _BOOT_LOCK = threading.RLock()
-_BOOT: Any | None = None
+_BRIDGE_CLIENTS: dict[str, JrosClient] = {}
+_BRIDGE_TURN_LOCKS: dict[str, threading.RLock] = {}
 
 
 def local_jros_root() -> Path | None:
-    """The local JROS runtime/source root for in-process fallback, or None.
+    """The local JROS runtime/source root for bridge fallback, or None.
 
     Resolution order keeps explicit source checkouts first, then the installed
     Jaeger/JROS runtime path. This is what the installer detects as ``~/jaeger``
@@ -165,100 +164,183 @@ def local_jros_root() -> Path | None:
     try:
         root = jaeger_home()
     except Exception:
-        return None
-    return root if (root / "jaeger_os").is_dir() else None
+        root = None
+    if root is not None and (root / "jaeger_os").is_dir():
+        return root
+    return discover_jros_source_root()
 
 
 def _jros_instance_name() -> str | None:
     return os.environ.get(_JROS_INSTANCE_ENV, "").strip() or jros_instance_name()
 
 
-def _boot_jros() -> Any:
-    """Boot and cache the local JROS pipeline for in-process turns.
+def _jros_hermes_tools_enabled() -> bool:
+    """Whether the Companion should boot with Hermes's tools reachable over
+    MCP — an opt-in addition on top of the jros backend, not a competing
+    backend mode. See api.jros_hermes_mcp for the config-sync side."""
+    try:
+        from api.config import get_config
 
-    Guards the two ways this used to crash the web server: a missing
-    instance no longer fires JROS's interactive setup wizard, and the
-    exclusive instance lock held by a running JROS app/TUI becomes an
-    actionable message instead of a bare "locked by pid" error."""
-    global _BOOT
+        return bool(get_config().get("jros_hermes_tools_enabled"))
+    except Exception:
+        return False
+
+
+def _bridge_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+    lower = message.lower()
+    if "lock" in lower:
+        return (
+            "JROS is already running on this machine, so ARES can't start a "
+            "second copy (JROS allows one process per instance). Close the "
+            "running JROS app/TUI, or run `jaeger gateway` instead of it so "
+            f"ARES can talk to JROS over the gateway. (Original error: {message})"
+        )
+    if "no instance" in lower or "instance" in lower and ("not found" in lower or "does not exist" in lower):
+        return f"{message} — run `jaeger setup` on the machine where JROS is installed first."
+    return message
+
+
+def _get_or_start_bridge_client(instance: str | None = None) -> JrosClient:
+    """Start and cache one ``jaeger bridge`` client per JROS instance.
+
+    The bridge launcher uses JROS's own venv interpreter, so ARES never imports
+    native JROS ML packages into the WebUI venv.
+    """
+    key = instance or "__default__"
     with _BOOT_LOCK:
-        if _BOOT is not None:
-            return _BOOT
+        existing = _BRIDGE_CLIENTS.get(key)
+        if existing is not None:
+            return existing
         root = local_jros_root()
         if root is None:
-            raise RuntimeError(
+            raise JrosError(
                 "No local JROS runtime was found. Install JROS at ~/jaeger, "
                 "set ARES_JAEGER_HOME/JAEGER_HOME to your Jaeger install, "
                 "set ARES_JROS_DIR to a source checkout containing jaeger_os/, "
                 "or start a JROS gateway."
             )
-        if str(root) not in sys.path:
-            sys.path.insert(0, str(root))
-        from jaeger_os.core.instance.instance import (
-            InstanceLayout, default_instance_name, resolve_instance_dir)
-
-        instance = _jros_instance_name() or default_instance_name()
-        layout = InstanceLayout(resolve_instance_dir(instance))
-        if not layout.exists():
-            raise RuntimeError(
-                f"no JROS instance named {instance!r} exists yet — run "
-                "`jaeger setup` on the machine where JROS is installed first."
-            )
-        from jaeger_os.main import boot_for_tui
-
+        client = JrosClient(jaeger_home=str(root), instance=instance)
         try:
-            with contextlib.redirect_stdout(sys.stderr):
-                _BOOT = boot_for_tui(instance_name=instance, with_memory=True,
-                                     warmup=False, prewarm_model=False)
-        except RuntimeError as exc:
-            if "lock" in str(exc).lower():
-                raise RuntimeError(
-                    "JROS is already running on this machine, so ARES can't "
-                    "start a second copy (JROS allows one process per "
-                    "instance). Close the running JROS app/TUI, or run "
-                    "`jaeger gateway` instead of it so ARES can talk to JROS "
-                    f"over the gateway. (Original error: {exc})"
-                ) from exc
-            raise
-        return _BOOT
+            client.start()
+        except Exception as exc:
+            client.close()
+            if isinstance(exc, JrosError):
+                raise JrosError(_bridge_error_message(exc)) from exc
+            raise JrosError(_bridge_error_message(exc)) from exc
+        _BRIDGE_CLIENTS[key] = client
+        _BRIDGE_TURN_LOCKS.setdefault(key, threading.RLock())
+        return client
 
 
-def _reset_local_boot() -> None:
-    """Drop the in-process boot cache, releasing JROS's instance lock."""
-    global _BOOT
+def _reset_local_bridge_clients() -> None:
+    """Drop cached bridge clients, releasing JROS's instance lock."""
     with _BOOT_LOCK:
-        boot, _BOOT = _BOOT, None
-    cleanup = getattr(boot, "cleanup", None) if boot is not None else None
-    if callable(cleanup):
+        clients = list(_BRIDGE_CLIENTS.values())
+        _BRIDGE_CLIENTS.clear()
+        _BRIDGE_TURN_LOCKS.clear()
+    for client in clients:
         try:
-            cleanup()
+            client.close()
         except Exception:
-            logger.debug("Local JROS boot cleanup failed", exc_info=True)
+            logger.debug("Local JROS bridge cleanup failed", exc_info=True)
 
 
-def _run_local_jros_turn(msg_text: str, session_id: str, cancel_event: threading.Event) -> tuple[str, str, list[str]]:
-    """One in-process JROS turn. Returns (text, error, tool_activity);
-    boot/import failures come back as the error string so the caller can
-    surface them as a normal apperror instead of a crashed stream."""
+def _translate_bridge_frame(frame: dict[str, Any], put_jros_event, stream_id: str) -> None:
+    kind = str(frame.get("type") or "").strip().lower()
+    if kind == "tool":
+        name = str(frame.get("name") or frame.get("tool") or "jros").strip() or "jros"
+        status = str(frame.get("status") or frame.get("event") or frame.get("state") or "").strip().lower()
+        event_type = "tool.completed" if status in ("done", "complete", "completed", "ok") else "tool.running"
+        preview = str(
+            frame.get("preview")
+            or frame.get("message")
+            or frame.get("label")
+            or frame.get("text")
+            or name
+        ).strip()
+        is_error = bool(frame.get("is_error") or frame.get("error") or status in ("error", "failed", "fail"))
+        payload = {
+            "event_type": "tool.failed" if is_error else event_type,
+            "name": name,
+            "preview": preview,
+            "is_error": is_error,
+        }
+        if isinstance(frame.get("args"), dict):
+            payload["args"] = frame["args"]
+        if stream_id in STREAM_LIVE_TOOL_CALLS:
+            STREAM_LIVE_TOOL_CALLS[stream_id].append({
+                "name": name,
+                "args": payload.get("args") or {"preview": preview},
+                "done": payload["event_type"] != "tool.running",
+            })
+        put_jros_event("tool", payload)
+        return
+    if kind == "state":
+        message = str(frame.get("message") or frame.get("text") or frame.get("state") or "").strip()
+        if message:
+            put_jros_event("reasoning", {"text": message})
+
+
+def _run_local_jros_turn(
+    msg_text: str,
+    session_id: str,
+    cancel_event: threading.Event,
+    put_jros_event=None,
+    stream_id: str = "",
+) -> tuple[str, str, list[str]]:
+    """One local JROS bridge turn. Returns (text, error, tool_activity)."""
+    instance = _jros_instance_name()
+    key = instance or "__default__"
+    client: JrosClient | None = None
     try:
-        boot = _boot_jros()
+        client = _get_or_start_bridge_client(instance)
         if cancel_event.is_set():
             return "", "", []
-        from jaeger_os.main import run_for_voice
+        lock = _BRIDGE_TURN_LOCKS.setdefault(key, threading.RLock())
+        tool_activity: list[str] = []
 
-        with contextlib.redirect_stdout(sys.stderr):
-            result = run_for_voice(boot.client, str(msg_text or ""),
-                                   session_key=f"webui:{session_id}")
+        def on_event(frame: dict[str, Any]) -> None:
+            if cancel_event.is_set():
+                return
+            if isinstance(frame, dict):
+                preview = str(
+                    frame.get("preview")
+                    or frame.get("message")
+                    or frame.get("label")
+                    or frame.get("text")
+                    or frame.get("name")
+                    or frame.get("tool")
+                    or ""
+                ).strip()
+                if preview:
+                    tool_activity.append(preview)
+                if put_jros_event is not None:
+                    _translate_bridge_frame(frame, put_jros_event, stream_id)
+
+        with lock:
+            result = client.turn(
+                str(msg_text or ""),
+                session=f"webui:{session_id}",
+                on_event=on_event,
+                on_request=lambda _frame: "deny",
+            )
     except Exception as exc:
-        logger.warning("Local JROS turn failed: %s", exc, exc_info=True)
-        return "", str(exc), []
+        if client is not None:
+            with _BOOT_LOCK:
+                if _BRIDGE_CLIENTS.get(key) is client:
+                    _BRIDGE_CLIENTS.pop(key, None)
+                    _BRIDGE_TURN_LOCKS.pop(key, None)
+            try:
+                client.close()
+            except Exception:
+                logger.debug("Failed to close errored JROS bridge", exc_info=True)
+        logger.warning("Local JROS bridge turn failed: %s", exc, exc_info=True)
+        return "", _bridge_error_message(exc), []
     payload = dict(result or {}) if isinstance(result, dict) else {}
     error = str(payload.get("error") or "").strip()
     text = str(payload.get("text") or "").strip()
-    tool_activity = payload.get("tool_activity") or []
-    if not isinstance(tool_activity, list):
-        tool_activity = [str(tool_activity)]
-    return text, error, [str(item) for item in tool_activity if str(item).strip()]
+    return text, error, [] if put_jros_event is not None else tool_activity
 
 
 def _stream_writeback_is_current(session: Any, stream_id: str) -> bool:
@@ -560,12 +642,12 @@ def _run_jros_chat_streaming(
                 raise
             if local_jros_root() is None:
                 raise
-            # No gateway, but JROS lives on this machine: run the turn
-            # in-process (flip-the-toggle-and-it-works for the local case).
+            # No gateway, but JROS lives on this machine: run the turn through
+            # the local JROS bridge (flip-the-toggle-and-it-works locally).
             ran_locally = True
             update_active_run(stream_id, phase="jros-local")
             final_text, turn_error, tool_activity = _run_local_jros_turn(
-                msg_text, session_id, cancel_event
+                msg_text, session_id, cancel_event, put_jros_event, stream_id
             )
             if cancel_event.is_set():
                 put_jros_event("cancel", {"message": "Cancelled by user"})
@@ -649,7 +731,7 @@ def _run_jros_chat_streaming(
                 "type": "jros_local_error" if ran_locally else "jros_error",
                 "message": _redact_text(turn_error)[:500],
                 "hint": (
-                    "ARES ran JROS in-process on this machine (no gateway was reachable)."
+                    "ARES ran JROS through the local bridge on this machine (no gateway was reachable)."
                     if ran_locally
                     else "ARES reached the JROS gateway. Check JROS provider config/quota if the model call failed."
                 ),
@@ -661,7 +743,7 @@ def _run_jros_chat_streaming(
                 "type": "jros_empty_response",
                 "message": "JROS returned no assistant message for this turn.",
                 "hint": (
-                    "JROS ran on this machine (in-process) but produced no reply. Check its model provider."
+                    "JROS ran on this machine through the local bridge but produced no reply. Check its model provider."
                     if ran_locally
                     else f"Check the JROS gateway at {base_url} and its model provider."
                 ),

@@ -74,6 +74,10 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(hermesURL, forKey: "ares.config.hermesURL") }
     }
 
+    @Published public var jrosURL: String = UserDefaults.standard.string(forKey: "ares.config.jrosURL") ?? "http://127.0.0.1:8643" {
+        didSet { UserDefaults.standard.set(jrosURL, forKey: "ares.config.jrosURL") }
+    }
+
     @Published public var ollamaURL: String = UserDefaults.standard.string(forKey: "ares.config.ollamaURL") ?? "http://localhost:11434" {
         didSet { UserDefaults.standard.set(ollamaURL, forKey: "ares.config.ollamaURL") }
     }
@@ -98,10 +102,21 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(hermesAPIKey, forKey: "ares.config.hermesAPIKey") }
     }
 
+    /// JROS/Jaeger Gateway API key. Stored locally for Finder-launched app
+    /// sessions and exported as ARES_JROS_GATEWAY_KEY when ARES starts WebUI.
+    @Published public var jrosAPIKey: String = ProcessInfo.processInfo.environment["ARES_JROS_GATEWAY_KEY"]
+        ?? UserDefaults.standard.string(forKey: "ares.config.jrosAPIKey") ?? "" {
+        didSet { UserDefaults.standard.set(jrosAPIKey, forKey: "ares.config.jrosAPIKey") }
+    }
+
     // MARK: - Parsed URLs (fall back to defaults if the stored string is malformed)
 
     public var hermesBaseURL: URL {
         Self.validHTTPURL(from: hermesURL) ?? URL(string: "http://localhost:8642")!
+    }
+
+    public var jrosBaseURL: URL {
+        Self.validHTTPURL(from: jrosURL) ?? URL(string: "http://127.0.0.1:8643")!
     }
 
     public var ollamaBaseURL: URL {

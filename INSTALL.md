@@ -1,193 +1,96 @@
-# ARES — Windows Desktop Skeleton
-#
-# From an agent's perspective this branch IS the product source.
-# Run the steps below in order; each section ends in a verification command.
+# Installing And Running ARES
 
----
-## 0 · Prerequisites
+ARES currently supports three practical local run paths and two planned
+packaging paths.
 
-| Tool            | Minimum version | Check command                 |
-|-----------------|-----------------|-------------------------------|
-| Git             | 2.30+           | `git --version`               |
-| Node.js         | 18 LTS+         | `node --version`              |
-| Python          | 3.11+            | `python --version`            |
-| Rust / rustup   | stable 1.78+    | `rustc --version`             |
-| MSVC build env  | VS Build Tools  | `cl.exe` must be on PATH      |
-| curl / wget     | any             | used for cloning + downloads  |
+## Web Mode
 
-Verify Rust build tools:
-```
-rustup show
-rustc --version
-cargo --version
+Use this when you want the browser-based ARES Web UI.
+
+```bash
+cd /path/to/ARES
+./start.sh
 ```
 
-### Install Rust (if missing)
-```
-winget install Rustlang.Rustup
-# or visit https://www.rust-lang.org/tools/install and run rustup-init.exe
-# Ensure MSVC target:
-rustup default stable-x86_64-pc-windows-msvc
+Then open:
+
+```text
+http://localhost:8787
 ```
 
-### Install cargo-tauri
+The root `start.sh` is a convenience wrapper around `webui/start.sh`.
+
+## Developer Mac App Mode
+
+Use this when you want the native macOS shell with menu bar controls, native
+settings, server control, remote access status, and the Web UI inside a
+`WKWebView`.
+
+```bash
+cd /path/to/ARES
+swift run ARES
 ```
-cargo install cargo-tauri --locked
-```
 
----
-## 1 · Clone the public `spiral` branch
+The Mac app expects the Web UI source and Python environment to exist in the
+repo checkout. It can start the Web UI server for you, but it is not yet a
+fully self-contained drag-and-drop app.
 
-```
-git clone --branch spiral --depth 1 git@github.com:shuwalker/ARES.git
-cd ARES
-```
+## Windows Companion App Mode
 
-The branch contains ONLY:
-- `src-tauri/` — Tauri shell (Rust + tauri.conf.json)
-- `AGENTS.md` — this repo's agent guide
-- `docs/` — screenshots + install guide
-- `webui/` — ARES Web UI (Python server + static JS frontend)
+Use this when you want the Windows native wrapper around the ARES Web UI. This
+is the Windows version of the native app idea: a Tauri shell that opens the Web
+UI in a desktop window and can grow native Windows integrations around it.
 
-Local-only files (never committed) like `.env`, `.venv/`, and wrapper venvs
-are auto-ignored via `.gitignore`.
-
----
-## 2 · Install the ARES Web UI
-
-The web UI ships as raw Python + static assets — no JS bundler required.
-
-```
+```powershell
+cd /path/to/ARES
 cd webui
-python -m venv .venv
-source .venv/bin/activate      # Git Bash / MSYS
-# Windows: source .venv/Scripts/activate
-pip install -r requirements.txt
-pip install -e .
-deactivate
-cd ..
+.\.venv\Scripts\python.exe server.py
 ```
 
-Verify:
-```
-python webui/server.py --help   # should print usage, not crash
-```
+In a second PowerShell window, build/run the Tauri wrapper from:
 
----
-## 3 · Run the Web UI server (dev)
-
-```
-cd webui
-python server.py
-```
-
-Open http://127.0.0.1:8787 — the ARES dashboard should load.
-
-Verify:
-```
-curl -s http://127.0.0.1:8787 | head -5
-```
-
-The server is self-contained; no database or Docker is required for
-local development.
-
----
-## 4 · Build the Tauri desktop wrapper (Windows)
-
-### 4a · cargo-tauri dev (debug build, windowed)
-```
-cd src-tauri
+```powershell
+cd /path/to/ARES
+cd ARES-Windows
 cargo tauri dev
 ```
-A Tauri window opens and loads http://127.0.0.1:8787 automatically.
 
-### 4b · cargo-tauri build (release build, installable)
-```
-cd src-tauri
-cargo tauri build
-```
+The current Windows wrapper expects the Web UI to already be running on
+`http://127.0.0.1:8787`. The intended next step is to make the Windows wrapper
+start/stop the Web UI itself, similar to the Mac developer app.
 
-Artifacts land in:
-```
-src-tauri/target/release/bundle/nsis/ARES Setup 0.1.0.exe    ← Windows installer
-src-tauri/target/release/ARES.exe                             ← portable binary
-```
+## First Local Setup
 
-Verify:
-```
-ls src-tauri/target/release/bundle/nsis/
+Prepare the Web UI environment before using any run mode:
+
+```bash
+cd /path/to/ARES/webui
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
 ```
 
----
-## 5 · Expected runtime behavior
+Install/configure Hermes Agent and optional JROS separately as described in
+[README.md](README.md) and [webui/README.md](webui/README.md).
 
-1. First launch installs the app under `%LOCALAPPDATA%\ARES\`
-2. App starts **minimized to the system tray** on Windows (release mode)
-3. Left-click the tray icon or choose **Show / Hide** to restore the window
-4. Closing the window hides it to tray — Quit from the tray menu exits
-5. `webui/` must be running on port 8787 for the Tauri window to load content
-6. The desktop wrapper reads/writes state inside `%APPDATA%\ARES\` and
-   `%LOCALAPPDATA%\ARES\` (scoped in `tauri.conf.json`)
+## Future Standalone App Modes
 
----
-## 6 · What to commit vs keep local
+The planned standalone macOS package will bundle:
 
-**Commit:** `src-tauri/src/main.rs`, `src-tauri/tauri.conf.json`,
-`src-tauri/build.rs`, `src-tauri/Cargo.toml`, `src-tauri/icons/`,
-`AGENTS.md`, `docs/`, `.gitignore`.
+- `ARES.app`
+- `webui/`
+- Python runtime/environment
+- Python dependencies
+- first-run setup/onboarding
 
-**Never commit (auto-ignored):**
-- `webui/.venv/`, `webui/.env`, `webui/.ares_state/`, auth keys
-- `src-tauri/target/`, `src-tauri/dist/`
-- `windows-app/node_modules/`, `windows-app/dist/`
-- `.hermes/`, `.venv-ares-wrapper/`
+The planned standalone Windows package will do the same job through the Tauri
+wrapper in `ARES-Windows/`, producing a Windows installer/desktop app around
+the Web UI.
 
----
-## 7 · Troubleshooting
+That packaging is not complete yet. Current native builds are for
+local/developer use.
 
-**`cargo: command not found`**
-Add Rust to PATH: add `%USERPROFILE%\.cargo\bin` to System PATH and restart.
+## Windows Companion App Notes
 
-**`cl.exe not found`**
-Install "Desktop development with C++" workload via Visual Studio Installer.
-Open "x64 Native Tools Command Prompt for VS" before running cargo.
-
-**Tauri window stays blank**
-1. Ensure `python webui/server.py` is running first
-2. Check `http://127.0.0.1:8787` in Chrome — if the server is down the Tauri view shows an error page
-3. Tauri v1 logs go to `src-tauri/target/release/.tauri-session/`
-
-**Icon missing in tray**
-Tauri on Windows converts `icon.ico` to template; ensure
-`src-tauri/icons/icon.ico` exists inside `src-tauri/icons/`.
-
-**Build fails with CSS / WebKit errors**
-The Tauri shell does NOT bundle web assets. The `distDir` is `../webui`,
-so the web server must be present and running for `cargo tauri dev`.
-`cargo tauri build` in `custom-protocol` mode would need an extra build step;
-until then, release mode loads from the running server.
-
-**NSIS bundle not produced**
-Install Inno Setup or NSIS, or run:
-```
-cargo install tauri-cli --features=native-tls
-```
-Tauri's NSIS bundler ships pre-built; bunlde failures usually mean
-Visual Studio C++ build tools are missing.
-
----
-## 8 · Updating the branch
-
-From the repo root:
-```
-git pull origin spiral
-cd webui && git pull && cd ..
-cd src-tauri && cargo tauri build && cd ..
-```
-
-Commit only to the `spiral` branch from your fork;
-push to your own remote and open a PR against `shuwalker/ARES:spiral`.
-
----
-Last updated: 2026-07-05
-Product: ARES 0.1.0 (Tauri wrapper, Windows skeleton)
+The Windows/Tauri companion app notes live at
+[ARES-Windows/INSTALL.md](ARES-Windows/INSTALL.md).

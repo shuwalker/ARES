@@ -4,50 +4,26 @@ Reads character YAMLs from <JROS repo>/jaeger_os/personality/characters/<id>/cha
 (schema: character/v1).  Designed as a companion to api.persona — persona handles
 prompt rendering, this module exposes the raw data for the WebUI character browser.
 
-The JROS repo location is never assumed: it comes from ``ARES_JROS_DIR``, or
-``ARES_CHARACTER_DIR`` directly if the character library lives somewhere other
-than a JROS checkout. (Chat execution no longer needs a local checkout at all —
-it goes through the JROS gateway, see ``api.jros_gateway_chat`` — so these env
-vars only feed the character browser and update checks.)
+The JROS repo location is resolved through ``api.jros_paths``. ``ARES_JROS_DIR``
+and ``ARES_CHARACTER_DIR`` still win, but common local checkouts such as
+``~/GitHub/JROS`` are discovered automatically for developer installs.
 """
 
 from __future__ import annotations
 
-import os
 import logging
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 
+from api.jros_paths import character_dir
+
 logger = logging.getLogger(__name__)
-
-_CHARACTER_DIR_ENV = "ARES_CHARACTER_DIR"
-_JROS_DIR_ENV = "ARES_JROS_DIR"
-
-
-def _jros_repo_root() -> Path:
-    """Resolve the JROS repo checkout location.
-
-    There is no universal install path to guess — JROS is installed wherever
-    the operator put it, not necessarily under any particular developer's
-    directory layout. ``ARES_JROS_DIR`` must be set explicitly.
-    """
-    override = os.environ.get(_JROS_DIR_ENV, "").strip()
-    if not override:
-        raise RuntimeError(
-            "ARES_JROS_DIR is not set. Point it at your JROS checkout "
-            "(the directory containing jaeger_os/) to use the JROS "
-            "character library."
-        )
-    return Path(override).expanduser().resolve()
 
 
 def _character_dir() -> Path:
-    explicit = os.environ.get(_CHARACTER_DIR_ENV, "").strip()
-    if explicit:
-        return Path(explicit).expanduser()
-    return _jros_repo_root() / "jaeger_os" / "personality" / "characters"
+    return character_dir()
 
 
 def _parse_character(data: dict, yml_path: Path) -> Optional[dict[str, Any]]:

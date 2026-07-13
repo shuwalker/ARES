@@ -230,6 +230,12 @@
             var match = _characters.find(function (c) { return c.id === charId; });
             if (match) chip.textContent = match.name;
           }
+          if (typeof window.refreshAresIdentity === 'function') {
+            window.refreshAresIdentity();
+          } else {
+            if (typeof applyBotName === 'function') applyBotName();
+            if (typeof syncTopbar === 'function') syncTopbar();
+          }
         })
         .catch(function (err) {
           console.error('Failed to set character:', err);

@@ -35,6 +35,25 @@
 
 ## Quick Start
 
+### How To Run ARES Today
+
+ARES currently has three supported local run paths and two planned packaging
+paths:
+
+- **Developer mode:** run `swift run ARES` from the repo root. This launches
+  the native macOS shell, which wraps and controls the Web UI.
+- **Web mode:** run `./start.sh` from the repo root, then open
+  `http://localhost:8787` in a browser.
+- **Windows companion app mode:** run the Web UI, then run the Tauri wrapper
+  from `ARES-Windows/`. This is the Windows native shell path for wrapping the
+  Web UI and adding Windows desktop integrations.
+- **Future standalone modes:** package `ARES.app` on macOS and a Windows
+  installer from `ARES-Windows/`, each with `webui/`, a Python
+  runtime/environment, dependencies, and first-run setup. This is not complete
+  yet, so current native builds are for local/developer use.
+
+For a first local setup, prepare the Web UI environment first:
+
 ```bash
 git clone https://github.com/shuwalker/ARES.git
 cd ARES/webui
@@ -63,14 +82,37 @@ cp .env.example .env
 ### Native macOS App
 
 ```bash
+cd ARES
 swift run ARES
 ```
+
+### Windows Companion App
+
+```powershell
+cd ARES
+cd webui
+.\.venv\Scripts\python.exe server.py
+```
+
+In a second PowerShell window:
+
+```powershell
+cd ARES
+cd ARES-Windows
+cargo tauri dev
+```
+
+The Windows app currently loads the running Web UI from
+`http://127.0.0.1:8787`. Its goal is to become the Windows version of the ARES
+native shell, including native start/stop control for the Web UI and Windows
+tray/menu integrations.
 
 ## Features
 
 - **Single User-Facing Assistant Interface** — ARES composes runtimes, models, tools, voice, avatars, memory providers, and device integrations behind one consistent user experience.
 - **Runtime-Compatible Adapter Layer** — JROS, Hermes, OpenAI/ChatGPT-compatible services, and future systems connect through adapters. ARES presents and coordinates them without copying their internals.
 - **Mac-First Native Home** — SwiftUI app launches the Web UI, wraps it in WKWebView, and grows into the native menu/system integration layer for local Mac automation, status, notifications, and approvals.
+- **Windows Companion Shell** — Tauri app in `ARES-Windows/` wraps the Web UI for Windows and is the home for Windows tray/menu/server-control integrations.
 - **Web UI Everywhere** — Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on other devices over Tailscale/LAN while native apps are still Mac-first.
 - **JROS Embodiment Path** — JROS/Jaeger is the primary embodied runtime candidate. Turns can run through a JROS gateway (`jaeger gateway`) over HTTP on the same machine or another machine.
 - **Hermes Capability Path** — Hermes remains available as an independent runtime for coding, terminal work, skills, sessions, cron, memory-backed automation, provider routing, delegation, and operations.

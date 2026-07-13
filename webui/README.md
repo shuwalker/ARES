@@ -120,16 +120,16 @@ python3 webui/scripts/jros_gateway.py --jros-dir /path/to/JROS --host 0.0.0.0
 It auto-delegates to the native `jaeger gateway` once the checkout ships it.
 
 **No gateway? It still works locally.** When no gateway answers and
-`ARES_JROS_DIR` points at a JROS checkout on the same machine, ARES boots
-JROS inside itself and runs the turn in-process — flip the toggle and go,
-no extra program. Two caveats, reported as plain messages instead of
+`ARES_JROS_DIR` points at a JROS checkout on the same machine, ARES spawns
+`jaeger bridge` and speaks JROS's stdio protocol — flip the toggle and go,
+while JROS stays inside its own virtualenv. Two caveats, reported as plain messages instead of
 failures: JROS allows only one running copy per instance, so if the JROS
 app/TUI is already open you'll be asked to close it (or run `jaeger
 gateway` in its place); and a machine with no JROS instance yet is told to
 run `jaeger setup` first.
 
 Order of preference: gateway first (works for remote machines and alongside
-a running gateway), in-process fallback second (local convenience).
+a running gateway), local bridge fallback second (local convenience).
 
 Optional auth: set `JAEGER_GATEWAY_KEY` on the gateway and the same value in
 `ARES_JROS_GATEWAY_KEY` for ARES. The UI's JROS option lights up when the
@@ -145,11 +145,12 @@ update checker.
 - Optional JROS install for `jros` / `hybrid` runtime modes
 - See `requirements.txt` for WebUI Python dependencies
 
-## Compatibility Notes
+## Compatibility
 
-- WebUI and Hermes Agent should be upgraded/pinned together where possible.
-- Docker deployments should pin WebUI and agent images from the same release train/date.
-- JROS is treated as an external peer runtime, not a vendored Python package.
+- Upgrade both together: WebUI and hermes-agent must match.
+- Always pin both image tags in Docker configurations to avoid interface mismatches.
+- See [docs/docker.md](docs/docker.md) and [docs/rfcs/agent-source-boundary.md](docs/rfcs/agent-source-boundary.md).
+- Policy defined in context of issue #2491.
 
 ## More Docs
 
@@ -161,5 +162,5 @@ update checker.
 
 ## Common Local Host / Docker Failures
 
-- Container `localhost` means the container itself, not the host machine. To connect to host-local providers such as Ollama or Jaeger from Docker, use `host.docker.internal`.
-- `sudo docker compose up -d` can expand `${HOME}` to root's home. Set `HERMES_HOME` explicitly when bind-mounting an existing Hermes home.
+- Host API at `localhost` fails from WebUI. Container `localhost` means the container itself, not the host. Use `host.docker.internal` to reach host-local services.
+- `sudo docker compose up -d` can make `${HOME}` expand to the root user's home, so Docker mounts the wrong `.hermes` directory instead of your real `~/.hermes`. Set `HERMES_HOME=/home/you/.hermes` explicitly.
