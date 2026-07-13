@@ -236,7 +236,7 @@ def list_characters() -> list[dict[str, str]]:
 
 def create_companion(
     *,
-    character_id: str,
+    character_id: str | None = None,
     name: str | None = None,
     display_name: str | None = None,
     personality: str | None = None,
@@ -249,13 +249,20 @@ def create_companion(
     Raises ``ValueError`` with a user-facing message for the two expected
     failure modes (unknown character, name already taken); anything else
     propagates as a ``RuntimeError``."""
-    if not str(character_id or "").strip():
-        raise ValueError("character_id is required")
+    resolved_character_id = (character_id or "").strip()
+    if not resolved_character_id or resolved_character_id == "default":
+        # Fall back to the first available character when the user picks
+        # "Default (no character)" — the user's name, display_name and
+        # personality override the character's identity anyway.
+        roster = list_characters()
+        if not roster:
+            raise ValueError("No characters are installed. Install JaegerAI characters first.")
+        resolved_character_id = roster[0]["id"]
 
     result = _run_in_jros_venv(
         _CREATE_SCRIPT,
         stdin_payload={
-            "character_id": character_id,
+            "character_id": resolved_character_id,
             "name": name,
             "display_name": display_name,
             "personality": personality,

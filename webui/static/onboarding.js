@@ -367,7 +367,8 @@ function _renderOnboardingBody(){
     if(!ONBOARDING.form.companionVoice){
       ONBOARDING.form.companionVoice=(cd.voices&&cd.voices[0]&&cd.voices[0].id)||'';
     }
-    const characterOptions=characters.map(c=>`<option value="${esc(c.id)}"${c.id===ONBOARDING.form.companionCharacter?' selected':''}>${esc(c.name)}${c.role?' — '+esc(c.role):''}</option>`).join('');
+    const noneLabel=t('onboarding_companion_character_none')||'Default (no character)';
+    const characterOptions=`<option value=""${!ONBOARDING.form.companionCharacter?' selected':''}>${esc(noneLabel)}</option>`+characters.map(c=>`<option value="${esc(c.id)}"${c.id===ONBOARDING.form.companionCharacter?' selected':''}>${esc(c.name)}${c.role?' — '+esc(c.role):''}</option>`).join('');
     const voiceOptions=(cd.voices||[]).map(v=>`<option value="${esc(v.id)}"${v.id===ONBOARDING.form.companionVoice?' selected':''}>${esc(v.label)}</option>`).join('');
     const permOptions=(cd.permission_modes||[{id:'confirm',label:'Ask me before each action'},{id:'allow',label:'Auto-allow everything'}]).map(p=>`<option value="${esc(p.id)}"${p.id===ONBOARDING.form.companionPermissionMode?' selected':''}>${esc(p.label)}</option>`).join('');
     _setOnboardingNotice(t('onboarding_notice_companion')||'This creates your Companion — its name, character, and voice. Skills, memory, and model live with JROS from here on.','info');
@@ -850,7 +851,7 @@ async function nextOnboardingStep(){
       ONBOARDING.form.companionVoice=(($('onboardingCompanionVoiceSelect')||{}).value||ONBOARDING.form.companionVoice||'').trim();
       ONBOARDING.form.companionPermissionMode=(($('onboardingCompanionPermissionSelect')||{}).value||ONBOARDING.form.companionPermissionMode||'confirm').trim();
       if(!ONBOARDING.form.companionName) throw new Error(t('onboarding_error_companion_name_required')||'Give your Companion a name.');
-      if(!ONBOARDING.form.companionCharacter) throw new Error(t('onboarding_error_companion_character_required')||'Pick a character.');
+      // Character is optional — a blank choice creates a default soul AI from the personality text.
       if(!ONBOARDING._companionCreated){
         await api('/api/onboarding/companion/create',{method:'POST',body:JSON.stringify({
           display_name:ONBOARDING.form.companionName,
