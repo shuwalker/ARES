@@ -930,14 +930,19 @@ def get_onboarding_status() -> dict:
     # ARES: when backend is jros and JaegerAI is installed but no companion instance
     # exists yet, onboarding is not complete. If JaegerAI isn't installed at all
     # (e.g. test env or Hermes-only setup), don't block onboarding.
+    # Conversely, once a companion exists, onboarding is done — Hermes is optional.
     try:
         from api.backend_selector import BACKEND_JROS, get_active_backend
-        if (
-            get_active_backend(get_config()) == BACKEND_JROS
-            and companion_available()
-            and not companion_exists()
-        ):
-            settings["onboarding_completed"] = False
+        if get_active_backend(get_config()) == BACKEND_JROS and companion_available():
+            if not companion_exists():
+                settings["onboarding_completed"] = False
+            else:
+                if not settings.get("onboarding_completed"):
+                    settings["onboarding_completed"] = True
+                    try:
+                        save_settings({"onboarding_completed": True})
+                    except Exception:
+                        logger.debug("Failed to persist onboarding_completed", exc_info=True)
     except Exception:
         logger.debug("Companion guard failed in get_onboarding_status", exc_info=True)
 

@@ -168,10 +168,46 @@ def test_companion_exists_swallows_errors(monkeypatch):
     assert jros_companion.companion_exists() is False
 
 
-def test_create_companion_requires_character_id():
+def test_create_companion_fallback_to_first_character_when_blank(monkeypatch):
     from api import jros_companion
 
-    with pytest.raises(ValueError, match="character_id is required"):
+    captured = {}
+
+    def fake_run(script, *, stdin_payload=None):
+        captured["payload"] = stdin_payload
+        return {"ok": True, "name": "test-soul", "instance_dir": "/x/y/test-soul"}
+
+    def fake_defaults():
+        return {
+            "characters": [
+                {"id": "jarvis", "name": "Jarvis"},
+                {"id": "tars", "name": "TARS"},
+            ]
+        }
+
+    monkeypatch.setattr(jros_companion, "_run_in_jros_venv", fake_run)
+    monkeypatch.setattr(jros_companion, "companion_setup_defaults", fake_defaults)
+
+    # Empty character_id falls back to the first available character.
+    result = jros_companion.create_companion(character_id="", display_name="Test Soul")
+    assert result["ok"] is True
+    assert captured["payload"]["character_id"] == "jarvis"
+
+    # "default" also falls back.
+    captured.clear()
+    result = jros_companion.create_companion(character_id="default", display_name="Test Soul")
+    assert captured["payload"]["character_id"] == "jarvis"
+
+
+def test_create_companion_fails_when_no_characters_installed(monkeypatch):
+    from api import jros_companion
+
+    def fake_defaults():
+        return {"characters": []}
+
+    monkeypatch.setattr(jros_companion, "companion_setup_defaults", fake_defaults)
+
+    with pytest.raises(ValueError, match="No characters are installed"):
         jros_companion.create_companion(character_id="")
 
 

@@ -61,8 +61,11 @@ public final class WebUIServerManager: ObservableObject {
 
         let process = Process()
         process.currentDirectoryURL = dir
+        // Try both "venv" (install.sh default) and ".venv" (common alternative).
         let venvPython = dir.appendingPathComponent("venv/bin/python")
-        process.executableURL = venvPython
+        let dotVenvPython = dir.appendingPathComponent(".venv/bin/python")
+        let fm = FileManager.default
+        process.executableURL = fm.fileExists(atPath: venvPython.path) ? venvPython : dotVenvPython
         process.arguments = ["server.py"]
         
         var env = ProcessInfo.processInfo.environment
