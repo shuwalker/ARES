@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="docs/assets/ares-wordmark.png" alt="ARES" width="180">
+  <strong style="font-size: 2em;">ARES</strong><br>
+  <em>Artificial Reasoning & Execution System</em>
 </p>
 
 <p align="center">
@@ -21,14 +22,6 @@
   <a href="https://github.com/shuwalker/ARES/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <a href="https://github.com/NousResearch/hermes-agent"><img src="https://img.shields.io/badge/powered%20by-Hermes%20Agent-purple" alt="Powered by Hermes Agent"></a>
   <a href="https://github.com/JenkinsRobotics/JROS"><img src="https://img.shields.io/badge/robotics-JROS-cyan" alt="JROS Robotics"></a>
-</p>
-
-<p align="center">
-  <img src="docs/assets/webui-screenshot.png" alt="ARES Web UI">
-</p>
-
-<p align="center">
-  <img src="docs/assets/character-tab-showcase.png" alt="ARES character avatar browser">
 </p>
 
 ---
@@ -134,9 +127,6 @@ ARES treats characters as presentation data for the assistant interface. The cha
 - **Runtime control:** Selecting a character updates the presentation/adapter surface; JROS remains the canonical owner of character behavior in JROS-backed mode.
 
 <p align="center">
-  <img src="docs/assets/character-tab-showcase.png" alt="ARES character tab with avatar cards and trait detail">
-</p>
-
 ## Architecture
 
 ```
