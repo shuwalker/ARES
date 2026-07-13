@@ -1,4 +1,4 @@
-const ONBOARDING={status:null,step:0,steps:['system','companion','agentPrompt','iphone','connect','mcp','setup','workspace','password','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
+const ONBOARDING={status:null,step:0,steps:['system','companion','password','iphone','connect','workspace','setup','mcp','agentPrompt','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
 
 // ── Onboarding base-URL probe (#1499) ───────────────────────────────────────
 // Probes <base_url>/models so the wizard can validate the configured endpoint

@@ -135,11 +135,23 @@ struct ARESWebView: View {
     @ObservedObject var config = ARESConfiguration.shared
 
     var body: some View {
-        if let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") {
-            WebViewRepresentable(url: url, serverManager: serverManager)
+        if serverManager.serverHealth == "Running (Healthy)" {
+            if let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") {
+                WebViewRepresentable(url: url, serverManager: serverManager)
+            } else {
+                Text("Invalid Server URL").foregroundColor(.red)
+            }
         } else {
-            Text("Invalid Server URL")
-                .foregroundColor(.red)
+            VStack(spacing: 14) {
+                ProgressView()
+                    .scaleEffect(1.4)
+                    .padding(.bottom, 2)
+                Text(serverManager.isRunning ? serverManager.serverHealth : "Starting ARES…")
+                    .foregroundColor(.secondary)
+                    .font(.callout)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
     }
 }
