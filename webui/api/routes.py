@@ -13283,6 +13283,30 @@ def handle_get(handler, parsed) -> bool:
             return bad(handler, f"Failed to build identity: {exc}")
         return j(handler, payload)
 
+    if parsed.path == "/api/ares/device/status":
+        try:
+            from api.ares_devices import device_status
+            from api.config import get_config as _get_cfg
+
+            payload = device_status(_get_cfg())
+        except Exception as exc:
+            return bad(handler, f"Failed to build ARES device status: {exc}")
+        return j(handler, payload)
+
+    if parsed.path == "/api/ares/devices":
+        try:
+            from api.ares_devices import device_status, load_registry
+            from api.config import get_config as _get_cfg
+
+            _cfg = _get_cfg()
+            payload = {
+                "current": device_status(_cfg),
+                "registry": load_registry(_cfg),
+            }
+        except Exception as exc:
+            return bad(handler, f"Failed to load ARES device registry: {exc}")
+        return j(handler, payload)
+
     if parsed.path == "/api/ares/adapters":
         try:
             from api.backends.router import get_router
@@ -14692,6 +14716,53 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, f"Failed to save backend: {exc}")
         from api.ares_capabilities import capabilities_for_backend
         return j(handler, {"ok": True, "backend": backend, "scope": "default", "capabilities": capabilities_for_backend(backend)})
+
+    if parsed.path == "/api/ares/device/configure":
+        if not _onboarding_gate_allows(handler):
+            return bad(
+                handler,
+                "ARES device setup is only available from local networks when auth is not enabled. "
+                "To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.",
+                403,
+            )
+        try:
+            from api.ares_devices import device_status, normalize_config_update, register_device
+            from api.config import get_config as _get_cfg
+
+            config_path = _get_config_path()
+            _cfg = _load_yaml_config_file(config_path)
+            updates = normalize_config_update(body, _cfg)
+            _cfg.update(updates)
+            _save_yaml_config_file(config_path, _cfg)
+            reload_config()
+            refreshed = _get_cfg()
+            registration = register_device(config=refreshed)
+            return j(handler, {
+                "ok": True,
+                "updates": updates,
+                "status": device_status(refreshed),
+                "registration": registration,
+            })
+        except Exception as exc:
+            return bad(handler, f"Failed to configure ARES device: {exc}")
+
+    if parsed.path == "/api/ares/device/register":
+        if not _onboarding_gate_allows(handler):
+            return bad(
+                handler,
+                "ARES device registration is only available from local networks when auth is not enabled. "
+                "To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.",
+                403,
+            )
+        try:
+            from api.ares_devices import register_device
+            from api.config import get_config as _get_cfg
+
+            record = body.get("device") if isinstance(body, dict) else None
+            payload = register_device(record if isinstance(record, dict) else None, _get_cfg())
+        except Exception as exc:
+            return bad(handler, f"Failed to register ARES device: {exc}")
+        return j(handler, payload)
 
     if parsed.path == "/api/ares/provider/sync":
         # Writes Hermes/JROS config.yaml provider metadata — same local-network

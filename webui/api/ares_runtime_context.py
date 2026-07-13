@@ -194,6 +194,24 @@ def build_runtime_context(
     except Exception:
         pass
 
+    device_summary: dict[str, Any] = {}
+    try:
+        from api.ares_devices import device_status
+        from api.config import get_config
+
+        status = device_status(get_config())
+        device = status.get("device") if isinstance(status, dict) else {}
+        device_summary = {
+            "ai_id": status.get("ai_id", ""),
+            "role": status.get("role", ""),
+            "is_primary": bool(status.get("is_primary")),
+            "device_id": device.get("device_id", "") if isinstance(device, dict) else "",
+            "device_name": device.get("device_name", "") if isinstance(device, dict) else "",
+            "primary": status.get("primary", {}),
+        }
+    except Exception:
+        device_summary = {}
+
     context: dict[str, Any] = {
         "identity_projection": _identity_projection_for_backend(effective_backend),
         "active_backend": effective_backend,
@@ -207,6 +225,7 @@ def build_runtime_context(
             "body": "desktop" if not jros_up else "droid",
             "jros_connected": jros_up,
         },
+        "device": device_summary,
     }
 
     return context
@@ -236,6 +255,11 @@ def render_context_prompt(context: dict[str, Any]) -> str:
         lines.append("JROS embodiment connected: speech, hearing, vision, motor control available.")
     else:
         lines.append("No JROS embodiment — desktop mode.")
+
+    device = context.get("device") or {}
+    if isinstance(device, dict) and device.get("role"):
+        role = "primary AI body" if device.get("is_primary") else "joined ARES device"
+        lines.append(f"ARES device: {device.get('device_id') or 'unknown'} ({role}).")
 
     # Compact task count
     tasks = context.get("open_tasks", [])

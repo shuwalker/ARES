@@ -62,6 +62,26 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(webuiPort, forKey: "ares.config.webuiPort") }
     }
 
+    @Published public var aresRole: String = UserDefaults.standard.string(forKey: "ares.config.role") ?? "primary" {
+        didSet { UserDefaults.standard.set(aresRole, forKey: "ares.config.role") }
+    }
+
+    @Published public var aresDeviceID: String = UserDefaults.standard.string(forKey: "ares.config.deviceID") ?? (Host.current().localizedName?.lowercased().replacingOccurrences(of: " ", with: "-") ?? "ares-device") {
+        didSet { UserDefaults.standard.set(aresDeviceID, forKey: "ares.config.deviceID") }
+    }
+
+    @Published public var aresAIID: String = UserDefaults.standard.string(forKey: "ares.config.aiID") ?? "ares-main" {
+        didSet { UserDefaults.standard.set(aresAIID, forKey: "ares.config.aiID") }
+    }
+
+    @Published public var aresPrimaryURL: String = UserDefaults.standard.string(forKey: "ares.config.primaryURL") ?? "" {
+        didSet { UserDefaults.standard.set(aresPrimaryURL, forKey: "ares.config.primaryURL") }
+    }
+
+    @Published public var aresContinuityDir: String = UserDefaults.standard.string(forKey: "ares.config.continuityDir") ?? "\(FileManager.default.homeDirectoryForCurrentUser.path)/Desktop/ARES/00_System/ares" {
+        didSet { UserDefaults.standard.set(aresContinuityDir, forKey: "ares.config.continuityDir") }
+    }
+
     @Published public var autoLaunchOnStart: Bool = UserDefaults.standard.object(forKey: "ares.config.autoLaunchOnStart") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoLaunchOnStart, forKey: "ares.config.autoLaunchOnStart") }
     }

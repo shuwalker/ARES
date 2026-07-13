@@ -153,6 +153,33 @@ public struct ARESSettingsView: View {
                 Toggle("Start WebUI Server on App Launch", isOn: $config.autoLaunchOnStart)
                 Toggle("Enable Live Reload / Dev Mode", isOn: $config.reloadDevMode)
             }
+
+            Section(header: Text("ARES Device Mesh").font(.headline)) {
+                Picker("This Mac", selection: $config.aresRole) {
+                    Text("Primary AI Body").tag("primary")
+                    Text("Joined ARES Device").tag("device")
+                }
+                .pickerStyle(.segmented)
+
+                TextField("Device ID", text: $config.aresDeviceID)
+                    .textFieldStyle(.roundedBorder)
+
+                TextField("AI ID", text: $config.aresAIID)
+                    .textFieldStyle(.roundedBorder)
+
+                TextField("Primary ARES URL", text: $config.aresPrimaryURL)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(config.aresRole == "primary")
+
+                TextField("Continuity Folder", text: $config.aresContinuityDir)
+                    .textFieldStyle(.roundedBorder)
+
+                Text(config.aresRole == "primary"
+                     ? "This Mac owns the canonical ARES identity and device registry."
+                     : "This Mac joins an existing AI and can contribute app access, local tools, and compute.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
             
             Section(header: Text("Paths & Logs").font(.headline)) {
                 VStack(alignment: .leading, spacing: 4) {
