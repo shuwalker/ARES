@@ -40,6 +40,7 @@ fi
 
 # 4. Launcher command + Mac app defaults
 rm -f "$HOME/.local/bin/ares"
+rm -f "$HOME/.local/bin/jaeger"
 rm -rf "$HOME/Applications/ARES.app"
 defaults delete ARES 2>/dev/null || true
 ok "Launcher command, ARES.app, and app defaults removed"

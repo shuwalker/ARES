@@ -34,6 +34,15 @@ public final class WebUIServerManager: ObservableObject {
     public func start() async {
         guard process == nil else { return }
 
+        // Production installs are owned by launchd. If a menu action stopped
+        // that service, load it again before falling back to an app-owned
+        // Python process.
+        if FileManager.default.fileExists(atPath: launchAgentPlist.path), !isLaunchAgentLoaded {
+            _ = runLaunchctl(["bootstrap", "gui/\(getuid())", launchAgentPlist.path])
+            _ = runLaunchctl(["kickstart", "gui/\(getuid())/com.ares.webui"])
+            try? await Task.sleep(nanoseconds: 750_000_000)
+        }
+
         let config = ARESConfiguration.shared
         let host = config.webuiHost
         let port = config.webuiPort
@@ -133,18 +142,47 @@ public final class WebUIServerManager: ObservableObject {
         }
     }
 
-    public func stop() {
-        guard let p = process else { return }
-        p.terminate()
-        process = nil
+    public func stop(persistently: Bool = false) {
+        if persistently, isLaunchAgentLoaded {
+            _ = runLaunchctl(["bootout", "gui/\(getuid())", launchAgentPlist.path])
+        }
+        if let p = process {
+            p.terminate()
+            process = nil
+        }
         isRunning = false
         serverHealth = "Stopped"
     }
 
     public func restart() async {
-        stop()
+        stop(persistently: true)
         try? await Task.sleep(nanoseconds: 1_000_000_000) // Wait 1 second
         await start()
+    }
+
+    private var launchAgentPlist: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/com.ares.webui.plist")
+    }
+
+    private var isLaunchAgentLoaded: Bool {
+        runLaunchctl(["print", "gui/\(getuid())/com.ares.webui"]) == 0
+    }
+
+    @discardableResult
+    private func runLaunchctl(_ arguments: [String]) -> Int32 {
+        let command = Process()
+        command.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        command.arguments = arguments
+        command.standardOutput = FileHandle.nullDevice
+        command.standardError = FileHandle.nullDevice
+        do {
+            try command.run()
+            command.waitUntilExit()
+            return command.terminationStatus
+        } catch {
+            return -1
+        }
     }
 
     private func checkHealth() async {

@@ -282,6 +282,18 @@ _select_role
 _check_jaeger
 _check_tailscale
 
+# Expose JaegerAI's canonical operator command from every directory.
+if [ -n "${JAEGER_HOME:-}" ] && [ -x "$JAEGER_HOME/jaeger" ]; then
+    mkdir -p "$HOME/.local/bin"
+    rm -f "$HOME/.local/bin/jaeger"
+    cat > "$HOME/.local/bin/jaeger" << JAEGER_CLI_EOF
+#!/usr/bin/env bash
+exec "$JAEGER_HOME/jaeger" "\$@"
+JAEGER_CLI_EOF
+    chmod +x "$HOME/.local/bin/jaeger"
+    ok "JaegerAI CLI linked: ~/.local/bin/jaeger"
+fi
+
 # Companion profile dir — syncs across Macs via iCloud Desktop
 ARES_CONTINUITY_DIR="$HOME/Desktop/ARES/companion"
 mkdir -p "$ARES_CONTINUITY_DIR"

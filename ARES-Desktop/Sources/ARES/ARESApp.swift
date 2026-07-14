@@ -48,20 +48,20 @@ struct ARESApp: App {
 // MARK: - Tab Model
 
 enum ARESTab: String, CaseIterable {
-    case companion, terminal, jros
+    case companion, hermes, jros
 
     var label: String {
         switch self {
         case .companion: return "Companion"
-        case .terminal: return "Terminal"
-        case .jros: return "JROS"
+        case .hermes: return "Hermes Agent"
+        case .jros: return "JaegerAI"
         }
     }
 
     var icon: String {
         switch self {
         case .companion: return "bubble.left.and.bubble.right.fill"
-        case .terminal: return "terminal.fill"
+        case .hermes: return "terminal.fill"
         case .jros: return "cpu"
         }
     }
@@ -117,10 +117,10 @@ struct ARESMainView: View {
                 ARESWebView()
                     .opacity(activeTab == .companion ? 1 : 0)
                     .zIndex(activeTab == .companion ? 1 : 0)
-                RuntimeTerminalView(title: "Terminal", command: RuntimeTerminalCommand.hermes)
-                    .opacity(activeTab == .terminal ? 1 : 0)
-                    .zIndex(activeTab == .terminal ? 1 : 0)
-                RuntimeTerminalView(title: "JROS", command: RuntimeTerminalCommand.jros)
+                RuntimeTerminalView(title: "Hermes Agent TUI", command: RuntimeTerminalCommand.hermes)
+                    .opacity(activeTab == .hermes ? 1 : 0)
+                    .zIndex(activeTab == .hermes ? 1 : 0)
+                RuntimeTerminalView(title: "JaegerAI TUI", command: RuntimeTerminalCommand.jros)
                     .opacity(activeTab == .jros ? 1 : 0)
                     .zIndex(activeTab == .jros ? 1 : 0)
             }
@@ -132,32 +132,33 @@ private enum RuntimeTerminalCommand {
     static let hermes = """
     clear
     printf '\\033[1;33mHermes Agent TUI\\033[0m\\n'
-    printf 'ARES developer tab. Starting Hermes Agent if it is installed.\\n\\n'
-    if command -v hermes-agent >/dev/null 2>&1; then
-      exec hermes-agent
-    elif command -v hermes >/dev/null 2>&1; then
-      exec hermes
-    else
+    HERMES_BIN="$HOME/.local/bin/hermes"
+    if [ ! -x "$HERMES_BIN" ]; then HERMES_BIN="$(command -v hermes 2>/dev/null || true)"; fi
+    if [ -z "$HERMES_BIN" ]; then
       printf 'Hermes Agent CLI was not found on PATH.\\n'
-      printf 'Install/start Hermes Agent, then run hermes or hermes-agent here.\\n\\n'
+      printf 'Re-run the ARES installer with --with-hermes.\\n\\n'
       exec /bin/zsh -l
     fi
+    # First-run setup exits Hermes. Relaunch once so the configured TUI opens
+    # immediately instead of requiring the entire ARES app to restart.
+    "$HERMES_BIN"
+    first_exit=$?
+    if [ "$first_exit" -eq 0 ]; then exec "$HERMES_BIN"; fi
+    printf '\\nHermes exited with status %s. Press Return for a shell.\\n' "$first_exit"
+    read -r _
+    exec /bin/zsh -l
     """
 
     static let jros = """
     clear
-    printf '\\033[1;36mJROS TUI\\033[0m\\n'
-    printf 'ARES developer tab. Starting JROS/Jaeger if it is installed.\\n\\n'
-    if command -v jaeger >/dev/null 2>&1; then
-      exec jaeger
-    elif [ -d "$HOME/GitHub/JROS" ]; then
-      cd "$HOME/GitHub/JROS"
-      printf 'Found JROS at ~/GitHub/JROS. Start its built-in UI or gateway from this shell.\\n'
-      printf 'Common next step: jaeger gateway\\n\\n'
-      exec /bin/zsh -l
+    printf '\\033[1;36mJaegerAI TUI\\033[0m\\n\\n'
+    JAEGER_BIN="$HOME/.local/bin/jaeger"
+    if [ ! -x "$JAEGER_BIN" ] && [ -x "$HOME/jaeger/jaeger" ]; then JAEGER_BIN="$HOME/jaeger/jaeger"; fi
+    if [ ! -x "$JAEGER_BIN" ] && [ -x "$HOME/.jaeger/jaeger" ]; then JAEGER_BIN="$HOME/.jaeger/jaeger"; fi
+    if [ -x "$JAEGER_BIN" ]; then
+      exec "$JAEGER_BIN" --tui
     else
-      printf 'JROS was not found on PATH or at ~/GitHub/JROS.\\n'
-      printf 'Install JROS, then run jaeger or jaeger gateway here.\\n\\n'
+      printf 'JaegerAI was not found. Re-run the ARES installer.\\n\\n'
       exec /bin/zsh -l
     fi
     """
@@ -489,7 +490,7 @@ final class ARESMenuBarController: NSObject {
     }
 
     @objc private func stopServer() {
-        WebUIServerManager.shared.stop()
+        WebUIServerManager.shared.stop(persistently: true)
     }
 
     @objc private func restartServer() {
