@@ -88,16 +88,14 @@ cd ARES-Windows && cargo tauri dev
 
 ## Features
 
-- **Single User-Facing Assistant Interface** — ARES composes runtimes, models, tools, voice, avatars, memory providers, and device integrations behind one consistent user experience.
-- **Runtime-Compatible Adapter Layer** — JaegerAI, Hermes, OpenAI/ChatGPT-compatible services, and future systems connect through adapters. ARES presents and coordinates them without copying their internals.
-- **Mac-First Native Home** — SwiftUI app launches the Web UI, wraps it in WKWebView, and grows into the native menu/system integration layer for local Mac automation, status, notifications, and approvals.
-- **Windows Companion Shell** — Tauri app in `ARES-Windows/` wraps the Web UI for Windows and is the home for Windows tray/menu/server-control integrations.
-- **Web UI Everywhere** — Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on other devices over Tailscale/LAN while native apps are still Mac-first.
-- **JaegerAI Embodiment Path** — JaegerAI is the primary embodied runtime. Turns run through the local `jaeger bridge` over stdio (NDJSON) on the same machine.
-- **Hermes Capability Path** — Hermes remains available as an independent runtime for coding, terminal work, skills, sessions, cron, memory-backed automation, provider routing, delegation, and operations.
-- **Explicit Hybrid Composition** — Hybrid mode composes capabilities deliberately. Prefer one turn owner and call additional runtimes/providers only when needed.
-- **Character Avatar Browser** — 14 visual character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more) with card art, traits, lore, and active character selection from JaegerAI data.
-- **Presence Renderers** — Avatar/voice/body surfaces can evolve from animated eyes to Live2D-style, VR sprite rigs, Grok-like avatars, desktop modes, and future robotic bodies.
+- **Multi-Agent Orchestrator (The "CEO" Model)** — ARES is now a lightweight, independent orchestrator shell. It boots instantly and seamlessly connects to your choice of "synthetic minds" (Jaeger OS or Hermes).
+- **Paperclip Multi-Agent Capabilities** — Give your primary agent (e.g. Jaeger OS) a massive goal, and it will automatically spin up Hermes or Cloud LLMs in the background to delegate coding and writing tasks via our **MCP Bridge**.
+- **Infinite Compute (Reverse API)** — ARES includes scaffolding to safely proxy requests through your existing $20/mo consumer subscriptions (Claude Pro, ChatGPT Plus), bypassing expensive developer API fees for massive background goals.
+- **Scientist-Grade Diagnostics** — Run `ares doctor` in your terminal anytime to get a beautifully formatted, color-coded health check of your network, Tailscale status, Python environment, and backend engine status.
+- **Safe Updates** — Run `ares update` to safely stash local tweaks, pull the latest code, and restart your environment without breaking your configuration.
+- **Interactive WebUI Onboarding** — No more editing config files in the terminal. The sleek, glassmorphic UI handles Framework Selection and onboarding directly from your browser.
+- **Tailscale Remote Access** — Because ARES automatically detects Tailscale, you can pull out your iPhone, navigate to your Tailscale IP, and check on your CEO's progress from anywhere in the world.
+- **Mac-First Native Home** — SwiftUI app launches the Web UI, wraps it in WKWebView, and acts as the native menu integration layer for local Mac automation.
 - **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads. Zero downtime for static, ~2s blip for Python.
 - **Local + Cloud Choice** — The active runtime can choose local or cloud models depending on the task, including OpenAI/ChatGPT-compatible providers where configured.
 - **Mail Butler** — IMAP-based mail cleaner with 321 classification rules. Server-side, no Mail.app dependency.

@@ -12075,6 +12075,29 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path.startswith("/api/") and not _guard_request_session_visibility(handler, parsed, method="GET"):
         return True
 
+    # ── Missions (CEO multi-agent orchestrator dashboard) ──
+    # Distinct from /api/goal (single-session standing-goal continuation,
+    # see api/goals.py); see api/missions.py module docstring.
+    if parsed.path == "/api/missions":
+        from api.missions import list_missions
+
+        session_id = parse_qs(parsed.query or "").get("session_id", [None])[0]
+        if not session_id:
+            return bad(handler, "session_id is required")
+        return j(handler, {"missions": list_missions(session_id)})
+
+    if parsed.path.startswith("/api/missions/"):
+        from api.missions import get_mission
+
+        mission_id = parsed.path[len("/api/missions/"):]
+        session_id = parse_qs(parsed.query or "").get("session_id", [None])[0]
+        if not session_id:
+            return bad(handler, "session_id is required")
+        mission = get_mission(mission_id, session_id)
+        if mission is None:
+            return bad(handler, "Mission not found", 404)
+        return j(handler, {"mission": mission})
+
     # ── Insights / knowledge status ──
     if parsed.path == "/api/insights":
         return _handle_insights(handler, parsed)
@@ -15558,6 +15581,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/goal":
         return _handle_goal_command(handler, body)
 
+    if parsed.path == "/api/missions":
+        return _handle_mission_create(handler, body)
+
     if parsed.path == "/api/bg-task-complete-ack":
         return _handle_bg_task_complete_ack(handler, body)
 
@@ -16958,6 +16984,16 @@ def handle_delete(handler, parsed) -> bool:
     if parsed.path.startswith("/api/mcp/servers/"):
         name = parsed.path[len("/api/mcp/servers/"):]
         return _handle_mcp_server_delete(handler, name)
+    if parsed.path.startswith("/api/missions/"):
+        from api.missions import cancel_mission
+
+        mission_id = parsed.path[len("/api/missions/"):]
+        session_id = str(body.get("session_id") or "").strip()
+        if not session_id:
+            return bad(handler, "session_id is required")
+        if not cancel_mission(mission_id, session_id):
+            return bad(handler, "Mission not found", 404)
+        return j(handler, {"ok": True})
     if parsed.path == "/api/prompts":
         pid = str(body.get("id") or "").strip()
         if not pid:
@@ -22171,6 +22207,33 @@ def _handle_session_compression_recovery_start(handler, body):
             ),
         },
     )
+
+
+def _handle_mission_create(handler, body):
+    """Handle POST /api/missions — kick off a new CEO-orchestrated mission.
+
+    Distinct from /api/goal (see api/missions.py module docstring): a
+    mission decomposes ``prompt`` into sub-tasks dispatched across Hermes,
+    JROS, and direct Anthropic/OpenAI calls, running on a background thread.
+    """
+    try:
+        require(body, "session_id")
+        require(body, "prompt")
+    except ValueError as e:
+        return bad(handler, str(e))
+    session_id = str(body.get("session_id") or "").strip()
+    try:
+        s = get_session(session_id)
+    except KeyError:
+        return bad(handler, "Session not found", 404)
+
+    from api.missions import create_mission
+
+    try:
+        mission = create_mission(session_id, str(body.get("prompt") or ""), profile=getattr(s, "profile", None))
+    except ValueError as e:
+        return bad(handler, str(e))
+    return j(handler, {"mission": mission})
 
 
 def _handle_goal_command(handler, body):

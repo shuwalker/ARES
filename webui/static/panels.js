@@ -44,7 +44,7 @@ const APP_TITLEBAR_KEYS = {
   memory: 'tab_memory', workspaces: 'tab_workspaces',
   profiles: 'tab_profiles', todos: 'tab_todos', insights: 'tab_insights', logs: 'tab_logs', characters: 'tab_characters', settings: 'tab_settings',
 };
-const MAIN_VIEW_PANELS = ['settings','skills','memory','tasks','kanban','workspaces','profiles','insights','logs','characters','plugin'];
+const MAIN_VIEW_PANELS = ['settings','skills','memory','tasks','missions','kanban','workspaces','profiles','insights','logs','characters','plugin'];
 const MAIN_VIEW_SIDEBAR_PANEL_FALLBACKS = { plugin: 'settings' };
 
 /**
@@ -413,6 +413,7 @@ async function switchPanel(name, opts = {}) {
   }
   // Lazy-load panel data
   if (nextPanel === 'tasks') await loadCrons();
+  if (nextPanel === 'missions') initMissionsPanel();
   if (nextPanel === 'email' && window.AresEmail) await AresEmail.load();
   if (nextPanel === 'kanban') await loadKanban();
   if (nextPanel === 'skills') await loadSkills();

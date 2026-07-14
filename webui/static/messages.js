@@ -7195,6 +7195,14 @@ function startSessionStream(sid) {
         _handleBgTaskCompleteEvent(e, sid, {source: 'session'});
       }
     });
+    // Missions dashboard (api/missions.py) — survives across turns/idle
+    // periods, unlike the per-turn 'goal'/'goal_continue' events on the
+    // /api/chat/stream source, so it belongs on this session-level stream.
+    es.addEventListener('mission_update', e => {
+      if (typeof _handleMissionUpdateEvent === 'function') {
+        _handleMissionUpdateEvent(e, sid);
+      }
+    });
     // ── Visible-tab self-heal: a server-initiated turn finished during an SSE
     // gap ─────────────────────────────────────────────────────────────────
     // Distinct from `server_turn_started` (which attaches a LIVE stream): this

@@ -1,0 +1,41 @@
+/* Missions Panel — CEO multi-agent orchestration dashboard. See missions.js
+   and webui/api/missions.py. Sidebar list (#panelMissions) + detail pane
+   (#mainMissions), following the same master-detail layout as Tasks. */
+
+.mission-composer{padding:10px 12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;}
+.mission-composer textarea{resize:vertical;min-height:56px;max-height:160px;font:inherit;font-size:12px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);}
+.mission-composer textarea:focus{outline:none;border-color:var(--accent);}
+.mission-composer button{align-self:flex-end;padding:6px 14px;border:none;border-radius:8px;background:var(--accent);color:var(--bg);font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.mission-composer button:hover{opacity:.88;}
+
+.mission-list-item{padding:10px 12px;border-bottom:1px solid var(--border-subtle,var(--border));cursor:pointer;transition:background .15s;}
+.mission-list-item:hover{background:var(--surface-subtle,var(--accent-bg));}
+.mission-list-item.active{background:var(--accent-bg-strong,var(--accent-bg));}
+.mission-list-item-title{font-size:12px;color:var(--text);line-height:1.4;margin-bottom:4px;}
+.mission-list-item-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
+
+.mission-status-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;flex-shrink:0;letter-spacing:.04em;text-transform:uppercase;}
+.mission-status-planning,.mission-status-pending{background:var(--accent-bg-strong,rgba(255,255,255,.08));color:var(--accent-text,var(--muted));}
+.mission-status-running{background:rgba(77,141,255,.15);color:var(--info);}
+.mission-status-done{background:rgba(34,197,94,.15);color:var(--success);}
+.mission-status-failed{background:rgba(239,83,80,.14);color:var(--error);}
+.mission-status-cancelling,.mission-status-cancelled{background:rgba(255,255,255,.07);color:var(--muted);}
+
+#mainMissions .main-view-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);}
+
+.mission-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);}
+.mission-detail-prompt{font-size:14px;color:var(--text);line-height:1.5;flex:1;}
+.mission-detail-header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.mission-detail-header-actions .panel-head-btn{width:auto;padding:0 10px;height:26px;font-size:11px;border:1px solid var(--border);}
+.mission-detail-error{margin:10px 16px 0;padding:8px 10px;border-radius:8px;background:rgba(239,83,80,.1);color:var(--error);font-size:12px;}
+
+.mission-subtask-list{padding:12px 16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+.mission-subtask-row{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--surface);}
+.mission-subtask-row.mission-subtask-running{border-color:var(--info);}
+.mission-subtask-row.mission-subtask-done{border-color:var(--success);}
+.mission-subtask-row.mission-subtask-failed{border-color:var(--error);}
+.mission-subtask-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
+.mission-subtask-label{font-size:12px;font-weight:600;color:var(--text);}
+.mission-subtask-desc{font-size:12px;color:var(--muted);line-height:1.4;}
+.mission-subtask-result{margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--code-bg);color:var(--text);font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;max-height:240px;overflow-y:auto;}
+.mission-subtask-error{margin-top:8px;font-size:11px;color:var(--error);}

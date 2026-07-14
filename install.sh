@@ -429,8 +429,29 @@ PLIST_EOF
     mkdir -p "$cmd_dir"
     cat > "$cmd_dir/ares" << CMD_EOF
 #!/usr/bin/env bash
-# ARES launcher — opens the companion app (or brings it forward)
-exec open "$ARES_APP"
+# ARES CLI Dispatcher
+
+ARES_HOME="\$HOME/.ares"
+ARES_SRC="${SCRIPT_DIR}"
+
+if [ "\${1:-}" = "doctor" ]; then
+    shift
+    if [ -f "\$ARES_SRC/webui/venv/bin/python" ]; then
+        exec "\$ARES_SRC/webui/venv/bin/python" "\$ARES_SRC/webui/cli/doctor.py" "\$@"
+    else
+        exec python3 "\$ARES_SRC/webui/cli/doctor.py" "\$@"
+    fi
+elif [ "\${1:-}" = "update" ]; then
+    shift
+    exec bash "\$ARES_SRC/scripts/update.sh" "\$@"
+elif [ "\${1:-}" = "start" ] || [ -z "\${1:-}" ]; then
+    # Default behavior: open app
+    exec open "$ARES_APP"
+else
+    echo "Unknown ARES command: \$1"
+    echo "Available commands: doctor, update, start"
+    exit 1
+fi
 CMD_EOF
     chmod +x "$cmd_dir/ares"
     ok "Command installed: ares"
