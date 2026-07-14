@@ -575,6 +575,99 @@ for key, value in updates.items():
 env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 PY
         log_success "Persisted JaegerAI runtime path: $JAEGER_HOME_DETECTED"
+
+        # Keep JaegerAI's first external model aligned with Hermes when the
+        # operator has already run `ollama launch`.  This is deliberately
+        # one-time/default-only: an explicitly enabled JROS external model is
+        # owned by the user and must not be overwritten on reinstall.
+        CONFIG_RUNTIME_PYTHON="$WEBUI_DIR/venv/bin/python"
+        if [ ! -x "$CONFIG_RUNTIME_PYTHON" ]; then
+            CONFIG_RUNTIME_PYTHON="$CONFIG_PYTHON"
+        fi
+        "$CONFIG_RUNTIME_PYTHON" - "$HERMES_HOME/config.yaml" "$JAEGER_HOME_DETECTED" <<'PY'
+import sys
+from pathlib import Path
+from urllib.request import urlopen
+
+try:
+    import yaml
+except Exception:
+    yaml = None
+
+hermes_path = Path(sys.argv[1]).expanduser()
+jaeger_home = Path(sys.argv[2]).expanduser()
+instance = jaeger_home / ".jaeger_os" / "instances" / "ares" / "config.yaml"
+if not instance.exists():
+    instance = jaeger_home / ".jaeger_os" / "instances" / "default" / "config.yaml"
+if yaml is None or not hermes_path.exists() or not instance.exists():
+    raise SystemExit(0)
+
+try:
+    hermes = yaml.safe_load(hermes_path.read_text(encoding="utf-8")) or {}
+    jros = yaml.safe_load(instance.read_text(encoding="utf-8")) or {}
+except Exception:
+    raise SystemExit(0)
+if not isinstance(hermes, dict) or not isinstance(jros, dict):
+    raise SystemExit(0)
+
+ext = jros.get("external_model")
+if not isinstance(ext, dict):
+    ext = {}
+# Never clobber a JROS model the user has already enabled explicitly.
+if ext.get("enabled"):
+    raise SystemExit(0)
+
+model_cfg = hermes.get("model") if isinstance(hermes.get("model"), dict) else {}
+provider = str(model_cfg.get("provider") or "").strip().lower()
+model = str(model_cfg.get("default") or "").strip()
+base_url = str(model_cfg.get("base_url") or "").strip()
+providers = hermes.get("providers") if isinstance(hermes.get("providers"), dict) else {}
+launch = providers.get("ollama-launch") if isinstance(providers.get("ollama-launch"), dict) else {}
+
+# If Hermes has not been configured yet, adopt the first local Ollama model.
+if provider not in {"ollama", "ollama-launch", "ollama-local", "local"} or not model:
+    try:
+        with urlopen("http://127.0.0.1:11434/api/tags", timeout=2) as response:
+            payload = yaml.safe_load(response.read().decode("utf-8")) or {}
+        names = [str(item.get("name") or "").strip() for item in (payload.get("models") or []) if isinstance(item, dict)]
+        names = [name for name in names if name]
+    except Exception:
+        names = []
+    if not names:
+        raise SystemExit(0)
+    provider = "ollama-launch"
+    model = names[0]
+    model_cfg["provider"] = provider
+    model_cfg["default"] = model
+    model_cfg["base_url"] = "http://127.0.0.1:11434/v1"
+    hermes["model"] = model_cfg
+    launch = dict(launch)
+    launch.setdefault("name", "Ollama")
+    launch["api"] = "http://127.0.0.1:11434/v1"
+    launch["default_model"] = model
+    launch["models"] = list(dict.fromkeys(list(launch.get("models") or []) + [model]))
+    providers["ollama-launch"] = launch
+    hermes["providers"] = providers
+    hermes_path.write_text(yaml.safe_dump(hermes, sort_keys=False), encoding="utf-8")
+
+if provider in {"ollama", "ollama-launch", "ollama-local", "local"} and model:
+    if not base_url:
+        base_url = str(launch.get("api") or "").strip()
+    if not base_url:
+        base_url = "http://127.0.0.1:11434/v1"
+    if not base_url.rstrip("/").endswith("/v1"):
+        base_url = base_url.rstrip("/") + "/v1"
+    ext.update({
+        "enabled": True,
+        "provider": "ollama",
+        "base_url": base_url,
+        "model": model,
+        "api_key_env": "",
+    })
+    jros["external_model"] = ext
+    instance.write_text(yaml.safe_dump(jros, sort_keys=False), encoding="utf-8")
+PY
+        log_success "Aligned JaegerAI's default external model with local Ollama when available"
     fi
     log_success "Configured ARES backend: $selected_backend"
 

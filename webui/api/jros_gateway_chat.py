@@ -167,7 +167,7 @@ def _requested_jros_model(model: str | None, model_provider: str | None) -> tupl
         return None
     if not provider and "/" in raw_model:
         maybe_provider, maybe_model = raw_model.split("/", 1)
-        if maybe_provider.strip().lower() in {"ollama", "ollama-local", "ollama-cloud", "openai", "anthropic", "gemini", "lmstudio"}:
+        if maybe_provider.strip().lower() in {"ollama", "ollama-launch", "ollama-local", "ollama-cloud", "openai", "anthropic", "gemini", "lmstudio"}:
             provider = maybe_provider.strip().lower()
             raw_model = maybe_model.strip()
     return (provider or "ollama", raw_model)
@@ -195,8 +195,29 @@ def _prepare_local_jros_model(model: str | None, model_provider: str | None, ins
         with _BOOT_LOCK:
             key = instance or "__default__"
             existing = _BRIDGE_CLIENTS.get(key)
-            ready_model = str((existing.ready or {}).get("model") or "").strip() if existing else ""
-            if ready_model == selected_model:
+            ready = existing.ready or {} if existing else {}
+            ready_model = str(ready.get("model") or "").strip()
+            # The JROS bridge ready frame currently reports only instance and
+            # model. Read the persisted external_model provider as the second
+            # half of the identity so a same-name local/cloud switch still
+            # invalidates the bridge without restarting it on every turn.
+            try:
+                from api.ares_provider_sync import load_yaml_config, resolve_jros_config_path
+
+                configured_external = load_yaml_config(resolve_jros_config_path()).get("external_model")
+            except Exception:
+                configured_external = {}
+            configured_provider = str((configured_external or {}).get("provider") or "").strip().lower()
+            configured_model = str((configured_external or {}).get("model") or "").strip()
+            # A model name alone is not an identity: Ollama local and Ollama
+            # Cloud can expose the same model string.  Require the bridge's
+            # provider to match too, otherwise switching lanes silently keeps
+            # answering from the old runtime.
+            if (
+                ready_model == selected_model
+                and configured_model == selected_model
+                and configured_provider == mapped_provider
+            ):
                 return
             sync_provider(
                 provider=mapped_provider,

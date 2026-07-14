@@ -1847,7 +1847,7 @@ def _clear_live_models_cache() -> None:
 # showing Hermes-only providers that JROS cannot load.
 _JROS_COMPATIBLE_MODEL_PROVIDERS = frozenset({
     "anthropic", "gemini", "lmstudio", "ollama-cloud", "ollama-local",
-    "ollama", "local", "openai",
+    "ollama", "ollama-launch", "local", "openai",
 })
 
 
