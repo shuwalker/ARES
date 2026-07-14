@@ -962,6 +962,7 @@ def get_onboarding_status() -> dict:
             "import_errors": errors,
             "config_path": str(_get_config_path()),
             "config_exists": Path(_get_config_path()).exists(),
+            "tailscale_ip": (lambda: "".join(t for t in [getattr(getattr(__import__("api.ares_devices", fromlist=["_tailscale_ip"]), "_tailscale_ip", None), "__call__", lambda: "")()] if t))(),
             **runtime,
         },
         "setup": _build_setup_catalog(cfg),
@@ -1227,3 +1228,36 @@ def complete_onboarding() -> dict:
         logger.debug("Companion guard failed during complete_onboarding", exc_info=True)
     save_settings({"onboarding_completed": True})
     return get_onboarding_status()
+
+def install_framework(body: dict) -> dict:
+    import subprocess
+    import threading
+    framework = str(body.get("framework") or "").strip().lower()
+    
+    if framework == "jros":
+        cmd = "curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
+        
+        def _run_install():
+            try:
+                subprocess.run(cmd, shell=True, check=True)
+                save_settings({"ares_backend": "jros"})
+            except Exception as e:
+                logger.error("JROS background install failed: %s", e)
+                
+        threading.Thread(target=_run_install, daemon=True).start()
+        return {"ok": True, "framework": framework, "status": "installing"}
+        
+    elif framework == "hermes":
+        def _run_install():
+            try:
+                import sys
+                pip_exe = [sys.executable, "-m", "pip", "install", "hermes-agent"]
+                subprocess.run(pip_exe, check=True)
+                save_settings({"ares_backend": "hermes"})
+            except Exception as e:
+                logger.error("Hermes background install failed: %s", e)
+                
+        threading.Thread(target=_run_install, daemon=True).start()
+        return {"ok": True, "framework": framework, "status": "installing"}
+
+    return {"ok": False, "error": f"Unknown framework: {framework}"}

@@ -1,4 +1,4 @@
-const ONBOARDING={status:null,step:0,steps:['companion','password','setup','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
+const ONBOARDING={status:null,step:0,steps:['framework','companion','password','setup','finish'],form:{provider:'openrouter',workspace:'',model:'',password:'',apiKey:'',baseUrl:'',framework:'jros',companionName:'',companionPersonality:'',companionVoice:'',companionPermissionMode:'confirm'},companionDefaults:null,active:false,probe:{status:'idle',error:null,detail:'',models:null,probedKey:''}};
 
 // ── Onboarding base-URL probe (#1499) ───────────────────────────────────────
 // Probes <base_url>/models so the wizard can validate the configured endpoint
@@ -259,6 +259,12 @@ function _localizedOnboardingProviderNote(system){
 }
 
 function _aresOnboardingServerUrl(){
+  try {
+    if (typeof ONBOARDING !== 'undefined' && ONBOARDING && ONBOARDING.status && ONBOARDING.status.system && ONBOARDING.status.system.tailscale_ip) {
+      const port = window.location.port || '8787';
+      return `http://${ONBOARDING.status.system.tailscale_ip}:${port}`;
+    }
+  } catch(e) {}
   try{return window.location.origin||'';}catch{return '';}
 }
 
@@ -350,6 +356,37 @@ function _renderOnboardingBody(){
         <div class="onboarding-check ${(settings.password_enabled?'ok':'muted')}"><strong>${t('onboarding_check_password')}</strong><span>${settings.password_enabled?t('onboarding_check_password_enabled'):t('onboarding_check_password_disabled')}</span></div>
       </div>
       ${companionUp?'':`<div class="onboarding-command-card"><button class="onboarding-primary-wide" id="onboardingInstallJrosBtn" type="button" onclick="installJrosFromOnboarding()">${t('onboarding_install_jros_btn')||'Install JaegerAI automatically'}</button><p class="onboarding-copy" style="text-align:center;margin-top:0.5em">${t('onboarding_install_jros_help')||'Or install manually:'}</p><code>curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash</code></div><p class="onboarding-copy">${t('onboarding_companion_install_help')||'Run this on the machine that will host your Companion, then reload this page.'}</p>`}`;
+    return;
+  }
+
+  if(key==='framework'){
+    _setOnboardingNotice('Select the core framework that will power your Synthetic Mind.', 'info');
+    body.innerHTML=`
+      <div class="onboarding-hero-icon">⚙️</div>
+      <div class="onboarding-centered-copy">
+        <h3>Choose your Framework</h3>
+        <p>ARES acts as the orchestrator. Select the primary backend framework you want to use.</p>
+      </div>
+      <div class="onboarding-panel-grid" style="gap: 12px; margin-bottom: 20px;">
+        <label class="onboarding-check" style="cursor:pointer; flex-direction: row; align-items:center; gap:16px;">
+          <input type="radio" name="framework" value="jros" checked>
+          <div style="flex:1;">
+            <strong>Jaeger OS (Recommended)</strong>
+            <span style="display:block;margin-top:4px;color:var(--muted);font-weight:normal;">The Synthetic Mind runtime. Provides local memory, persona embodiment, and a local agent engine.</span>
+          </div>
+        </label>
+        <label class="onboarding-check" style="cursor:pointer; flex-direction: row; align-items:center; gap:16px;">
+          <input type="radio" name="framework" value="hermes">
+          <div style="flex:1;">
+            <strong>Hermes Agent</strong>
+            <span style="display:block;margin-top:4px;color:var(--muted);font-weight:normal;">A terminal execution agent with deep code reasoning. No avatar or memory.</span>
+          </div>
+        </label>
+      </div>
+      <div id="frameworkInstallStatus" style="display:none; text-align:center;">
+        <p class="onboarding-copy">Installing framework... this may take a minute.</p>
+      </div>
+    `;
     return;
   }
 
@@ -845,6 +882,47 @@ async function skipOnboarding(){
 
 async function nextOnboardingStep(){
   try{
+    if(ONBOARDING.steps[ONBOARDING.step]==='framework'){
+      const fwInputs=document.getElementsByName('framework');
+      for(let i=0;i<fwInputs.length;i++){
+        if(fwInputs[i].checked){ONBOARDING.form.framework=fwInputs[i].value;break;}
+      }
+      if(!ONBOARDING.form.framework) throw new Error("Select a framework.");
+      if(!ONBOARDING._frameworkInstalled){
+        const statusEl = $('frameworkInstallStatus');
+        if(statusEl) statusEl.style.display='block';
+        $('onboardingNextBtn').disabled = true;
+        try{
+          const res=await api('/api/onboarding/install-framework',{method:'POST',body:JSON.stringify({framework:ONBOARDING.form.framework})});
+          if(!res||!res.ok) throw new Error((res&&res.error)||'Failed to start framework install.');
+          ONBOARDING._frameworkInstalled=true;
+          
+          // Poll for completion since it runs in the background
+          let attempts = 0;
+          while (attempts < 60) {
+            await new Promise(r => setTimeout(r, 2000));
+            const statRes = await api('/api/onboarding/status');
+            if (statRes && statRes.settings && statRes.settings.ares_backend !== 'unconfigured') {
+              if (statRes.settings.ares_backend === ONBOARDING.form.framework) {
+                 // Refresh full status so companion step works
+                 await refreshOnboardingStatus();
+                 break;
+              }
+            }
+            attempts++;
+          }
+        }finally{
+          if(statusEl) statusEl.style.display='none';
+          $('onboardingNextBtn').disabled = false;
+        }
+      }
+      
+      // If they chose hermes, we can skip the companion step entirely
+      if (ONBOARDING.form.framework === 'hermes') {
+          ONBOARDING.step++; // Skip companion step
+      }
+    }
+
     if(ONBOARDING.steps[ONBOARDING.step]==='companion'){
       const cd=ONBOARDING.companionDefaults;
       if(!cd||!cd.available) throw new Error(t('onboarding_companion_blocked')||'ARES requires JaegerAI as its Companion runtime. Install JaegerAI, then reload this page.');

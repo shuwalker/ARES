@@ -24,7 +24,14 @@ class HermesBackend(AgenticBackend):
 
     def get_worker_target(self) -> tuple:
         """Return the Hermes streaming worker target."""
+        from api.config import get_config
+        from api.backend_selector import webui_gateway_chat_enabled
         from api.streaming import _run_agent_streaming
+        
+        if webui_gateway_chat_enabled(get_config()):
+            from api.jros_gateway_chat import _run_gateway_chat_streaming
+            return _run_gateway_chat_streaming, True, False
+            
         return _run_agent_streaming, False, False
 
     def get_backend_name(self) -> str:

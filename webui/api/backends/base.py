@@ -82,7 +82,7 @@ class AgenticBackend(ABC):
 
     def get_backend_name(self) -> str:
         """Return the display name for this backend (e.g. 'Hermes', 'JROS')."""
-        return self.name.title() if self.name != "unknown" else self.name.title()
+        return self.name.title()
 
     def get_status(self) -> Dict[str, Any]:
         """Optional richer status for UI display."""
@@ -115,23 +115,20 @@ class BackendRouter:
     def select_worker(self, requested: str) -> tuple:
         """
         Return the (callable, is_gateway, is_jros) tuple for the requested
-        backend.  For 'hybrid' returns the first available backend's worker.
-        Falls back to any available backend if the requested one is unavailable.
+        backend. For 'hybrid' returns the first available backend's worker.
         """
         if requested == "hybrid":
             available = [b for b in self.backends.values() if b.is_available()]
             if available:
                 return available[0].get_worker_target()
+        
         backend = self.backends.get(requested)
-        if backend and backend.is_available():
+        if backend:
             return backend.get_worker_target()
-        # Try the other backend(s)
-        for name, b in self.backends.items():
-            if name != requested and b.is_available():
-                return b.get_worker_target()
-        # Last resort: return the default backend even if unavailable
-        last = self.backends.get(requested) or list(self.backends.values())[0]
-        return last.get_worker_target()
+            
+        # Fallback only if the requested backend string is completely invalid/unknown
+        fallback = self.backends.get("hermes") or list(self.backends.values())[0]
+        return fallback.get_worker_target()
 
     def get_active_backend_name(self, requested: str) -> str:
         """Return the display name for the active backend."""

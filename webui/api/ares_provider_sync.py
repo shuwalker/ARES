@@ -29,6 +29,10 @@ PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
         "base_url": "https://api.openai.com/v1",
         "api_key_env": "OPENAI_API_KEY",
     },
+    "xai": {
+        "base_url": "https://api.x.ai/v1",
+        "api_key_env": "XAI_API_KEY",
+    },
     "anthropic": {
         "base_url": "https://api.anthropic.com",
         "api_key_env": "ANTHROPIC_API_KEY",
@@ -67,6 +71,7 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "ollama-local": "ollama",
     "local": "ollama",
     "openai": "openai",
+    "xai": "xai",
     # Hermes OAuth provider slugs are not runnable by JROS today.
     "openai-codex": None,
     "xai-oauth": None,

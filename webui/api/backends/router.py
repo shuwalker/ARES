@@ -15,12 +15,22 @@ from .jros import JROSBackend
 from .hybrid import HybridBackend
 
 
+from .chatgpt_web import ChatGPTWebBackend
+from .claude_web import ClaudeWebBackend
+from .gemini_web import GeminiWebBackend
+from .grok_web import GrokWebBackend
+
+
 def get_default_router() -> BackendRouter:
     """Factory that returns the canonical ARES router with peer backends."""
     backends: Dict[str, AgenticBackend] = {
         "hermes": HermesBackend(),
         "jros": JROSBackend(),
         "hybrid": HybridBackend(),
+        "chatgpt-web": ChatGPTWebBackend(),
+        "claude-web": ClaudeWebBackend(),
+        "gemini-web": GeminiWebBackend(),
+        "grok-web": GrokWebBackend(),
     }
     return BackendRouter(backends)
 

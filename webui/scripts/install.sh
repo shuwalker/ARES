@@ -51,20 +51,8 @@ JSON_OUTPUT=false
 STAGE_NAME=""
 MANIFEST_MODE=false
 NON_INTERACTIVE=false
-BACKEND_MODE="${ARES_BACKEND:-auto}"
+BACKEND_MODE="unconfigured"
 NO_START=false
-
-# JaegerAI is ARES's required Companion runtime — the brain, memory, character,
-# and local model. ARES never forks or reimplements it; the installer only
-# ever detects an existing install or delegates to JaegerAI's own installer,
-# the same way hermes-workspace's installer delegates to Nous's upstream
-# hermes-agent installer instead of reimplementing it.
-JROS_INSTALL_URL="${JROS_INSTALL_URL:-https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh}"
-SKIP_JROS=false
-
-# Hermes Agent is an optional addition (coding/terminal/skills capability),
-# never installed unless the operator asks for it.
-WITH_HERMES=false
 
 # Detect non-interactive mode
 if [ -t 0 ]; then
@@ -87,10 +75,7 @@ while [[ $# -gt 0 ]]; do
         --stage) STAGE_NAME="$2"; shift 2 ;;
         --json) JSON_OUTPUT=true; shift ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
-        --backend) BACKEND_MODE="$2"; shift 2 ;;
         --no-start) NO_START=true; shift ;;
-        --skip-jros) SKIP_JROS=true; shift ;;
-        --with-hermes) WITH_HERMES=true; shift ;;
         -h|--help)
             echo "ARES Web UI Installer"
             echo ""
@@ -108,11 +93,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
-            echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto → jros)"
             echo "  --no-start      Skip auto-starting the server after installation"
-            echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — ARES has no"
-            echo "                  Companion runtime until JaegerAI is installed separately)"
-            echo "  --with-hermes   Also install Hermes Agent, the optional coding/terminal addition"
             echo "  -h, --help      Show this help"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -146,7 +127,7 @@ json_escape() {
 }
 
 emit_manifest() {
-    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"jros","title":"Install JaegerAI (required Companion runtime)","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
+    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
     printf '\n'
 }
 
@@ -195,55 +176,6 @@ prompt_yes_no() {
 # ============================================================================
 # System detection
 # ============================================================================
-
-detect_jros() {
-    JAEGER_HOME_DETECTED="${ARES_JAEGER_HOME:-${JAEGER_HOME:-$HOME/jaeger}}"
-    JAEGER_LAUNCHER="$JAEGER_HOME_DETECTED/jaeger"
-    if [ -x "$JAEGER_LAUNCHER" ]; then
-        JROS_DETECTED=true
-        log_success "JaegerAI detected at $JAEGER_HOME_DETECTED"
-    else
-        JROS_DETECTED=false
-        log_info "JaegerAI not detected at $JAEGER_HOME_DETECTED"
-    fi
-}
-
-# JaegerAI is ARES's required Companion runtime (the brain, memory, character,
-# local model). This stage never reimplements JaegerAI — it only detects an
-# existing install or delegates to JaegerAI's own installer, exactly the way
-# ARES already delegates to Nous's own installer for the optional Hermes
-# addition (see install_deps below).
-stage_jros() {
-    detect_jros
-    if [ "$JROS_DETECTED" = true ]; then
-        log_success "JaegerAI already installed at $JAEGER_HOME_DETECTED — skipping install"
-        return 0
-    fi
-    if [ "$SKIP_JROS" = true ]; then
-        log_warn "Skipping JaegerAI install (--skip-jros). ARES has no Companion runtime until"
-        log_warn "JaegerAI is installed separately at $JAEGER_HOME_DETECTED."
-        return 0
-    fi
-
-    log_info "JaegerAI not found — installing the required Companion runtime..."
-    log_info "  Delegating to JaegerAI's own installer: $JROS_INSTALL_URL"
-    if ! curl -fsSL "$JROS_INSTALL_URL" | JAEGER_HOME="$JAEGER_HOME_DETECTED" bash; then
-        log_error "JaegerAI install failed."
-        log_error "ARES requires JaegerAI as its Companion runtime — retry manually with:"
-        log_error "  curl -fsSL $JROS_INSTALL_URL | bash"
-        log_error "or pass --skip-jros to continue without a Companion (not recommended)."
-        exit 1
-    fi
-
-    detect_jros
-    if [ "$JROS_DETECTED" != true ]; then
-        log_error "JaegerAI installer finished but no launcher was found at $JAEGER_HOME_DETECTED."
-        log_error "Check the installer output above, or set ARES_JAEGER_HOME/JAEGER_HOME"
-        log_error "to the location JaegerAI actually installed to."
-        exit 1
-    fi
-    log_success "JaegerAI installed at $JAEGER_HOME_DETECTED"
-}
 
 detect_os() {
     case "$(uname -s)" in
@@ -434,31 +366,6 @@ install_deps() {
         exit 1
     fi
 
-    # Hermes Agent is an optional addition (coding/terminal/skills capability),
-    # not the Companion runtime — JaegerAI already covers that. Only install it
-    # when explicitly requested via --with-hermes, or the operator opts in
-    # here on an interactive terminal.
-    if [ "$WITH_HERMES" != true ] && [ "$NON_INTERACTIVE" != true ] && [ "$IS_INTERACTIVE" = true ]; then
-        if prompt_yes_no "Also install Hermes Agent (optional coding/terminal addition)?" "no"; then
-            WITH_HERMES=true
-        fi
-    fi
-
-    if [ "$WITH_HERMES" = true ]; then
-        log_info "Installing Hermes Agent (optional addition)..."
-        if ! "$PIP_PYTHON" -m pip install hermes-agent 2>/dev/null; then
-            log_warn "hermes-agent not found via pip"
-            log_info "Trying git install..."
-            if ! "$PIP_PYTHON" -m pip install git+https://github.com/nousresearch/hermes-agent.git 2>/dev/null; then
-                log_warn "Could not install hermes-agent. The Hermes addition will be unavailable."
-                log_info "Install manually later: pip install hermes-agent"
-                WITH_HERMES=false
-            fi
-        fi
-    else
-        log_info "Skipping Hermes Agent (optional addition — add later with --with-hermes)"
-    fi
-
     log_success "All dependencies installed"
 }
 
@@ -476,114 +383,29 @@ setup_config() {
     # Create state directory
     mkdir -p "$ARES_HOME"
 
-    detect_jros
-    selected_backend="$BACKEND_MODE"
-    if [ "$selected_backend" = "auto" ]; then
-        # JaegerAI is the required Companion runtime — it is always the default,
-        # regardless of whether Hermes was also installed as an addition.
-        selected_backend="jros"
-    fi
-    case "$selected_backend" in
-        hermes|jros|hybrid) ;;
-        *) log_error "Invalid backend mode: $selected_backend (expected auto, hermes, jros, or hybrid)"; exit 1 ;;
-    esac
-    if [ "$selected_backend" != "jros" ] && [ "$WITH_HERMES" != true ]; then
-        log_warn "Backend '$selected_backend' needs the Hermes addition, which was not installed."
-        log_warn "Falling back to jros. Re-run with --with-hermes --backend $selected_backend to use it."
-        selected_backend="jros"
-    fi
-    if [ "$selected_backend" = "jros" ] && [ "${JROS_DETECTED:-false}" != true ]; then
-        log_error "Backend 'jros' selected but no JaegerAI install was found at $JAEGER_HOME_DETECTED."
-        log_error "Re-run without --skip-jros, or install JaegerAI manually and re-run."
-        exit 1
-    fi
-
-    if [ -z "${PYTHON_PATH:-}" ]; then
-        check_python
-    fi
     CONFIG_PYTHON="${PYTHON_PATH:-}"
     if [ -z "$CONFIG_PYTHON" ]; then
         log_error "Python not found; cannot write ARES backend settings"
         exit 1
     fi
-    "$CONFIG_PYTHON" - "$selected_backend" "$ARES_HOME" "$HERMES_HOME" <<'PY'
+    "$CONFIG_PYTHON" - "$ARES_HOME" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-backend = sys.argv[1]
-state_home = Path(sys.argv[2]) / "webui"
-hermes_home = Path(sys.argv[3])
+state_home = Path(sys.argv[1]) / "webui"
 state_home.mkdir(parents=True, exist_ok=True)
 settings = state_home / "settings.json"
 data = {}
 if settings.exists():
     try:
-        import json
         data = json.loads(settings.read_text(encoding="utf-8"))
     except Exception:
-        data = {}
-data["ares_backend"] = backend
-settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-# Runtime reads the selected backend from Hermes config.yaml, not settings.json.
-# Keep this line-oriented and dependency-free so it works even if PyYAML is absent.
-hermes_home.mkdir(parents=True, exist_ok=True)
-config_path = hermes_home / "config.yaml"
-lines = config_path.read_text(encoding="utf-8").splitlines() if config_path.exists() else []
-out = []
-seen = False
-for line in lines:
-    if line.startswith("ares_backend:"):
-        out.append(f"ares_backend: {backend}")
-        seen = True
-    else:
-        out.append(line)
-if not seen:
-    if out and out[-1].strip():
-        out.append("")
-    out.append(f"ares_backend: {backend}")
-config_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+        pass
+data["ares_backend"] = "unconfigured"
+settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "
+", encoding="utf-8")
 PY
-    if [ "${JROS_DETECTED:-false}" = true ]; then
-        "$CONFIG_PYTHON" - "$WEBUI_DIR/.env" "$JAEGER_HOME_DETECTED" <<'PY'
-import sys
-from pathlib import Path
-
-env_path = Path(sys.argv[1])
-jros_home = sys.argv[2]
-updates = {
-    "ARES_JAEGER_HOME": jros_home,
-    "JAEGER_HOME": jros_home,
-}
-lines = []
-seen = set()
-if env_path.exists():
-    lines = env_path.read_text(encoding="utf-8").splitlines()
-out = []
-for line in lines:
-    stripped = line.strip()
-    key = stripped.split("=", 1)[0] if "=" in stripped and not stripped.startswith("#") else None
-    if key in updates:
-        out.append(f'{key}="{updates[key]}"')
-        seen.add(key)
-    else:
-        out.append(line)
-for key, value in updates.items():
-    if key not in seen:
-        out.append(f'{key}="{value}"')
-env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
-PY
-        log_success "Persisted JaegerAI runtime path: $JAEGER_HOME_DETECTED"
-
-        # Keep JaegerAI's first external model aligned with Hermes when the
-        # operator has already run `ollama launch`.  This is deliberately
-        # one-time/default-only: an explicitly enabled JROS external model is
-        # owned by the user and must not be overwritten on reinstall.
-        CONFIG_RUNTIME_PYTHON="$WEBUI_DIR/venv/bin/python"
-        if [ ! -x "$CONFIG_RUNTIME_PYTHON" ]; then
-            CONFIG_RUNTIME_PYTHON="$CONFIG_PYTHON"
-        fi
         "$CONFIG_RUNTIME_PYTHON" - "$HERMES_HOME/config.yaml" "$JAEGER_HOME_DETECTED" <<'PY'
 import sys
 from pathlib import Path
@@ -680,7 +502,6 @@ if provider in {"ollama", "ollama-launch", "ollama-local", "local"} and model:
 PY
         log_success "Aligned JaegerAI's default external model with local Ollama when available"
     fi
-    log_success "Configured ARES backend: $selected_backend"
 
     log_success "Configuration ready"
 }
@@ -735,7 +556,6 @@ print_banner
 detect_os
 stage_prerequisites
 clone_repo
-stage_jros
 setup_venv
 install_deps
 setup_config
@@ -745,18 +565,10 @@ echo ""
 echo -e "${GREEN}${BOLD}ARES Web UI installation complete!${NC}"
 echo ""
 echo "  Start the server:"
-if [ "${JROS_DETECTED:-false}" = true ]; then
-    echo "    cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED ./venv/bin/python server.py"
-else
-    echo "    cd $WEBUI_DIR && ./venv/bin/python server.py"
-fi
+echo "    cd $WEBUI_DIR && ./venv/bin/python server.py"
 echo ""
 echo "  Or set env and run:"
-if [ "${JROS_DETECTED:-false}" = true ]; then
-    echo "    ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
-else
-    echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
-fi
+echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
 echo ""
 echo "  Then open: http://localhost:$PORT"
 echo ""
@@ -768,16 +580,6 @@ echo ""
 if [ "$NO_START" = false ] && [ -t 0 ]; then
     echo -e "${CYAN}→ Starting ARES Web UI...${NC}"
     cd "$WEBUI_DIR"
-    if [ "${JROS_DETECTED:-false}" = true ]; then
-        ARES_JAEGER_HOME="$JAEGER_HOME_DETECTED" JAEGER_HOME="$JAEGER_HOME_DETECTED" HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
-    else
-        HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
-    fi
 else
     echo -e "${CYAN}→ To start the server later, run:${NC}"
-    if [ "${JROS_DETECTED:-false}" = true ]; then
-        echo "  cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED JAEGER_HOME=$JAEGER_HOME_DETECTED HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
-    else
-        echo "  cd $WEBUI_DIR && HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
-    fi
 fi

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -606,3 +607,127 @@ def evaluate_goal_after_turn(
     decision = dict(decision)
     decision = _goal_decision_payload(decision, getattr(mgr, "state", None))
     return decision
+
+
+# ── Server-side goal continuation (Option Z parity) ─────────────────────────
+# evaluate_goal_after_turn() only decides whether to continue; historically the
+# actual next turn was started by the FRONTEND re-POSTing continuation_prompt
+# after receiving the 'goal_continue' SSE event. If no tab is open when a
+# goal-related turn finishes, that event has no listener, the continuation
+# prompt is never resubmitted, and the goal silently stalls until some client
+# happens to reconnect. api/background_process.py already solved the identical
+# shape of problem for background-process notify_on_complete wakeups (Option
+# Z: server-side turn start, no browser round-trip); this mirrors that pattern
+# for goal continuations instead of duplicating a browser-mediated path.
+_DEFERRED_GOAL_CONTINUATIONS: Dict[str, str] = {}
+_DEFERRED_GOAL_CONTINUATIONS_LOCK = threading.Lock()
+
+
+def record_deferred_goal_continuation(session_id: str, continuation_prompt: str) -> None:
+    """Persist a goal continuation prompt for delivery once the session goes idle.
+
+    Called from the streaming worker at the point a goal-related turn decides
+    should_continue=True. The turn that just decided this is itself still the
+    active run for the session, so the continuation cannot be started here —
+    it would race its own teardown and 409. drain_deferred_goal_continuation_
+    for_session() (called from the SAME worker right after unregister_active_run)
+    claims and delivers it once the session is genuinely idle.
+    """
+    sid = str(session_id or "").strip()
+    prompt = str(continuation_prompt or "").strip()
+    if not sid or not prompt:
+        return
+    with _DEFERRED_GOAL_CONTINUATIONS_LOCK:
+        _DEFERRED_GOAL_CONTINUATIONS[sid] = prompt
+
+
+def claim_deferred_goal_continuation(session_id: str) -> Optional[str]:
+    """Atomically pop and return the deferred continuation prompt, if any."""
+    sid = str(session_id or "").strip()
+    if not sid:
+        return None
+    with _DEFERRED_GOAL_CONTINUATIONS_LOCK:
+        return _DEFERRED_GOAL_CONTINUATIONS.pop(sid, None) or None
+
+
+def _start_server_side_goal_continuation_turn(session_id: str, continuation_prompt: str) -> None:
+    """Start the goal-continuation turn server-side (Option Z for goals).
+
+    Runs on a short-lived daemon thread so the caller (turn teardown) never
+    blocks. Reuses api.routes.start_session_turn — the same HTTP-handler-free
+    entrypoint background_process.py uses for process-wakeup turns — so
+    concurrency (per-session agent lock, 409 on an already-active turn) and
+    session/model resolution are identical to a human-typed turn. A human
+    reopening the tab and re-sending continuation_prompt themselves races this
+    exactly like a human /api/chat/start races a process wakeup: whichever
+    gets the per-session lock first wins, the other 409s.
+    """
+
+    def _runner() -> None:
+        try:
+            from api.routes import start_session_turn
+
+            resp = start_session_turn(session_id, continuation_prompt, source="goal_continuation")
+            status = int((resp or {}).get("_status", 200) or 200)
+            if status == 409:
+                # Raced an active turn (human reconnect, or a sibling
+                # deferred-continuation thread). Re-defer so the winning
+                # turn's own teardown redelivers it instead of losing it.
+                record_deferred_goal_continuation(session_id, continuation_prompt)
+                logger.debug(
+                    "server-side goal continuation raced an active turn for session %s; re-deferred",
+                    session_id,
+                )
+            elif status >= 400:
+                logger.warning(
+                    "server-side goal continuation failed for session %s: status=%s err=%r",
+                    session_id,
+                    status,
+                    (resp or {}).get("error"),
+                )
+            else:
+                logger.info(
+                    "server-side goal continuation turn started for session %s (stream_id=%s)",
+                    session_id,
+                    (resp or {}).get("stream_id"),
+                )
+        except Exception:
+            logger.warning(
+                "server-side goal continuation turn raised for session %s",
+                session_id,
+                exc_info=True,
+            )
+
+    threading.Thread(
+        target=_runner,
+        name=f"hermes-webui-goal-continuation-{str(session_id)[:8]}",
+        daemon=True,
+    ).start()
+
+
+def drain_deferred_goal_continuation_for_session(session_id: str) -> int:
+    """Turn-teardown idle-hook: redeliver a deferred goal continuation once idle.
+
+    Must be called AFTER unregister_active_run() for this stream so
+    _session_has_active_turn() no longer counts the just-ended turn. If a
+    different stream for the same session is still active (cancel/reconnect),
+    the entry is left in place for that stream's own teardown to claim.
+
+    Returns 1 if a continuation turn was started, 0 otherwise.
+    """
+    sid = str(session_id or "").strip()
+    if not sid:
+        return 0
+    try:
+        from api.background_process import _session_has_active_turn
+
+        if _session_has_active_turn(sid):
+            return 0
+    except Exception:
+        logger.debug("goal continuation idle-check failed for session %s", sid, exc_info=True)
+        return 0
+    prompt = claim_deferred_goal_continuation(sid)
+    if not prompt:
+        return 0
+    _start_server_side_goal_continuation_turn(sid, prompt)
+    return 1

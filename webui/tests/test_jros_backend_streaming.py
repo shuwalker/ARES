@@ -268,6 +268,9 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch, tmp_path):
 
 def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     from api import backend_selector
+    from api import jros_gateway_chat
+
+    monkeypatch.setattr(jros_gateway_chat, "local_jros_root", lambda: None)
 
     server, base = _start_fake_gateway()
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", base)

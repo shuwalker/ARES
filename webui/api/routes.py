@@ -9564,6 +9564,7 @@ from api.onboarding import (
     get_onboarding_status,
     complete_onboarding,
     probe_provider_endpoint,
+    install_framework,
 )
 from api.oauth import (
     cancel_onboarding_oauth_flow,
@@ -12374,6 +12375,19 @@ def handle_get(handler, parsed) -> bool:
         except Exception:
             enabled = False
         return j(handler, {"available": hermes_mcp_available(), "enabled": enabled})
+
+    if parsed.path == "/api/onboarding/companion/jros-tools":
+        # Read-only status for the reverse addition: "let Hermes/MoA consult
+        # the JROS Companion over MCP" (api.hermes_jros_mcp mirrors
+        # api.jros_hermes_mcp in the other direction).
+        from api.hermes_jros_mcp import jros_mcp_available
+        from api.config import get_config
+
+        try:
+            enabled = bool(get_config().get("hermes_jros_tools_enabled"))
+        except Exception:
+            enabled = False
+        return j(handler, {"available": jros_mcp_available(), "enabled": enabled})
 
     if parsed.path == "/api/onboarding/companion/defaults":
         # Read-only: host-tier model recommendation, voices, permission
@@ -16136,6 +16150,19 @@ def handle_post(handler, parsed) -> bool:
         except RuntimeError as e:
             return bad(handler, str(e), 500)
 
+    if parsed.path == "/api/onboarding/companion/jros-tools":
+        # Writes Hermes's mcp_servers config entry and the ares config flag —
+        # same local-network gate as the other onboarding mutators.
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "This setting is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        from api.hermes_jros_mcp import set_jros_tools_enabled
+
+        b = body or {}
+        try:
+            return j(handler, set_jros_tools_enabled(bool(b.get("enabled", True))))
+        except RuntimeError as e:
+            return bad(handler, str(e), 500)
+
     if parsed.path == "/api/onboarding/jros/install":
         # Triggers JROS installation from the onboarding wizard.
         # Delegates to JROS's own installer (the same one the bash installer
@@ -16154,6 +16181,15 @@ def handle_post(handler, parsed) -> bool:
             return bad(handler, str(e), 500)
         except Exception as e:
             return bad(handler, f"JROS install failed: {e}", 500)
+
+    if parsed.path == "/api/onboarding/install-framework":
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "Onboarding is only available from local networks.", 403)
+        try:
+            return j(handler, install_framework(body or {}))
+        except Exception as e:
+            logger.error("Framework install setup failed: %s", e)
+            return bad(handler, str(e), 500)
 
     if parsed.path == "/api/onboarding/complete":
         # Marking onboarding complete flips the first-run wizard off (persists
@@ -21360,26 +21396,19 @@ def _active_run_stream_for_session(session_id: str | None) -> str | None:
 def _select_chat_worker_target(session=None):
     """Return the backend worker for a normal WebUI chat turn.
 
-    The ARES backend selector is the product-level router, so it must win over
-    transport details like gateway-chat.  ``jros`` routes to the JROS gateway
-    bridge (api/jros_gateway_chat.py), which POSTs the turn to a local or
-    remote `jaeger gateway` server. ``hybrid`` intentionally falls through to
-    the normal Hermes worker so existing persona/tool injection remains
-    additive.
+    This now routes strictly through the ARES Backend Adapter Registry, ensuring
+    all backends encapsulate their own routing details (e.g. gateway chat) and
+    respecting strict persona separation without silent fallbacks.
     """
     try:
-        from api.backend_selector import BACKEND_JROS, get_session_backend
+        from api.backend_selector import get_session_backend
+        from api.backends.router import get_router
 
-        if get_session_backend(session, get_config()) == BACKEND_JROS:
-            from api.jros_gateway_chat import run_jros_streaming
-
-            return run_jros_streaming, False, True
+        backend_name = get_session_backend(session, get_config())
+        return get_router().select_worker(backend_name)
     except Exception:
         logger.warning("Failed to resolve ARES backend; falling back to Hermes worker", exc_info=True)
-    backend_is_gateway = webui_gateway_chat_enabled(get_config())
-    if backend_is_gateway:
-        return _run_gateway_chat_streaming, True, False
-    return _run_agent_streaming, False, False
+        return _run_agent_streaming, False, False
 
 
 def _start_chat_stream_for_session(
@@ -21639,8 +21668,11 @@ def _start_run(
     )
 
     try:
-        from api.backend_selector import BACKEND_JROS, get_session_backend
-        if get_session_backend(s, get_config()) == BACKEND_JROS:
+        from api.backend_selector import get_session_backend
+        from api.backends.router import get_router
+        
+        backend_name = get_session_backend(s, get_config())
+        if backend_name != "hermes":
             return _start_chat_stream_for_session(
                 s,
                 msg=msg,

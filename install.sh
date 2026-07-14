@@ -10,8 +10,6 @@
 # Options:
 #   --role primary|client   Machine role (prompted if omitted)
 #   --primary-url URL       Primary URL for client mode (e.g. http://100.x.y.z:8787)
-#   --backend jros|hermes|hybrid|auto
-#   --with-hermes           Also install Hermes Agent (optional addition)
 #   --no-start              Skip launching the app after install
 #   -h, --help
 
@@ -49,15 +47,13 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --role)          ARES_ROLE="$2"; shift 2 ;;
         --primary-url)   ARES_PRIMARY_URL="$2"; shift 2 ;;
-        --backend)       ARES_BACKEND="$2"; EXTRA_ARGS+=("--backend" "$2"); shift 2 ;;
-        --with-hermes)   EXTRA_ARGS+=("--with-hermes"); shift ;;
         --no-start)      NO_START=true; shift ;;
         -h|--help)
             echo "ARES installer"
             echo ""
             echo "  curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/install.sh | bash"
             echo "  bash install.sh [--role primary|client] [--primary-url URL]"
-            echo "                  [--backend jros|hermes|hybrid] [--with-hermes] [--no-start]"
+            echo "                  [--no-start]"
             exit 0 ;;
         *) die "Unknown option: $1" ;;
     esac
@@ -159,59 +155,6 @@ _select_role() {
     fi
 }
 
-# ── 4. JaegerAI — install if missing, then gate on its own doctor ────────────
-_check_jaeger() {
-    JAEGER_HOME=""
-    for p in "$HOME/jaeger" "$HOME/.jaeger"; do
-        [ -d "$p" ] && JAEGER_HOME="$p" && break
-    done
-    if [ -z "$JAEGER_HOME" ]; then
-        echo ""
-        warn "JaegerAI not found — required Companion runtime on every machine"
-        echo ""
-        printf "  Install JaegerAI now? [Y/n]: "
-        read -r _ans
-        case "${_ans:-Y}" in
-            [Yy]*)
-                info "Installing JaegerAI..."
-                if curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash; then
-                    ok "JaegerAI installed"
-                    for p in "$HOME/jaeger" "$HOME/.jaeger"; do [ -d "$p" ] && JAEGER_HOME="$p" && break; done
-                else
-                    die "JaegerAI install failed.\n  Manual: curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
-                fi ;;
-            *)
-                warn "Skipping JaegerAI — your Companion won't work without it"
-                return 0 ;;
-        esac
-    fi
-    [ -z "$JAEGER_HOME" ] && return 0
-
-    # Health gate: JaegerAI's own doctor, not our guesswork. Exit 0 = deps,
-    # libs, and (if an instance exists) its config/model all check out.
-    if [ -x "$JAEGER_HOME/jaeger" ]; then
-        info "Running JaegerAI doctor..."
-        # `timeout` is not part of stock macOS. Doctor is non-fatal, so run it
-        # directly when no timeout implementation is available.
-        local doctor_status=0
-        if command -v timeout >/dev/null 2>&1; then
-            JAEGER_NO_GUI=1 timeout 120 "$JAEGER_HOME/jaeger" doctor --doctor-check >/dev/null 2>&1 || doctor_status=$?
-        elif command -v gtimeout >/dev/null 2>&1; then
-            JAEGER_NO_GUI=1 gtimeout 120 "$JAEGER_HOME/jaeger" doctor --doctor-check >/dev/null 2>&1 || doctor_status=$?
-        else
-            JAEGER_NO_GUI=1 "$JAEGER_HOME/jaeger" doctor --doctor-check >/dev/null 2>&1 || doctor_status=$?
-        fi
-        if [ "$doctor_status" -eq 0 ]; then
-            ok "JaegerAI healthy at $JAEGER_HOME (doctor passed)"
-        else
-            warn "JaegerAI doctor reported problems — run for details:"
-            warn "  $JAEGER_HOME/jaeger doctor"
-        fi
-    else
-        warn "JaegerAI launcher not executable at $JAEGER_HOME/jaeger"
-    fi
-}
-
 # ── 5. Tailscale (macOS only) — must be CONNECTED, not just installed ────────
 _tailscale_bin() {
     if command -v tailscale >/dev/null 2>&1; then
@@ -280,20 +223,7 @@ _check_tailscale() {
 
 # ── Run pre-install steps ────────────────────────────────────────────────────
 _select_role
-_check_jaeger
 _check_tailscale
-
-# Expose JaegerAI's canonical operator command from every directory.
-if [ -n "${JAEGER_HOME:-}" ] && [ -x "$JAEGER_HOME/jaeger" ]; then
-    mkdir -p "$HOME/.local/bin"
-    rm -f "$HOME/.local/bin/jaeger"
-    cat > "$HOME/.local/bin/jaeger" << JAEGER_CLI_EOF
-#!/usr/bin/env bash
-exec "$JAEGER_HOME/jaeger" "\$@"
-JAEGER_CLI_EOF
-    chmod +x "$HOME/.local/bin/jaeger"
-    ok "JaegerAI CLI linked: ~/.local/bin/jaeger"
-fi
 
 # Companion profile dir — syncs across Macs via iCloud Desktop
 ARES_CONTINUITY_DIR="$HOME/Desktop/ARES/companion"
@@ -317,44 +247,6 @@ fi
 
 INNER_ARGS=("--no-start" "--dir" "$HOME/.ares" "--source-dir" "$ARES_SOURCE_DIR" "${EXTRA_ARGS[@]}")
 bash "$WEBUI_INSTALLER" "${INNER_ARGS[@]}"
-
-# ── Hermes: expose CLI + delegate to its NATIVE setup wizard ──────────────────
-# Hermes ships its own first-run setup (`hermes setup`). We never reimplement
-# it — just put the CLI on PATH and run the real wizard when on a TTY.
-_setup_hermes_native() {
-    local venv_hermes="$HOME/.ares/webui/venv/bin/hermes"
-    [ -f "$venv_hermes" ] || return 0   # Hermes not installed — it's optional
-
-    mkdir -p "$HOME/.local/bin"
-    ln -sf "$venv_hermes" "$HOME/.local/bin/hermes"
-    ok "Hermes CLI linked: ~/.local/bin/hermes"
-
-    # Configured already? A provider in config.yaml or an API key in .env counts
-    # (mirrors Hermes's own _has_any_provider_configured heuristics).
-    if grep -qE '^[[:space:]]*provider:' "$HOME/.hermes/config.yaml" 2>/dev/null \
-       || grep -qE '_API_KEY=.+' "$HOME/.hermes/.env" 2>/dev/null; then
-        ok "Hermes already configured"
-        return 0
-    fi
-
-    if [ -t 0 ]; then
-        echo ""
-        printf "  Configure Hermes now using its own setup wizard? [Y/n]: "
-        read -r _ans
-        case "${_ans:-Y}" in
-            [Yy]*)
-                info "Handing off to Hermes native setup (hermes setup model)..."
-                "$venv_hermes" setup model \
-                    || warn "Hermes setup did not complete — run 'hermes setup' anytime"
-                ;;
-            *) info "Skipped — run 'hermes setup' anytime to configure Hermes" ;;
-        esac
-    else
-        info "Non-interactive shell — run 'hermes setup' later to configure Hermes"
-    fi
-}
-
-_setup_hermes_native
 
 # ── 10. Write role config ────────────────────────────────────────────────────
 _yaml_set() {
@@ -401,17 +293,6 @@ _setup_launchd() {
         return 0
     fi
 
-    local jaeger_home="${JAEGER_HOME:-}"
-    if [ -z "$jaeger_home" ]; then
-        local cfg="$HOME/.ares/config.yaml"
-        if [ -f "$cfg" ]; then
-            local v
-            v=$(grep -E '^ares_jaeger_home:' "$cfg" 2>/dev/null | sed 's/^ares_jaeger_home:[[:space:]]*//' | tr -d '"'"'" | xargs 2>/dev/null || true)
-            [ -n "$v" ] && [ -d "$v" ] && jaeger_home="$v"
-        fi
-        [ -z "$jaeger_home" ] && for p in "$HOME/jaeger" "$HOME/.jaeger"; do [ -d "$p" ] && jaeger_home="$p" && break; done
-    fi
-
     local primary_url_xml=""
     if [ -n "$ARES_PRIMARY_URL" ]; then
         primary_url_xml="        <key>ARES_PRIMARY_URL</key>
@@ -433,10 +314,6 @@ _setup_launchd() {
     </array>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>ARES_JAEGER_HOME</key>
-        <string>$jaeger_home</string>
-        <key>JAEGER_HOME</key>
-        <string>$jaeger_home</string>
         <key>ARES_ROLE</key>
         <string>$ARES_ROLE</string>
         <key>ARES_CONTINUITY_DIR</key>
@@ -591,8 +468,7 @@ _write_install_manifest() {
   "install_dir": "$HOME/.ares",
   "webui_dir": "$HOME/.ares/webui",
   "app_path": "$ARES_APP",
-  "backend": "${ARES_BACKEND:-auto}",
-  "jaeger_home": "${JAEGER_HOME:-}",
+  "backend": "unconfigured",
   "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 MANIFEST_EOF
@@ -614,24 +490,6 @@ _verify_install() {
         warn "Web server      NOT responding — check ~/.ares/webui.log"
     fi
 
-    # JaegerAI runtime + venv present?
-    local jh=""
-    for p in "$HOME/jaeger" "$HOME/.jaeger"; do [ -d "$p" ] && jh="$p" && break; done
-    if [ -n "$jh" ] && [ -f "$jh/.venv/bin/python" ]; then
-        ok "JaegerAI        runtime ready at $jh"
-    elif [ -n "$jh" ]; then
-        warn "JaegerAI        found at $jh but venv missing — run its install.sh"
-    else
-        warn "JaegerAI        NOT installed — Companion won't work"
-    fi
-
-    # Companion instance — absent is CORRECT on fresh install (wizard creates it)
-    if [ -n "$jh" ] && [ -d "$jh/.jaeger_os/instances" ] && [ -n "$(ls -A "$jh/.jaeger_os/instances" 2>/dev/null)" ]; then
-        ok "Companion       exists ($(ls "$jh/.jaeger_os/instances" | head -1)) — wizard will skip creation"
-    else
-        info "Companion       not created yet — the onboarding wizard will create it"
-    fi
-
     # Tailscale connected?
     local ts_ip; ts_ip="$(_tailscale_ip || true)"
     if [ -n "$ts_ip" ]; then
@@ -640,16 +498,6 @@ _verify_install() {
         warn "Tailscale       NOT connected — no iPhone/remote access until you sign in"
     fi
 
-    # Hermes (optional)
-    if "$HOME/.ares/webui/venv/bin/python" -c "import hermes_cli" 2>/dev/null; then
-        if [ -f "$HOME/.hermes/config.yaml" ] && grep -q "provider" "$HOME/.hermes/config.yaml" 2>/dev/null; then
-            ok "Hermes          installed and configured"
-        else
-            info "Hermes          installed, not configured — optional; set up in the wizard or skip"
-        fi
-    else
-        info "Hermes          not installed (optional)"
-    fi
     echo ""
 }
 
