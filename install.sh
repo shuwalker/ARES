@@ -187,31 +187,70 @@ _check_jaeger() {
     esac
 }
 
-# ── 5. Tailscale (macOS only) ────────────────────────────────────────────────
+# ── 5. Tailscale (macOS only) — must be CONNECTED, not just installed ────────
+_tailscale_bin() {
+    if command -v tailscale >/dev/null 2>&1; then
+        echo "tailscale"
+    elif [ -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]; then
+        echo "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+    fi
+}
+
+_tailscale_ip() {
+    local ts; ts="$(_tailscale_bin)"
+    [ -z "$ts" ] && return 1
+    "$ts" ip -4 2>/dev/null | head -1
+}
+
 _check_tailscale() {
     [ "$OS" != "Darwin" ] && return 0
-    if command -v tailscale >/dev/null 2>&1 || [ -d "/Applications/Tailscale.app" ]; then
-        ok "Tailscale found"
+
+    # Install if missing
+    if [ -z "$(_tailscale_bin)" ]; then
+        echo ""
+        info "Tailscale not found — needed for cross-device access (iPhone, MacBook, etc.)"
+        if command -v brew >/dev/null 2>&1; then
+            printf "  Install via Homebrew? [Y/n]: "
+            read -r _ans
+            case "${_ans:-Y}" in
+                [Yy]*)
+                    info "Installing Tailscale..."
+                    brew install --cask tailscale 2>/dev/null || \
+                        warn "Install failed — get it from https://tailscale.com/download" ;;
+                *) warn "Skipped — remote access won't work until Tailscale is set up"; return 0 ;;
+            esac
+        else
+            warn "Install from https://tailscale.com/download, then re-run"
+            return 0
+        fi
+    fi
+
+    # Verify actually connected — installed-but-stopped means no remote access
+    local ip; ip="$(_tailscale_ip || true)"
+    if [ -n "$ip" ]; then
+        ok "Tailscale connected ($ip)"
         return 0
     fi
-    echo ""
-    info "Tailscale not found — needed for cross-device access (iPhone, MacBook, etc.)"
-    if command -v brew >/dev/null 2>&1; then
-        printf "  Install via Homebrew? [Y/n]: "
-        read -r _ans
-        case "${_ans:-Y}" in
-            [Yy]*)
-                info "Installing Tailscale..."
-                if brew install --cask tailscale 2>/dev/null; then
-                    ok "Tailscale installed — open it and sign into your tailnet"
-                else
-                    warn "Tailscale install failed — install from https://tailscale.com/download"
-                fi ;;
-            *) info "Skipping — install later from https://tailscale.com/download" ;;
-        esac
-    else
-        info "Install Tailscale from https://tailscale.com/download"
-    fi
+
+    warn "Tailscale is installed but NOT connected (stopped or signed out)"
+    open -a Tailscale 2>/dev/null || true
+    echo "    Tailscale is opening — sign in and connect to your tailnet."
+    printf "  Press Enter once connected (or type skip): "
+    read -r _ans
+    [ "$_ans" = "skip" ] && { warn "Skipped — remote access unavailable until connected"; return 0; }
+
+    # Give it a few seconds to come up, then re-check
+    local tries=0
+    while [ $tries -lt 10 ]; do
+        ip="$(_tailscale_ip || true)"
+        if [ -n "$ip" ]; then
+            ok "Tailscale connected ($ip)"
+            return 0
+        fi
+        sleep 2
+        tries=$((tries+1))
+    done
+    warn "Still not connected — continuing, but remote access won't work yet"
 }
 
 # ── Run pre-install steps ────────────────────────────────────────────────────
@@ -367,17 +406,20 @@ _install_ares_command() {
     [ "$OS" != "Darwin" ] && return 0
     [ "$HAS_SWIFT" != true ] && return 0
 
-    info "Building ARES app..."
+    info "Building ARES app (first build can take a few minutes)..."
     cd "$SCRIPT_DIR"
-    if swift build 2>&1 | grep -v "^Build\|^Compiling\|^Linking\|^Emitting\|^Applying\|^Write\|^\[" | head -5; then
-        :
-    fi
-    # Wait for build to actually finish (swift build above already waited)
-    local bin="$SCRIPT_DIR/.build/debug/ARES"
-    if [ ! -f "$bin" ]; then
-        warn "Build output not found — skipping app launch"
+    local build_log="$HOME/.ares/build.log"
+    if ! swift build > "$build_log" 2>&1; then
+        warn "Build failed — see $build_log"
         return 0
     fi
+    local bin
+    bin="$(swift build --show-bin-path 2>/dev/null)/ARES"
+    if [ ! -f "$bin" ]; then
+        warn "Build output not found at $bin — skipping app launch"
+        return 0
+    fi
+    ok "ARES app built"
 
     # Install `ares` command so the app can be launched/reopened from anywhere
     local cmd_dir="$HOME/.local/bin"
@@ -411,24 +453,75 @@ CMD_EOF
 
 _install_ares_command
 
-# ── 13. Launch ────────────────────────────────────────────────────────────────
-echo ""
+# ── 13. Verification — report what is actually LIVE, not what's on disk ──────
+_verify_install() {
+    echo ""
+    echo -e "${MAGENTA}${BOLD}── Install verification ──${NC}"
+
+    # Web server responding?
+    if curl -s -m 3 http://127.0.0.1:8787/health >/dev/null 2>&1; then
+        ok "Web server      responding at http://localhost:8787"
+    else
+        warn "Web server      NOT responding — check ~/.ares/webui.log"
+    fi
+
+    # JaegerAI runtime + venv present?
+    local jh=""
+    for p in "$HOME/jaeger" "$HOME/.jaeger"; do [ -d "$p" ] && jh="$p" && break; done
+    if [ -n "$jh" ] && [ -f "$jh/.venv/bin/python" ]; then
+        ok "JaegerAI        runtime ready at $jh"
+    elif [ -n "$jh" ]; then
+        warn "JaegerAI        found at $jh but venv missing — run its install.sh"
+    else
+        warn "JaegerAI        NOT installed — Companion won't work"
+    fi
+
+    # Companion instance — absent is CORRECT on fresh install (wizard creates it)
+    if [ -n "$jh" ] && [ -d "$jh/.jaeger_os/instances" ] && [ -n "$(ls -A "$jh/.jaeger_os/instances" 2>/dev/null)" ]; then
+        ok "Companion       exists ($(ls "$jh/.jaeger_os/instances" | head -1)) — wizard will skip creation"
+    else
+        info "Companion       not created yet — the onboarding wizard will create it"
+    fi
+
+    # Tailscale connected?
+    local ts_ip; ts_ip="$(_tailscale_ip || true)"
+    if [ -n "$ts_ip" ]; then
+        ok "Tailscale       connected — remote URL: http://$ts_ip:8787"
+    else
+        warn "Tailscale       NOT connected — no iPhone/remote access until you sign in"
+    fi
+
+    # Hermes (optional)
+    if "$HOME/.ares/webui/venv/bin/python" -c "import hermes_agent" 2>/dev/null; then
+        if [ -f "$HOME/.hermes/config.yaml" ] && grep -q "provider" "$HOME/.hermes/config.yaml" 2>/dev/null; then
+            ok "Hermes          installed and configured"
+        else
+            info "Hermes          installed, not configured — optional; set up in the wizard or skip"
+        fi
+    else
+        info "Hermes          not installed (optional)"
+    fi
+    echo ""
+}
+
+_verify_install
+
+# ── 14. Launch ────────────────────────────────────────────────────────────────
 if [ "$USE_MAC_APP" = true ]; then
     local_bin="$HOME/.local/bin/ares"
     if [ -f "$local_bin" ]; then
-        info "Launching ARES (detached — stays open when this terminal closes)..."
+        info "Launching ARES (detached — survives closing this terminal)..."
         bash "$local_bin"
+        echo ""
+        echo -e "${GREEN}${BOLD}Done.${NC} ARES is in your menu bar. The window opens with the onboarding wizard."
+        echo "  Reopen anytime:  ares"
     else
-        # Fallback: foreground launch
-        cd "$SCRIPT_DIR" && swift run ARES
+        warn "App build unavailable — use the web UI instead: http://localhost:8787"
     fi
 else
     echo -e "${GREEN}${BOLD}ARES installed.${NC}"
     echo ""
-    echo "  Start the server:  cd ~/.ares/webui && ./venv/bin/python server.py"
     echo "  Open in browser:   http://localhost:8787"
-    if command -v tailscale >/dev/null 2>&1; then
-        _ts_ip=$(tailscale ip -4 2>/dev/null || true)
-        [ -n "$_ts_ip" ] && echo "  Tailscale URL:     http://$_ts_ip:8787"
-    fi
+    _ts_ip="$(_tailscale_ip || true)"
+    [ -n "$_ts_ip" ] && echo "  Remote URL:        http://$_ts_ip:8787"
 fi
