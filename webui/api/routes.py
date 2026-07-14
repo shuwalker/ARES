@@ -1946,6 +1946,40 @@ def _filter_model_catalog_for_active_ares_backend(catalog: dict) -> dict:
     return filtered
 
 
+def _filter_unusable_cloud_catalog(catalog: dict) -> dict:
+    """Do not offer direct Ollama Cloud routes without cloud credentials.
+
+    Ollama's local app can run cloud-tagged models through the local
+    ``ollama-launch`` endpoint.  The separate ``ollama-cloud`` provider is a
+    direct ``https://ollama.com/v1`` route and requires ``OLLAMA_API_KEY``.
+    Cached cloud model names alone are not authentication, so hiding that
+    group prevents the picker from creating the misleading error shown when a
+    user has only local Ollama configured.
+    """
+    try:
+        from api.providers import provider_has_usable_credential
+
+        if provider_has_usable_credential("ollama-cloud"):
+            return catalog
+    except Exception:
+        logger.debug("Ollama Cloud credential probe failed", exc_info=True)
+    filtered = copy.deepcopy(catalog or {})
+    filtered["groups"] = [
+        group for group in (filtered.get("groups") or [])
+        if str(group.get("provider_id") or "").strip().lower() != "ollama-cloud"
+    ]
+    badges = filtered.get("configured_model_badges")
+    if isinstance(badges, dict):
+        filtered["configured_model_badges"] = {
+            model_id: badge
+            for model_id, badge in badges.items()
+            if str((badge or {}).get("provider") or "").strip().lower() != "ollama-cloud"
+        }
+    if str(filtered.get("active_provider") or "").strip().lower() == "ollama-cloud":
+        filtered["active_provider"] = None
+    return filtered
+
+
 from api import route_session_list_cache as _route_session_list_cache
 
 _SESSIONS_CACHE = _route_session_list_cache._SESSIONS_CACHE
@@ -12167,12 +12201,16 @@ def handle_get(handler, parsed) -> bool:
         try:
             diag.stage(f"enter:freshness={freshness or 'default'}") if diag else None
             if freshness == "session_visit":
-                result = _filter_model_catalog_for_active_ares_backend(get_available_models_for_session_visit())
+                result = _filter_unusable_cloud_catalog(
+                    _filter_model_catalog_for_active_ares_backend(get_available_models_for_session_visit())
+                )
                 diag.stage("response_serialize") if diag else None
                 return j(handler, result)
             if freshness:
                 return bad(handler, f"unknown models freshness: {freshness}", status=400)
-            return j(handler, _filter_model_catalog_for_active_ares_backend(get_available_models()))
+            return j(handler, _filter_unusable_cloud_catalog(
+                _filter_model_catalog_for_active_ares_backend(get_available_models())
+            ))
         finally:
             if diag:
                 diag.finish()
