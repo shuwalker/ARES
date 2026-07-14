@@ -4,16 +4,57 @@ import WebKit
 import ARESCore
 import SwiftTerm
 
+/// Owns the SwiftUI window-opening action so AppKit menu commands can recreate
+/// the main window after the user has closed it. A WindowGroup does not retain
+/// a window instance once it is closed, so simply searching NSApp.windows is
+/// not sufficient.
+@MainActor
+final class ARESWindowCoordinator {
+    static let shared = ARESWindowCoordinator()
+
+    private var openAction: (() -> Void)?
+
+    func register(openAction: @escaping () -> Void) {
+        self.openAction = openAction
+    }
+
+    func openMainWindow() {
+        if let openAction {
+            openAction()
+            return
+        }
+
+        // The action is registered as soon as the first SwiftUI scene appears.
+        // Keep a small AppKit fallback for very early lifecycle calls.
+        NSApp.windows
+            .first(where: { $0.title != "" && $0.className != "NSStatusBarWindow" })?
+            .makeKeyAndOrderFront(nil)
+    }
+}
+
+private struct ARESMainScene: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        ARESMainView()
+            .frame(minWidth: 1024, minHeight: 700)
+            .preferredColorScheme(.dark)
+            .onAppear {
+                ARESWindowCoordinator.shared.register {
+                    openWindow(id: "main")
+                }
+            }
+    }
+}
+
 @MainActor
 @main
 struct ARESApp: App {
     @NSApplicationDelegateAdaptor(ARESAppDelegate.self) var appDelegate
 
     var body: some Scene {
-        WindowGroup {
-            ARESMainView()
-                .frame(minWidth: 1024, minHeight: 700)
-                .preferredColorScheme(.dark)
+        WindowGroup(id: "main") {
+            ARESMainScene()
         }
         .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)
@@ -386,12 +427,19 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
 
     func openMainWindow() {
         NSApp.setActivationPolicy(.regular)
-        if let window = NSApp.windows.first(where: { $0.title != "" && $0.className != "NSStatusBarWindow" }) {
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            NSApp.windows.first?.makeKeyAndOrderFront(nil)
-        }
+        ARESWindowCoordinator.shared.openMainWindow()
         NSApp.activate(ignoringOtherApps: true)
+
+        // SwiftUI creates a new WindowGroup window asynchronously.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if let window = NSApp.windows.first(where: {
+                $0.title != "" && $0.className != "NSStatusBarWindow"
+            }) {
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+            }
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     @objc private func windowWillClose(_ notification: Notification) {
@@ -409,7 +457,7 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            NSApp.windows.first?.makeKeyAndOrderFront(nil)
+            openMainWindow()
         }
         return true
     }
@@ -476,6 +524,7 @@ final class ARESMenuBarController: NSObject {
     }
 
     @objc private func openWindow() {
+        NSApp.activate(ignoringOtherApps: true)
         appDelegate?.openMainWindow()
     }
 
