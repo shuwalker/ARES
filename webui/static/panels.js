@@ -7134,10 +7134,11 @@ function _openProfileSwitchSessionBrowser(){
 // Hybrid (the additive mode) is hidden in the UI until it's fully defined;
 // a config that already says "hybrid" still works server-side.
 
-let _aresCurrentBackend = 'hermes';
+let _aresCurrentBackend = 'jros';
 let _aresJrosAvailable = false;
 let _aresJrosMode = '';   // 'gateway' | 'local' | '' — how JROS turns will run
 let _aresCapabilities = {};
+let _aresCompanionRuntime = {};
 
 function _aresBackendSessionId() {
   try {
@@ -7164,14 +7165,15 @@ function initAresBackend() {
   const sid = _aresBackendSessionId();
   const url = sid ? `/api/ares/backend?session_id=${encodeURIComponent(sid)}` : '/api/ares/backend';
   api(url).then(data => {
-    _aresCurrentBackend = data.current || 'hermes';
+    _aresCurrentBackend = 'jros';
     _aresJrosAvailable = (data.status && data.status.jros) || false;
     _aresJrosMode = (data.status && data.status.jros_mode) || '';
+    _aresCompanionRuntime = (data.status && data.status.companion) || {};
     _aresCapabilities = (data && data.capabilities) || {};
     updateAresBackendUI();
     refreshAresIdentity();
   }).catch(() => {
-    // Backend API not available — default to Hermes, hide the chip
+    // Companion API unavailable — hide the status chip.
     const wrap = $('aresBackendWrap');
     if (wrap) wrap.style.display = 'none';
   });
@@ -7182,7 +7184,7 @@ function refreshAresBackendForSession() {
 }
 
 function _aresBackendDisplayName(backend) {
-  return { hermes: 'Hermes', jros: 'JROS', hybrid: 'Hybrid' }[backend] || 'Hermes';
+  return 'Companion';
 }
 
 function _syncAresBackendDependentUI() {
@@ -7192,11 +7194,20 @@ function _syncAresBackendDependentUI() {
   const chip = $('aresBackendChip');
   if (chip) {
     chip.dataset.backend = _aresCurrentBackend;
-    chip.title = _aresCurrentBackend === 'jros'
-      ? 'JROS runtime is running this conversation'
-      : _aresCurrentBackend === 'hybrid'
-        ? 'Hybrid mode: Hermes runtime with selected JROS identity/tools'
-        : 'Hermes runtime is running this conversation';
+    chip.title = 'JaegerAI owns this Companion conversation';
+  }
+
+  // Until runtime-controlled hot swap is implemented, show the model Jaeger
+  // will actually load and prevent the inherited Hermes picker from saving a
+  // decorative per-session value that the Companion ignores.
+  const modelChip = $('composerModelChip');
+  const modelLabel = $('composerModelLabel');
+  if (modelChip) {
+    modelChip.disabled = true;
+    modelChip.title = 'Companion model changes require a controlled JaegerAI runtime restart';
+  }
+  if (modelLabel && _aresCompanionRuntime.model) {
+    modelLabel.textContent = _aresCompanionRuntime.model;
   }
 }
 
@@ -7272,28 +7283,7 @@ function updateAresBackendUI() {
 }
 
 function toggleAresBackendDropdown() {
-  const dd = $('aresBackendDropdown');
-  if (!dd) return;
-  const isOpen = dd.classList.contains('open');
-  if (isOpen) {
-    closeAresBackendDropdown();
-    return;
-  }
-  // Close other dropdowns first
-  closeProfileDropdown();
-  if (typeof closeModelDropdown === 'function') closeModelDropdown();
-  if (typeof closeWsDropdown === 'function') closeWsDropdown();
-  if (typeof closeMobileComposerConfig === 'function') closeMobileComposerConfig();
-  if (typeof closeReasoningDropdown === 'function') closeReasoningDropdown();
-  if (typeof closeToolsetsDropdown === 'function') closeToolsetsDropdown();
-  if (typeof closeAresPersonaDropdown === 'function') closeAresPersonaDropdown();
-  dd.style.display = 'flex';
-  dd.classList.add('open');
-  // Sync selected state
-  document.querySelectorAll('.ares-backend-action').forEach(btn => {
-    const backend = btn.getAttribute('data-backend');
-    btn.classList.toggle('selected', backend === _aresCurrentBackend);
-  });
+  showToast('JaegerAI is the Companion runtime. Optional workers are configured in Settings.');
 }
 
 function closeAresBackendDropdown() {
@@ -7302,30 +7292,7 @@ function closeAresBackendDropdown() {
 }
 
 function setAresBackend(backend) {
-  if (backend === 'hybrid' && !_aresJrosAvailable) {
-    showToast('Hybrid needs the JROS gateway running');
-    return;
-  }
-  const sid = _aresBackendSessionId();
-  const payload = sid ? { backend, session_id: sid } : { backend };
-  api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify(payload) })
-    .then(data => {
-      _aresCurrentBackend = (data && data.backend) || backend;
-      if (data && data.capabilities) _aresCapabilities = data.capabilities;
-      if (typeof S !== 'undefined' && S.session && sid && S.session.session_id === sid) S.session.ares_backend = _aresCurrentBackend;
-      updateAresBackendUI();
-      if (typeof _refreshModelDropdownsAfterProviderChange === 'function') {
-        _refreshModelDropdownsAfterProviderChange();
-      } else if (typeof populateModelDropdown === 'function') {
-        populateModelDropdown();
-      }
-      refreshAresIdentity();
-      closeAresBackendDropdown();
-      showToast(sid
-        ? `This chat now uses ${_aresBackendDisplayName(_aresCurrentBackend)}`
-        : `Default runtime set to ${_aresBackendDisplayName(_aresCurrentBackend)}`);
-    })
-    .catch(e => showToast('Failed to switch backend'));
+  showToast('Runtime switching was removed: JaegerAI owns every Companion conversation.');
 }
 
 // Close on outside click

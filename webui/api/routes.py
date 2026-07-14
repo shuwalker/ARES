@@ -13187,8 +13187,8 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/ares/backend/set":
         body = read_body(handler)
         backend = str(body.get("backend", "")).strip().lower()
-        if backend not in ("hermes", "jros", "hybrid"):
-            return bad(handler, f"Invalid backend: {backend}. Must be Hermes Agent, JROS, or Hybrid.")
+        if backend != "jros":
+            return bad(handler, "JaegerAI is the fixed Companion runtime. Configure Hermes as an optional worker instead.", 409)
         session_id = str(body.get("session_id", "") or "").strip()
         try:
             if session_id:
