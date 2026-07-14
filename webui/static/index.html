@@ -730,10 +730,11 @@
               </button>
             </div>
             <div id="aresBackendWrap" class="composer-profile-wrap">
-              <div class="composer-profile-chip ares-backend-chip" id="aresBackendChip" title="JaegerAI owns this Companion conversation">
+              <button class="composer-profile-chip ares-backend-chip" id="aresBackendChip" type="button" onclick="toggleAresBackendDropdown()" title="Select AI backend">
                 <span class="composer-profile-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.07 7.07l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.07-7.07l4.24-4.24"/></svg></span>
-                <span class="composer-profile-label" id="aresBackendLabel">Companion</span>
-              </div>
+                <span class="composer-profile-label" id="aresBackendLabel">ARES</span>
+                <span class="composer-profile-chevron" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+              </button>
             </div>
             <div id="aresPersonaWrap" class="composer-profile-wrap" style="display:none">
               <button class="composer-profile-chip ares-persona-chip" id="aresPersonaChip" type="button" onclick="toggleAresPersonaDropdown()" title="Select AI identity">
@@ -859,6 +860,32 @@
               </span>
               <button class="ctx-compress-btn composer-mobile-context-compress" id="composerMobileCtxCompressBtn" type="button" style="display:none"></button>
             </div>
+          </div>
+          <div id="aresBackendDropdown" class="ares-backend-panel" style="display:none">
+            <button class="ares-backend-action" data-backend="hermes" onclick="setAresBackend('hermes')">
+              <span class="ares-backend-check" data-check-for="hermes">✓</span>
+              <span class="ares-backend-copy">
+                <span class="ares-backend-name">Hermes Agent</span>
+                <span class="ares-backend-desc">Hermes Agent runtime</span>
+              </span>
+            </button>
+            <button class="ares-backend-action" data-backend="jros" id="aresBackendOptionJros" onclick="setAresBackend('jros')">
+              <span class="ares-backend-check" data-check-for="jros"></span>
+              <span class="ares-backend-copy">
+                <span class="ares-backend-name">JROS</span>
+                <span class="ares-backend-desc" id="aresBackendJrosStatus">JROS gateway/runtime</span>
+              </span>
+            </button>
+            <!-- Hybrid (Hermes loop + JROS persona/tools) is hidden until the
+                 mode is fully defined; the server still accepts the value so a
+                 config that already says "hybrid" keeps working. -->
+            <button class="ares-backend-action" data-backend="hybrid" id="aresBackendOptionHybrid" onclick="setAresBackend('hybrid')" style="display:none" aria-hidden="true">
+              <span class="ares-backend-check" data-check-for="hybrid"></span>
+              <span class="ares-backend-copy">
+                <span class="ares-backend-name">Hybrid</span>
+                <span class="ares-backend-desc" id="aresBackendHybridStatus">Hermes + JROS persona + tools</span>
+              </span>
+            </button>
           </div>
           <div id="aresPersonaDropdown" class="ares-backend-panel" style="display:none"></div>
           <div class="ws-dropdown ws-dropdown-footer" id="composerWsDropdown" hidden aria-hidden="true" inert></div>

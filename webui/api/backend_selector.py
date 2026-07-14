@@ -1,9 +1,6 @@
-"""ARES Companion runtime compatibility layer.
+"""ARES Backend Selector — routes agent execution to JaegerAI or Hermes.
 
-JaegerAI owns every primary conversation. Historical ``hermes`` and ``hybrid``
-values remain readable while old sessions migrate, but normalize to JROS and
-cannot alter turn ownership. Hermes is an optional task worker, not a peer
-conversation backend. See docs/architecture/SINGLE_COMPANION_RUNTIME.md.
+The core feature of ARES WebUI: the user picks which AI backend runs their agent.
 
 Backends:
   - jros (default): JaegerAI is the required Companion runtime — the brain,
@@ -35,8 +32,6 @@ import logging
 import time
 from typing import Optional
 
-import yaml
-
 logger = logging.getLogger(__name__)
 
 BACKEND_HERMES = "hermes"
@@ -53,12 +48,10 @@ _JROS_CACHE_TTL = 5.0
 
 
 def normalize_backend(value: object, *, fallback: str = BACKEND_JROS) -> str:
-    """Return the sole Companion runtime.
-
-    ``value`` and ``fallback`` are accepted only for compatibility with saved
-    sessions and older callers.
-    """
-    return BACKEND_JROS
+    raw = str(value or "").strip().lower()
+    if raw in VALID_BACKENDS:
+        return raw
+    return fallback if fallback in VALID_BACKENDS else BACKEND_JROS
 
 
 def get_active_backend(config: dict) -> str:
@@ -128,49 +121,13 @@ def _is_hermes_available() -> bool:
         return False
 
 
-def _configured_jros_runtime() -> dict:
-    """Read the configured Companion model without booting another runtime."""
-    try:
-        from api.jros_paths import jros_config_path, jros_instance_name
-
-        path = jros_config_path()
-        raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-        cfg = raw if isinstance(raw, dict) else {}
-        external = cfg.get("external_model") if isinstance(cfg.get("external_model"), dict) else {}
-        local = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
-        if external.get("enabled"):
-            return {
-                "instance": jros_instance_name(),
-                "model": str(external.get("model") or "").strip() or None,
-                "provider": str(external.get("provider") or "").strip() or None,
-                "transport": "external",
-                "config_path": str(path),
-            }
-        return {
-            "instance": jros_instance_name(),
-            "model": str(local.get("model_path") or "").strip() or None,
-            "provider": str(local.get("backend") or "").strip() or None,
-            "transport": "in_process",
-            "config_path": str(path),
-        }
-    except Exception:
-        logger.debug("Failed to read configured JaegerAI runtime", exc_info=True)
-        return {}
-
-
 def backend_status() -> dict:
     """Return current backend availability for UI display."""
     jros_up = is_jros_available()
-    runtime = _configured_jros_runtime()
     status = {
         "hermes": _is_hermes_available(),  # optional addition, not guaranteed
         "jros": jros_up,
-        "hybrid": False,
-        "companion": {
-            "runtime": "jaeger",
-            "available": jros_up,
-            **runtime,
-        },
+        "hybrid": jros_up and _is_hermes_available(),  # hybrid needs both
     }
     if jros_up and _jros_gateway_info:
         status["jros_mode"] = _jros_gateway_info.get("mode")
@@ -178,10 +135,6 @@ def backend_status() -> dict:
         status["jros_provider"] = _jros_gateway_info.get("provider")
         status["jros_booted"] = _jros_gateway_info.get("booted")
         status["jros_instance"] = _jros_gateway_info.get("instance")
-    if runtime:
-        status["jros_model"] = runtime.get("model")
-        status["jros_provider"] = runtime.get("provider")
-        status["jros_instance"] = runtime.get("instance")
     return status
 
 
@@ -193,7 +146,7 @@ def should_inject_persona(config: dict) -> bool:
       - jros: No (JROS handles its own persona)
       - hybrid: Yes (Hermes loop + JROS persona)
     """
-    return False
+    return get_active_backend(config) == BACKEND_HYBRID
 
 
 def should_register_jros_tools(config: dict) -> bool:
@@ -204,13 +157,13 @@ def should_register_jros_tools(config: dict) -> bool:
       - jros: No (JROS has its own tool system)
       - hybrid: Yes (Hermes agent gains JROS tools)
     """
-    return False
+    return get_active_backend(config) == BACKEND_HYBRID and is_jros_available()
 
 
 def backend_label(backend: str) -> str:
     """Human-readable label for the backend selector dropdown."""
     return {
-        BACKEND_HERMES: "JaegerAI Companion (migrated from Hermes)",
-        BACKEND_JROS: "JaegerAI Companion",
-        BACKEND_HYBRID: "JaegerAI Companion (migrated from Hybrid)",
+        BACKEND_HERMES: "Hermes Agent",
+        BACKEND_JROS: "JROS",
+        BACKEND_HYBRID: "Hybrid",
     }.get(backend, backend.title())
