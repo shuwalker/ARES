@@ -50,7 +50,10 @@ public struct ARESSettingsView: View {
     @State private var tailscaleIP: String? = nil
     
     // Backends status
-    @State private var activeBackend = UserDefaults.standard.string(forKey: "ares.backend.selected") ?? "hermes"
+    // ARES installs with JaegerAI/JROS as the Companion default. The Web UI
+    // remains authoritative and refreshBackendSelection() reconciles this
+    // cached value once the server is reachable.
+    @State private var activeBackend = UserDefaults.standard.string(forKey: "ares.backend.selected") ?? "jros"
     @State private var backendSelectionError: String? = nil
     @State private var jrosLive = false
     @State private var hermesLive = false
@@ -535,6 +538,23 @@ public struct ARESSettingsView: View {
     }
     
     private func performLivenessProbes() async {
+        // Probe the ARES runtime registry first. This correctly reports the
+        // local Jaeger bridge and Hermes in-process runtime; probing only the
+        // optional HTTP gateways falsely marked both runtimes offline.
+        if serverManager.isRunning,
+           let registryURL = URL(string: "http://\(config.webuiHost):\(config.webuiPort)/api/ares/backend") {
+            var registryRequest = URLRequest(url: registryURL)
+            registryRequest.timeoutInterval = 1.0
+            if let (data, response) = try? await URLSession.shared.data(for: registryRequest),
+               (response as? HTTPURLResponse)?.statusCode == 200,
+               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let status = payload["status"] as? [String: Any] {
+                self.hermesLive = (status["hermes"] as? Bool) ?? false
+                self.jrosLive = (status["jros"] as? Bool) ?? false
+                return
+            }
+        }
+
         // Probe Hermes
         if let hermesUrl = endpointURL(base: config.hermesURL, path: "/health") {
             var request = URLRequest(url: hermesUrl)

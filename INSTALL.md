@@ -68,6 +68,11 @@ cd /path/to/ARES
 bash install.sh
 ```
 
+When run from a checkout, the installer deploys that exact checkout into
+`~/.ares` so local Web UI changes are not replaced by a different remote
+revision. The installer also registers `ares`, `hermes`, and `jaeger` in
+`~/.local/bin` and adds that directory to zsh's login path.
+
 The installer:
 - Detects or installs JaegerAI (required Companion runtime)
 - Creates a Python virtual environment in `webui/.venv`
@@ -96,7 +101,8 @@ wrapper in `ARES-Windows/`, producing a Windows installer/desktop app around
 the Web UI.
 
 That packaging is not complete yet. Current native builds are for
-local/developer use.
+local/developer use. The native app is an ARES control shell around the Web UI;
+it does not replace JaegerAI's character/runtime app or Hermes's own TUI.
 
 ## Windows Companion App Notes
 

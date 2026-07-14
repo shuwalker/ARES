@@ -89,6 +89,26 @@ def is_jros_available() -> bool:
         if local_jros_root() is not None:
             result = True
             presence_info = {"mode": "local"}
+            try:
+                from api.jros_gateway_chat import local_jros_model
+
+                model = local_jros_model()
+                if model:
+                    presence_info["model"] = model
+                else:
+                    # Before the first bridge turn, report the model JaegerAI
+                    # will load from its own config rather than leaving the UI
+                    # with an unexplained blank model.
+                    from api.ares_provider_sync import load_yaml_config
+                    from api.jros_paths import jros_config_path
+
+                    external = load_yaml_config(jros_config_path()).get("external_model") or {}
+                    if isinstance(external, dict) and external.get("enabled") and external.get("model"):
+                        presence_info["model"] = str(external["model"])
+                        if external.get("provider"):
+                            presence_info["provider"] = str(external["provider"])
+            except Exception:
+                logger.debug("Local JROS model status unavailable", exc_info=True)
         else:
             # Legacy: remote gateway check for backward compatibility
             reply = jros_gateway_health(timeout=1.0)

@@ -51,6 +51,7 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "ollama": "ollama",
     "ollama-cloud": "ollama-cloud",
     "ollama-local": "ollama",
+    "local": "ollama",
     "openai": "openai",
     # Hermes OAuth provider slugs are not runnable by JROS today.
     "openai-codex": None,

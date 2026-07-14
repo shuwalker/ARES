@@ -40,6 +40,7 @@ ARES_HOME="${ARES_HOME:-$HOME/.ares}"
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME}"
 WEBUI_DIR="$INSTALL_DIR/webui"
+SOURCE_DIR="${ARES_SOURCE_DIR:-}"
 PYTHON_VERSION="3.11"
 BRANCH="main"
 PORT="${ARES_WEBUI_PORT:-8787}"
@@ -81,6 +82,7 @@ while [[ $# -gt 0 ]]; do
         --port) PORT="$2"; shift 2 ;;
         --host) HOST="$2"; shift 2 ;;
         --dir) INSTALL_DIR="$2"; WEBUI_DIR="$INSTALL_DIR/webui"; shift 2 ;;
+        --source-dir) SOURCE_DIR="$2"; shift 2 ;;
         --manifest) MANIFEST_MODE=true; shift ;;
         --stage) STAGE_NAME="$2"; shift 2 ;;
         --json) JSON_OUTPUT=true; shift ;;
@@ -100,7 +102,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --branch NAME   Git branch to install (default: main)"
             echo "  --port PORT     Web UI port (default: 8787)"
             echo "  --host HOST     Bind address (default: 0.0.0.0)"
-            echo "  --dir PATH      Install directory (default: ~/.ares)"
+        echo "  --dir PATH      Install directory (default: ~/.ares)"
+            echo "  --source-dir PATH  Use this local ARES checkout instead of cloning/updating"
             echo "  --manifest      Print desktop bootstrap stage manifest as JSON"
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
@@ -314,6 +317,36 @@ stage_prerequisites() {
 
 clone_repo() {
     log_info "Installing to $INSTALL_DIR..."
+
+    # When the root installer is run from a checkout, install that exact
+    # checkout. Do not silently replace local Web UI work with origin/main.
+    # Runtime state and virtualenvs are deliberately preserved.
+    if [ -n "$SOURCE_DIR" ]; then
+        SOURCE_DIR="$(cd "$SOURCE_DIR" 2>/dev/null && pwd)" || {
+            log_error "Local source directory does not exist: $SOURCE_DIR"
+            exit 1
+        }
+        if [ ! -f "$SOURCE_DIR/Package.swift" ] || [ ! -d "$SOURCE_DIR/webui" ]; then
+            log_error "Local source directory is not an ARES checkout: $SOURCE_DIR"
+            exit 1
+        fi
+        mkdir -p "$INSTALL_DIR"
+        if command -v rsync >/dev/null 2>&1; then
+            rsync -a "$SOURCE_DIR/" "$INSTALL_DIR/" \
+                --exclude '.git/' \
+                --exclude 'webui/venv/' \
+                --exclude 'webui/.venv/' \
+                --exclude 'webui/.env' \
+                --exclude 'webui/data/' \
+                --exclude 'webui/*.log'
+        else
+            log_error "rsync is required for --source-dir (install it with Homebrew or use the curl installer)"
+            exit 1
+        fi
+        cd "$WEBUI_DIR"
+        log_success "Installed local source: $SOURCE_DIR"
+        return 0
+    fi
 
     if [ -d "$INSTALL_DIR" ]; then
         if [ -d "$INSTALL_DIR/.git" ]; then

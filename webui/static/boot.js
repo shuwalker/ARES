@@ -2164,6 +2164,12 @@ $('modelSelect').onchange=async()=>{
   // re-reverts a cross-family pick (the #3737 bug, Codex catch). send() clears it
   // after reading a matching pending pick. (#3739/#3737)
   _applySessionContextMetadataUpdate(data);
+  // A local JROS bridge boots the selected model on the next turn. Refresh
+  // the backend status so the composer advertises the runtime model rather
+  // than only the browser's pending selection.
+  if (typeof initAresBackend === 'function' && typeof _aresCurrentBackend !== 'undefined' && _aresCurrentBackend === 'jros') {
+    setTimeout(initAresBackend, 250);
+  }
   // Warn if selected model belongs to a different provider than what Hermes is configured for
   if(typeof _checkProviderMismatch==='function'){
     const warn=_checkProviderMismatch(selectedModel);

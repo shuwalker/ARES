@@ -1842,7 +1842,13 @@ def _clear_live_models_cache() -> None:
         _LIVE_MODELS_CACHE.clear()
 
 
-_JROS_COMPATIBLE_MODEL_PROVIDERS = frozenset({"ollama-cloud", "ollama-local", "ollama", "local"})
+# Providers that JaegerAI's external_model configuration can route through the
+# ARES provider-sync seam. The picker must reflect the active runtime instead of
+# showing Hermes-only providers that JROS cannot load.
+_JROS_COMPATIBLE_MODEL_PROVIDERS = frozenset({
+    "anthropic", "gemini", "lmstudio", "ollama-cloud", "ollama-local",
+    "ollama", "local", "openai",
+})
 
 
 def _sync_main_model_to_jros(result: dict) -> None:

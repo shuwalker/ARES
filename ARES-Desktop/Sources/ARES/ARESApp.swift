@@ -498,6 +498,7 @@ final class ARESMenuBarController: NSObject {
             return it
         }
         menu.addItem(item("Open ARES", #selector(openWindow), "o"))
+        menu.addItem(item("Open Web UI in Browser", #selector(openWebUI), ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(item("WebUI: Start Server", #selector(startServer), ""))
         menu.addItem(item("WebUI: Stop Server", #selector(stopServer), ""))
@@ -526,6 +527,12 @@ final class ARESMenuBarController: NSObject {
     @objc private func openWindow() {
         NSApp.activate(ignoringOtherApps: true)
         appDelegate?.openMainWindow()
+    }
+
+    @objc private func openWebUI() {
+        let config = ARESConfiguration.shared
+        guard let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private var appDelegate: ARESAppDelegate? {
@@ -596,6 +603,14 @@ struct MenuBarPopoverView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    Button("Restart") {
+                        Task { await serverManager.restart() }
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Stop") {
+                        serverManager.stop(persistently: true)
+                    }
+                    .buttonStyle(.bordered)
                 } else {
                     Button("Start Server") {
                         Task { await serverManager.start() }

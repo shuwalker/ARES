@@ -7137,6 +7137,7 @@ function _openProfileSwitchSessionBrowser(){
 let _aresCurrentBackend = 'hermes';
 let _aresJrosAvailable = false;
 let _aresJrosMode = '';   // 'gateway' | 'local' | '' — how JROS turns will run
+let _aresJrosModel = '';
 let _aresCapabilities = {};
 
 function _aresBackendSessionId() {
@@ -7167,6 +7168,7 @@ function initAresBackend() {
     _aresCurrentBackend = data.current || 'hermes';
     _aresJrosAvailable = (data.status && data.status.jros) || false;
     _aresJrosMode = (data.status && data.status.jros_mode) || '';
+    _aresJrosModel = (data.status && data.status.jros_model) || '';
     _aresCapabilities = (data && data.capabilities) || {};
     updateAresBackendUI();
     refreshAresIdentity();
@@ -7254,11 +7256,12 @@ function updateAresBackendUI() {
   const jrosStatus = $('aresBackendJrosStatus');
   const hybridStatus = $('aresBackendHybridStatus');
   if (jrosStatus) {
+    const modelSuffix = _aresJrosModel ? ` · model: ${_aresJrosModel}` : '';
     jrosStatus.textContent = !_aresJrosAvailable
       ? 'Start `jaeger gateway` where JROS is installed'
       : _aresJrosMode === 'local'
-        ? 'Runs JROS on this machine (in-process)'
-        : 'JROS gateway connected';
+        ? `Runs JROS on this machine (local bridge)${modelSuffix}`
+        : `JROS gateway connected${modelSuffix}`;
   }
   if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes runtime + selected JROS identity/tools' : 'Needs the JROS gateway running';
 

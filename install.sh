@@ -43,12 +43,13 @@ EXTRA_ARGS=()
 NO_START=false
 ARES_ROLE=""
 ARES_PRIMARY_URL=""
+ARES_SOURCE_DIR="$SCRIPT_DIR"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --role)          ARES_ROLE="$2"; shift 2 ;;
         --primary-url)   ARES_PRIMARY_URL="$2"; shift 2 ;;
-        --backend)       EXTRA_ARGS+=("--backend" "$2"); shift 2 ;;
+        --backend)       ARES_BACKEND="$2"; EXTRA_ARGS+=("--backend" "$2"); shift 2 ;;
         --with-hermes)   EXTRA_ARGS+=("--with-hermes"); shift ;;
         --no-start)      NO_START=true; shift ;;
         -h|--help)
@@ -314,7 +315,7 @@ if [ ! -f "$WEBUI_INSTALLER" ]; then
     die "webui installer not found at $WEBUI_INSTALLER"
 fi
 
-INNER_ARGS=("--no-start" "${EXTRA_ARGS[@]}")
+INNER_ARGS=("--no-start" "--dir" "$HOME/.ares" "--source-dir" "$ARES_SOURCE_DIR" "${EXTRA_ARGS[@]}")
 bash "$WEBUI_INSTALLER" "${INNER_ARGS[@]}"
 
 # ── Hermes: expose CLI + delegate to its NATIVE setup wizard ──────────────────
@@ -486,27 +487,33 @@ _package_app() {
     info "Building ARES app (first build can take a few minutes)..."
     cd "$SCRIPT_DIR"
     local build_log="$HOME/.ares/build.log"
-    if ! swift build > "$build_log" 2>&1; then
+    if ! swift build -c release > "$build_log" 2>&1; then
         warn "Build failed — see $build_log"
         return 0
     fi
     local bin_dir bin
-    bin_dir="$(swift build --show-bin-path 2>/dev/null)"
+    bin_dir="$(swift build -c release --show-bin-path 2>/dev/null)"
     bin="$bin_dir/ARES"
     if [ ! -f "$bin" ]; then
         warn "Build output not found at $bin — skipping app packaging"
         return 0
     fi
     ok "ARES built"
+    local app_version
+    app_version="$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION" 2>/dev/null || echo "0.0.0")"
 
     # Assemble the bundle
     mkdir -p "$ARES_APP/Contents/MacOS" "$ARES_APP/Contents/Resources"
     cp -f "$bin" "$ARES_APP/Contents/MacOS/ARES"
+    if [ -f "$SCRIPT_DIR/ARES-Desktop/Sources/ARES/Resources/AppIcon.icns" ]; then
+        cp -f "$SCRIPT_DIR/ARES-Desktop/Sources/ARES/Resources/AppIcon.icns" \
+            "$ARES_APP/Contents/Resources/AppIcon.icns"
+    fi
     # SPM resource bundles (if any) live next to the binary
     for b in "$bin_dir"/*.bundle; do
         [ -e "$b" ] && cp -Rf "$b" "$ARES_APP/Contents/Resources/"
     done
-    cat > "$ARES_APP/Contents/Info.plist" << 'PLIST_EOF'
+    cat > "$ARES_APP/Contents/Info.plist" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -514,7 +521,7 @@ _package_app() {
     <key>CFBundleExecutable</key>
     <string>ARES</string>
     <key>CFBundleIdentifier</key>
-    <string>com.ares.app</string>
+    <string>com.jenkinsrobotics.ares</string>
     <key>CFBundleName</key>
     <string>ARES</string>
     <key>CFBundleDisplayName</key>
@@ -522,11 +529,13 @@ _package_app() {
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${app_version}</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>15.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
@@ -557,11 +566,41 @@ exec "$HOME/.local/bin/ares" "$@"
 COMPAT_EOF
     chmod +x "$HOME/.ares/ares.sh"
     if ! echo "$PATH" | grep -q "$cmd_dir"; then
-        info "Add to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
+        local path_line='export PATH="$HOME/.local/bin:$PATH"'
+        for profile in "$HOME/.zprofile" "$HOME/.zshrc"; do
+            touch "$profile"
+            if ! grep -Fqx "$path_line" "$profile" 2>/dev/null; then
+                printf '\n# ARES command-line launchers\n%s\n' "$path_line" >> "$profile"
+            fi
+        done
+        export PATH="$cmd_dir:$PATH"
+        hash -r 2>/dev/null || true
+        ok "Added ~/.local/bin to zsh PATH"
     fi
 }
 
+_write_install_manifest() {
+    local manifest="$HOME/.ares/installation.json"
+    local version
+    version="$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION" 2>/dev/null || echo "0.0.0")"
+    cat > "$manifest" << MANIFEST_EOF
+{
+  "product": "ARES",
+  "version": "$version",
+  "source_dir": "$SCRIPT_DIR",
+  "install_dir": "$HOME/.ares",
+  "webui_dir": "$HOME/.ares/webui",
+  "app_path": "$ARES_APP",
+  "backend": "${ARES_BACKEND:-auto}",
+  "jaeger_home": "${JAEGER_HOME:-}",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+MANIFEST_EOF
+    ok "Installation manifest: $manifest"
+}
+
 _package_app
+_write_install_manifest
 
 # ── 13. Verification — report what is actually LIVE, not what's on disk ──────
 _verify_install() {
