@@ -6807,6 +6807,21 @@ def get_available_models(*, prefer_cache: bool = False, force_refresh: bool = Fa
                 _canonical_to_raw_provider_key.setdefault(_canonical, _pid_key)
                 detected_providers.add(_canonical)
 
+        # Hermes caches Ollama Cloud's model catalog separately from the local
+        # ``ollama launch`` provider.  Keep that cached lane visible alongside
+        # local Ollama so ARES can switch local/cloud without requiring a
+        # second app or a manual config edit.  An empty/malformed cache is not
+        # treated as authentication evidence; the normal live provider path
+        # remains responsible for refreshing it when credentials are present.
+        try:
+            _ollama_cloud_cache = Path(_get_auth_store_path()).expanduser().parent / "ollama_cloud_models_cache.json"
+            _cloud_payload = json.loads(_ollama_cloud_cache.read_text(encoding="utf-8"))
+            if isinstance(_cloud_payload, dict) and isinstance(_cloud_payload.get("models"), list):
+                if any(str(_model_id or "").strip() for _model_id in _cloud_payload["models"]):
+                    detected_providers.add("ollama-cloud")
+        except Exception:
+            logger.debug("Ollama Cloud model cache unavailable", exc_info=True)
+
         def _configured_provider_for_base_url(base_url: object) -> str:
             target = _normalize_base_url_for_match(base_url)
             if not target:
