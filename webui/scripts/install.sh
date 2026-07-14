@@ -651,6 +651,17 @@ if provider not in {"ollama", "ollama-launch", "ollama-local", "local"} or not m
     hermes_path.write_text(yaml.safe_dump(hermes, sort_keys=False), encoding="utf-8")
 
 if provider in {"ollama", "ollama-launch", "ollama-local", "local"} and model:
+    # Do not switch JaegerAI away from its native local model merely because
+    # Hermes remembers an Ollama provider.  Ollama is optional and may be
+    # installed but stopped; the ARES UI can enable it later after the daemon
+    # becomes reachable.
+    try:
+        with urlopen("http://127.0.0.1:11434/api/tags", timeout=2):
+            ollama_running = True
+    except Exception:
+        ollama_running = False
+    if not ollama_running:
+        raise SystemExit(0)
     if not base_url:
         base_url = str(launch.get("api") or "").strip()
     if not base_url:

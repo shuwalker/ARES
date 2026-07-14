@@ -7,6 +7,7 @@ from api.ares_provider_sync import (
     PROVIDER_PRESETS,
     load_yaml_config,
     sync_provider,
+    provider_runtime_status,
 )
 from api.jros_gateway_chat import _requested_jros_model
 from api.routes import _JROS_COMPATIBLE_MODEL_PROVIDERS
@@ -20,6 +21,12 @@ def test_ollama_launch_is_a_local_provider_alias():
         "ollama-launch",
         "gemma4",
     )
+
+
+def test_provider_status_distinguishes_installed_from_running():
+    status = provider_runtime_status("ollama-launch", "http://127.0.0.1:1/v1")
+    assert status["available"] is False
+    assert status["state"] in {"installed_not_running", "not_installed"}
 
 
 def test_sync_ollama_launch_persists_for_both_runtimes(tmp_path: Path):

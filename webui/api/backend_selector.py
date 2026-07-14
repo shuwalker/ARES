@@ -155,6 +155,32 @@ def backend_status() -> dict:
         status["jros_provider"] = _jros_gateway_info.get("provider")
         status["jros_booted"] = _jros_gateway_info.get("booted")
         status["jros_instance"] = _jros_gateway_info.get("instance")
+    # Surface provider readiness separately from backend readiness. ARES can
+    # be healthy while a selected local runtime (for example Ollama) is merely
+    # installed but not running—or absent on this machine altogether.
+    try:
+        from api.ares_provider_sync import load_yaml_config, provider_runtime_status
+        from api.jros_paths import jros_config_path
+        from api.config import get_config
+
+        active_cfg = get_config() or {}
+        model_cfg = active_cfg.get("model") if isinstance(active_cfg.get("model"), dict) else {}
+        provider = str((model_cfg or {}).get("provider") or "").strip().lower()
+        model = str((model_cfg or {}).get("default") or "").strip()
+        base_url = str((model_cfg or {}).get("base_url") or "").strip()
+        if provider:
+            provider_status = provider_runtime_status(provider, base_url)
+            status["model_provider"] = provider
+            status["model"] = model or None
+            status["model_provider_status"] = provider_status
+        external = load_yaml_config(jros_config_path()).get("external_model") or {}
+        if isinstance(external, dict) and external.get("enabled"):
+            status["jros_model_provider_status"] = provider_runtime_status(
+                str(external.get("provider") or ""),
+                str(external.get("base_url") or ""),
+            )
+    except Exception:
+        logger.debug("Model provider readiness probe failed", exc_info=True)
     return status
 
 

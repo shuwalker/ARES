@@ -8,6 +8,9 @@ credential files.
 from __future__ import annotations
 
 import os
+import shutil
+import urllib.error
+import urllib.request
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterable
@@ -68,6 +71,58 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "openai-codex": None,
     "xai-oauth": None,
 }
+
+
+def provider_runtime_status(provider: str, base_url: str | None = None) -> dict[str, Any]:
+    """Describe whether a configured provider can actually be reached.
+
+    Provider configuration is intentionally usable before a runtime is started;
+    this probe is informational and never rewrites config or installs software.
+    That distinction lets ARES work on machines with no Ollama while giving a
+    precise "installed, start Ollama" state when a local model is selected.
+    """
+    normalized = str(provider or "").strip().lower()
+    if normalized in {"ollama", "ollama-launch", "ollama-local", "local"}:
+        endpoint = str(base_url or PROVIDER_PRESETS["ollama"]["base_url"] or "").strip().rstrip("/")
+        api_root = endpoint[:-3] if endpoint.endswith("/v1") else endpoint
+        installed = bool(shutil.which("ollama")) or any(
+            path.exists() for path in (
+                Path("/Applications/Ollama.app"),
+                Path.home() / "Applications" / "Ollama.app",
+            )
+        )
+        try:
+            with urllib.request.urlopen(f"{api_root}/api/tags", timeout=1.5) as response:
+                payload = yaml.safe_load(response.read().decode("utf-8")) or {}
+            models = payload.get("models") if isinstance(payload, dict) else []
+            model_count = len(models) if isinstance(models, list) else 0
+            return {
+                "provider": normalized,
+                "available": True,
+                "state": "running",
+                "installed": installed,
+                "model_count": model_count,
+                "base_url": endpoint,
+            }
+        except Exception:
+            return {
+                "provider": normalized,
+                "available": False,
+                "state": "installed_not_running" if installed else "not_installed",
+                "installed": installed,
+                "model_count": 0,
+                "base_url": endpoint,
+            }
+    # Cloud and API providers are credential/configuration concerns; their
+    # network request is intentionally deferred until the user sends a turn.
+    return {
+        "provider": normalized,
+        "available": True,
+        "state": "configured",
+        "installed": True,
+        "model_count": None,
+        "base_url": str(base_url or "").strip() or None,
+    }
 
 def resolve_jros_config_path() -> Path:
     """Compatibility wrapper for callers/tests; use api.jros_paths.jros_config_path."""
