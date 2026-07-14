@@ -1872,6 +1872,10 @@ def _sync_main_model_to_jros(result: dict) -> None:
         if not jros_provider:
             logger.info("Model provider %s has no JROS equivalent; skipping JROS sync", provider)
             return
+        from api.ares_provider_sync import provider_runtime_status
+        if not provider_runtime_status(provider).get("available", True):
+            logger.info("Model provider %s is not ready; leaving JROS on its current route", provider)
+            return
         sync_provider(
             provider=jros_provider,
             model=model,

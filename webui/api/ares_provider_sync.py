@@ -113,8 +113,23 @@ def provider_runtime_status(provider: str, base_url: str | None = None) -> dict[
                 "model_count": 0,
                 "base_url": endpoint,
             }
-    # Cloud and API providers are credential/configuration concerns; their
-    # network request is intentionally deferred until the user sends a turn.
+    if normalized == "ollama-cloud":
+        try:
+            from api.providers import provider_has_usable_credential
+
+            configured = bool(provider_has_usable_credential("ollama-cloud"))
+        except Exception:
+            configured = bool(os.getenv("OLLAMA_API_KEY", "").strip())
+        return {
+            "provider": normalized,
+            "available": configured,
+            "state": "configured" if configured else "missing_credentials",
+            "installed": True,
+            "model_count": None,
+            "base_url": str(base_url or PROVIDER_PRESETS[normalized]["base_url"] or "").strip(),
+        }
+    # Other API providers are credential/configuration concerns; their network
+    # request is intentionally deferred until the user sends a turn.
     return {
         "provider": normalized,
         "available": True,

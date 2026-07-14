@@ -187,10 +187,14 @@ def _prepare_local_jros_model(model: str | None, model_provider: str | None, ins
     provider, selected_model = requested
     try:
         from api.ares_provider_sync import JROS_FALLBACK_PROVIDER_MAP, sync_provider
+        from api.ares_provider_sync import provider_runtime_status
 
         mapped_provider = JROS_FALLBACK_PROVIDER_MAP.get(provider, provider)
         if not mapped_provider:
             logger.info("JROS cannot route provider %s; retaining JaegerAI's current model", provider)
+            return
+        if not provider_runtime_status(provider).get("available", True):
+            logger.info("JROS provider %s is not ready; retaining current model", provider)
             return
         with _BOOT_LOCK:
             key = instance or "__default__"
