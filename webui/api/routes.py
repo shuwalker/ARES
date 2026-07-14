@@ -16061,6 +16061,20 @@ def handle_post(handler, parsed) -> bool:
         except RuntimeError as e:
             return bad(handler, str(e), 500)
 
+    if parsed.path == "/api/onboarding/companion/verify":
+        # Boots the local jaeger bridge and runs one turn — proves the
+        # Companion is live, not merely installed. Same local-network gate as
+        # the other onboarding endpoints. Blocking: first boot may warm the
+        # model, so callers should use a long client-side timeout.
+        if not _onboarding_gate_allows(handler):
+            return bad(handler, "Companion verification is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
+        from api.onboarding import verify_companion_live
+
+        try:
+            return j(handler, verify_companion_live())
+        except Exception as e:
+            return bad(handler, str(e), 500)
+
     if parsed.path == "/api/onboarding/companion/hermes-tools":
         # Writes JROS's mcp_config.json and the ares config flag — same
         # local-network gate as the other onboarding mutators.

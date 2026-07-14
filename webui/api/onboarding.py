@@ -1155,6 +1155,57 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
     return result
 
 
+def verify_companion_live(timeout_s: float = 300.0) -> dict:
+    """Prove the Companion can actually produce a turn.
+
+    Boots the local ``jaeger bridge`` (through the same cached client the chat
+    path uses) and runs one tiny turn. This is the single source of truth for
+    "the agent is live" — everything else (dirs on disk, config keys) only
+    proves installation, not liveness. First boot may download/warm the model,
+    hence the generous timeout.
+    """
+    try:
+        from api.backend_selector import BACKEND_JROS, get_active_backend
+
+        if get_active_backend(get_config()) != BACKEND_JROS:
+            return {"ok": True, "skipped": True, "reason": "backend_not_jros"}
+    except Exception:
+        logger.debug("Backend check failed during companion verify", exc_info=True)
+    if not companion_exists():
+        return {"ok": False, "error": "No Companion instance exists yet — create one first."}
+
+    import threading as _threading
+
+    from api.jros_gateway_chat import _run_local_jros_turn
+
+    result: dict = {}
+
+    def _worker() -> None:
+        text, err, _tools = _run_local_jros_turn(
+            "Reply with one short word to confirm you are online.",
+            "onboarding-verify",
+            _threading.Event(),
+        )
+        result["text"] = text
+        result["error"] = err
+
+    t = _threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout_s)
+    if t.is_alive():
+        return {
+            "ok": False,
+            "error": (
+                f"Companion did not respond within {int(timeout_s)}s. The model may "
+                "still be downloading or warming up — wait a minute and try again."
+            ),
+        }
+    err = str(result.get("error") or "").strip()
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True, "reply": str(result.get("text") or "").strip()[:200]}
+
+
 def complete_onboarding() -> dict:
     # ARES: when backend is jros and JaegerAI is installed but no companion instance
     # exists yet, do not allow skipping onboarding. If JaegerAI isn't installed,

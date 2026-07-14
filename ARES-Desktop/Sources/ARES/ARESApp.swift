@@ -440,15 +440,23 @@ final class ARESMenuBarController: NSObject {
         statusItem?.button?.target = self
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Open ARES", action: #selector(openWindow), keyEquivalent: "o"))
+        // Items need an explicit target: with AppKit's auto-enabling, a nil-target
+        // action resolves via the responder chain, this controller isn't in it,
+        // and every item renders permanently disabled (greyed out).
+        func item(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
+            let it = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            it.target = self
+            return it
+        }
+        menu.addItem(item("Open ARES", #selector(openWindow), "o"))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "WebUI: Start Server", action: #selector(startServer), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "WebUI: Stop Server", action: #selector(stopServer), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "WebUI: Restart Server", action: #selector(restartServer), keyEquivalent: ""))
+        menu.addItem(item("WebUI: Start Server", #selector(startServer), ""))
+        menu.addItem(item("WebUI: Stop Server", #selector(stopServer), ""))
+        menu.addItem(item("WebUI: Restart Server", #selector(restartServer), ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(item("Settings...", #selector(openSettings), ","))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit ARES", action: #selector(terminate), keyEquivalent: "q"))
+        menu.addItem(item("Quit ARES", #selector(terminate), "q"))
 
         statusItem?.menu = menu
     }

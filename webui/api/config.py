@@ -278,7 +278,16 @@ if _AGENT_DIR is not None:
         sys.path.append(str(_AGENT_DIR))
     _HERMES_FOUND = True
 else:
-    _HERMES_FOUND = False
+    # No source checkout — but a pip install of hermes-agent in this venv is
+    # just as functional (the `hermes` console script + hermes_cli package).
+    # Without this, a venv-pip install reports hermes_found=False and the
+    # onboarding wizard shows "agent unavailable" for a working Hermes.
+    try:
+        import importlib.util
+
+        _HERMES_FOUND = importlib.util.find_spec("hermes_cli") is not None
+    except Exception:
+        _HERMES_FOUND = False
 
 # ── Thread-local env context ─────────────────────────────────────────────────
 # Defined BEFORE the config-file section because _expand_env_vars() (below) calls

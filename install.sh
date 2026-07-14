@@ -158,33 +158,57 @@ _select_role() {
     fi
 }
 
-# ── 4. JaegerAI ──────────────────────────────────────────────────────────────
+# ── 4. JaegerAI — install if missing, then gate on its own doctor ────────────
 _check_jaeger() {
     JAEGER_HOME=""
     for p in "$HOME/jaeger" "$HOME/.jaeger"; do
         [ -d "$p" ] && JAEGER_HOME="$p" && break
     done
-    if [ -n "$JAEGER_HOME" ]; then
-        ok "JaegerAI at $JAEGER_HOME"
-        return 0
+    if [ -z "$JAEGER_HOME" ]; then
+        echo ""
+        warn "JaegerAI not found — required Companion runtime on every machine"
+        echo ""
+        printf "  Install JaegerAI now? [Y/n]: "
+        read -r _ans
+        case "${_ans:-Y}" in
+            [Yy]*)
+                info "Installing JaegerAI..."
+                if curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash; then
+                    ok "JaegerAI installed"
+                    for p in "$HOME/jaeger" "$HOME/.jaeger"; do [ -d "$p" ] && JAEGER_HOME="$p" && break; done
+                else
+                    die "JaegerAI install failed.\n  Manual: curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
+                fi ;;
+            *)
+                warn "Skipping JaegerAI — your Companion won't work without it"
+                return 0 ;;
+        esac
     fi
-    echo ""
-    warn "JaegerAI not found — required Companion runtime on every machine"
-    echo ""
-    printf "  Install JaegerAI now? [Y/n]: "
-    read -r _ans
-    case "${_ans:-Y}" in
-        [Yy]*)
-            info "Installing JaegerAI..."
-            if curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash; then
-                ok "JaegerAI installed"
-                for p in "$HOME/jaeger" "$HOME/.jaeger"; do [ -d "$p" ] && JAEGER_HOME="$p" && break; done
-            else
-                die "JaegerAI install failed.\n  Manual: curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
-            fi ;;
-        *)
-            warn "Skipping JaegerAI — your Companion won't work without it" ;;
-    esac
+    [ -z "$JAEGER_HOME" ] && return 0
+
+    # Health gate: JaegerAI's own doctor, not our guesswork. Exit 0 = deps,
+    # libs, and (if an instance exists) its config/model all check out.
+    if [ -x "$JAEGER_HOME/jaeger" ]; then
+        info "Running JaegerAI doctor..."
+        # `timeout` is not part of stock macOS. Doctor is non-fatal, so run it
+        # directly when no timeout implementation is available.
+        local doctor_status=0
+        if command -v timeout >/dev/null 2>&1; then
+            JAEGER_NO_GUI=1 timeout 120 "$JAEGER_HOME/jaeger" doctor --doctor-check >/dev/null 2>&1 || doctor_status=$?
+        elif command -v gtimeout >/dev/null 2>&1; then
+            JAEGER_NO_GUI=1 gtimeout 120 "$JAEGER_HOME/jaeger" doctor --doctor-check >/dev/null 2>&1 || doctor_status=$?
+        else
+            JAEGER_NO_GUI=1 "$JAEGER_HOME/jaeger" doctor --doctor-check >/dev/null 2>&1 || doctor_status=$?
+        fi
+        if [ "$doctor_status" -eq 0 ]; then
+            ok "JaegerAI healthy at $JAEGER_HOME (doctor passed)"
+        else
+            warn "JaegerAI doctor reported problems — run for details:"
+            warn "  $JAEGER_HOME/jaeger doctor"
+        fi
+    else
+        warn "JaegerAI launcher not executable at $JAEGER_HOME/jaeger"
+    fi
 }
 
 # ── 5. Tailscale (macOS only) — must be CONNECTED, not just installed ────────
@@ -269,7 +293,7 @@ echo ""
 # pip install, JaegerAI detection, and config.yaml. We pass --no-start so the
 # Mac app launch is controlled below after we write role config and launchd.
 USE_MAC_APP=false
-if [ "$NO_START" = false ] && [ "$OS" = "Darwin" ] && [ "$HAS_SWIFT" = true ] && [ -f "$SCRIPT_DIR/Package.swift" ]; then
+if [ "$OS" = "Darwin" ] && [ "$HAS_SWIFT" = true ] && [ -f "$SCRIPT_DIR/Package.swift" ]; then
     USE_MAC_APP=true
 fi
 
@@ -281,7 +305,43 @@ fi
 INNER_ARGS=("--no-start" "${EXTRA_ARGS[@]}")
 bash "$WEBUI_INSTALLER" "${INNER_ARGS[@]}"
 
-[ "$NO_START" = true ] && exit 0
+# ── Hermes: expose CLI + delegate to its NATIVE setup wizard ──────────────────
+# Hermes ships its own first-run setup (`hermes setup`). We never reimplement
+# it — just put the CLI on PATH and run the real wizard when on a TTY.
+_setup_hermes_native() {
+    local venv_hermes="$HOME/.ares/webui/venv/bin/hermes"
+    [ -f "$venv_hermes" ] || return 0   # Hermes not installed — it's optional
+
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$venv_hermes" "$HOME/.local/bin/hermes"
+    ok "Hermes CLI linked: ~/.local/bin/hermes"
+
+    # Configured already? A provider in config.yaml or an API key in .env counts
+    # (mirrors Hermes's own _has_any_provider_configured heuristics).
+    if grep -qE '^[[:space:]]*provider:' "$HOME/.hermes/config.yaml" 2>/dev/null \
+       || grep -qE '_API_KEY=.+' "$HOME/.hermes/.env" 2>/dev/null; then
+        ok "Hermes already configured"
+        return 0
+    fi
+
+    if [ -t 0 ]; then
+        echo ""
+        printf "  Configure Hermes now using its own setup wizard? [Y/n]: "
+        read -r _ans
+        case "${_ans:-Y}" in
+            [Yy]*)
+                info "Handing off to Hermes native setup (hermes setup model)..."
+                "$venv_hermes" setup model \
+                    || warn "Hermes setup did not complete — run 'hermes setup' anytime"
+                ;;
+            *) info "Skipped — run 'hermes setup' anytime to configure Hermes" ;;
+        esac
+    else
+        info "Non-interactive shell — run 'hermes setup' later to configure Hermes"
+    fi
+}
+
+_setup_hermes_native
 
 # ── 10. Write role config ────────────────────────────────────────────────────
 _yaml_set() {
@@ -401,8 +461,13 @@ PLIST_EOF
 
 _setup_launchd
 
-# ── 12. Build and install the `ares` command ─────────────────────────────────
-_install_ares_command() {
+# ── 12. Build and package ARES.app ───────────────────────────────────────────
+# A real .app bundle (not a bare binary): `open` grants window activation so
+# the app comes to the FRONT, it survives the terminal closing, and it is
+# reopenable from Spotlight / Finder / Dock like any other Mac app.
+ARES_APP="$HOME/Applications/ARES.app"
+
+_package_app() {
     [ "$OS" != "Darwin" ] && return 0
     [ "$HAS_SWIFT" != true ] && return 0
 
@@ -413,45 +478,78 @@ _install_ares_command() {
         warn "Build failed — see $build_log"
         return 0
     fi
-    local bin
-    bin="$(swift build --show-bin-path 2>/dev/null)/ARES"
+    local bin_dir bin
+    bin_dir="$(swift build --show-bin-path 2>/dev/null)"
+    bin="$bin_dir/ARES"
     if [ ! -f "$bin" ]; then
-        warn "Build output not found at $bin — skipping app launch"
+        warn "Build output not found at $bin — skipping app packaging"
         return 0
     fi
-    ok "ARES app built"
+    ok "ARES built"
 
-    # Install `ares` command so the app can be launched/reopened from anywhere
+    # Assemble the bundle
+    mkdir -p "$ARES_APP/Contents/MacOS" "$ARES_APP/Contents/Resources"
+    cp -f "$bin" "$ARES_APP/Contents/MacOS/ARES"
+    # SPM resource bundles (if any) live next to the binary
+    for b in "$bin_dir"/*.bundle; do
+        [ -e "$b" ] && cp -Rf "$b" "$ARES_APP/Contents/Resources/"
+    done
+    cat > "$ARES_APP/Contents/Info.plist" << 'PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>ARES</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.ares.app</string>
+    <key>CFBundleName</key>
+    <string>ARES</string>
+    <key>CFBundleDisplayName</key>
+    <string>ARES</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+PLIST_EOF
+    # Ad-hoc sign so Gatekeeper/TCC treat it as a stable identity
+    codesign --force --deep --sign - "$ARES_APP" 2>/dev/null || true
+    ok "Packaged $ARES_APP"
+
+    # `ares` command — open the app (or bring it forward) from any terminal
     local cmd_dir="$HOME/.local/bin"
     mkdir -p "$cmd_dir"
     cat > "$cmd_dir/ares" << CMD_EOF
 #!/usr/bin/env bash
-# ARES launcher — opens the companion app or brings it forward
-ARES_BIN="$bin"
-if [ ! -f "\$ARES_BIN" ]; then
-    echo "ARES binary not found at \$ARES_BIN"
-    echo "Re-run: cd $SCRIPT_DIR && bash install.sh"
-    exit 1
-fi
-if pgrep -qf "\$ARES_BIN" 2>/dev/null; then
-    # Already running — bring window forward
-    osascript -e 'tell application "ARES" to activate' 2>/dev/null || true
-else
-    nohup "\$ARES_BIN" >/dev/null 2>&1 &
-    disown
-    echo "ARES started — look for the shield icon in your menu bar"
-fi
+# ARES launcher — opens the companion app (or brings it forward)
+exec open "$ARES_APP"
 CMD_EOF
     chmod +x "$cmd_dir/ares"
-    ok "Command installed: ares  (type 'ares' to open or bring it forward)"
+    ok "Command installed: ares"
 
-    # Ensure ~/.local/bin is in PATH hint
+    # Compatibility for installs whose shell profile still aliases `ares` to
+    # ~/.ares/ares.sh. This prevents the alias from masking the real command.
+    cat > "$HOME/.ares/ares.sh" << 'COMPAT_EOF'
+#!/usr/bin/env bash
+exec "$HOME/.local/bin/ares" "$@"
+COMPAT_EOF
+    chmod +x "$HOME/.ares/ares.sh"
     if ! echo "$PATH" | grep -q "$cmd_dir"; then
-        info "Add to your shell: export PATH=\"\$HOME/.local/bin:\$PATH\""
+        info "Add to your shell profile: export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
 }
 
-_install_ares_command
+_package_app
 
 # ── 13. Verification — report what is actually LIVE, not what's on disk ──────
 _verify_install() {
@@ -492,7 +590,7 @@ _verify_install() {
     fi
 
     # Hermes (optional)
-    if "$HOME/.ares/webui/venv/bin/python" -c "import hermes_agent" 2>/dev/null; then
+    if "$HOME/.ares/webui/venv/bin/python" -c "import hermes_cli" 2>/dev/null; then
         if [ -f "$HOME/.hermes/config.yaml" ] && grep -q "provider" "$HOME/.hermes/config.yaml" 2>/dev/null; then
             ok "Hermes          installed and configured"
         else
@@ -507,7 +605,7 @@ _verify_install() {
 _verify_install
 
 # ── 14. Launch ────────────────────────────────────────────────────────────────
-if [ "$USE_MAC_APP" = true ]; then
+if [ "$USE_MAC_APP" = true ] && [ "$NO_START" = false ]; then
     local_bin="$HOME/.local/bin/ares"
     if [ -f "$local_bin" ]; then
         info "Launching ARES (detached — survives closing this terminal)..."
@@ -518,10 +616,15 @@ if [ "$USE_MAC_APP" = true ]; then
     else
         warn "App build unavailable — use the web UI instead: http://localhost:8787"
     fi
-else
+elif [ "$USE_MAC_APP" != true ]; then
     echo -e "${GREEN}${BOLD}ARES installed.${NC}"
     echo ""
     echo "  Open in browser:   http://localhost:8787"
     _ts_ip="$(_tailscale_ip || true)"
     [ -n "$_ts_ip" ] && echo "  Remote URL:        http://$_ts_ip:8787"
+fi
+
+if [ "$NO_START" = true ]; then
+    echo -e "${GREEN}${BOLD}ARES installed.${NC}"
+    echo "  Start anytime:  ares"
 fi

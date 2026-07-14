@@ -760,7 +760,15 @@ async function _saveOnboardingProviderSetup(){
   const body={provider,model};
   if(apiKey) body.api_key=apiKey;
   if(baseUrl) body.base_url=baseUrl;
-  const status=await api('/api/onboarding/setup',{method:'POST',body:JSON.stringify(body)});
+  let status=await api('/api/onboarding/setup',{method:'POST',body:JSON.stringify(body)});
+  // config.yaml already exists (the installer writes ares_backend into it), so
+  // the server refuses to overwrite without explicit acknowledgement. The user
+  // filling in this wizard step IS that acknowledgement — retry with
+  // confirm_overwrite instead of silently storing the error payload as status.
+  if(status&&status.error==='config_exists'&&status.requires_confirm){
+    status=await api('/api/onboarding/setup',{method:'POST',body:JSON.stringify({...body,confirm_overwrite:true})});
+  }
+  if(status&&status.error) throw new Error(status.message||status.error);
   ONBOARDING.status=status;
   const setupProvider=_getOnboardingSetupProvider(provider);
   await _syncAresProviderToBackends(provider, model, baseUrl, setupProvider&&setupProvider.env_var);
@@ -788,6 +796,28 @@ async function _finishOnboarding(){
     await _saveOnboardingProviderSetup();
   }
   await _saveOnboardingDefaults();
+  // Prove the Companion is live before declaring victory — boots the local
+  // jaeger bridge and runs one real turn. First boot warms the model, so use a
+  // long timeout. On failure: surface the exact error; a second click on
+  // Open finishes anyway (escape hatch when e.g. the model is still
+  // downloading and the user wants in).
+  if(!ONBOARDING._verifySkipped){
+    _setOnboardingNotice(t('onboarding_verify_progress')||'Verifying your Companion is live — first boot can take a few minutes…','info');
+    const nextBtn=$('onboardingNextBtn');
+    if(nextBtn)nextBtn.disabled=true;
+    let verify=null;
+    try{
+      verify=await api('/api/onboarding/companion/verify',{method:'POST',body:'{}',timeoutMs:310000});
+    }catch(e){
+      verify={ok:false,error:(e&&e.message)||String(e)};
+    }
+    if(nextBtn)nextBtn.disabled=false;
+    if(!verify||verify.ok!==true){
+      ONBOARDING._verifySkipped=true; // next click bypasses
+      throw new Error(((verify&&verify.error)||'Companion verification failed.')+' — '+(t('onboarding_verify_retry_hint')||'Click Open again to finish anyway.'));
+    }
+    showToast((t('onboarding_verify_ok')||'✦ Companion is live')+(verify.reply?(' — "'+verify.reply+'"'):''));
+  }
   const done=await api('/api/onboarding/complete',{method:'POST',body:'{}'});
   ONBOARDING.status=done;
   ONBOARDING.active=false;
