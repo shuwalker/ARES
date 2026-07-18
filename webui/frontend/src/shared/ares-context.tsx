@@ -63,6 +63,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
   const [chatNotice, setChatNotice] = useState("");
   const activeStream = useRef("");
   const closeStream = useRef<null | (() => void)>(null);
+  const selectedBackendRef = useRef<string>("");
 
   const refresh = useCallback(async () => {
     const [health, settings, sessions, workspaces, backends, agentHealth, tools, connections] = await Promise.allSettled([
@@ -225,11 +226,12 @@ export function AresProvider({ children }: { children: ReactNode }) {
     setStreamTools([]);
     setStreamState("starting");
     try {
-      const session = currentSession || await createSession();
+      const effectiveBackend = backendId || selectedBackendRef.current;
+      const session = currentSession || await createSession(undefined, effectiveBackend);
       if (session.readOnly) throw new Error("This conversation is read-only. Start a new conversation to send a message.");
       const optimistic: ConversationMessage = { id: `local-${Date.now()}`, role: "user", text: clean, createdAt: new Date().toISOString() };
       setCurrentSession({ ...session, messages: [...session.messages, optimistic] });
-      const started = await aresApi.startChat(session.id, clean, session, backendId);
+      const started = await aresApi.startChat(session.id, clean, session, effectiveBackend);
       attachStream(started.stream_id, session.id);
     } catch (error) {
       setStreamState("idle");

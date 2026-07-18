@@ -336,7 +336,7 @@ class OllamaLocalBackend(AgenticBackend):
             r = requests.post(
                 "http://127.0.0.1:11434/api/generate",
                 json={
-                    "model": kwargs.get("model") or "qwen3.6:35b-mlx",
+                    "model": kwargs.get("model") or "llama3.2",
                     "prompt": message,
                     "stream": False,
                 },
@@ -348,7 +348,7 @@ class OllamaLocalBackend(AgenticBackend):
             return {"text": "", "error": str(exc), "tool_activity": []}
 
     def get_worker_target(self):
-        """Return the direct Ollama streaming worker target."""
+        """Return the Ollama direct-streaming worker target."""
         return run_ollama_streaming, False, False
 
 
@@ -377,7 +377,10 @@ def run_ollama_streaming(
     model_provider: str | None = None,
     goal_related: bool = False,
 ) -> None:
-    """Stream a chat turn directly from the local Ollama /api/generate endpoint."""
+    """Stream a chat turn directly from the local Ollama /api/generate endpoint.
+
+    Matches the Ares worker contract used by chat_runtime._select_chat_worker_target.
+    """
     import json as _json
     import queue
     import threading
@@ -387,6 +390,7 @@ def run_ollama_streaming(
 
     from api.streaming import (
         CANCEL_FLAGS,
+        STREAM_PARTIAL_TEXT,
         STREAMS,
         STREAMS_LOCK,
         register_active_run,
@@ -401,11 +405,14 @@ def run_ollama_streaming(
     register_active_run(stream_id, session_id=session_id, started_at=time.time(), phase="ollama")
     cancel_event = CANCEL_FLAGS.get(stream_id)
 
+    # Pick model: prefer the model name, else the installed model (qwen3.6:35b-mlx)
     model_name = model or "qwen3.6:35b-mlx"
+
     accumulated = ""
     event_seq = 0
+    last_partial_time = time.time()
 
-    def _put(event: str, data: dict, terminal: bool = False):
+    def _put(event: str, data: dict):
         nonlocal event_seq
         event_seq += 1
         try:
@@ -418,7 +425,7 @@ def run_ollama_streaming(
                     "seq": event_seq,
                     "stream_id": stream_id,
                     "session_id": session_id,
-                    "terminal": terminal,
+                    "terminal": event in {"stream_end", "error", "cancel"},
                 },
                 timeout=5,
             )
@@ -427,9 +434,9 @@ def run_ollama_streaming(
 
     def _finish(text: str = "", error: str | None = None):
         if error:
-            _put("error", {"error": error, "message": error}, terminal=True)
+            _put("error", {"error": error, "message": error})
         else:
-            _put("stream_end", {"text": text}, terminal=True)
+            _put("stream_end", {"text": text})
         with STREAMS_LOCK:
             STREAMS.pop(stream_id, None)
         unregister_stream_owner(stream_id)
@@ -455,7 +462,8 @@ def run_ollama_streaming(
                 token = chunk.get("response", "")
                 if token:
                     accumulated += token
-                    _put("token", {"text": accumulated, "delta": token})
+                    _put(STREAM_PARTIAL_TEXT, {"text": accumulated, "delta": token})
+                    last_partial_time = time.time()
                 if chunk.get("done"):
                     break
         _finish(accumulated)

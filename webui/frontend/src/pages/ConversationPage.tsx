@@ -101,8 +101,19 @@ export function ConversationPage() {
   const [copied, setCopied] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<string>(() => {
-    return currentSession?.backendId || snapshot.backends.find((b) => b.available)?.id || "";
+    if (currentSession?.backendId) return currentSession.backendId;
+    // Prefer local Ollama / hatched SI for the Synthetic Person, then Hermes, then first available
+    const preferred = ["ollama_local", "ares_local", "hermes_local", "jros_local"];
+    for (const id of preferred) {
+      const b = snapshot.backends.find((b) => b.id === id && b.available);
+      if (b) return b.id;
+    }
+    return snapshot.backends.find((b) => b.available)?.id || "";
   });
+  const selectedBackendRef = useRef(selectedBackend);
+  useEffect(() => {
+    selectedBackendRef.current = selectedBackend;
+  }, [selectedBackend]);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const assistantName = snapshot.settings?.assistantName || profile.assistantName || "ARES";
