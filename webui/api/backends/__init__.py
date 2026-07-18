@@ -1,27 +1,40 @@
+"""ARES Backends Package
+
+Flat registry of agnostic backends. Each backend is {name}_{deployment}.
+No roles, no opinions. Paperclip pattern.
 """
-ARES Backends Package
-
-This package provides the adapter layer so ARES can treat Hermes and JROS
-as peer full agentic frameworks. All code here is ARES-owned.
-
-Public exports:
-    - get_router()
-    - AgenticBackend, BackendRouter
-    - HermesBackend, JROSBackend
-"""
-
-from .base import AgenticBackend, BackendRouter
+from .base import AgenticBackend
 from .hermes import HermesBackend
 from .jros import JROSBackend
-from .hybrid import HybridBackend
-from .router import get_router, get_default_router
+from .cli_backends import (
+    ClaudeLocalBackend,
+    CodexLocalBackend,
+    CursorLocalBackend,
+    GeminiLocalBackend,
+    GrokLocalBackend,
+    OllamaLocalBackend,
+    OpenAICloudBackend,
+    OpenCodeLocalBackend,
+    PiLocalBackend,
+    XAICloudBackend,
+)
+from .router import get_router, get_default_router, BackendRouter
 
 __all__ = [
     "AgenticBackend",
     "BackendRouter",
     "HermesBackend",
     "JROSBackend",
-    "HybridBackend",
+    "ClaudeLocalBackend",
+    "CodexLocalBackend",
+    "CursorLocalBackend",
+    "GeminiLocalBackend",
+    "GrokLocalBackend",
+    "OllamaLocalBackend",
+    "OpenAICloudBackend",
+    "OpenCodeLocalBackend",
+    "PiLocalBackend",
+    "XAICloudBackend",
     "get_router",
     "get_default_router",
 ]

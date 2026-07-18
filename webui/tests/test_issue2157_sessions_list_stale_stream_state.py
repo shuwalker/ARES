@@ -1,32 +1,13 @@
-import io
-import json
-from urllib.parse import urlparse
-
+import api.models as models
 import api.profiles as profiles
-import api.routes as routes
-
-
-class _FakeHandler:
-    def __init__(self):
-        self.status = None
-        self.headers = {}
-        self.wfile = io.BytesIO()
-
-    def send_response(self, status):
-        self.status = status
-
-    def send_header(self, key, value):
-        self.headers[key] = value
-
-    def end_headers(self):
-        pass
-
-    def json_body(self):
-        return json.loads(self.wfile.getvalue().decode("utf-8"))
+import api.session_runtime_state as runtime_state
 
 
 def test_sessions_list_reconciles_stale_stream_state_before_serializing(monkeypatch):
-    routes._session_list_cache_clear()
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_identity
+
     repaired = {"value": False}
     all_sessions_calls = {"count": 0}
 
@@ -66,24 +47,24 @@ def test_sessions_list_reconciles_stale_stream_state_before_serializing(monkeypa
         session.active_stream_id = None
         return True
 
-    monkeypatch.setattr(routes, "all_sessions", fake_all_sessions)
-    monkeypatch.setattr(routes, "get_session", fake_get_session)
-    monkeypatch.setattr(routes, "_clear_stale_stream_state", fake_clear_stale_stream_state)
-    monkeypatch.setattr(routes, "load_settings", lambda: {"show_cli_sessions": False})
+    monkeypatch.setattr(models, "all_sessions", fake_all_sessions)
+    monkeypatch.setattr(models, "get_session", fake_get_session)
+    monkeypatch.setattr(runtime_state, "clear_stale_stream_state", fake_clear_stale_stream_state)
+    monkeypatch.setattr("api.config.load_settings", lambda: {"show_cli_sessions": False})
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
 
-    handler = _FakeHandler()
-    parsed = urlparse("http://example.com/api/sessions")
-    routes.handle_get(handler, parsed)
+    app = create_app()
+    app.dependency_overrides[require_identity] = lambda: RequestIdentity(None, "default", False)
+    with TestClient(app) as client:
+        response = client.get("/api/sessions")
 
-    assert handler.status == 200
-    payload = handler.json_body()
+    assert response.status_code == 200
+    payload = response.json()
     sessions = payload["sessions"]
     assert all_sessions_calls["count"] == 2
     assert repaired["value"] is True
     assert sessions[0]["active_stream_id"] is None
     assert sessions[0]["is_streaming"] is False
-    routes._session_list_cache_clear()
 
 
 def test_reconcile_stale_stream_state_skips_live_stream_rows(monkeypatch):
@@ -93,9 +74,9 @@ def test_reconcile_stale_stream_state_skips_live_stream_rows(monkeypatch):
         loaded.append((session_id, metadata_only))
         raise AssertionError("live stream rows should not be loaded for cleanup")
 
-    monkeypatch.setattr(routes, "get_session", fake_get_session)
+    monkeypatch.setattr(models, "get_session", fake_get_session)
 
-    changed = routes._reconcile_stale_stream_state_for_session_rows([
+    changed = runtime_state.reconcile_stale_stream_state_for_session_rows([
         {
             "session_id": "live-session",
             "active_stream_id": "live-stream",

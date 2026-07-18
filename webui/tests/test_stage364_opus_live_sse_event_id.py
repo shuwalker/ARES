@@ -24,7 +24,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
-ROUTES_PY = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
+REALTIME_PY = (REPO_ROOT / "fastapi_app" / "routers" / "realtime.py").read_text(encoding="utf-8")
 CONFIG_PY = (REPO_ROOT / "api" / "config.py").read_text(encoding="utf-8")
 GATEWAY_CHAT_PY = (REPO_ROOT / "api" / "gateway_chat.py").read_text(encoding="utf-8")
 
@@ -76,19 +76,11 @@ def test_gateway_queue_item_carries_per_event_id_with_legacy_fallback():
     assert "q.put_nowait(queue_item)" in put_body
 
 
-def test_sse_handler_reads_event_id_from_side_channel():
-    """The SSE consumer in _handle_sse_stream must read STREAM_LAST_EVENT_ID
-    and pass it to _sse_with_id when present."""
-    handler_idx = ROUTES_PY.find("def _handle_sse_stream(handler, parsed):")
-    assert handler_idx != -1, "_handle_sse_stream not found"
-    handler_body = ROUTES_PY[handler_idx:handler_idx + 4000]
-    assert "STREAM_LAST_EVENT_ID.get(stream_id)" in handler_body, (
-        "_handle_sse_stream must read STREAM_LAST_EVENT_ID[stream_id] to "
-        "get the event_id for emit"
-    )
-    assert "_sse_with_id(handler, event, data, event_id)" in handler_body, (
-        "_handle_sse_stream must call _sse_with_id when event_id is set"
-    )
+def test_realtime_consumers_emit_the_per_frame_event_id():
+    """WebSocket and SSE compatibility paths read the queue item's cursor."""
+    assert 'event_id = str(item[2] or "") if len(item) >= 3 else None' in REALTIME_PY
+    assert "_event_envelope(" in REALTIME_PY
+    assert "yield _sse_frame(event, data, event_id)" in REALTIME_PY
 
 
 def test_cleanup_pops_stream_last_event_id():
@@ -104,8 +96,7 @@ def test_cleanup_pops_stream_last_event_id():
     )
 
 
-def test_imports_present():
-    """STREAM_LAST_EVENT_ID must be imported in both streaming.py (writer)
-    and routes.py (reader)."""
+def test_writer_import_and_transport_decoupling_are_present():
+    """The writer retains the compatibility pointer; transports use per-frame ids."""
     assert "STREAM_LAST_EVENT_ID," in STREAMING_PY, "streaming.py must import"
-    assert "STREAM_LAST_EVENT_ID," in ROUTES_PY, "routes.py must import"
+    assert "STREAM_LAST_EVENT_ID" not in REALTIME_PY

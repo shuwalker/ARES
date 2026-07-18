@@ -12,16 +12,14 @@ from .base import AgenticBackend
 
 
 class JROSBackend(AgenticBackend):
-    name = "jros"
+    name = "jros_local"
     supports_tools = True
     supports_persona = True
-    supports_hybrid = False
 
     def is_available(self) -> bool:
         try:
-            from api.backend_selector import is_jros_available
-
-            return is_jros_available()
+            from api.backend_selector import backend_status
+            return bool(backend_status().get("jros_local", False))
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning(
@@ -152,6 +150,5 @@ class JROSBackend(AgenticBackend):
             "capabilities": {
                 "supports_tools": self.supports_tools,
                 "supports_persona": self.supports_persona,
-                "supports_hybrid": self.supports_hybrid,
             }
         }

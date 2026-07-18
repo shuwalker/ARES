@@ -2,6 +2,11 @@
 
 This file defines mandatory rules for AI agents working in the ARES repository.
 
+Read [`FOUNDATION.md`](FOUNDATION.md) before changing architecture, onboarding,
+runtime integration, native-app responsibilities, navigation, or product
+vocabulary. It is the canonical product definition; this file supplies
+repository and implementation rules.
+
 ## Licensing
 
 - ARES is licensed under AGPL-3.0 with a commercial dual-license option. See `LICENSE` and `COMMERCIAL-LICENSE.md`.
@@ -14,24 +19,22 @@ This file defines mandatory rules for AI agents working in the ARES repository.
 
 ARES = Autonomous Reasoning & Execution System.
 
-ARES is a Mac-first presentation and integration layer for one user-facing AI
-assistant experience: a Synthetic Intelligence Companion, named by its
-operator during onboarding, reachable from every device over Tailscale. It is
-not a multi-agent company simulator, and it is not a replacement for JROS or
-Hermes. It provides client applications, adapter configuration, identity
-projection, permission handling, remote access, and presence rendering over
-independent runtimes and capability providers.
+ARES is a simplified macOS controller and framework-independent WebUI for
+operating and communicating with a personal Synthetic Intelligence locally or
+from authenticated remote devices. It is not a replacement runtime. It may
+coordinate and visualize multiple agents, models, tools, and processes,
+including comparison and synthesis. A mandatory company/employment metaphor is
+not part of the platform data model.
 
 - ARES composes runtimes, tools, perception inputs, memory providers, voice
   services, avatar renderers, and device integrations behind one consistent
   user-facing assistant interface.
-- JaegerAI is the required Companion runtime: agent loop, bridge/client protocol,
-  characters, voice/STT/TTS, tools/skills, event bus, hardware abstraction,
-  robotics, and local/cloud task routing. ARES has no Companion without it —
-  "Name your Companion" onboarding writes directly through JaegerAI's own
-  `create_instance` (see `webui/api/jros_companion.py`), and `ares_backend`
-  defaults to `jros` (`api/backend_selector.py`). ARES never re-implements
-  JaegerAI; it only detects an install or delegates to JaegerAI's own installer.
+- JaegerAI is a first-class framework connection for agent execution,
+  characters, voice/STT/TTS, tools/skills, events, hardware abstraction,
+  robotics, and local/cloud task routing. ARES never re-implements JaegerAI.
+  The current default backend may remain `jros`, but a Local Profile can be
+  saved without JaegerAI installed or running. The UI must not claim execution
+  is available until a suitable connection is verified.
 - Hermes Agent is an optional addition ARES can call on for coding, terminal
   work, skills, sessions, cron, model/provider routing, delegation,
   memory-backed automation, and operations. Not installed by default —
@@ -58,6 +61,10 @@ independent runtimes and capability providers.
 - Character/avatar systems are presence renderers. They may render JaegerAI
   characters through 2D/3D/VR sprite rigs, Live2D-style surfaces, desktop modes,
   or future robotic bodies, while behavior comes from the active runtime.
+- The animated 2D activity environment is a renderer over real normalized
+  tasks, runs, agents, models, tools, and events. It may show multiple animated
+  counterparts working in parallel. It must not invent work or maintain a
+  separate execution database.
 
 ## Public repo privacy boundary
 
@@ -73,7 +80,7 @@ Keep the merged layout intentional:
 - `ARES-Desktop/Sources/ARESCore/` — protocol contracts, shared models, utilities.
 - `ARES-Desktop/Sources/ARES/` — native macOS app target (WKWebView shell over the web app).
 - `ARES-Desktop/Tests/ARESTests/` — native app tests.
-- `webui/` — the ARES web app (Python server + frontend, adapted from Hermes WebUI). This is the ONLY web app tree: server, api/, static/, tests/, scripts/, Docker packaging, and env templates all live here. Never recreate api/, static/, server.py, or tests/ at the repo root — a stale root-level duplicate of this tree was retired on 2026-07-12.
+- `webui/` — the ARES web app: Python controller/API plus the React/Vite application in `frontend/`. This is the only web app tree. Never recreate `api/`, `frontend/`, `server.py`, or `tests/` at the repo root.
 - `src-tauri/` — Windows/Tauri wrapper surface.
 - `tools/` — standalone utilities.
 - `docs/` — public documentation and assets.
@@ -91,7 +98,7 @@ Two Swift layers under `ARES-Desktop/Sources/`:
   - `Dummies/` — safe no-op implementations for development/testing only.
   - `Models/`, `Services/`, `Utilities/` — shared types, discovery, hub readers, registry, and support code.
 - **ARES**
-  - `App/ARESApp.swift` — WKWebView shell: launches `webui/server.py` (via `webui/.venv`), wraps the web app in a native window with menu bar. The native provider layer (gateway providers, SQLite memory, voice, perception) was removed in the WKWebView pivot; product features belong in `webui/`.
+  - `App/ARESApp.swift` — WKWebView shell: launches the WebUI through its bootstrap/Uvicorn entry point (via `webui/.venv`), wraps the web app in a native window with menu bar. The native provider layer (gateway providers, SQLite memory, voice, perception) was removed in the WKWebView pivot; product features belong in `webui/`.
 
 `ExecutionBackendRouter` (ARESCore) owns product-level backend planning by capability. Prefer configured providers first, native fallbacks second, and development dummies only where explicitly allowed.
 
@@ -99,7 +106,7 @@ Two Swift layers under `ARES-Desktop/Sources/`:
 
 - Write production-quality, tested code.
 - No stubs or placeholder implementations for user-facing setup paths.
-- Follow existing patterns in `webui/api/`, `webui/static/`, and `ARES-Desktop/Sources/`.
+- Follow existing patterns in `webui/api/`, `webui/frontend/src/`, and `ARES-Desktop/Sources/`.
 - New WebUI API endpoints must include proper authentication/owner-scope checks.
 - Preserve hot-reload behavior (`ARES_WEBUI_RELOAD=1`).
 - System-category or approval-required native tools must go through the approval broker/consent path.
@@ -113,8 +120,8 @@ swift build
 swift test
 
 # Focused WebUI tests
-cd webui
-./scripts/test.sh tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py
+cd webui/frontend && npm run typecheck && npm test && npm run build
+cd .. && .venv/bin/python -m pytest tests/test_react_frontend_serving.py tests/test_jros_backend_streaming.py
 ```
 
 Before proposing any commit:
@@ -123,7 +130,8 @@ Before proposing any commit:
 git diff --check
 swift build
 swift test
-cd webui && ./scripts/test.sh tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py
+cd webui/frontend && npm run typecheck && npm test && npm run build
+cd .. && .venv/bin/python -m pytest tests/test_react_frontend_serving.py tests/test_jros_backend_streaming.py
 ```
 
 Also run a privacy leak scan on changed public files. Any maintainer-specific match outside an explicit regression-test forbidden-string list is a blocker.
@@ -141,13 +149,14 @@ External services must be optional/detected, not hardcoded:
 
 | Service | Default role | Expected configuration style |
 |---|---|---|
-| JaegerAI | Required Companion runtime | installed via `webui/scripts/install.sh`'s `jros` stage (delegates to JaegerAI's own installer); path via `ARES_JAEGER_HOME`/`JAEGER_HOME` |
+| JaegerAI | First-class agent/voice/embodiment framework connection; current default where configured | detected or installed through an explicit connection flow; path via `ARES_JAEGER_HOME`/`JAEGER_HOME` |
 | Hermes | Optional addition backend | opt-in via `--with-hermes`; configured URL/API key/env/template |
 | ARES-native services | Product-owned UI/automation features | bundled/detected/configured per user |
 | Ollama/local models | Local model inference backend | detected localhost or configured URL |
 | Cloud providers | Remote model/tool providers for the Companion's `external_model` (JaegerAI) or Hermes, synced via `api/ares_provider_sync.py` — never the key itself, only provider/model/env-var name | configured provider credentials/templates |
 | Workflow tools | Automation/tool providers | detected/configured per user |
 
-ARES must degrade gracefully when optional services (Hermes, cloud providers)
-are absent. JaegerAI is the one exception: it is not optional, and onboarding
-must not silently proceed as if a Companion exists without it.
+ARES must degrade honestly when services are absent. Local Profile setup may
+complete without a framework, but conversation, task execution, voice,
+embodiment, memory, or tools must be reported unavailable until a connection
+offering the required capability is verified.

@@ -11,7 +11,7 @@ name: Docker smoke
 # Scope (intentionally small for v1):
 #   - 3 compose variants (single, two-container, three-container)
 #   - For multi-container variants, rebuild the local Dockerfile and re-tag
-#     it as ghcr.io/nesquena/hermes-webui:latest BEFORE `up` so the PR's
+#     it as ghcr.io/nesquena/ares-webui:latest BEFORE `up` so the PR's
 #     changes to docker_init.bash / Dockerfile actually execute. Without this
 #     the multi-container variants would pull the previous release from GHCR
 #     and silently miss every PR-level regression.
@@ -19,7 +19,7 @@ name: Docker smoke
 #   - Reaper before each smoke run + trap on EXIT for orphan defence.
 #
 # Out of scope for v1 (per design review):
-#   - HERMES_WEBUI_SMOKE_TEST env flag in docker_init.bash (production-code footgun)
+#   - ARES_WEBUI_SMOKE_TEST env flag in docker_init.bash (production-code footgun)
 #   - --user 60000:60000 (skips the chown branch we're protecting against)
 #   - Hadolint / yamllint (separate lint workflow, follow-up PR)
 #   - Local-runnable scripts/docker-smoke-test.sh (ship CI first, then iterate)
@@ -88,7 +88,7 @@ jobs:
         with:
           context: webui
           load: true
-          tags: ghcr.io/nesquena/hermes-webui:latest
+          tags: ghcr.io/nesquena/ares-webui:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -117,7 +117,7 @@ jobs:
         with:
           context: webui
           load: true
-          tags: ghcr.io/nesquena/hermes-webui:latest
+          tags: ghcr.io/nesquena/ares-webui:latest
           cache-from: type=gha
 
       - name: Resolve compose file + project name
@@ -136,9 +136,9 @@ jobs:
               ;;
           esac
           # Per-run project name so concurrent jobs / reruns can't clobber each other.
-          echo "project=hermes-smoke-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+          echo "project=ares-smoke-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
 
-      - name: Reap any prior hermes-smoke resources on this runner
+      - name: Reap any prior ares-smoke resources on this runner
         run: |
           set -euo pipefail
           # Hosted GHA runners are fresh, so this is mostly defence-in-depth for
@@ -147,14 +147,14 @@ jobs:
           # to clean up the resources THIS run creates; this step only sweeps
           # leftovers from prior runs that crashed before their trap fired.
           # Match by project-name prefix instead of labels (the compose files
-          # don't carry hermes-smoke labels on their resources).
-          for c in $(docker ps -aq --filter "name=hermes-smoke-"); do
+          # don't carry ares-smoke labels on their resources).
+          for c in $(docker ps -aq --filter "name=ares-smoke-"); do
             docker rm -f "$c" || true
           done
-          for v in $(docker volume ls -q | grep "^hermes-smoke-" || true); do
+          for v in $(docker volume ls -q | grep "^ares-smoke-" || true); do
             docker volume rm -f "$v" || true
           done
-          for n in $(docker network ls --format '{{.Name}}' | grep "^hermes-smoke-" || true); do
+          for n in $(docker network ls --format '{{.Name}}' | grep "^ares-smoke-" || true); do
             docker network rm "$n" || true
           done
 
@@ -162,20 +162,20 @@ jobs:
         id: paths
         run: |
           set -euo pipefail
-          STATE_DIR="$(mktemp -d -t hermes-smoke-state-XXXXXX)"
-          WORK_DIR="$(mktemp -d -t hermes-smoke-work-XXXXXX)"
+          STATE_DIR="$(mktemp -d -t ares-smoke-state-XXXXXX)"
+          WORK_DIR="$(mktemp -d -t ares-smoke-work-XXXXXX)"
           echo "state_dir=$STATE_DIR" >> "$GITHUB_OUTPUT"
           echo "work_dir=$WORK_DIR" >> "$GITHUB_OUTPUT"
           echo "Allocated:"
-          echo "  HERMES_HOME      = $STATE_DIR"
-          echo "  HERMES_WORKSPACE = $WORK_DIR"
+          echo "  ARES_HOME      = $STATE_DIR"
+          echo "  ARES_WORKSPACE = $WORK_DIR"
 
       - name: Smoke (up + health + log scan + down)
         env:
           COMPOSE_FILE: ${{ steps.vars.outputs.compose_file }}
           PROJECT: ${{ steps.vars.outputs.project }}
-          HERMES_HOME: ${{ steps.paths.outputs.state_dir }}
-          HERMES_WORKSPACE: ${{ steps.paths.outputs.work_dir }}
+          ARES_HOME: ${{ steps.paths.outputs.state_dir }}
+          ARES_WORKSPACE: ${{ steps.paths.outputs.work_dir }}
         run: |
           set -euo pipefail
 
@@ -185,7 +185,7 @@ jobs:
             echo "::group::Cleanup (rc=$rc)"
             docker compose -p "$PROJECT" -f "$COMPOSE_FILE" logs --no-color --tail=200 || true
             docker compose -p "$PROJECT" -f "$COMPOSE_FILE" down -v --remove-orphans || true
-            rm -rf "$HERMES_HOME" "$HERMES_WORKSPACE" || true
+            rm -rf "$ARES_HOME" "$ARES_WORKSPACE" || true
             echo "::endgroup::"
             return $rc
           }

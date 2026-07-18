@@ -19,9 +19,9 @@ def _reset_cron_import_path_ready(routes) -> None:
 
 def test_agent_cron_import_path_prefers_agent_cron_over_plugin_shadow(monkeypatch, tmp_path):
     import api.config as config
-    import api.routes as routes
+    import api.cron_runtime as routes
 
-    agent_dir = tmp_path / "hermes-agent"
+    agent_dir = tmp_path / "ares-agent"
     site_packages = tmp_path / "site-packages"
     agent_cron = agent_dir / "cron"
     shadow_cron = site_packages / "cron"

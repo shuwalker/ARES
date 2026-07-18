@@ -28,11 +28,11 @@ from __future__ import annotations
 import json
 import threading
 import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from api import routes
 from api import models
 
 try:
@@ -116,9 +116,7 @@ def _park_local_approval(sid: str, command: str = "rm -rf /tmp/x", key: str = "d
     th.start()
     th.join(timeout=1.5)  # still blocked; the queue is seeded
 
-    h = _FakeHandler()
-    routes._handle_approval_pending(h, type("P", (), {"query": f"session_id={sid}"})())
-    return (h.json().get("pending") or {}).get("approval_id")
+    return (ra.pending_snapshot(sid).get("pending") or {}).get("approval_id")
 
 
 def _end_stream_drop_entry(sid: str):
@@ -133,12 +131,9 @@ def _end_stream_drop_entry(sid: str):
 
 
 def _respond(sid: str, approval_id: str, choice: str = "once"):
-    h = _FakeHandler()
     with patch("api.gateway_chat.webui_gateway_chat_enabled", return_value=False):
-        routes._handle_approval_respond(
-            h, {"session_id": sid, "choice": choice, "approval_id": approval_id}
-        )
-    return h
+        payload, status = ra.respond_approval(sid, approval_id, choice)
+    return SimpleNamespace(status=status, json=lambda: payload)
 
 
 def _cleanup(sid: str):
@@ -160,7 +155,7 @@ def test_stale_card_click_clears_not_dead_ends():
         assert card_id, "precondition: a pending approval card should be rendered"
         _end_stream_drop_entry(sid)
         # Nothing is pending now.
-        assert routes._session_has_pending_approval(sid) is False
+        assert ra._session_has_pending_approval(sid) is False
         resp = _respond(sid, card_id)
         body = resp.json()
         assert resp.status == 200, f"expected 200, got {resp.status}: {body}"
@@ -179,7 +174,7 @@ def test_fresh_local_approval_still_resolves():
     try:
         card_id = _park_local_approval(sid)
         assert card_id
-        assert routes._session_has_pending_approval(sid) is True
+        assert ra._session_has_pending_approval(sid) is True
         resp = _respond(sid, card_id, choice="once")
         body = resp.json()
         assert resp.status == 200, f"{body}"
@@ -204,10 +199,8 @@ def test_stale_id_while_different_approval_live_still_blocked():
         assert body.get("ok") is False, f"stale id must not resolve while B is live: {body}"
         assert not body.get("stale_cleared")
         # B is still pending and unchanged.
-        assert routes._session_has_pending_approval(sid) is True
-        h = _FakeHandler()
-        routes._handle_approval_pending(h, type("P", (), {"query": f"session_id={sid}"})())
-        assert (h.json().get("pending") or {}).get("approval_id") == live_id
+        assert ra._session_has_pending_approval(sid) is True
+        assert (ra.pending_snapshot(sid).get("pending") or {}).get("approval_id") == live_id
     finally:
         _cleanup(sid)
 
@@ -217,10 +210,10 @@ def test_session_has_pending_approval_predicate():
     sid = f"pred-{uuid.uuid4().hex[:8]}"
     _register_session(sid)
     try:
-        assert routes._session_has_pending_approval(sid) is False
+        assert ra._session_has_pending_approval(sid) is False
         _park_local_approval(sid)
-        assert routes._session_has_pending_approval(sid) is True
+        assert ra._session_has_pending_approval(sid) is True
         _end_stream_drop_entry(sid)
-        assert routes._session_has_pending_approval(sid) is False
+        assert ra._session_has_pending_approval(sid) is False
     finally:
         _cleanup(sid)

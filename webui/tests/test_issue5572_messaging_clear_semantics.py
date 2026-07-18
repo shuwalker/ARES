@@ -6,7 +6,6 @@ import json
 import sqlite3
 from collections import OrderedDict
 from io import BytesIO
-from types import SimpleNamespace
 from urllib.parse import urlparse
 
 import pytest
@@ -48,7 +47,6 @@ def _install_isolated_session_env(monkeypatch, tmp_path):
     import api.config as config
     import api.models as models
     import api.profiles as profiles
-    import api.routes as routes
 
     monkeypatch.setattr(config, "STATE_DIR", tmp_path, raising=False)
     session_dir = tmp_path / "sessions"
@@ -57,39 +55,18 @@ def _install_isolated_session_env(monkeypatch, tmp_path):
     monkeypatch.setattr(models, "SESSION_DIR", session_dir, raising=False)
     monkeypatch.setattr(models, "SESSION_INDEX_FILE", session_dir / "_index.json", raising=False)
     monkeypatch.setattr(models, "SESSIONS", OrderedDict(), raising=False)
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path, raising=False)
     monkeypatch.setattr(models, "_active_state_db_path", lambda: tmp_path / "state.db", raising=False)
-    monkeypatch.setattr(routes, "_active_state_db_path", lambda: tmp_path / "state.db", raising=False)
     monkeypatch.setattr(config, "_evict_session_agent", lambda _sid: None, raising=False)
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir
 
 
 def _post_clear(monkeypatch, sid: str):
-    import api.routes as routes
+    from api.session_mutations import clear_session
 
-    body = b'{"session_id":"%s"}' % sid.encode("utf-8")
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    original_j = routes.j
-
-    captured = {}
-
-    def fake_j(_handler, payload, status=200, extra_headers=None):
-        captured["payload"] = payload
-        captured["status"] = status
-        captured["extra_headers"] = extra_headers
-
-    monkeypatch.setattr(routes, "j", fake_j)
-
-    handler = SimpleNamespace(
-        headers={"Content-Length": str(len(body))},
-        rfile=BytesIO(body),
-    )
-    try:
-        routes.handle_post(handler, SimpleNamespace(path="/api/session/clear"))
-    finally:
-        monkeypatch.setattr(routes, "j", original_j)
-    return captured
+    session = clear_session(sid)
+    return {"payload": {"ok": True, "session": session.compact()}, "status": 200}
 
 
 def _make_state_db(path, sid: str, source: str, rows):
@@ -125,7 +102,7 @@ def test_session_clear_preserves_imported_messaging_transcript_and_blocks_state_
     source_tag,
     source_label,
 ):
-    import api.routes as routes
+    from api.session_projection import project_session_detail
     from api.models import Session, get_cli_session_messages, merge_session_messages_append_only
 
     _install_isolated_session_env(monkeypatch, tmp_path)
@@ -211,10 +188,11 @@ def test_session_clear_preserves_imported_messaging_transcript_and_blocks_state_
         (m["role"], m["content"], m["timestamp"]) for m in external_messages
     ]
 
-    handler = _GetHandler(f"/api/session?session_id={sid}&resolve_model=0")
-    routes.handle_get(handler, urlparse(handler.path))
-    assert handler.status == 200
-    payload_messages = handler.response_json["session"]["messages"]
+    payload_messages = project_session_detail(
+        loaded,
+        load_messages=True,
+        resolve_model=False,
+    )["messages"]
     assert [(m["role"], m["content"], m["timestamp"]) for m in payload_messages] == [
         (m["role"], m["content"], m["timestamp"]) for m in external_messages
     ]

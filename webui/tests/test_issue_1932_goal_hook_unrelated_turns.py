@@ -76,49 +76,53 @@ def test_streaming_sets_pending_goal_continuation_on_goal_continue():
 
 
 # ---------------------------------------------------------------------------
-# Test 5: routes.py reads PENDING_GOAL_CONTINUATION and marks stream
+# Test 5: chat runtime reads PENDING_GOAL_CONTINUATION and marks stream
 # ---------------------------------------------------------------------------
 
-def test_routes_reads_pending_goal_continuation():
+def test_chat_runtime_reads_pending_goal_continuation():
     """The chat/start handler must check PENDING_GOAL_CONTINUATION and mark
     the new stream as goal-related."""
     from pathlib import Path
-    routes_py = (Path(__file__).resolve().parents[1] / "api" / "routes.py").read_text()
+    runtime_py = (Path(__file__).resolve().parents[1] / "api" / "chat_runtime.py").read_text()
 
-    assert "PENDING_GOAL_CONTINUATION" in routes_py, (
-        "routes.py must reference PENDING_GOAL_CONTINUATION"
+    assert "PENDING_GOAL_CONTINUATION" in runtime_py, (
+        "chat_runtime.py must reference PENDING_GOAL_CONTINUATION"
     )
-    assert "STREAM_GOAL_RELATED" in routes_py, (
-        "routes.py must reference STREAM_GOAL_RELATED to mark goal-related streams"
+    assert "STREAM_GOAL_RELATED" in runtime_py, (
+        "chat_runtime.py must reference STREAM_GOAL_RELATED to mark goal-related streams"
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 6: routes.py marks goal kickoff streams as goal-related
+# Test 6: the controls router marks goal kickoff streams as goal-related
 # ---------------------------------------------------------------------------
 
-def test_routes_marks_goal_kickoff_as_goal_related():
+def test_controls_mark_goal_kickoff_as_goal_related():
     """The /api/goal handler must mark the kickoff stream as goal-related."""
     from pathlib import Path
-    routes_py = (Path(__file__).resolve().parents[1] / "api" / "routes.py").read_text()
+    controls_py = (
+        Path(__file__).resolve().parents[1] / "fastapi_app" / "routers" / "controls.py"
+    ).read_text()
 
     # After kickoff stream is started, it must mark the stream
-    kickoff_idx = routes_py.find("kickoff_prompt")
-    stream_goal_idx = routes_py.find("STREAM_GOAL_RELATED")
-    assert kickoff_idx != -1 and stream_goal_idx != -1
+    kickoff_idx = controls_py.find("kickoff_prompt")
+    pending_idx = controls_py.find("PENDING_GOAL_CONTINUATION.add", kickoff_idx)
+    start_idx = controls_py.find("service.start_chat", kickoff_idx)
+    assert kickoff_idx != -1 and pending_idx != -1 and start_idx != -1
+    assert kickoff_idx < pending_idx < start_idx
 
 
 # ---------------------------------------------------------------------------
-# Test 7: _start_chat_stream_for_session passes goal_related through
+# Test 7: the chat runtime passes goal_related through
 # ---------------------------------------------------------------------------
 
 def test_start_chat_stream_accepts_goal_related():
-    """_start_chat_stream_for_session must accept goal_related kwarg."""
+    """The selected runtime worker receives the explicit goal_related kwarg."""
     from pathlib import Path
-    routes_py = (Path(__file__).resolve().parents[1] / "api" / "routes.py").read_text()
+    runtime_py = (Path(__file__).resolve().parents[1] / "api" / "chat_runtime.py").read_text()
 
-    assert "goal_related" in routes_py, (
-        "routes.py must reference goal_related parameter"
+    assert 'kwargs={"model_provider": effective_provider, "goal_related": goal_related}' in runtime_py, (
+        "chat_runtime.py must pass goal_related to the selected adapter worker"
     )
 
 

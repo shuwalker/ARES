@@ -42,7 +42,7 @@ def _both_callsites():
 
     Yields the literal text of each primary callsite. The two intentional
     legacy 2-arg fallback callsites (gated under `except TypeError:`) are
-    excluded because they exist precisely to support older hermes-agent
+    excluded because they exist precisely to support older ares-agent
     builds where the new kwargs aren't accepted yet.
     """
     out = []
@@ -155,13 +155,13 @@ def test_config_context_length_parsed_safely():
 
 
 def test_legacy_signature_fallback_present():
-    """Older hermes-agent builds may not yet have config_context_length on
+    """Older ares-agent builds may not yet have config_context_length on
     get_model_context_length(). The fix must catch TypeError and retry with
     the legacy 2-arg form so the indicator still resolves *something*."""
     # The except TypeError clause should mention the legacy retry comment OR
     # contain a 2-arg fallback call.
     assert "except TypeError:" in STREAMING_PY, (
-        "Both callsites must catch TypeError to support older hermes-agent "
+        "Both callsites must catch TypeError to support older ares-agent "
         "builds whose get_model_context_length signature pre-dates the new "
         "kwargs. Without this fallback, an older agent build would crash "
         "the save/SSE path instead of degrading to a 2-arg call."
@@ -179,65 +179,40 @@ def test_cfg_custom_providers_resolved_from_cfg_dict():
         "_cfg_custom_providers must be sourced from `cfg.get('custom_providers')` "
         "(per-profile config) so profile-scoped custom_providers entries work."
     )
-    assert 'cfg.get("model", {})' in ROUTES_PY, (
-        "_cfg_ctx_len must be sourced from `cfg.get('model', {}).get('context_length')` "
+    assert 'cfg.get("model") or {}' in ROUTES_PY, (
+        "_cfg_ctx_len must be sourced from `(cfg.get('model') or {}).get('context_length')` "
         "(per-profile config) so profile-scoped model.context_length overrides work."
     )
 
 
-# ── Sibling fallback in api/routes.py session-load path ─────────────────────
+# ── Sibling fallback in api/model_context.py session-load path ─────────────────────
 
-ROUTES_PY = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
+ROUTES_PY = (REPO / "api" / "model_context.py").read_text(encoding="utf-8")
 
 
-def test_routes_session_load_fallback_passes_config_overrides():
-    """The session-load fallback at api/routes.py (around 'older sessions
-    (pre-#1318) that have context_length=0 persisted') has the SAME bug shape
-    as the streaming.py fallbacks: it called `_get_cl(model, "")` with no
-    config overrides, so `/api/session/get` returned 256K for old sessions
-    even when the user had `model.context_length: 1048576` set.
-
-    The fix mirrors streaming.py's: pass config_context_length, provider,
-    and custom_providers, with a TypeError fallback to the legacy 2-arg
-    form. Without this, the very first paint of a reloaded old session shows
-    the wrong window until a turn is sent.
-    """
-    # Anchor: find the comment that pins this fallback's purpose.
-    anchor = "older sessions (pre-#1318) that have context_length=0 persisted"
-    idx = ROUTES_PY.find(anchor)
-    assert idx != -1, "session-load fallback comment moved/removed"
-    # The route block may delegate the resolver details to a helper, but the
-    # session-load path must still call the helper and that helper must preserve
-    # the same kwargs as the streaming.py fix.
-    block_end = ROUTES_PY.find("_session_tool_calls =", idx)
-    assert block_end != -1, "session-load fallback block end not found after fallback comment"
-    block = ROUTES_PY[idx:block_end]
-    helper_start = ROUTES_PY.find("def _resolve_context_length_for_session_model")
+def test_session_context_resolver_passes_config_overrides():
+    """The transport-neutral resolver preserves all model metadata inputs."""
+    helper_start = ROUTES_PY.find("def resolve_context_length_for_session_model")
     assert helper_start != -1, "context-length resolver helper not found"
     helper_end = ROUTES_PY.find("\ndef ", helper_start + 1)
     helper = ROUTES_PY[helper_start:helper_end if helper_end != -1 else len(ROUTES_PY)]
-    assert "_resolve_context_length_for_session_model" in block
-    assert "_should_accept_session_context_length_refresh" in block, (
-        "session-load fallback must gate lower-confidence recomputes before "
-        "replacing persisted context metadata. See #4248."
-    )
     # Same kwargs as the streaming.py fix.
     assert "config_context_length=" in helper, (
-        "session-load fallback in api/routes.py must pass config_context_length= "
+        "session-load fallback in api/model_context.py must pass config_context_length= "
         "so user-set model.context_length wins over the 256K default. See #1896."
     )
-    assert "provider=_ctx_lookup.provider or provider or" in helper, (
-        "session-load fallback in api/routes.py must pass provider= "
+    assert "provider=lookup.provider or provider or" in helper, (
+        "session-load fallback in api/model_context.py must pass provider= "
         "so the registry lookup is provider-aware. See #1896."
     )
     assert "custom_providers=" in helper, (
-        "session-load fallback in api/routes.py must pass custom_providers= "
+        "session-load fallback in api/model_context.py must pass custom_providers= "
         "so the per-model override path applies. See #1896."
     )
-    # Legacy fallback for older hermes-agent builds that pre-date the kwargs.
+    # Legacy fallback for older ares-agent builds that pre-date the kwargs.
     assert "except TypeError:" in helper, (
         "session-load fallback must catch TypeError to support older "
-        "hermes-agent builds without the new kwargs."
+        "ares-agent builds without the new kwargs."
     )
 
 
@@ -250,7 +225,7 @@ def test_context_lookup_returns_custom_provider_api_key_from_entry():
     ``get_model_context_length`` does not probe anonymously and fall back to
     256K.
     """
-    from api.routes import _context_length_lookup_inputs_for_model
+    from api.model_context import _context_length_lookup_inputs_for_model
 
     lookup = _context_length_lookup_inputs_for_model(
         "custom-model-id",
@@ -274,7 +249,7 @@ def test_context_lookup_returns_custom_provider_api_key_from_entry():
 
 def test_context_lookup_resolves_custom_provider_api_key_env_template(monkeypatch):
     """#4059: ``${ENV_VAR}`` custom-provider keys resolve before metadata probes."""
-    from api.routes import _context_length_lookup_inputs_for_model
+    from api.model_context import _context_length_lookup_inputs_for_model
 
     monkeypatch.setenv("ISSUE_4059_CONTEXT_KEY", "env-template-key")
 
@@ -304,11 +279,11 @@ def test_context_lookup_logs_unresolved_custom_provider_api_key_env_template(mon
     """
     import logging
 
-    from api.routes import _context_length_lookup_inputs_for_model
+    from api.model_context import _context_length_lookup_inputs_for_model
 
     monkeypatch.delenv("ISSUE_4059_MISSING_CONTEXT_KEY", raising=False)
     monkeypatch.setenv("ISSUE_4059_KEY_ENV_AFTER_TEMPLATE", "key-env-fallback")
-    caplog.set_level(logging.DEBUG, logger="api.routes")
+    caplog.set_level(logging.DEBUG, logger="api.model_context")
 
     lookup = _context_length_lookup_inputs_for_model(
         "custom-model-id",
@@ -333,7 +308,7 @@ def test_context_lookup_logs_unresolved_custom_provider_api_key_env_template(mon
 
 def test_context_lookup_resolves_custom_provider_key_env(monkeypatch):
     """#4059: ``key_env`` custom-provider keys resolve before metadata probes."""
-    from api.routes import _context_length_lookup_inputs_for_model
+    from api.model_context import _context_length_lookup_inputs_for_model
 
     monkeypatch.setenv("ISSUE_4059_KEY_ENV", "key-env-value")
 
@@ -362,7 +337,7 @@ def test_routes_session_model_resolver_passes_custom_provider_api_key(monkeypatc
     500K context metadata back to the unauthenticated 256K fallback.
     """
     from api import config as cfg_mod
-    from api import routes
+    from api import model_context as routes
 
     # Some unrelated route tests install ``sys.modules["agent"]`` as a plain
     # module stub at collection time. Make this regression test own a package-

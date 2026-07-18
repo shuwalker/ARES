@@ -19,7 +19,7 @@ import sys
 REPO_ROOT = pathlib.Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(REPO_ROOT))
 
-ROUTES_SRC = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
+APPROVALS_SRC = (REPO_ROOT / "api" / "route_approvals.py").read_text(encoding="utf-8")
 
 
 def _extract_lock_block(body: str) -> str:
@@ -59,17 +59,17 @@ def _extract_lock_block(body: str) -> str:
 
 
 def _handler_body() -> str:
-    start = ROUTES_SRC.find("def _handle_approval_sse_stream(")
-    assert start != -1, "_handle_approval_sse_stream must exist"
-    end = ROUTES_SRC.find("\ndef ", start + 1)
-    return ROUTES_SRC[start:end if end != -1 else len(ROUTES_SRC)]
+    start = APPROVALS_SRC.find("def approval_sse_subscribe_with_snapshot(")
+    assert start != -1, "approval_sse_subscribe_with_snapshot must exist"
+    end = APPROVALS_SRC.find("\ndef ", start + 1)
+    return APPROVALS_SRC[start:end if end != -1 else len(APPROVALS_SRC)]
 
 
 def test_snapshot_taken_under_lock():
     """The initial _pending snapshot must be guarded by `with _lock:`."""
     lock_body = _extract_lock_block(_handler_body())
     assert lock_body, "_handle_approval_sse_stream must contain a `with _lock:` block"
-    assert "_pending.get(sid)" in lock_body, \
+    assert "_pending.get(session_id)" in lock_body, \
         "Initial snapshot of _pending must be read inside the `with _lock:` block"
 
 
@@ -89,7 +89,7 @@ def test_subscribe_before_snapshot_in_lock():
     assert lock_body, "Handler must contain a `with _lock:` block"
 
     sub_idx = lock_body.find("_approval_sse_subscribers")
-    snap_idx = lock_body.find("_pending.get(sid)")
+    snap_idx = lock_body.find("_pending.get(session_id)")
 
     assert sub_idx != -1, "Subscriber registration must be inside the lock"
     assert snap_idx != -1, "Snapshot read must be inside the lock"
@@ -100,9 +100,9 @@ def test_subscribe_before_snapshot_in_lock():
 
 
 def test_no_double_subscribe_outside_lock():
-    """The handler must not also call `_approval_sse_subscribe()` (legacy code path)."""
+    """The atomic helper must not call the non-atomic compatibility helper."""
     body = _handler_body()
-    assert "= _approval_sse_subscribe(sid)" not in body, (
-        "_handle_approval_sse_stream must not call _approval_sse_subscribe() — "
+    assert "_approval_sse_subscribe(" not in body, (
+        "approval_sse_subscribe_with_snapshot must not call _approval_sse_subscribe() — "
         "the atomic version inlines subscribe inside the snapshot lock block."
     )

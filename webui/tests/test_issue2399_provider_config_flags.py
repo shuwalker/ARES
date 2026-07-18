@@ -14,12 +14,19 @@ def _provider_ids(payload: dict) -> set[str]:
     return {str(group.get("provider_id") or "") for group in payload.get("groups", [])}
 
 
+def _pin_test_config(monkeypatch, value: dict) -> None:
+    """Replace both compatibility names for the process config cache."""
+    monkeypatch.setattr(config, "_cfg_cache", value, raising=False)
+    monkeypatch.setattr(config, "cfg", value, raising=False)
+    monkeypatch.setattr(config, "_cfg_path", config._get_config_path(), raising=False)
+    monkeypatch.setattr(config, "_cfg_fingerprint", config._fingerprint_config(value), raising=False)
+
+
 def test_providers_only_configured_flag_does_not_create_picker_group(monkeypatch):
     """providers.only_configured is a filter flag, not a provider id (#2399)."""
     _reset_models_cache()
-    monkeypatch.setattr(
-        config,
-        "cfg",
+    _pin_test_config(
+        monkeypatch,
         {
             "model": {"provider": "openai", "default": "gpt-4o-mini"},
             "providers": {
@@ -27,13 +34,12 @@ def test_providers_only_configured_flag_does_not_create_picker_group(monkeypatch
                 "openai": {"models": ["gpt-4o-mini"]},
             },
         },
-        raising=False,
     )
     monkeypatch.setattr(config, "_cfg_has_in_memory_overrides", lambda: True)
     monkeypatch.setattr(
         config,
         "_get_auth_store_path",
-        lambda: pathlib.Path("/tmp/hermes-webui-missing-auth-store-issue2399.json"),
+        lambda: pathlib.Path("/tmp/ares-webui-missing-auth-store-issue2399.json"),
     )
 
     try:
@@ -50,9 +56,8 @@ def test_providers_only_configured_flag_does_not_create_picker_group(monkeypatch
 def test_unknown_scalar_provider_config_flags_are_ignored(monkeypatch):
     """Unknown scalar siblings under providers must not seed phantom groups."""
     _reset_models_cache()
-    monkeypatch.setattr(
-        config,
-        "cfg",
+    _pin_test_config(
+        monkeypatch,
         {
             "model": {"provider": "openai", "default": "gpt-4o-mini"},
             "providers": {
@@ -60,13 +65,12 @@ def test_unknown_scalar_provider_config_flags_are_ignored(monkeypatch):
                 "openai": {"models": ["gpt-4o-mini"]},
             },
         },
-        raising=False,
     )
     monkeypatch.setattr(config, "_cfg_has_in_memory_overrides", lambda: True)
     monkeypatch.setattr(
         config,
         "_get_auth_store_path",
-        lambda: pathlib.Path("/tmp/hermes-webui-missing-auth-store-issue2399.json"),
+        lambda: pathlib.Path("/tmp/ares-webui-missing-auth-store-issue2399.json"),
     )
 
     try:

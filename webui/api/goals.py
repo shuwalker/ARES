@@ -1,4 +1,4 @@
-"""WebUI bridge for Hermes persistent session goals."""
+"""WebUI bridge for Ares persistent session goals."""
 
 from __future__ import annotations
 
@@ -12,14 +12,14 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 try:  # Exposed as a module attribute so tests can monkeypatch it directly.
-    from hermes_cli.goals import (  # type: ignore
+    from ares_cli.goals import (  # type: ignore
         CONTINUATION_PROMPT_TEMPLATE,
         DEFAULT_MAX_TURNS,
         GoalManager as _NativeGoalManager,
         GoalState,
         judge_goal,
     )
-except Exception:  # pragma: no cover - depends on installed hermes-agent
+except Exception:  # pragma: no cover - depends on installed ares-agent
     CONTINUATION_PROMPT_TEMPLATE = ""  # type: ignore
     DEFAULT_MAX_TURNS = 20  # type: ignore
     _NativeGoalManager = None  # type: ignore
@@ -32,7 +32,7 @@ _DB_CACHE: dict[str, Any] = {}
 
 
 def _default_max_turns() -> int:
-    """Return the configured /goal turn budget, defaulting to Hermes' 20 turns."""
+    """Return the configured /goal turn budget, defaulting to Ares' 20 turns."""
     try:
         from api import config as _config
 
@@ -50,10 +50,10 @@ def _meta_key(session_id: str) -> str:
 
 
 def _profile_db(profile_home: str | Path):
-    """Return a SessionDB pinned to *profile_home*, without reading HERMES_HOME.
+    """Return a SessionDB pinned to *profile_home*, without reading ARES_HOME.
 
-    The upstream Hermes GoalManager persists through hermes_cli.goals.load_goal(),
-    which resolves SessionDB from process-global HERMES_HOME. WebUI sessions are
+    The upstream Ares GoalManager persists through ares_cli.goals.load_goal(),
+    which resolves SessionDB from process-global ARES_HOME. WebUI sessions are
     profile-scoped and can run concurrently, so the WebUI bridge uses an explicit
     state.db path whenever the caller provides the session's profile home.
     """
@@ -63,7 +63,7 @@ def _profile_db(profile_home: str | Path):
     if cached is not None:
         return cached
     try:
-        from hermes_state import SessionDB  # type: ignore
+        from ares_state import SessionDB  # type: ignore
 
         db = SessionDB(db_path=home / "state.db")
     except Exception as exc:  # pragma: no cover - import/env dependent
@@ -78,7 +78,7 @@ class _ProfileGoalManager:
 
     def __init__(self, session_id: str, *, profile_home: str | Path, default_max_turns: int = 20):
         if GoalState is None:
-            raise RuntimeError("Hermes goal state unavailable")
+            raise RuntimeError("Ares goal state unavailable")
         self.session_id = session_id
         self.profile_home = Path(profile_home).expanduser().resolve()
         self.default_max_turns = int(default_max_turns or DEFAULT_MAX_TURNS or 20)
@@ -411,7 +411,7 @@ def restore_goal_state(session_id: str, snapshot: Any, *, profile_home: str | Pa
         mgr._save(snapshot)
         return
     try:
-        from hermes_cli.goals import save_goal  # type: ignore
+        from ares_cli.goals import save_goal  # type: ignore
 
         save_goal(str(session_id or ""), snapshot)
     except Exception as exc:  # pragma: no cover - native fallback only

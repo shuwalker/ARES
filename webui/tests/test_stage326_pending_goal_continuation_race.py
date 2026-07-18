@@ -7,15 +7,15 @@ inside the SAME function call (line ~3328) that the `finally` then discards
 it (line ~3553), the marker would be erased before the frontend could
 receive the SSE event, post the next /chat/start, and trigger the
 consumer-side `if session_id in PENDING_GOAL_CONTINUATION` check in
-routes.py.
+chat_runtime.py.
 
 The fix removes the discard from streaming.py's finally and relies on the
-consumer in routes.py to discard atomically when the marker is read.
+consumer in chat_runtime.py to discard when the marker is read.
 
 These tests exercise the full chain to guard against the regression:
 1. The streaming finally must NOT discard the marker
 2. Setting the marker survives the streaming finally
-3. routes.py consumer discards atomically on read
+3. chat_runtime.py consumes the marker once
 """
 import re
 from pathlib import Path
@@ -25,8 +25,8 @@ def _read_streaming():
     return Path(__file__).parents[1].joinpath("api", "streaming.py").read_text(encoding="utf-8")
 
 
-def _read_routes():
-    return Path(__file__).parents[1].joinpath("api", "routes.py").read_text(encoding="utf-8")
+def _read_chat_runtime():
+    return Path(__file__).parents[1].joinpath("api", "chat_runtime.py").read_text(encoding="utf-8")
 
 
 def test_streaming_finally_does_not_discard_pending_goal_continuation():
@@ -49,27 +49,27 @@ def test_streaming_finally_does_not_discard_pending_goal_continuation():
     assert "PENDING_GOAL_CONTINUATION.discard" not in block, (
         "REGRESSION: streaming.py's stream-cleanup block discards "
         "PENDING_GOAL_CONTINUATION. This races against the consumer in "
-        "routes.py and breaks the goal-continuation chain. The discard "
-        "must live ONLY in routes.py's `_start_chat_stream_for_session` "
+        "chat_runtime.py and breaks the goal-continuation chain. The discard "
+        "must live ONLY in chat_runtime.py's run-creation "
         "consumer path."
     )
 
 
-def test_routes_consumer_discards_atomically_on_read():
-    """The routes.py consumer must discard the marker after consuming it,
+def test_chat_runtime_consumer_discards_on_read():
+    """The chat runtime must discard the marker after consuming it,
     so the marker is single-use (one continuation = one auto-flag).
     """
-    src = _read_routes()
+    src = _read_chat_runtime()
 
     # Find the consumption check.
     m = re.search(
-        r"if not goal_related and s\.session_id in PENDING_GOAL_CONTINUATION:.*?PENDING_GOAL_CONTINUATION\.discard",
+        r"goal_related = session\.session_id in PENDING_GOAL_CONTINUATION\s+PENDING_GOAL_CONTINUATION\.discard",
         src,
         re.DOTALL,
     )
     assert m is not None, (
-        "routes.py must consume PENDING_GOAL_CONTINUATION atomically: "
-        "check + set goal_related + discard in the same block"
+        "chat_runtime.py must consume PENDING_GOAL_CONTINUATION once: "
+        "read into goal_related, then discard"
     )
     # The discard must be within ~10 lines of the check (atomic block).
     block = m.group(0)

@@ -1,5 +1,5 @@
 from api.config import STREAMS, STREAMS_LOCK, create_stream_channel
-from api.routes import _stream_runtime_diagnostics
+from api.runtime_diagnostics import _stream_runtime_diagnostics
 
 
 def test_stream_channel_exposes_buffer_and_subscriber_counts():

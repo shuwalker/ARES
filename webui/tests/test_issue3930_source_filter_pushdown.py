@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 import api.agent_sessions as agent_sessions
 import api.models as models
 import api.profiles as profiles
-import api.routes as routes
 
 
 class _FakeHandler:
@@ -158,16 +157,16 @@ def test_read_importable_agent_session_rows_uses_parameterized_include_filter(mo
 
 
 def test_get_cli_sessions_source_filter_uses_distinct_cache_key(monkeypatch, tmp_path):
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir()
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: str(hermes_home))
+    ares_home = tmp_path / "ares"
+    ares_home.mkdir()
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: str(ares_home))
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
     monkeypatch.setattr(models, "_CLI_SESSIONS_CACHE_TTL_SECONDS", 60.0, raising=False)
     models.clear_cli_sessions_cache()
 
     seen = []
 
-    def fake_loader(_hermes_home, _db_path, _cli_profile, source_filter=None):
+    def fake_loader(_ares_home, _db_path, _cli_profile, source_filter=None):
         seen.append(source_filter)
         return [{"session_id": f"session-{source_filter or 'all'}", "title": "cached"}]
 
@@ -188,23 +187,23 @@ def test_get_cli_sessions_all_profiles_pushes_source_filter_to_every_context(mon
     per-context _load_cli_sessions_uncached calls. The all-profiles branch keys the cache
     on source_filter, so omitting it from the loader returned every-source sessions under
     a filtered key (Codex SILENT finding on the #4067 re-gate)."""
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir()
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: str(hermes_home))
+    ares_home = tmp_path / "ares"
+    ares_home.mkdir()
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: str(ares_home))
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
     monkeypatch.setattr(models, "_CLI_SESSIONS_CACHE_TTL_SECONDS", 60.0, raising=False)
     models.clear_cli_sessions_cache()
 
     # Two profile contexts; cache key derived from a stable token.
     contexts = [
-        (hermes_home, hermes_home / "state.db", "default"),
-        (hermes_home / "p2", hermes_home / "p2" / "state.db", "haku"),
+        (ares_home, ares_home / "state.db", "default"),
+        (ares_home / "p2", ares_home / "p2" / "state.db", "haku"),
     ]
     monkeypatch.setattr(models, "_all_profiles_cli_contexts", lambda: (contexts, "ctx-key"))
 
     seen = []
 
-    def fake_loader(_hermes_home, _db_path, _cli_profile, source_filter=None, **kwargs):
+    def fake_loader(_ares_home, _db_path, _cli_profile, source_filter=None, **kwargs):
         seen.append(source_filter)
         return [{"session_id": f"s-{_cli_profile}-{source_filter or 'all'}", "title": "x"}]
 
@@ -302,42 +301,48 @@ def test_cron_source_filter_uses_cron_rescue_limit(monkeypatch, tmp_path):
 
 
 def test_api_sessions_passes_source_filter_only_on_sidebar_path(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_identity
+
     captured = []
 
     def fake_get_cli_sessions(source_filter=None, *, all_profiles=False):
         captured.append({"source_filter": source_filter, "all_profiles": all_profiles})
         return []
 
-    monkeypatch.setattr(routes, "all_sessions", lambda diag=None: [])
+    monkeypatch.setattr(models, "all_sessions", lambda diag=None: [])
     monkeypatch.setattr(
-        routes,
-        "load_settings",
+        "api.config.load_settings",
         lambda: {
             "show_cli_sessions": True,
             "agent_session_source_filter": "  TUI  ",
         },
     )
-    monkeypatch.setattr(routes, "get_cli_sessions", fake_get_cli_sessions)
+    monkeypatch.setattr(models, "get_cli_sessions", fake_get_cli_sessions)
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
 
-    handler = _FakeHandler()
-    routes.handle_get(handler, urlparse("http://example.com/api/sessions"))
+    app = create_app()
+    app.dependency_overrides[require_identity] = lambda: RequestIdentity(None, "default", False)
+    with TestClient(app) as client:
+        response = client.get("/api/sessions")
 
-    assert handler.status == 200
-    assert handler.json_body()["sessions"] == []
+    assert response.status_code == 200
+    assert response.json()["sessions"] == []
     assert captured == [{"source_filter": "  TUI  ", "all_profiles": False}]
 
 
 def test_non_sidebar_cli_session_callers_keep_default_get_cli_sessions_signature(monkeypatch):
+    from api.session_access import lookup_cli_session_metadata
     captured = []
 
     monkeypatch.setattr(
-        routes,
+        models,
         "get_cli_sessions",
         lambda *, all_profiles=False: captured.append(all_profiles) or [{"session_id": "cli-session", "title": "CLI Session"}],
     )
 
-    assert routes._lookup_cli_session_metadata("cli-session") == {
+    assert lookup_cli_session_metadata("cli-session") == {
         "session_id": "cli-session",
         "title": "CLI Session",
     }

@@ -27,9 +27,6 @@ cleared transcript) and pass with the fix.
 """
 from __future__ import annotations
 
-import json
-from io import BytesIO
-from types import SimpleNamespace
 
 
 def _msg(role: str, content: str, ts: float, mid: str) -> dict:
@@ -49,29 +46,13 @@ def _seed_session_dir(monkeypatch, tmp_path):
 
 
 def _call_clear(monkeypatch, session_id):
-    """Invoke the real POST /api/session/clear route and return its payload."""
-    import api.routes as routes
+    """Invoke the transport-neutral clear operation and return its API shape."""
+    from api.session_mutations import clear_session
 
-    body = {"session_id": session_id}
-    body_bytes = json.dumps(body).encode()
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
     # Eviction runs provider I/O; stub it so the test stays hermetic.
     monkeypatch.setattr("api.config._evict_session_agent", lambda _sid: None)
-
-    captured = {}
-
-    def fake_j(handler, payload, status=200, extra_headers=None):
-        captured["payload"] = payload
-        captured["status"] = status
-
-    monkeypatch.setattr(routes, "j", fake_j)
-
-    handler = SimpleNamespace(
-        headers={"Content-Length": str(len(body_bytes))},
-        rfile=BytesIO(body_bytes),
-    )
-    routes.handle_post(handler, SimpleNamespace(path="/api/session/clear"))
-    return captured
+    session = clear_session(session_id)
+    return {"payload": {"ok": True, "session": session.compact()}, "status": 200}
 
 
 def _four_turn_messages():
@@ -220,7 +201,7 @@ def test_clear_detaches_compression_snapshot_parent(monkeypatch, tmp_path):
     """
     _seed_session_dir(monkeypatch, tmp_path)
     from api.models import Session
-    import api.routes as routes
+    import api.session_lineage_display as routes
 
     parent = Session(
         session_id="issue5532parent",

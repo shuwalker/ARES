@@ -1,10 +1,12 @@
 """
-Hermes Web UI -- Filesystem checkpoint (rollback) API.
+Ares Web UI -- Filesystem checkpoint (rollback) API.
 
 Provides endpoints to list, diff, and restore filesystem checkpoints
-created by the Hermes agent's CheckpointManager.  Checkpoints live at
-``{hermes_home}/checkpoints/<hash>/`` as shadow git repositories.
+created by the Ares agent's CheckpointManager.  Checkpoints live at
+``{ares_home}/checkpoints/<hash>/`` as shadow git repositories.
 """
+
+from __future__ import annotations
 
 import hashlib
 import logging
@@ -39,13 +41,13 @@ def _validate_checkpoint_id(checkpoint: str) -> str:
     return cid
 
 
-def _hermes_home() -> Path:
-    """Return the active Hermes home directory."""
+def _ares_home() -> Path:
+    """Return the active Ares home directory."""
     try:
-        from api.profiles import get_active_hermes_home
-        return Path(get_active_hermes_home())
+        from api.profiles import get_active_ares_home
+        return Path(get_active_ares_home())
     except Exception:
-        return Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
+        return Path(os.environ.get("ARES_HOME", "~/.ares")).expanduser()
 
 
 def _workspace_hash(workspace: str) -> str:
@@ -62,7 +64,7 @@ def _workspace_hash(workspace: str) -> str:
 
 
 def _checkpoint_root() -> Path:
-    return _hermes_home() / "checkpoints"
+    return _ares_home() / "checkpoints"
 
 
 def _resolve_workspace(workspace: str) -> str:

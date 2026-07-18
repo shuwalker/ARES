@@ -213,20 +213,37 @@ def test_clear_endpoint_resets_manual_title_lock():
     assert session.llm_title_generated is False
 
 
-def test_clear_route_uses_rename_helper_not_bare_title_assignment():
-    """Static guard: the /api/session/clear handler must reset the title via
-    apply_session_title_rename (which clears manual_title), not a bare
-    `s.title = "Untitled"` that would strand the manual-title lock (#3542)."""
-    import pathlib
-    routes_src = (pathlib.Path(__file__).resolve().parent.parent / "api" / "routes.py").read_text(
-        encoding="utf-8"
+def test_clear_operation_uses_rename_helper(monkeypatch, tmp_path):
+    """The clear service must reset title state through the lifecycle helper."""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from api.session_mutations import clear_session
+
+    calls = []
+    session = SimpleNamespace(
+        messages=[],
+        context_messages=[],
+        tool_calls=[],
+        parent_session_id=None,
+        title="Manual",
+        path=tmp_path / "not-written.json",
+        save=lambda: None,
     )
-    clear_idx = routes_src.find('if parsed.path == "/api/session/clear"')
-    assert clear_idx != -1, "/api/session/clear handler not found"
-    # Window from the clear handler to the next route branch.
-    next_idx = routes_src.find('if parsed.path == "/api/session/truncate"', clear_idx)
-    clear_block = routes_src[clear_idx:next_idx if next_idx != -1 else clear_idx + 2000]
-    assert "apply_session_title_rename(s, \"Untitled\")" in clear_block, (
-        "clear handler must reset the title via apply_session_title_rename to "
-        "clear the manual_title lock"
+    monkeypatch.setattr("api.models.get_session", lambda *_args, **_kwargs: session)
+    monkeypatch.setattr("api.config._get_session_agent_lock", lambda _sid: nullcontext())
+    monkeypatch.setattr("api.config._evict_session_agent", lambda _sid: None)
+    monkeypatch.setattr(
+        "api.session_ops.truncate_session_at_keep",
+        lambda target, keep: calls.append(("truncate", target, keep)),
     )
+
+    def rename(target, title):
+        calls.append(("rename", target, title))
+        target.title = title
+
+    monkeypatch.setattr("api.session_ops.apply_session_title_rename", rename)
+
+    clear_session("clear-title")
+
+    assert calls[-1] == ("rename", session, "Untitled")

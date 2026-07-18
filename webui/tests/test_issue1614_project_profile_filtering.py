@@ -227,21 +227,21 @@ def test_profile_field_on_project_dict_default_create(monkeypatch):
     `profile` on the created dict.
     """
     from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
+    src = (Path(__file__).parent.parent / 'fastapi_app' / 'routers' / 'projects.py').read_text(encoding='utf-8')
 
     # The create handler must now include get_active_profile_name() for the new dict
-    create_idx = src.find('"/api/projects/create"')
+    create_idx = src.find('def create_project(')
     assert create_idx > 0
-    next_handler_idx = src.find('"/api/projects/rename"', create_idx)
+    next_handler_idx = src.find('def _owned_project(', create_idx)
     create_block = src[create_idx:next_handler_idx]
     # The create handler must stamp the profile from a (validated) body value or
     # the active profile. #3331 follow-up: the raw body value is now validated
     # via _PROFILE_ID_RE before stamping, so the expression reads `_requested_profile`.
-    assert '"profile": _requested_profile or get_active_profile_name() or \'default\'' in create_block, (
+    assert '"profile": requested_profile or get_active_profile_name() or "default"' in create_block, (
         "Project create must stamp the active profile or accept a validated profile from body (#1614/#3331)"
     )
     # And the validation guard must be present (reject unknown/invalid profile ids).
-    assert '_PROFILE_ID_RE.fullmatch(_requested_profile)' in create_block, (
+    assert '_PROFILE_ID_RE.fullmatch(requested_profile)' in create_block, (
         "Project create must validate a client-supplied profile before stamping it (#3331)"
     )
 
@@ -249,25 +249,25 @@ def test_profile_field_on_project_dict_default_create(monkeypatch):
 def test_project_rename_rejects_cross_profile():
     """Source-string check that rename's active-profile guard is in place."""
     from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
+    src = (Path(__file__).parent.parent / 'fastapi_app' / 'routers' / 'projects.py').read_text(encoding='utf-8')
 
-    rename_idx = src.find('"/api/projects/rename"')
+    rename_idx = src.find('def _owned_project(')
     assert rename_idx > 0
-    next_idx = src.find('"/api/projects/delete"', rename_idx)
+    next_idx = src.find('def rename_project(', rename_idx)
     rename_block = src[rename_idx:next_idx]
-    assert '_profiles_match(proj.get("profile"), active_profile)' in rename_block, (
+    assert '_profiles_match(project.get("profile"), get_active_profile_name())' in rename_block, (
         "Rename must check active-profile ownership"
     )
 
 
 def test_project_delete_rejects_cross_profile():
     from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
+    src = (Path(__file__).parent.parent / 'fastapi_app' / 'routers' / 'projects.py').read_text(encoding='utf-8')
 
-    delete_idx = src.find('"/api/projects/delete"')
+    delete_idx = src.find('def delete_project(')
     assert delete_idx > 0
     delete_block = src[delete_idx:delete_idx + 1500]
-    assert '_profiles_match(proj.get("profile"), active_profile)' in delete_block, (
+    assert '_owned_project(project_id)' in delete_block, (
         "Delete must check active-profile ownership"
     )
 
@@ -275,12 +275,12 @@ def test_project_delete_rejects_cross_profile():
 def test_session_move_uses_session_profile():
     """/api/session/move must use session.profile instead of active_profile for authorization."""
     from pathlib import Path
-    src = (Path(__file__).parent.parent / 'api' / 'routes.py').read_text(encoding='utf-8')
+    src = (Path(__file__).parent.parent / 'api' / 'session_mutations.py').read_text(encoding='utf-8')
 
-    move_idx = src.find('"/api/session/move"')
+    move_idx = src.find('def move_session_to_project(')
     assert move_idx > 0
     move_block = src[move_idx:move_idx + 2000]
-    assert '_profiles_match(target.get("profile"), _session_profile)' in move_block, (
+    assert '_profiles_match(target.get("profile"), profile)' in move_block, (
         "session/move must use session-scoped profile (not active_profile) for authorization"
     )
 

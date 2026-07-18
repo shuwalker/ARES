@@ -3,8 +3,8 @@
 - **Status:** Proposed
 - **Author:** @ai-ag2026
 - **Created:** 2026-05-25
-- **Tracking issue:** [#2361](https://github.com/nesquena/hermes-webui/issues/2361)
-- **Related architecture:** [#1925](https://github.com/nesquena/hermes-webui/issues/1925), [`webui-run-state-consistency-contract.md`](webui-run-state-consistency-contract.md)
+- **Tracking issue:** [#2361](https://github.com/nesquena/ares-webui/issues/2361)
+- **Related architecture:** [#1925](https://github.com/nesquena/ares-webui/issues/1925), [`webui-run-state-consistency-contract.md`](webui-run-state-consistency-contract.md)
 
 ## Problem
 

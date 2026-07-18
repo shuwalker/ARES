@@ -7,7 +7,7 @@ mirrors the symlink-rejection hardening shipped for skills/plugins
 (#4217/#4234/#4240).
 
 Per maintainer decision, a symlinked *parent memories directory* is deliberately
-NOT rejected here (symlinking the whole .hermes/memories dir is a legitimate
+NOT rejected here (symlinking the whole .ares/memories dir is a legitimate
 setup); only the concrete target file is guarded.
 """
 
@@ -18,23 +18,15 @@ from pathlib import Path
 import pytest
 
 import api.profiles as profiles
-import api.routes as routes
+import api.memory_store as memory_store
 
 
 class _FakeHandler:
     pass
 
 
-def _patch_memory_routes(monkeypatch, home):
-    cap = {}
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: home)
-    monkeypatch.setattr(routes, "j", lambda h, o: (cap.__setitem__("ok", o), True)[1])
-    monkeypatch.setattr(
-        routes,
-        "bad",
-        lambda h, m, c=400: (cap.__setitem__("bad", (m, c)), True)[1],
-    )
-    return cap
+def _patch_memory_home(monkeypatch, home):
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: home)
 
 
 def test_memory_write_rejects_symlinked_memory_file(tmp_path, monkeypatch):
@@ -49,15 +41,12 @@ def test_memory_write_rejects_symlinked_memory_file(tmp_path, monkeypatch):
     except (OSError, NotImplementedError):
         pytest.skip("platform does not support symlinks")
 
-    cap = _patch_memory_routes(monkeypatch, home)
-    routes._handle_memory_write(
-        _FakeHandler(),
-        {"section": "memory", "content": "changed"},
-    )
+    _patch_memory_home(monkeypatch, home)
+    with pytest.raises(memory_store.MemoryStoreError) as exc_info:
+        memory_store.write_memory("memory", "changed")
 
-    assert "bad" in cap, f"expected 400, got {cap}"
-    assert cap["bad"][1] == 400
-    assert "Cannot write to a symlinked memory file" in cap["bad"][0]
+    assert exc_info.value.status_code == 400
+    assert "Cannot write to a symlinked memory file" in str(exc_info.value)
     # The symlink target outside the memories dir must be untouched.
     assert outside.read_text(encoding="utf-8") == "important"
 
@@ -77,17 +66,14 @@ def test_memory_write_read_only_soul_returns_403(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "write_text", fake_write_text)
 
-    cap = _patch_memory_routes(monkeypatch, home)
-    routes._handle_memory_write(
-        _FakeHandler(),
-        {"section": "soul", "content": "# Soul\n"},
-    )
+    _patch_memory_home(monkeypatch, home)
+    with pytest.raises(memory_store.MemoryStoreError) as exc_info:
+        memory_store.write_memory("soul", "# Soul\n")
 
-    assert "bad" in cap, f"expected 403, got {cap}"
-    assert cap["bad"][1] == 403
-    assert "SOUL.md" in cap["bad"][0]
-    assert "writable" in cap["bad"][0].lower()
-    assert "chmod 644" in cap["bad"][0]
+    assert exc_info.value.status_code == 403
+    assert "SOUL.md" in str(exc_info.value)
+    assert "writable" in str(exc_info.value).lower()
+    assert "chmod 644" in str(exc_info.value)
 
 
 def test_memory_write_read_only_filesystem_returns_403(tmp_path, monkeypatch):
@@ -105,16 +91,13 @@ def test_memory_write_read_only_filesystem_returns_403(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "write_text", fake_write_text)
 
-    cap = _patch_memory_routes(monkeypatch, home)
-    routes._handle_memory_write(
-        _FakeHandler(),
-        {"section": "soul", "content": "# Soul\n"},
-    )
+    _patch_memory_home(monkeypatch, home)
+    with pytest.raises(memory_store.MemoryStoreError) as exc_info:
+        memory_store.write_memory("soul", "# Soul\n")
 
-    assert "bad" in cap, f"expected 403, got {cap}"
-    assert cap["bad"][1] == 403
-    assert "SOUL.md" in cap["bad"][0]
-    assert "chmod 644" in cap["bad"][0]
+    assert exc_info.value.status_code == 403
+    assert "SOUL.md" in str(exc_info.value)
+    assert "chmod 644" in str(exc_info.value)
 
 
 def test_memory_write_allows_symlinked_memories_directory(tmp_path, monkeypatch):
@@ -130,28 +113,20 @@ def test_memory_write_allows_symlinked_memories_directory(tmp_path, monkeypatch)
     except (OSError, NotImplementedError):
         pytest.skip("platform does not support symlinks")
 
-    cap = _patch_memory_routes(monkeypatch, home)
-    routes._handle_memory_write(
-        _FakeHandler(),
-        {"section": "user", "content": "# User\n"},
-    )
+    _patch_memory_home(monkeypatch, home)
+    result = memory_store.write_memory("user", "# User\n")
 
-    assert "ok" in cap, f"expected success, got {cap}"
-    assert cap["ok"]["ok"] is True
+    assert result["ok"] is True
     assert (real_dir / "USER.md").read_text(encoding="utf-8") == "# User\n"
 
 
 def test_memory_write_real_file_still_works(tmp_path, monkeypatch):
     home = tmp_path / "home"
 
-    cap = _patch_memory_routes(monkeypatch, home)
-    routes._handle_memory_write(
-        _FakeHandler(),
-        {"section": "memory", "content": "# Memory\n"},
-    )
+    _patch_memory_home(monkeypatch, home)
+    result = memory_store.write_memory("memory", "# Memory\n")
 
     target = home / "memories" / "MEMORY.md"
-    assert "ok" in cap, f"expected success, got {cap}"
-    assert cap["ok"]["ok"] is True
-    assert cap["ok"]["section"] == "memory"
+    assert result["ok"] is True
+    assert result["section"] == "memory"
     assert target.read_text(encoding="utf-8") == "# Memory\n"

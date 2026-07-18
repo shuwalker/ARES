@@ -6,8 +6,6 @@ is already enabled and the user wants to change, clear, or go passwordless.
 import io
 import json
 import os
-from urllib.parse import urlparse
-
 import pytest
 
 
@@ -25,9 +23,9 @@ def _isolate_auth_settings_state(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cfg, "SETTINGS_FILE", tmp_path / "settings.json")
     _invalidate_password_hash_cache()
-    os.environ.pop("HERMES_WEBUI_PASSWORD", None)
+    os.environ.pop("ARES_WEBUI_PASSWORD", None)
     yield
-    os.environ.pop("HERMES_WEBUI_PASSWORD", None)
+    os.environ.pop("ARES_WEBUI_PASSWORD", None)
     _invalidate_password_hash_cache()
 
 
@@ -72,20 +70,47 @@ class _FakeHandler:
 
 
 def _post_settings(body_dict, cookie=""):
-    from api.routes import handle_post
-    raw = json.dumps(body_dict).encode("utf-8")
-    handler = _FakeHandler(body_bytes=raw, cookie=cookie)
-    parsed = urlparse("http://example.com/api/settings")
-    handle_post(handler, parsed)
-    return handler
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import (
+        RequestIdentity,
+        require_identity,
+        require_mutation_identity,
+    )
+
+    app = create_app()
+    identity = RequestIdentity(cookie or None, "default", True)
+    app.dependency_overrides[require_identity] = lambda: identity
+    app.dependency_overrides[require_mutation_identity] = lambda: identity
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        if cookie:
+            client.headers["Cookie"] = cookie
+        response = client.post("/api/settings", json=body_dict)
+    return _ResponseAdapter(response)
 
 
 def _get_settings():
-    from api.routes import handle_get
-    handler = _FakeHandler()
-    parsed = urlparse("http://example.com/api/settings")
-    handle_get(handler, parsed)
-    return handler.json_body(), handler.status
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_identity
+
+    app = create_app()
+    app.dependency_overrides[require_identity] = lambda: RequestIdentity(None, "default", True)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.get("/api/settings")
+    return response.json(), response.status_code
+
+
+class _ResponseAdapter:
+    def __init__(self, response):
+        self.response = response
+        self.status = response.status_code
+
+    def json_body(self):
+        return self.response.json()
+
+    def header(self, name):
+        return self.response.headers.get(name)
 
 
 def _set_password_raw(pw):
@@ -142,9 +167,11 @@ class TestClearPasswordRequiresCurrentPassword:
     def test_cannot_clear_password_with_non_string_current_password(self):
         _set_password_raw("oldpassword")
         handler = _post_settings({"_clear_password": True, "_current_password": 123})
-        assert handler.status == 403
+        # ARES normalizes FastAPI validation failures to the stable API-wide
+        # 400 contract before policy code runs.
+        assert handler.status == 400
         payload = handler.json_body()
-        assert "current password" in payload.get("error", "").lower()
+        assert payload.get("details")
 
     def test_can_clear_password_with_correct_current_password(self):
         _set_password_raw("oldpassword")
@@ -178,12 +205,12 @@ class TestFirstTimePasswordNoCurrentRequired:
 
 class TestEnvVarPasswordLockStillRejects:
     def test_env_var_lock_rejects_password_change(self):
-        os.environ["HERMES_WEBUI_PASSWORD"] = "envpw"
+        os.environ["ARES_WEBUI_PASSWORD"] = "envpw"
         handler = _post_settings({"_set_password": "newpw", "_current_password": "envpw"})
         assert handler.status == 409
 
     def test_env_var_lock_rejects_password_clear(self):
-        os.environ["HERMES_WEBUI_PASSWORD"] = "envpw"
+        os.environ["ARES_WEBUI_PASSWORD"] = "envpw"
         handler = _post_settings({"_clear_password": True, "_current_password": "envpw"})
         assert handler.status == 409
 
@@ -268,17 +295,17 @@ class TestAuthDisabledAcknowledged:
         handler = _post_settings({"_auth_disabled_acknowledged": True})
         assert handler.status == 200
 
-        from api.routes import handle_get
-        status_handler = _FakeHandler()
-        handle_get(status_handler, urlparse("http://example.com/api/auth/status"))
-        status_payload = status_handler.json_body()
+        from fastapi.testclient import TestClient
+        from fastapi_app.main import create_app
+
+        with TestClient(create_app(), client=("127.0.0.1", 50000)) as client:
+            status_payload = client.get("/api/auth/status").json()
         assert status_payload.get("auth_enabled") is False
         assert status_payload.get("auth_disabled_acknowledged") is True
 
         _set_password_raw("testpw")
-        status_handler = _FakeHandler()
-        handle_get(status_handler, urlparse("http://example.com/api/auth/status"))
-        status_payload = status_handler.json_body()
+        with TestClient(create_app(), client=("127.0.0.1", 50000)) as client:
+            status_payload = client.get("/api/auth/status").json()
         assert status_payload.get("auth_enabled") is True
         assert status_payload.get("auth_disabled_acknowledged") is False
         _clear_password_raw()

@@ -1,4 +1,4 @@
-"""Synchronize LLM provider settings between Hermes and JROS configs.
+"""Synchronize LLM provider settings between Ares and JROS configs.
 
 This module intentionally writes only provider metadata (provider/model/base URL
 and API-key environment variable names). It never writes secret values or
@@ -52,7 +52,7 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "ollama-cloud": "ollama-cloud",
     "ollama-local": "ollama",
     "openai": "openai",
-    # Hermes OAuth provider slugs are not runnable by JROS today.
+    # Ares OAuth provider slugs are not runnable by JROS today.
     "openai-codex": None,
     "xai-oauth": None,
 }
@@ -85,12 +85,12 @@ def _normalize_provider(provider: str) -> str:
 
 
 def _normalize_targets(targets: Iterable[str] | None) -> list[str]:
-    requested = list(targets or ["hermes", "jros"])
+    requested = list(targets or ["ares", "jros"])
     normalized: list[str] = []
     for target in requested:
         value = str(target or "").strip().lower()
-        if value not in {"hermes", "jros"}:
-            raise ValueError(f"Unsupported sync target: {target}. Supported targets: hermes, jros")
+        if value not in {"ares", "jros"}:
+            raise ValueError(f"Unsupported sync target: {target}. Supported targets: ares, jros")
         if value not in normalized:
             normalized.append(value)
     if not normalized:
@@ -105,7 +105,7 @@ def _resolved_provider_values(provider: str, base_url: str | None, api_key_env: 
     return resolved_base_url or None, resolved_api_key_env or None
 
 
-def _sync_hermes_config(config: dict[str, Any], provider: str, model: str, base_url: str | None) -> dict[str, Any]:
+def _sync_ares_config(config: dict[str, Any], provider: str, model: str, base_url: str | None) -> dict[str, Any]:
     updated = deepcopy(config)
     model_config = updated.get("model")
     if not isinstance(model_config, dict):
@@ -154,7 +154,7 @@ def _jros_supported_fallback_chain(
     fallback_chain: list[Any],
     jros_current: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Translate Hermes fallback entries into JROS-runnable provider entries."""
+    """Translate Ares fallback entries into JROS-runnable provider entries."""
     external_model = jros_current.get("external_model") if isinstance(jros_current, dict) else None
     active_identity: tuple[str, str] | None = None
     if isinstance(external_model, dict) and external_model.get("enabled"):
@@ -208,7 +208,7 @@ def sync_provider(
     base_url: str | None = None,
     targets: Iterable[str] | None = None,
     api_key_env: str | None = None,
-    hermes_config_path: str | os.PathLike[str] | None = None,
+    ares_config_path: str | os.PathLike[str] | None = None,
     jros_config_path: str | os.PathLike[str] | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
@@ -238,18 +238,18 @@ def sync_provider(
         "fallback_chain_synced": False,
     }
 
-    if "hermes" in normalized_targets:
-        if hermes_config_path is None:
-            raise ValueError("hermes_config_path is required when syncing Hermes")
-        path = expand_path(hermes_config_path)
+    if "ares" in normalized_targets:
+        if ares_config_path is None:
+            raise ValueError("ares_config_path is required when syncing Ares")
+        path = expand_path(ares_config_path)
         current = load_yaml_config(path)
-        updated = _sync_hermes_config(current, normalized_provider, normalized_model, resolved_base_url)
+        updated = _sync_ares_config(current, normalized_provider, normalized_model, resolved_base_url)
         changed = updated != current
         if changed and not dry_run:
             save_yaml_config(path, updated)
-        results["targets"]["hermes"] = _path_result(path, changed)
+        results["targets"]["ares"] = _path_result(path, changed)
         if changed:
-            results["changed_targets"].append("hermes")
+            results["changed_targets"].append("ares")
 
     if "jros" in normalized_targets:
         path = expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
@@ -272,11 +272,11 @@ def sync_provider(
 
 
 def sync_fallback_chain(
-    hermes_config_path: str | os.PathLike[str] | None = None,
+    ares_config_path: str | os.PathLike[str] | None = None,
     jros_config_path: str | os.PathLike[str] | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Sync the fallback_providers chain from Hermes config to JROS config.
+    """Sync the fallback_providers chain from Ares config to JROS config.
     
     Returns a JSON-safe dictionary describing what was synced.
     """
@@ -289,19 +289,19 @@ def sync_fallback_chain(
         "fallback_entries_synced": 0,
     }
     
-    if hermes_config_path is None:
-        raise ValueError("hermes_config_path is required")
+    if ares_config_path is None:
+        raise ValueError("ares_config_path is required")
     
-    hermes_path = expand_path(hermes_config_path)
-    hermes_current = load_yaml_config(hermes_path)
-    fallback_chain = hermes_current.get("fallback_providers", [])
+    ares_path = expand_path(ares_config_path)
+    ares_current = load_yaml_config(ares_path)
+    fallback_chain = ares_current.get("fallback_providers", [])
     
     if not isinstance(fallback_chain, list) or not fallback_chain:
-        results["targets"]["hermes"] = {"path": str(hermes_path), "changed": False, "note": "no fallback chain"}
+        results["targets"]["ares"] = {"path": str(ares_path), "changed": False, "note": "no fallback chain"}
         return results
     
-    results["targets"]["hermes"] = {
-        "path": str(hermes_path),
+    results["targets"]["ares"] = {
+        "path": str(ares_path),
         "changed": False,
         "fallback_entries": len(fallback_chain),
     }

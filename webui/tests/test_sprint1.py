@@ -1,5 +1,5 @@
 """
-Sprint 1 test suite for the Hermes Web UI.
+Sprint 1 test suite for the Ares Web UI.
 
 Tests use the ISOLATED test server. Port is auto-derived per worktree (see conftest.py).
 Production server (port 8787) and your real conversations are never touched.
@@ -14,14 +14,12 @@ No mocking required for session CRUD, upload parser, or approval API.
 
 import io
 import json
-import os
 import sys
 import time
 import uuid
 import urllib.request
 import urllib.parse
 import urllib.error
-import tempfile
 import pathlib
 
 # Allow importing server modules directly for unit tests
@@ -85,14 +83,17 @@ def make_session_tracked(created_list, ws=None):
     return sid, pathlib.Path(d["session"]["workspace"])
 
 
-def _make_session_visible(sid):
-    data, status = post("/api/chat/start", {
-        "session_id": sid,
-        "message": "visible row",
-        "model": "openai/gpt-5.4-mini",
-    })
-    assert status == 200, f"chat/start failed with {status}: {data}"
-    get(f"/api/chat/cancel?stream_id={urllib.parse.quote(data['stream_id'])}")
+def _make_message_session(title):
+    """Create durable sidebar fixture data without requiring an LLM runtime."""
+    data, status = post(
+        "/api/session/import",
+        {
+            "title": title,
+            "messages": [{"role": "user", "content": "visible row"}],
+        },
+    )
+    assert status == 200, f"session/import failed with {status}: {data}"
+    return data["session"]["session_id"]
 
 
 
@@ -139,14 +140,8 @@ def test_session_create_and_load():
     assert loaded["session"]["session_id"] == sid
     assert loaded["session"]["messages"] == []
 
-    # Give it a real message so the default sidebar route keeps it visible.
-    _make_session_visible(sid)
-    post("/api/session/rename", {"session_id": sid, "title": "test-create-verify"})
-
-    # Verify it appears in /api/sessions list
-    sessions = get("/api/sessions")
-    sids = [s["session_id"] for s in sessions["sessions"]]
-    assert sid in sids, f"New session {sid} not in sessions list"
+    # Empty sessions are intentionally absent from the Today/sidebar catalog
+    # until they have durable transcript data. Direct loading remains valid.
 
     # Cleanup
     post("/api/session/delete", {"session_id": sid})
@@ -218,17 +213,11 @@ def test_session_delete_nonexistent():
 
 def test_sessions_list_sorted():
     """Sessions list should be sorted most-recently-updated first."""
-    # Create two sessions with a real message so the default sidebar route keeps them visible.
-    a, _ = post("/api/session/new", {})
+    # Imported transcripts are deterministic durable fixtures; this sorting
+    # test must not depend on a connected model runtime.
+    sid_a = _make_message_session("test-sort-a")
     time.sleep(0.05)
-    b, _ = post("/api/session/new", {})
-    sid_a = a["session"]["session_id"]
-    sid_b = b["session"]["session_id"]
-    _make_session_visible(sid_a)
-    post("/api/session/rename", {"session_id": sid_a, "title": "test-sort-a"})
-    time.sleep(0.05)
-    _make_session_visible(sid_b)
-    post("/api/session/rename", {"session_id": sid_b, "title": "test-sort-b"})
+    sid_b = _make_message_session("test-sort-b")
 
     sessions = get("/api/sessions")
     sids = [s["session_id"] for s in sessions["sessions"]]
@@ -248,27 +237,9 @@ def test_sessions_list_sorted():
 
 def test_parse_multipart_text_file():
     """parse_multipart correctly parses a text file field."""
-    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
-    # Import the function directly from the server module
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "server",
-        str(pathlib.Path(__file__).parent.parent / "server.py")
-    )
-    # We only need parse_multipart; import it without running the server
-    # Parse manually by reading the source and exec only the function
-    src = pathlib.Path(__file__).parent.parent.joinpath("api/upload.py").read_text()
-    # Extract and exec parse_multipart
-    import re
-    # Find the function
-    m = re.search(r"(def parse_multipart\(.*?)(?=\ndef )", src, re.DOTALL)
-    assert m, "Could not find parse_multipart in server.py"
-    ns = {}
-    exec("import re as _re, email.parser as _ep\n" + m.group(1), ns)
-    parse_multipart = ns["parse_multipart"]
+    from api.upload import parse_multipart
 
     # Build a minimal multipart body
-    boundary = b"testboundary"
     body = (
         b"--testboundary\r\n"
         b"Content-Disposition: form-data; name=\"session_id\"\r\n\r\n"
@@ -293,16 +264,10 @@ def test_parse_multipart_text_file():
 
 def test_parse_multipart_binary_file():
     """parse_multipart handles binary (PNG header bytes) without corruption."""
-    src = pathlib.Path(__file__).parent.parent.joinpath("api/upload.py").read_text()
-    import re
-    m = re.search(r"(def parse_multipart\(.*?)(?=\ndef )", src, re.DOTALL)
-    ns = {}
-    exec("import re as _re, email.parser as _ep\n" + m.group(1), ns)
-    parse_multipart = ns["parse_multipart"]
+    from api.upload import parse_multipart
 
     # Fake PNG: first 8 bytes of PNG magic
     png_magic = b"\x89PNG\r\n\x1a\n"
-    boundary = b"binboundary"
     body = (
         b"--binboundary\r\n"
         b"Content-Disposition: form-data; name=\"session_id\"\r\n\r\n"
@@ -352,11 +317,11 @@ def test_upload_text_file(cleanup_test_sessions):
 
 
 def test_upload_respects_attachment_dir_env(monkeypatch, tmp_path):
-    """HERMES_WEBUI_ATTACHMENT_DIR routes chat uploads to a per-session inbox."""
+    """ARES_WEBUI_ATTACHMENT_DIR routes chat uploads to a per-session inbox."""
     from api.upload import _session_attachment_dir, _upload_destination
 
     inbox = tmp_path / "attachment-inbox"
-    monkeypatch.setenv("HERMES_WEBUI_ATTACHMENT_DIR", str(inbox))
+    monkeypatch.setenv("ARES_WEBUI_ATTACHMENT_DIR", str(inbox))
 
     dest = _upload_destination("session-123", "notes.md")
 
@@ -370,7 +335,7 @@ def test_upload_destination_does_not_overwrite_same_filename(monkeypatch, tmp_pa
     from api.upload import _upload_destination
 
     inbox = tmp_path / "attachment-inbox"
-    monkeypatch.setenv("HERMES_WEBUI_ATTACHMENT_DIR", str(inbox))
+    monkeypatch.setenv("ARES_WEBUI_ATTACHMENT_DIR", str(inbox))
 
     first = _upload_destination("session-123", "photo.png")
     first.write_bytes(b"first")

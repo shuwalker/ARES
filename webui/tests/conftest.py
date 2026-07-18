@@ -8,9 +8,9 @@ TEST ISOLATION:
 
 PATH DISCOVERY:
   No hardcoded paths. Discovery order:
-    1. Environment variables (HERMES_WEBUI_AGENT_DIR, HERMES_WEBUI_PYTHON, etc.)
+    1. Environment variables (ARES_WEBUI_AGENT_DIR, ARES_WEBUI_PYTHON, etc.)
     2. Sibling checkout heuristics relative to this repo
-    3. Common install paths (~/.hermes/hermes-agent)
+    3. Common install paths (~/.ares/ares-agent)
     4. System python3 as a last resort
 """
 import json
@@ -28,7 +28,7 @@ import pytest
 
 if not (3, 11) <= sys.version_info[:2] <= (3, 13):
     pytest.exit(
-        "Hermes WebUI tests require Python 3.11, 3.12, or 3.13. "
+        "Ares WebUI tests require Python 3.11, 3.12, or 3.13. "
         "Run ./scripts/test.sh so the repo-local supported .venv is used "
         "instead of an unsupported system python.",
         returncode=3,
@@ -49,17 +49,17 @@ requires_fork = pytest.mark.skipif(
 TESTS_DIR  = pathlib.Path(__file__).parent.resolve()
 REPO_ROOT  = TESTS_DIR.parent.resolve()
 HOME       = pathlib.Path.home()
-HERMES_HOME = pathlib.Path(os.getenv('HERMES_HOME', str(HOME / '.hermes')))
+ARES_HOME = pathlib.Path(os.getenv('ARES_HOME', str(HOME / '.ares')))
 
 # ── Test server config ────────────────────────────────────────────────────
 # Port and state dir auto-derive from the repo path when no env var is set,
 # giving every worktree its own isolated port (20000-29999) and state directory.
-# Override with HERMES_WEBUI_TEST_PORT / HERMES_WEBUI_TEST_STATE_DIR to pin.
+# Override with ARES_WEBUI_TEST_PORT / ARES_WEBUI_TEST_STATE_DIR to pin.
 
 def _auto_test_port(repo_root) -> int:
     """Pick a port for the session test server.
 
-    PARALLEL-SAFE: when ``HERMES_WEBUI_TEST_PORT`` is not pinned, grab a free
+    PARALLEL-SAFE: when ``ARES_WEBUI_TEST_PORT`` is not pinned, grab a free
     OS-assigned ephemeral port (bind to :0, read it back, release) so that
     MULTIPLE concurrent pytest runs from the SAME worktree never collide on one
     port. The old behaviour hashed the repo path to a fixed port in 20000-29999,
@@ -69,7 +69,7 @@ def _auto_test_port(repo_root) -> int:
     at setup then reaped the other run's server mid-suite, cascading every
     HTTP-dependent test with ConnectionRefused. A per-process free port removes
     the shared resource entirely, so gates + local suite + CI shards can all run
-    at once. Pin with ``HERMES_WEBUI_TEST_PORT`` for a reproducible/fixed port.
+    at once. Pin with ``ARES_WEBUI_TEST_PORT`` for a reproducible/fixed port.
     """
     import socket
     for _ in range(10):
@@ -111,54 +111,54 @@ def _auto_state_dir_name(repo_root, port=None) -> str:
 # on an ephemeral-range port can match a *client* socket (or the other concurrent
 # run's pytest) that merely has that local port, killing the wrong process. Only
 # pinned ports (which may have a genuinely stale prior server) get the reap.
-TEST_PORT_PINNED = bool(os.getenv('HERMES_WEBUI_TEST_PORT'))
-TEST_PORT      = int(os.getenv('HERMES_WEBUI_TEST_PORT',
+TEST_PORT_PINNED = bool(os.getenv('ARES_WEBUI_TEST_PORT'))
+TEST_PORT      = int(os.getenv('ARES_WEBUI_TEST_PORT',
                                str(_auto_test_port(REPO_ROOT))))
 TEST_BASE      = f"http://127.0.0.1:{TEST_PORT}"
 
 # ── Test state dir: HARD-ISOLATED from production ──────────────────────────
-# Test state must NEVER live inside the real Hermes home (~/.hermes or any
-# HERMES_HOME), or anywhere near production profiles/files/server. Earlier this
-# defaulted to ``HERMES_HOME / webui-test-<hash>`` which wrote test state INTO
-# ~/.hermes/profiles/<...>/ (observed: 144 leaked webui-test-* dirs in the real
+# Test state must NEVER live inside the real Ares home (~/.ares or any
+# ARES_HOME), or anywhere near production profiles/files/server. Earlier this
+# defaulted to ``ARES_HOME / webui-test-<hash>`` which wrote test state INTO
+# ~/.ares/profiles/<...>/ (observed: 144 leaked webui-test-* dirs in the real
 # profile home). We now anchor the default under the OS temp dir, in a dedicated
-# `hermes-webui-tests/` namespace, fully outside any production tree.
+# `ares-webui-tests/` namespace, fully outside any production tree.
 import tempfile as _tempfile
 _TEST_STATE_ROOT = pathlib.Path(
-    os.getenv('HERMES_WEBUI_TEST_STATE_ROOT', _tempfile.gettempdir())
-) / 'hermes-webui-tests'
+    os.getenv('ARES_WEBUI_TEST_STATE_ROOT', _tempfile.gettempdir())
+) / 'ares-webui-tests'
 TEST_STATE_DIR = pathlib.Path(os.getenv(
-    'HERMES_WEBUI_TEST_STATE_DIR',
+    'ARES_WEBUI_TEST_STATE_DIR',
     str(_TEST_STATE_ROOT / _auto_state_dir_name(REPO_ROOT, TEST_PORT))
 )).resolve()
 
 # Production-proximity guard: refuse to run if the resolved test state dir lands
-# inside the REAL Hermes home tree — a misconfigured HERMES_WEBUI_TEST_STATE_DIR
-# pointing at ~/.hermes would let tests wipe/clobber production profiles,
+# inside the REAL Ares home tree — a misconfigured ARES_WEBUI_TEST_STATE_DIR
+# pointing at ~/.ares would let tests wipe/clobber production profiles,
 # sessions, and credentials on teardown. We anchor on the literal user-home
-# `~/.hermes` (NOT $HERMES_HOME): HERMES_HOME is frequently overridden to a
+# `~/.ares` (NOT $ARES_HOME): ARES_HOME is frequently overridden to a
 # profile dir or, during a test run, to TEST_STATE_DIR itself — comparing
 # against it would either miss a real production path or false-trip when the
 # test dir legitimately lives in /tmp. A test dir under the OS temp dir is always
-# allowed even if it nominally sits below a temp-rooted HERMES_HOME.
-_PROD_HERMES_HOME = (HOME / '.hermes').resolve()
+# allowed even if it nominally sits below a temp-rooted ARES_HOME.
+_PROD_ARES_HOME = (HOME / '.ares').resolve()
 _TEMP_ROOT = pathlib.Path(_tempfile.gettempdir()).resolve()
 # The temp-root exception only holds when the temp root is itself OUTSIDE the
-# production home. If TMPDIR is (mis)configured under ~/.hermes, a "temp" path is
+# production home. If TMPDIR is (mis)configured under ~/.ares, a "temp" path is
 # still a production path — don't let it suppress the guard.
 _temp_root_is_safe = not (
-    _TEMP_ROOT == _PROD_HERMES_HOME or _PROD_HERMES_HOME in _TEMP_ROOT.parents
+    _TEMP_ROOT == _PROD_ARES_HOME or _PROD_ARES_HOME in _TEMP_ROOT.parents
 )
 _under_temp = _temp_root_is_safe and (
     TEST_STATE_DIR == _TEMP_ROOT or _TEMP_ROOT in TEST_STATE_DIR.parents
 )
-_under_prod = TEST_STATE_DIR == _PROD_HERMES_HOME or _PROD_HERMES_HOME in TEST_STATE_DIR.parents
+_under_prod = TEST_STATE_DIR == _PROD_ARES_HOME or _PROD_ARES_HOME in TEST_STATE_DIR.parents
 if _under_prod and not _under_temp:
     raise RuntimeError(
         f"REFUSING TO RUN: test state dir {TEST_STATE_DIR} is inside the production "
-        f"Hermes home {_PROD_HERMES_HOME}. Tests must never touch production files. "
-        f"Unset HERMES_WEBUI_TEST_STATE_DIR (defaults to a temp dir) or point it "
-        f"outside ~/.hermes."
+        f"Ares home {_PROD_ARES_HOME}. Tests must never touch production files. "
+        f"Unset ARES_WEBUI_TEST_STATE_DIR (defaults to a temp dir) or point it "
+        f"outside ~/.ares."
     )
 
 TEST_WORKSPACE = TEST_STATE_DIR / 'test-workspace'
@@ -168,26 +168,26 @@ TEST_WORKSPACE = TEST_STATE_DIR / 'test-workspace'
 #
 # Direct assignment is intentional for production-risk paths: tests that import
 # api.config/api.models in the pytest process must never inherit the real
-# ~/.hermes state tree before the server subprocess fixture starts.
-os.environ['HERMES_WEBUI_TEST_PORT'] = str(TEST_PORT)
-os.environ['HERMES_WEBUI_TEST_STATE_DIR'] = str(TEST_STATE_DIR)
-os.environ['HERMES_WEBUI_STATE_DIR'] = str(TEST_STATE_DIR)
-os.environ['HERMES_WEBUI_DEFAULT_WORKSPACE'] = str(TEST_WORKSPACE)
-os.environ['HERMES_HOME'] = str(TEST_STATE_DIR)
-os.environ['HERMES_BASE_HOME'] = str(TEST_STATE_DIR)
-# Hermes Agent sessions may inherit HERMES_CONFIG_PATH pointing at the live
-# ~/.hermes/config.yaml.  Override it before any product modules are imported so
+# ~/.ares state tree before the server subprocess fixture starts.
+os.environ['ARES_WEBUI_TEST_PORT'] = str(TEST_PORT)
+os.environ['ARES_WEBUI_TEST_STATE_DIR'] = str(TEST_STATE_DIR)
+os.environ['ARES_WEBUI_STATE_DIR'] = str(TEST_STATE_DIR)
+os.environ['ARES_WEBUI_DEFAULT_WORKSPACE'] = str(TEST_WORKSPACE)
+os.environ['ARES_HOME'] = str(TEST_STATE_DIR)
+os.environ['ARES_BASE_HOME'] = str(TEST_STATE_DIR)
+# Ares Agent sessions may inherit ARES_CONFIG_PATH pointing at the live
+# ~/.ares/config.yaml.  Override it before any product modules are imported so
 # tests that read/write config.yaml stay inside the isolated test home.
-os.environ['HERMES_CONFIG_PATH'] = str(TEST_STATE_DIR / 'config.yaml')
+os.environ['ARES_CONFIG_PATH'] = str(TEST_STATE_DIR / 'config.yaml')
 
 
 @pytest.fixture(autouse=True)
-def _isolate_hermes_config_path():
+def _isolate_ares_config_path():
     """Keep profile/.env side effects from leaking the live config path across tests."""
     isolated_config_path = str(TEST_STATE_DIR / 'config.yaml')
-    os.environ['HERMES_CONFIG_PATH'] = isolated_config_path
+    os.environ['ARES_CONFIG_PATH'] = isolated_config_path
     yield
-    os.environ['HERMES_CONFIG_PATH'] = isolated_config_path
+    os.environ['ARES_CONFIG_PATH'] = isolated_config_path
 
 
 @pytest.fixture(autouse=True)
@@ -196,7 +196,7 @@ def _reset_password_hash_cache():
 
     api.auth.get_password_hash() caches the resolved hash process-wide
     (_AUTH_HASH_CACHE / _AUTH_HASH_COMPUTED) for perf — it is NOT keyed on the
-    HERMES_WEBUI_PASSWORD env var. A test that sets that env var (e.g.
+    ARES_WEBUI_PASSWORD env var. A test that sets that env var (e.g.
     test_session_static_assets.test_session_static_auth_exemption) populates the
     cache with a real hash; monkeypatch pops the env var on teardown but the
     cache stays populated, so is_auth_enabled() reads stale True and later tests
@@ -221,21 +221,21 @@ _MISSING = object()  # sentinel: api.profiles module not loaded pre-test
 
 @pytest.fixture(autouse=True)
 def _restore_profile_home_globals():
-    """Restore HERMES_HOME / HERMES_BASE_HOME after every test.
+    """Restore ARES_HOME / ARES_BASE_HOME after every test.
 
-    Several tests call ``api.profiles.switch_profile()`` (or set HERMES_HOME
-    directly) which mutates ``os.environ['HERMES_HOME']`` IN PLACE — not via
+    Several tests call ``api.profiles.switch_profile()`` (or set ARES_HOME
+    directly) which mutates ``os.environ['ARES_HOME']`` IN PLACE — not via
     monkeypatch — so the change is not auto-reverted at test teardown. In the
     normal sequential run the next test usually re-establishes its own profile so
     the leak is masked, but under pytest-shard (or pytest-randomly) the leaked
-    HERMES_HOME points at a deleted tmpdir and breaks any later test whose
+    ARES_HOME points at a deleted tmpdir and breaks any later test whose
     config/profile resolution reads it (e.g. test_title_aux_routing's
     background-worker profile routing, which then falls back to DEFAULT_CONFIG
     where ``model`` is an empty string). Snapshotting at the conftest level fixes
     the whole class at once, regardless of which test does the leaking.
     """
-    saved_home = os.environ.get('HERMES_HOME')
-    saved_base = os.environ.get('HERMES_BASE_HOME')
+    saved_home = os.environ.get('ARES_HOME')
+    saved_base = os.environ.get('ARES_BASE_HOME')
     # Snapshot the process-global active-profile name too. Several tests call
     # switch_profile() (process_wide=True), which mutates api.profiles._active_profile
     # in place and never restores it. In a sequential run the next test usually
@@ -252,11 +252,11 @@ def _restore_profile_home_globals():
     # Re-derive the cached base-home global BEFORE the test runs too: a prior
     # test's teardown ordering (monkeypatch restoring sys.modules['api.profiles']
     # after this fixture's teardown) can leave the live module's
-    # _DEFAULT_HERMES_HOME stale. Fixing it at setup time guarantees each test
+    # _DEFAULT_ARES_HOME stale. Fixing it at setup time guarantees each test
     # starts from a base root that matches the current (restored) env.
-    _rederive_default_hermes_home()
+    _rederive_default_ares_home()
     yield
-    for key, val in (('HERMES_HOME', saved_home), ('HERMES_BASE_HOME', saved_base)):
+    for key, val in (('ARES_HOME', saved_home), ('ARES_BASE_HOME', saved_base)):
         if val is None:
             os.environ.pop(key, None)
         else:
@@ -269,40 +269,35 @@ def _restore_profile_home_globals():
             prof_mod_post.clear_request_profile()
         except Exception:
             pass
-    _rederive_default_hermes_home()
+    _rederive_default_ares_home()
 
 
-def _rederive_default_hermes_home():
-    """Recompute api.profiles._DEFAULT_HERMES_HOME from the current env.
+def _rederive_default_ares_home():
+    """Recompute api.profiles._DEFAULT_ARES_HOME from the current env.
 
     api.profiles caches the base home at import time. A test that re-imports
-    api.profiles under a temporary HERMES_BASE_HOME (e.g. test_profile_env_isolation)
-    corrupts that global to a now-deleted tmpdir, making get_hermes_home_for_profile
+    api.profiles under a temporary ARES_BASE_HOME (e.g. test_profile_env_isolation)
+    corrupts that global to a now-deleted tmpdir, making get_ares_home_for_profile
     resolve later tests' profiles under the dead path. Re-deriving keeps it honest.
     """
     prof_mod = sys.modules.get('api.profiles')
-    if prof_mod is not None and hasattr(prof_mod, '_resolve_base_hermes_home'):
+    if prof_mod is not None and hasattr(prof_mod, '_resolve_base_ares_home'):
         try:
-            prof_mod._DEFAULT_HERMES_HOME = prof_mod._resolve_base_hermes_home()
+            prof_mod._DEFAULT_ARES_HOME = prof_mod._resolve_base_ares_home()
         except Exception:
             pass
 
-# ── Server script: always relative to repo root ───────────────────────────
-SERVER_SCRIPT = REPO_ROOT / 'server.py'
-if not SERVER_SCRIPT.exists():
-    raise RuntimeError(
-        f"server.py not found at {SERVER_SCRIPT}. "
-        "Is conftest.py in the tests/ subdirectory of the repo?"
-    )
+# ── ASGI application: always imported from the repo root ──────────────────
+ASGI_APPLICATION = 'fastapi_app.main:app'
 
-# ── Hermes agent discovery (mirrors api/config._discover_agent_dir) ───────
+# ── Ares agent discovery (mirrors api/config._discover_agent_dir) ───────
 def _discover_agent_dir() -> pathlib.Path:
     candidates = [
-        os.getenv('HERMES_WEBUI_AGENT_DIR', ''),
-        str(HERMES_HOME / 'hermes-agent'),
-        str(REPO_ROOT.parent / 'hermes-agent'),
-        str(HOME / '.hermes' / 'hermes-agent'),
-        str(HOME / 'hermes-agent'),
+        os.getenv('ARES_WEBUI_AGENT_DIR', ''),
+        str(ARES_HOME / 'ares-agent'),
+        str(REPO_ROOT.parent / 'ares-agent'),
+        str(HOME / '.ares' / 'ares-agent'),
+        str(HOME / 'ares-agent'),
     ]
     for c in candidates:
         if not c:
@@ -314,8 +309,8 @@ def _discover_agent_dir() -> pathlib.Path:
 
 # ── Python discovery (mirrors api/config._discover_python) ────────────────
 def _discover_python(agent_dir) -> str:
-    if os.getenv('HERMES_WEBUI_PYTHON'):
-        return os.getenv('HERMES_WEBUI_PYTHON')
+    if os.getenv('ARES_WEBUI_PYTHON'):
+        return os.getenv('ARES_WEBUI_PYTHON')
     if agent_dir:
         for venv_dir in ('venv', '.venv'):
             for subdir, binary in (('bin', 'python'), ('Scripts', 'python.exe')):
@@ -328,20 +323,20 @@ def _discover_python(agent_dir) -> str:
             return str(local_venv)
     return shutil.which('python3') or shutil.which('python') or 'python3'
 
-HERMES_AGENT = _discover_agent_dir()
-VENV_PYTHON  = _discover_python(HERMES_AGENT)
+ARES_AGENT = _discover_agent_dir()
+VENV_PYTHON  = _discover_python(ARES_AGENT)
 
 # Work dir: agent dir if found, else repo root
-WORKDIR = str(HERMES_AGENT) if HERMES_AGENT else str(REPO_ROOT)
+WORKDIR = str(ARES_AGENT) if ARES_AGENT else str(REPO_ROOT)
 
 # ── Agent availability detection ─────────────────────────────────────────────
-# Tests that require hermes-agent modules (cron, skills, approval, chat/stream)
+# Tests that require ares-agent modules (cron, skills, approval, chat/stream)
 # are skipped when the agent isn't installed, instead of failing with 500 errors.
-AGENT_AVAILABLE = HERMES_AGENT is not None
+AGENT_AVAILABLE = ARES_AGENT is not None
 
 def _check_agent_modules():
-    """Verify hermes-agent Python modules are actually importable."""
-    if not HERMES_AGENT:
+    """Verify ares-agent Python modules are actually importable."""
+    if not ARES_AGENT:
         return False
     try:
         import importlib
@@ -354,19 +349,19 @@ def _check_agent_modules():
 
 AGENT_MODULES_AVAILABLE = _check_agent_modules()
 
-# pytest marker: skip tests that need hermes-agent when it's not present
+# pytest marker: skip tests that need ares-agent when it's not present
 requires_agent = pytest.mark.skipif(
     not AGENT_AVAILABLE,
-    reason="hermes-agent not found (skipping agent-dependent test)"
+    reason="ares-agent not found (skipping agent-dependent test)"
 )
 requires_agent_modules = pytest.mark.skipif(
     not AGENT_MODULES_AVAILABLE,
-    reason="hermes-agent Python modules not importable (cron, skills_tool)"
+    reason="ares-agent Python modules not importable (cron, skills_tool)"
 )
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "requires_agent: skip when hermes-agent dir is not found")
-    config.addinivalue_line("markers", "requires_agent_modules: skip when hermes-agent Python modules are not importable")
+    config.addinivalue_line("markers", "requires_agent: skip when ares-agent dir is not found")
+    config.addinivalue_line("markers", "requires_agent_modules: skip when ares-agent Python modules are not importable")
     config.addinivalue_line("markers", "requires_fcntl: skip when fcntl-backed file-descriptor operations are unavailable")
     config.addinivalue_line("markers", "requires_fork: skip when the platform lacks multiprocessing fork support")
 
@@ -385,7 +380,7 @@ def pytest_report_collectionfinish(config, items):
 
 
 # ── Disable AWS IMDS probing for the pytest session ────────────────────────
-# Background: when hermes-agent's bedrock_adapter / botocore credential chain
+# Background: when ares-agent's bedrock_adapter / botocore credential chain
 # runs during test execution (e.g. provider catalog enumeration triggered by
 # api/config.py imports), botocore probes the EC2 Instance Metadata Service at
 # 169.254.169.254 looking for an instance role. On VPS hosts where IMDS is
@@ -395,7 +390,7 @@ def pytest_report_collectionfinish(config, items):
 # Tests have no legitimate reason to call IMDS — the bedrock-related tests use
 # explicit mocks or env-var creds. Setting AWS_EC2_METADATA_DISABLED before
 # anything imports botocore is the supported way to silence the probe (matches
-# the guard the hermes_cli/doctor.py command already uses in its parallel-probe
+# the guard the ares_cli/doctor.py command already uses in its parallel-probe
 # block).
 #
 # Setting this here instead of in a fixture so it lands BEFORE any test-file
@@ -443,7 +438,7 @@ os.execv = _pytest_session_safe_execv
 #
 # This module-level monkey-patch wraps socket.create_connection so any
 # non-loopback / non-RFC1918 / non-link-local / non-TEST-NET destination
-# raises OSError("hermes test network isolation").  Tests that deliberately
+# raises OSError("ares test network isolation").  Tests that deliberately
 # attempt outbound (only test_dns_resolution_failure today) opt back in
 # explicitly via the `allow_outbound_network` fixture below.
 #
@@ -462,12 +457,12 @@ os.execv = _pytest_session_safe_execv
 #
 # A test that opts in via the `allow_outbound_network` fixture sees the real
 # socket.create_connection.
-import socket as _hermes_test_socket
-_REAL_CREATE_CONNECTION = _hermes_test_socket.create_connection
-_REAL_SOCKET_CONNECT = _hermes_test_socket.socket.connect
+import socket as _ares_test_socket
+_REAL_CREATE_CONNECTION = _ares_test_socket.create_connection
+_REAL_SOCKET_CONNECT = _ares_test_socket.socket.connect
 
 
-def _hermes_addr_is_local(host: str) -> bool:
+def _ares_addr_is_local(host: str) -> bool:
     """Return True for loopback / RFC1918 / link-local / reserved-TLD hosts."""
     if not isinstance(host, str):
         return False
@@ -516,34 +511,34 @@ def _hermes_addr_is_local(host: str) -> bool:
     return False
 
 
-def _hermes_blocked_create_connection(address, *a, **kw):
+def _ares_blocked_create_connection(address, *a, **kw):
     try:
         host = address[0]
     except (TypeError, IndexError):
         host = ""
-    if _hermes_addr_is_local(host):
+    if _ares_addr_is_local(host):
         return _REAL_CREATE_CONNECTION(address, *a, **kw)
     raise OSError(
-        f"hermes test network isolation: outbound socket to {address!r} is blocked. "
+        f"ares test network isolation: outbound socket to {address!r} is blocked. "
         f"Tests should mock urllib.request.urlopen / requests / socket.create_connection. "
         f"If a test genuinely needs real outbound, request the allow_outbound_network fixture."
     )
 
 
-def _hermes_blocked_socket_connect(self, address):
+def _ares_blocked_socket_connect(self, address):
     try:
         host = address[0]
     except (TypeError, IndexError):
         host = ""
-    if _hermes_addr_is_local(host):
+    if _ares_addr_is_local(host):
         return _REAL_SOCKET_CONNECT(self, address)
     raise OSError(
-        f"hermes test network isolation: socket.connect to {address!r} is blocked."
+        f"ares test network isolation: socket.connect to {address!r} is blocked."
     )
 
 
-_hermes_test_socket.create_connection = _hermes_blocked_create_connection
-_hermes_test_socket.socket.connect = _hermes_blocked_socket_connect
+_ares_test_socket.create_connection = _ares_blocked_create_connection
+_ares_test_socket.socket.connect = _ares_blocked_socket_connect
 
 
 @pytest.fixture
@@ -560,15 +555,15 @@ def allow_outbound_network(monkeypatch):
     test_dns_resolution_failure case was rewritten to mock socket.getaddrinfo
     instead, which is fully hermetic.
     """
-    monkeypatch.setattr(_hermes_test_socket, "create_connection", _REAL_CREATE_CONNECTION)
-    monkeypatch.setattr(_hermes_test_socket.socket, "connect", _REAL_SOCKET_CONNECT)
+    monkeypatch.setattr(_ares_test_socket, "create_connection", _REAL_CREATE_CONNECTION)
+    monkeypatch.setattr(_ares_test_socket.socket, "connect", _REAL_SOCKET_CONNECT)
     yield
 
 
 
 
 # ── Environment isolation for tests ────────────────────────────────────────
-# HERMES_WEBUI_SKIP_ONBOARDING is set by hosting providers (e.g. Agent37) and
+# ARES_WEBUI_SKIP_ONBOARDING is set by hosting providers (e.g. Agent37) and
 # by some isolated test harnesses to short-circuit the onboarding wizard.
 # When it leaks into the pytest environment, tests that exercise the wizard
 # code paths (apply_onboarding_setup, etc.) fail because the function returns
@@ -576,26 +571,26 @@ def allow_outbound_network(monkeypatch):
 #
 # This autouse fixture removes the variable for the test session. Tests that
 # specifically need to validate the SKIP_ONBOARDING short-circuit can opt back
-# in with `monkeypatch.setenv("HERMES_WEBUI_SKIP_ONBOARDING", "1")`.
+# in with `monkeypatch.setenv("ARES_WEBUI_SKIP_ONBOARDING", "1")`.
 @pytest.fixture(autouse=True, scope="session")
 def _strip_skip_onboarding_env():
-    prior = os.environ.pop("HERMES_WEBUI_SKIP_ONBOARDING", None)
+    prior = os.environ.pop("ARES_WEBUI_SKIP_ONBOARDING", None)
     yield
     if prior is not None:
-        os.environ["HERMES_WEBUI_SKIP_ONBOARDING"] = prior
+        os.environ["ARES_WEBUI_SKIP_ONBOARDING"] = prior
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-skip agent-dependent tests when hermes-agent is not available.
+    """Auto-skip agent-dependent tests when ares-agent is not available.
 
     Instead of requiring markers on every test function, we pattern-match
-    test names to known categories that depend on hermes-agent modules.
+    test names to known categories that depend on ares-agent modules.
     This keeps the test files clean and ensures new cron/skills tests
     get auto-skipped without manual annotation.
     """
     if AGENT_MODULES_AVAILABLE:
         return  # everything available, run all tests
 
-    # Exact list of tests known to fail without hermes-agent.
+    # Exact list of tests known to fail without ares-agent.
     # These hit server endpoints that import cron.jobs, tools.skills_tool,
     # or require a running agent backend — returning 500 without the agent.
     _AGENT_DEPENDENT_TESTS = {
@@ -635,7 +630,7 @@ def pytest_collection_modifyitems(config, items):
         'test_new_session_inherits_last_workspace',
     }
 
-    skip_marker = pytest.mark.skip(reason="requires hermes-agent (not installed)")
+    skip_marker = pytest.mark.skip(reason="requires ares-agent (not installed)")
     skipped = 0
 
     for item in items:
@@ -644,7 +639,7 @@ def pytest_collection_modifyitems(config, items):
             skipped += 1
 
     if skipped:
-        print(f"\nWARNING: hermes-agent not found; {skipped} agent-dependent tests will be skipped\n")
+        print(f"\nWARNING: ares-agent not found; {skipped} agent-dependent tests will be skipped\n")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -841,7 +836,7 @@ def _rmtree_retry(path):
 
     # Final fallback: a concurrent-writer race (Errno 39) shouldn't fail teardown.
     # Best-effort ignore_errors sweep; if anything remains it's abandoned test
-    # state under HERMES_HOME, not something a test asserts on.
+    # state under ARES_HOME, not something a test asserts on.
     shutil.rmtree(target, ignore_errors=True)
     if not target.exists():
         return
@@ -890,7 +885,7 @@ def test_server():
 
     # Symlink real skills into test home so skill-related tests work,
     # but all write-heavy state stays isolated.
-    real_skills  = HERMES_HOME / 'skills'
+    real_skills  = ARES_HOME / 'skills'
     test_skills  = TEST_STATE_DIR / 'skills'
     if real_skills.exists() and not test_skills.exists():
         test_skills.symlink_to(real_skills)
@@ -901,11 +896,11 @@ def test_server():
     # Expose TEST_STATE_DIR to the test process itself so that tests which write
     # directly to state.db (e.g. test_gateway_sync.py) always use the same path
     # as the server.  Other test files (test_auth_sessions.py) may override
-    # HERMES_WEBUI_STATE_DIR for their own purposes, but HERMES_WEBUI_TEST_STATE_DIR
+    # ARES_WEBUI_STATE_DIR for their own purposes, but ARES_WEBUI_TEST_STATE_DIR
     # is reserved for this mapping and is never overridden by individual test files.
     # Export both port and state-dir as env vars so individual test files
     # can read them without importing conftest (avoids circular imports).
-    os.environ.setdefault('HERMES_WEBUI_TEST_PORT', str(TEST_PORT))
+    os.environ.setdefault('ARES_WEBUI_TEST_PORT', str(TEST_PORT))
     # os.environ already set at module level above; no-op here.
 
     env = os.environ.copy()
@@ -951,40 +946,45 @@ def test_server():
     # at module level above for the pytest process, but make it explicit here
     # so it's never accidentally cleared by an env.update later).
     env["AWS_EC2_METADATA_DISABLED"] = "true"
-    # Activate the same network-isolation block in the test_server subprocess
-    # that conftest.py installs in the pytest process. server.py reads this
-    # env var at import time and installs an identical socket-block guard.
+    # Activate the same network-isolation block in the test-server subprocess
+    # that conftest.py installs in the pytest process. The Uvicorn lifecycle
+    # installs the identical socket-block guard before serving requests.
     # Without this, the subprocess can make outbound requests that the
     # pytest-side block can't see.
-    env["HERMES_WEBUI_TEST_NETWORK_BLOCK"] = "1"
+    env["ARES_WEBUI_TEST_NETWORK_BLOCK"] = "1"
     env.update({
-        "HERMES_WEBUI_WORKSPACE_GIT_DESTRUCTIVE": "1",
+        "ARES_WEBUI_WORKSPACE_GIT_DESTRUCTIVE": "1",
         # Small archive-extraction cap so the zip-bomb guard is exercisable
         # against the out-of-process test server (the real 10x-upload default is
         # ~200MB — impractical to exceed in a test). 5MB is far above any other
         # test's archive payload, so only the bomb test trips it.
-        "HERMES_WEBUI_MAX_EXTRACTED_MB":  "5",
-        "HERMES_WEBUI_PORT":              str(TEST_PORT),
-        "HERMES_WEBUI_HOST":              "127.0.0.1",
-        "HERMES_WEBUI_STATE_DIR":         str(TEST_STATE_DIR),
-        "HERMES_WEBUI_DEFAULT_WORKSPACE": str(TEST_WORKSPACE),
-        "HERMES_WEBUI_DEFAULT_MODEL":     "openai/gpt-5.4-mini",
-        "HERMES_HOME":                    str(TEST_STATE_DIR),
-        "HERMES_CONFIG_PATH":             str(TEST_STATE_DIR / 'config.yaml'),
-        # Belt-and-suspenders: HERMES_BASE_HOME hard-locks _DEFAULT_HERMES_HOME
+        "ARES_WEBUI_MAX_EXTRACTED_MB":  "5",
+        "ARES_WEBUI_PORT":              str(TEST_PORT),
+        "ARES_WEBUI_HOST":              "127.0.0.1",
+        "ARES_WEBUI_STATE_DIR":         str(TEST_STATE_DIR),
+        "ARES_WEBUI_DEFAULT_WORKSPACE": str(TEST_WORKSPACE),
+        "ARES_WEBUI_DEFAULT_MODEL":     "openai/gpt-5.4-mini",
+        "ARES_HOME":                    str(TEST_STATE_DIR),
+        "ARES_CONFIG_PATH":             str(TEST_STATE_DIR / 'config.yaml'),
+        # Belt-and-suspenders: ARES_BASE_HOME hard-locks _DEFAULT_ARES_HOME
         # in api/profiles.py to the test state dir regardless of profile switching
         # or any os.environ mutation that happens inside the server process.
         # Without this, a profile switch or active_profile file in the real
-        # ~/.hermes can redirect _get_active_hermes_home() out of the sandbox,
+        # ~/.ares can redirect _get_active_ares_home() out of the sandbox,
         # causing onboarding writes (config.yaml, .env) to land in the production
-        # ~/.hermes/profiles/webui/ and overwrite real API keys.
-        "HERMES_BASE_HOME":               str(TEST_STATE_DIR),
-        "HERMES_WEBUI_PASSWORD":          "",
+        # ~/.ares/profiles/webui/ and overwrite real API keys.
+        "ARES_BASE_HOME":               str(TEST_STATE_DIR),
+        "ARES_WEBUI_PASSWORD":          "",
     })
 
-    # Pass agent dir if discovered so server.py doesn't have to re-discover
-    if HERMES_AGENT:
-        env["HERMES_WEBUI_AGENT_DIR"] = str(HERMES_AGENT)
+    # Pass agent dir if discovered so the adapter registry does not re-discover it.
+    if ARES_AGENT:
+        env["ARES_WEBUI_AGENT_DIR"] = str(ARES_AGENT)
+    env["PYTHONPATH"] = os.pathsep.join(
+        value
+        for value in (str(REPO_ROOT), env.get("PYTHONPATH", ""))
+        if value
+    )
 
     # Capture server stdout/stderr to a temp log instead of DEVNULL so a boot
     # failure (import error, port-bind race, traceback) is diagnosable. Without
@@ -992,7 +992,7 @@ def test_server():
     # and every HTTP-dependent test then cascaded with ConnectionRefused —
     # hundreds of opaque failures from a single root cause.
     import tempfile as _tempfile
-    _server_log = pathlib.Path(_tempfile.gettempdir()) / f"hermes-webui-test-server-{TEST_PORT}.log"
+    _server_log = pathlib.Path(_tempfile.gettempdir()) / f"ares-webui-test-server-{TEST_PORT}.log"
 
     # Boot the server, retrying once if it dies early or fails to bind. Boot
     # failures here are most often transient (a port not yet released by a prior
@@ -1004,14 +1004,24 @@ def test_server():
     for _attempt in range(1, boot_attempts + 1):
         with open(_server_log, "w", encoding="utf-8") as _logf:
             proc = subprocess.Popen(
-                [VENV_PYTHON, str(SERVER_SCRIPT)],
-                cwd=WORKDIR,
+                [
+                    VENV_PYTHON,
+                    "-m",
+                    "uvicorn",
+                    ASGI_APPLICATION,
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(TEST_PORT),
+                    "--no-server-header",
+                ],
+                cwd=str(REPO_ROOT),
                 env=env,
                 stdout=_logf,
                 stderr=subprocess.STDOUT,
                 **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
             )
-        # 45s (up from 20s): server.py imports the full hermes-agent, which is
+        # 45s (up from 20s): the ASGI lifecycle may import the full ares-agent, which is
         # import-heavy and can exceed 20s on a loaded runner — the old timeout
         # turned a slow-but-fine boot into a whole-suite failure.
         ok, reason = _wait_for_server(TEST_BASE, timeout=45, proc=proc, log_path=_server_log)
@@ -1032,9 +1042,9 @@ def test_server():
         pytest.fail(
             f"Test server on port {TEST_PORT} did not start after {boot_attempts} attempts.\n"
             f"  reason    : {last_reason}\n"
-            f"  server.py : {SERVER_SCRIPT}\n"
+            f"  ASGI app  : {ASGI_APPLICATION}\n"
             f"  python    : {VENV_PYTHON}\n"
-            f"  agent dir : {HERMES_AGENT}\n"
+            f"  agent dir : {ARES_AGENT}\n"
             f"  workdir   : {WORKDIR}\n"
             f"  log       : {_server_log}\n"
         )
@@ -1084,94 +1094,94 @@ def _invalidate_models_cache_after_test():
         pass
 
 
-# ── Per-test hermes_cli module integrity guard ───────────────────────────────
-# Several tests simulate "hermes_cli unavailable / CI without the package" by
-# swapping sys.modules['hermes_cli'] for a stub whose __path__ is [] (e.g.
+# ── Per-test ares_cli module integrity guard ───────────────────────────────
+# Several tests simulate "ares_cli unavailable / CI without the package" by
+# swapping sys.modules['ares_cli'] for a stub whose __path__ is [] (e.g.
 # test_byok_model_dropdown's _install_provider_model_ids sets
-# `hermes_cli.__path__ = []`), by monkeypatch.delitem-ing it, or by installing a
-# meta-path finder that raises ImportError for hermes_cli.* imports. monkeypatch
-# usually restores these, BUT once the REAL hermes_cli module object has its
+# `ares_cli.__path__ = []`), by monkeypatch.delitem-ing it, or by installing a
+# meta-path finder that raises ImportError for ares_cli.* imports. monkeypatch
+# usually restores these, BUT once the REAL ares_cli module object has its
 # __path__ emptied in place — or a submodule import is attempted while the stub /
 # blocking finder is installed — Python caches the broken state: a later
-# `import hermes_cli.profiles` can no longer find the subpackage (empty __path__)
+# `import ares_cli.profiles` can no longer find the subpackage (empty __path__)
 # even after the module object itself is restored. That is the exact chronic
 # full-suite poison behind the profile-resolution failures
 # (test_profile_skills_stats, test_scheduled_jobs_profile_isolation,
 # test_sprint10 crons) and the "Failed to load OpenAI Codex models from
-# hermes_cli" TLS-test failure — all pass in isolation, all fail only after one
+# ares_cli" TLS-test failure — all pass in isolation, all fail only after one
 # of the poisoners has run earlier in the suite.
 #
-# This autouse guard captures the genuine on-disk hermes_cli package once, and
+# This autouse guard captures the genuine on-disk ares_cli package once, and
 # after every test restores it if sys.modules has been left with a stub, a
-# missing entry, or an emptied __path__ — and purges any poisoned hermes_cli.*
+# missing entry, or an emptied __path__ — and purges any poisoned ares_cli.*
 # submodule entries so the next importer re-imports them cleanly from disk.
-_REAL_HERMES_CLI = sys.modules.get("hermes_cli")
-_REAL_HERMES_CLI_PATH = (
-    list(getattr(_REAL_HERMES_CLI, "__path__", []) or [])
-    if _REAL_HERMES_CLI is not None
+_REAL_ARES_CLI = sys.modules.get("ares_cli")
+_REAL_ARES_CLI_PATH = (
+    list(getattr(_REAL_ARES_CLI, "__path__", []) or [])
+    if _REAL_ARES_CLI is not None
     else []
 )
-# hermes_state is a sibling top-level module in the SAME agent dir as hermes_cli
-# (…/hermes-agent/hermes_state.py). The same "simulate agent-package
-# unavailable" tests that poison hermes_cli also leave hermes_state unimportable
-# (test_v050259_sessiondb_fd_leak's `from hermes_state import SessionDB` fails
+# ares_state is a sibling top-level module in the SAME agent dir as ares_cli
+# (…/ares-agent/ares_state.py). The same "simulate agent-package
+# unavailable" tests that poison ares_cli also leave ares_state unimportable
+# (test_v050259_sessiondb_fd_leak's `from ares_state import SessionDB` fails
 # only in the full suite, never alone), so it needs the same restore guard.
-_REAL_HERMES_STATE = sys.modules.get("hermes_state")
+_REAL_ARES_STATE = sys.modules.get("ares_state")
 
 # Some tests (e.g. test_issue1574_cron_profile_lock._activate_spawn_fake_agent)
 # repoint the agent at a FAKE dir by mutating os.environ + sys.path DIRECTLY
 # (not via monkeypatch) and never restore them. A later test that spawns
-# server.py as a subprocess inherits the poisoned HERMES_WEBUI_AGENT_DIR /
-# PYTHONPATH and the child can't import hermes_cli — the chronic
+# the Uvicorn subprocess inherits the poisoned ARES_WEBUI_AGENT_DIR /
+# PYTHONPATH and the child can't import ares_cli — the chronic
 # test_tls_support::test_tls_startup_failure_fallback_to_http full-suite failure
 # (subprocess ModuleNotFoundError at cron/scheduler.py's `from
-# hermes_cli._subprocess_compat import ...`). Snapshot the agent-path env + the
+# ares_cli._subprocess_compat import ...`). Snapshot the agent-path env + the
 # real sys.path entries once so the guard below can restore them.
-_AGENT_PATH_ENV_KEYS = ("HERMES_WEBUI_AGENT_DIR", "PYTHONPATH", "HERMES_WEBUI_PYTHON")
+_AGENT_PATH_ENV_KEYS = ("ARES_WEBUI_AGENT_DIR", "PYTHONPATH", "ARES_WEBUI_PYTHON")
 _REAL_AGENT_ENV = {k: os.environ.get(k) for k in _AGENT_PATH_ENV_KEYS}
 _REAL_SYS_PATH = list(sys.path)
 
 
-def _hermes_cli_is_healthy() -> bool:
-    mod = sys.modules.get("hermes_cli")
-    if mod is None or mod is not _REAL_HERMES_CLI:
+def _ares_cli_is_healthy() -> bool:
+    mod = sys.modules.get("ares_cli")
+    if mod is None or mod is not _REAL_ARES_CLI:
         return False
     path = getattr(mod, "__path__", None)
     return bool(isinstance(path, list) and len(path) > 0)
 
 
 @pytest.fixture(autouse=True)
-def _restore_hermes_cli_module():
-    """Restore the real hermes_cli / hermes_state packages + agent-path env after
+def _restore_ares_cli_module():
+    """Restore the real ares_cli / ares_state packages + agent-path env after
     any test that stubbed/blocked/repointed them.
 
     Fixes the chronic full-suite test-isolation poison where a test that
     simulates "agent package unavailable" (or repoints the agent at a fake dir)
     leaves the real package unimportable — via a stub swap, delitem, blocking
-    meta-path finder, an emptied __path__, or a leaked HERMES_WEBUI_AGENT_DIR /
+    meta-path finder, an emptied __path__, or a leaked ARES_WEBUI_AGENT_DIR /
     PYTHONPATH / sys.path mutation. Later tests then fail to `import
-    hermes_cli.profiles`, `import hermes_state`, or spawn a server subprocess
+    ares_cli.profiles`, `import ares_state`, or spawn a server subprocess
     that can't import the agent at all.
     """
     yield
-    if _REAL_HERMES_CLI is not None and not _hermes_cli_is_healthy():
+    if _REAL_ARES_CLI is not None and not _ares_cli_is_healthy():
         # Restore the genuine package object + its real __path__.
         try:
-            _REAL_HERMES_CLI.__path__ = list(_REAL_HERMES_CLI_PATH)
+            _REAL_ARES_CLI.__path__ = list(_REAL_ARES_CLI_PATH)
         except Exception:
             pass
-        sys.modules["hermes_cli"] = _REAL_HERMES_CLI
+        sys.modules["ares_cli"] = _REAL_ARES_CLI
         # Drop poisoned submodule entries (stubs / partially-imported) so the
-        # next `import hermes_cli.<sub>` re-imports the real module from disk.
-        for _name in [n for n in list(sys.modules) if n.startswith("hermes_cli.")]:
+        # next `import ares_cli.<sub>` re-imports the real module from disk.
+        for _name in [n for n in list(sys.modules) if n.startswith("ares_cli.")]:
             _sub = sys.modules.get(_name)
             _subfile = getattr(_sub, "__file__", None)
-            if not _subfile or "hermes_cli" not in str(_subfile):
+            if not _subfile or "ares_cli" not in str(_subfile):
                 sys.modules.pop(_name, None)
-    # Restore hermes_state if a test swapped/removed it for a stub.
-    if _REAL_HERMES_STATE is not None:
-        if sys.modules.get("hermes_state") is not _REAL_HERMES_STATE:
-            sys.modules["hermes_state"] = _REAL_HERMES_STATE
+    # Restore ares_state if a test swapped/removed it for a stub.
+    if _REAL_ARES_STATE is not None:
+        if sys.modules.get("ares_state") is not _REAL_ARES_STATE:
+            sys.modules["ares_state"] = _REAL_ARES_STATE
     # Restore leaked agent-path env vars (so a later server-subprocess spawn
     # inherits the real agent dir, not a prior test's fake one).
     for _k, _v in _REAL_AGENT_ENV.items():

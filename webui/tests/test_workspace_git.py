@@ -44,8 +44,8 @@ def _init_repo(path):
     if init.returncode != 0:
         _git(path, "init")
         _git(path, "checkout", "-B", "master")
-    _git(path, "config", "user.email", "hermes-tests@example.invalid")
-    _git(path, "config", "user.name", "Hermes Tests")
+    _git(path, "config", "user.email", "ares-tests@example.invalid")
+    _git(path, "config", "user.name", "Ares Tests")
     return path
 
 
@@ -677,8 +677,8 @@ def test_git_fetch_pull_and_push_with_upstream(tmp_path):
 
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", str(remote), str(clone))
-    _git(clone, "config", "user.email", "hermes-tests@example.invalid")
-    _git(clone, "config", "user.name", "Hermes Tests")
+    _git(clone, "config", "user.email", "ares-tests@example.invalid")
+    _git(clone, "config", "user.name", "Ares Tests")
 
     (origin / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
     _commit_all(origin, "Remote update")
@@ -721,8 +721,8 @@ def test_git_fetch_pull_and_push_skip_repo_local_remote_helpers_when_destructive
 
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", str(remote), str(clone))
-    _git(clone, "config", "user.email", "hermes-tests@example.invalid")
-    _git(clone, "config", "user.name", "Hermes Tests")
+    _git(clone, "config", "user.email", "ares-tests@example.invalid")
+    _git(clone, "config", "user.name", "Ares Tests")
 
     marker = tmp_path / "remote-helper-ran"
     helper = tmp_path / "remote_helper.py"
@@ -781,8 +781,8 @@ def test_git_fetch_skips_repo_local_remote_helpers_without_destructive_mode(tmp_
 
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", str(remote), str(clone))
-    _git(clone, "config", "user.email", "hermes-tests@example.invalid")
-    _git(clone, "config", "user.name", "Hermes Tests")
+    _git(clone, "config", "user.email", "ares-tests@example.invalid")
+    _git(clone, "config", "user.name", "Ares Tests")
 
     marker = tmp_path / "remote-helper-default-fetch-ran"
     helper = tmp_path / "remote_helper_default_fetch.py"
@@ -850,8 +850,8 @@ def test_git_checkout_local_new_remote_dirty_and_invalid_refs(tmp_path):
 
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", str(remote), str(clone))
-    _git(clone, "config", "user.email", "hermes-tests@example.invalid")
-    _git(clone, "config", "user.name", "Hermes Tests")
+    _git(clone, "config", "user.email", "ares-tests@example.invalid")
+    _git(clone, "config", "user.name", "Ares Tests")
 
     created = git_checkout(clone, "main", "new", new_branch="local-work")
     assert created["current_branch"] == "local-work"
@@ -903,10 +903,10 @@ def test_git_stash_and_checkout_is_explicit(tmp_path):
     result = git_stash_and_checkout(repo, "target", "local")
     assert result["ok"] is True
     assert result["stashed"] is True
-    assert result["stash_name"].startswith("hermes-webui branch switch")
+    assert result["stash_name"].startswith("ares-webui branch switch")
     assert result["current_branch"] == "target"
     assert git_status(repo)["totals"]["changed"] == 0
-    assert "hermes-webui branch switch to target" in _git(repo, "stash", "list")
+    assert "ares-webui branch switch to target" in _git(repo, "stash", "list")
 
 
 def test_git_stash_and_checkout_restores_branch_changes_when_returning(tmp_path):
@@ -940,8 +940,8 @@ def test_git_stash_and_checkout_restores_branch_changes_when_returning(tmp_path)
     assert (repo / "main-only.txt").read_text(encoding="utf-8") == "untracked on main\n"
     assert not (repo / "feature-only.txt").exists()
     stash_list = _git(repo, "stash", "list")
-    assert "On main: hermes-webui branch switch" not in stash_list
-    assert "On feature: hermes-webui branch switch" in stash_list
+    assert "On main: ares-webui branch switch" not in stash_list
+    assert "On feature: ares-webui branch switch" in stash_list
 
 
 def test_git_stash_and_checkout_reports_restore_conflicts_without_dropping_stash(tmp_path):
@@ -967,7 +967,7 @@ def test_git_stash_and_checkout_reports_restore_conflicts_without_dropping_stash
     assert result["current_branch"] == "main"
     assert result["restore_failed"] is True
     assert result["restore_stash"]["branch"] == "main"
-    assert "On main: hermes-webui branch switch" in _git(repo, "stash", "list")
+    assert "On main: ares-webui branch switch" in _git(repo, "stash", "list")
 
 
 def test_git_stash_checkout_validates_before_stashing(tmp_path):
@@ -1226,7 +1226,7 @@ def test_git_fetch_blocks_repo_local_credential_helper_execution(tmp_path):
     class AuthRequiredHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(401)
-            self.send_header("WWW-Authenticate", 'Basic realm="hermes-test"')
+            self.send_header("WWW-Authenticate", 'Basic realm="ares-test"')
             self.end_headers()
 
         def log_message(self, format, *args):
@@ -1276,7 +1276,7 @@ def test_git_fetch_blocks_repo_local_askpass_execution(tmp_path):
     class AuthRequiredHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(401)
-            self.send_header("WWW-Authenticate", 'Basic realm="hermes-test"')
+            self.send_header("WWW-Authenticate", 'Basic realm="ares-test"')
             self.end_headers()
 
         def log_message(self, format, *args):
@@ -1459,8 +1459,8 @@ def test_git_pull_skips_repo_local_hooks_when_destructive_mode_enabled(tmp_path,
 
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", str(remote), str(clone))
-    _git(clone, "config", "user.email", "hermes-tests@example.invalid")
-    _git(clone, "config", "user.name", "Hermes Tests")
+    _git(clone, "config", "user.email", "ares-tests@example.invalid")
+    _git(clone, "config", "user.name", "Ares Tests")
 
     (origin / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
     _commit_all(origin, "Remote update")
@@ -1871,8 +1871,8 @@ def test_git_fetch_skips_repo_local_reference_transaction_hook_without_destructi
 
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", str(remote), str(clone))
-    _git(clone, "config", "user.email", "hermes-tests@example.invalid")
-    _git(clone, "config", "user.name", "Hermes Tests")
+    _git(clone, "config", "user.email", "ares-tests@example.invalid")
+    _git(clone, "config", "user.name", "Ares Tests")
 
     (origin / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
     _commit_all(origin, "Remote update")
@@ -2163,8 +2163,8 @@ def test_git_pull_blocks_repo_local_filters_when_destructive_mode_enabled(tmp_pa
 
     clone = tmp_path / "clone"
     _git(tmp_path, "clone", str(remote), str(clone))
-    _git(clone, "config", "user.email", "hermes-tests@example.invalid")
-    _git(clone, "config", "user.name", "Hermes Tests")
+    _git(clone, "config", "user.email", "ares-tests@example.invalid")
+    _git(clone, "config", "user.name", "Ares Tests")
     _git(clone, "config", "filter.demo.clean", f"\"{sys.executable}\" -c \"import sys; print(sys.stdin.read(), end='')\"")
     _git(clone, "config", "filter.demo.smudge", f"\"{sys.executable}\" -c \"import sys; print(sys.stdin.read(), end='')\"")
 
@@ -2233,7 +2233,7 @@ def test_git_env_scrub_removes_redirecting_vars_and_preserves_temp_index(monkeyp
     monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /tmp/evil-key")
     monkeypatch.setenv("GIT_TERMINAL_PROMPT", "1")
 
-    env = _clean_git_env({"GIT_INDEX_FILE": "/tmp/hermes-index"})
+    env = _clean_git_env({"GIT_INDEX_FILE": "/tmp/ares-index"})
 
     assert "GIT_DIR" not in env
     assert "GIT_WORK_TREE" not in env
@@ -2248,7 +2248,7 @@ def test_git_env_scrub_removes_redirecting_vars_and_preserves_temp_index(monkeyp
     assert "GIT_SSH" not in env
     assert "GIT_SSH_COMMAND" not in env
     assert env["GIT_TERMINAL_PROMPT"] == "0"
-    assert env["GIT_INDEX_FILE"] == "/tmp/hermes-index"
+    assert env["GIT_INDEX_FILE"] == "/tmp/ares-index"
 
 
 def test_git_error_classifier_identifies_non_fast_forward_push():
@@ -2291,25 +2291,32 @@ def test_destructive_workspace_git_flag_defaults_off_and_accepts_truthy(monkeypa
 
 
 def test_git_active_stream_lock_detection(monkeypatch):
-    from api import routes
     from api.config import STREAMS, STREAMS_LOCK
+    from api.workspace_git import WORKSPACE_GIT_DESTRUCTIVE_ENV
+    from fastapi_app.errors import CoreApiError
+    from fastapi_app.routers.git import _require_destructive
 
     session = types.SimpleNamespace(active_stream_id="stream-git-lock-test")
+    monkeypatch.setenv(WORKSPACE_GIT_DESTRUCTIVE_ENV, "1")
     with STREAMS_LOCK:
         STREAMS[session.active_stream_id] = object()
     try:
-        assert routes._git_locked_by_active_stream(session) is True
+        with pytest.raises(CoreApiError) as exc:
+            _require_destructive(session)
+        assert exc.value.status_code == 409
     finally:
         with STREAMS_LOCK:
             STREAMS.pop(session.active_stream_id, None)
 
-    assert routes._git_locked_by_active_stream(session) is False
+    _require_destructive(session)
 
 
 def test_git_commit_route_rejects_active_stream(monkeypatch, tmp_path):
-    from api import routes
+    from fastapi.testclient import TestClient
     from api.config import STREAMS, STREAMS_LOCK
     from api.workspace_git import WORKSPACE_GIT_DESTRUCTIVE_ENV
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_mutation_identity
 
     # Enable destructive ops for this in-process test — conftest.py sets the env
     # var on the test_server subprocess env block, but this test calls
@@ -2328,21 +2335,23 @@ def test_git_commit_route_rejects_active_stream(monkeypatch, tmp_path):
         active_stream_id="stream-active-git",
     )
 
-    monkeypatch.setattr(routes, "get_session", lambda sid: session)
-    handler = _CaptureHandler()
+    monkeypatch.setattr("api.models.get_session", lambda sid: session)
+    app = create_app()
+    app.dependency_overrides[require_mutation_identity] = lambda: RequestIdentity(None, "default", False)
     with STREAMS_LOCK:
         STREAMS[session.active_stream_id] = object()
     try:
-        assert routes._handle_git_commit(
-            handler,
-            {"session_id": session.session_id, "message": "Should be blocked"},
-        ) is True
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/git/commit",
+                json={"session_id": session.session_id, "message": "Should be blocked"},
+            )
     finally:
         with STREAMS_LOCK:
             STREAMS.pop(session.active_stream_id, None)
 
-    assert handler.status == 409
-    payload = handler.payload()
+    assert response.status_code == 409
+    payload = response.json()
     assert payload["code"] == "active_stream"
     assert "active" in payload["error"].lower()
 

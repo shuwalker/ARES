@@ -6,7 +6,7 @@ import sqlite3
 from types import SimpleNamespace
 
 import api.models as models
-import api.routes as routes
+import api.session_lineage_display as routes
 
 
 
@@ -28,37 +28,17 @@ def test_session_endpoint_merges_sidecar_and_lineage_messages_for_cli_sessions(m
         def compact(self):
             return {"session_id": "tip", "title": "Tip", "model": "openai/gpt-5"}
 
-    captured = {}
+    from api.session_projection import merged_session_messages_for_display
 
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: DummySession())
-    monkeypatch.setattr(routes, "_clear_stale_stream_state", lambda s: None)
-    monkeypatch.setattr(routes, "_lookup_cli_session_metadata", lambda sid: {"session_source": "messaging"})
-    monkeypatch.setattr(routes, "_is_messaging_session_record", lambda s: True)
-    monkeypatch.setattr(
-        routes,
-        "get_cli_session_messages",
-        lambda sid: [
+    session = DummySession()
+    merged = merged_session_messages_for_display(
+        session,
+        [
             {"role": "user", "content": "root user", "timestamp": 1.0},
             {"role": "assistant", "content": "tip assistant", "timestamp": 2.0},
         ],
     )
-    monkeypatch.setattr(routes, "_resolve_effective_session_model_for_display", lambda s: getattr(s, "model", None))
-    monkeypatch.setattr(routes, "_resolve_effective_session_model_provider_for_display", lambda s: None)
-    monkeypatch.setattr(routes, "_merge_cli_sidebar_metadata", lambda raw, meta: raw)
-    monkeypatch.setattr(routes, "redact_session_data", lambda raw: raw)
-    monkeypatch.setattr(routes, "j", lambda handler, payload, status=200: captured.setdefault("payload", payload))
-
-    class Handler:
-        pass
-
-    class Parsed:
-        path = "/api/session"
-        query = "session_id=tip"
-
-    routes.handle_get(Handler(), Parsed())
-
-    session = captured["payload"]["session"]
-    assert [m["content"] for m in session["messages"]] == [
+    assert [m["content"] for m in merged] == [
         "root user",
         "tip assistant",
         "sidecar tail",
@@ -90,16 +70,11 @@ def test_session_endpoint_preserves_distinct_messages_with_different_ids(monkeyp
         def compact(self):
             return {"session_id": "tip", "title": "Tip", "model": "openai/gpt-5"}
 
-    captured = {}
+    from api.session_projection import merged_session_messages_for_display
 
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: DummySession())
-    monkeypatch.setattr(routes, "_clear_stale_stream_state", lambda s: None)
-    monkeypatch.setattr(routes, "_lookup_cli_session_metadata", lambda sid: {"session_source": "messaging"})
-    monkeypatch.setattr(routes, "_is_messaging_session_record", lambda s: True)
-    monkeypatch.setattr(
-        routes,
-        "get_cli_session_messages",
-        lambda sid: [
+    merged = merged_session_messages_for_display(
+        DummySession(),
+        [
             {"role": "user", "content": "root user", "timestamp": 1.0},
             {
                 "id": "cli-retry",
@@ -109,23 +84,7 @@ def test_session_endpoint_preserves_distinct_messages_with_different_ids(monkeyp
             },
         ],
     )
-    monkeypatch.setattr(routes, "_resolve_effective_session_model_for_display", lambda s: getattr(s, "model", None))
-    monkeypatch.setattr(routes, "_resolve_effective_session_model_provider_for_display", lambda s: None)
-    monkeypatch.setattr(routes, "_merge_cli_sidebar_metadata", lambda raw, meta: raw)
-    monkeypatch.setattr(routes, "redact_session_data", lambda raw: raw)
-    monkeypatch.setattr(routes, "j", lambda handler, payload, status=200: captured.setdefault("payload", payload))
-
-    class Handler:
-        pass
-
-    class Parsed:
-        path = "/api/session"
-        query = "session_id=tip"
-
-    routes.handle_get(Handler(), Parsed())
-
-    session = captured["payload"]["session"]
-    retry_messages = [m for m in session["messages"] if m.get("content") == "retry the same request"]
+    retry_messages = [m for m in merged if m.get("content") == "retry the same request"]
     assert [m.get("id") for m in retry_messages] == ["cli-retry", "sidecar-retry"]
 
 
@@ -221,29 +180,8 @@ def test_webui_continuation_session_opens_with_snapshot_parent_messages(monkeypa
     )
     child.compact = lambda: {"session_id": "child-webui", "title": "Child", "model": "openai/gpt-5"}
 
-    captured = {}
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: child)
-    monkeypatch.setattr(routes, "_clear_stale_stream_state", lambda s: None)
-    monkeypatch.setattr(routes, "_lookup_cli_session_metadata", lambda sid: {})
-    monkeypatch.setattr(routes, "_is_messaging_session_record", lambda s: False)
-    monkeypatch.setattr(routes, "get_state_db_session_messages", lambda sid, profile=None: [])
     monkeypatch.setattr(routes.Session, "load", lambda sid: parent if sid == "parent-webui" else None)
-    monkeypatch.setattr(routes, "_resolve_effective_session_model_for_display", lambda s: getattr(s, "model", None))
-    monkeypatch.setattr(routes, "_resolve_effective_session_model_provider_for_display", lambda s: None)
-    monkeypatch.setattr(routes, "_merge_cli_sidebar_metadata", lambda raw, meta: raw)
-    monkeypatch.setattr(routes, "redact_session_data", lambda raw: raw)
-    monkeypatch.setattr(routes, "j", lambda handler, payload, status=200: captured.setdefault("payload", payload))
-
-    class Handler:
-        pass
-
-    class Parsed:
-        path = "/api/session"
-        query = "session_id=child-webui"
-
-    routes.handle_get(Handler(), Parsed())
-
-    contents = [m["content"] for m in captured["payload"]["session"]["messages"]]
+    contents = [m["content"] for m in routes._webui_sidecar_lineage_messages_for_display(child)]
     assert contents == [
         "make the LLM settings table",
         "LLM Settings Table",
@@ -364,8 +302,6 @@ def test_webui_merged_lineage_keeps_session_source_fork_isolated(monkeypatch):
         truncation_watermark=None,
     )
 
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: parent)
-
     merged = routes._merged_webui_lineage_messages_for_display(fork, fork.messages)
 
     assert [m["content"] for m in merged] == ["fork starts here"]
@@ -384,8 +320,6 @@ def test_webui_merged_lineage_keeps_child_relationship_isolated(monkeypatch):
         messages=[{"role": "user", "content": "child starts here", "timestamp": 2.0}],
         truncation_watermark=None,
     )
-
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: parent)
 
     merged = routes._merged_webui_lineage_messages_for_display(child, child.messages)
 

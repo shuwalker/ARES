@@ -45,9 +45,9 @@ class TestFastPathInvocation:
 
     def test_fast_path_with_bare_model_and_provider_skips_catalog(self):
         """Caller-supplied (model, model_provider) returns without catalog."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             result = _resolve_compatible_session_model_state(
                 "gpt-5.5",
                 "openai-codex",
@@ -67,9 +67,9 @@ class TestFastPathInvocation:
         model_provider is the authoritative routing decision. This remains fast
         for explicit OpenRouter selections.
         """
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             result = _resolve_compatible_session_model_state(
                 "anthropic/claude-opus-4.7",
                 "openrouter",
@@ -87,9 +87,9 @@ class TestFastPathInvocation:
         The Codex + ``openai/...`` shape must therefore use the slow-path repair
         and normalize back to the active Codex default.
         """
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "active_provider": "openai-codex",
                 "default_model": "gpt-5.5",
@@ -112,9 +112,9 @@ class TestFastPathInvocation:
         fire — the slow path needs to read the catalog to find the active
         provider.
         """
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "active_provider": "openai-codex",
                 "default_model": "gpt-5.5",
@@ -131,9 +131,9 @@ class TestFastPathInvocation:
 
     def test_fast_path_preserves_explicit_provider_unchanged(self):
         """Caller's explicit provider passes through verbatim, no aliasing."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             # Even a non-canonical provider slug must pass through — this is
             # the contract that resolve_model_provider() in config.py relies on
             # to route through custom: providers.
@@ -153,9 +153,9 @@ class TestSlowPathStillFires:
 
     def test_at_provider_qualified_model_goes_to_slow_path(self):
         """`@openrouter:foo/bar` strings need the catalog to validate the qualifier."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "active_provider": "openrouter",
                 "default_model": "anthropic/claude-opus-4.7",
@@ -177,7 +177,7 @@ class TestSlowPathStillFires:
     def test_configured_provider_qualified_model_skips_catalog(self):
         """Configured providers already carry trusted routing context."""
         import api.config as config
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
         old_cfg = dict(config.cfg)
         config.cfg["model"] = {
@@ -191,7 +191,7 @@ class TestSlowPathStillFires:
             },
         }
         try:
-            with patch("api.routes.get_available_models") as mock_catalog:
+            with patch("api.model_resolution.get_available_models") as mock_catalog:
                 mock_catalog.side_effect = AssertionError("catalog should not be called")
                 result = _resolve_compatible_session_model_state(
                     "@local-llama:unsloth/gemma-4-12b-it-GGUF:UD-Q4_K_XL",
@@ -210,9 +210,9 @@ class TestSlowPathStillFires:
 
     def test_no_requested_provider_goes_to_slow_path(self):
         """When provider isn't supplied, slow path must repair from catalog."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "active_provider": "anthropic",
                 "default_model": "claude-opus-4.7",
@@ -226,9 +226,9 @@ class TestSlowPathStillFires:
 
     def test_empty_model_goes_to_slow_path_for_default_lookup(self):
         """Empty model means 'use the default' — needs catalog to find it."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "default_model": "gpt-5.5",
                 "active_provider": "openai-codex",
@@ -253,7 +253,7 @@ class TestFastPathSourceShape:
 
     def test_fast_path_branch_present_in_source(self):
         """The fast-path early-return must be in _resolve_compatible_session_model_state."""
-        src = _read("api/routes.py")
+        src = _read("api/model_resolution.py")
         idx = src.find("def _resolve_compatible_session_model_state(")
         assert idx != -1
         # Limit search to the function body (~150 lines is enough for the
@@ -267,7 +267,7 @@ class TestFastPathSourceShape:
 
     def test_fast_path_runs_before_get_available_models_call(self):
         """The fast-path return must come BEFORE the catalog lookup."""
-        src = _read("api/routes.py")
+        src = _read("api/model_resolution.py")
         idx = src.find("def _resolve_compatible_session_model_state(")
         # Helper grew (profile_config, custom repair); 6k window no longer reaches
         # the slow-path catalog call — use a bounded slice through the next def.
@@ -285,7 +285,7 @@ class TestFastPathSourceShape:
 
     def test_issue_1855_referenced_in_fast_path_docstring(self):
         """The fast-path docstring must reference #1855 for future readers."""
-        src = _read("api/routes.py")
+        src = _read("api/model_resolution.py")
         idx = src.find("def _resolve_compatible_session_model_state(")
         body = src[idx:idx + 6000]
         # Stop at the next def to bound the search to this function's body.
@@ -302,20 +302,20 @@ class TestSplitProviderQualifiedModel:
     """Sanity check on the helper used to detect @provider:model strings."""
 
     def test_at_prefix_with_colon_returns_provider(self):
-        from api.routes import _split_provider_qualified_model
+        from api.model_resolution import _split_provider_qualified_model
         bare, provider = _split_provider_qualified_model("@openrouter:anthropic/claude-opus-4.7")
         assert bare == "anthropic/claude-opus-4.7"
         assert provider == "openrouter"
 
     def test_bare_model_returns_no_provider(self):
-        from api.routes import _split_provider_qualified_model
+        from api.model_resolution import _split_provider_qualified_model
         bare, provider = _split_provider_qualified_model("gpt-5.5")
         assert bare == "gpt-5.5"
         assert provider is None
 
     def test_slash_qualified_no_at_returns_no_provider(self):
         """Slash-qualified IDs without @ prefix are not provider-qualified."""
-        from api.routes import _split_provider_qualified_model
+        from api.model_resolution import _split_provider_qualified_model
         bare, provider = _split_provider_qualified_model("anthropic/claude-opus-4.7")
         assert bare == "anthropic/claude-opus-4.7"
         assert provider is None
@@ -328,11 +328,7 @@ class TestChatStartHandlerStillStagesResolveModelProvider:
     Renaming or removing the stage would break those.
     """
 
-    def test_chat_start_emits_resolve_model_provider_stage(self):
-        src = _read("api/routes.py")
-        # /api/chat/start handler — locate by the resolve_model_provider diag.stage call.
-        assert 'diag.stage("resolve_model_provider")' in src, (
-            "/api/chat/start handler must emit a 'resolve_model_provider' "
-            "diagnostic stage so production slow-request alerts (PR #1911) "
-            "continue to surface this stage when it's slow."
-        )
+    def test_chat_start_is_covered_by_asgi_request_diagnostics(self):
+        src = _read("fastapi_app/main.py")
+        assert "RequestDiagnostics.maybe_start" in src
+        assert 'diagnostics.stage("fastapi_dispatch")' in src

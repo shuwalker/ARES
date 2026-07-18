@@ -17,34 +17,9 @@ through the real handle_post route, mirroring tests/test_issue2914_*.
 
 from __future__ import annotations
 
-import io
-import json
-from io import BytesIO
-from types import SimpleNamespace
+from fastapi.testclient import TestClient
 
-
-class _JSONHandler:
-    """Captures a JSON response through the real send_response/wfile path so
-    both j() (success) and bad() (error, via helpers.j) are observable."""
-
-    def __init__(self, body_bytes: bytes):
-        self.status = None
-        self.response_headers = []
-        self.rfile = BytesIO(body_bytes)
-        self.headers = {"Content-Length": str(len(body_bytes))}
-        self.wfile = io.BytesIO()
-
-    def send_response(self, status):
-        self.status = status
-
-    def send_header(self, key, value):
-        self.response_headers.append((key, value))
-
-    def end_headers(self):
-        pass
-
-    def payload(self):
-        return json.loads(self.wfile.getvalue().decode("utf-8"))
+from fastapi_app.main import create_app
 
 
 def _msg(role: str, content: str, ts: float, mid: str) -> dict:
@@ -76,14 +51,13 @@ def _make_session(monkeypatch, tmp_path, sid):
 
 
 def _post_truncate(monkeypatch, sid, keep_count):
-    import api.routes as routes
-
-    body_bytes = json.dumps({"session_id": sid, "keep_count": keep_count}).encode()
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-
-    handler = _JSONHandler(body_bytes)
-    routes.handle_post(handler, SimpleNamespace(path="/api/session/truncate"))
-    return {"status": handler.status, "payload": handler.payload()}
+    monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/session/truncate",
+            json={"session_id": sid, "keep_count": keep_count},
+        )
+    return {"status": response.status_code, "payload": response.json()}
 
 
 def test_truncate_negative_keep_count_rejected_and_not_destructive(monkeypatch, tmp_path):

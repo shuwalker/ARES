@@ -1,6 +1,7 @@
 # ARES Rules
 
 Rules and instructions for ARES contributors and coding agents have been consolidated to:
+- Product and architecture foundation: [.claude/FOUNDATION.md](.claude/FOUNDATION.md)
 - Root rules: [.claude/CLAUDE.md](.claude/CLAUDE.md)
 - WebUI rules: [.claude/webui/CLAUDE.md](.claude/webui/CLAUDE.md)
 

@@ -78,14 +78,14 @@ def test_model_provider_name_resolves_to_named_custom_slug():
 
 def test_available_models_drops_base_url_derived_custom_slug(monkeypatch):
     """A stale agent catalog slug must not create a second local custom group."""
-    fake_models = types.ModuleType("hermes_cli.models")
+    fake_models = types.ModuleType("ares_cli.models")
     fake_models.list_available_providers = lambda: [
         {"id": "custom:local-(127.0.0.1:11434)", "authenticated": True},
     ]
-    fake_auth = types.ModuleType("hermes_cli.auth")
+    fake_auth = types.ModuleType("ares_cli.auth")
     fake_auth.get_auth_status = lambda _pid: {"key_source": "config_yaml"}
-    monkeypatch.setitem(sys.modules, "hermes_cli.models", fake_models)
-    monkeypatch.setitem(sys.modules, "hermes_cli.auth", fake_auth)
+    monkeypatch.setitem(sys.modules, "ares_cli.models", fake_models)
+    monkeypatch.setitem(sys.modules, "ares_cli.auth", fake_auth)
     monkeypatch.setattr(config, "_get_auth_store_path", lambda: config.Path("/tmp/does-not-exist-auth.json"))
     monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [])
 

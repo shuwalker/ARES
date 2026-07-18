@@ -13,7 +13,7 @@ pytestmark = requires_agent_modules
 
 
 def _state_dir() -> pathlib.Path:
-    return pathlib.Path(os.environ["HERMES_WEBUI_TEST_STATE_DIR"])
+    return pathlib.Path(os.environ["ARES_WEBUI_TEST_STATE_DIR"])
 
 
 def _remove_path(path: pathlib.Path) -> None:
@@ -67,7 +67,7 @@ def _write_skill(skills_dir: pathlib.Path, name: str, description: str, body: st
 def _get(path: str, *, profile: str | None = None):
     headers = {}
     if profile:
-        headers["Cookie"] = f"hermes_profile={profile}"
+        headers["Cookie"] = f"ares_profile={profile}"
     req = urllib.request.Request(BASE + path, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -79,7 +79,7 @@ def _get(path: str, *, profile: str | None = None):
 def _post(path: str, body: dict, *, profile: str | None = None):
     headers = {"Content-Type": "application/json"}
     if profile:
-        headers["Cookie"] = f"hermes_profile={profile}"
+        headers["Cookie"] = f"ares_profile={profile}"
     req = urllib.request.Request(
         BASE + path,
         data=json.dumps(body).encode("utf-8"),
@@ -148,17 +148,17 @@ def test_skill_detail_reads_resolved_file_without_skill_view_absolute_path(monke
             "This skill should be read from the resolved SKILL.md file.",
         )
 
-        from api import routes
+        from api import skills_store
         import tools.skills_tool as skills_tool
 
-        monkeypatch.setattr(routes, "_active_skills_dir", lambda: dirs.profile_skills)
+        monkeypatch.setattr(skills_store, "active_skills_dir", lambda: dirs.profile_skills)
 
         def fail_if_skill_view_called(*_args, **_kwargs):
             raise AssertionError("WebUI local skill details must not call skill_view()")
 
         monkeypatch.setattr(skills_tool, "skill_view", fail_if_skill_view_called)
 
-        detail = routes._skill_view_from_active_dir("profile-direct-skill-1880")
+        detail = skills_store.skill_content("profile-direct-skill-1880")
 
         assert detail["success"] is True
         assert detail["name"] == "profile-direct-skill-1880"

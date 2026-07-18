@@ -20,12 +20,13 @@ def _catalog():
     }
 
 
-def test_hermes_backend_keeps_full_model_catalog(monkeypatch):
-    from api import routes
+def test_ares_backend_keeps_full_model_catalog(monkeypatch):
+    from api import backend_selector, model_catalog
 
-    monkeypatch.setattr(routes, "get_config", lambda: {"ares_backend": "hermes"})
+    monkeypatch.setattr("api.config.get_config", lambda: {"ares_backend": "ares"})
+    monkeypatch.setattr(backend_selector, "get_active_backend", lambda config: config["ares_backend"])
 
-    result = routes._filter_model_catalog_for_active_ares_backend(_catalog())
+    result = model_catalog.filter_catalog_for_active_backend(_catalog())
 
     assert [g["provider_id"] for g in result["groups"]] == [
         "xai-oauth",
@@ -38,11 +39,12 @@ def test_hermes_backend_keeps_full_model_catalog(monkeypatch):
 
 
 def test_jros_backend_shows_only_real_compatible_model_providers(monkeypatch):
-    from api import routes
+    from api import backend_selector, model_catalog
 
-    monkeypatch.setattr(routes, "get_config", lambda: {"ares_backend": "jros"})
+    monkeypatch.setattr("api.config.get_config", lambda: {"ares_backend": "jros"})
+    monkeypatch.setattr(backend_selector, "get_active_backend", lambda config: config["ares_backend"])
 
-    result = routes._filter_model_catalog_for_active_ares_backend(_catalog())
+    result = model_catalog.filter_catalog_for_active_backend(_catalog())
 
     assert [g["provider_id"] for g in result["groups"]] == [
         "ollama-cloud",

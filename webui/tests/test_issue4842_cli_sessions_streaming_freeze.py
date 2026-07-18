@@ -106,7 +106,7 @@ def test_structural_change_listener_clears_cli_cache(monkeypatch):
     surfaces promptly instead of lagging up to the streaming TTL. Those structural
     signals fire the session-list-changed listener; per-token message writes never
     do — that is exactly what makes the freeze safe."""
-    from api import routes as R
+    from api import route_session_list_cache as R
 
     cleared = {"n": 0}
     monkeypatch.setattr(M, "clear_cli_sessions_cache", lambda: cleared.__setitem__("n", cleared["n"] + 1))
@@ -117,4 +117,3 @@ def test_structural_change_listener_clears_cli_cache(monkeypatch):
         "_on_session_list_changed must clear the CLI/cron projection cache so a "
         "structural mutation isn't masked by the streaming freeze (#4842)"
     )
-

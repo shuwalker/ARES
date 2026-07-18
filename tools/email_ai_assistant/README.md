@@ -31,7 +31,7 @@ environment variables, or `~/.ares/mail_config.json`:
 
 The LLM classifier/drafter uses whatever OpenAI-compatible endpoint is
 configured via `OLLAMA_API_KEY` / `OLLAMA_CLOUD_URL` / `ARES_MAIL_MODEL`
-(falls back to `~/.hermes/.env` for the API key).
+(falls back to `~/.ares/.env` for the API key).
 
 See `ares_mail_config.py` for the full config resolution logic.
 

@@ -887,19 +887,19 @@ Respond with exactly one word: keep, junk, newsletter, or archive"""
     # ------------------------------------------------------------------
 
     # Ollama Cloud (OpenAI-compatible) endpoint configuration.
-    # Uses the same provider routing as Hermes Agent: glm-5.1 via ollama-cloud.
-    # API key is read from OLLAMA_API_KEY env var, falling back to ~/.hermes/.env
+    # Uses the same provider routing as Ares Agent: glm-5.1 via ollama-cloud.
+    # API key is read from OLLAMA_API_KEY env var, falling back to ~/.ares/.env
     _LLM_BASE_URL = os.environ.get("OLLAMA_CLOUD_URL", "https://ollama.com/v1")
     _LLM_API_KEY: str = ""  # resolved in __init__
     _LLM_MODEL = os.environ.get("ARES_MAIL_MODEL", "glm-5.1")
 
     @staticmethod
     def _resolve_api_key() -> str:
-        """Resolve API key from env var, falling back to ~/.hermes/.env."""
+        """Resolve API key from env var, falling back to ~/.ares/.env."""
         key = os.environ.get("OLLAMA_API_KEY", "")
         if key:
             return key
-        env_file = Path.home() / ".hermes" / ".env"
+        env_file = Path.home() / ".ares" / ".env"
         if env_file.exists():
             for line in env_file.read_text().splitlines():
                 line = line.strip()
@@ -915,7 +915,7 @@ Respond with exactly one word: keep, junk, newsletter, or archive"""
         """Call the configured LLM via OpenAI-compatible API.
 
         Routes through Ollama Cloud (glm-5.1) by default — same provider
-        chain used by Hermes Agent for delegation tasks.
+        chain used by Ares Agent for delegation tasks.
         """
         payload = {
             "model": self._LLM_MODEL,
@@ -995,7 +995,7 @@ Reply:"""
 
 
 # ------------------------------------------------------------------
-# Convenience entry point for Hermes / agent use
+# Convenience entry point for Ares / agent use
 # ------------------------------------------------------------------
 
 def get_mail_assistant() -> MailAssistant:

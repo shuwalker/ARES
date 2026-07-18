@@ -1,135 +1,87 @@
-"""Regression tests for manual WebUI cron runs."""
+"""Manual schedule execution is owned by the schedule service."""
+
+from __future__ import annotations
+
+from contextlib import nullcontext
+from pathlib import Path
+import sys
+import types
+
+import api.schedules_store as schedules
 
 
-def _install_cron_fakes(monkeypatch, calls, deliver_result=None, silent_marker="[SILENT]"):
-    cron_jobs = type("CronJobs", (), {})()
-    cron_jobs.save_job_output = lambda job_id, output: calls.append(
-        ("save", job_id, output)
-    )
-    cron_jobs.mark_job_run = lambda job_id, success, error=None, delivery_error=None: calls.append(
-        ("mark", job_id, success, error, delivery_error)
-    )
-
-    cron_scheduler = type("CronScheduler", (), {})()
-    cron_scheduler.SILENT_MARKER = silent_marker
-    if deliver_result is None:
-        deliver_result = lambda job, content: calls.append(
-            ("deliver", job["id"], content)
-        ) or None
-    cron_scheduler._deliver_result = deliver_result
-
-    monkeypatch.setitem(__import__("sys").modules, "cron.jobs", cron_jobs)
-    monkeypatch.setitem(__import__("sys").modules, "cron.scheduler", cron_scheduler)
-
-
-def test_manual_cron_run_saves_output_delivers_and_marks_job(monkeypatch):
-    import api.routes as routes
-
-    calls = []
-    _install_cron_fakes(monkeypatch, calls)
+def _runtime(monkeypatch, job, calls):
+    jobs = types.ModuleType("cron.jobs")
+    jobs.get_job = lambda job_id: job if job_id == job["id"] else None
+    jobs.mark_job_run = lambda *_args, **_kwargs: None
+    jobs.save_job_output = lambda *_args, **_kwargs: None
+    scheduler = types.ModuleType("cron.scheduler")
+    scheduler.run_job = lambda value: calls.append(("run", value["id"]))
+    monkeypatch.setitem(sys.modules, "cron.jobs", jobs)
+    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler)
+    monkeypatch.setattr(schedules, "ensure_schedule_runtime", lambda: None)
     monkeypatch.setattr(
-        routes,
+        schedules,
         "_run_cron_job_in_profile_subprocess",
-        lambda job, execution_profile_home: (True, "manual output", "done", None),
+        lambda value, _home: (
+            sys.modules["cron.scheduler"].run_job(value) or (True, "", "ok", "")
+        ),
     )
-
-    routes._mark_cron_running("job123")
-    routes._run_cron_tracked({"id": "job123"})
-
-    assert calls == [
-        ("save", "job123", "manual output"),
-        ("deliver", "job123", "done"),
-        ("mark", "job123", True, None, None),
-    ]
-    assert routes._is_cron_running("job123") == (False, 0.0)
-
-
-def test_manual_cron_run_marks_empty_response_as_failure_without_delivery(monkeypatch):
-    import api.routes as routes
-
-    calls = []
-    _install_cron_fakes(monkeypatch, calls)
+    monkeypatch.setattr(schedules, "_execution_home", lambda _job: Path("/tmp/ares-test"))
     monkeypatch.setattr(
-        routes,
-        "_run_cron_job_in_profile_subprocess",
-        lambda job, execution_profile_home: (True, "manual output", "", None),
+        "api.profiles.cron_profile_context_for_home",
+        lambda _home: nullcontext(),
     )
 
-    routes._mark_cron_running("job-empty")
-    routes._run_cron_tracked({"id": "job-empty"})
 
-    assert calls[0] == ("save", "job-empty", "manual output")
-    assert calls[1][0:3] == ("mark", "job-empty", False)
-    assert "empty response" in calls[1][3]
-    assert calls[1][4] is None
-    assert routes._is_cron_running("job-empty") == (False, 0.0)
-
-
-def test_manual_cron_run_records_delivery_errors_separately(monkeypatch):
-    import api.routes as routes
-
+def test_manual_schedule_run_registers_worker(monkeypatch):
     calls = []
+    job = {"id": "job123"}
+    _runtime(monkeypatch, job, calls)
 
-    def fail_delivery(job, content):
-        calls.append(("deliver", job["id"], content))
-        return "discord not configured"
+    class ImmediateThread:
+        def __init__(self, target, args, **_kwargs):
+            self.target, self.args = target, args
 
-    _install_cron_fakes(monkeypatch, calls, deliver_result=fail_delivery)
-    monkeypatch.setattr(
-        routes,
-        "_run_cron_job_in_profile_subprocess",
-        lambda job, execution_profile_home: (True, "manual output", "done", None),
-    )
+        def start(self):
+            self.target(*self.args)
 
-    routes._mark_cron_running("job-delivery-error")
-    routes._run_cron_tracked({"id": "job-delivery-error"})
-
-    assert calls == [
-        ("save", "job-delivery-error", "manual output"),
-        ("deliver", "job-delivery-error", "done"),
-        ("mark", "job-delivery-error", True, None, "discord not configured"),
-    ]
-    assert routes._is_cron_running("job-delivery-error") == (False, 0.0)
+    monkeypatch.setattr(schedules.threading, "Thread", ImmediateThread)
+    result = schedules.run_schedule("job123")
+    assert result == {"ok": True, "job_id": "job123", "status": "running"}
+    assert calls == [("run", "job123")]
+    assert schedules.schedule_status("job123")["running"] is False
 
 
-def test_manual_cron_run_skips_silent_success_delivery(monkeypatch):
-    import api.routes as routes
-
+def test_manual_schedule_duplicate_is_bounded(monkeypatch):
     calls = []
-    _install_cron_fakes(monkeypatch, calls)
-    monkeypatch.setattr(
-        routes,
-        "_run_cron_job_in_profile_subprocess",
-        lambda job, execution_profile_home: (True, "manual output", "[SILENT]", None),
-    )
-
-    routes._mark_cron_running("job-silent")
-    routes._run_cron_tracked({"id": "job-silent"})
-
-    assert calls == [
-        ("save", "job-silent", "manual output"),
-        ("mark", "job-silent", True, None, None),
-    ]
-    assert routes._is_cron_running("job-silent") == (False, 0.0)
+    job = {"id": "job-busy"}
+    _runtime(monkeypatch, job, calls)
+    with schedules._RUNNING_LOCK:
+        schedules._RUNNING["job-busy"] = schedules.time.time()
+    try:
+        result = schedules.run_schedule("job-busy")
+        assert result["ok"] is False
+        assert result["status"] == "already_running"
+        assert calls == []
+    finally:
+        with schedules._RUNNING_LOCK:
+            schedules._RUNNING.pop("job-busy", None)
 
 
-def test_manual_cron_run_delivers_failure_notice(monkeypatch):
-    import api.routes as routes
-
+def test_worker_failure_releases_running_marker(monkeypatch):
     calls = []
-    _install_cron_fakes(monkeypatch, calls)
-    monkeypatch.setattr(
-        routes,
-        "_run_cron_job_in_profile_subprocess",
-        lambda job, execution_profile_home: (False, "manual output", "", "boom"),
-    )
-
-    routes._mark_cron_running("job-failed")
-    routes._run_cron_tracked({"id": "job-failed", "name": "Nightly check"})
-
-    assert calls[0] == ("save", "job-failed", "manual output")
-    assert calls[1][0:2] == ("deliver", "job-failed")
-    assert "Nightly check" in calls[1][2]
-    assert "boom" in calls[1][2]
-    assert calls[2] == ("mark", "job-failed", False, "boom", None)
-    assert routes._is_cron_running("job-failed") == (False, 0.0)
+    job = {"id": "job-failed"}
+    _runtime(monkeypatch, job, calls)
+    sys.modules["cron.scheduler"].run_job = lambda _job: (_ for _ in ()).throw(RuntimeError("boom"))
+    with schedules._RUNNING_LOCK:
+        schedules._RUNNING[job["id"]] = schedules.time.time()
+    try:
+        try:
+            schedules._run_schedule_worker(job, Path("/tmp/ares-test"))
+        except RuntimeError:
+            pass
+        assert schedules.schedule_status(job["id"])["running"] is False
+    finally:
+        with schedules._RUNNING_LOCK:
+            schedules._RUNNING.pop(job["id"], None)

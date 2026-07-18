@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#111318" />
+    <meta name="apple-mobile-web-app-title" content="ARES" />
+    <meta name="description" content="ARES personal synthetic intelligence interface" />
+    <title>ARES</title>
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      window.__ARES_CONFIG__ =
+        typeof __ARES_RUNTIME_CONFIG_JSON__ === "object"
+          ? __ARES_RUNTIME_CONFIG_JSON__
+          : {};
+    </script>
+    <script>
+      (() => {
+        const key = "ares.theme";
+        try {
+          const stored = window.localStorage.getItem(key);
+          const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+          const theme = stored === "light" || stored === "dark" ? stored : prefersDark ? "dark" : "light";
+          document.documentElement.classList.toggle("dark", theme === "dark");
+          document.documentElement.style.colorScheme = theme;
+        } catch {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

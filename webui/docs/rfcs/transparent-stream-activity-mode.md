@@ -1,11 +1,11 @@
 # Transparent Stream — A Chronological Activity Display Mode
 
-- **Status:** Accepted (direction confirmed by @nesquena; RFC merged via [#3862](https://github.com/nesquena/hermes-webui/pull/3862))
+- **Status:** Accepted (direction confirmed by @nesquena; RFC merged via [#3862](https://github.com/nesquena/ares-webui/pull/3862))
 - **Author:** @franksong2702
 - **Created:** 2026-06-09
 - **Updated:** 2026-06-09
-- **Tracking issue:** [#3820](https://github.com/nesquena/hermes-webui/issues/3820)
-- **Parent contract:** [Live-to-Final Assistant Replies](./live-to-final-assistant-replies.md) ([#3400](https://github.com/nesquena/hermes-webui/issues/3400) / #3401 / #3741)
+- **Tracking issue:** [#3820](https://github.com/nesquena/ares-webui/issues/3820)
+- **Parent contract:** [Live-to-Final Assistant Replies](./live-to-final-assistant-replies.md) ([#3400](https://github.com/nesquena/ares-webui/issues/3400) / #3401 / #3741)
 
 ## Problem
 

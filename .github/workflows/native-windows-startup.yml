@@ -5,10 +5,10 @@ name: Native Windows startup
 # Windows-only batch caught manually (#2805 WOW64 ProgramFiles redirect,
 # #2806 venv-portability claim, #2807 port-parse + finally-cleanup).
 #
-# Scope (per nesquena-hermes comment on #2811 — option 1, mock-only):
-# hermes-agent is not published to PyPI, so we cannot pip-install it on
-# the runner. Instead we stub a hermes_cli/ directory next to a sibling
-# hermes-agent/ folder — just enough for start.ps1's existence guard to
+# Scope (per nesquena-ares comment on #2811 — option 1, mock-only):
+# ares-agent is not published to PyPI, so we cannot pip-install it on
+# the runner. Instead we stub a ares_cli/ directory next to a sibling
+# ares-agent/ folder — just enough for start.ps1's existence guard to
 # pass. The workflow then runs start.ps1 for a few seconds and asserts
 # that none of start.ps1's own Write-Error guards fired. Server-boot
 # regressions remain covered by the Linux jobs and docker-smoke.yml.
@@ -22,7 +22,7 @@ on:
 
 jobs:
   native-windows-startup:
-    name: start.ps1 path discovery (mock hermes-agent)
+    name: start.ps1 path discovery (mock ares-agent)
     runs-on: windows-latest
     timeout-minutes: 8
 
@@ -47,23 +47,23 @@ jobs:
             throw "venv\Scripts\python.exe missing after venv create"
           }
 
-      # Mock-only hermes-agent provisioning. We can't pip-install
-      # hermes-agent (not on PyPI), so we stub the minimum that
-      # start.ps1's `Test-Path hermes_cli -PathType Container` guard
-      # needs to pass. server.py would crash on this stub at import
+      # Mock-only ares-agent provisioning. We can't pip-install
+      # ares-agent (not on PyPI), so we stub the minimum that
+      # start.ps1's `Test-Path ares_cli -PathType Container` guard
+      # needs to pass. Runtime adapter imports can fail on this stub
       # time — we deliberately do NOT probe /health below.
-      - name: Stub hermes-agent (mock hermes_cli only)
+      - name: Stub ares-agent (mock ares_cli only)
         shell: pwsh
         run: |
-          $agentDir = Join-Path (Split-Path -Parent $PWD) 'hermes-agent'
-          $cliDir = Join-Path $agentDir 'hermes_cli'
+          $agentDir = Join-Path (Split-Path -Parent $PWD) 'ares-agent'
+          $cliDir = Join-Path $agentDir 'ares_cli'
           New-Item -ItemType Directory -Force -Path $cliDir | Out-Null
           Set-Content -Path (Join-Path $cliDir '__init__.py') -Value '# stub for CI path-discovery test only'
-          "HERMES_WEBUI_AGENT_DIR=$agentDir" >> $env:GITHUB_ENV
-          Write-Host "Stub hermes-agent provisioned at $agentDir"
+          "ARES_WEBUI_AGENT_DIR=$agentDir" >> $env:GITHUB_ENV
+          Write-Host "Stub ares-agent provisioned at $agentDir"
 
       # Run start.ps1 and verify it passes its own discovery guards
-      # without erroring out. server.py will exit non-zero on the stub
+      # without erroring out. The runtime may exit non-zero on the stub
       # (no real CLI code) — that's expected and not asserted against.
       # We only fail if start.ps1's own Write-Error guards fire.
       - name: Run start.ps1 + verify path discovery
@@ -96,11 +96,11 @@ jobs:
           # path discovery regressed and the job must fail.
           $guardErrors = @(
             'Python 3 is required',
-            'hermes-agent not found',
-            'HERMES_WEBUI_AGENT_DIR is set to',
+            'ares-agent not found',
+            'ARES_WEBUI_AGENT_DIR is set to',
             'is not a valid integer port',
             'is out of TCP-port range',
-            'server.py not found'
+            'fastapi_app/main.py not found'
           )
           foreach ($msg in $guardErrors) {
             if ($stderrContent -and $stderrContent -match [regex]::Escape($msg)) {
@@ -112,7 +112,7 @@ jobs:
       # taskkill /T walks the process tree, /F forces. taskkill returns
       # 128 ("process not found") if the PID is already gone — that's
       # the expected steady state for this mock-only workflow because
-      # server.py exits immediately on the stub hermes_cli. Reset
+      # the runtime may exit immediately on the stub ares_cli. Reset
       # $LASTEXITCODE so the step never fails on the cleanup itself.
       - name: Stop background server (tree-kill)
         if: always()

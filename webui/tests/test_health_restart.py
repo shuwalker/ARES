@@ -3,10 +3,11 @@
 import io
 import subprocess
 import threading
-import types
 
 import api.gateway_restart as gateway_restart
-import api.routes as routes
+from fastapi.testclient import TestClient
+
+from fastapi_app.main import create_app
 
 
 class MockPopen:
@@ -63,15 +64,10 @@ class InlineThread:
 
 
 def _call_health_restart(monkeypatch, helper_result):
-    handler = types.SimpleNamespace()
-    responses = []
-    monkeypatch.setattr(
-        routes,
-        "j",
-        lambda handler, payload, **kw: responses.append((payload, kw.get("status", 200))) or True,
-    )
-    monkeypatch.setattr(routes, "restart_active_profile_gateway", lambda: dict(helper_result))
-    return routes._handle_health_restart(handler), responses
+    monkeypatch.setattr(gateway_restart, "restart_active_profile_gateway", lambda: dict(helper_result))
+    with TestClient(create_app()) as client:
+        response = client.post("/api/health/restart")
+    return response.status_code, response.json()
 
 
 def test_restart_active_profile_gateway_success_uses_active_profile_home(monkeypatch):
@@ -88,24 +84,24 @@ def test_restart_active_profile_gateway_success_uses_active_profile_home(monkeyp
             env=env,
         )
 
-    monkeypatch.setattr(gateway_restart, "get_active_hermes_home", lambda: "/mock/hermes/home")
-    monkeypatch.setattr(gateway_restart.shutil, "which", lambda cmd: "/mock/bin/hermes")
+    monkeypatch.setattr(gateway_restart, "get_active_ares_home", lambda: "/mock/ares/home")
+    monkeypatch.setattr(gateway_restart.shutil, "which", lambda cmd: "/mock/bin/ares")
     monkeypatch.setattr(gateway_restart.subprocess, "Popen", fake_popen)
 
     result = gateway_restart.restart_active_profile_gateway()
 
     assert result["status"] == "completed"
     assert result["message"] == "Gateway service restarted successfully"
-    assert called["args"] == ["/mock/bin/hermes", "gateway", "restart"]
-    assert called["env"]["HERMES_HOME"] == "/mock/hermes/home"
+    assert called["args"] == ["/mock/bin/ares", "gateway", "restart"]
+    assert called["env"]["ARES_HOME"] == "/mock/ares/home"
     assert gateway_restart._GATEWAY_RESTART_LOCK.locked() is False
 
 
 def test_restart_active_profile_gateway_failure_preserves_empty_output_contract(monkeypatch):
     gateway_restart._GATEWAY_RESTART_LOCK = threading.Lock()
 
-    monkeypatch.setattr(gateway_restart, "get_active_hermes_home", lambda: "/mock/hermes/home")
-    monkeypatch.setattr(gateway_restart.shutil, "which", lambda cmd: "/mock/bin/hermes")
+    monkeypatch.setattr(gateway_restart, "get_active_ares_home", lambda: "/mock/ares/home")
+    monkeypatch.setattr(gateway_restart.shutil, "which", lambda cmd: "/mock/bin/ares")
     monkeypatch.setattr(
         gateway_restart.subprocess,
         "Popen",
@@ -127,13 +123,13 @@ def test_restart_active_profile_gateway_failure_preserves_empty_output_contract(
 def test_restart_active_profile_gateway_timeout_releases_lock_after_background_wait(monkeypatch):
     gateway_restart._GATEWAY_RESTART_LOCK = threading.Lock()
     proc = MockPopen(
-        ["/mock/bin/hermes", "gateway", "restart"],
+        ["/mock/bin/ares", "gateway", "restart"],
         communicate_timeout=True,
-        env={"HERMES_HOME": "/mock/hermes/home"},
+        env={"ARES_HOME": "/mock/ares/home"},
     )
 
-    monkeypatch.setattr(gateway_restart, "get_active_hermes_home", lambda: "/mock/hermes/home")
-    monkeypatch.setattr(gateway_restart.shutil, "which", lambda cmd: "/mock/bin/hermes")
+    monkeypatch.setattr(gateway_restart, "get_active_ares_home", lambda: "/mock/ares/home")
+    monkeypatch.setattr(gateway_restart.shutil, "which", lambda cmd: "/mock/bin/ares")
     monkeypatch.setattr(gateway_restart.subprocess, "Popen", lambda *args, **kwargs: proc)
     monkeypatch.setattr(gateway_restart.threading, "Thread", InlineThread)
 
@@ -161,57 +157,57 @@ def test_restart_active_profile_gateway_busy_reports_contention(monkeypatch):
 
 
 def test_handle_health_restart_success(monkeypatch):
-    result, responses = _call_health_restart(
+    status, payload = _call_health_restart(
         monkeypatch,
         {"status": "completed", "message": "Gateway service restarted successfully"},
     )
-    assert result is True
-    assert responses == [({"ok": True, "message": "Gateway service restarted successfully"}, 200)]
+    assert status == 200
+    assert payload == {"ok": True, "message": "Gateway service restarted successfully"}
 
 
 def test_handle_health_restart_timeout(monkeypatch):
-    result, responses = _call_health_restart(
+    status, payload = _call_health_restart(
         monkeypatch,
         {"status": "in_progress", "message": "Gateway service restart initiated (in progress)"},
     )
-    assert result is True
-    assert responses == [({"ok": True, "message": "Gateway service restart initiated (in progress)"}, 200)]
+    assert status == 200
+    assert payload == {"ok": True, "message": "Gateway service restart initiated (in progress)"}
 
 
 def test_handle_health_restart_failure_preserves_empty_output_message(monkeypatch):
-    result, responses = _call_health_restart(
+    status, payload = _call_health_restart(
         monkeypatch,
         {"status": "failed", "message": "Restart failed: "},
     )
-    assert result is True
-    assert responses == [({"ok": False, "error": "Restart failed: "}, 500)]
+    assert status == 500
+    assert payload == {"ok": False, "error": "Restart failed: "}
 
 
 def test_handle_health_restart_failure(monkeypatch):
-    result, responses = _call_health_restart(
+    status, payload = _call_health_restart(
         monkeypatch,
         {"status": "failed", "message": "Restart failed: bad thing"},
     )
-    assert result is True
-    assert responses == [({"ok": False, "error": "Restart failed: bad thing"}, 500)]
+    assert status == 500
+    assert payload == {"ok": False, "error": "Restart failed: bad thing"}
 
 
 def test_handle_health_restart_internal_error(monkeypatch):
-    _, responses = _call_health_restart(
+    status, payload = _call_health_restart(
         monkeypatch,
         {"status": "failed", "message": "Internal error running restart: OSError: bad spawn"},
     )
-    assert responses == [({"ok": False, "error": "Internal error running restart: OSError: bad spawn"}, 500)]
+    assert status == 500
+    assert payload == {"ok": False, "error": "Internal error running restart: OSError: bad spawn"}
 
 
 def test_handle_health_restart_concurrency(monkeypatch):
-    _, responses = _call_health_restart(
+    status, payload = _call_health_restart(
         monkeypatch,
         {"status": "busy", "message": "Restart already in progress. Please wait a moment and try again."},
     )
-    assert responses == [
-        (
-            {"ok": False, "error": "Restart already in progress. Please wait a moment and try again."},
-            429,
-        )
-    ]
+    assert status == 429
+    assert payload == {
+        "ok": False,
+        "error": "Restart already in progress. Please wait a moment and try again.",
+    }

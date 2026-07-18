@@ -1,8 +1,8 @@
 """
-Plugin discovery and static serving for Hermes Web UI.
+Plugin discovery and static serving for Ares Web UI.
 
-Scans ~/.hermes/plugins/<name>/dashboard/ for manifest.json files,
-matching the official Hermes dashboard plugin format.
+Scans ~/.ares/plugins/<name>/dashboard/ for manifest.json files,
+matching the official Ares dashboard plugin format.
 
 Each plugin may have:
   dashboard/
@@ -12,6 +12,9 @@ Each plugin may have:
       style.css     -- optional plugin stylesheet
     plugin_api.py   -- optional backend API (not used in WebUI MVP)
 """
+
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -38,7 +41,7 @@ _PLUGIN_STATIC_ROOTS: dict[str, Path] = {}
 
 
 def _get_plugin_base() -> Path:
-    return Path(os.environ.get("HERMES_WEBUI_PLUGINS_DIR", str(Path.home() / ".hermes" / "plugins")))
+    return Path(os.environ.get("ARES_WEBUI_PLUGINS_DIR", str(Path.home() / ".ares" / "plugins")))
 
 
 def load_plugins() -> None:

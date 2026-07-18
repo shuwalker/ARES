@@ -62,18 +62,17 @@ def install_fake_registry(monkeypatch, fake) -> None:
 
 
 def install_fake_start_session_turn(monkeypatch, *, status: int = 200):
-    """Patch ``api.routes.start_session_turn`` to record calls instead of
+    """Patch the transport-neutral chat runtime to record calls instead of
     running a real agent turn.
 
-    The drain helper does ``from api.routes import start_session_turn``
-    inside a daemon thread, so patching the attribute on the ``api.routes``
-    module is what the thread resolves at call time.
+    Background wakeup workers resolve ``api.chat_runtime.start_session_turn``
+    at call time, which is the same seam used by the FastAPI adapters.
 
     Returns a ``holder`` dict with ``calls`` (list of recorded call kwargs)
     and ``event`` (a ``threading.Event`` set on first call) — pair it with
     ``wait_for_wakeup`` below.
     """
-    import api.routes as _routes
+    import api.chat_runtime as _chat_runtime
 
     holder = {"calls": [], "event": threading.Event()}
 
@@ -84,7 +83,7 @@ def install_fake_start_session_turn(monkeypatch, *, status: int = 200):
         holder["event"].set()
         return {"stream_id": "fake-stream", "session_id": session_id, "_status": status}
 
-    monkeypatch.setattr(_routes, "start_session_turn", _fake, raising=True)
+    monkeypatch.setattr(_chat_runtime, "start_session_turn", _fake, raising=True)
     return holder
 
 

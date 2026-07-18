@@ -79,7 +79,7 @@ def test_cancel_stream_does_not_append_marker_after_stream_ownership_rotated():
 
 
 def test_stale_stream_clear_skips_active_worker_when_sse_channel_is_gone():
-    import api.routes as routes
+    import api.session_runtime_state as routes
 
     sid = "active_worker_missing_sse"
     stream_id = "live-worker-stream"
@@ -106,7 +106,7 @@ def test_stale_stream_clear_skips_active_worker_when_sse_channel_is_gone():
 
 
 def test_stale_stream_clear_skips_fresh_pending_turn_inside_grace_window(monkeypatch):
-    import api.routes as routes
+    import api.session_runtime_state as routes
 
     sid = "fresh_pending_missing_sse"
     stream_id = "fresh-pending-stream"
@@ -132,7 +132,7 @@ def test_stale_stream_clear_skips_fresh_pending_turn_inside_grace_window(monkeyp
 
 
 def test_stale_stream_clear_trusts_completed_run_journal_instead_of_adding_marker(monkeypatch):
-    import api.routes as routes
+    import api.session_runtime_state as routes
     from api.run_journal import append_run_event
 
     sid = "completed_journal_late_pending_clear"

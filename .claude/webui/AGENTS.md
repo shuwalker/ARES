@@ -1,4 +1,4 @@
-# Agent instructions for Hermes WebUI
+# Agent instructions for ARES WebUI
 
 This file is the shared entry point for AI assistants working in this
 repository. Keep it project-specific and safe to publish. Do not put personal
@@ -9,10 +9,11 @@ workflow notes here.
 
 Before making changes, read:
 
-1. `README.md`
-2. `CONTRIBUTING.md`
-3. `docs/CONTRACTS.md`
-4. `CHANGELOG.md`
+1. `../FOUNDATION.md` — canonical ARES product and architecture definition
+2. `README.md`
+3. `CONTRIBUTING.md`
+4. `docs/CONTRACTS.md`
+5. `CHANGELOG.md`
 
 For architecture, testing, or setup work, also read the matching reference:
 
@@ -24,6 +25,8 @@ For architecture, testing, or setup work, also read the matching reference:
 
 For UI or UX work, read `docs/UIUX-GUIDE.md` and `DESIGN.md` before
 changing layout, interaction flow, themes, chat rendering, or composer chrome.
+Do not introduce metaphorical architecture terminology that conflicts with the
+plain engineering vocabulary in `../FOUNDATION.md`.
 
 ## Onboarding and reinstall support
 
@@ -75,7 +78,7 @@ Follow that checklist's safety rules:
 
 ## Local state and secrets
 
-Hermes WebUI can read and write real agent state, sessions, workspaces,
+ARES WebUI can read and write real agent state, sessions, workspaces,
 credentials, and cron data. Treat local validation as potentially destructive
 unless you have confirmed the active state directories.
 

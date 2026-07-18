@@ -13,7 +13,8 @@ import unittest
 from unittest import mock
 
 REPO = pathlib.Path(__file__).parent.parent
-ROUTES_PY = REPO / "api" / "routes.py"
+CONFIG_PY = REPO / "api" / "config.py"
+LIVE_MODELS_PY = REPO / "api" / "live_models.py"
 
 
 class TestLiveModelsCustomProviderProbe(unittest.TestCase):
@@ -95,24 +96,10 @@ class TestLiveModelsCustomProviderProbe(unittest.TestCase):
         `if provider == "custom" ...` so the probe always runs regardless
         of whether config entries populated ids.
         """
-        source = ROUTES_PY.read_text(encoding="utf-8")
-
-        # Find the "Always try live fetch" comment (added by the fix)
-        marker = "Always try live fetch for custom providers"
-        self.assertIn(marker, source, (
-            "routes.py must contain the 'Always try live fetch' comment (#3718)"
-        ))
-
-        # Extract the block between the marker and the next major section
-        marker_pos = source.find(marker)
-        next_section = source.find("OpenAI-compat live fetch fallback", marker_pos)
-        self.assertNotEqual(next_section, -1, "could not find next section marker")
-        block = source[marker_pos:next_section]
-
-        # The old `if not ids and` guard must NOT appear in this block
-        self.assertNotIn("if not ids and", block, (
-            "Live fetch for custom providers must not be guarded by 'if not ids' (#3718)"
-        ))
+        live_source = LIVE_MODELS_PY.read_text(encoding="utf-8")
+        config_source = CONFIG_PY.read_text(encoding="utf-8")
+        self.assertIn("get_available_models(force_refresh=True)", live_source)
+        self.assertIn("_read_custom_endpoint_models(", config_source)
 
     def test_mocked_live_fetch_returns_full_catalog_plus_config_entry(self):
         """Integration test: mock urlopen and exercise the real fetch/parse/merge path.
@@ -171,20 +158,16 @@ class TestLiveModelsCustomProviderProbe(unittest.TestCase):
 
     def test_timeout_uses_config_constant(self):
         """The live fetch must use CUSTOM_MODELS_ENDPOINT_TIMEOUT_SECONDS, not a hardcoded value."""
-        source = ROUTES_PY.read_text(encoding="utf-8")
-
-        # Find the custom-provider live fetch block
-        marker = "Always try live fetch for custom providers"
-        marker_pos = source.find(marker)
-        next_section = source.find("OpenAI-compat live fetch fallback", marker_pos)
-        block = source[marker_pos:next_section]
+        block = CONFIG_PY.read_text(encoding="utf-8")
 
         # Must use the constant, not a bare number
         self.assertIn("CUSTOM_MODELS_ENDPOINT_TIMEOUT_SECONDS", block, (
             "Live fetch timeout must use CUSTOM_MODELS_ENDPOINT_TIMEOUT_SECONDS "
             "instead of a hardcoded value (#3718 review feedback)"
         ))
-        self.assertNotIn("timeout=8", block, (
+        probe_lines = [line for line in block.splitlines() if "urlopen(req" in line]
+        self.assertTrue(probe_lines)
+        self.assertNotIn("timeout=8", "\n".join(probe_lines), (
             "Live fetch must not use hardcoded timeout=8 (#3718 review feedback)"
         ))
 

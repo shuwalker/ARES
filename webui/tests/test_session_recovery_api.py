@@ -1,6 +1,9 @@
 import json
 
+from fastapi.testclient import TestClient
+
 from api.session_recovery import audit_session_recovery, repair_safe_session_recovery
+from fastapi_app.main import create_app
 
 
 def _write_session(session_dir, sid, messages=1):
@@ -67,20 +70,25 @@ def test_repair_safe_session_recovery_leaves_unsafe_orphan_for_manual_review(tmp
     assert result["after"]["status"] == "needs_manual_review"
 
 
-def test_repair_safe_route_uses_clean_flag_for_status_code():
-    from pathlib import Path
+def test_repair_safe_route_uses_clean_flag_for_status_code(monkeypatch):
+    monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    monkeypatch.setattr(
+        "api.session_recovery.repair_safe_session_recovery",
+        lambda *_args, **_kwargs: {"clean": False, "error": "manual review"},
+    )
+    with TestClient(create_app()) as client:
+        response = client.post("/api/session/recovery/repair-safe")
+    assert response.status_code == 409
+    assert response.json()["error"] == "manual review"
 
-    src = Path("api/routes.py").read_text(encoding="utf-8")
 
-    assert 'status=200 if result.get("clean") else 409' in src
-
-
-def test_recovery_audit_routes_are_registered():
-    from pathlib import Path
-
-    src = Path("api/routes.py").read_text(encoding="utf-8")
-
-    assert 'parsed.path == "/api/session/recovery/audit"' in src
-    assert 'parsed.path == "/api/session/recovery/repair-safe"' in src
-    assert "audit_session_recovery" in src
-    assert "repair_safe_session_recovery" in src
+def test_recovery_audit_route_is_registered(monkeypatch):
+    monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    monkeypatch.setattr(
+        "api.session_recovery.audit_session_recovery",
+        lambda *_args, **_kwargs: {"status": "ok", "clean": True},
+    )
+    with TestClient(create_app()) as client:
+        response = client.get("/api/session/recovery/audit")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "clean": True}

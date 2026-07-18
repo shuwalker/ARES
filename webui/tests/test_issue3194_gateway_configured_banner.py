@@ -3,7 +3,7 @@
 
 Reported by @chenghaopeng: after a fresh ``docker-compose.two-container.yml``
 deploy, the WebUI banner says "Gateway not configured" while
-``hermes gateway status`` reports the gateway is running. The trigger is an
+``ares gateway status`` reports the gateway is running. The trigger is an
 empty ``identity_map`` (no conversation has happened yet, so no session
 metadata exists) combined with an ``alive is None`` health payload whose
 ``details.reason`` is ``gateway_stale_running_state`` (the gateway is up but
@@ -20,49 +20,16 @@ Mirrors the FakeHandler isolation pattern in
 """
 from __future__ import annotations
 
-import json
-
-
-class _FakeHandler:
-    """Minimal BaseHTTPRequestHandler stand-in for routes.handle_get."""
-
-    def __init__(self):
-        self.status = None
-        self.sent_headers = []
-        self.body = bytearray()
-        self.wfile = self
-
-    def send_response(self, code):
-        self.status = code
-
-    def send_header(self, key, value):
-        self.sent_headers.append((key, value))
-
-    def end_headers(self):
-        pass
-
-    def write(self, data):
-        self.body.extend(data if isinstance(data, (bytes, bytearray)) else data.encode("utf-8"))
-
-    def get_json(self):
-        return json.loads(self.body.decode("utf-8"))
-
-
 def _call_gateway_status(monkeypatch, *, health_payload, identity_map=None):
-    """Invoke handle_get for /api/gateway/status with a stubbed health payload."""
-    from urllib.parse import urlparse
+    """Build the transport-neutral payload used by the FastAPI endpoint."""
+    import api.gateway_status as gateway_status
 
-    from api import routes
-
-    monkeypatch.setattr(routes, "build_agent_health_payload", lambda: health_payload)
+    monkeypatch.setattr(gateway_status, "build_agent_health_payload", lambda: health_payload)
     monkeypatch.setattr(
-        routes, "_load_gateway_session_identity_map", lambda: (identity_map or {})
+        gateway_status, "load_gateway_session_identity_map", lambda: (identity_map or {})
     )
-
-    handler = _FakeHandler()
-    parsed = urlparse("/api/gateway/status")
-    routes.handle_get(handler, parsed)
-    return handler.get_json()
+    monkeypatch.setattr(gateway_status, "gateway_session_metadata_path", lambda: __import__("pathlib").Path("/missing"))
+    return gateway_status.gateway_status_payload()
 
 
 def test_stale_running_with_empty_identity_map_is_configured(monkeypatch):

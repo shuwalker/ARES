@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-ARES Usage Tracker — Hermes tool entry point.
+ARES Usage Tracker — Ares tool entry point.
 
-Called by Hermes to:
+Called by Ares to:
   - Record a request to a provider
   - Check current usage status
   - Evaluate which provider to route to

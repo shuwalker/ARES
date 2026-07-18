@@ -37,7 +37,7 @@ BOLD='\033[1m'
 REPO_URL_SSH="git@github.com:shuwalker/ARES.git"
 REPO_URL_HTTPS="https://github.com/shuwalker/ARES.git"
 ARES_HOME="${ARES_HOME:-$HOME/.ares}"
-HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+ARES_HOME="${ARES_HOME:-$HOME/.ares}"
 INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME}"
 WEBUI_DIR="$INSTALL_DIR/webui"
 PYTHON_VERSION="3.11"
@@ -56,14 +56,14 @@ NO_START=false
 # JaegerAI is ARES's required Companion runtime — the brain, memory, character,
 # and local model. ARES never forks or reimplements it; the installer only
 # ever detects an existing install or delegates to JaegerAI's own installer,
-# the same way hermes-workspace's installer delegates to Nous's upstream
-# hermes-agent installer instead of reimplementing it.
+# the same way ares-workspace's installer delegates to Nous's upstream
+# ares-agent installer instead of reimplementing it.
 JROS_INSTALL_URL="${JROS_INSTALL_URL:-https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh}"
 SKIP_JROS=false
 
-# Hermes Agent is an optional addition (coding/terminal/skills capability),
+# Ares Agent is an optional addition (coding/terminal/skills capability),
 # never installed unless the operator asks for it.
-WITH_HERMES=false
+WITH_ARES=false
 
 # Detect non-interactive mode
 if [ -t 0 ]; then
@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
         --backend) BACKEND_MODE="$2"; shift 2 ;;
         --no-start) NO_START=true; shift ;;
         --skip-jros) SKIP_JROS=true; shift ;;
-        --with-hermes) WITH_HERMES=true; shift ;;
+        --with-ares) WITH_ARES=true; shift ;;
         -h|--help)
             echo "ARES Web UI Installer"
             echo ""
@@ -105,11 +105,11 @@ while [[ $# -gt 0 ]]; do
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
-            echo "  --backend MODE  Backend mode: auto, hermes, jros, or hybrid (default: auto → jros)"
+            echo "  --backend MODE  Backend mode: auto, ares, jros, or hybrid (default: auto → jros)"
             echo "  --no-start      Skip auto-starting the server after installation"
             echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — ARES has no"
             echo "                  Companion runtime until JaegerAI is installed separately)"
-            echo "  --with-hermes   Also install Hermes Agent, the optional coding/terminal addition"
+            echo "  --with-ares   Also install Ares Agent, the optional coding/terminal addition"
             echo "  -h, --help      Show this help"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -208,7 +208,7 @@ detect_jros() {
 # JaegerAI is ARES's required Companion runtime (the brain, memory, character,
 # local model). This stage never reimplements JaegerAI — it only detects an
 # existing install or delegates to JaegerAI's own installer, exactly the way
-# ARES already delegates to Nous's own installer for the optional Hermes
+# ARES already delegates to Nous's own installer for the optional Ares
 # addition (see install_deps below).
 stage_jros() {
     detect_jros
@@ -301,6 +301,20 @@ check_python() {
     log_success "Python found: $PYTHON_FOUND_VERSION ($PYTHON_PATH)"
 }
 
+check_node() {
+    log_info "Checking Node.js..."
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+        log_error "Node.js and npm are required to build the ARES frontend."
+        log_info "  Install the current Node.js LTS release from https://nodejs.org"
+        exit 1
+    fi
+    if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+        log_error "Node.js 20 or newer is required (found $(node --version 2>/dev/null || echo unknown))."
+        exit 1
+    fi
+    log_success "Node.js $(node --version) found"
+}
+
 # ============================================================================
 # Installation stages
 # ============================================================================
@@ -309,6 +323,7 @@ stage_prerequisites() {
     log_info "Checking prerequisites..."
     check_git
     check_python
+    check_node
     log_success "All prerequisites met"
 }
 
@@ -401,32 +416,38 @@ install_deps() {
         exit 1
     fi
 
-    # Hermes Agent is an optional addition (coding/terminal/skills capability),
+    log_info "Building React frontend..."
+    if ! (cd "$WEBUI_DIR/frontend" && npm ci && npm run build); then
+        log_error "Failed to build the React frontend"
+        exit 1
+    fi
+
+    # Ares Agent is an optional addition (coding/terminal/skills capability),
     # not the Companion runtime — JaegerAI already covers that. Only install it
-    # when explicitly requested via --with-hermes, or the operator opts in
+    # when explicitly requested via --with-ares, or the operator opts in
     # here on an interactive terminal.
-    if [ "$WITH_HERMES" != true ] && [ "$NON_INTERACTIVE" != true ] && [ "$IS_INTERACTIVE" = true ]; then
-        if prompt_yes_no "Also install Hermes Agent (optional coding/terminal addition)?" "no"; then
-            WITH_HERMES=true
+    if [ "$WITH_ARES" != true ] && [ "$NON_INTERACTIVE" != true ] && [ "$IS_INTERACTIVE" = true ]; then
+        if prompt_yes_no "Also install Ares Agent (optional coding/terminal addition)?" "no"; then
+            WITH_ARES=true
         fi
     fi
 
-    if [ "$WITH_HERMES" = true ]; then
-        log_info "Installing Hermes Agent (optional addition)..."
-        if ! "$PIP_PYTHON" -m pip install hermes-agent 2>/dev/null; then
-            log_warn "hermes-agent not found via pip"
+    if [ "$WITH_ARES" = true ]; then
+        log_info "Installing Ares Agent (optional addition)..."
+        if ! "$PIP_PYTHON" -m pip install ares-agent 2>/dev/null; then
+            log_warn "ares-agent not found via pip"
             log_info "Trying git install..."
-            if ! "$PIP_PYTHON" -m pip install git+https://github.com/nousresearch/hermes-agent.git 2>/dev/null; then
-                log_warn "Could not install hermes-agent. The Hermes addition will be unavailable."
-                log_info "Install manually later: pip install hermes-agent"
-                WITH_HERMES=false
+            if ! "$PIP_PYTHON" -m pip install git+https://github.com/nousresearch/ares-agent.git 2>/dev/null; then
+                log_warn "Could not install ares-agent. The Ares addition will be unavailable."
+                log_info "Install manually later: pip install ares-agent"
+                WITH_ARES=false
             fi
         fi
     else
-        log_info "Skipping Hermes Agent (optional addition — add later with --with-hermes)"
+        log_info "Skipping Ares Agent (optional addition — add later with --with-ares)"
     fi
 
-    log_success "All dependencies installed"
+    log_success "All dependencies installed and frontend built"
 }
 
 setup_config() {
@@ -447,16 +468,16 @@ setup_config() {
     selected_backend="$BACKEND_MODE"
     if [ "$selected_backend" = "auto" ]; then
         # JaegerAI is the required Companion runtime — it is always the default,
-        # regardless of whether Hermes was also installed as an addition.
+        # regardless of whether Ares was also installed as an addition.
         selected_backend="jros"
     fi
     case "$selected_backend" in
-        hermes|jros|hybrid) ;;
-        *) log_error "Invalid backend mode: $selected_backend (expected auto, hermes, jros, or hybrid)"; exit 1 ;;
+        ares|jros|hybrid) ;;
+        *) log_error "Invalid backend mode: $selected_backend (expected auto, ares, jros, or hybrid)"; exit 1 ;;
     esac
-    if [ "$selected_backend" != "jros" ] && [ "$WITH_HERMES" != true ]; then
-        log_warn "Backend '$selected_backend' needs the Hermes addition, which was not installed."
-        log_warn "Falling back to jros. Re-run with --with-hermes --backend $selected_backend to use it."
+    if [ "$selected_backend" != "jros" ] && [ "$WITH_ARES" != true ]; then
+        log_warn "Backend '$selected_backend' needs the Ares addition, which was not installed."
+        log_warn "Falling back to jros. Re-run with --with-ares --backend $selected_backend to use it."
         selected_backend="jros"
     fi
     if [ "$selected_backend" = "jros" ] && [ "${JROS_DETECTED:-false}" != true ]; then
@@ -473,14 +494,14 @@ setup_config() {
         log_error "Python not found; cannot write ARES backend settings"
         exit 1
     fi
-    "$CONFIG_PYTHON" - "$selected_backend" "$ARES_HOME" "$HERMES_HOME" <<'PY'
+    "$CONFIG_PYTHON" - "$selected_backend" "$ARES_HOME" "$ARES_HOME" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 backend = sys.argv[1]
 state_home = Path(sys.argv[2]) / "webui"
-hermes_home = Path(sys.argv[3])
+ares_home = Path(sys.argv[3])
 state_home.mkdir(parents=True, exist_ok=True)
 settings = state_home / "settings.json"
 data = {}
@@ -493,10 +514,10 @@ if settings.exists():
 data["ares_backend"] = backend
 settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-# Runtime reads the selected backend from Hermes config.yaml, not settings.json.
+# Runtime reads the selected backend from Ares config.yaml, not settings.json.
 # Keep this line-oriented and dependency-free so it works even if PyYAML is absent.
-hermes_home.mkdir(parents=True, exist_ok=True)
-config_path = hermes_home / "config.yaml"
+ares_home.mkdir(parents=True, exist_ok=True)
+config_path = ares_home / "config.yaml"
 lines = config_path.read_text(encoding="utf-8").splitlines() if config_path.exists() else []
 out = []
 seen = False
@@ -558,7 +579,7 @@ run_setup_wizard() {
     log_info "Open http://localhost:$PORT in your browser to complete setup."
     log_info "The onboarding wizard will walk you through naming your Companion (JaegerAI),"
     log_info "connecting from your other devices over Tailscale, and any optional"
-    log_info "additions (Hermes, cloud providers, MCP servers)."
+    log_info "additions (Ares, cloud providers, MCP servers)."
 }
 
 # ============================================================================
@@ -609,16 +630,16 @@ echo -e "${GREEN}${BOLD}ARES Web UI installation complete!${NC}"
 echo ""
 echo "  Start the server:"
 if [ "${JROS_DETECTED:-false}" = true ]; then
-    echo "    cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED ./venv/bin/python server.py"
+    echo "    cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
 else
-    echo "    cd $WEBUI_DIR && ./venv/bin/python server.py"
+    echo "    cd $WEBUI_DIR && ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
 fi
 echo ""
 echo "  Or set env and run:"
 if [ "${JROS_DETECTED:-false}" = true ]; then
-    echo "    ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
+    echo "    cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
 else
-    echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
+    echo "    cd $WEBUI_DIR && ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
 fi
 echo ""
 echo "  Then open: http://localhost:$PORT"
@@ -632,15 +653,15 @@ if [ "$NO_START" = false ] && [ -t 0 ]; then
     echo -e "${CYAN}→ Starting ARES Web UI...${NC}"
     cd "$WEBUI_DIR"
     if [ "${JROS_DETECTED:-false}" = true ]; then
-        ARES_JAEGER_HOME="$JAEGER_HOME_DETECTED" JAEGER_HOME="$JAEGER_HOME_DETECTED" HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
+        ARES_JAEGER_HOME="$JAEGER_HOME_DETECTED" JAEGER_HOME="$JAEGER_HOME_DETECTED" ARES_WEBUI_HOST="$HOST" ARES_WEBUI_PORT="$PORT" ./venv/bin/python -m uvicorn fastapi_app.main:app --host "$HOST" --port "$PORT" --no-server-header
     else
-        HERMES_WEBUI_HOST="$HOST" HERMES_WEBUI_PORT="$PORT" ./venv/bin/python server.py
+        ARES_WEBUI_HOST="$HOST" ARES_WEBUI_PORT="$PORT" ./venv/bin/python -m uvicorn fastapi_app.main:app --host "$HOST" --port "$PORT" --no-server-header
     fi
 else
     echo -e "${CYAN}→ To start the server later, run:${NC}"
     if [ "${JROS_DETECTED:-false}" = true ]; then
-        echo "  cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED JAEGER_HOME=$JAEGER_HOME_DETECTED HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
+        echo "  cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED JAEGER_HOME=$JAEGER_HOME_DETECTED ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
     else
-        echo "  cd $WEBUI_DIR && HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT ./venv/bin/python server.py"
+        echo "  cd $WEBUI_DIR && ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
     fi
 fi

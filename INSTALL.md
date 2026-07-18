@@ -75,9 +75,9 @@ The installer:
 - Configures the backend (defaults to jros)
 
 **Options:**
-- `--with-hermes` — also install Hermes Agent (optional coding/terminal addition)
+- `--with-ares` — also install Ares Agent (optional coding/terminal addition)
 - `--no-start` — skip auto-starting the server after install
-- `--backend jros|hermes|hybrid` — set the default backend mode
+- `--backend jros|ares|hybrid` — set the default backend mode
 
 After install, use any of the run modes above (Web, Mac app, or Windows).
 

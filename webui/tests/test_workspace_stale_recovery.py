@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from api import config as api_config
-from api import routes, workspace
+from api import chat_runtime as routes, workspace
 
 
 def test_profile_default_workspace_uses_live_config_default(monkeypatch, tmp_path):

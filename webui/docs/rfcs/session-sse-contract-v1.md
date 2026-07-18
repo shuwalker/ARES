@@ -1,6 +1,6 @@
 # Session SSE Contract v1
 
-- **Status:** Proposed
+- **Status:** Implemented
 - **Author:** @rodboev
 - **Created:** 2026-07-04
 - **Tracking:** #4812
@@ -11,35 +11,30 @@ Refs #4812
 
 ## Problem
 
-hermes-webui has no stable, cross-client contract for observing the lifecycle
+ARES defines a stable, cross-client contract for observing the lifecycle
 of an individual session over SSE. Five or more future consumers — WebUI
 reconnect/multi-tab, Android wrapper, iOS/PWA wrapper, desktop/TWA wrapper, and
 test/CLI observers — each need a resumable, dedupe-safe event stream. Without a
 shared contract, every client invents its own cursor, heartbeat, and event-type
 semantics, multiplying coordination cost as new producers are added.
 
-The maintainer asked for a docs-only RFC first, holding implementation until
-sequence and replay semantics are settled (comment 2026-06-24T17:14:05Z,
-2026-06-25T04:50:06Z on #4812). This document settles the contract vocabulary
-against current source before any route is added.
+The contract was designed before implementation and is now served by the
+modular FastAPI realtime router.
 
 ## Goals
 
-- Define the SSE envelope and event-type vocabulary for a proposed per-session
+- Define the SSE envelope and event-type vocabulary for the per-session
   stream `GET /api/sessions/{session_id}/events`.
 - Specify replay identity using the existing run-journal cursor model.
 - Specify the snapshot fallback for stale or evicted cursors.
 - Document the distinction from the existing global session-list stream.
-- Record open implementation gates that must be resolved before the endpoint
-  ships.
+- Record the implementation decisions used by browser and external clients.
 
 ## Non-goals
 
-- This RFC does **not** implement `GET /api/sessions/{session_id}/events`. No
-  route, handler, or related code is added in this PR.
-- This RFC does **not** modify `GET /api/sessions/events` (the existing global
-  session-list invalidation stream routed in `api/routes.py` and
-  implemented by `_handle_session_events_stream()` in `api/routes.py`).
+- This contract does **not** change the meaning of `GET /api/sessions/events`
+  (the global session-list invalidation stream implemented by
+  `session_list_events_sse()` in `fastapi_app/routers/realtime.py`).
 - This RFC does **not** replace or modify existing streams: `/api/chat/stream`,
   `/api/approval/stream`, or `/api/clarify/stream`.
 - This RFC does **not** introduce Android, iOS, or PWA client code.
@@ -53,15 +48,15 @@ against current source before any route is added.
 ### Existing global session-list stream
 
 `GET /api/sessions/events` is a **different endpoint** from the one this RFC
-proposes. It is routed in `api/routes.py` and implemented by
-`_handle_session_events_stream()` in `api/routes.py`. It emits bare
+defines. It is routed by FastAPI and implemented by
+`session_list_events_sse()` in `fastapi_app/routers/realtime.py`. It emits bare
 `sessions_changed` events and keepalives for any change to the session list. It
-is a global invalidation signal, not a per-session lifecycle stream. The proposed
+is a global invalidation signal, not a per-session lifecycle stream. The
 `GET /api/sessions/{session_id}/events` is per-session and path-distinct.
 
 ### Heartbeat
 
-`_SSE_HEARTBEAT_INTERVAL_SECONDS = 5` (defined in `api/routes.py`) is the current
+`_HEARTBEAT_SECONDS = 5.0` (defined in `fastapi_app/routers/realtime.py`) is the current
 heartbeat interval for SSE streams. Phase 1 reuses this constant rather than
 adding a separate configurable knob.
 
@@ -72,20 +67,15 @@ Current replay identity is run/stream-scoped:
 Symbols in this inventory were verified against WebUI `master` when this RFC
 was written. Function, constant, and endpoint **names** are the stable anchors:
 this RFC deliberately cites them by name (not by line number) so a source-layout
-shift in `api/routes.py` cannot invalidate the doc or its contract test.
+source-layout shift cannot invalidate the doc or its contract test.
 
-- `_parse_run_journal_event_id()` and `_parse_run_journal_after_seq()` (both in
-  `api/routes.py`) parse the replay cursor from the `after_event_id` /
-  `after_seq` **query params** (not the
-  `Last-Event-ID` header — that header is the *proposed* new-endpoint contract
-  below, §Reconnect).
-- `_runner_event_id()` (in `api/routes.py`) constructs the event `id`
-  field as `stream_id:seq`.
-- SSE frames carry their `id:` via the `_sse_with_id()` helper, emitted on the
-  live `/api/chat/stream` path, on the runner-observe path, and during journal
-  replay — all in `api/routes.py`.
-- `_replay_run_journal()` (in `api/routes.py`) reads events by
-  `(session_id, stream_id)`.
+- `_parse_run_journal_event_id()` and `read_session_run_events()` in
+  `api/run_journal.py` validate and replay the opaque cursor supplied through
+  `Last-Event-ID` or `after_event_id`.
+- Run-journal persistence constructs event identity as `stream_id:seq`.
+- `_sse_frame()` emits the SSE `id:` field, while
+  `_session_activity_sse_response()` coordinates replay and live observation
+  in `fastapi_app/routers/realtime.py`.
 - `api/streaming.py` writes current live agent streams to
   `STREAMS[stream_id]`.
 - `api/streaming.py` appends SSE events to the run journal and carries
@@ -152,7 +142,7 @@ gate rather than inventing values without source support.
 | `run_started` | run journal | Run entered active state. |
 | `run_finished` | run journal | Run reached a terminal state (complete, cancelled, error). |
 | `session_snapshot` | server fallback | Current session projection; emitted when replay is unavailable. |
-| `heartbeat` | server | Keepalive emitted on the `_SSE_HEARTBEAT_INTERVAL_SECONDS` cadence. |
+| `heartbeat` | server | Keepalive emitted on the `_HEARTBEAT_SECONDS` cadence. |
 
 The event-type table is a draft. The final table must be confirmed during
 maintainer review before implementation.
@@ -164,7 +154,7 @@ maintainer review before implementation.
 position.
 
 **`event_id` is opaque to clients.** Its current source-compatible form is
-`stream_id:seq`, as constructed by `_runner_event_id()` in `api/routes.py`.
+`stream_id:seq`, as persisted by `api/run_journal.py`.
 Clients must treat it as an opaque string and must
 not parse or construct cursor values.
 
@@ -182,9 +172,8 @@ Phase 1 uses the **durable run journal** as the replay source for replayable
 events. The live `STREAMS[stream_id]` queue (in `api/streaming.py`) is
 not a reliable replay source because it holds only recent in-memory state.
 
-A future implementation must replay from the run journal via the existing
-`_replay_run_journal()` path (in `api/routes.py`) and fall back to the
-snapshot mechanism when journal entries are unavailable for a given cursor.
+The implementation replays through `read_session_run_events()` and falls back
+to the snapshot mechanism when journal entries are unavailable for a cursor.
 
 ## Snapshot fallback
 
@@ -201,7 +190,7 @@ resync from the snapshot payload.
 
 ## Heartbeat
 
-Phase 1 reuses `_SSE_HEARTBEAT_INTERVAL_SECONDS` (defined in `api/routes.py`) for
+The endpoint reuses `_HEARTBEAT_SECONDS` (defined in the realtime router) for
 heartbeat cadence. A new per-session configurable heartbeat knob is **not** added
 in Phase 1. The implementation PR must follow whatever value the constant holds
 at implementation time; it must not hard-code a separate interval.
@@ -215,10 +204,11 @@ at implementation time; it must not hard-code a separate interval.
 - `meta` fields are for tracing and debug metadata and must not carry
   security-sensitive values in production.
 
-## Implementation gates (open questions)
+## Implementation decisions and follow-up validation
 
-The following decisions must be resolved before any implementation PR for this
-endpoint is accepted:
+The FastAPI implementation uses stream-scoped sequence numbers, durable journal
+replay, session snapshots after invalid cursors, and the same identity checks as
+ordinary session reads. The following remain operational validation concerns:
 
 1. **Sequence semantics**: Maintainer must confirm that stream/run-scoped `seq`
    (not session-global) is acceptable for Phase 1 clients.
@@ -251,11 +241,10 @@ Future implementation work must not:
 Tests in `tests/test_issue4812_session_sse_contract_rfc.py` assert these
 boundaries so review catches regressions against this contract.
 
-## Rollout plan
+## Rollout record
 
-1. This RFC is accepted by maintainer review on #4812.
-2. Retention and event-type decisions are confirmed.
-3. Client proof (browser + non-browser) is provided.
-4. An implementation PR adds `GET /api/sessions/{session_id}/events` following
-   this contract vocabulary.
-5. Implementation PR closes #4812.
+1. The contract vocabulary was recorded before implementation.
+2. FastAPI added `GET /api/sessions/{session_id}/events` with durable replay.
+3. The React client retains SSE compatibility while WebSocket chat uses the
+   same event envelope and run journal.
+4. Browser and non-browser reconnect proof remains part of release validation.

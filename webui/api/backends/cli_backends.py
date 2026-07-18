@@ -1,0 +1,361 @@
+"""Generic CLI-based backend adapter for ARES.
+
+Paperclip pattern: spawn a CLI, capture output, stream to SSE.
+Each adapter is just {name}_{deployment}. No roles, no opinions.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import re
+import shutil
+import subprocess
+import threading
+import time
+from typing import Any, Dict, List, Optional
+
+from .base import AgenticBackend
+
+logger = logging.getLogger(__name__)
+
+
+class CliBackend(AgenticBackend):
+    """Generic backend that spawns a CLI subprocess.
+
+    Subclasses set:
+      - name (e.g. 'claude_local', 'codex_local')
+      - cli_name (e.g. 'claude', 'codex')
+      - display_label (e.g. 'Claude Code', 'OpenAI Codex')
+    """
+
+    cli_name: str = ""
+    display_label: str = ""
+    supports_tools: bool = True
+    supports_persona: bool = False
+
+    # Cache for availability probe
+    _available_cache: bool | None = None
+    _available_ts: float = 0.0
+    _cache_ttl: float = 10.0
+    _version_cache: str | None = None
+
+    def _cli_path(self) -> str:
+        path = shutil.which(self.cli_name)
+        if path:
+            return path
+        return ""
+
+    def _probe(self) -> tuple[bool, str | None]:
+        now = time.time()
+        if self._available_cache is not None and (now - self._available_ts) < self._cache_ttl:
+            return self._available_cache, self._version_cache
+
+        cli = self._cli_path()
+        if not cli:
+            self._available_cache = False
+            self._version_cache = None
+            self._available_ts = now
+            return False, None
+
+        try:
+            result = subprocess.run(
+                [cli, "--version"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                version = (result.stdout.strip() or "").split("\n")[-1].strip()
+                self._available_cache = True
+                self._version_cache = version or "unknown"
+                self._available_ts = now
+                return True, self._version_cache
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+        self._available_cache = False
+        self._version_cache = None
+        self._available_ts = now
+        return False, None
+
+    def is_available(self) -> bool:
+        available, _ = self._probe()
+        return available
+
+    def get_backend_name(self) -> str:
+        return self.display_label or self.name
+
+    def health(self) -> Dict[str, Any]:
+        available, version = self._probe()
+        if available:
+            return {
+                "status": "ok",
+                "latency_ms": 0.0,
+                "message": f"{self.display_label} {version or ''} is available.",
+                "version": version,
+            }
+        return {
+            "status": "error",
+            "latency_ms": 0.0,
+            "message": f"{self.display_label} CLI not found on $PATH.",
+        }
+
+    def identity_projection(self) -> Dict[str, Any]:
+        return {
+            "name": self.display_label,
+            "description": f"{self.display_label} -- {self.name}",
+            "avatar_state": "idle",
+        }
+
+    def capabilities(self) -> Dict[str, Any]:
+        return {
+            "chat": True,
+            "tools": self.supports_tools,
+            "persona": self.supports_persona,
+        }
+
+    def chat_session_support(self) -> Dict[str, Any]:
+        return {"streaming": True, "context_window": 128000, "multimodal": True}
+
+    def settings_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "title": "Model",
+                    "description": f"Model name for {self.display_label}",
+                },
+            },
+        }
+
+    def get_status(self) -> Dict[str, Any]:
+        available = self.is_available()
+        _, version = self._probe()
+        return {
+            "available": available,
+            "label": f"{self.display_label} {version or ''}".strip() if available else f"{self.display_label} (not found)",
+            "version": version,
+        }
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        cli = self._cli_path()
+        if not cli:
+            return {"text": "", "error": f"{self.display_label} CLI not found.", "tool_activity": []}
+
+        config = kwargs.get("config") or kwargs.get("adapter_config") or {}
+        model = _cfg_str(config, "model") or ""
+        timeout_sec = _cfg_int(config, "timeout_sec") or 300
+
+        args = [cli, message]
+        if model:
+            args.extend(["-m", model])
+
+        env = dict(os.environ)
+        try:
+            proc = subprocess.run(
+                args, capture_output=True, text=True,
+                timeout=timeout_sec, env=env,
+            )
+            stdout = proc.stdout or ""
+            stderr = proc.stderr or ""
+            error = None
+            if proc.returncode != 0:
+                error_lines = [
+                    line for line in stderr.strip().split("\n")
+                    if re.search(r"error|exception|traceback|failed", line, re.IGNORECASE)
+                ]
+                if error_lines:
+                    error = "\n".join(error_lines[:5])
+            return {"text": stdout.strip(), "error": error, "tool_activity": []}
+        except subprocess.TimeoutExpired:
+            return {"text": "", "error": f"{self.display_label} turn timed out after {timeout_sec}s.", "tool_activity": []}
+        except Exception as exc:
+            logger.exception(f"{self.display_label} turn failed")
+            return {"text": "", "error": str(exc), "tool_activity": []}
+
+
+# ---------------------------------------------------------------------------
+# Concrete adapters
+# ---------------------------------------------------------------------------
+
+class ClaudeLocalBackend(CliBackend):
+    name = "claude_local"
+    cli_name = "claude"
+    display_label = "Claude Code"
+    supports_tools = True
+
+class CodexLocalBackend(CliBackend):
+    name = "codex_local"
+    cli_name = "codex"
+    display_label = "OpenAI Codex"
+    supports_tools = True
+
+class GeminiLocalBackend(CliBackend):
+    name = "gemini_local"
+    cli_name = "gemini"
+    display_label = "Google Gemini"
+    supports_tools = True
+
+class GrokLocalBackend(CliBackend):
+    name = "grok_local"
+    cli_name = "grok"
+    display_label = "xAI Grok"
+    supports_tools = True
+
+class OpenCodeLocalBackend(CliBackend):
+    name = "opencode_local"
+    cli_name = "opencode"
+    display_label = "OpenCode"
+    supports_tools = True
+
+class CursorLocalBackend(CliBackend):
+    name = "cursor_local"
+    cli_name = "agent"
+    display_label = "Cursor"
+    supports_tools = True
+
+class PiLocalBackend(CliBackend):
+    name = "pi_local"
+    cli_name = "pi"
+    display_label = "Pi Coding Agent"
+    supports_tools = True
+
+
+# ---------------------------------------------------------------------------
+# API-based backends (no CLI needed)
+# ---------------------------------------------------------------------------
+
+class OpenAICloudBackend(AgenticBackend):
+    """OpenAI API backend -- uses the OpenAI Python SDK."""
+    name = "openai_cloud"
+    supports_tools = True
+    supports_persona = False
+
+    def is_available(self) -> bool:
+        try:
+            import openai
+            return bool(os.environ.get("OPENAI_API_KEY"))
+        except ImportError:
+            return False
+
+    def get_backend_name(self) -> str:
+        return "OpenAI"
+
+    def health(self) -> Dict[str, Any]:
+        if self.is_available():
+            return {"status": "ok", "latency_ms": 0.0, "message": "OpenAI API key configured."}
+        return {"status": "error", "latency_ms": 0.0, "message": "OpenAI API key not found."}
+
+    def get_status(self) -> Dict[str, Any]:
+        return {"available": self.is_available(), "label": "OpenAI"}
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        if not self.is_available():
+            return {"text": "", "error": "OpenAI API key not configured.", "tool_activity": []}
+        try:
+            import openai
+            client = openai.OpenAI()
+            response = client.chat.completions.create(
+                model=kwargs.get("model") or "gpt-4o",
+                messages=[{"role": "user", "content": message}],
+            )
+            text = response.choices[0].message.content or ""
+            return {"text": text, "error": None, "tool_activity": []}
+        except Exception as exc:
+            return {"text": "", "error": str(exc), "tool_activity": []}
+
+
+class XAICloudBackend(AgenticBackend):
+    """xAI/Grok API backend."""
+    name = "xai_cloud"
+    supports_tools = False
+    supports_persona = False
+
+    def is_available(self) -> bool:
+        return bool(os.environ.get("XAI_API_KEY"))
+
+    def get_backend_name(self) -> str:
+        return "xAI Grok"
+
+    def health(self) -> Dict[str, Any]:
+        if self.is_available():
+            return {"status": "ok", "latency_ms": 0.0, "message": "xAI API key configured."}
+        return {"status": "error", "latency_ms": 0.0, "message": "xAI API key not found."}
+
+    def get_status(self) -> Dict[str, Any]:
+        return {"available": self.is_available(), "label": "xAI Grok"}
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        if not self.is_available():
+            return {"text": "", "error": "xAI API key not configured.", "tool_activity": []}
+        try:
+            import openai
+            client = openai.OpenAI(
+                api_key=os.environ["XAI_API_KEY"],
+                base_url="https://api.x.ai/v1",
+            )
+            response = client.chat.completions.create(
+                model=kwargs.get("model") or "grok-3",
+                messages=[{"role": "user", "content": message}],
+            )
+            text = response.choices[0].message.content or ""
+            return {"text": text, "error": None, "tool_activity": []}
+        except Exception as exc:
+            return {"text": "", "error": str(exc), "tool_activity": []}
+
+
+class OllamaLocalBackend(AgenticBackend):
+    """Ollama local model backend."""
+    name = "ollama_local"
+    supports_tools = False
+    supports_persona = False
+
+    def is_available(self) -> bool:
+        try:
+            import requests
+            r = requests.get("http://127.0.0.1:11434/api/tags", timeout=2)
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    def get_backend_name(self) -> str:
+        return "Ollama"
+
+    def health(self) -> Dict[str, Any]:
+        if self.is_available():
+            return {"status": "ok", "latency_ms": 0.0, "message": "Ollama is running."}
+        return {"status": "error", "latency_ms": 0.0, "message": "Ollama not reachable on localhost:11434."}
+
+    def get_status(self) -> Dict[str, Any]:
+        return {"available": self.is_available(), "label": "Ollama"}
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        if not self.is_available():
+            return {"text": "", "error": "Ollama not running.", "tool_activity": []}
+        try:
+            import requests
+            r = requests.post(
+                "http://127.0.0.1:11434/api/generate",
+                json={
+                    "model": kwargs.get("model") or "llama3.2",
+                    "prompt": message,
+                    "stream": False,
+                },
+                timeout=120,
+            )
+            data = r.json()
+            return {"text": data.get("response", ""), "error": None, "tool_activity": []}
+        except Exception as exc:
+            return {"text": "", "error": str(exc), "tool_activity": []}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _cfg_str(config: dict, key: str) -> str | None:
+    val = config.get(key)
+    return val if isinstance(val, str) and val.strip() else None
+
+def _cfg_int(config: dict, key: str) -> int | None:
+    val = config.get(key)
+    return int(val) if isinstance(val, (int, float)) else None

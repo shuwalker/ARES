@@ -108,16 +108,16 @@ def test_session_db_close_is_idempotent():
     relies on this — if a future code path closes the same `_session_db`
     after we've swapped it, the second close is a benign no-op.
 
-    Skipped when hermes_state is not on the import path (e.g. on the GH
+    Skipped when ares_state is not on the import path (e.g. on the GH
     Actions runner that only has the WebUI repo, not the agent repo).
     The source-level pin in test_cached_agent_reuse_closes_old_session_db
     catches revert of the close() call; this test only adds runtime
     confirmation when both repos are co-located.
     """
     import importlib.util
-    if importlib.util.find_spec("hermes_state") is None:
-        pytest.skip("hermes_state not on import path (CI-only — agent repo not present)")
-    from hermes_state import SessionDB  # type: ignore
+    if importlib.util.find_spec("ares_state") is None:
+        pytest.skip("ares_state not on import path (CI-only — agent repo not present)")
+    from ares_state import SessionDB  # type: ignore
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpd:

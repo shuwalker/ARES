@@ -1,11 +1,11 @@
 """ARES self-persistence contract and prompt wrapper.
 
-This is the ARES-owned continuity layer above swappable backends. Hermes can
+This is the ARES-owned continuity layer above swappable backends. Ares can
 remain the agent loop and JROS can provide robotics/embodiment primitives and
 canonical persona state. ARES owns the user-facing continuity and presentation
 contract, while identity/persona APIs remain projections of the active runtime.
 
-The module is intentionally pure: no filesystem writes, no Hermes/JROS imports,
+The module is intentionally pure: no filesystem writes, no Ares/JROS imports,
 and no backend internals. It returns JSON-safe data for UI/API surfaces and a
 small prompt section for the active agent run.
 """
@@ -25,11 +25,11 @@ SELF_PERSISTENCE_CAPABILITIES = (
     "embodied_presence",
 )
 
-ADAPTERS = ("hermes", "jros")
+ADAPTERS = ("ares", "jros")
 
 
 _DEFERRED_FORK_RATIONALE = (
-    "ARES talks through stable adapters so Hermes Agent and JROS can be forked, "
+    "ARES talks through stable adapters so Ares Agent and JROS can be forked, "
     "replaced, or absorbed later without rewriting the user-facing ARES layer."
 )
 
@@ -38,7 +38,7 @@ def _active_backend(config: dict[str, Any] | None) -> str:
     raw = ""
     if isinstance(config, dict):
         raw = str(config.get("ares_backend", "") or "").strip().lower()
-    return raw if raw in {"hermes", "jros", "hybrid"} else "hermes"
+    return raw if raw in {"ares", "jros", "hybrid"} else "ares"
 
 
 def should_inject_self_persistence(config: dict[str, Any] | None) -> bool:
@@ -46,7 +46,7 @@ def should_inject_self_persistence(config: dict[str, Any] | None) -> bool:
 
     Enabled by default because this is ARES product behavior, not a backend
     feature. A config value of ``ares_self_persistence_enabled: false`` disables
-    it for diagnostics or strict upstream-Hermes comparison runs.
+    it for diagnostics or strict upstream-Ares comparison runs.
     """
 
     if not isinstance(config, dict):
@@ -67,7 +67,7 @@ def build_self_persistence_contract(config: dict[str, Any] | None) -> dict[str, 
         "adapters": list(ADAPTERS),
         "capabilities": list(SELF_PERSISTENCE_CAPABILITIES),
         "backend_roles": {
-            "hermes": "agent_loop_tools_memory_cron",
+            "ares": "agent_loop_tools_memory_cron",
             "jros": "robotics_embodiment_persona_primitives_canonical_character",
             "ares": "presentation_permissions_task_continuity_user_experience",
         },
@@ -82,7 +82,7 @@ def render_self_persistence_prompt(config: dict[str, Any] | None) -> str:
     capabilities = ", ".join(contract["capabilities"])
     return (
         "ARES owns the experience layer, permissions, and task continuity. "
-        "Hermes supplies the agent loop. "
+        "Ares supplies the agent loop. "
         "JROS supplies robotics, embodiment, and canonical persona identity. "
         "ARES identity APIs are projections of the active runtime, not a canonical soul. "
         "Do not bury task continuity inside a swappable backend.\n\n"

@@ -5,7 +5,7 @@ Covers:
   (a) WebUI session — existing behavior preserved (get_session path).
   (b) state.db-only session — fallback returns a workspace-bearing view.
   (c) Unknown session — KeyError still propagates so callers 404.
-  (d) Static check: every file-manager handler in api/routes.py calls
+  (d) The transport-neutral file service resolves workspaces through
       get_session_for_file_ops, not the raw get_session.
 """
 
@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import io
 import logging
-import re
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,48 +22,14 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ROUTES_PY = ROOT / "api" / "routes.py"
+FILE_OPERATIONS_PY = ROOT / "api" / "file_operations.py"
 
 
-FILE_HANDLERS = [
-    "_handle_folder_download",
-    "_handle_file_raw",
-    "_handle_file_read",
-    "_handle_file_delete",
-    "_handle_file_save",
-    "_handle_file_create",
-    "_handle_file_rename",
-    "_handle_create_dir",
-    "_handle_file_reveal",
-    "_handle_file_path",
-    "_handle_file_open_vscode",
-]
-
-
-def _handler_body(src: str, name: str) -> str:
-    start = src.index(f"def {name}(")
-    # next top-level def or class
-    m = re.search(r"\n(?:def |class )", src[start + 1 :])
-    end = (start + 1 + m.start()) if m else len(src)
-    return src[start:end]
-
-
-def test_routes_file_handlers_use_fallback():
-    src = ROUTES_PY.read_text(encoding="utf-8")
+def test_file_operations_use_external_session_fallback():
+    src = FILE_OPERATIONS_PY.read_text(encoding="utf-8")
     assert "get_session_for_file_ops" in src, "fallback helper must be imported"
-    missing = []
-    for name in FILE_HANDLERS:
-        body = _handler_body(src, name)
-        # Must not call get_session(...) directly inside the handler.
-        # (get_session_for_file_ops also contains "get_session(" as a substring,
-        # so check word-boundary occurrences.)
-        bare = re.findall(r"(?<!_)\bget_session\(", body)
-        # Strip occurrences that are actually get_session_for_file_ops( — the
-        # regex above already excludes underscore prefix, so any remaining
-        # match is a raw get_session call.
-        if bare:
-            missing.append(name)
-    assert not missing, f"raw get_session() still used in: {missing}"
+    assert "def _workspace(session_id" in src
+    assert "get_session(session_id" not in src
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +147,8 @@ def test_file_read_rejects_foreign_profile_session(
 ):
     """A default-profile file route cannot read a named-profile workspace."""
     profiles_module = pytest.importorskip("api.profiles")
-    routes_module = pytest.importorskip("api.routes")
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
     workspace = tmp_path / "named-workspace"
     workspace.mkdir()
     (workspace / "marker.txt").write_text("foreign profile marker")
@@ -193,35 +159,18 @@ def test_file_read_rejects_foreign_profile_session(
     )
     models_module.SESSIONS[session.session_id] = session
 
-    class Handler:
-        command = "GET"
-        headers = {}
-
-        def __init__(self):
-            self.status = None
-            self.headers_sent = []
-            self.wfile = io.BytesIO()
-
-        def send_response(self, code):
-            self.status = code
-
-        def send_header(self, key, value):
-            self.headers_sent.append((key, value))
-
-        def end_headers(self):
-            pass
-
     monkeypatch.setattr(profiles_module, "get_active_profile_name", lambda: "default")
     try:
-        handler = Handler()
-        routes_module._handle_file_read(
-            handler,
-            urlparse(
-                "/api/file?session_id=foreign-profile-file-read&path=marker.txt"
-            ),
-        )
-        assert handler.status == 404
-        assert b"foreign profile marker" not in handler.wfile.getvalue()
+        with TestClient(create_app()) as client:
+            response = client.get(
+                "/api/file",
+                params={
+                    "session_id": "foreign-profile-file-read",
+                    "path": "marker.txt",
+                },
+            )
+        assert response.status_code == 404
+        assert b"foreign profile marker" not in response.content
     finally:
         models_module.SESSIONS.pop(session.session_id, None)
 

@@ -1,6 +1,6 @@
 name: Browser smoke
 
-# Headless page-load smoke: boots the real server.py (agent-free) and loads the
+# Headless page-load smoke: boots the production FastAPI app (agent-free) and loads the
 # key pages in Chromium, failing on any console error or uncaught JS exception.
 # This catches the runtime-JS brick class (const-reassign, function/window
 # collision) that `node --check`, ESLint, and the mocked pytest suite cannot
@@ -15,7 +15,7 @@ on:
   push:
     branches: [main]
 
-# The ARES web app lives entirely under webui/ — the smoke boots webui/server.py.
+# The ARES web app lives entirely under webui/ — the smoke boots Uvicorn.
 defaults:
   run:
     working-directory: webui
@@ -39,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "pyyaml>=6.0" playwright
+          pip install -r requirements.txt playwright
           # Install only the Chromium browser + its system deps.
           python -m playwright install --with-deps chromium
 

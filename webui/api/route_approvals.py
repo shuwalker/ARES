@@ -3,6 +3,9 @@
 State-extraction prelude to the routes.py split tracked in #1907.
 Extracts approval state, not handlers, by design.
 """
+
+from __future__ import annotations
+
 import queue
 import threading
 import uuid
@@ -49,12 +52,61 @@ _GATEWAY_MIRROR_TOKEN = "_gateway_mirror_token"
 _GATEWAY_ENTRY_DATA_TOKEN_KEY = "_webui_mirror_token"
 
 
+def pending_snapshot(session_id: str) -> dict:
+    """Return the oldest pending approval without exposing transport state."""
+    with _lock:
+        reconcile_gateway_pending_mirror_locked(session_id)
+        entries = _pending.get(session_id)
+        if isinstance(entries, list):
+            pending = entries[0] if entries else None
+            count = len(entries)
+        elif entries:
+            pending, count = entries, 1
+        else:
+            pending, count = None, 0
+        if pending is None:
+            gateway_entries = _gateway_queues.get(session_id) or []
+            if gateway_entries:
+                data = getattr(gateway_entries[0], "data", None) or {}
+                if data:
+                    pending, count = data, len(gateway_entries)
+    return {"pending": dict(pending) if pending else None, "pending_count": count}
+
+
 def _approval_sse_subscribe(session_id: str) -> queue.Queue:
     """Register an SSE subscriber for approval events on a given session."""
     q = queue.Queue(maxsize=16)
     with _lock:
         _approval_sse_subscribers.setdefault(session_id, []).append(q)
     return q
+
+
+def approval_sse_subscribe_with_snapshot(session_id: str) -> tuple[queue.Queue, dict]:
+    """Atomically subscribe before reading the initial approval snapshot."""
+
+    q = queue.Queue(maxsize=16)
+    with _lock:
+        _approval_sse_subscribers.setdefault(session_id, []).append(q)
+        reconcile_gateway_pending_mirror_locked(session_id)
+        entries = _pending.get(session_id)
+        if isinstance(entries, list):
+            pending = entries[0] if entries else None
+            count = len(entries)
+        elif entries:
+            pending, count = entries, 1
+        else:
+            pending, count = None, 0
+        if pending is None:
+            gateway_entries = _gateway_queues.get(session_id) or []
+            if gateway_entries:
+                data = getattr(gateway_entries[0], "data", None) or {}
+                if data:
+                    pending, count = data, len(gateway_entries)
+        snapshot = {
+            "pending": dict(pending) if pending else None,
+            "pending_count": count,
+        }
+    return q, snapshot
 
 
 def _approval_sse_unsubscribe(session_id: str, q: queue.Queue) -> None:
@@ -245,3 +297,148 @@ def submit_pending(session_key: str, approval: dict) -> None:
     # built. The gateway blocking path uses _gateway_queues (a separate mechanism
     # managed by check_all_command_guards / register_gateway_notify), which is
     # unaffected by _pending. The _pending dict is only used for UI polling.
+
+
+def resolve_approval_legacy(session_id: str, approval_id: str, choice: str) -> bool:
+    """Resolve one local approval while preserving queued-card ordering."""
+
+    pending = None
+    found_target = False
+    gateway_keys = []
+    with _lock:
+        reconcile_gateway_pending_mirror_locked(session_id)
+        queue_list = _pending.get(session_id)
+        if isinstance(queue_list, list):
+            if approval_id:
+                for index, entry in enumerate(queue_list):
+                    if entry.get("approval_id") == approval_id:
+                        pending = queue_list.pop(index)
+                        found_target = True
+                        break
+            else:
+                pending = queue_list.pop(0) if queue_list else None
+                found_target = pending is not None
+            if not queue_list:
+                _pending.pop(session_id, None)
+        elif queue_list and (not approval_id or queue_list.get("approval_id") == approval_id):
+            pending = _pending.pop(session_id, None)
+            found_target = pending is not None
+
+        if not pending and not approval_id:
+            gateway_queue = _gateway_queues.get(session_id)
+            if gateway_queue:
+                data = getattr(gateway_queue[0], "data", None) or {}
+                gateway_keys = data.get("pattern_keys") or [data.get("pattern_key", "")]
+                found_target = True
+        remaining = _pending.get(session_id)
+        if isinstance(remaining, list) and remaining:
+            _approval_sse_notify_locked(session_id, remaining[0], len(remaining))
+        else:
+            _approval_sse_notify_locked(session_id, None, 0)
+
+    pending_keys = pending.get("pattern_keys") or [pending.get("pattern_key", "")] if pending else []
+    keys = [key for key in [*pending_keys, *gateway_keys] if key]
+    if choice in {"once", "session"}:
+        for key in keys:
+            approve_session(session_id, key)
+    elif choice == "always":
+        for key in keys:
+            approve_session(session_id, key)
+            approve_permanent(key)
+        save_permanent_allowlist(_permanent_approved)
+    gateway_resolved = (
+        resolve_gateway_approval(session_id, choice, resolve_all=False)
+        if found_target or not approval_id
+        else 0
+    )
+    resolved = bool(pending) or bool(gateway_resolved) or not bool(approval_id)
+    if resolved:
+        publish_session_list_changed("attention_resolved")
+    return resolved
+
+
+def _gateway_pending_without_run_id(session_id: str, approval_id: str) -> bool:
+    with _lock:
+        reconcile_gateway_pending_mirror_locked(session_id)
+        entries = _pending.get(session_id)
+        entries = entries if isinstance(entries, list) else ([entries] if entries else [])
+        if approval_id:
+            return any(
+                isinstance(entry, dict)
+                and entry.get("approval_id") == approval_id
+                and entry.get(_GATEWAY_MIRROR_FLAG)
+                for entry in entries
+            )
+        return bool(entries and isinstance(entries[0], dict) and entries[0].get(_GATEWAY_MIRROR_FLAG))
+
+
+def _session_has_pending_approval(session_id: str) -> bool:
+    with _lock:
+        reconcile_gateway_pending_mirror_locked(session_id)
+        return bool(_pending.get(session_id) or _gateway_queues.get(session_id))
+
+
+def respond_approval(session_id: str, approval_id: str, choice: str) -> tuple[dict, int]:
+    """Resolve a local or gateway approval and return its established wire shape."""
+
+    if choice not in {"once", "session", "always", "deny"}:
+        return {"error": f"Invalid choice: {choice}"}, 400
+    try:
+        from api.config import get_config
+        from api.gateway_chat import (
+            _STREAM_RUN_IDS,
+            _gateway_api_key,
+            _gateway_base_url,
+            webui_gateway_chat_enabled,
+        )
+        from api.models import get_session
+
+        session = get_session(session_id)
+        run_id = None
+        active_stream_id = getattr(session, "active_stream_id", None)
+        if active_stream_id:
+            run_id = _STREAM_RUN_IDS.get(active_stream_id)
+        if not run_id and approval_id:
+            run_id = _gateway_mirrored_pending_run_id(session_id, approval_id)
+        if run_id:
+            if not approval_id:
+                return {"error": "approval_id is required for gateway approvals"}, 400
+            from api.runner_client import HttpRunnerClient, RunnerClientError
+
+            try:
+                HttpRunnerClient(
+                    base_url=_gateway_base_url(get_config()),
+                    api_key=_gateway_api_key(),
+                ).respond_approval(run_id, approval_id, choice)
+            except (RunnerClientError, ValueError) as exc:
+                return {"ok": False, "choice": choice, "relayed": True, "error": str(exc)}, 502
+            resolve_approval_legacy(session_id, approval_id, choice)
+            return {"ok": True, "choice": choice, "relayed": True}, 200
+        if webui_gateway_chat_enabled(get_config()) and _gateway_pending_without_run_id(
+            session_id, approval_id
+        ):
+            return {
+                "ok": False,
+                "choice": choice,
+                "relayed": False,
+                "code": "gateway_run_unavailable",
+                "error": (
+                    "Gateway approval could not be relayed because the active run is unavailable. "
+                    "Reopen the session or retry after it reconnects."
+                ),
+            }, 409
+    except Exception:
+        pass
+
+    from api.runtime_adapter import LegacyJournalRuntimeAdapter, runtime_adapter_enabled
+
+    accepted = (
+        LegacyJournalRuntimeAdapter(approval_delegate=resolve_approval_legacy)
+        .respond_approval(session_id, approval_id, choice)
+        .accepted
+        if runtime_adapter_enabled()
+        else resolve_approval_legacy(session_id, approval_id, choice)
+    )
+    if not accepted and not _session_has_pending_approval(session_id):
+        return {"ok": True, "choice": choice, "stale_cleared": True}, 200
+    return {"ok": accepted, "choice": choice}, 200

@@ -1,6 +1,6 @@
 # ARES MCP Bootstrap
 
-ARES should help users wire useful MCP servers into their selected agent backend without making them understand every transport detail first. Hermes Agent is the default backend today, but onboarding must describe the backend generically and install it when missing.
+ARES should help users wire useful MCP servers into their selected agent backend without making them understand every transport detail first. Ares Agent is the default backend today, but onboarding must describe the backend generically and install it when missing.
 
 This bootstrap separates MCP servers into two deployment classes:
 
@@ -41,7 +41,7 @@ python3 tools/mcp-bootstrap/mcp_bootstrap.py \
 - Mode: **local-only**
 - Runs on: Mac with Safari
 - Why: requires real Safari, AppleScript, and a bundled Swift helper
-- Hermes config: stdio via `npx safari-mcp`
+- Ares config: stdio via `npx safari-mcp`
 - Detailed guide: `../safari-mcp-bootstrap/README.md`
 
 ### `filesystem`
@@ -65,7 +65,7 @@ python3 tools/mcp-bootstrap/mcp_bootstrap.py \
 | API/database/stateless utility | Server/homelab/VPS/NAS | Time, databases, search, internal APIs |
 | File service | Wherever the files live | NAS/rack for shared files, local for local-only files |
 
-## Hermes config model
+## Ares config model
 
 Local stdio MCP:
 
@@ -91,7 +91,7 @@ mcp:
         Authorization: Bearer CHANGE_ME
 ```
 
-After changing MCP config, restart Hermes or use `/reload-mcp` when available.
+After changing MCP config, restart Ares or use `/reload-mcp` when available.
 
 ## Security defaults
 
@@ -104,11 +104,11 @@ After changing MCP config, restart Hermes or use `/reload-mcp` when available.
 
 For ARES installers:
 
-1. Install Hermes/ARES.
+1. Install Ares/ARES.
 2. Run this bootstrap with `--catalog --plan`.
 3. Install local-only MCPs on the correct local machine.
 4. Install remote-capable MCPs on the user's server/homelab/VPS/NAS.
 5. Add remote URLs to the selected backend config.
-6. Restart Hermes and verify tools appear.
+6. Restart Ares and verify tools appear.
 
 This gives ARES a repeatable onboarding path for MCPs without requiring every user to already understand MCP internals.

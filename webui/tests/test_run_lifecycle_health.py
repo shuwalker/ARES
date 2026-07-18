@@ -5,7 +5,8 @@ import time
 
 def test_health_counts_active_runs_even_when_no_sse_streams():
     """A worker run can outlive its SSE channel; health must expose the run."""
-    from api import config, routes
+    from api import config
+    from fastapi_app.services import AresCoreService
 
     with config.STREAMS_LOCK:
         config.STREAMS.clear()
@@ -20,10 +21,10 @@ def test_health_counts_active_runs_even_when_no_sse_streams():
         }
 
     try:
-        stream_check = routes._streams_lock_health()
-        run_check = routes._run_lifecycle_health()
+        run_check, status = AresCoreService().health()
 
-        assert stream_check["active_streams"] == 0
+        assert status == 200
+        assert run_check["active_streams"] == 0
         assert run_check["active_runs"] == 1
         assert run_check["oldest_run_age_seconds"] >= 40
         run = run_check["runs"][0]

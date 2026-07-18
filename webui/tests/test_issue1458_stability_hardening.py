@@ -35,14 +35,14 @@ def test_deep_health_exercises_session_project_and_sqlite_paths():
     assert isinstance(checks["sessions"].get("count"), int)
     assert checks["projects"]["status"] == "ok"
     assert isinstance(checks["projects"].get("count"), int)
-    # The isolated test home may not have a Hermes state.db yet. Deep health
+    # The isolated test home may not have a Ares state.db yet. Deep health
     # should still report the state-db probe explicitly so watchdogs can tell
     # whether sqlite was checked or absent.
     assert checks["state_db"]["status"] in {"ok", "missing"}
 
 
-def test_server_raises_fd_soft_limit_when_resource_allows(monkeypatch):
-    import server
+def test_uvicorn_lifecycle_raises_fd_soft_limit_when_resource_allows(monkeypatch):
+    from api import process_runtime
 
     calls = []
 
@@ -57,9 +57,9 @@ def test_server_raises_fd_soft_limit_when_resource_allows(monkeypatch):
         def setrlimit(which, limits):
             calls.append((which, limits))
 
-    monkeypatch.setattr(server, "resource", FakeResource, raising=False)
+    monkeypatch.setattr(process_runtime, "resource", FakeResource, raising=False)
 
-    result = server._raise_fd_soft_limit(target=4096)
+    result = process_runtime.raise_fd_soft_limit(target=4096)
 
     assert result["status"] == "raised"
     assert result["soft"] == 4096

@@ -1,4 +1,7 @@
-"""Hermes Web UI -- Session model and in-memory session store."""
+"""Ares Web UI -- Session model and in-memory session store."""
+
+from __future__ import annotations
+
 import collections
 import copy
 import datetime
@@ -1190,7 +1193,7 @@ class Session:
         self.clear_generation = clear_generation
         self.ares_backend = (
             str(ares_backend).strip().lower()
-            if str(ares_backend or "").strip().lower() in {"hermes", "jros", "hybrid"}
+            if str(ares_backend or "").strip().lower() in {"ares", "jros", "hybrid"}
             else None
         )
         self.gateway_routing = gateway_routing if isinstance(gateway_routing, dict) else None
@@ -1961,12 +1964,12 @@ def process_wakeup_credential_state_fingerprint(session) -> str:
     compare secret material.
     """
     try:
-        hermes_home = _get_profile_home(getattr(session, 'profile', None))
+        ares_home = _get_profile_home(getattr(session, 'profile', None))
     except Exception:
-        hermes_home = Path(os.environ.get('HERMES_HOME') or HOME).expanduser()
+        ares_home = Path(os.environ.get('ARES_HOME') or HOME).expanduser()
     files = []
     for name in ('auth.json', 'config.yaml', 'config.yml', '.env'):
-        path = hermes_home / name
+        path = ares_home / name
         if name == 'auth.json':
             files.append((name, _process_wakeup_auth_store_fingerprint(path)))
             continue
@@ -2003,16 +2006,16 @@ def process_wakeup_pause_credential_state_changed(session) -> bool:
 
 
 def _get_profile_home(profile) -> Path:
-    """Resolve the hermes agent home directory for the given profile.
+    """Resolve the ares agent home directory for the given profile.
 
     Prefers the profile-specific helper from api.profiles; falls back to the
-    HERMES_HOME environment variable or ~/.hermes, expanding ~ correctly.
+    ARES_HOME environment variable or ~/.ares, expanding ~ correctly.
     """
     try:
-        from api.profiles import get_hermes_home_for_profile
-        return Path(get_hermes_home_for_profile(profile))
+        from api.profiles import get_ares_home_for_profile
+        return Path(get_ares_home_for_profile(profile))
     except ImportError:
-        return Path(os.environ.get('HERMES_HOME') or '~/.hermes').expanduser()
+        return Path(os.environ.get('ARES_HOME') or '~/.ares').expanduser()
 
 
 _INTERRUPTED_RECOVERED_WORDING = (
@@ -3226,7 +3229,7 @@ def _repair_stale_pending(session) -> bool:
 
 
 def _sync_sidecar_from_state_db_if_newer(session) -> bool:
-    """Read-side self-heal when WebUI sidecar lags Hermes state.db.
+    """Read-side self-heal when WebUI sidecar lags Ares state.db.
 
     A WebUI stream can lose its terminal ``done``/``stream_end`` path while the
     underlying agent continues writing messages to ``state.db``. In that shape
@@ -4263,8 +4266,8 @@ def _profile_default_model_state(profile=None):
     default_model = ""
     default_provider = None
     try:
-        from api.profiles import get_hermes_home_for_profile
-        config_path = Path(get_hermes_home_for_profile(profile)) / "config.yaml"
+        from api.profiles import get_ares_home_for_profile
+        config_path = Path(get_ares_home_for_profile(profile)) / "config.yaml"
         config_data = _cfg._load_yaml_config_file(config_path)
     except Exception:
         config_data = {}
@@ -4887,13 +4890,13 @@ def get_session_for_file_ops(sid: str):
 
 
 def _active_state_db_path() -> Path:
-    """Return state.db for the active Hermes profile, degrading to HERMES_HOME."""
+    """Return state.db for the active Ares profile, degrading to ARES_HOME."""
     try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+        from api.profiles import get_active_ares_home
+        ares_home = Path(get_active_ares_home()).expanduser().resolve()
     except Exception:
-        hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
-    return hermes_home / 'state.db'
+        ares_home = Path(os.getenv('ARES_HOME', str(HOME / '.ares'))).expanduser().resolve()
+    return ares_home / 'state.db'
 
 
 def _agent_state_db_path(*, profile=None) -> Path | None:
@@ -5046,9 +5049,9 @@ def agent_session_row_exists(session_id: str, *, profile=None) -> bool:
 
 def _sidebar_title_is_generic_webui(title: str | None) -> bool:
     text = ' '.join(str(title or '').split())
-    if text == 'Hermes WebUI':
+    if text == 'Ares WebUI':
         return True
-    prefix = 'Hermes WebUI #'
+    prefix = 'Ares WebUI #'
     return text.startswith(prefix) and text[len(prefix):].isdigit()
 
 
@@ -5195,7 +5198,7 @@ def _apply_sidebar_state_db_overrides(sessions: list[dict]) -> None:
     """
     import os as _os
     try:
-        _cap = int(_os.environ.get("HERMES_WEBUI_STATE_DB_OVERRIDE_TOP_N", "300"))
+        _cap = int(_os.environ.get("ARES_WEBUI_STATE_DB_OVERRIDE_TOP_N", "300"))
     except (TypeError, ValueError):
         _cap = 300
     all_ids = {str(s.get('session_id')) for s in sessions if s.get('session_id')}
@@ -5303,7 +5306,7 @@ def _enrich_sidebar_lineage_metadata(sessions: list[dict]) -> None:
     # 2026-06-21: configurable via env to ease A/B and rollback without a redeploy.
     import os as _os
     try:
-        _cap = int(_os.environ.get("HERMES_WEBUI_LINEAGE_TOP_N", "300"))
+        _cap = int(_os.environ.get("ARES_WEBUI_LINEAGE_TOP_N", "300"))
     except (TypeError, ValueError):
         _cap = 300
     if _cap > 0 and len(sessions) > _cap:
@@ -5862,10 +5865,10 @@ def _normalize_cli_session_source_filter(source_filter) -> str | None:
 
 def _default_claude_code_projects_dir() -> Path | None:
     """Resolve the Claude Code projects directory without touching real home in tests."""
-    override = os.getenv('HERMES_WEBUI_CLAUDE_PROJECTS_DIR')
+    override = os.getenv('ARES_WEBUI_CLAUDE_PROJECTS_DIR')
     if override:
         return Path(override).expanduser()
-    if os.getenv('HERMES_WEBUI_TEST_STATE_DIR'):
+    if os.getenv('ARES_WEBUI_TEST_STATE_DIR'):
         return None
     return Path.home() / '.claude' / 'projects'
 
@@ -6494,19 +6497,19 @@ def _cli_sessions_streaming_freeze_marker():
 
 
 def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool = True):
-    # Use the active WebUI profile's HERMES_HOME to find state.db.
+    # Use the active WebUI profile's ARES_HOME to find state.db.
     # The active profile is determined by what the user has selected in the UI
     # (stored in the server's runtime config). This means:
-    #   - default profile  -> ~/.hermes/state.db
-    #   - named profile X  -> ~/.hermes/profiles/X/state.db
+    #   - default profile  -> ~/.ares/state.db
+    #   - named profile X  -> ~/.ares/profiles/X/state.db
     # We resolve the active profile's home directory rather than just using
-    # HERMES_HOME (which is the server's launch profile, not necessarily the
+    # ARES_HOME (which is the server's launch profile, not necessarily the
     # active one after a profile switch).
     try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+        from api.profiles import get_active_ares_home
+        ares_home = Path(get_active_ares_home()).expanduser().resolve()
     except Exception:
-        hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
+        ares_home = Path(os.getenv('ARES_HOME', str(HOME / '.ares'))).expanduser().resolve()
 
     try:
         from api.profiles import get_active_profile_name
@@ -6514,7 +6517,7 @@ def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool 
     except Exception:
         cli_profile = None
 
-    db_path = hermes_home / 'state.db'
+    db_path = ares_home / 'state.db'
     projects_dir = _default_claude_code_projects_dir()
     # #4842: while a turn streams, freeze the volatile state.db component of the
     # key so per-message writes don't bust the CLI cache and re-run the heavy
@@ -6525,7 +6528,7 @@ def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool 
     _streaming_marker = _cli_sessions_streaming_freeze_marker()
     db_state_key = _streaming_marker if _streaming_marker is not None else _sqlite_file_stat_cache_key(db_path)
     cache_key = (
-        str(hermes_home),
+        str(ares_home),
         str(cli_profile or ''),
         str(db_path),
         str(source_filter or ''),
@@ -6535,7 +6538,7 @@ def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool 
         _path_stat_cache_key(projects_dir),
         _path_stat_cache_key(SESSION_INDEX_FILE),
     )
-    return hermes_home, db_path, cli_profile, cache_key
+    return ares_home, db_path, cli_profile, cache_key
 
 
 def _all_profiles_cli_contexts() -> tuple[list[tuple[Path, Path, str | None]], tuple]:
@@ -6544,7 +6547,7 @@ def _all_profiles_cli_contexts() -> tuple[list[tuple[Path, Path, str | None]], t
         from api.profiles import (
             _profiles_root,
             get_active_profile_name,
-            get_hermes_home_for_profile,
+            get_ares_home_for_profile,
             list_profiles_api,
         )
     except Exception:
@@ -6556,16 +6559,16 @@ def _all_profiles_cli_contexts() -> tuple[list[tuple[Path, Path, str | None]], t
 
     def _add_context(profile_name) -> None:
         try:
-            hermes_home = Path(get_hermes_home_for_profile(profile_name)).expanduser().resolve()
+            ares_home = Path(get_ares_home_for_profile(profile_name)).expanduser().resolve()
         except Exception:
             return
-        home_key = _path_cache_key(hermes_home)
+        home_key = _path_cache_key(ares_home)
         if not home_key or home_key in seen_homes:
             return
         seen_homes.add(home_key)
-        db_path = hermes_home / 'state.db'
+        db_path = ares_home / 'state.db'
         profile_value = str(profile_name or 'default').strip() or 'default'
-        contexts.append((hermes_home, db_path, profile_value))
+        contexts.append((ares_home, db_path, profile_value))
         cache_entries.append((home_key, profile_value, _sqlite_file_stat_cache_key(db_path)))
 
     try:
@@ -6653,7 +6656,7 @@ def _state_projection_sidecar_metadata(sid: str) -> dict:
 
 
 def _load_cli_sessions_uncached(
-    hermes_home: Path,
+    ares_home: Path,
     db_path: Path,
     _cli_profile,
     source_filter=None,
@@ -6694,7 +6697,7 @@ def _load_cli_sessions_uncached(
 
     # Memoize the cron jobs.json job_id -> name map for this scan. The two row
     # loops below each looked up a cron job's friendly name by re-reading and
-    # re-parsing hermes_home/cron/jobs.json PER untitled cron row — up to ~200
+    # re-parsing ares_home/cron/jobs.json PER untitled cron row — up to ~200
     # full-file JSON parses on a cron-heavy profile (#4842). Parse it once,
     # lazily, on the first untitled cron row we hit. {} when absent/unreadable.
     _cron_job_names_cache: list = [None]  # list-as-cell; None = not yet resolved
@@ -6702,7 +6705,7 @@ def _load_cli_sessions_uncached(
         if _cron_job_names_cache[0] is None:
             names: dict[str, str] = {}
             try:
-                _jobs_path = hermes_home / 'cron' / 'jobs.json'
+                _jobs_path = ares_home / 'cron' / 'jobs.json'
                 if _jobs_path.exists():
                     _jobs_data = json.loads(_jobs_path.read_text(encoding='utf-8'))
                     for _j in _jobs_data.get('jobs', []):
@@ -6794,7 +6797,7 @@ def _load_cli_sessions_uncached(
         # imported or renamed in the sidebar), prefer its UI-owned metadata over
         # the state.db projection. This keeps archived cron/tool/API runs hidden
         # even when all_sessions() omits the hidden sidecar and the state row is
-        # re-injected from Hermes state.db (#4397).
+        # re-injected from Ares state.db (#4397).
         _sidecar_meta = _state_projection_sidecar_metadata(sid)
         if _sidecar_meta.get('title'):
             _title = _sidecar_meta['title']
@@ -7018,7 +7021,7 @@ def get_cli_sessions(
         )
         if resolve_supports_include_claude_code:
             resolve_kwargs['include_claude_code'] = include_claude_code
-        hermes_home, db_path, cli_profile, cache_key = _resolve_cli_sessions_context(
+        ares_home, db_path, cli_profile, cache_key = _resolve_cli_sessions_context(
             source_filter,
             **resolve_kwargs,
         )
@@ -7055,7 +7058,7 @@ def get_cli_sessions(
         if loader_supports_include_claude_code:
             load_kwargs['include_claude_code'] = include_claude_code
         return _load_cli_sessions_uncached(
-            hermes_home,
+            ares_home,
             db_path,
             cli_profile,
             **load_kwargs,
@@ -7134,12 +7137,12 @@ def get_state_db_session_messages(
     since_timestamp=None,
     include_inactive: bool = False,
 ) -> list:
-    """Read messages for a Hermes session from state.db.
+    """Read messages for a Ares session from state.db.
 
     When *profile* is supplied, reads from that profile's state.db; otherwise
     falls back to the active profile's state.db.  This generic reader works for
     any session source, including WebUI-origin sessions that were later updated
-    through another Hermes surface such as the Gateway API Server.  When
+    through another Ares surface such as the Gateway API Server.  When
     ``stitch_continuations`` is true it preserves the historical CLI/external-agent
     behavior of walking compatible compression/close parent segments before reading
     messages.
@@ -8389,11 +8392,11 @@ def count_conversation_rounds(sid: str, since: float | None = None) -> int:
     import os, sqlite3, datetime
 
     try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+        from api.profiles import get_active_ares_home
+        ares_home = Path(get_active_ares_home()).expanduser().resolve()
     except Exception:
-        hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
-    db_path = hermes_home / 'state.db'
+        ares_home = Path(os.getenv('ARES_HOME', str(HOME / '.ares'))).expanduser().resolve()
+    db_path = ares_home / 'state.db'
     if not db_path.exists():
         return 0
 
@@ -8466,11 +8469,11 @@ def delete_cli_session(sid) -> bool:
         return False
 
     try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+        from api.profiles import get_active_ares_home
+        ares_home = Path(get_active_ares_home()).expanduser().resolve()
     except Exception:
-        hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
-    db_path = hermes_home / 'state.db'
+        ares_home = Path(os.getenv('ARES_HOME', str(HOME / '.ares'))).expanduser().resolve()
+    db_path = ares_home / 'state.db'
     if not db_path.exists():
         return False
 

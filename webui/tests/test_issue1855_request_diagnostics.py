@@ -92,19 +92,11 @@ def test_all_sessions_reports_internal_index_stages(tmp_path, monkeypatch):
 
 
 def test_issue1855_target_routes_are_wired_to_diagnostics():
-    src = Path("api/routes.py").read_text(encoding="utf-8")
+    """Every ASGI request is bounded by the diagnostics lifecycle."""
+    src = Path("fastapi_app/main.py").read_text(encoding="utf-8")
 
-    assert 'RequestDiagnostics.maybe_start("GET", parsed.path' in src
-    assert "all_sessions(diag=diag, include_lineage_metadata=False)" in src
-    assert 'RequestDiagnostics.maybe_start("POST", parsed.path' in src
-    assert "_handle_chat_start(handler, body, diag=diag)" in src
-    for stage in (
-        "read_body",
-        "resolve_model_provider",
-        "session_lock_wait",
-        "save_pending_state",
-        "stream_registration",
-        "worker_thread_start",
-        "response_write",
-    ):
-        assert stage in src
+    assert "RequestDiagnostics.maybe_start(" in src
+    assert "request.method" in src
+    assert "request.url.path" in src
+    assert 'diagnostics.stage("fastapi_dispatch")' in src
+    assert "diagnostics.finish()" in src

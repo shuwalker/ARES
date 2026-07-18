@@ -2,11 +2,11 @@
 local bridge fallback.
 
 The JROS backend prefers a JROS gateway server (`jaeger gateway`) over
-HTTP, mirroring the Hermes Gateway bridge; with no gateway reachable and
+HTTP, mirroring the Ares Gateway bridge; with no gateway reachable and
 ARES_JROS_DIR pointing at a local checkout, it talks to `jaeger bridge`
 instead. These tests pin:
   * routes still dispatch the jros backend to the gateway worker,
-  * hybrid still falls through to the normal Hermes worker,
+  * hybrid still falls through to the normal Ares worker,
   * gateway URL resolution (env > config > localhost default),
   * a full turn against a REAL (in-test, faked-JROS) HTTP gateway —
     SSE relay, tool events, session persistence, stream teardown,
@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def test_jros_backend_selects_gateway_worker_without_health_ping(monkeypatch):
-    from api import backend_selector, routes
+    from api.backends.jros import JROSBackend
 
     def fake_get_config():
         return {"ares_backend": "jros"}
@@ -40,26 +40,20 @@ def test_jros_backend_selects_gateway_worker_without_health_ping(monkeypatch):
 
     fake_bridge.run_jros_streaming = fake_run_jros_streaming
     monkeypatch.setitem(sys.modules, "api.jros_gateway_chat", fake_bridge)
-    monkeypatch.setattr(routes, "get_config", fake_get_config)
-    monkeypatch.setattr(routes, "webui_gateway_chat_enabled", lambda _cfg: False)
-    monkeypatch.setattr(backend_selector, "is_jros_available", lambda: False)
-
-    worker, is_gateway, is_jros = routes._select_chat_worker_target()
+    worker, is_gateway, is_jros = JROSBackend().get_worker_target()
 
     assert worker is fake_run_jros_streaming
     assert is_gateway is False
     assert is_jros is True
 
 
-def test_hybrid_backend_keeps_normal_hermes_worker(monkeypatch):
-    from api import routes
+def test_hybrid_backend_keeps_normal_ares_worker(monkeypatch):
+    from api.backends.hybrid import HybridBackend
+    from api.streaming import _run_agent_streaming
 
-    monkeypatch.setattr(routes, "get_config", lambda: {"ares_backend": "hybrid"})
-    monkeypatch.setattr(routes, "webui_gateway_chat_enabled", lambda _cfg: False)
+    worker, is_gateway, is_jros = HybridBackend().get_worker_target()
 
-    worker, is_gateway, is_jros = routes._select_chat_worker_target()
-
-    assert worker is routes._run_agent_streaming
+    assert worker is _run_agent_streaming
     assert is_gateway is False
     assert is_jros is False
 
@@ -138,7 +132,7 @@ class _FakeJrosGateway(BaseHTTPRequestHandler):
         self.end_headers()
         frames = [
             'event: jros.status\ndata: {"status": "running", "booted": true}\n\n',
-            'event: hermes.tool.progress\n'
+            'event: ares.tool.progress\n'
             'data: {"event": "tool.completed", "tool": "jros", "status": "completed", "label": "  \\u25b8 demo(x)"}\n\n',
             'data: ' + json.dumps({
                 "object": "chat.completion.chunk",
@@ -154,11 +148,55 @@ class _FakeJrosGateway(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
-def _start_fake_gateway():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeJrosGateway)
+def _start_fake_gateway(handler_cls=_FakeJrosGateway):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+class _FakeJrosGatewaySecondTurn(BaseHTTPRequestHandler):
+    """A second canned turn with different usage, for accumulation tests."""
+
+    seen: list[dict] = []
+
+    def log_message(self, *args):  # keep pytest output clean
+        pass
+
+    def do_GET(self):
+        if self.path.rstrip("/") == "/v1/health":
+            body = json.dumps({"ok": True, "backend": "jros", "booted": True,
+                               "model": "fake-model", "provider": "local",
+                               "instance": "test"}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        type(self).seen.append({"path": self.path, "body": payload})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        frames = [
+            'data: ' + json.dumps({
+                "object": "chat.completion.chunk",
+                "choices": [{"index": 0,
+                             "delta": {"role": "assistant", "content": "JROS says hi again"},
+                             "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 4},
+            }) + "\n\n",
+            "data: [DONE]\n\n",
+        ]
+        for frame in frames:
+            self.wfile.write(frame.encode("utf-8"))
+        self.wfile.flush()
 
 
 def test_jros_gateway_turn_streams_and_persists_session(monkeypatch):
@@ -219,11 +257,78 @@ def test_jros_gateway_turn_streams_and_persists_session(monkeypatch):
         assert saved.messages[-1]["model_provider"] == "test-provider"
         assert saved.model == "test-model"
         assert saved.model_provider == "test-provider"
+        # Regression test for the usage-persistence fix: JaegerAI turns used to
+        # compute this usage dict and only stream it to the browser, never
+        # save it onto the Session — insights.py's cost/token dashboard would
+        # therefore show $0/0 tokens for every JaegerAI session.
+        assert saved.input_tokens == 5
+        assert saved.output_tokens == 3
         assert stream_id not in config.STREAMS
         assert stream_id not in config.CANCEL_FLAGS
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_jros_gateway_usage_accumulates_across_turns(monkeypatch):
+    """Two turns must sum their usage, not have the second overwrite the first.
+
+    JaegerAI's usage dict is per-turn (an OpenAI-style chunk's
+    prompt/completion_tokens), unlike the "ares" backend's Agent SDK counters
+    which are already session-cumulative. A naive copy of the ares backend's
+    overwrite pattern would silently under-report every multi-turn session to
+    just its last turn's numbers.
+    """
+    from api import config
+    from api.config import create_stream_channel, register_stream_owner
+    from api.models import Session, get_session
+    from api import jros_gateway_chat
+
+    server1, base1 = _start_fake_gateway(_FakeJrosGateway)
+    _FakeJrosGateway.seen = []
+    server2, base2 = _start_fake_gateway(_FakeJrosGatewaySecondTurn)
+    _FakeJrosGatewaySecondTurn.seen = []
+    try:
+        sid = "jrosgw-accum"
+        session = Session(session_id=sid, messages=[])
+        session.save()
+
+        for turn, base in enumerate((base1, base2), start=1):
+            stream_id = f"stream-{sid}-{turn}"
+            # get_session() (not Session.load()) so the mutated object is the
+            # same one the process-wide SESSIONS cache holds — otherwise the
+            # next run_jros_streaming() call reads back the stale pre-turn
+            # cached object and silently no-ops the merge (cache staleness is
+            # only detected via message-count drift, which this doesn't cause).
+            saved = get_session(sid)
+            saved.active_stream_id = stream_id
+            saved.pending_user_message = "hello jros"
+            saved.save()
+
+            monkeypatch.setenv("ARES_JROS_GATEWAY_URL", base)
+            stream = create_stream_channel()
+            register_stream_owner(stream_id, sid)
+            with config.STREAMS_LOCK:
+                config.STREAMS[stream_id] = stream
+
+            jros_gateway_chat.run_jros_streaming(
+                sid,
+                "hello jros",
+                "test-model",
+                "/tmp",
+                stream_id,
+                [],
+                model_provider="test-provider",
+            )
+
+        final = Session.load(sid)
+        assert final.input_tokens == 5 + 7
+        assert final.output_tokens == 3 + 4
+    finally:
+        server1.shutdown()
+        server1.server_close()
+        server2.shutdown()
+        server2.server_close()
 
 
 def test_offline_gateway_surfaces_actionable_apperror(monkeypatch, tmp_path):
@@ -482,10 +587,10 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     assert status["jros_mode"] == "local"
 
 
-def test_ares_capabilities_follow_backend_and_hermes_tools(monkeypatch):
+def test_ares_capabilities_follow_backend_and_ares_tools(monkeypatch):
     from api import ares_capabilities
 
-    monkeypatch.setattr(ares_capabilities, "_jros_hermes_tools_enabled", lambda: False)
+    monkeypatch.setattr(ares_capabilities, "_jros_ares_tools_enabled", lambda: False)
     jros_caps = ares_capabilities.capabilities_for_backend("jros")
     assert jros_caps["character_persona_editing"] is True
     assert jros_caps["cloud_provider_model_settings"] is False
@@ -494,12 +599,12 @@ def test_ares_capabilities_follow_backend_and_hermes_tools(monkeypatch):
     assert jros_caps["delegate_task"] is False
     assert jros_caps["kanban"] is False
 
-    monkeypatch.setattr(ares_capabilities, "_jros_hermes_tools_enabled", lambda: True)
+    monkeypatch.setattr(ares_capabilities, "_jros_ares_tools_enabled", lambda: True)
     assert ares_capabilities.capabilities_for_backend("jros")["kanban"] is True
 
-    hermes_caps = ares_capabilities.capabilities_for_backend("hermes")
-    assert hermes_caps["cloud_provider_model_settings"] is True
-    assert hermes_caps["mcp_server_config"] is True
-    assert hermes_caps["messaging_gateway"] is True
-    assert hermes_caps["delegate_task"] is True
-    assert hermes_caps["character_persona_editing"] is False
+    ares_caps = ares_capabilities.capabilities_for_backend("ares")
+    assert ares_caps["cloud_provider_model_settings"] is True
+    assert ares_caps["mcp_server_config"] is True
+    assert ares_caps["messaging_gateway"] is True
+    assert ares_caps["delegate_task"] is True
+    assert ares_caps["character_persona_editing"] is False

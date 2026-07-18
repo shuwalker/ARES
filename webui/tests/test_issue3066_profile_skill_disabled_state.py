@@ -29,7 +29,7 @@ def _load_config(home: Path):
 @requires_agent_modules
 def test_skills_list_reads_disabled_state_from_active_profile(monkeypatch, tmp_path):
     """#3066: the skill directory and disabled toggle state must use the same profile."""
-    from api import profiles, routes
+    from api import profiles, skills_store
 
     default_home = tmp_path / "default"
     active_home = tmp_path / "profiles" / "auditor"
@@ -38,10 +38,10 @@ def test_skills_list_reads_disabled_state_from_active_profile(monkeypatch, tmp_p
     _write_config(default_home, ["alpha"])
     _write_config(active_home, ["beta"])
 
-    monkeypatch.setenv("HERMES_HOME", str(default_home))
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: active_home)
+    monkeypatch.setenv("ARES_HOME", str(default_home))
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: active_home)
 
-    listed = routes._skills_list_from_dir(active_home / "skills")["skills"]
+    listed = skills_store.list_skills()["skills"]
     by_name = {skill["name"]: skill for skill in listed}
 
     assert by_name["alpha"]["disabled"] is False
@@ -50,8 +50,8 @@ def test_skills_list_reads_disabled_state_from_active_profile(monkeypatch, tmp_p
 
 @requires_agent_modules
 def test_skill_toggle_writes_active_profile_config_not_default(monkeypatch, tmp_path):
-    """#3066: WebUI toggle writes the active profile config, not default HERMES_HOME."""
-    from api import profiles, routes
+    """#3066: WebUI toggle writes the active profile config, not default ARES_HOME."""
+    from api import config, profiles, skills_store
 
     default_home = tmp_path / "default"
     active_home = tmp_path / "profiles" / "trader"
@@ -59,18 +59,16 @@ def test_skill_toggle_writes_active_profile_config_not_default(monkeypatch, tmp_
     _write_config(default_home, [])
     _write_config(active_home, ["gamma"])
 
-    monkeypatch.setenv("HERMES_HOME", str(default_home))
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: active_home)
-    monkeypatch.setattr(routes, "reload_config", lambda: None)
-    monkeypatch.setattr(routes, "j", lambda _handler, payload: payload)
-    monkeypatch.setattr(routes, "bad", lambda _handler, message, status=400: {"error": message, "status": status})
+    monkeypatch.setenv("ARES_HOME", str(default_home))
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: active_home)
+    monkeypatch.setattr(config, "reload_config", lambda: None)
 
-    enabled_response = routes._handle_skill_toggle(None, {"name": "gamma", "enabled": True})
+    enabled_response = skills_store.toggle_skill("gamma", True)
     assert enabled_response == {"ok": True, "name": "gamma", "enabled": True}
     assert _load_config(active_home)["skills"]["disabled"] == []
     assert _load_config(default_home)["skills"]["disabled"] == []
 
-    disabled_response = routes._handle_skill_toggle(None, {"name": "gamma", "enabled": False})
+    disabled_response = skills_store.toggle_skill("gamma", False)
     assert disabled_response == {"ok": True, "name": "gamma", "enabled": False}
     assert _load_config(active_home)["skills"]["disabled"] == ["gamma"]
     assert _load_config(default_home)["skills"]["disabled"] == []

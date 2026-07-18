@@ -34,14 +34,9 @@ def test_streaming_uses_webui_platform():
     )
 
 
-def test_routes_uses_webui_platform_for_all_agent_calls():
-    """api/routes.py must use platform='webui' for all AIAgent instantiations."""
-    routes_py = _load_source("api/routes.py")
-    webui_count = _count_platform_kwargs(routes_py, "webui")
-    cli_count = _count_platform_kwargs(routes_py, "cli")
-    assert cli_count == 0, (
-        f"routes.py still has {cli_count} platform='cli' AIAgent call(s); convert to 'webui'"
-    )
-    assert webui_count >= 2, (
-        f"routes.py expected ≥2 platform='webui' calls, found {webui_count}"
-    )
+def test_fastapi_transport_does_not_construct_agents_directly():
+    """Framework adapters delegate generation to the canonical chat runtime."""
+    adapters = _load_source("fastapi_app/adapters/frameworks.py")
+    realtime = _load_source("fastapi_app/realtime.py")
+    assert "AIAgent(" not in adapters + realtime
+    assert "from api.chat_runtime import start_session_turn" in adapters

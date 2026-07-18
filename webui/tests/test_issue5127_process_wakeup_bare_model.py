@@ -10,9 +10,9 @@ from unittest.mock import patch
 
 class TestIssue5127CustomProviderBareSuffixRepair:
     def test_fast_path_repairs_bare_suffix_to_profile_default(self):
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             result = _resolve_compatible_session_model_state(
                 "grok-composer-2.5-fast",
                 "custom:my-proxy",
@@ -26,9 +26,9 @@ class TestIssue5127CustomProviderBareSuffixRepair:
 
     def test_fast_path_skips_repair_when_profile_provider_mismatches(self):
         """Regression: custom:other-proxy must not inherit my-proxy's qualified default."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             result = _resolve_compatible_session_model_state(
                 "grok-composer-2.5-fast",
                 "custom:other-proxy",
@@ -41,9 +41,9 @@ class TestIssue5127CustomProviderBareSuffixRepair:
         assert result == ("grok-composer-2.5-fast", "custom:other-proxy", False)
 
     def test_fast_path_repairs_generic_custom_provider(self):
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             result = _resolve_compatible_session_model_state(
                 "some-model",
                 "custom",
@@ -55,9 +55,9 @@ class TestIssue5127CustomProviderBareSuffixRepair:
         assert result == ("vendor/some-model", "custom", True)
 
     def test_fast_path_does_not_rewrite_unrelated_bare_model(self):
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             result = _resolve_compatible_session_model_state(
                 "other-model",
                 "custom:my-proxy",
@@ -69,9 +69,9 @@ class TestIssue5127CustomProviderBareSuffixRepair:
         assert result == ("other-model", "custom:my-proxy", False)
 
     def test_fast_path_keeps_qualified_model_unchanged(self):
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             result = _resolve_compatible_session_model_state(
                 "x-ai/grok-composer-2.5-fast",
                 "custom:my-proxy",
@@ -84,9 +84,9 @@ class TestIssue5127CustomProviderBareSuffixRepair:
 
     def test_slow_path_repairs_bare_suffix_to_profile_default_for_custom_provider(self):
         """Regression #5225: async continuations may arrive without usable model_provider."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "active_provider": "openrouter",
                 "default_model": "openai/gpt-5.5",
@@ -105,7 +105,7 @@ class TestIssue5127CustomProviderBareSuffixRepair:
 
     def test_fast_path_repairs_non_default_bare_model_of_custom_provider(self):
         """Regression: non-default bare model must be dynamically repaired if listed under the custom provider."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
         _mock_cfg = {
             "custom_providers": [
@@ -120,7 +120,7 @@ class TestIssue5127CustomProviderBareSuffixRepair:
             ]
         }
 
-        with patch("api.routes.get_available_models") as mock_catalog, \
+        with patch("api.model_resolution.get_available_models") as mock_catalog, \
              patch("api.config.cfg", _mock_cfg):
             result = _resolve_compatible_session_model_state(
                 "grok-composer-2.5-fast",
@@ -136,7 +136,7 @@ class TestIssue5127CustomProviderBareSuffixRepair:
 
     def test_slow_path_repairs_non_default_bare_model_of_custom_provider(self):
         """Regression: slow-path must also dynamically repair non-default bare model if listed under custom provider."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
         _mock_cfg = {
             "custom_providers": [
@@ -151,7 +151,7 @@ class TestIssue5127CustomProviderBareSuffixRepair:
             ]
         }
 
-        with patch("api.routes.get_available_models") as mock_catalog, \
+        with patch("api.model_resolution.get_available_models") as mock_catalog, \
              patch("api.config.cfg", _mock_cfg):
             mock_catalog.return_value = {
                 "active_provider": "openrouter",
@@ -171,9 +171,9 @@ class TestIssue5127CustomProviderBareSuffixRepair:
         assert result == ("x-ai/grok-composer-2.5-fast", "custom:my-proxy", True)
 
     def test_slow_path_does_not_rewrite_unrelated_bare_model_for_custom_provider(self):
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "active_provider": "openrouter",
                 "default_model": "openai/gpt-5.5",
@@ -192,9 +192,9 @@ class TestIssue5127CustomProviderBareSuffixRepair:
 
     def test_openai_codex_stale_openai_slash_still_uses_slow_path(self):
         """Regression: openai/... under openai-codex must not take bare fast return."""
-        from api.routes import _resolve_compatible_session_model_state
+        from api.model_resolution import _resolve_compatible_session_model_state
 
-        with patch("api.routes.get_available_models") as mock_catalog:
+        with patch("api.model_resolution.get_available_models") as mock_catalog:
             mock_catalog.return_value = {
                 "active_provider": "openai-codex",
                 "default_model": "gpt-5.5",
@@ -214,7 +214,7 @@ class TestIssue5127CustomProviderBareSuffixRepair:
 
 class TestRepairBareCustomProviderModel:
     def test_uses_config_order_when_suffixes_collide(self):
-        from api.routes import _repair_bare_custom_provider_model
+        from api.model_resolution import _repair_bare_custom_provider_model
 
         custom_cfg = [
             {
@@ -230,7 +230,7 @@ class TestRepairBareCustomProviderModel:
             ) == "org-a/shared-suffix"
 
     def test_repairs_display_name_provider_via_slug(self):
-        from api.routes import _repair_bare_custom_provider_model
+        from api.model_resolution import _repair_bare_custom_provider_model
 
         cfg = {
             "custom_providers": [
@@ -247,7 +247,7 @@ class TestRepairBareCustomProviderModel:
         ) == "x-ai/grok-composer-2.5-fast"
 
     def test_repairs_list_form_models_catalog(self):
-        from api.routes import _repair_bare_custom_provider_model
+        from api.model_resolution import _repair_bare_custom_provider_model
 
         cfg = {
             "custom_providers": [
@@ -268,7 +268,7 @@ class TestRepairBareCustomProviderModel:
 
     def test_uses_get_config_when_config_obj_is_none(self):
         from unittest.mock import patch
-        from api.routes import _repair_bare_custom_provider_model
+        from api.model_resolution import _repair_bare_custom_provider_model
 
         cfg = {
             "custom_providers": [
@@ -289,7 +289,7 @@ class TestRepairBareCustomProviderModel:
         mock_get_config.assert_called_once_with()
 
     def test_malformed_custom_provider_name_fails_closed(self):
-        from api.routes import _repair_bare_custom_provider_model
+        from api.model_resolution import _repair_bare_custom_provider_model
 
         bad_cfg = {
             "custom_providers": [
@@ -304,7 +304,7 @@ class TestRepairBareCustomProviderModel:
         ) == "vendor/ok-model"
 
     def test_profile_config_scoped_not_global_cfg(self):
-        from api.routes import _repair_bare_custom_provider_model
+        from api.model_resolution import _repair_bare_custom_provider_model
 
         profile_cfg = {
             "custom_providers": [
@@ -332,7 +332,7 @@ class TestRepairBareCustomProviderModel:
 
 class TestReadProfileModelConfigWithExplicitProvider:
     def test_returns_profile_default_when_session_has_model_provider(self, tmp_path, monkeypatch):
-        from api.routes import _read_profile_model_config
+        from api.model_resolution import _read_profile_model_config
 
         profile_home = tmp_path / "prof"
         profile_home.mkdir()
@@ -345,7 +345,7 @@ class TestReadProfileModelConfigWithExplicitProvider:
             profile = "testprof"
 
         monkeypatch.setattr(
-            "api.profiles.get_hermes_home_for_profile",
+            "api.profiles.get_ares_home_for_profile",
             lambda _p: str(profile_home),
         )
 
@@ -356,7 +356,7 @@ class TestReadProfileModelConfigWithExplicitProvider:
     def test_returns_none_default_when_session_provider_differs_from_profile(
         self, tmp_path, monkeypatch,
     ):
-        from api.routes import _read_profile_model_config
+        from api.model_resolution import _read_profile_model_config
 
         profile_home = tmp_path / "prof"
         profile_home.mkdir()
@@ -369,7 +369,7 @@ class TestReadProfileModelConfigWithExplicitProvider:
             profile = "testprof"
 
         monkeypatch.setattr(
-            "api.profiles.get_hermes_home_for_profile",
+            "api.profiles.get_ares_home_for_profile",
             lambda _p: str(profile_home),
         )
 

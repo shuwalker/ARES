@@ -24,7 +24,7 @@ def test_resolve_default_workspace_falls_back_to_existing_home_work(monkeypatch,
 
     monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
-    monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_DEFAULT_WORKSPACE", raising=False)
     _reject_workspace_candidate(monkeypatch, bad_candidate)
 
     resolved = config.resolve_default_workspace(str(bad_candidate))
@@ -44,7 +44,7 @@ def test_save_settings_rewrites_bad_default_workspace_to_fallback(monkeypatch, t
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
     monkeypatch.setattr(config, "SETTINGS_FILE", settings_file)
     monkeypatch.setattr(config, "DEFAULT_WORKSPACE", preferred)
-    monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_DEFAULT_WORKSPACE", raising=False)
     _reject_workspace_candidate(monkeypatch, bad_candidate)
 
     saved = config.save_settings({"default_workspace": str(bad_candidate)})
@@ -60,7 +60,7 @@ def test_resolve_default_workspace_creates_desktop_ares_when_missing(monkeypatch
     state_dir = tmp_path / "state"
     monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
-    monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_DEFAULT_WORKSPACE", raising=False)
     # Neither ~/work nor ~/workspace exists yet
     resolved = config.resolve_default_workspace(None)
     assert resolved == (tmp_path / "Desktop" / "ARES").resolve()
@@ -74,7 +74,7 @@ def test_resolve_default_workspace_prefers_existing_home_workspace_over_desktop(
     (tmp_path / "workspace").mkdir()
     monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
-    monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_DEFAULT_WORKSPACE", raising=False)
     resolved = config.resolve_default_workspace(None)
     assert resolved == (tmp_path / "workspace").resolve()
 
@@ -85,7 +85,7 @@ def test_resolve_default_workspace_raises_when_all_candidates_fail(monkeypatch, 
     state_dir = tmp_path / "state"
     monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
-    monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_DEFAULT_WORKSPACE", raising=False)
     monkeypatch.setattr(config, "_ensure_workspace_dir", lambda path: False)
 
     with pytest.raises(RuntimeError, match="Could not create or access"):
@@ -99,20 +99,20 @@ def test_workspace_candidates_deduplicates_home_workspace(monkeypatch, tmp_path)
     state_dir = tmp_path / "state"
     monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
-    monkeypatch.delenv("HERMES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_DEFAULT_WORKSPACE", raising=False)
     candidates = config._workspace_candidates(None)
     paths = [str(p) for p in candidates]
     assert paths.count(str(ws.resolve())) <= 1, "~/workspace must not appear twice"
 
 
 def test_env_var_workspace_takes_priority_over_passed_raw(monkeypatch, tmp_path):
-    """HERMES_WEBUI_DEFAULT_WORKSPACE env var overrides a None raw arg but not a valid one."""
+    """ARES_WEBUI_DEFAULT_WORKSPACE env var overrides a None raw arg but not a valid one."""
     env_ws = tmp_path / "env_workspace"
     env_ws.mkdir()
     state_dir = tmp_path / "state"
     monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.setattr(config, "STATE_DIR", state_dir)
-    monkeypatch.setenv("HERMES_WEBUI_DEFAULT_WORKSPACE", str(env_ws))
+    monkeypatch.setenv("ARES_WEBUI_DEFAULT_WORKSPACE", str(env_ws))
     # When raw is None, env var should be used
     resolved = config.resolve_default_workspace(None)
     assert resolved == env_ws.resolve()
@@ -130,7 +130,7 @@ def test_ensure_workspace_dir_returns_false_for_unwritable_path(monkeypatch, tmp
 
 
 def test_env_var_wins_over_settings_json_on_startup(monkeypatch, tmp_path):
-    """HERMES_WEBUI_DEFAULT_WORKSPACE must not be overridden by settings.json at startup.
+    """ARES_WEBUI_DEFAULT_WORKSPACE must not be overridden by settings.json at startup.
 
     Regression for GitHub issue #609: Docker deployments set the env var to a
     volume mount, but settings.json from a previous container run used to
@@ -155,12 +155,12 @@ def test_env_var_wins_over_settings_json_on_startup(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "SETTINGS_FILE", settings_file)
     # Simulate DEFAULT_WORKSPACE already set correctly from env var at import time
     monkeypatch.setattr(config, "DEFAULT_WORKSPACE", env_ws.resolve())
-    monkeypatch.setenv("HERMES_WEBUI_DEFAULT_WORKSPACE", str(env_ws))
+    monkeypatch.setenv("ARES_WEBUI_DEFAULT_WORKSPACE", str(env_ws))
 
     # Execute the patched startup block logic inline — env var present → skip override
     current_ws = config.DEFAULT_WORKSPACE
     startup_settings = config.load_settings()
-    if not _os.getenv("HERMES_WEBUI_DEFAULT_WORKSPACE"):
+    if not _os.getenv("ARES_WEBUI_DEFAULT_WORKSPACE"):
         # This branch must be skipped because env var is set
         current_ws = config.resolve_default_workspace(
             startup_settings.get("default_workspace")
@@ -169,5 +169,5 @@ def test_env_var_wins_over_settings_json_on_startup(monkeypatch, tmp_path):
     # env var was set → the if block was skipped → env path wins over settings.json
     assert current_ws == env_ws.resolve(), (
         f"Expected {env_ws.resolve()}, got {current_ws}. "
-        "settings.json must not override HERMES_WEBUI_DEFAULT_WORKSPACE."
+        "settings.json must not override ARES_WEBUI_DEFAULT_WORKSPACE."
     )

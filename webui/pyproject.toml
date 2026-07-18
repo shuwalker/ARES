@@ -1,13 +1,11 @@
-# Hermes WebUI — Python tooling config.
+# Ares WebUI — Python tooling config.
 #
-# This project is NOT a packaged distribution. The app is a plain Python + vanilla
-# JavaScript server with no build step and no bundler (see AGENTS.md / README). This
-# file exists only to configure dev tooling — currently ruff, used as a curated,
+# This project is NOT a packaged Python distribution. The controller is Python and
+# the frontend is built independently from frontend/ with React and Vite. This file
+# exists only to configure Python tooling — currently ruff, used as a curated,
 # forward-looking lint gate over the Python codebase. There is intentionally no
 # [build-system] section: nothing pip-installs this directory.
 #
-# The ruff gate is the Python twin of the ESLint runtime guard (package.json
-# `lint:runtime` + eslint.runtime-guard.config.mjs + tests/test_static_js_runtime_lint.py).
 # It is enforced on NEW/CHANGED code only — see scripts/ruff_lint.py and TESTING.md
 # > "Python lint gate (ruff)". The existing tree carries a cosmetic backlog (mostly
 # unused-import F401) that is deliberately NOT reformatted here; cleaning it is a
@@ -20,7 +18,7 @@ target-version = "py311"
 # generated trees. (These are belt-and-suspenders; the gate passes explicit files.)
 extend-exclude = [
     "node_modules",
-    "static",
+    "frontend/dist",
     ".git",
     "scripts/windows",
     "scripts/wsl",

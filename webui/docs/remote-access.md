@@ -1,11 +1,11 @@
 # Remote access
 
-How to reach a self-hosted Hermes WebUI from another machine or your phone.
+How to reach a self-hosted Ares WebUI from another machine or your phone.
 
 ## Accessing from a remote machine
 
 The server binds to `127.0.0.1` by default (loopback only). If you are running
-Hermes on a VPS or remote server, use an SSH tunnel from your local machine:
+Ares on a VPS or remote server, use an SSH tunnel from your local machine:
 
 ```bash
 ssh -N -L <local-port>:127.0.0.1:<remote-port> <user>@<server-host>
@@ -30,7 +30,7 @@ are running over SSH.
 WireGuard. Install it on your server and your phone, and they join the same
 private network -- no port forwarding, no SSH tunnels, no public exposure.
 
-The Hermes Web UI is fully responsive with a mobile-optimized layout
+The Ares Web UI is fully responsive with a mobile-optimized layout
 (hamburger sidebar, sidebar top tabs in the drawer, touch-friendly controls),
 so it works well as a daily-driver agent interface from your phone.
 
@@ -41,7 +41,7 @@ so it works well as a daily-driver agent interface from your phone.
 2. Start the WebUI listening on all interfaces with password auth enabled:
 
 ```bash
-HERMES_WEBUI_HOST=0.0.0.0 HERMES_WEBUI_PASSWORD=your-secret ./start.sh
+ARES_WEBUI_HOST=0.0.0.0 ARES_WEBUI_PASSWORD=your-secret ./start.sh
 ```
 
 3. Open `http://<server-tailscale-ip>:8787` in your phone's browser
@@ -54,8 +54,8 @@ for an app-like experience.
 
 ### Community field report: ARM64 Android via AVF
 
-A community report in [#2364](https://github.com/nesquena/hermes-webui/issues/2364)
-documents Hermes Agent + WebUI running on a mid-range ARM64 Android phone inside
+A community report in [#2364](https://github.com/nesquena/ares-webui/issues/2364)
+documents Ares Agent + WebUI running on a mid-range ARM64 Android phone inside
 a Debian 12 VM via Android Virtualization Framework (AVF). The reported setup
 used a Xiaomi Redmi Note 13 Pro 4G, 3.8 GiB RAM allocated to the VM, 8 visible
 CPU cores, Chrome on Android at `localhost:8787`, and cloud-hosted inference.
@@ -68,8 +68,8 @@ take longer when dependencies compile from source, Android browser tabs may
 reload when switching apps, and disabling battery optimization for the terminal
 or VM host may be needed for longer-running sessions.
 
-> **Tip:** If using Docker, set `HERMES_WEBUI_HOST=0.0.0.0` in your
+> **Tip:** If using Docker, set `ARES_WEBUI_HOST=0.0.0.0` in your
 > `docker-compose.yml` environment (already the default) and set
-> `HERMES_WEBUI_PASSWORD`.
+> `ARES_WEBUI_PASSWORD`.
 
 ---

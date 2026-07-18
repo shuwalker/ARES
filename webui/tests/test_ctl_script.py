@@ -33,22 +33,22 @@ def run_ctl(
 ):
     merged = os.environ.copy()
     for key in (
-        "HERMES_WEBUI_HOST",
-        "HERMES_WEBUI_PORT",
-        "HERMES_WEBUI_PYTHON",
-        "HERMES_WEBUI_STATE_DIR",
-        "HERMES_WEBUI_PID_FILE",
-        "HERMES_WEBUI_LOG_FILE",
-        "HERMES_WEBUI_CTL_STATE_FILE",
-        "HERMES_WEBUI_NO_DOTENV",
+        "ARES_WEBUI_HOST",
+        "ARES_WEBUI_PORT",
+        "ARES_WEBUI_PYTHON",
+        "ARES_WEBUI_STATE_DIR",
+        "ARES_WEBUI_PID_FILE",
+        "ARES_WEBUI_LOG_FILE",
+        "ARES_WEBUI_CTL_STATE_FILE",
+        "ARES_WEBUI_NO_DOTENV",
     ):
         merged.pop(key, None)
     merged.update(
         {
             "HOME": str(home),
-            "HERMES_HOME": str(home / ".hermes"),
+            "ARES_HOME": str(home / ".ares"),
             "PATH": os.environ.get("PATH", ""),
-            "HERMES_WEBUI_NO_DOTENV": "0" if load_dotenv else "1",
+            "ARES_WEBUI_NO_DOTENV": "0" if load_dotenv else "1",
         }
     )
     if env:
@@ -69,7 +69,7 @@ def write_fake_python(path: Path) -> None:
             """
             #!/usr/bin/env bash
             printf 'fake-python args:%s\n' "$*" >> "${FAKE_PYTHON_LOG}"
-            printf 'host=%s port=%s state=%s\n' "${HERMES_WEBUI_HOST:-}" "${HERMES_WEBUI_PORT:-}" "${HERMES_WEBUI_STATE_DIR:-}" >> "${FAKE_PYTHON_LOG}"
+            printf 'host=%s port=%s state=%s\n' "${ARES_WEBUI_HOST:-}" "${ARES_WEBUI_PORT:-}" "${ARES_WEBUI_STATE_DIR:-}" >> "${FAKE_PYTHON_LOG}"
             trap 'printf "terminated\n" >> "${FAKE_PYTHON_LOG}"; exit 0' TERM INT
             while true; do sleep 0.1; done
             """
@@ -199,7 +199,7 @@ def assert_process_exits(pid: int, timeout: float = 3.0) -> None:
     raise AssertionError(f"process {pid} did not exit")
 
 
-def test_start_writes_pid_under_hermes_home_runs_foreground_no_browser_and_logs(tmp_path):
+def test_start_writes_pid_under_ares_home_runs_foreground_no_browser_and_logs(tmp_path):
     fake_python = tmp_path / "fake-python"
     fake_log = tmp_path / "fake-python.log"
     write_fake_python(fake_python)
@@ -208,18 +208,18 @@ def test_start_writes_pid_under_hermes_home_runs_foreground_no_browser_and_logs(
         tmp_path,
         "start",
         env={
-            "HERMES_WEBUI_PYTHON": str(fake_python),
+            "ARES_WEBUI_PYTHON": str(fake_python),
             "FAKE_PYTHON_LOG": str(fake_log),
-            "HERMES_WEBUI_HOST": "0.0.0.0",
-            "HERMES_WEBUI_PORT": "18991",
-            "HERMES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
+            "ARES_WEBUI_HOST": "0.0.0.0",
+            "ARES_WEBUI_PORT": "18991",
+            "ARES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
         },
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    hermes_home = tmp_path / ".hermes"
-    pid_file = hermes_home / "webui.pid"
-    log_file = hermes_home / "webui.log"
+    ares_home = tmp_path / ".ares"
+    pid_file = ares_home / "webui.pid"
+    log_file = ares_home / "webui.log"
     pid = wait_for_pid_file(pid_file)
     try:
         assert pid > 1
@@ -227,7 +227,7 @@ def test_start_writes_pid_under_hermes_home_runs_foreground_no_browser_and_logs(
         fake_output = wait_for_file_text(fake_log, contains="host=0.0.0.0 port=18991")
         assert "bootstrap.py --no-browser --foreground" in fake_output
         assert "host=0.0.0.0 port=18991" in fake_output
-        assert_path_in_text(hermes_home / "webui", fake_output)
+        assert_path_in_text(ares_home / "webui", fake_output)
         status = run_ctl(tmp_path, "status")
         assert status.returncode == 0
         assert "running" in status.stdout
@@ -255,7 +255,7 @@ def test_start_can_ignore_repo_dotenv_for_authoritative_test_env(tmp_path):
     _seed_ctl_repo(repo_root)
     (repo_root / "bootstrap.py").write_text("# fake bootstrap target\n", encoding="utf-8")
     (repo_root / ".env").write_text(
-        f"HERMES_WEBUI_STATE_DIR={tmp_path / 'host-specific-webui'}\n",
+        f"ARES_WEBUI_STATE_DIR={tmp_path / 'host-specific-webui'}\n",
         encoding="utf-8",
     )
     fake_python = tmp_path / "fake-python"
@@ -266,18 +266,18 @@ def test_start_can_ignore_repo_dotenv_for_authoritative_test_env(tmp_path):
         tmp_path,
         "start",
         env={
-            "HERMES_WEBUI_PYTHON": str(fake_python),
+            "ARES_WEBUI_PYTHON": str(fake_python),
             "FAKE_PYTHON_LOG": str(fake_log),
-            "HERMES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
+            "ARES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
         },
         repo_root=repo_root,
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    pid = wait_for_pid_file(tmp_path / ".hermes" / "webui.pid")
+    pid = wait_for_pid_file(tmp_path / ".ares" / "webui.pid")
     try:
         fake_output = wait_for_file_text(fake_log, contains="host=127.0.0.1 port=8787")
-        assert_path_in_text(tmp_path / ".hermes" / "webui", fake_output)
+        assert_path_in_text(tmp_path / ".ares" / "webui", fake_output)
         assert "host-specific-webui" not in fake_output
     finally:
         stop = run_ctl(tmp_path, "stop", repo_root=repo_root)
@@ -296,7 +296,7 @@ def test_start_loads_dotenv_but_inline_overrides_win(tmp_path):
     fake_log = tmp_path / "fake-python.log"
     write_fake_python(fake_python)
     (repo_root / ".env").write_text(
-        "HERMES_WEBUI_HOST=127.9.9.9\nHERMES_WEBUI_PORT=18888\n",
+        "ARES_WEBUI_HOST=127.9.9.9\nARES_WEBUI_PORT=18888\n",
         encoding="utf-8",
     )
 
@@ -304,16 +304,16 @@ def test_start_loads_dotenv_but_inline_overrides_win(tmp_path):
         tmp_path,
         "start",
         env={
-            "HERMES_WEBUI_PYTHON": str(fake_python),
+            "ARES_WEBUI_PYTHON": str(fake_python),
             "FAKE_PYTHON_LOG": str(fake_log),
-            "HERMES_WEBUI_HOST": "0.0.0.0",
-            "HERMES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
+            "ARES_WEBUI_HOST": "0.0.0.0",
+            "ARES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
         },
         repo_root=repo_root,
         load_dotenv=True,
     )
     assert result.returncode == 0, result.stderr + result.stdout
-    pid = wait_for_pid_file(tmp_path / ".hermes" / "webui.pid")
+    pid = wait_for_pid_file(tmp_path / ".ares" / "webui.pid")
     try:
         fake_output = wait_for_file_text(fake_log, contains="host=0.0.0.0 port=18888")
         assert "fake-python args:" in fake_output
@@ -335,7 +335,7 @@ def test_start_loads_dotenv_double_quoted_port_with_trailing_comment(tmp_path):
     fake_log = tmp_path / "fake-python.log"
     write_fake_python(fake_python)
     (repo_root / ".env").write_text(
-        'HERMES_WEBUI_PORT="19004" # inline comment\n',
+        'ARES_WEBUI_PORT="19004" # inline comment\n',
         encoding="utf-8",
     )
 
@@ -343,16 +343,16 @@ def test_start_loads_dotenv_double_quoted_port_with_trailing_comment(tmp_path):
         tmp_path,
         "start",
         env={
-            "HERMES_WEBUI_PYTHON": str(fake_python),
+            "ARES_WEBUI_PYTHON": str(fake_python),
             "FAKE_PYTHON_LOG": str(fake_log),
-            "HERMES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
+            "ARES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
         },
         repo_root=repo_root,
         load_dotenv=True,
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    pid = wait_for_pid_file(tmp_path / ".hermes" / "webui.pid")
+    pid = wait_for_pid_file(tmp_path / ".ares" / "webui.pid")
     try:
         fake_output = wait_for_file_text(fake_log, contains="host=127.0.0.1 port=19004")
         assert "host=127.0.0.1 port=19004" in fake_output
@@ -373,7 +373,7 @@ def test_start_loads_dotenv_export_tab_host_assignment(tmp_path):
     fake_log = tmp_path / "fake-python.log"
     write_fake_python(fake_python)
     (repo_root / ".env").write_text(
-        "export\tHERMES_WEBUI_HOST=0.0.0.0\nHERMES_WEBUI_PORT=19005\n",
+        "export\tARES_WEBUI_HOST=0.0.0.0\nARES_WEBUI_PORT=19005\n",
         encoding="utf-8",
     )
 
@@ -381,16 +381,16 @@ def test_start_loads_dotenv_export_tab_host_assignment(tmp_path):
         tmp_path,
         "start",
         env={
-            "HERMES_WEBUI_PYTHON": str(fake_python),
+            "ARES_WEBUI_PYTHON": str(fake_python),
             "FAKE_PYTHON_LOG": str(fake_log),
-            "HERMES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
+            "ARES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT": "1",
         },
         repo_root=repo_root,
         load_dotenv=True,
     )
 
     assert result.returncode == 0, result.stderr + result.stdout
-    pid = wait_for_pid_file(tmp_path / ".hermes" / "webui.pid")
+    pid = wait_for_pid_file(tmp_path / ".ares" / "webui.pid")
     try:
         fake_output = wait_for_file_text(fake_log, contains="host=0.0.0.0 port=19005")
         assert "host=0.0.0.0 port=19005" in fake_output
@@ -402,9 +402,9 @@ def test_start_loads_dotenv_export_tab_host_assignment(tmp_path):
 
 
 def test_stale_pid_file_is_removed_without_killing_unrelated_process(tmp_path):
-    hermes_home = tmp_path / ".hermes"
-    hermes_home.mkdir()
-    pid_file = hermes_home / "webui.pid"
+    ares_home = tmp_path / ".ares"
+    ares_home.mkdir()
+    pid_file = ares_home / "webui.pid"
     sleeper = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(30)"],
         **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
@@ -470,14 +470,14 @@ def test_start_refuses_second_instance_when_launchd_job_owns_the_port(tmp_path):
             "start",
             env={
                 "PATH": f"{bash_path(fake_bin)}{os.pathsep}{os.environ.get('PATH', '')}",
-                "HERMES_WEBUI_LAUNCHD_LABEL": "com.parantoux.hermes-webui",
+                "ARES_WEBUI_LAUNCHD_LABEL": "com.parantoux.ares-webui",
             },
         )
         assert result.returncode == 2
         combined = result.stdout + result.stderr
-        assert "Refusing to start a second Hermes WebUI" in combined
+        assert "Refusing to start a second Ares WebUI" in combined
         assert "launchctl kickstart -k" in combined
-        assert not (tmp_path / ".hermes" / "webui.pid").exists()
+        assert not (tmp_path / ".ares" / "webui.pid").exists()
     finally:
         sleeper.terminate()
         try:
@@ -513,15 +513,15 @@ def test_start_allows_alternate_port_while_launchd_job_runs_on_default(tmp_path)
             "start",
             env={
                 "PATH": f"{bash_path(fake_bin)}{os.pathsep}{os.environ.get('PATH', '')}",
-                "HERMES_WEBUI_LAUNCHD_LABEL": "com.parantoux.hermes-webui",
-                "HERMES_WEBUI_PORT": "18992",
-                "HERMES_WEBUI_PYTHON": str(fake_python),
+                "ARES_WEBUI_LAUNCHD_LABEL": "com.parantoux.ares-webui",
+                "ARES_WEBUI_PORT": "18992",
+                "ARES_WEBUI_PYTHON": str(fake_python),
             },
         )
         combined = result.stdout + result.stderr
-        assert "Refusing to start a second Hermes WebUI" not in combined, combined
+        assert "Refusing to start a second Ares WebUI" not in combined, combined
         assert result.returncode == 0, combined
-        pid_file = tmp_path / ".hermes" / "webui.pid"
+        pid_file = tmp_path / ".ares" / "webui.pid"
         if pid_file.exists():
             started_pid = int(pid_file.read_text().strip())
     finally:
@@ -535,9 +535,9 @@ def test_start_allows_alternate_port_while_launchd_job_runs_on_default(tmp_path)
 
 
 def test_logs_supports_non_following_line_count(tmp_path):
-    hermes_home = tmp_path / ".hermes"
-    hermes_home.mkdir()
-    log_file = hermes_home / "webui.log"
+    ares_home = tmp_path / ".ares"
+    ares_home.mkdir()
+    log_file = ares_home / "webui.log"
     log_file.write_text("one\ntwo\nthree\n", encoding="utf-8")
 
     result = run_ctl(tmp_path, "logs", "--lines", "2", "--no-follow")

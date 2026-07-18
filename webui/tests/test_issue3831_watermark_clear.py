@@ -201,7 +201,7 @@ def test_eager_checkpoint_advances_positive_watermark():
     in routes.py) inlines the same advance. A committed user turn advances a
     stale positive watermark to the new message timestamp; the 0.0 sentinel is
     preserved."""
-    import api.routes as routes
+    import api.chat_runtime as routes
 
     s = _FakeSession(100.0)
     routes._checkpoint_user_message_for_eager_session_save(

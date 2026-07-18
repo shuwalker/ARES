@@ -1,15 +1,13 @@
 """
-Sprint 43 Tests: Bandit security fixes — B310, B324, B110 + QuietHTTPServer (PR #354).
+Sprint 43 Tests: security fixes retained by the FastAPI/Uvicorn server.
 
 Covers:
 - gateway_watcher.py: MD5 uses usedforsecurity=False (B324)
 - config.py: URL scheme validation before urlopen (B310)
 - bootstrap.py: URL scheme validation in wait_for_health (B310)
-- server.py: QuietHTTPServer class exists and extends ThreadingHTTPServer
-- server.py: QuietHTTPServer.handle_error suppresses client disconnect errors
-- server.py: QuietHTTPServer uses sys.exc_info() not traceback.sys.exc_info()
+- Uvicorn owns connection lifecycle; ARES preserves process hardening
 - Logging: at least 5 modules add a module-level logger (B110 remediation)
-- routes.py: session titles redacted in /api/sessions list response
+- FastAPI session service redacts titles in /api/sessions responses
 """
 import ast
 import pathlib
@@ -21,8 +19,10 @@ REPO_ROOT = pathlib.Path(__file__).parent.parent
 GATEWAY_WATCHER_PY = (REPO_ROOT / "api" / "gateway_watcher.py").read_text(encoding="utf-8")
 CONFIG_PY = (REPO_ROOT / "api" / "config.py").read_text(encoding="utf-8")
 BOOTSTRAP_PY = (REPO_ROOT / "bootstrap.py").read_text(encoding="utf-8")
-SERVER_PY = (REPO_ROOT / "server.py").read_text(encoding="utf-8")
-ROUTES_PY = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
+FASTAPI_MAIN_PY = (REPO_ROOT / "fastapi_app" / "main.py").read_text(encoding="utf-8")
+LIFECYCLE_PY = (REPO_ROOT / "fastapi_app" / "lifecycle.py").read_text(encoding="utf-8")
+PROCESS_RUNTIME_PY = (REPO_ROOT / "api" / "process_runtime.py").read_text(encoding="utf-8")
+SERVICES_PY = (REPO_ROOT / "fastapi_app" / "services.py").read_text(encoding="utf-8")
 AUTH_PY = (REPO_ROOT / "api" / "auth.py").read_text(encoding="utf-8")
 PROFILES_PY = (REPO_ROOT / "api" / "profiles.py").read_text(encoding="utf-8")
 STREAMING_PY = (REPO_ROOT / "api" / "streaming.py").read_text(encoding="utf-8")
@@ -120,7 +120,7 @@ class TestBareExceptLogging(unittest.TestCase):
         ("api/streaming.py", STREAMING_PY),
         ("api/workspace.py", WORKSPACE_PY),
         ("api/state_sync.py", STATE_SYNC_PY),
-        ("api/routes.py", ROUTES_PY),
+        ("fastapi_app/lifecycle.py", LIFECYCLE_PY),
     ]
 
     def test_module_level_loggers_present(self):
@@ -157,97 +157,29 @@ class TestBareExceptLogging(unittest.TestCase):
         )
 
 
-# ── QuietHTTPServer ──────────────────────────────────────────────────────────
+# ── ASGI process lifecycle ──────────────────────────────────────────────────
 
-class TestQuietHTTPServer(unittest.TestCase):
-    """server.py: QuietHTTPServer suppresses client disconnect noise."""
+class TestAsgiProcessLifecycle(unittest.TestCase):
+    """Uvicorn owns sockets while ARES retains its process guarantees."""
 
-    def test_quiet_http_server_class_exists(self):
-        """QuietHTTPServer must be defined in server.py."""
-        self.assertIn(
-            "class QuietHTTPServer",
-            SERVER_PY,
-            "server.py: QuietHTTPServer class missing (PR #354)",
-        )
+    def test_fastapi_application_factory_is_the_server_boundary(self):
+        self.assertIn("def create_app(", FASTAPI_MAIN_PY)
+        self.assertIn("ares_lifespan", FASTAPI_MAIN_PY)
 
-    def test_quiet_http_server_extends_threading_http_server(self):
-        """QuietHTTPServer must extend ThreadingHTTPServer."""
-        self.assertRegex(
-            SERVER_PY,
-            r"class QuietHTTPServer\(ThreadingHTTPServer\)",
-            "QuietHTTPServer must extend ThreadingHTTPServer",
-        )
+    def test_sigpipe_is_ignored_at_process_startup(self):
+        self.assertIn("SIGPIPE", PROCESS_RUNTIME_PY)
+        self.assertIn("ignore_sigpipe()", PROCESS_RUNTIME_PY)
 
-    def test_quiet_http_server_used_as_server(self):
-        """main() must instantiate QuietHTTPServer not raw ThreadingHTTPServer."""
-        # After the class is defined, the server creation should use QuietHTTPServer
-        after_class = SERVER_PY[SERVER_PY.find("class QuietHTTPServer"):]
-        self.assertIn(
-            "QuietHTTPServer(",
-            after_class,
-            "main() must use QuietHTTPServer, not ThreadingHTTPServer directly",
-        )
-
-    def test_handle_error_suppresses_connection_reset(self):
-        """handle_error must suppress ConnectionResetError and BrokenPipeError."""
-        self.assertIn(
-            "ConnectionResetError",
-            SERVER_PY,
-            "QuietHTTPServer.handle_error must handle ConnectionResetError",
-        )
-        self.assertIn(
-            "BrokenPipeError",
-            SERVER_PY,
-            "QuietHTTPServer.handle_error must handle BrokenPipeError",
-        )
-
-    def test_uses_sys_exc_info_not_traceback_sys(self):
-        """handle_error must use sys.exc_info() not traceback.sys.exc_info() (implementation detail)."""
-        self.assertNotIn(
-            "traceback.sys.exc_info()",
-            SERVER_PY,
-            "server.py: must use sys.exc_info() not traceback.sys.exc_info()",
-        )
-        self.assertIn(
-            "sys.exc_info()",
-            SERVER_PY,
-            "server.py: handle_error must call sys.exc_info()",
-        )
-
-    def test_sys_imported_in_server(self):
-        """server.py must import sys (needed for sys.exc_info)."""
-        import re
-        self.assertIsNotNone(
-            re.search(r"^import sys", SERVER_PY, re.MULTILINE),
-            "server.py: sys must be imported",
-        )
-
-    def test_handle_error_calls_super(self):
-        """handle_error must call super().handle_error for non-client-disconnect errors."""
-        self.assertIn(
-            "super().handle_error(request, client_address)",
-            SERVER_PY,
-            "QuietHTTPServer.handle_error must delegate to super for real errors",
-        )
+    def test_shutdown_runs_from_lifespan_finally(self):
+        self.assertIn("finally:", LIFECYCLE_PY)
+        self.assertIn("await shutdown_runtime()", LIFECYCLE_PY)
 
 
 # ── Session title redaction in /api/sessions ────────────────────────────────
 
 class TestSessionTitleRedaction(unittest.TestCase):
-    """routes.py: session titles must be redacted in the sessions list endpoint."""
+    """The FastAPI session service redacts session-list output."""
 
-    def test_redact_text_called_on_session_titles(self):
-        """routes.py must call _redact_text on session titles in /api/sessions."""
-        self.assertRegex(
-            ROUTES_PY,
-            r'_redact_text\([^)]*\btitle\b[^)]*\)',
-            "routes.py: session titles must be redacted via _redact_text in /api/sessions",
-        )
-
-    def test_redact_text_imported_in_routes(self):
-        """routes.py must import _redact_text from api.helpers."""
-        self.assertIn(
-            "_redact_text",
-            ROUTES_PY,
-            "routes.py: _redact_text must be imported from api.helpers",
-        )
+    def test_session_list_uses_canonical_redaction_helper(self):
+        self.assertIn("from api.helpers import redact_session_rows", SERVICES_PY)
+        self.assertIn("rows = redact_session_rows(rows)", SERVICES_PY)

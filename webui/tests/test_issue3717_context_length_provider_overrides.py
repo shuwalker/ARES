@@ -7,7 +7,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 STREAMING_PY = (REPO / "api" / "streaming.py").read_text(encoding="utf-8")
-ROUTES_PY = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
+ROUTES_PY = (REPO / "api" / "model_context.py").read_text(encoding="utf-8")
 
 
 def _install_fake_context_resolver(monkeypatch):
@@ -45,7 +45,7 @@ def _install_fake_context_resolver(monkeypatch):
 
 def test_route_resolver_uses_provider_model_context_length(monkeypatch):
     import api.config as config
-    import api.routes as routes
+    import api.model_context as routes
 
     calls = _install_fake_context_resolver(monkeypatch)
     monkeypatch.setattr(
@@ -81,7 +81,7 @@ def test_route_resolver_uses_provider_model_context_length(monkeypatch):
 
 def test_route_resolver_uses_provider_model_context_length_without_base_url(monkeypatch):
     import api.config as config
-    import api.routes as routes
+    import api.model_context as routes
 
     calls = _install_fake_context_resolver(monkeypatch)
     monkeypatch.setattr(
@@ -116,7 +116,7 @@ def test_route_resolver_uses_provider_model_context_length_without_base_url(monk
 
 def test_route_resolver_uses_named_custom_provider_base_url(monkeypatch):
     import api.config as config
-    import api.routes as routes
+    import api.model_context as routes
 
     custom_providers = [
         {
@@ -154,7 +154,7 @@ def test_route_resolver_uses_named_custom_provider_base_url(monkeypatch):
 
 def test_global_context_length_remains_default_model_only(monkeypatch):
     import api.config as config
-    import api.routes as routes
+    import api.model_context as routes
 
     calls = _install_fake_context_resolver(monkeypatch)
     monkeypatch.setattr(
@@ -192,10 +192,10 @@ def test_streaming_fallbacks_use_shared_provider_context_helper():
 
 
 def test_route_helper_keeps_all_context_length_sources_aligned():
-    assert "def _context_length_lookup_inputs_for_model" in ROUTES_PY
+    assert "def context_length_lookup_inputs_for_model" in ROUTES_PY
     # Hardened against an explicit null ``providers:`` key (salvage of #3967):
     # ``cfg.get("providers") or {}`` instead of ``cfg.get("providers", {})`` so
     # a config.yaml with ``providers:`` (None) degrades to an empty mapping.
     assert 'cfg.get("providers") or {}' in ROUTES_PY
     assert 'cfg.get("custom_providers")' in ROUTES_PY
-    assert "_model_matches_configured_default" in ROUTES_PY
+    assert "_matches_default" in ROUTES_PY

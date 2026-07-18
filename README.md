@@ -5,7 +5,7 @@
 
 <p align="center">
   A Mac-first presentation and integration layer for a user-facing AI assistant.<br>
-  Connect JROS, Hermes, OpenAI-compatible providers, tools, voice, avatars, and future robotic bodies through one client experience.
+  Connect JROS, Ares, OpenAI-compatible providers, tools, voice, avatars, and future robotic bodies through one client experience.
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 <p align="center">
   <a href="https://github.com/shuwalker/ARES/releases"><img src="https://img.shields.io/badge/status-beta-orange" alt="Status: Beta"></a>
   <a href="https://github.com/shuwalker/ARES/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
-  <a href="https://github.com/NousResearch/hermes-agent"><img src="https://img.shields.io/badge/powered%20by-Hermes%20Agent-purple" alt="Powered by Hermes Agent"></a>
+  <a href="https://github.com/NousResearch/ares-agent"><img src="https://img.shields.io/badge/powered%20by-Ares%20Agent-purple" alt="Powered by Ares Agent"></a>
   <a href="https://github.com/JenkinsRobotics/JaegerAI"><img src="https://img.shields.io/badge/robotics-JaegerAI-cyan" alt="JaegerAI Robotics"></a>
 </p>
 
@@ -62,9 +62,9 @@ The installer handles everything automatically:
 - Configures the backend (defaults to JROS)
 
 **Options:**
-- `--with-hermes` — also install Hermes Agent (optional coding/terminal addition)
+- `--with-ares` — also install Ares Agent (optional coding/terminal addition)
 - `--no-start` — skip auto-starting the server after install
-- `--backend jros|hermes|hybrid` — set the default backend mode
+- `--backend jros|ares|hybrid` — set the default backend mode
 
 After install, run the Web UI:
 
@@ -104,16 +104,16 @@ tray/menu integrations.
 ## Features
 
 - **Single User-Facing Assistant Interface** — ARES composes runtimes, models, tools, voice, avatars, memory providers, and device integrations behind one consistent user experience.
-- **Runtime-Compatible Adapter Layer** — JaegerAI, Hermes, OpenAI/ChatGPT-compatible services, and future systems connect through adapters. ARES presents and coordinates them without copying their internals.
+- **Runtime-Compatible Adapter Layer** — JaegerAI, Ares, OpenAI/ChatGPT-compatible services, and future systems connect through adapters. ARES presents and coordinates them without copying their internals.
 - **Mac-First Native Home** — SwiftUI app launches the Web UI, wraps it in WKWebView, and grows into the native menu/system integration layer for local Mac automation, status, notifications, and approvals.
 - **Windows Companion Shell** — Tauri app in `ARES-Windows/` wraps the Web UI for Windows and is the home for Windows tray/menu/server-control integrations.
 - **Web UI Everywhere** — Self-contained Python server with streaming, session management, hot-reload, and password auth. Works on other devices over Tailscale/LAN while native apps are still Mac-first.
 - **JaegerAI Embodiment Path** — JaegerAI is the primary embodied runtime. Turns run through the local `jaeger bridge` over stdio (NDJSON) on the same machine.
-- **Hermes Capability Path** — Hermes remains available as an independent runtime for coding, terminal work, skills, sessions, cron, memory-backed automation, provider routing, delegation, and operations.
+- **Ares Capability Path** — Ares remains available as an independent runtime for coding, terminal work, skills, sessions, cron, memory-backed automation, provider routing, delegation, and operations.
 - **Explicit Hybrid Composition** — Hybrid mode composes capabilities deliberately. Prefer one turn owner and call additional runtimes/providers only when needed.
 - **Character Avatar Browser** — 14 visual character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more) with card art, traits, lore, and active character selection from JaegerAI data.
 - **Presence Renderers** — Avatar/voice/body surfaces can evolve from animated eyes to Live2D-style, VR sprite rigs, Grok-like avatars, desktop modes, and future robotic bodies.
-- **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads. Zero downtime for static, ~2s blip for Python.
+- **Development Reload** — Vite provides frontend hot-module replacement; `ARES_WEBUI_RELOAD=1` restarts the Python controller after backend edits.
 - **Local + Cloud Choice** — The active runtime can choose local or cloud models depending on the task, including OpenAI/ChatGPT-compatible providers where configured.
 - **Mail Butler** — IMAP-based mail cleaner with 321 classification rules. Server-side, no Mail.app dependency.
 - **Built in Public** — Every episode of the build is documented as part of the "Building Ares" YouTube series.
@@ -122,7 +122,7 @@ tray/menu integrations.
 
 ARES treats characters as presentation data for the assistant interface. The character tab loads JaegerAI `character/v1` YAML data, displays avatar card art, shows role/voice/trait/lore detail, and lets the user select the character projection ARES presents.
 
-- **Visual roster:** 14 built-in character cards are checked into `webui/static/persona-cards/` and `webui/static/characters/`.
+- **Visual roster:** Character metadata comes from connected JaegerAI data; the current React interface uses the ARES app icon until a normalized avatar renderer is connected.
 - **Schema-backed:** The browser reads JaegerAI character data through `webui/api/characters.py` and `/api/ares/characters`.
 - **Runtime control:** Selecting a character updates the presentation/adapter surface; JaegerAI remains the canonical owner of character behavior in JaegerAI-backed mode.
 
@@ -148,12 +148,12 @@ ARES treats characters as presentation data for the assistant interface. The cha
        │              │              │             │
        ▼              ▼              ▼             ▼
  ┌───────────┐  ┌──────────┐  ┌────────────┐  ┌────────┐
- │ JaegerAI  │  │ Hermes   │  │ OpenAI/    │  │ Tools  │
+ │ JaegerAI  │  │ Ares   │  │ OpenAI/    │  │ Tools  │
  │ runtime   │  │ runtime  │  │ providers  │  │ apps   │
  └───────────┘  └──────────┘  └────────────┘  └────────┘
 ```
 
-ARES is intentionally not a second JROS, a second Hermes, or a multi-agent
+ARES is intentionally not a second JROS, a second Ares, or a multi-agent
 company simulator. It is a client and integration layer over independent
 runtimes and capability providers. A runtime owns a turn, a model/provider may
 provide reasoning, an avatar renderer may provide presentation, and a tool may
@@ -171,7 +171,7 @@ ARES/
 │   └── Tests/             # Native app tests
 ├── webui/                 # ARES Web UI (Python web server)
 │   ├── api/               # Backend — server, streaming, auth, hot-reload
-│   ├── static/            # Frontend — HTML, JS, CSS, icons, character art
+│   ├── frontend/          # React/Vite frontend, public assets, and API adapters
 │   ├── server.py          # Entry point
 │   ├── requirements.txt   # Python dependencies
 │   └── tests/             # Test suite
@@ -188,19 +188,19 @@ ARES/
 2. **Web UI lives in `webui/`** — self-contained: own venv, own auth, own deps. One repo with the Swift app.
 3. **Mac app first, web access everywhere.** The SwiftUI app is the native Mac home with menus/system integration and launches the Web UI; the same Web UI remains reachable from other devices over Tailscale/LAN.
 4. **JaegerAI is the primary embodied path.** ARES talks to JaegerAI through the bridge/client protocol and displays JaegerAI characters, voice, tools, and body capabilities without replacing JaegerAI's own UI or runtime.
-5. **Hermes and OpenAI-compatible services stay capability providers.** They provide coding, automation, model access, cloud reasoning, tools, and Mac/system integrations where configured.
+5. **Ares and OpenAI-compatible services stay capability providers.** They provide coding, automation, model access, cloud reasoning, tools, and Mac/system integrations where configured.
 6. **Presence is modular.** Animated eyes, character cards, Live2D-style rigs, VR sprite rigs, Grok-like avatars, desktop modes, and future robotic bodies are renderer surfaces for the assistant.
 
 ## Update Checking
 
 The Web UI checks for updates on three repos:
 - **ARES** — this repo (`shuwalker/ARES`)
-- **Hermes** — the agent engine (`NousResearch/hermes-agent`)
+- **Ares** — the agent engine (`NousResearch/ares-agent`)
 - **JaegerAI** — robotics/embodiment (`JenkinsRobotics/JaegerAI`)
 
 ## Credits
 
-The ARES Web UI (`webui/`) is forked from [hermes-webui](https://github.com/nesquena/hermes-webui) by the Hermes Web UI Contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `webui/LICENSE` for the preserved upstream MIT notice.
+The ARES Web UI (`webui/`) is forked from [ares-webui](https://github.com/nesquena/ares-webui) by the Ares Web UI Contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `webui/LICENSE` for the preserved upstream MIT notice.
 
 ## Owner
 

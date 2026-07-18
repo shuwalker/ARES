@@ -1,45 +1,149 @@
-"""
-Hermes Backend Adapter for ARES.
+"""Hermes Agent Backend Adapter for ARES.
 
-This adapter wraps the existing Hermes in-process execution.
-Hermes itself is never modified — this is pure ARES-side routing.
+Spawns ``hermes chat -q "..." -Q`` as a subprocess, streams output,
+and returns structured results. This is pure ARES-side routing --
+Hermes Agent itself is never modified.
+
+Availability: True when the ``hermes`` CLI is on $PATH and responds
+to ``hermes --version`` within a 5-second timeout.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import os
+import re
+import shutil
+import subprocess
+import threading
+import time
+import uuid
 from typing import Any, Dict, List
 
 from .base import AgenticBackend
 
+logger = logging.getLogger(__name__)
+
+_HERMES_AVAILABLE_CACHE: bool | None = None
+_HERMES_AVAILABLE_TS: float = 0.0
+_HERMES_CACHE_TTL = 10.0
+_HERMES_VERSION_CACHE: str | None = None
+
+# Regex to extract session_id from Hermes quiet-mode output
+_SESSION_ID_RE = re.compile(r"^session_id:\s*(\S+)", re.MULTILINE)
+_SESSION_ID_LEGACY_RE = re.compile(r"session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)", re.IGNORECASE)
+
+
+def _hermes_cli() -> str:
+    """Return the path to the hermes CLI, or empty string if not found."""
+    path = shutil.which("hermes")
+    if path:
+        return path
+    # Check common install locations
+    for candidate in (
+        os.path.expanduser("~/.hermes/hermes-agent/run_agent.py"),
+        "/usr/local/bin/hermes",
+    ):
+        if os.path.isfile(candidate):
+            return candidate
+    return ""
+
+
+def _probe_hermes() -> tuple[bool, str | None]:
+    """Check whether Hermes CLI is available and cache the version string."""
+    global _HERMES_AVAILABLE_CACHE, _HERMES_VERSION_CACHE, _HERMES_AVAILABLE_TS
+
+    now = time.time()
+    if _HERMES_AVAILABLE_CACHE is not None and (now - _HERMES_AVAILABLE_TS) < _HERMES_CACHE_TTL:
+        return _HERMES_AVAILABLE_CACHE, _HERMES_VERSION_CACHE
+
+    cli = _hermes_cli()
+    if not cli:
+        _HERMES_AVAILABLE_CACHE = False
+        _HERMES_VERSION_CACHE = None
+        _HERMES_AVAILABLE_TS = now
+        return False, None
+
+    try:
+        result = subprocess.run(
+            [cli, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            version = (result.stdout.strip() or "").split("\n")[-1].strip()
+            _HERMES_AVAILABLE_CACHE = True
+            _HERMES_VERSION_CACHE = version or "unknown"
+            _HERMES_AVAILABLE_TS = now
+            return True, _HERMES_VERSION_CACHE
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    _HERMES_AVAILABLE_CACHE = False
+    _HERMES_VERSION_CACHE = None
+    _HERMES_AVAILABLE_TS = now
+    return False, None
+
+
+def _clean_response(raw: str) -> str:
+    """Strip Hermes noise lines (tool markers, session IDs, timestamps)."""
+    lines = []
+    for line in raw.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            lines.append("")
+            continue
+        if stripped.startswith(("[tool]", "[hermes]", "[paperclip]")):
+            continue
+        if stripped.startswith("session_id:"):
+            continue
+        if re.match(r"^\[\d{4}-\d{2}-\d{2}T", stripped):
+            continue
+        if re.match(r"^\[done\]\s*┊", stripped):
+            continue
+        # Clean leading chat bubble
+        cleaned = re.sub(r"^[\s]*┊\s*💬\s*", "", line).strip()
+        cleaned = re.sub(r"^\[done\]\s*", "", cleaned).strip()
+        if cleaned:
+            lines.append(cleaned)
+    return "\n".join(lines).strip()
+
 
 class HermesBackend(AgenticBackend):
-    name = "hermes"
+    """Hermes Agent adapter -- routes chat through the local Hermes CLI."""
+
+    name = "hermes_local"
     supports_tools = True
     supports_persona = False
-    supports_hybrid = False
 
     def is_available(self) -> bool:
-        # Hermes is always available when the WebUI is running
-        return True
-
-    def get_worker_target(self) -> tuple:
-        """Return the Hermes streaming worker target."""
-        from api.streaming import _run_agent_streaming
-        return _run_agent_streaming, False, False
+        available, _ = _probe_hermes()
+        return available
 
     def get_backend_name(self) -> str:
         return "Hermes"
 
     def health(self) -> Dict[str, Any]:
-        return {"status": "ok", "latency_ms": 0.0, "message": "In-process runtime ready"}
+        available, version = _probe_hermes()
+        if available:
+            return {
+                "status": "ok",
+                "latency_ms": 0.0,
+                "message": f"Hermes Agent {version or ''} is available.",
+                "version": version,
+            }
+        return {
+            "status": "error",
+            "latency_ms": 0.0,
+            "message": "Hermes Agent CLI not found on $PATH.",
+        }
 
     def identity_projection(self) -> Dict[str, Any]:
-        from api.config import get_config
-        cfg = get_config()
-        bot_name = (cfg.get("agent") or {}).get("name") or "Hermes"
         return {
-            "name": bot_name,
-            "description": "Hermes Agent in-process runtime",
+            "name": "Hermes",
+            "description": "Hermes Agent -- local execution engine",
             "avatar_state": "idle",
         }
 
@@ -49,145 +153,172 @@ class HermesBackend(AgenticBackend):
             "tools": self.supports_tools,
             "persona": self.supports_persona,
             "hybrid": self.supports_hybrid,
-            "voice": True,
+            "voice": False,
             "embodiment": False,
         }
 
     def chat_session_support(self) -> Dict[str, Any]:
-        return {"streaming": True, "context_window": 32768, "multimodal": False}
+        return {"streaming": True, "context_window": 128000, "multimodal": True}
 
     def tools(self) -> List[Dict[str, Any]]:
-        try:
-            from api.ares_tools import ARES_TOOL_DEFS
-            return [
-                {
-                    "name": t["name"],
-                    "description": t["description"],
-                    "parameters": t["args_model"].schema() if hasattr(t["args_model"], "schema") else (t["args_model"].model_json_schema() if hasattr(t["args_model"], "model_json_schema") else {}),
-                }
-                for t in ARES_TOOL_DEFS
-            ]
-        except Exception:
-            return []
+        # Hermes exposes its own tools -- we don't enumerate them here.
+        # The adapter reports tool support so the UI shows the capability.
+        return [{"name": "hermes_tools", "description": "Full Hermes Agent tool suite (terminal, file, web, browser, etc.)", "parameters": {"type": "object", "properties": {}}}]
 
     def settings_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "temperature": {
-                    "type": "number",
-                    "title": "Temperature",
-                    "default": 0.7,
-                    "minimum": 0.0,
-                    "maximum": 2.0,
-                },
-                "system_instructions": {
+                "model": {
                     "type": "string",
-                    "title": "System Instructions",
-                    "default": "",
+                    "title": "Model",
+                    "description": "Hermes model name (e.g. gpt-5.6-sol, grok-3)",
+                },
+                "provider": {
+                    "type": "string",
+                    "title": "Provider",
+                    "description": "Inference provider (e.g. openai-codex, xai, ollama-cloud)",
+                },
+                "toolsets": {
+                    "type": "string",
+                    "title": "Toolsets",
+                    "description": "Comma-separated toolsets to enable (e.g. terminal,file,web)",
                 },
             },
         }
 
+    def get_worker_target(self) -> tuple:
+        """Return the Hermes streaming worker target.
+
+        Hermes turns run through a dedicated streaming worker that spawns
+        ``hermes chat -q`` as a subprocess and pipes output to the SSE channel.
+        """
+        from api.backends.hermes_streaming import run_hermes_streaming
+
+        return run_hermes_streaming, False, False
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        """Execute one Hermes turn by spawning ``hermes chat -q``.
+
+        Returns a dict with keys: text, error, tool_activity, session_id.
         """
-        Execute one agent turn via the Hermes streaming path.
+        cli = _hermes_cli()
+        if not cli:
+            return {"text": "", "error": "Hermes CLI not found.", "tool_activity": []}
 
-        The streaming path is the primary execution path for Hermes
-        (used by the WebUI chat). This synchronous wrapper creates a
-        temporary stream channel, runs the agent, and collects the
-        response text.
+        config = kwargs.get("config") or kwargs.get("adapter_config") or {}
+        model = _cfg_str(config, "model") or ""
+        provider = _cfg_str(config, "provider") or ""
+        toolsets = _cfg_str(config, "toolsets") or ""
+        max_turns = _cfg_int(config, "max_turns") or 150
+        timeout_sec = _cfg_int(config, "timeout_sec") or 300
 
-        Falls back to the existing streaming pathway when called
-        without a real stream channel by returning a guidance message.
-        """
-        from api.config import create_stream_channel, register_stream_owner
-        from api.streaming import _run_agent_streaming
-        from api.config import STREAMS, STREAMS_LOCK
-        import threading
-        import uuid
+        # Build the hermes command
+        args = [cli, "chat", "-q", message, "-Q", "--yolo", "--source", "webui"]
 
-        stream_id = f"hermes-sync-{uuid.uuid4().hex[:12]}"
-        channel = create_stream_channel()
-        with STREAMS_LOCK:
-            STREAMS[stream_id] = channel
-        register_stream_owner(stream_id, session_id)
+        if model:
+            args.extend(["-m", model])
+        if provider:
+            args.extend(["--provider", provider])
+        if toolsets:
+            args.extend(["-t", toolsets])
+        if max_turns:
+            args.extend(["--max-turns", str(max_turns)])
 
-        # Subscribe a queue so we can read events
-        event_queue = channel.subscribe()
+        # Resume session if we have a previous session ID
+        prev_session_id = kwargs.get("prev_session_id")
+        if prev_session_id:
+            args.extend(["--resume", prev_session_id])
 
-        # Default model from config
-        from api.config import get_config
-        cfg = get_config()
-        model = str((cfg.get("model") or {}).get("default", "")) or "hermes-default"
+        # Determine working directory
+        cwd = _cfg_str(config, "cwd") or os.path.expanduser("~")
 
-        result = {"text": "", "error": None, "tool_activity": []}
+        # Build environment
+        env = dict(os.environ)
+        # Propagate Hermes home
+        hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+        env["HERMES_HOME"] = hermes_home
 
-        def _run():
-            try:
-                _run_agent_streaming(
-                    session_id,
-                    message,
-                    model,
-                    "default",
-                    stream_id,
-                    attachments=None,
-                )
-            except Exception as exc:
-                result["error"] = str(exc)
+        try:
+            proc = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                cwd=cwd,
+                env=env,
+            )
 
-        thread = threading.Thread(target=_run, daemon=True)
-        thread.start()
+            stdout = proc.stdout or ""
+            stderr = proc.stderr or ""
 
-        # Collect events from the stream channel
-        import time
-        deadline = time.time() + 120  # 2-minute timeout
-        collected_text = []
-        tool_activity = []
-        while time.time() < deadline:
-            try:
-                event = event_queue.get(timeout=0.5)
-            except Exception:
-                if not thread.is_alive():
-                    break
-                continue
-            if event is None:
-                continue
-            event_type = str(event[0] if isinstance(event, (list, tuple)) else event.get("type", ""))
-            if event_type == "token":
-                payload = event[1] if isinstance(event, (list, tuple)) and len(event) > 1 else event
-                if isinstance(payload, dict):
-                    collected_text.append(payload.get("text", ""))
-            elif event_type == "tool":
-                tool_activity.append(event[1] if isinstance(event, (list, tuple)) and len(event) > 1 else event)
-            elif event_type == "done":
-                break
-            elif event_type == "error":
-                result["error"] = str(event[1] if isinstance(event, (list, tuple)) and len(event) > 1 else event)
-                break
-            elif event_type == "stream_end":
-                break
+            # Parse session ID
+            parsed_session_id = None
+            session_match = _SESSION_ID_RE.search(stdout)
+            if session_match:
+                parsed_session_id = session_match.group(1)
+            else:
+                legacy_match = _SESSION_ID_LEGACY_RE.search(stdout + "\n" + stderr)
+                if legacy_match:
+                    parsed_session_id = legacy_match.group(1)
 
-        thread.join(timeout=5)
-        result["text"] = "".join(collected_text)
-        result["tool_activity"] = tool_activity
+            # Extract clean response text
+            if parsed_session_id:
+                # Response is everything before the session_id line
+                session_line_idx = stdout.rfind("\nsession_id:")
+                if session_line_idx > 0:
+                    text = _clean_response(stdout[:session_line_idx])
+                else:
+                    text = _clean_response(stdout)
+            else:
+                text = _clean_response(stdout)
 
-        # Cleanup
-        channel.unsubscribe(event_queue)
-        with STREAMS_LOCK:
-            STREAMS.pop(stream_id, None)
-        from api.config import unregister_stream_owner
-        unregister_stream_owner(stream_id)
+            # Check for errors in stderr
+            error = None
+            if proc.returncode != 0:
+                error_lines = [
+                    line for line in stderr.strip().split("\n")
+                    if re.search(r"error|exception|traceback|failed", line, re.IGNORECASE)
+                    and not re.search(r"INFO|DEBUG|warn", line, re.IGNORECASE)
+                ]
+                if error_lines:
+                    error = "\n".join(error_lines[:5])
 
-        return result
+            return {
+                "text": text,
+                "error": error,
+                "tool_activity": [],
+                "session_id": parsed_session_id,
+            }
+
+        except subprocess.TimeoutExpired:
+            return {"text": "", "error": f"Hermes turn timed out after {timeout_sec}s.", "tool_activity": []}
+        except Exception as exc:
+            logger.exception("Hermes turn failed")
+            return {"text": "", "error": str(exc), "tool_activity": []}
 
     def get_status(self) -> Dict[str, Any]:
+        available = self.is_available()
+        _, version = _probe_hermes()
         return {
-            "available": True,
-            "label": "Hermes Agent",
+            "available": available,
+            "label": f"Hermes Agent {version or ''}".strip() if available else "Hermes Agent (not found)",
+            "version": version,
             "capabilities": {
                 "supports_tools": self.supports_tools,
                 "supports_persona": self.supports_persona,
-                "supports_hybrid": self.supports_hybrid,
-            }
+            },
         }
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _cfg_str(config: dict, key: str) -> str | None:
+    val = config.get(key)
+    return val if isinstance(val, str) and val.strip() else None
+
+
+def _cfg_int(config: dict, key: str) -> int | None:
+    val = config.get(key)
+    return int(val) if isinstance(val, (int, float)) else None

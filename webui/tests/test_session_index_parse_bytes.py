@@ -16,7 +16,6 @@ import json
 from pathlib import Path
 
 import api.models as models
-import api.routes as routes
 
 
 def test_bytes_and_text_parse_identically(tmp_path: Path):
@@ -59,7 +58,7 @@ def test_all_sessions_reads_unicode_index_via_bytes(tmp_path, monkeypatch):
 def test_no_index_reader_uses_decoded_str(tmp_path):
     """Guard against a refactor reintroducing the slower read_text path on the
     session index."""
-    for module in (models, routes):
+    for module in (models,):
         src = Path(module.__file__).read_text(encoding="utf-8")
         assert "SESSION_INDEX_FILE.read_text" not in src, (
             f"{module.__name__} reads the session index via read_text; "

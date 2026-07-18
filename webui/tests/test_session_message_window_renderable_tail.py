@@ -1,4 +1,4 @@
-from api.routes import _message_window_for_display
+from api.session_display import message_window_for_display as _message_window_for_display
 
 
 def test_initial_msg_limit_skips_trailing_tool_only_rows():

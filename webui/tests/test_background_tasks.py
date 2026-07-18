@@ -114,20 +114,17 @@ class TestGetResultsKeepsRunningTasks(unittest.TestCase):
 
 
 class TestBackgroundCompletionHookWiring(unittest.TestCase):
-    """Static check: the _handle_background worker thread must call
+    """Static check: the FastAPI background observer must call
     complete_background() after _run_agent_streaming returns.  Without this,
     running tasks stay forever-running and the user never sees the result.
     """
 
     def test_run_bg_and_notify_calls_complete_background(self):
-        """_handle_background must wrap _run_agent_streaming in a function
-        that subsequently invokes complete_background(parent_sid, task_id, answer)."""
-        routes_src = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
-        # Locate the _handle_background function
-        idx = routes_src.find("def _handle_background(")
-        self.assertGreater(idx, -1, "_handle_background() not found in routes.py")
-        # Take a generous window around the function body
-        end = routes_src.find("\ndef ", idx + 1)
+        """The observer must persist a completed task with its assistant answer."""
+        routes_src = (REPO_ROOT / "fastapi_app" / "routers" / "controls.py").read_text(encoding="utf-8")
+        idx = routes_src.find("async def _observe_background(")
+        self.assertGreater(idx, -1, "_observe_background() not found")
+        end = routes_src.find("\n@router.", idx + 1)
         body = routes_src[idx:end if end > 0 else idx + 3000]
 
         self.assertIn("complete_background", body, (
@@ -137,7 +134,7 @@ class TestBackgroundCompletionHookWiring(unittest.TestCase):
             "returns nothing forever. See api/background.py:complete_background."
         ))
         # Must extract the last assistant message content from the bg session
-        self.assertIn("_run_agent_streaming", body)
+        self.assertIn("chat_subscription", body)
         self.assertIn("Session.load", body, (
             "_run_bg_and_notify must reload the bg session to extract the "
             "final assistant reply so complete_background gets an actual answer"

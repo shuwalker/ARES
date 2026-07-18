@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import json
 import sys
 import time
@@ -10,27 +9,8 @@ import types
 
 import api.models as models
 from api.models import Session, reconciled_state_db_messages_for_session
-from api.routes import _handle_session_compress
+from api.manual_compression import compress_session
 from api.session_recovery import inspect_session_recovery_status, recover_all_sessions_on_startup
-
-
-class _FakeHandler:
-    def __init__(self):
-        self.wfile = io.BytesIO()
-        self.status = None
-        self.sent_headers = {}
-
-    def send_response(self, status):
-        self.status = status
-
-    def send_header(self, key, value):
-        self.sent_headers[key] = value
-
-    def end_headers(self):
-        pass
-
-    def payload(self):
-        return json.loads(self.wfile.getvalue().decode("utf-8"))
 
 
 class _FakeCompressor:
@@ -56,18 +36,18 @@ def _install_fake_compression_runtime(monkeypatch, agent_cls):
 
     import api.config as _cfg
 
-    fake_runtime_provider = types.ModuleType("hermes_cli.runtime_provider")
+    fake_runtime_provider = types.ModuleType("ares_cli.runtime_provider")
     fake_runtime_provider.resolve_runtime_provider = lambda requested=None: {
         "api_key": "fake-key",
         "provider": requested or "openai",
         "base_url": "https://api.openai.com/v1",
     }
-    fake_hermes_cli = types.ModuleType("hermes_cli")
-    fake_hermes_cli.__path__ = []
-    fake_hermes_cli.runtime_provider = fake_runtime_provider
-    monkeypatch.setitem(sys.modules, "hermes_cli", fake_hermes_cli)
-    monkeypatch.setitem(sys.modules, "hermes_cli.runtime_provider", fake_runtime_provider)
-    import hermes_cli.runtime_provider as _rtp
+    fake_ares_cli = types.ModuleType("ares_cli")
+    fake_ares_cli.__path__ = []
+    fake_ares_cli.runtime_provider = fake_runtime_provider
+    monkeypatch.setitem(sys.modules, "ares_cli", fake_ares_cli)
+    monkeypatch.setitem(sys.modules, "ares_cli.runtime_provider", fake_runtime_provider)
+    import ares_cli.runtime_provider as _rtp
 
     monkeypatch.setattr(
         _cfg,
@@ -119,10 +99,8 @@ def test_manual_compress_persists_truncation_boundary(monkeypatch, cleanup_test_
     session.save(touch_updated_at=False)
 
     _install_fake_compression_runtime(monkeypatch, _FakeAgent)
-    handler = _FakeHandler()
-    _handle_session_compress(handler, {"session_id": sid})
-
-    assert handler.status == 200
+    result = compress_session(sid)
+    assert result["ok"] is True
     loaded = Session.load(sid)
     assert loaded.compression_anchor_mode == "manual"
     assert loaded.truncation_watermark is not None
@@ -164,9 +142,8 @@ def test_manual_compress_blocks_state_db_replay(monkeypatch, cleanup_test_sessio
     cleanup_test_sessions.append(session.session_id)
 
     _install_fake_compression_runtime(monkeypatch, _FakeAgent)
-    handler = _FakeHandler()
-    _handle_session_compress(handler, {"session_id": session.session_id})
-    assert handler.status == 200
+    result = compress_session(session.session_id)
+    assert result["ok"] is True
 
     loaded = Session.load(session.session_id)
     merged = reconciled_state_db_messages_for_session(

@@ -1,29 +1,29 @@
 # Troubleshooting
 
-Concrete diagnostic flows for the most common failure modes when running Hermes WebUI. Each entry has the symptom, the diagnostic commands you should run *before* opening an issue, and the fix that has worked for past reporters.
+Concrete diagnostic flows for the most common failure modes when running Ares WebUI. Each entry has the symptom, the diagnostic commands you should run *before* opening an issue, and the fix that has worked for past reporters.
 
-If your symptom isn't listed and the diagnostics don't narrow it down, file a bug at https://github.com/nesquena/hermes-webui/issues — include the relevant command output after redacting secrets, private paths, full `.env` files, full `auth.json` files, cookies, tokens, and password hashes.
+If your symptom isn't listed and the diagnostics don't narrow it down, file a bug at https://github.com/nesquena/ares-webui/issues — include the relevant command output after redacting secrets, private paths, full `.env` files, full `auth.json` files, cookies, tokens, and password hashes.
 
 ---
 
-## "AIAgent not available -- check that hermes-agent is on sys.path"
+## "AIAgent not available -- check that ares-agent is on sys.path"
 
 **Symptom.** WebUI starts, shows the chat interface, but every chat request fails immediately with this error in the response or the server log. As of v0.51.6 the error includes a diagnostic block with the running Python interpreter, the relevant `sys.path` entries, and the most-common fix; on older versions the message is bare.
 
-**Why it happens.** The WebUI imports the agent class at chat time via `from run_agent import AIAgent`. That import only succeeds if the running Python's `sys.path` contains either the hermes-agent checkout or a pip-installed copy of the agent. Three common failure modes:
+**Why it happens.** The WebUI imports the agent class at chat time via `from run_agent import AIAgent`. That import only succeeds if the running Python's `sys.path` contains either the ares-agent checkout or a pip-installed copy of the agent. Three common failure modes:
 
-1. **Agent installed but not on `sys.path`.** Most common. The agent is checked out somewhere (e.g. `~/Programmes/hermes-agent`), the WebUI was launched with a Python that doesn't know about it, and there's no `pip install -e .` linking the two.
+1. **Agent installed but not on `sys.path`.** Most common. The agent is checked out somewhere (e.g. `~/Programmes/ares-agent`), the WebUI was launched with a Python that doesn't know about it, and there's no `pip install -e .` linking the two.
 2. **Symlink with a typo or wrong target.** A symlink to the agent looks correct on `ls`, but `readlink` resolves to a path that doesn't exist or doesn't contain `agent/__init__.py`.
-3. **`HERMES_WEBUI_AGENT_DIR` set to the wrong directory.** Override env var beats auto-discovery and points at a directory that has no agent code.
-4. **Agent installed as root, under the FHS layout.** When the Hermes Agent installer runs as root on Linux it places the agent at `/usr/local/lib/hermes-agent` (CLI linked into `/usr/local/bin`), not `~/.hermes/hermes-agent`. Older `bootstrap.py` didn't probe that path, so it built a WebUI-only `.venv` and failed at launch with **"Python environment cannot import both WebUI dependencies and Hermes Agent."** `git pull` to update the WebUI (current `bootstrap.py` auto-discovers the FHS layout and follows the `hermes` launcher to the agent), or set `HERMES_WEBUI_PYTHON=/usr/local/lib/hermes-agent/venv/bin/python` and relaunch.
+3. **`ARES_WEBUI_AGENT_DIR` set to the wrong directory.** Override env var beats auto-discovery and points at a directory that has no agent code.
+4. **Agent installed as root, under the FHS layout.** When the Ares Agent installer runs as root on Linux it places the agent at `/usr/local/lib/ares-agent` (CLI linked into `/usr/local/bin`), not `~/.ares/ares-agent`. Older `bootstrap.py` didn't probe that path, so it built a WebUI-only `.venv` and failed at launch with **"Python environment cannot import both WebUI dependencies and Ares Agent."** `git pull` to update the WebUI (current `bootstrap.py` auto-discovers the FHS layout and follows the `ares` launcher to the agent), or set `ARES_WEBUI_PYTHON=/usr/local/lib/ares-agent/venv/bin/python` and relaunch.
 
 ### Step 1 — confirm the agent location
 
 ```bash
-# If you have ~/hermes-agent (the default location):
-ls -la ~/hermes-agent
-readlink ~/hermes-agent          # if it's a symlink, where does it resolve?
-ls ~/hermes-agent/agent/__init__.py 2>&1
+# If you have ~/ares-agent (the default location):
+ls -la ~/ares-agent
+readlink ~/ares-agent          # if it's a symlink, where does it resolve?
+ls ~/ares-agent/agent/__init__.py 2>&1
 ```
 
 The third command must succeed (the file must exist). If it fails, your symlink is broken or pointing at a directory that's missing the agent module — fix that first.
@@ -31,14 +31,14 @@ The third command must succeed (the file must exist). If it fails, your symlink 
 ### Step 2 — confirm the WebUI is using the right Python
 
 ```bash
-cd ~/hermes-webui && ./start.sh 2>&1 | grep -iE 'agent|python|hermes_webui_python' | head -20
+cd ~/ares-webui && ./start.sh 2>&1 | grep -iE 'agent|python|ares_webui_python' | head -20
 ```
 
 The startup banner prints which Python and agent dir it resolved. If the agent dir is empty or the Python is the wrong one, set the override:
 
 ```bash
-export HERMES_WEBUI_AGENT_DIR=/absolute/path/to/hermes-agent
-export HERMES_WEBUI_PYTHON=/absolute/path/to/agent/venv/bin/python
+export ARES_WEBUI_AGENT_DIR=/absolute/path/to/ares-agent
+export ARES_WEBUI_PYTHON=/absolute/path/to/agent/venv/bin/python
 ./start.sh
 ```
 
@@ -47,14 +47,14 @@ export HERMES_WEBUI_PYTHON=/absolute/path/to/agent/venv/bin/python
 This is the most common fix and resolves the original issue #1695:
 
 ```bash
-cd /path/to/hermes-agent          # the directory holding pyproject.toml + the agent/ module
+cd /path/to/ares-agent          # the directory holding pyproject.toml + the agent/ module
 pip install -e .                  # use the same python that runs the WebUI
 ```
 
 Then restart the WebUI:
 
 ```bash
-cd ~/hermes-webui
+cd ~/ares-webui
 ./start.sh
 ```
 
@@ -63,22 +63,22 @@ cd ~/hermes-webui
 If steps 1-3 still don't work, check whether the WebUI's Python can import the agent at all:
 
 ```bash
-$HERMES_WEBUI_PYTHON -c "from run_agent import AIAgent; print('ok')" 2>&1
+$ARES_WEBUI_PYTHON -c "from run_agent import AIAgent; print('ok')" 2>&1
 ```
 
-(Replace `$HERMES_WEBUI_PYTHON` with the actual Python path from step 2 if the env var isn't set.) If this prints `ok`, the agent IS on `sys.path` for that Python — and the WebUI should work.
+(Replace `$ARES_WEBUI_PYTHON` with the actual Python path from step 2 if the env var isn't set.) If this prints `ok`, the agent IS on `sys.path` for that Python — and the WebUI should work.
 
 If this fails, `import run_agent` itself is broken — check that the agent's pyproject.toml lists `run_agent` as a top-level module or that the agent dir is on PYTHONPATH:
 
 ```bash
-PYTHONPATH=/path/to/hermes-agent $HERMES_WEBUI_PYTHON -c "from run_agent import AIAgent; print('ok')"
+PYTHONPATH=/path/to/ares-agent $ARES_WEBUI_PYTHON -c "from run_agent import AIAgent; print('ok')"
 ```
 
-If adding PYTHONPATH fixes it, persist the path either via `pip install -e .` (preferred) or by setting `HERMES_WEBUI_AGENT_DIR` to that directory.
+If adding PYTHONPATH fixes it, persist the path either via `pip install -e .` (preferred) or by setting `ARES_WEBUI_AGENT_DIR` to that directory.
 
 ### When to file a bug
 
-If after running steps 1-4 the import still fails *and* `pip install -e .` succeeded *and* `PYTHONPATH=... python -c "from run_agent import AIAgent"` succeeds — that's a real WebUI bug. File at https://github.com/nesquena/hermes-webui/issues with:
+If after running steps 1-4 the import still fails *and* `pip install -e .` succeeded *and* `PYTHONPATH=... python -c "from run_agent import AIAgent"` succeeds — that's a real WebUI bug. File at https://github.com/nesquena/ares-webui/issues with:
 
 - The output of every command in steps 1-4
 - The full diagnostic block printed by the WebUI's `ImportError` (v0.51.6+)
@@ -101,13 +101,13 @@ If after running steps 1-4 the import still fails *and* `pip install -e .` succe
 
 **Diagnostic.**
 
-The on-disk locations below assume the default `~/.hermes/webui` state directory. If you override it via `HERMES_WEBUI_STATE_DIR`, substitute that path for `~/.hermes/webui` in every step.
+The on-disk locations below assume the default `~/.ares/webui` state directory. If you override it via `ARES_WEBUI_STATE_DIR`, substitute that path for `~/.ares/webui` in every step.
 
-1. Identify the affected session id and stream id from the marker. The marker JSON lives at `~/.hermes/webui/sessions/<sid>.json`; after the fix it shows them on the `_journal_retry_stream_id` key. Pre-fix sessions only carry the legacy wording, with no retry meta.
+1. Identify the affected session id and stream id from the marker. The marker JSON lives at `~/.ares/webui/sessions/<sid>.json`; after the fix it shows them on the `_journal_retry_stream_id` key. Pre-fix sessions only carry the legacy wording, with no retry meta.
 2. Check whether the run-journal contains real events:
    ```bash
-   ls -la ~/.hermes/webui/sessions/_run_journal/<sid>/<stream_id>.jsonl
-   head -2 ~/.hermes/webui/sessions/_run_journal/<sid>/<stream_id>.jsonl
+   ls -la ~/.ares/webui/sessions/_run_journal/<sid>/<stream_id>.jsonl
+   head -2 ~/.ares/webui/sessions/_run_journal/<sid>/<stream_id>.jsonl
    ```
    If the file exists and contains `token` / `tool` events, the lazy-retry path will pick them up the next time the session is opened.
 
@@ -139,7 +139,7 @@ linked continuation instead.
 1. Open the session JSON under your WebUI state directory, for example:
    ```bash
    jq '.recommended_recovery_action, .compression_recovery' \
-     ~/.hermes/webui/sessions/<session_id>.json
+     ~/.ares/webui/sessions/<session_id>.json
    ```
 2. A recoverable exhausted turn should report:
    - `recommended_recovery_action: "start_focused_continuation"`
@@ -171,7 +171,7 @@ turn in the exhausted session instead of being blocked with recovery guidance.
 2. Check reverse-proxy logs for `401` responses on `/sw.js`, `/manifest.json`, or versioned `/static/*` assets during the update.
 3. Temporarily remove proxy basic auth and use WebUI's built-in password. If the blank screen stops after the next update, the proxy auth challenge was the trigger.
 
-**Fix.** Prefer WebUI's own password for installed PWAs. If you keep proxy basic auth, configure it so the same-origin service-worker and shell update fetches can complete. If the installed shell is already blank, clear site data for the Hermes origin, then reopen or reinstall the PWA after that site-scoped cleanup.
+**Fix.** Prefer WebUI's own password for installed PWAs. If you keep proxy basic auth, configure it so the same-origin service-worker and shell update fetches can complete. If the installed shell is already blank, clear site data for the Ares origin, then reopen or reinstall the PWA after that site-scoped cleanup.
 
 **When to file a bug.** File a WebUI bug if the blank screen still reproduces without proxy basic auth, or after the proxy allows the same-origin service-worker and shell update fetches through.
 

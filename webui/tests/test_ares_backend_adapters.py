@@ -1,6 +1,6 @@
 import pytest
 from api.backends.base import AgenticBackend
-from api.backends.hermes import HermesBackend
+from api.backends.ares import AresBackend
 from api.backends.jros import JROSBackend
 from api.backends.hybrid import HybridBackend
 from api.backends.router import get_router, get_default_router
@@ -8,17 +8,17 @@ from api.backends.router import get_router, get_default_router
 
 def test_router_contains_all_adapters():
     router = get_default_router()
-    assert "hermes" in router.backends
+    assert "ares" in router.backends
     assert "jros" in router.backends
     assert "hybrid" in router.backends
     
     # Assert type
-    assert isinstance(router.backends["hermes"], HermesBackend)
+    assert isinstance(router.backends["ares"], AresBackend)
     assert isinstance(router.backends["jros"], JROSBackend)
     assert isinstance(router.backends["hybrid"], HybridBackend)
 
 
-@pytest.mark.parametrize("backend_key", ["hermes", "jros", "hybrid"])
+@pytest.mark.parametrize("backend_key", ["ares", "jros", "hybrid"])
 def test_backend_adapters_conform_to_contract(backend_key):
     router = get_default_router()
     backend = router.backends[backend_key]
@@ -44,8 +44,8 @@ def test_backend_adapters_conform_to_contract(backend_key):
     assert callable(getattr(backend, "settings_schema"))
 
 
-def test_hermes_adapter_metadata():
-    backend = HermesBackend()
+def test_ares_adapter_metadata():
+    backend = AresBackend()
     
     # Test health
     h = backend.health()

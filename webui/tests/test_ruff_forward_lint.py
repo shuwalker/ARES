@@ -1,7 +1,6 @@
 """Forward-looking ruff lint gate — in-suite enforcement.
 
-The Python twin of ``tests/test_static_js_runtime_lint.py`` (the ESLint runtime
-guard). Issue #3273.
+Issue #3273.
 
 What this asserts:
 

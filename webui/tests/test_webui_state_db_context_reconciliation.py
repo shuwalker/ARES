@@ -45,7 +45,7 @@ def test_next_webui_turn_context_includes_state_db_external_messages(monkeypatch
     monkeypatch.setattr(config, "SESSION_DIR", session_dir, raising=False)
     monkeypatch.setattr(config, "SESSION_INDEX_FILE", index_file, raising=False)
     monkeypatch.setattr(streaming, "SESSION_DIR", session_dir, raising=False)
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path, raising=False)
     monkeypatch.setattr(models, "_active_state_db_path", lambda: tmp_path / "state.db", raising=False)
     config.STREAMS.clear()
     config.CANCEL_FLAGS.clear()
@@ -240,7 +240,7 @@ def test_webui_streaming_normalizes_trailing_prefill_user_before_current_turn(mo
     monkeypatch.setattr(streaming, "get_config", lambda: {})
     monkeypatch.setattr(config, "get_config", lambda: {})
     monkeypatch.setattr(config, "_resolve_cli_toolsets", lambda *args, **kwargs: [])
-    monkeypatch.setattr(streaming, "_load_webui_prefill_context", lambda cfg: {
+    monkeypatch.setattr(streaming, "_load_webui_prefill_context", lambda cfg, **kwargs: {
         "status": "loaded",
         "source": "test",
         "label": "test",

@@ -20,8 +20,6 @@ This test reproduces the data loss path against the on-disk session file.
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
-
 import pytest
 
 
@@ -61,6 +59,17 @@ def _make_session_on_disk(session_dir, sid="s_test_1557", n_msgs=1000, with_acti
     # the temp_session_dir fixture patches. No manual path assignment needed.
     s.save(skip_index=True)
     return sid
+
+
+def _post_fastapi(path, payload):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_mutation_identity
+
+    app = create_app()
+    app.dependency_overrides[require_mutation_identity] = lambda: RequestIdentity(None, "default", False)
+    with TestClient(app) as client:
+        return client.post(path, json=payload)
 
 
 def test_metadata_only_save_raises_to_prevent_wipe(temp_session_dir):
@@ -108,7 +117,7 @@ def test_clear_stale_stream_state_preserves_messages(temp_session_dir):
     # The SSE reconnect path calls /api/session/status, which loads metadata-only.
     s = get_session(sid, metadata_only=True)
 
-    from api.routes import _clear_stale_stream_state
+    from api.session_runtime_state import _clear_stale_stream_state
     # We don't care about the return value — the post-fix path may return False
     # because _repair_stale_pending clears the stream during the metadata=False
     # reload. What we care about is the messages array surviving.
@@ -133,11 +142,7 @@ def test_clear_stale_stream_state_preserves_messages(temp_session_dir):
 
 def test_archive_route_reloads_metadata_only_cached_session(temp_session_dir, monkeypatch):
     """Archiving must upgrade cached metadata-only stubs before save()."""
-    from types import SimpleNamespace
-
-    import api.routes as routes
     from api.models import LOCK, SESSIONS, Session, get_session
-    monkeypatch.setattr(routes, "SESSIONS", SESSIONS)
 
     sid = _make_session_on_disk(temp_session_dir, n_msgs=12, with_active_stream=False)
     stub = get_session(sid, metadata_only=True)
@@ -150,23 +155,10 @@ def test_archive_route_reloads_metadata_only_cached_session(temp_session_dir, mo
     with LOCK:
         SESSIONS[sid] = stub
 
-    captured = {}
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    monkeypatch.setattr(routes, "read_body", lambda handler: {"session_id": sid, "archived": True})
-    monkeypatch.setattr(
-        routes,
-        "j",
-        lambda handler, payload, status=200, extra_headers=None: captured.update(
-            payload=payload,
-            status=status,
-        )
-        or True,
-    )
+    response = _post_fastapi("/api/session/archive", {"session_id": sid, "archived": True})
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/archive")) is True
-
-    assert captured["status"] == 200
-    assert captured["payload"]["session"]["archived"] is True
+    assert response.status_code == 200
+    assert response.json()["session"]["archived"] is True
 
     reloaded = Session.load(sid)
     assert reloaded.archived is True
@@ -474,7 +466,6 @@ def test_metadata_only_cached_session_mutation_routes_reload_full_session(
     temp_session_dir, monkeypatch, path, body, assertion
 ):
     """Session metadata mutation routes must not save cached metadata-only stubs."""
-    import api.routes as routes
     from api.models import LOCK, SESSIONS, Session, get_session
 
     sid = _make_session_on_disk(
@@ -492,25 +483,13 @@ def test_metadata_only_cached_session_mutation_routes_reload_full_session(
     assert stub.messages == []
     with LOCK:
         SESSIONS[sid] = stub
-    monkeypatch.setattr(routes, "SESSIONS", SESSIONS)
 
     request_body = {
         key: (sid if value == "{sid}" else value)
         for key, value in body.items()
     }
-    captured = {}
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    monkeypatch.setattr(routes, "read_body", lambda handler: request_body)
-    monkeypatch.setattr(
-        routes,
-        "j",
-        lambda handler, payload, status=200, extra_headers=None: captured.update(
-            payload=payload, status=status
-        ) or True,
-    )
-
-    assert routes.handle_post(object(), SimpleNamespace(path=path)) is True
-    assert captured["status"] == 200
+    response = _post_fastapi(path, request_body)
+    assert response.status_code == 200
 
     saved = Session.load(sid)
     assert assertion(saved)

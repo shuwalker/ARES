@@ -59,7 +59,8 @@ venv/
 .idea/
 *.swp
 *.swo
-.claude/
+.claude/*
+!.claude/FOUNDATION.md
 .claude/worktrees/
 
 # Secrets and credentials (NEVER commit)
@@ -70,7 +71,7 @@ venv/
 *.key
 
 # Private runtime folders must never be vendored into this repo
-.hermes/
+.ares/
 .ares/
 
 # ARES Tauri wrapper — local build artifacts (never commit)
@@ -93,3 +94,6 @@ package-lock.json
 diff_output.txt
 SAM/
 dares/__pycache__/
+
+# Reference sources (Paperclip, Hermes WebUI, etc.) — integrated into ARES
+reference_sources/

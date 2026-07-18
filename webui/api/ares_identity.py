@@ -40,8 +40,8 @@ def _profile_display_name(profile: str | None) -> str | None:
     return None
 
 
-def _is_default_hermes_name(value: str | None) -> bool:
-    return _clean_text(value).lower() in {"", "hermes", "hermes agent", "jros"}
+def _is_default_ares_name(value: str | None) -> bool:
+    return _clean_text(value).lower() in {"", "ares", "ares agent", "jros"}
 
 
 def _persona_display_name(persona_id: str | None) -> str | None:
@@ -107,14 +107,14 @@ def _jros_default_agent_name() -> str | None:
 
 def _default_assistant_name(bot_name: str | None) -> str:
     saved = _clean_text(bot_name)
-    if saved and not _is_default_hermes_name(saved):
+    if saved and not _is_default_ares_name(saved):
         return saved
     return _jros_default_agent_name() or _DEFAULT_AI_FALLBACK
 
 
 def _normalize_backend(value: str | None) -> str:
     backend = _clean_text(value).lower()
-    return backend if backend in {"hermes", "jros", "hybrid"} else "hermes"
+    return backend if backend in {"ares", "jros", "hybrid"} else "ares"
 
 
 def log_audit_event(session_id: str, action: str, details: str, status: str) -> None:
@@ -145,7 +145,7 @@ def get_assistant_display_name(
     *,
     profile: str | None = None,
     bot_name: str | None = None,
-    backend: str = "hermes",
+    backend: str = "ares",
     persona_id: str | None = None,
 ) -> str:
     """Return the canonical assistant display name.
@@ -180,7 +180,7 @@ def get_backend_badge_html(backend: str) -> str:
 def get_backend_display_name(backend: str) -> str:
     """Return the human-readable display name for a backend key."""
     normalized_backend = _normalize_backend(backend)
-    return {"hermes": "Hermes", "jros": "JROS", "hybrid": "Hybrid"}.get(
+    return {"ares": "Ares", "jros": "JROS", "hybrid": "Hybrid"}.get(
         normalized_backend, normalized_backend.title()
     )
 
@@ -189,7 +189,7 @@ def build_identity_payload(
     *,
     profile: str | None = None,
     bot_name: str | None = None,
-    backend: str = "hermes",
+    backend: str = "ares",
     persona_id: str | None = None,
 ) -> Dict[str, Any]:
     """Build the full identity payload for the /api/ares/identity endpoint.

@@ -19,8 +19,8 @@ def test_checkpoint_save_uses_session_profile_env(monkeypatch, tmp_path):
     profile_home.mkdir(parents=True)
     captured = {}
 
-    monkeypatch.setattr(profiles, "get_hermes_home_for_profile", lambda profile: profile_home)
-    monkeypatch.setattr(profiles, "get_profile_runtime_env", lambda home: {"HERMES_CONFIG_PATH": str(Path(home) / "config.yaml")})
+    monkeypatch.setattr(profiles, "get_ares_home_for_profile", lambda profile: profile_home)
+    monkeypatch.setattr(profiles, "get_profile_runtime_env", lambda home: {"ARES_CONFIG_PATH": str(Path(home) / "config.yaml")})
 
     def fake_save(self, *args, **kwargs):
         captured["kwargs"] = kwargs
@@ -33,5 +33,5 @@ def test_checkpoint_save_uses_session_profile_env(monkeypatch, tmp_path):
     _save_streaming_checkpoint(session)
 
     assert captured["kwargs"] == {"skip_index": True}
-    assert captured["thread_env"]["HERMES_HOME"] == str(profile_home)
-    assert captured["thread_env"]["HERMES_CONFIG_PATH"] == str(profile_home / "config.yaml")
+    assert captured["thread_env"]["ARES_HOME"] == str(profile_home)
+    assert captured["thread_env"]["ARES_CONFIG_PATH"] == str(profile_home / "config.yaml")

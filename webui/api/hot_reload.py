@@ -8,7 +8,7 @@ Two-tier hot-reload:
    the server is NOT killed. This prevents session interruptions caused by
    os._exit(0) → launchd restart → SSE connection drop.
    To apply .py changes, restart the server manually:
-       launchctl kickstart -k gui/$(id -u)/com.ares.hermes-webui
+       launchctl kickstart -k gui/$(id -u)/com.ares.ares-webui
    Or set ARES_WEBUI_PY_RELOAD=1 to re-enable auto-restart for development.
 
 2. **Static files (.css, .js, .html)** — instant browser reload via SSE.
@@ -23,6 +23,8 @@ Enable via environment variable:
 The watcher runs in a daemon thread and is designed to be fire-and-forget:
 start it once in main(), and it handles the rest.
 """
+
+from __future__ import annotations
 
 import logging
 import os

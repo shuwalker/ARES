@@ -3,8 +3,8 @@
 - **Status:** Proposed
 - **Author:** @franksong2702
 - **Created:** 2026-05-16
-- **Tracking issue:** [#2361](https://github.com/nesquena/hermes-webui/issues/2361)
-- **Related architecture:** [#1925](https://github.com/nesquena/hermes-webui/issues/1925), [`hermes-run-adapter-contract.md`](hermes-run-adapter-contract.md)
+- **Tracking issue:** [#2361](https://github.com/nesquena/ares-webui/issues/2361)
+- **Related architecture:** [#1925](https://github.com/nesquena/ares-webui/issues/1925), [`ares-run-adapter-contract.md`](ares-run-adapter-contract.md)
 
 ## Problem
 
@@ -129,14 +129,14 @@ context reconstruction, or session metadata:
 
 | Example | State boundary exposed | Relevant invariant |
 |---|---|---|
-| [#2341](https://github.com/nesquena/hermes-webui/issues/2341) / [#2342](https://github.com/nesquena/hermes-webui/pull/2342) | Active reattach could show agent activity without the pending user turn that started it | 2 |
-| [#2344](https://github.com/nesquena/hermes-webui/issues/2344) / [#2347](https://github.com/nesquena/hermes-webui/pull/2347) | Session switching could lose or reorder the live thinking/tool/interim timeline | 3, 5 |
-| [#2345](https://github.com/nesquena/hermes-webui/issues/2345) / [#2349](https://github.com/nesquena/hermes-webui/pull/2349) | Stale stream cleanup could mutate `updated_at` and resurface old sessions | 4 |
-| [#2346](https://github.com/nesquena/hermes-webui/issues/2346) / [#2348](https://github.com/nesquena/hermes-webui/pull/2348) | Thinking cards could repeat interim assistant progress text | 5 |
-| [#2353](https://github.com/nesquena/hermes-webui/issues/2353) / [#2354](https://github.com/nesquena/hermes-webui/pull/2354) | Recovered pending user turns could be visible but missing from model context | 1 |
-| [#2355](https://github.com/nesquena/hermes-webui/issues/2355) / [#2357](https://github.com/nesquena/hermes-webui/pull/2357) | Auto-compression rotation could leave reference-only cards in the active conversation tail | 3, 6 |
-| [#2308](https://github.com/nesquena/hermes-webui/issues/2308) / [#2309](https://github.com/nesquena/hermes-webui/pull/2309) | Compressed sessions could resume stale agent tasks when the user starts an ordinary fresh chat | 6 |
-| [#2283](https://github.com/nesquena/hermes-webui/pull/2283) | Run event journal replay provides the foundation for ordered recovery | 5 |
+| [#2341](https://github.com/nesquena/ares-webui/issues/2341) / [#2342](https://github.com/nesquena/ares-webui/pull/2342) | Active reattach could show agent activity without the pending user turn that started it | 2 |
+| [#2344](https://github.com/nesquena/ares-webui/issues/2344) / [#2347](https://github.com/nesquena/ares-webui/pull/2347) | Session switching could lose or reorder the live thinking/tool/interim timeline | 3, 5 |
+| [#2345](https://github.com/nesquena/ares-webui/issues/2345) / [#2349](https://github.com/nesquena/ares-webui/pull/2349) | Stale stream cleanup could mutate `updated_at` and resurface old sessions | 4 |
+| [#2346](https://github.com/nesquena/ares-webui/issues/2346) / [#2348](https://github.com/nesquena/ares-webui/pull/2348) | Thinking cards could repeat interim assistant progress text | 5 |
+| [#2353](https://github.com/nesquena/ares-webui/issues/2353) / [#2354](https://github.com/nesquena/ares-webui/pull/2354) | Recovered pending user turns could be visible but missing from model context | 1 |
+| [#2355](https://github.com/nesquena/ares-webui/issues/2355) / [#2357](https://github.com/nesquena/ares-webui/pull/2357) | Auto-compression rotation could leave reference-only cards in the active conversation tail | 3, 6 |
+| [#2308](https://github.com/nesquena/ares-webui/issues/2308) / [#2309](https://github.com/nesquena/ares-webui/pull/2309) | Compressed sessions could resume stale agent tasks when the user starts an ordinary fresh chat | 6 |
+| [#2283](https://github.com/nesquena/ares-webui/pull/2283) | Run event journal replay provides the foundation for ordered recovery | 5 |
 
 These references are evidence for the contract. This RFC does not make the
 linked implementation PRs dependent on this document, and it does not close the
@@ -145,7 +145,7 @@ tracking issue by itself.
 ## Relationship To The Run Adapter RFC
 
 The run adapter RFC defines the longer-term event/control boundary for WebUI and
-Hermes runtime ownership. This RFC defines the consistency rules that the current
+Ares runtime ownership. This RFC defines the consistency rules that the current
 WebUI and any future adapter-backed implementation must preserve.
 
 The two documents should be read together:

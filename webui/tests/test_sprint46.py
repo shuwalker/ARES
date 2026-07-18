@@ -11,10 +11,64 @@ import threading
 import time
 import types
 
+from fastapi.testclient import TestClient
+
+import api.manual_compression as compression
 from api.models import Session
 from api.config import SESSION_DIR
-from api.routes import _handle_session_compress, get_session
-from tests._pytest_port import BASE
+from api.models import get_session
+from fastapi_app.main import create_app
+from fastapi_app.request_context import (
+    RequestIdentity,
+    require_identity,
+    require_mutation_identity,
+)
+
+
+IDENTITY = RequestIdentity(session_cookie=None, profile="default", auth_enabled=False)
+
+
+def _api_request(handler, method, path, *, body=None):
+    app = create_app()
+    app.dependency_overrides[require_identity] = lambda: IDENTITY
+    app.dependency_overrides[require_mutation_identity] = lambda: IDENTITY
+    with TestClient(app) as client:
+        response = client.request(method, path, json=body)
+    handler.status = response.status_code
+    handler.sent_headers = dict(response.headers)
+    handler.wfile = io.BytesIO(response.content)
+    return True
+
+
+def _handle_session_compress(handler, body):
+    return _api_request(handler, "POST", "/api/session/compress", body=body)
+
+
+class _CompressionRoutes:
+    _MANUAL_COMPRESSION_JOBS_LOCK = compression._JOBS_LOCK
+    _MANUAL_COMPRESSION_JOBS = compression._JOBS
+
+    @staticmethod
+    def _handle_session_compress_start(handler, body):
+        return _api_request(handler, "POST", "/api/session/compress/start", body=body)
+
+    @staticmethod
+    def _handle_session_compress_status(handler, session_id):
+        return _api_request(
+            handler,
+            "GET",
+            f"/api/session/compress/status?session_id={session_id}",
+        )
+
+    @staticmethod
+    def _run_manual_compression_job(session_id, body):
+        return compression._compression_worker(
+            session_id,
+            body.get("focus_topic") or body.get("topic"),
+        )
+
+
+_COMPRESSION_ROUTES = _CompressionRoutes()
 
 
 class _FakeHandler:
@@ -68,18 +122,18 @@ def _install_fake_compression_runtime(monkeypatch, agent_cls):
     monkeypatch.setitem(sys.modules, "run_agent", fake_run_agent)
 
     import api.config as _cfg
-    fake_runtime_provider = types.ModuleType("hermes_cli.runtime_provider")
+    fake_runtime_provider = types.ModuleType("ares_cli.runtime_provider")
     fake_runtime_provider.resolve_runtime_provider = lambda requested=None: {
         "api_key": "fake-key",
         "provider": requested or "openai",
         "base_url": "https://api.openai.com/v1",
     }
-    fake_hermes_cli = types.ModuleType("hermes_cli")
-    fake_hermes_cli.__path__ = []
-    fake_hermes_cli.runtime_provider = fake_runtime_provider
-    monkeypatch.setitem(sys.modules, "hermes_cli", fake_hermes_cli)
-    monkeypatch.setitem(sys.modules, "hermes_cli.runtime_provider", fake_runtime_provider)
-    import hermes_cli.runtime_provider as _rtp
+    fake_ares_cli = types.ModuleType("ares_cli")
+    fake_ares_cli.__path__ = []
+    fake_ares_cli.runtime_provider = fake_runtime_provider
+    monkeypatch.setitem(sys.modules, "ares_cli", fake_ares_cli)
+    monkeypatch.setitem(sys.modules, "ares_cli.runtime_provider", fake_runtime_provider)
+    import ares_cli.runtime_provider as _rtp
 
     monkeypatch.setattr(
         _cfg,
@@ -197,7 +251,7 @@ def test_session_compress_roundtrip(monkeypatch, cleanup_test_sessions):
 
 
 def test_session_compress_start_is_async_and_reuses_running_job(monkeypatch, cleanup_test_sessions):
-    import api.routes as routes
+    routes = _COMPRESSION_ROUTES
 
     assert hasattr(routes, "_handle_session_compress_start")
     assert hasattr(routes, "_handle_session_compress_status")
@@ -286,7 +340,7 @@ def test_session_compress_start_is_async_and_reuses_running_job(monkeypatch, cle
 
 
 def test_session_compress_status_reports_worker_error_without_raw_paths(monkeypatch, cleanup_test_sessions):
-    import api.routes as routes
+    routes = _COMPRESSION_ROUTES
 
     assert hasattr(routes, "_handle_session_compress_start")
     assert hasattr(routes, "_handle_session_compress_status")
@@ -330,7 +384,7 @@ def test_session_compress_status_reports_worker_error_without_raw_paths(monkeypa
 
 
 def test_session_compress_start_retries_after_terminal_error(monkeypatch, cleanup_test_sessions):
-    import api.routes as routes
+    routes = _COMPRESSION_ROUTES
 
     class BlockingCompressor:
         entered = threading.Event()
@@ -374,7 +428,7 @@ def test_session_compress_start_retries_after_terminal_error(monkeypatch, cleanu
 
 
 def test_session_compress_async_reports_stale_session_guard(monkeypatch, cleanup_test_sessions):
-    import api.routes as routes
+    routes = _COMPRESSION_ROUTES
 
     created = cleanup_test_sessions
     sid = _make_session()
@@ -418,7 +472,7 @@ def test_session_compress_async_reports_stale_session_guard(monkeypatch, cleanup
 
 
 def test_session_compress_async_reports_stream_state_guard(monkeypatch, cleanup_test_sessions):
-    import api.routes as routes
+    routes = _COMPRESSION_ROUTES
 
     created = cleanup_test_sessions
     sid = _make_session()
@@ -463,7 +517,7 @@ def test_session_compress_async_reports_stream_state_guard(monkeypatch, cleanup_
 
 def test_manual_compress_worker_uses_session_profile_env(monkeypatch, tmp_path, cleanup_test_sessions):
     import api.profiles as profiles
-    import api.routes as routes
+    routes = _COMPRESSION_ROUTES
 
     class EnvAssertingAgent:
         seen_env = None
@@ -474,11 +528,11 @@ def test_manual_compress_worker_uses_session_profile_env(monkeypatch, tmp_path, 
             skill_module = sys.modules.get("tools.skills_tool")
             thread_env = getattr(_thread_ctx, "env", {})
             EnvAssertingAgent.seen_env = {
-                "HERMES_HOME": os.environ.get("HERMES_HOME"),
+                "ARES_HOME": os.environ.get("ARES_HOME"),
                 "HERMES_TEST_PROFILE_ENV": os.environ.get("HERMES_TEST_PROFILE_ENV"),
-                "THREAD_HERMES_HOME": thread_env.get("HERMES_HOME"),
+                "THREAD_ARES_HOME": thread_env.get("ARES_HOME"),
                 "THREAD_HERMES_TEST_PROFILE_ENV": thread_env.get("HERMES_TEST_PROFILE_ENV"),
-                "SKILL_MODULE_HOME": getattr(skill_module, "HERMES_HOME", None),
+                "SKILL_MODULE_HOME": getattr(skill_module, "ARES_HOME", None),
                 "SKILL_MODULE_DIR": getattr(skill_module, "SKILLS_DIR", None),
             }
             self.context_compressor = _FakeCompressor()
@@ -493,16 +547,16 @@ def test_manual_compress_worker_uses_session_profile_env(monkeypatch, tmp_path, 
 
     profile_home = tmp_path / "work-profile-home"
     fake_skill_module = types.ModuleType("tools.skills_tool")
-    setattr(fake_skill_module, "HERMES_HOME", "default-home")
-    setattr(fake_skill_module, "SKILLS_DIR", "default-home/skills")
+    fake_skill_module.ARES_HOME = "default-home"
+    fake_skill_module.SKILLS_DIR = "default-home/skills"
     monkeypatch.setitem(sys.modules, "tools.skills_tool", fake_skill_module)
-    monkeypatch.setattr(profiles, "get_hermes_home_for_profile", lambda profile: profile_home)
+    monkeypatch.setattr(profiles, "get_ares_home_for_profile", lambda profile: profile_home)
     monkeypatch.setattr(
         profiles,
         "get_profile_runtime_env",
         lambda home: {"HERMES_TEST_PROFILE_ENV": "work-runtime"},
     )
-    monkeypatch.setenv("HERMES_HOME", "default-home")
+    monkeypatch.setenv("ARES_HOME", "default-home")
     monkeypatch.delenv("HERMES_TEST_PROFILE_ENV", raising=False)
     _install_fake_compression_runtime(monkeypatch, EnvAssertingAgent)
 
@@ -518,50 +572,16 @@ def test_manual_compress_worker_uses_session_profile_env(monkeypatch, tmp_path, 
     routes._run_manual_compression_job(sid, {"session_id": sid})
 
     assert EnvAssertingAgent.seen_env == {
-        "HERMES_HOME": str(profile_home),
+        "ARES_HOME": str(profile_home),
         "HERMES_TEST_PROFILE_ENV": "work-runtime",
-        "THREAD_HERMES_HOME": str(profile_home),
+        "THREAD_ARES_HOME": str(profile_home),
         "THREAD_HERMES_TEST_PROFILE_ENV": "work-runtime",
         "SKILL_MODULE_HOME": profile_home,
         "SKILL_MODULE_DIR": profile_home / "skills",
     }
-    assert str(getattr(fake_skill_module, "HERMES_HOME")) == "default-home"
-    assert str(getattr(fake_skill_module, "SKILLS_DIR")) == "default-home/skills"
-    assert os.environ.get("HERMES_HOME") == "default-home"
+    assert str(fake_skill_module.ARES_HOME) == "default-home"
+    assert str(fake_skill_module.SKILLS_DIR) == "default-home/skills"
+    assert os.environ.get("ARES_HOME") == "default-home"
     assert os.environ.get("HERMES_TEST_PROFILE_ENV") is None
     with routes._MANUAL_COMPRESSION_JOBS_LOCK:
         assert routes._MANUAL_COMPRESSION_JOBS[sid]["status"] == "done"
-
-
-def test_static_commands_js_registers_compress_alias(cleanup_test_sessions):
-    from pathlib import Path
-
-    with open(Path(__file__).resolve().parents[1] / "static" / "commands.js", encoding="utf-8") as f:
-        src = f.read()
-    assert "name:'compress'" in src
-    assert "name:'compact'" in src
-    assert "/api/session/compress/start" in src
-    assert "/api/session/compress/status" in src
-    assert "await api('/api/session/compress'," not in src
-    assert "beforeCount:visibleCount" in src
-    assert "cmdCompress" in src
-    assert "cmdCompact" in src
-
-
-def test_static_commands_js_prefers_persisted_reference_message(cleanup_test_sessions):
-    from pathlib import Path
-
-    with open(Path(__file__).resolve().parents[1] / "static" / "commands.js", encoding="utf-8") as f:
-        src = f.read()
-
-    assert "const messageRef=referenceMsg?msgContent(referenceMsg)||String(referenceMsg.content||''):'';" in src
-    assert "const referenceText=messageRef || summaryRef;" in src
-
-
-def test_static_session_load_resumes_manual_compression_polling(cleanup_test_sessions):
-    from pathlib import Path
-
-    with open(Path(__file__).resolve().parents[1] / "static" / "sessions.js", encoding="utf-8") as f:
-        src = f.read()
-
-    assert "resumeManualCompressionForSession" in src

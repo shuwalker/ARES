@@ -9,12 +9,12 @@ from api.streaming import _compression_summary_from_messages, _is_context_compre
 
 
 def test_legacy_duplicate_anchor_helpers_are_removed():
-    routes_src = Path("api/routes.py").read_text(encoding="utf-8")
+    manual_src = Path("api/manual_compression.py").read_text(encoding="utf-8")
     streaming_src = Path("api/streaming.py").read_text(encoding="utf-8")
 
-    assert "def _visible_messages_for_anchor" not in routes_src
+    assert "def _visible_messages_for_anchor" not in manual_src
     assert "def _visible_messages_for_compression_anchor" not in streaming_src
-    assert "visible_messages_for_anchor(s.messages, auto_compression=False)" in routes_src
+    assert "visible_messages_for_anchor(session.messages, auto_compression=False)" in manual_src
     assert "visible_messages_for_anchor(s.messages, auto_compression=True)" in streaming_src
 
 
@@ -92,7 +92,7 @@ def test_compression_summary_ignores_tool_output_that_mentions_compression():
     }
     skill_tool_output = {
         "role": "tool",
-        "content": "{\"name\": \"hermes-webui-operations\", \"content\": \"Troubleshooting frequent context compression indicators...\"}",
+        "content": "{\"name\": \"ares-webui-operations\", \"content\": \"Troubleshooting frequent context compression indicators...\"}",
     }
 
     assert _compression_summary_from_messages([marker, skill_tool_output]) == marker["content"]

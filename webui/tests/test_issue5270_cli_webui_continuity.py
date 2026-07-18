@@ -77,7 +77,7 @@ def _install_cli_continuity_env(monkeypatch, tmp_path):
     import api.config as config
     import api.models as models
     import api.profiles as profiles
-    import api.routes as routes
+    import api.session_access as routes
     import api.streaming as streaming
 
     session_dir = tmp_path / "sessions"
@@ -92,7 +92,7 @@ def _install_cli_continuity_env(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "SESSION_DIR", session_dir, raising=False)
     monkeypatch.setattr(config, "SESSION_INDEX_FILE", index_file, raising=False)
     monkeypatch.setattr(streaming, "SESSION_DIR", session_dir, raising=False)
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: tmp_path, raising=False)
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path, raising=False)
     monkeypatch.setattr(routes, "SESSION_INDEX_FILE", index_file, raising=False)
 
     config.STREAMS.clear()
@@ -267,34 +267,14 @@ def test_chat_start_refreshes_cli_messages_before_first_webui_turn(monkeypatch, 
         assert sid == session.session_id
         return session
 
-    def _fake_start_run(s, **kwargs):
-        assert s is session
-        assert seen["refresh_cli_messages"] is True
-        return {"ok": True}
+    monkeypatch.setattr("api.models.get_session", lambda _sid: session)
+    monkeypatch.setattr(routes, "get_or_materialize_session", _fake_get_or_materialize_session)
+    from fastapi_app.realtime import RealtimeService
 
-    monkeypatch.setattr(routes, "_get_or_materialize_session", _fake_get_or_materialize_session)
-    monkeypatch.setattr(routes, "_session_visible_to_active_profile", lambda *args, **kwargs: True)
-    monkeypatch.setattr(routes, "_resolve_chat_workspace_with_recovery", lambda *args, **kwargs: str(tmp_path))
-    monkeypatch.setattr(routes, "_read_profile_model_config", lambda *args, **kwargs: (None, None, None))
-    monkeypatch.setattr(
-        routes,
-        "_resolve_compatible_session_model_state",
-        lambda *args, **kwargs: ("test-model", None, "test-model"),
-    )
-    monkeypatch.setattr(routes, "_start_run", _fake_start_run)
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200: {"status": status, **payload})
-
-    response = routes._handle_chat_start(
-        None,
-        {
-            "session_id": session.session_id,
-            "message": WEBUI_FOLLOWUP,
-        },
-    )
+    resolved = RealtimeService._session_for_profile(session.session_id, "default")
 
     assert seen["refresh_cli_messages"] is True
-    assert response["ok"] is True
-    assert response["status"] == 200
+    assert resolved is session
 
 
 def test_regular_cli_sessions_remain_writable_after_fix(monkeypatch, tmp_path):

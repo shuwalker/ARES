@@ -10,7 +10,7 @@ from the workspace a new chat would actually inherit for that profile.
 Fix: GET /api/profile/active now includes ``default_workspace``, resolved with
 the SAME profile-scoped priority used by POST /api/profile/switch — reusing
 ``api.workspace.get_last_workspace()`` (which is already keyed off the
-per-request hermes_profile cookie via the thread-local):
+per-request ares_profile cookie via the thread-local):
     {profile_home}/webui_state/last_workspace.txt
       -> config.yaml workspace / default_workspace
       -> terminal.cwd
@@ -22,26 +22,22 @@ and the real filesystem resolution from a named profile's last_workspace.txt.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-from urllib.parse import urlparse
-
 import api.profiles as profiles
-import api.routes as routes
 import api.workspace as workspace
 import api.config as config_mod
 
 
-def _capture_j(monkeypatch):
-    """Patch routes.j to capture the JSON payload instead of writing a response."""
-    captured = {}
+def _get_active_profile(profile="work"):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_identity
 
-    def fake_j(_handler, payload, status=200, **_kwargs):
-        captured["status"] = status
-        captured["payload"] = payload
-        return captured
-
-    monkeypatch.setattr(routes, "j", fake_j)
-    return captured
+    app = create_app()
+    app.dependency_overrides[require_identity] = lambda: RequestIdentity(None, profile, False)
+    with TestClient(app) as client:
+        response = client.get("/api/profile/active")
+    assert response.status_code == 200
+    return response.json()
 
 
 def test_profile_active_includes_default_workspace_from_resolver(monkeypatch):
@@ -52,17 +48,13 @@ def test_profile_active_includes_default_workspace_from_resolver(monkeypatch):
     the very helper POST /api/profile/switch resolution is built on — not from a
     duplicated, divergent code path.
     """
-    captured = _capture_j(monkeypatch)
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "work")
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: "/home/u/.hermes/profiles/work")
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: "/home/u/.ares/profiles/work")
     monkeypatch.setattr(profiles, "_is_root_profile", lambda name: name in ("default", ""))
     # The resolver is the single source of truth for the workspace value.
-    monkeypatch.setattr(routes, "get_profile_default_workspace", lambda: "/srv/projects/work")
+    monkeypatch.setattr(workspace, "get_profile_default_workspace", lambda: "/srv/projects/work")
 
-    routes.handle_get(SimpleNamespace(), urlparse("/api/profile/active"))
-
-    assert captured["status"] == 200
-    payload = captured["payload"]
+    payload = _get_active_profile()
     assert payload["name"] == "work"
     assert payload["is_default"] is False
     assert payload["default_workspace"] == "/srv/projects/work", (
@@ -74,13 +66,13 @@ def test_profile_active_includes_default_workspace_from_resolver(monkeypatch):
 def test_profile_active_default_workspace_resolves_from_named_profile(monkeypatch, tmp_path):
     """End-to-end: a named profile's last_workspace.txt drives default_workspace.
 
-    Mirrors the real boot path — the per-request hermes_profile cookie sets the
+    Mirrors the real boot path — the per-request ares_profile cookie sets the
     thread-local profile (set_request_profile), so get_last_workspace() reads the
     target profile's {home}/webui_state/last_workspace.txt rather than the global
     default.
     """
-    # ── Single-user layout: base ~/.hermes with a named 'work' profile ──
-    base_home = tmp_path / ".hermes"
+    # ── Single-user layout: base ~/.ares with a named 'work' profile ──
+    base_home = tmp_path / ".ares"
     profile_home = base_home / "profiles" / "work"
     for subdir in ("memories", "sessions", "skills", "webui_state"):
         (profile_home / subdir).mkdir(parents=True, exist_ok=True)
@@ -93,26 +85,18 @@ def test_profile_active_default_workspace_resolves_from_named_profile(monkeypatc
         resolved_ws, encoding="utf-8"
     )
 
-    captured = _capture_j(monkeypatch)
-
     # Point the profile machinery at our temp base home and force normal
     # multi-profile mode (no isolated opt-in) so the named profile resolves
     # to {base}/profiles/work.
-    monkeypatch.setattr(profiles, "_DEFAULT_HERMES_HOME", base_home)
-    monkeypatch.delenv("HERMES_WEBUI_ISOLATED_PROFILE", raising=False)
+    monkeypatch.setattr(profiles, "_DEFAULT_ARES_HOME", base_home)
+    monkeypatch.delenv("ARES_WEBUI_ISOLATED_PROFILE", raising=False)
     monkeypatch.setattr(profiles, "_INITIAL_ISOLATED_PROFILE_OPT_IN", "")
     # Defensive: keep resolution hermetic w.r.t. the test runner's real config —
     # a remote terminal backend would otherwise reject the local last_workspace.
     monkeypatch.setattr(workspace, "_remote_terminal_cwd", lambda: None)
 
-    # Simulate the request carrying a hermes_profile=work cookie.
-    profiles.set_request_profile("work")
-    try:
-        routes.handle_get(SimpleNamespace(), urlparse("/api/profile/active"))
-    finally:
-        profiles.clear_request_profile()
-
-    payload = captured["payload"]
+    # Simulate the request carrying a ares_profile=work cookie.
+    payload = _get_active_profile()
     assert payload["name"] == "work"
     assert payload["is_default"] is False
     assert payload["default_workspace"] == resolved_ws, (
@@ -127,7 +111,7 @@ def test_profile_active_default_workspace_falls_back_to_config_workspace(monkeyp
     This exercises the second tier of the shared resolution priority used by
     POST /api/profile/switch.
     """
-    base_home = tmp_path / ".hermes"
+    base_home = tmp_path / ".ares"
     profile_home = base_home / "profiles" / "work"
     (profile_home / "webui_state").mkdir(parents=True, exist_ok=True)
 
@@ -135,9 +119,8 @@ def test_profile_active_default_workspace_falls_back_to_config_workspace(monkeyp
     cfg_workspace.mkdir(parents=True, exist_ok=True)
     resolved_cfg_ws = str(cfg_workspace.resolve())
 
-    captured = _capture_j(monkeypatch)
-    monkeypatch.setattr(profiles, "_DEFAULT_HERMES_HOME", base_home)
-    monkeypatch.delenv("HERMES_WEBUI_ISOLATED_PROFILE", raising=False)
+    monkeypatch.setattr(profiles, "_DEFAULT_ARES_HOME", base_home)
+    monkeypatch.delenv("ARES_WEBUI_ISOLATED_PROFILE", raising=False)
     monkeypatch.setattr(profiles, "_INITIAL_ISOLATED_PROFILE_OPT_IN", "")
     monkeypatch.setattr(workspace, "_remote_terminal_cwd", lambda: None)
     # Neutralize the global last_workspace.txt fallback so this test exercises the
@@ -148,13 +131,7 @@ def test_profile_active_default_workspace_falls_back_to_config_workspace(monkeyp
     # patch must land on api.config (the lookup happens at call time).
     monkeypatch.setattr(config_mod, "get_config", lambda: {"workspace": resolved_cfg_ws})
 
-    profiles.set_request_profile("work")
-    try:
-        routes.handle_get(SimpleNamespace(), urlparse("/api/profile/active"))
-    finally:
-        profiles.clear_request_profile()
-
-    payload = captured["payload"]
+    payload = _get_active_profile()
     assert payload["default_workspace"] == resolved_cfg_ws, (
         "default_workspace must fall back to config.yaml `workspace` when no "
         "last_workspace.txt exists (mirrors POST /api/profile/switch priority, #5169)"
@@ -172,7 +149,7 @@ def test_profile_active_default_workspace_ignores_global_last_workspace(monkeypa
     get_profile_default_workspace(), which skips the global file: profile-scoped
     last_workspace.txt -> config.yaml -> terminal.cwd -> default.
     """
-    base_home = tmp_path / ".hermes"
+    base_home = tmp_path / ".ares"
     profile_home = base_home / "profiles" / "work"
     (profile_home / "webui_state").mkdir(parents=True, exist_ok=True)
 
@@ -187,9 +164,8 @@ def test_profile_active_default_workspace_ignores_global_last_workspace(monkeypa
     cfg_workspace.mkdir(parents=True, exist_ok=True)
     resolved_cfg_ws = str(cfg_workspace.resolve())
 
-    captured = _capture_j(monkeypatch)
-    monkeypatch.setattr(profiles, "_DEFAULT_HERMES_HOME", base_home)
-    monkeypatch.delenv("HERMES_WEBUI_ISOLATED_PROFILE", raising=False)
+    monkeypatch.setattr(profiles, "_DEFAULT_ARES_HOME", base_home)
+    monkeypatch.delenv("ARES_WEBUI_ISOLATED_PROFILE", raising=False)
     monkeypatch.setattr(profiles, "_INITIAL_ISOLATED_PROFILE_OPT_IN", "")
     monkeypatch.setattr(workspace, "_remote_terminal_cwd", lambda: None)
     # The global last-workspace file DOES exist (and is valid) — the named-profile
@@ -198,13 +174,7 @@ def test_profile_active_default_workspace_ignores_global_last_workspace(monkeypa
     # No profile-scoped last_workspace.txt on disk -> resolver consults config.yaml.
     monkeypatch.setattr(config_mod, "get_config", lambda: {"workspace": resolved_cfg_ws})
 
-    profiles.set_request_profile("work")
-    try:
-        routes.handle_get(SimpleNamespace(), urlparse("/api/profile/active"))
-    finally:
-        profiles.clear_request_profile()
-
-    payload = captured["payload"]
+    payload = _get_active_profile()
     assert payload["default_workspace"] == resolved_cfg_ws, (
         "default_workspace must resolve from the named profile's config.yaml workspace, "
         "NOT the global last_workspace.txt — the #5169 regression guard"

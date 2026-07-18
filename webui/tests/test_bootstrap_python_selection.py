@@ -67,7 +67,7 @@ def test_ensure_python_fails_loudly_when_no_interpreter_can_import_agent(monkeyp
     try:
         bootstrap.ensure_python_has_webui_deps(str(local_python), tmp_path / "agent")
     except RuntimeError as exc:
-        assert "cannot import both WebUI dependencies and Hermes Agent" in str(exc)
+        assert "cannot import both WebUI dependencies and Ares Agent" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
 

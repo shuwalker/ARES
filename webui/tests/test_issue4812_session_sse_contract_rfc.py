@@ -34,8 +34,8 @@ class TestRFCExists:
     def test_rfc_file_exists(self):
         assert RFC.exists(), f"RFC file not found: {RFC}"
 
-    def test_rfc_has_status_proposed(self):
-        assert "Status:** Proposed" in _rfc(), "RFC must have 'Status: Proposed' header"
+    def test_rfc_has_status_implemented(self):
+        assert "Status:** Implemented" in _rfc()
 
     def test_rfc_has_author(self):
         assert "Author:** @" in _rfc(), "RFC must have 'Author: @...' header"
@@ -92,23 +92,23 @@ class TestEndpointDistinction:
 
     def test_rfc_cites_current_global_endpoint_source(self):
         """The RFC's source anchors for the existing global stream must be
-        ACCURATE against current api/routes.py, verified by SYMBOL not by line
+        ACCURATE against the modular realtime router, verified by SYMBOL not by line
         number. The RFC cites the route string and handler function by name;
         this test confirms (a) each symbol still exists in api/routes.py and
         (b) the RFC names that symbol. It deliberately does NOT check line
         numbers: a routes.py line-shift must never break this test or the RFC
         (#5513 gate finding, chronic brittle failure #5542)."""
         text = _rfc()
-        routes_src = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
+        routes_src = (REPO / "fastapi_app" / "routers" / "realtime.py").read_text(encoding="utf-8")
 
         # (RFC-cited symbol, existence probe in api/routes.py source)
         checks = [
             ("/api/sessions/events", "/api/sessions/events"),
-            ("_handle_session_events_stream", "def _handle_session_events_stream"),
+            ("session_list_events_sse", "async def session_list_events_sse"),
         ]
         for rfc_symbol, source_probe in checks:
             assert source_probe in routes_src, (
-                f"api/routes.py must still define/route {source_probe!r}; the RFC "
+                f"realtime.py must still define/route {source_probe!r}; the RFC "
                 f"cites {rfc_symbol!r} as a stable source anchor"
             )
             assert rfc_symbol in text, (
@@ -118,24 +118,24 @@ class TestEndpointDistinction:
 
     def test_rfc_run_journal_anchors_land_on_real_source(self):
         """Every named-symbol anchor the RFC cites in the run-journal inventory
-        must be a REAL symbol in api/routes.py and be NAMED in the RFC prose.
-        This is verified by symbol, never by line number, so a routes.py
+        must be a REAL symbol in the modular replay implementation and be NAMED in the RFC prose.
+        This is verified by symbol, never by line number, so a source
         line-shift can't silently break it or the RFC (#5513 gate finding 2,
         chronic brittle failure #5542)."""
         text = _rfc()
-        routes_src = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
+        journal_src = (REPO / "api" / "run_journal.py").read_text(encoding="utf-8")
+        realtime_src = (REPO / "fastapi_app" / "routers" / "realtime.py").read_text(encoding="utf-8")
 
         # (RFC-cited symbol name, existence probe in api/routes.py source)
         checks = [
-            ("_parse_run_journal_event_id", "def _parse_run_journal_event_id"),
-            ("_parse_run_journal_after_seq", "def _parse_run_journal_after_seq"),
-            ("_runner_event_id", "def _runner_event_id"),
-            ("_replay_run_journal", "def _replay_run_journal"),
-            ("_sse_with_id", "_sse_with_id"),
+            ("_parse_run_journal_event_id", "def _parse_run_journal_event_id", journal_src),
+            ("read_session_run_events", "def read_session_run_events", journal_src),
+            ("_sse_frame", "def _sse_frame", realtime_src),
+            ("_session_activity_sse_response", "async def _session_activity_sse_response", realtime_src),
         ]
-        for rfc_symbol, source_probe in checks:
-            assert source_probe in routes_src, (
-                f"api/routes.py must still define {source_probe!r}; the RFC cites "
+        for rfc_symbol, source_probe, source in checks:
+            assert source_probe in source, (
+                f"current source must still define {source_probe!r}; the RFC cites "
                 f"{rfc_symbol!r} as a stable source anchor"
             )
             assert rfc_symbol in text, (
@@ -235,8 +235,8 @@ class TestSequenceAndReplaySemantics:
 
 class TestHeartbeat:
     def test_rfc_references_heartbeat_constant(self):
-        assert "_SSE_HEARTBEAT_INTERVAL_SECONDS" in _rfc(), (
-            "RFC must reference _SSE_HEARTBEAT_INTERVAL_SECONDS rather than inventing a new constant"
+        assert "_HEARTBEAT_SECONDS" in _rfc(), (
+            "RFC must reference the FastAPI realtime heartbeat constant rather than inventing a new one"
         )
 
     def test_rfc_does_not_add_new_heartbeat_knob(self):
@@ -251,17 +251,16 @@ class TestHeartbeat:
 class TestDocsOnlyScope:
     def test_rfc_states_no_endpoint_implementation(self):
         text = _rfc()
-        assert "does **not** implement" in text or "does not implement" in text, (
-            "RFC must state it does not implement the endpoint"
-        )
+        assert "Status:** Implemented" in text
+        assert "fastapi_app/routers/realtime.py" in text
 
     def test_rfc_has_non_goals_section(self):
         assert "Non-goals" in _rfc(), "RFC must have a Non-goals section"
 
     def test_rfc_lists_implementation_gates(self):
         text = _rfc()
-        assert "implementation gate" in text.lower() or "open question" in text.lower(), (
-            "RFC must list open implementation gates"
+        assert "implementation decisions and follow-up validation" in text.lower(), (
+            "Implemented RFC must retain its decisions and release-validation record"
         )
 
     def test_contracts_preserves_no_implementation_warning(self):

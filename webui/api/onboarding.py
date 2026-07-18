@@ -1,4 +1,4 @@
-"""Hermes Web UI -- first-run onboarding helpers."""
+"""Ares Web UI -- first-run onboarding helpers."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from api.config import (
     DEFAULT_MODEL,
     DEFAULT_WORKSPACE,
     _FALLBACK_MODELS,
-    _HERMES_FOUND,
+    _ARES_FOUND,
     invalidate_models_cache,
     _PROVIDER_DISPLAY,
     _PROVIDER_MODELS,
@@ -26,16 +26,10 @@ from api.config import (
     load_settings,
     reload_config,
     save_settings,
-    verify_hermes_imports,
+    verify_ares_imports,
 )
 from api.providers import _write_env_file  # shared impl with _ENV_LOCK (#1164)
 from api.workspace import get_last_workspace, load_workspaces
-
-try:
-    from api.jros_companion import companion_available, companion_exists
-except Exception:
-    companion_available = lambda: False  # type: ignore[misc,assignment]
-    companion_exists = lambda: False  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +82,7 @@ _SUPPORTED_PROVIDER_SETUPS = {
     },
     "lmstudio": {
         "label": "LM Studio",
-        # Canonical env var matches the agent CLI runtime (hermes_cli/auth.py:182,
+        # Canonical env var matches the agent CLI runtime (ares_cli/auth.py:182,
         # api_key_env_vars=("LM_API_KEY",)).  Onboarding writes this name so the
         # agent runtime actually picks up the key on the next chat — pre-#1499/#1500
         # the WebUI wrote LMSTUDIO_API_KEY which the agent runtime ignored, masked
@@ -205,17 +199,17 @@ _PROVIDER_CATEGORIES = [
 _UNSUPPORTED_PROVIDER_NOTE = (
     "Advanced provider flows such as Nous Portal and GitHub Copilot are still "
     "terminal-first. OpenAI Codex and Anthropic Claude Code can be authenticated in this onboarding flow "
-    "when your Hermes config selects the corresponding provider."
+    "when your Ares config selects the corresponding provider."
 )
 
 
-def _get_active_hermes_home() -> Path:
+def _get_active_ares_home() -> Path:
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_ares_home
 
-        return get_active_hermes_home()
+        return get_active_ares_home()
     except ImportError:
-        return Path.home() / ".hermes"
+        return Path.home() / ".ares"
 
 
 def _load_env_file(env_path: Path) -> dict[str, str]:
@@ -254,7 +248,7 @@ def _save_yaml_config(config_path: Path, config: dict) -> None:
     try:
         import yaml as _yaml
     except ImportError as exc:
-        raise RuntimeError("PyYAML is required to write Hermes config.yaml") from exc
+        raise RuntimeError("PyYAML is required to write Ares config.yaml") from exc
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
@@ -420,7 +414,7 @@ def probe_provider_endpoint(
 
     headers = {
         "Accept": "application/json",
-        "User-Agent": "hermes-webui-onboarding-probe",
+        "User-Agent": "ares-webui-onboarding-probe",
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -599,14 +593,14 @@ def _provider_api_key_present(
                 return True
 
     # For providers not in _SUPPORTED_PROVIDER_SETUPS (e.g. minimax-cn, deepseek,
-    # xai, etc.), ask the hermes_cli auth registry — it knows every provider's env
+    # xai, etc.), ask the ares_cli auth registry — it knows every provider's env
     # var names and can check os.environ for a valid key.
     # Exclude known OAuth/token-flow providers — those are handled separately by
     # _provider_oauth_authenticated() and should not be short-circuited here.
     _known_oauth = {"openai-codex", "copilot", "copilot-acp", "qwen-oauth", "nous", "anthropic"}
     if provider not in _SUPPORTED_PROVIDER_SETUPS and provider not in _known_oauth:
         try:
-            from hermes_cli.auth import get_auth_status as _gas
+            from ares_cli.auth import get_auth_status as _gas
             status = _gas(provider)
             if isinstance(status, dict) and status.get("logged_in"):
                 return True
@@ -638,13 +632,13 @@ def _oauth_payload_has_token(payload: dict) -> bool:
 
 
 
-def _provider_oauth_authenticated(provider: str, hermes_home: "Path") -> bool:
+def _provider_oauth_authenticated(provider: str, ares_home: "Path") -> bool:
     """Return True if the provider has valid OAuth credentials.
 
     Reads the profile-scoped auth.json directly so onboarding respects the
-    requested Hermes home. Known OAuth providers may store auth either in the
+    requested Ares home. Known OAuth providers may store auth either in the
     legacy providers[provider_id] singleton state or in credential_pool entries
-    used by current Hermes runtime auth resolution.
+    used by current Ares runtime auth resolution.
     """
     provider = (provider or "").strip().lower()
     provider = {"claude": "anthropic", "claude-code": "anthropic"}.get(provider, provider)
@@ -658,7 +652,7 @@ def _provider_oauth_authenticated(provider: str, hermes_home: "Path") -> bool:
     try:
         import json as _j
 
-        auth_path = hermes_home / "auth.json"
+        auth_path = ares_home / "auth.json"
         if not auth_path.exists():
             return False
         store = _j.loads(auth_path.read_text(encoding="utf-8"))
@@ -693,7 +687,7 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
     provider = _extract_current_provider(cfg)
     model = _extract_current_model(cfg)
     base_url = _extract_current_base_url(cfg)
-    env_values = _load_env_file(_get_active_hermes_home() / ".env")
+    env_values = _load_env_file(_get_active_ares_home() / ".env")
 
     provider_configured = bool(provider and model)
     provider_ready = False
@@ -725,7 +719,7 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
                     provider_ready = _provider_api_key_present(provider, cfg, env_values)
                 if not provider_ready and meta.get("oauth_provider"):
                     provider_ready = _provider_oauth_authenticated(
-                        str(meta.get("oauth_provider")), _get_active_hermes_home()
+                        str(meta.get("oauth_provider")), _get_active_ares_home()
                     )
         else:
             # Unknown provider — may be an OAuth flow (openai-codex, copilot, etc.)
@@ -734,32 +728,32 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
             # third-party providers), then OAuth auth.json.
             provider_ready = (
                 _provider_api_key_present(provider, cfg, env_values)
-                or _provider_oauth_authenticated(provider, _get_active_hermes_home())
+                or _provider_oauth_authenticated(provider, _get_active_ares_home())
             )
 
-    chat_ready = bool(_HERMES_FOUND and imports_ok and provider_ready)
+    chat_ready = bool(_ARES_FOUND and imports_ok and provider_ready)
     note_args: list[str] = []
 
-    if not _HERMES_FOUND or not imports_ok:
+    if not _ARES_FOUND or not imports_ok:
         state = "agent_unavailable"
         note_key = "onboarding_notice_system_unavailable"
         note = (
-            "Hermes is not fully importable from the Web UI yet. Finish bootstrap or fix the "
+            "Ares is not fully importable from the Web UI yet. Finish bootstrap or fix the "
             "agent install before provider setup will work."
         )
     elif chat_ready:
         state = "ready"
         note_key = "onboarding_notice_system_ready"
         provider_name = _PROVIDER_DISPLAY.get(
-            provider, provider.title() if provider else "Hermes"
+            provider, provider.title() if provider else "Ares"
         )
-        note = f"Hermes is minimally configured and ready to chat via {provider_name}."
+        note = f"Ares is minimally configured and ready to chat via {provider_name}."
     elif provider_configured:
         state = "provider_incomplete"
         if provider == "custom" and not base_url:
             note_key = "onboarding_notice_custom_base_url_required"
             note = (
-                "Hermes has a saved provider/model selection, but the custom "
+                "Ares has a saved provider/model selection, but the custom "
                 "provider still needs a base URL. Add the API key too if that "
                 "server requires one."
             )
@@ -769,19 +763,19 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
             # OAuth / unsupported provider: avoid misleading "API key" wording.
             note = (
                 f"Provider '{provider}' is configured but not yet authenticated. "
-                "Run 'hermes auth' or 'hermes model' in a terminal to complete "
+                "Run 'ares auth' or 'ares model' in a terminal to complete "
                 "setup, then reload the Web UI."
             )
         else:
             note_key = "onboarding_notice_provider_api_key_required"
             note = (
-                "Hermes has a saved provider/model selection but still needs the "
+                "Ares has a saved provider/model selection but still needs the "
                 "API key required to chat."
             )
     else:
         state = "needs_provider"
         note_key = "onboarding_notice_provider_choice_required"
-        note = "Hermes is installed, but you still need to choose a provider and save working credentials."
+        note = "Ares is installed, but you still need to choose a provider and save working credentials."
 
     return {
         "provider_configured": provider_configured,
@@ -794,7 +788,7 @@ def _status_from_runtime(cfg: dict, imports_ok: bool) -> dict:
         "current_provider": provider or None,
         "current_model": model or None,
         "current_base_url": base_url or None,
-        "env_path": str(_get_active_hermes_home() / ".env"),
+        "env_path": str(_get_active_ares_home() / ".env"),
     }
 
 
@@ -840,10 +834,10 @@ def _build_setup_catalog(cfg: dict) -> dict:
 
     # Flag whether the currently-configured provider is OAuth-based (not in the
     # API-key flow).  The frontend uses this to show a confirmation card instead
-    # of a key input when the user has already authenticated via 'hermes auth'.
+    # of a key input when the user has already authenticated via 'ares auth'.
     current_is_oauth = (
         current_provider not in _SUPPORTED_PROVIDER_SETUPS and bool(current_provider)
-    ) or _provider_oauth_authenticated(current_provider, _get_active_hermes_home())
+    ) or _provider_oauth_authenticated(current_provider, _get_active_ares_home())
 
     return {
         "providers": providers,
@@ -864,24 +858,24 @@ def _build_setup_catalog(cfg: dict) -> dict:
 def get_onboarding_status() -> dict:
     settings = load_settings()
     cfg = get_config()
-    imports_ok, missing, errors = verify_hermes_imports()
+    imports_ok, missing, errors = verify_ares_imports()
     runtime = _status_from_runtime(cfg, imports_ok)
     workspaces = load_workspaces()
     last_workspace = get_last_workspace()
     available_models = get_available_models()
 
-    # HERMES_WEBUI_SKIP_ONBOARDING=1 lets hosting providers (e.g. Agent37) ship
+    # ARES_WEBUI_SKIP_ONBOARDING=1 lets hosting providers (e.g. Agent37) ship
     # a pre-configured instance without the wizard blocking the first load.
     # This is an operator-level override and is honoured unconditionally —
     # the operator knows their deployment is configured; we must not second-guess
     # it by requiring chat_ready to also be true.
-    skip_env = os.environ.get("HERMES_WEBUI_SKIP_ONBOARDING", "").strip()
+    skip_env = os.environ.get("ARES_WEBUI_SKIP_ONBOARDING", "").strip()
     skip_requested = skip_env in {"1", "true", "yes"}
     auto_completed = skip_requested  # unconditional: operator says skip, we skip
 
-    # Auto-complete for existing Hermes users: if config.yaml already exists
+    # Auto-complete for existing Ares users: if config.yaml already exists
     # AND the provider is configured (or the system is chat_ready), treat onboarding
-    # as done.  These users configured Hermes via the CLI before the Web UI existed;
+    # as done.  These users configured Ares via the CLI before the Web UI existed;
     # they must never be shown the first-run wizard — it would silently overwrite their
     # config.  We use provider_configured (not chat_ready) so that users with
     # non-wizard providers (ollama-cloud, deepseek, xai, kimi, etc.) are not forced
@@ -909,7 +903,7 @@ def get_onboarding_status() -> dict:
     )
 
     # Persist the flag so it survives future transient import failures (e.g. after
-    # a git branch switch in the hermes-agent repo).  Without this, a CLI-configured
+    # a git branch switch in the ares-agent repo).  Without this, a CLI-configured
     # user who never ran the wizard has no onboarding_completed flag — any momentary
     # imports_ok=False during restart makes chat_ready=False, config_auto_completed=False,
     # and the wizard reappears with a broken dropdown that clobbers their config.
@@ -927,25 +921,6 @@ def get_onboarding_status() -> dict:
         except Exception:
             logger.debug("Failed to persist onboarding_completed", exc_info=True)
 
-    # ARES: when backend is jros and JaegerAI is installed but no companion instance
-    # exists yet, onboarding is not complete. If JaegerAI isn't installed at all
-    # (e.g. test env or Hermes-only setup), don't block onboarding.
-    # Conversely, once a companion exists, onboarding is done — Hermes is optional.
-    try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
-        if get_active_backend(get_config()) == BACKEND_JROS and companion_available():
-            if not companion_exists():
-                settings["onboarding_completed"] = False
-            else:
-                if not settings.get("onboarding_completed"):
-                    settings["onboarding_completed"] = True
-                    try:
-                        save_settings({"onboarding_completed": True})
-                    except Exception:
-                        logger.debug("Failed to persist onboarding_completed", exc_info=True)
-    except Exception:
-        logger.debug("Companion guard failed in get_onboarding_status", exc_info=True)
-
     return {
         "completed": bool(settings.get("onboarding_completed")) or auto_completed or config_auto_completed,
         "settings": {
@@ -953,10 +928,10 @@ def get_onboarding_status() -> dict:
             "default_workspace": settings.get("default_workspace")
             or str(DEFAULT_WORKSPACE),
             "password_enabled": is_auth_enabled(),
-            "bot_name": settings.get("bot_name") or "Hermes",
+            "bot_name": settings.get("bot_name") or "Ares",
         },
         "system": {
-            "hermes_found": bool(_HERMES_FOUND),
+            "ares_found": bool(_ARES_FOUND),
             "imports_ok": bool(imports_ok),
             "missing_modules": missing,
             "import_errors": errors,
@@ -979,7 +954,7 @@ def apply_onboarding_setup(body: dict) -> dict:
     # (e.g. a stale JS bundle or a curious user), we must not overwrite the
     # operator's config.yaml or .env files.  Just mark onboarding complete and
     # return the current status — no file writes.
-    skip_env = os.environ.get("HERMES_WEBUI_SKIP_ONBOARDING", "").strip()
+    skip_env = os.environ.get("ARES_WEBUI_SKIP_ONBOARDING", "").strip()
     if skip_env in {"1", "true", "yes"}:
         save_settings({"onboarding_completed": True})
         return get_onboarding_status()
@@ -1014,14 +989,14 @@ def apply_onboarding_setup(body: dict) -> dict:
         return {
             "error": "config_exists",
             "message": (
-                "Hermes is already configured (config.yaml exists). "
+                "Ares is already configured (config.yaml exists). "
                 "Pass confirm_overwrite=true to overwrite it."
             ),
             "requires_confirm": True,
         }
 
     cfg = _load_yaml_config(config_path)
-    env_path = _get_active_hermes_home() / ".env"
+    env_path = _get_active_ares_home() / ".env"
     env_values = _load_env_file(env_path)
 
     if not api_key and not _provider_api_key_present(provider, cfg, env_values):
@@ -1031,7 +1006,7 @@ def apply_onboarding_setup(body: dict) -> dict:
         # via Claude Code) are also allowed once their server-side OAuth/link
         # marker is present.
         oauth_ready = bool(provider_meta.get("oauth_provider")) and _provider_oauth_authenticated(
-            str(provider_meta.get("oauth_provider")), _get_active_hermes_home()
+            str(provider_meta.get("oauth_provider")), _get_active_ares_home()
         )
         if not provider_meta.get("key_optional") and not oauth_ready:
             raise ValueError(f"{provider_meta['env_var']} is required")
@@ -1056,11 +1031,11 @@ def apply_onboarding_setup(body: dict) -> dict:
     if api_key:
         _write_env_file(env_path, {provider_meta["env_var"]: api_key})
 
-    # Reload the hermes_cli provider/config cache so the next streaming call
+    # Reload the ares_cli provider/config cache so the next streaming call
     # picks up the new key without requiring a server restart.
     try:
         from api.profiles import _reload_dotenv
-        _reload_dotenv(_get_active_hermes_home())
+        _reload_dotenv(_get_active_ares_home())
     except Exception:
         logger.debug("Failed to reload dotenv")
 
@@ -1071,11 +1046,11 @@ def apply_onboarding_setup(body: dict) -> dict:
         os.environ[provider_meta["env_var"]] = api_key
 
     try:
-        # hermes_cli may cache config at import time; ask it to reload if possible.
-        from hermes_cli.config import reload as _cli_reload
+        # ares_cli may cache config at import time; ask it to reload if possible.
+        from ares_cli.config import reload as _cli_reload
         _cli_reload()
     except Exception:
-        logger.debug("Failed to reload hermes_cli config")
+        logger.debug("Failed to reload ares_cli config")
 
     reload_config()
     return get_onboarding_status()
@@ -1132,21 +1107,21 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
     _save_yaml_config(config_path, cfg)
 
     if api_key and env_var:
-        _write_env_file(_get_active_hermes_home() / ".env", {env_var: api_key})
+        _write_env_file(_get_active_ares_home() / ".env", {env_var: api_key})
         os.environ[env_var] = api_key
 
     try:
         from api.profiles import _reload_dotenv
-        _reload_dotenv(_get_active_hermes_home())
+        _reload_dotenv(_get_active_ares_home())
     except Exception:
         logger.debug("Failed to reload dotenv")
 
     try:
-        # hermes_cli may cache config at import time; ask it to reload if possible.
-        from hermes_cli.config import reload as _cli_reload
+        # ares_cli may cache config at import time; ask it to reload if possible.
+        from ares_cli.config import reload as _cli_reload
         _cli_reload()
     except Exception:
-        logger.debug("Failed to reload hermes_cli config")
+        logger.debug("Failed to reload ares_cli config")
 
     invalidate_models_cache()
     result = {"ok": True, "provider": provider, "base_url": base_url}
@@ -1156,23 +1131,7 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
 
 
 def complete_onboarding() -> dict:
-    # ARES: when backend is jros and JaegerAI is installed but no companion instance
-    # exists yet, do not allow skipping onboarding. If JaegerAI isn't installed,
-    # skip the guard so test environments and Hermes-only setups can still complete.
-    try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
-        if (
-            get_active_backend(get_config()) == BACKEND_JROS
-            and companion_available()
-            and not companion_exists()
-        ):
-            raise RuntimeError(
-                "Onboarding cannot be skipped. Create your Companion first by completing "
-                "the onboarding wizard, or switch to Hermes-only backend."
-            )
-    except RuntimeError:
-        raise
-    except Exception:
-        logger.debug("Companion guard failed during complete_onboarding", exc_info=True)
+    # This records that the ARES Local Profile is ready. Agent frameworks are
+    # optional connections and must not gate identity or configuration setup.
     save_settings({"onboarding_completed": True})
     return get_onboarding_status()

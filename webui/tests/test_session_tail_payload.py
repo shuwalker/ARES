@@ -1,4 +1,3 @@
-from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import urlparse
 
@@ -45,26 +44,24 @@ class _FakeSession:
 
 
 def _invoke(session, query=None):
-    import api.routes as routes
-
-    captured = {}
-
-    def fake_j(_handler, data, status=200, extra_headers=None):
-        captured["data"] = data
-        captured["status"] = status
-        return data
+    from api.session_projection import project_session_detail
 
     if query is None:
         query = "session_id=tail_payload_001&messages=1&resolve_model=0&msg_limit=1"
     parsed = urlparse(f"/api/session?{query}")
-    with patch("api.routes.get_session", return_value=session), \
-         patch("api.routes._clear_stale_stream_state", return_value=False), \
-         patch("api.routes._lookup_cli_session_metadata", return_value={}), \
-         patch("api.routes.get_state_db_session_messages", return_value=[]), \
-         patch("api.routes.redact_session_data", side_effect=lambda raw: raw), \
-         patch("api.routes.j", side_effect=fake_j):
-        routes.handle_get(SimpleNamespace(), parsed)
-    return captured["data"]["session"]
+    from urllib.parse import parse_qs
+    params = parse_qs(parsed.query)
+    limit = params.get("msg_limit", [None])[0]
+    before = params.get("msg_before", [None])[0]
+    with patch("api.session_projection.lookup_cli_session_metadata", return_value={}), \
+         patch("api.models.get_state_db_session_messages", return_value=[]):
+        return project_session_detail(
+            session,
+            load_messages=params.get("messages", ["1"])[0] != "0",
+            message_limit=int(limit) if limit else None,
+            message_before=int(before) if before else None,
+            resolve_model=params.get("resolve_model", ["1"])[0] != "0",
+        )
 
 
 def test_tail_window_includes_windowed_session_tool_calls_even_when_messages_have_tool_metadata():
@@ -156,10 +153,10 @@ def test_msg_limit_tail_does_not_run_heavy_webui_lineage_merge():
     session.session_source = "webui"
 
     with patch(
-        "api.routes._merged_webui_lineage_messages_for_display",
+        "api.session_projection.merged_webui_lineage_messages_for_display",
         side_effect=AssertionError("limited loads must not merge parent sidecars"),
     ), patch(
-        "api.routes.Session.load",
+        "api.session_lineage_display.Session.load",
         return_value=None,
     ):
         payload = _invoke(session)
@@ -185,7 +182,7 @@ def test_msg_limit_tail_keeps_pre_compression_snapshot_parent_reachable():
     child.pre_compression_snapshot = False
     child.session_source = "webui"
 
-    with patch("api.routes.Session.load", return_value=parent):
+    with patch("api.session_lineage_display.Session.load", return_value=parent):
         payload = _invoke(
             child,
             query="session_id=tail_payload_001&messages=1&resolve_model=0&msg_limit=30",

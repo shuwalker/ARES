@@ -1,13 +1,16 @@
 """
-Hermes Web UI -- Self-update checker.
+Ares Web UI -- Self-update checker.
 
-Checks if the webui and hermes-agent git repos are behind their latest
+Checks if the webui and ares-agent git repos are behind their latest
 release tags. Results are cached server-side (30-min TTL) so git fetch runs
 at most twice per hour regardless of client count.
 
 Skips repos that are not git checkouts (e.g. Docker baked images where
 .git does not exist).
 """
+
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -39,7 +42,7 @@ def _find_owning_git_repo(path: Path) -> Path:
     """
     override = (
         os.environ.get("ARES_WEBUI_UPDATE_REPO_ROOT")
-        or os.environ.get("HERMES_WEBUI_UPDATE_REPO_ROOT")
+        or os.environ.get("ARES_WEBUI_UPDATE_REPO_ROOT")
         or ""
     ).strip()
     if override:
@@ -521,8 +524,8 @@ def _detect_webui_version() -> str:
 
 
 def _read_agent_source_version(agent_dir: Path) -> str | None:
-    """Read Hermes Agent's package version from a copied source tree."""
-    init_file = agent_dir / 'hermes_cli' / '__init__.py'
+    """Read Ares Agent's package version from a copied source tree."""
+    init_file = agent_dir / 'ares_cli' / '__init__.py'
     try:
         text = init_file.read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError):
@@ -534,11 +537,11 @@ def _read_agent_source_version(agent_dir: Path) -> str | None:
 
 
 def _gateway_health_base_url() -> str:
-    """Return the configured/default Hermes Agent gateway base URL."""
+    """Return the configured/default Ares Agent gateway base URL."""
     raw = (
         os.environ.get('GATEWAY_HEALTH_URL')
-        or os.environ.get('HERMES_GATEWAY_HEALTH_URL')
-        or 'http://hermes-agent:8642'
+        or os.environ.get('ARES_GATEWAY_HEALTH_URL')
+        or 'http://ares-agent:8642'
     ).strip()
     if raw.endswith('/health/detailed'):
         raw = raw[: -len('/health/detailed')]
@@ -548,10 +551,10 @@ def _gateway_health_base_url() -> str:
 
 
 def _version_from_gateway_health_payload(payload: object) -> str | None:
-    """Extract a version string from a Hermes Agent gateway health payload."""
+    """Extract a version string from a Ares Agent gateway health payload."""
     if not isinstance(payload, dict):
         return None
-    for key in ('version', 'agent_version', 'hermes_version'):
+    for key in ('version', 'agent_version', 'ares_version'):
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -584,7 +587,7 @@ def _detect_agent_version_from_gateway_health(timeout: float = 0.75) -> str | No
 
 
 def _detect_agent_version() -> str:
-    """Detect the running Hermes Agent version for UI display."""
+    """Detect the running Ares Agent version for UI display."""
     agent_dir = Path(_AGENT_DIR) if _AGENT_DIR is not None else None
 
     if agent_dir is not None:
@@ -609,7 +612,7 @@ def _detect_agent_version() -> str:
 
             # Docker two-container deployments often mount a copied agent source
             # tree without .git metadata or a VERSION file.  The package version
-            # still lives in hermes_cli/__init__.py, so prefer that before giving
+            # still lives in ares_cli/__init__.py, so prefer that before giving
             # up or relying on a live gateway probe.
             source_version = _read_agent_source_version(agent_dir)
             if source_version:
@@ -632,8 +635,8 @@ def _normalize_remote_url(remote_url):
 
     Git remotes may be HTTPS or SSH and may include a literal ``.git`` suffix.
     Strip only that literal suffix — never use ``str.rstrip('.git')`` because it
-    treats the argument as a character set and can truncate ``hermes-webui`` to
-    ``hermes-webu``.
+    treats the argument as a character set and can truncate ``ares-webui`` to
+    ``ares-webu``.
     """
     if not remote_url:
         return remote_url
@@ -837,13 +840,13 @@ def _is_stable_release_tag(tag):
     return bool(_RELEASE_TAG_RE.fullmatch(raw) and '-' not in raw[1:])
 
 
-def _github_release_tags(url='https://api.github.com/repos/nesquena/hermes-webui/tags?per_page=100', *, timeout=3.0):
+def _github_release_tags(url='https://api.github.com/repos/nesquena/ares-webui/tags?per_page=100', *, timeout=3.0):
     """Return GitHub release tags newest-first, including commit SHAs when available."""
     request = urllib.request.Request(
         url,
         headers={
             'Accept': 'application/vnd.github+json',
-            'User-Agent': 'hermes-webui',
+            'User-Agent': 'ares-webui',
         },
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -897,7 +900,7 @@ def _check_webui_published_release_update():
     current = next((item for item in tags if item['name'] == current_version), None) or {}
     current_ref = current.get('sha') or current_version
     latest_ref = latest.get('sha') or latest_version
-    repo_url = 'https://github.com/nesquena/hermes-webui'
+    repo_url = 'https://github.com/nesquena/ares-webui'
     return {
         'name': 'webui',
         'behind': behind,
@@ -1405,7 +1408,7 @@ def _commit_subjects_for_update_with_limit(info: dict, *, limit: int = 24) -> tu
         return [], False
     target = info.get('name')
     if target not in ('webui', 'agent'):
-        target = 'webui' if info.get('repo_url', '').endswith('hermes-webui') else target
+        target = 'webui' if info.get('repo_url', '').endswith('ares-webui') else target
     path = _repo_path_for_update_target(target)
     if path is None or not (Path(path) / '.git').exists():
         return [], False
@@ -1503,7 +1506,7 @@ def _categorized_summary_bullets_from_text(text: str) -> tuple[list[str], list[s
 def _fallback_update_bullets(details: list[dict]) -> list[str]:
     bullets = []
     for item in details:
-        label = item.get('label') or item.get('name') or 'Hermes'
+        label = item.get('label') or item.get('name') or 'Ares'
         behind = item.get('behind') or 0
         commits = item.get('commits') or []
         if commits:
@@ -1519,7 +1522,7 @@ def _worth_knowing_bullets(details: list[dict]) -> list[str]:
     items = []
     truncated = [item for item in details if item.get('commits_truncated') and item.get('commits_limit')]
     for item in truncated[:2]:
-        label = item.get('label') or item.get('name') or 'Hermes'
+        label = item.get('label') or item.get('name') or 'Ares'
         behind = item.get('behind') or 0
         limit = item.get('commits_limit') or len(item.get('commits') or [])
         items.append(
@@ -1528,7 +1531,7 @@ def _worth_knowing_bullets(details: list[dict]) -> list[str]:
     if items:
         return items
     targets = [
-        f"{item.get('label') or item.get('name') or 'Hermes'} ({item.get('behind') or 0} update{'s' if (item.get('behind') or 0) != 1 else ''})"
+        f"{item.get('label') or item.get('name') or 'Ares'} ({item.get('behind') or 0} update{'s' if (item.get('behind') or 0) != 1 else ''})"
         for item in details
         if item.get('behind')
     ]
@@ -1575,7 +1578,7 @@ def _fallback_update_summary(updates: dict, details: list[dict]) -> str:
 
 def _update_summary_prompt(details: list[dict]) -> tuple[str, str]:
     system = (
-        "You write human-readable release summaries for Hermes users. "
+        "You write human-readable release summaries for Ares users. "
         "Focus on what the user will notice in the product. Keep it simple, specific, and short. "
         "avoid technical jargon, implementation details, SHA names, branch names, and file paths unless necessary. "
         "Return only bullets. Do not include headings, markdown tables, intro paragraphs, or closing notes."
@@ -1772,9 +1775,9 @@ def _schedule_restart_original(delay: float = 2.0) -> None:
                 #
                 # sys.argv[0]'s meaning depends on how the server was launched:
                 #
-                #   * Source checkout (`python server.py` via bootstrap.py /
-                #     ctl.sh / start.sh): sys.argv[0] is the SCRIPT path
-                #     (e.g. "/root/hermes-webui/server.py"), sys.executable is
+                #   * Source checkout (Uvicorn launched by bootstrap.py /
+                #     ctl.sh / start.sh): sys.argv[0] is the launcher path,
+                #     sys.executable is
                 #     the interpreter. CPython treats argv[1] as the script to
                 #     run, so we must pass [sys.executable] + sys.argv.
                 #
@@ -1871,11 +1874,11 @@ def _agent_gateway_restart_failure_message(target: str, restart_result: dict) ->
     if restart_result.get("message"):
         return (
             f'{target} updated, but gateway restart did not complete: '
-            f'{restart_result["message"]}. Run `hermes gateway restart` manually.'
+            f'{restart_result["message"]}. Run `ares gateway restart` manually.'
         )
     return (
         f'{target} updated, but gateway restart did not complete. '
-        'Run `hermes gateway restart` manually.'
+        'Run `ares gateway restart` manually.'
     )
 
 
@@ -2155,7 +2158,7 @@ def _apply_update_inner(target, channel=DEFAULT_UPDATE_CHANNEL):
         }
     stashed = False
     if status_out:
-        _, ok = _run_git(['stash', 'push', '-m', 'hermes-update-autostash'], path)
+        _, ok = _run_git(['stash', 'push', '-m', 'ares-update-autostash'], path)
         if not ok:
             return {'ok': False, 'message': 'Failed to stash local changes'}
         stashed = True

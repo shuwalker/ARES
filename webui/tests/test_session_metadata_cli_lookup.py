@@ -1,6 +1,4 @@
-from types import SimpleNamespace
 from unittest.mock import patch
-from urllib.parse import urlparse
 
 
 class _FakeSession:
@@ -52,22 +50,14 @@ class _FakeSession:
 
 
 def _invoke_api_session(session_obj, *, lookup_cli):
-    import api.routes as routes
+    from fastapi_app.services import AresCoreService
 
-    captured = {}
-
-    def fake_j(_handler, data, status=200, extra_headers=None):
-        captured["data"] = data
-        captured["status"] = status
-        return data
-
-    parsed = urlparse("/api/session?session_id=native_webui_001&messages=0&resolve_model=0")
-    with patch("api.routes.get_session", return_value=session_obj), \
-         patch("api.routes._clear_stale_stream_state", return_value=False), \
-         patch("api.routes._lookup_cli_session_metadata", side_effect=lookup_cli) as lookup, \
-         patch("api.routes.j", side_effect=fake_j):
-        routes.handle_get(SimpleNamespace(), parsed)
-    return captured, lookup
+    with patch("api.models.get_session", return_value=session_obj), \
+         patch("api.session_access.lookup_cli_session_metadata", side_effect=lookup_cli) as lookup:
+        data = AresCoreService().session(
+            "native_webui_001", profile=None, load_messages=False, message_limit=None
+        )
+    return {"data": data, "status": 200}, lookup
 
 
 def test_api_session_metadata_skips_cli_lookup_for_native_webui_session():
@@ -84,21 +74,15 @@ def test_api_session_metadata_skips_cli_lookup_for_native_webui_session():
     lookup.assert_not_called()
 
 
-def test_api_session_metadata_keeps_cli_lookup_for_imported_cli_session():
-    """Imported CLI/messaging sessions still need Agent metadata for overlap handling."""
+def test_api_session_metadata_uses_persisted_cli_metadata_without_live_scan():
+    """Imported metadata is already persisted and does not require a live scan."""
     session = _FakeSession(is_cli_session=True, session_source="messaging", source_tag="telegram")
 
     captured, lookup = _invoke_api_session(
         session,
-        lookup_cli=lambda sid: {
-            "session_id": sid,
-            "session_source": "messaging",
-            "source_tag": "telegram",
-            "raw_source": "telegram",
-            "source_label": "Telegram",
-        },
+        lookup_cli=lambda _sid: (_ for _ in ()).throw(AssertionError("unexpected CLI scan")),
     )
 
     assert captured["status"] == 200
     assert captured["data"]["session"]["source_tag"] == "telegram"
-    lookup.assert_called_once_with("native_webui_001")
+    lookup.assert_not_called()

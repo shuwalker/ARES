@@ -6,22 +6,7 @@ from pathlib import Path
 import pytest
 
 import api.models as models
-import api.routes as routes
 import api.worktrees as worktrees
-
-
-def _capture_post(monkeypatch, body):
-    captured = {}
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    monkeypatch.setattr(routes, "read_body", lambda handler: body)
-    # Monkeypatch both helpers.j and routes.j — bad() lives in helpers but calls the module-global j
-    import api.helpers as helpers
-    def _fake_j(handler, payload, status=200, extra_headers=None):
-        captured.update(payload=payload, status=status)
-        return True
-    monkeypatch.setattr(routes, "j", _fake_j)
-    monkeypatch.setattr(helpers, "j", _fake_j)
-    return captured
 
 
 def _isolate_session_store(tmp_path, monkeypatch):
@@ -29,8 +14,6 @@ def _isolate_session_store(tmp_path, monkeypatch):
     session_dir.mkdir()
     monkeypatch.setattr(models, "SESSION_DIR", session_dir)
     monkeypatch.setattr(models, "SESSION_INDEX_FILE", session_dir / "_index.json")
-    monkeypatch.setattr(routes, "SESSION_DIR", session_dir)
-    monkeypatch.setattr(routes, "SESSION_INDEX_FILE", session_dir / "_index.json")
     models.SESSIONS.clear()
     return session_dir
 
@@ -58,7 +41,7 @@ def test_remove_clean_worktree_succeeds(tmp_path):
     main = _make_minimal_git_repo(tmp_path)
     wt_path = tmp_path / "wt_clean"
     subprocess.run(
-        ["git", "-C", str(main), "worktree", "add", str(wt_path), "-b", "hermes/testclean"],
+        ["git", "-C", str(main), "worktree", "add", str(wt_path), "-b", "ares/testclean"],
         check=True, capture_output=True,
     )
     assert wt_path.exists()
@@ -68,7 +51,7 @@ def test_remove_clean_worktree_succeeds(tmp_path):
         title="Clean",
         workspace=str(wt_path),
         worktree_path=str(wt_path),
-        worktree_branch="hermes/testclean",
+        worktree_branch="ares/testclean",
         worktree_repo_root=str(main),
     )
 
@@ -90,7 +73,7 @@ def test_remove_clean_worktree_does_not_force(tmp_path, monkeypatch):
         title="Clean",
         workspace=str(worktree_path),
         worktree_path=str(worktree_path),
-        worktree_branch="hermes/testcleanforce",
+        worktree_branch="ares/testcleanforce",
         worktree_repo_root=str(repo_root),
     )
     monkeypatch.setattr(worktrees, "worktree_status_for_session", lambda session: {
@@ -126,7 +109,7 @@ def test_remove_dirty_worktree_without_force_is_rejected(tmp_path, monkeypatch):
         title="Dirty",
         workspace=str(worktree_path),
         worktree_path=str(worktree_path),
-        worktree_branch="hermes/testdirty",
+        worktree_branch="ares/testdirty",
         worktree_repo_root=str(repo_root),
     )
     monkeypatch.setattr(worktrees, "worktree_status_for_session", lambda session: {
@@ -155,7 +138,7 @@ def test_remove_untracked_worktree_without_force_is_rejected(tmp_path, monkeypat
         title="Untracked",
         workspace=str(worktree_path),
         worktree_path=str(worktree_path),
-        worktree_branch="hermes/testuntracked",
+        worktree_branch="ares/testuntracked",
         worktree_repo_root=str(repo_root),
     )
     monkeypatch.setattr(worktrees, "worktree_status_for_session", lambda session: {
@@ -184,7 +167,7 @@ def test_remove_ahead_worktree_without_force_is_rejected(tmp_path, monkeypatch):
         title="Ahead",
         workspace=str(worktree_path),
         worktree_path=str(worktree_path),
-        worktree_branch="hermes/testahead",
+        worktree_branch="ares/testahead",
         worktree_repo_root=str(repo_root),
     )
     monkeypatch.setattr(worktrees, "worktree_status_for_session", lambda session: {
@@ -213,7 +196,7 @@ def test_remove_force_warns_and_uses_git_force(tmp_path, monkeypatch):
         title="Force",
         workspace=str(worktree_path),
         worktree_path=str(worktree_path),
-        worktree_branch="hermes/testforce",
+        worktree_branch="ares/testforce",
         worktree_repo_root=str(repo_root),
     )
     monkeypatch.setattr(worktrees, "worktree_status_for_session", lambda session: {
@@ -247,7 +230,7 @@ def test_remove_worktree_not_exists(tmp_path):
         title="Gone",
         workspace=str(tmp_path / "gone"),
         worktree_path=str(tmp_path / "gone"),
-        worktree_branch="hermes/gone",
+        worktree_branch="ares/gone",
         worktree_repo_root=str(tmp_path / "repo"),
     )
 
@@ -282,7 +265,7 @@ def test_remove_worktree_route_succeeds(tmp_path, monkeypatch):
     main = _make_minimal_git_repo(tmp_path)
     wt_path = tmp_path / "wt_route"
     subprocess.run(
-        ["git", "-C", str(main), "worktree", "add", str(wt_path), "-b", "hermes/testroute"],
+        ["git", "-C", str(main), "worktree", "add", str(wt_path), "-b", "ares/testroute"],
         check=True, capture_output=True,
     )
 
@@ -293,18 +276,23 @@ def test_remove_worktree_route_succeeds(tmp_path, monkeypatch):
         title="Route",
         workspace=str(wt_path),
         worktree_path=str(wt_path),
-        worktree_branch="hermes/testroute",
+        worktree_branch="ares/testroute",
         worktree_repo_root=str(main),
     )
     s.save()
 
-    body = {"session_id": "testroute1"}
-    captured = _capture_post(monkeypatch, body)
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/worktree/remove")) is True
-    assert captured["status"] == 200
-    assert captured["payload"]["ok"] is True
-    assert captured["payload"]["removed_path"] == str(wt_path.resolve())
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/session/worktree/remove",
+            json={"session_id": "testroute1"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["removed_path"] == str(wt_path.resolve())
     assert not wt_path.exists()
 
 
@@ -320,16 +308,24 @@ def test_remove_missing_session_returns_404(tmp_path, monkeypatch):
     )
     s.save()
 
-    body = {"session_id": "nonexistent"}
-    captured = _capture_post(monkeypatch, body)
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
 
-    routes.handle_post(object(), SimpleNamespace(path="/api/session/worktree/remove"))
-    assert captured["status"] == 404
-    assert "not found" in captured["payload"].get("error", "").lower()
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/session/worktree/remove",
+            json={"session_id": "nonexistent"},
+        )
+    assert response.status_code == 404
+    assert "not found" in response.json().get("error", "").lower()
 
 
 def test_post_router_does_not_expose_read_only_worktree_or_compress_status():
-    src = Path("api/routes.py").read_text(encoding="utf-8")
-    post_body = src[src.index("def handle_post"):src.index('if parsed.path == "/api/session/worktree/remove"')]
-    assert '"/api/session/worktree/status"' not in post_body
-    assert '"/api/session/compress/status"' not in post_body
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+
+    with TestClient(create_app()) as client:
+        worktree = client.post("/api/session/worktree/status", json={})
+        compression = client.post("/api/session/compress/status", json={})
+    assert worktree.status_code == 405
+    assert compression.status_code == 405

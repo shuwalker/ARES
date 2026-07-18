@@ -1,4 +1,4 @@
-"""Helpers for restarting the active-profile Hermes gateway."""
+"""Helpers for restarting the active-profile Ares gateway."""
 
 from __future__ import annotations
 
@@ -10,23 +10,23 @@ import sys
 import threading
 from pathlib import Path
 
-from api.profiles import get_active_hermes_home
+from api.profiles import get_active_ares_home
 
 logger = logging.getLogger(__name__)
 
 _GATEWAY_RESTART_LOCK = threading.Lock()
 
 
-def _resolve_hermes_command() -> str:
+def _resolve_ares_command() -> str:
     """Resolve the CLI path used for active-profile gateway restarts."""
-    hermes_cmd = shutil.which("hermes")
-    if hermes_cmd:
-        return hermes_cmd
+    ares_cmd = shutil.which("ares")
+    if ares_cmd:
+        return ares_cmd
 
-    sibling = Path(sys.executable).parent / "hermes"
+    sibling = Path(sys.executable).parent / "ares"
     if sibling.exists():
         return str(sibling)
-    return "hermes"
+    return "ares"
 
 
 def _consume_stream(stream) -> None:
@@ -51,7 +51,7 @@ def restart_active_profile_gateway(
     quick_timeout_seconds: float = 2.0,
     background_wait_seconds: float = 240.0,
 ) -> dict:
-    """Run a non-blocking ``hermes gateway restart`` for the active profile.
+    """Run a non-blocking ``ares gateway restart`` for the active profile.
 
     Returns a short status dict with these values:
     - completed: command finished quickly and succeeded.
@@ -66,18 +66,18 @@ def restart_active_profile_gateway(
         }
 
     try:
-        active_home = get_active_hermes_home()
+        active_home = get_active_ares_home()
         env = os.environ.copy()
-        env["HERMES_HOME"] = str(active_home)
-        hermes_cmd = _resolve_hermes_command()
+        env["ARES_HOME"] = str(active_home)
+        ares_cmd = _resolve_ares_command()
 
         logger.info(
-            "Restarting gateway service via CLI command: %s gateway restart (HERMES_HOME=%s)",
-            hermes_cmd,
+            "Restarting gateway service via CLI command: %s gateway restart (ARES_HOME=%s)",
+            ares_cmd,
             active_home,
         )
         proc = subprocess.Popen(
-            [hermes_cmd, "gateway", "restart"],
+            [ares_cmd, "gateway", "restart"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

@@ -11,12 +11,12 @@ WHY THIS EXISTS
     - a `function X(){}` colliding with a `window.X = {}` in classic scripts
       (#2715 / #2771)
   Every one of those throws on load or first interaction and produces a blank or
-  broken page for *every* user. This smoke boots the real server.py and loads
+  broken page for *every* user. This smoke boots the production ASGI app and loads
   the key pages in headless Chromium, failing if ANY uncaught exception or
   console error fires.
 
 SCOPE
-  Deliberately AGENT-FREE so it runs in CI (which does not install hermes-agent):
+  Deliberately AGENT-FREE so it runs in CI (which does not install ares-agent):
   it verifies the page loads and its JS initializes cleanly — it does NOT drive a
   full chat (that needs the agent + mock provider and runs in the private QA
   harness's golden-path E2E). This is the "does the app even come up without
@@ -24,7 +24,7 @@ SCOPE
 
 USAGE
   python tests/browser_smoke.py
-  (Requires: playwright + chromium. Boots server.py on an ephemeral port with an
+  (Requires: playwright + chromium. Boots Uvicorn on an ephemeral port with an
   isolated temp state dir and no agent.)
 
 EXIT CODES
@@ -87,32 +87,43 @@ def main():
         return 2
 
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    server_py = os.path.join(repo_root, "server.py")
-    if not os.path.exists(server_py):
-        print(f"SETUP FAIL: server.py not found at {server_py}", file=sys.stderr)
+    app_py = os.path.join(repo_root, "fastapi_app", "main.py")
+    if not os.path.exists(app_py):
+        print(f"SETUP FAIL: FastAPI app not found at {app_py}", file=sys.stderr)
         return 2
 
-    state_dir = tempfile.mkdtemp(prefix="hermes-browser-smoke-")
+    state_dir = tempfile.mkdtemp(prefix="ares-browser-smoke-")
     env = os.environ.copy()
     # Strip real provider keys so nothing leaks into the smoke server.
     for k in list(env):
         if k.endswith("_API_KEY"):
             env.pop(k, None)
     env.update({
-        "HERMES_WEBUI_PORT": str(PORT),
-        "HERMES_WEBUI_HOST": "127.0.0.1",
-        "HERMES_WEBUI_STATE_DIR": state_dir,
-        "HERMES_HOME": state_dir,
-        "HERMES_BASE_HOME": state_dir,
-        "HERMES_WEBUI_SKIP_ONBOARDING": "1",
+        "ARES_WEBUI_PORT": str(PORT),
+        "ARES_WEBUI_HOST": "127.0.0.1",
+        "ARES_WEBUI_STATE_DIR": state_dir,
+        "ARES_HOME": state_dir,
+        "ARES_BASE_HOME": state_dir,
+        "ARES_WEBUI_SKIP_ONBOARDING": "1",
         # Point agent discovery at a path that doesn't exist — the server is
         # designed to boot and serve the UI even when the agent is absent.
-        "HERMES_WEBUI_AGENT_DIR": os.path.join(state_dir, "no-agent"),
+        "ARES_WEBUI_AGENT_DIR": os.path.join(state_dir, "no-agent"),
     })
 
     log = open(os.path.join(state_dir, "server.log"), "w")
     proc = subprocess.Popen(
-        [sys.executable, server_py], cwd=repo_root, env=env,
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "fastapi_app.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(PORT),
+            "--no-server-header",
+        ],
+        cwd=repo_root, env=env,
         stdout=log, stderr=subprocess.STDOUT,
         **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
     )

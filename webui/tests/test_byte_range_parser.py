@@ -8,7 +8,7 @@ unit tests. This file pins the parser's contract.
 """
 import pytest
 
-from api.routes import _parse_range_header
+from api.http_range import parse_range_header as _parse_range_header
 
 
 # Each tuple: (header, file_size, expected_result)

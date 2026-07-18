@@ -1,7 +1,7 @@
 """Tests for ARES Tool Adapter and Runtime Context.
 
 These modules let ARES register callable tools and inject live state
-into either Hermes or JROS without forking either backend.
+into either Ares or JROS without forking either backend.
 
 RED phase: all tests should FAIL until implementation is written.
 """
@@ -45,16 +45,16 @@ class TestRuntimeContext:
         assert isinstance(ctx["identity_projection"], dict)
         assert "name" in ctx["identity_projection"]
 
-    def test_backend_hermes_when_jros_down(self):
-        """When JROS is unavailable, backend defaults to hermes."""
+    def test_backend_ares_when_jros_down(self):
+        """When JROS is unavailable, backend defaults to ares."""
         from api.ares_runtime_context import build_runtime_context
 
         with patch(
             "api.ares_runtime_context.is_jros_available",
             return_value=False,
         ):
-            ctx = build_runtime_context(backend="hermes")
-            assert ctx["active_backend"] == "hermes"
+            ctx = build_runtime_context(backend="ares")
+            assert ctx["active_backend"] == "ares"
             assert ctx["capabilities"]["jros"]["available"] is False
 
     def test_backend_hybrid_when_jros_up(self):
@@ -67,7 +67,7 @@ class TestRuntimeContext:
         ):
             ctx = build_runtime_context(backend="hybrid")
             assert ctx["active_backend"] == "hybrid"
-            assert ctx["capabilities"]["hermes"]["available"] is True
+            assert ctx["capabilities"]["ares"]["available"] is True
             assert ctx["capabilities"]["jros"]["available"] is True
 
     def test_render_context_prompt_compact(self):
@@ -77,7 +77,7 @@ class TestRuntimeContext:
             render_context_prompt,
         )
 
-        ctx = build_runtime_context(backend="hermes")
+        ctx = build_runtime_context(backend="ares")
         prompt = render_context_prompt(ctx)
         assert isinstance(prompt, str)
         assert "Projected identity" in prompt
@@ -89,7 +89,7 @@ class TestRuntimeContext:
 # ── ARES Tool Adapter ────────────────────────────────────────────
 
 class TestToolAdapter:
-    """ares_tool_adapter.py: registers ARES tools into Hermes or JROS."""
+    """ares_tool_adapter.py: registers ARES tools into Ares or JROS."""
 
     def test_module_exports_register_ares_tools(self):
         """Module exports register_ares_tools()."""
@@ -113,11 +113,11 @@ class TestToolAdapter:
             assert "description" in tdef, f"Tool missing description: {tdef}"
             assert "fn" in tdef, f"Tool missing fn: {tdef}"
 
-    def test_register_into_hermes_mcp_format(self):
-        """register_ares_tools produces MCP-compatible tool schemas for Hermes."""
+    def test_register_into_ares_mcp_format(self):
+        """register_ares_tools produces MCP-compatible tool schemas for Ares."""
         from api.ares_tool_adapter import register_ares_tools
 
-        schemas = register_ares_tools(target="hermes")
+        schemas = register_ares_tools(target="ares")
         assert isinstance(schemas, list)
         for schema in schemas:
             assert "name" in schema
@@ -198,17 +198,17 @@ class TestAresTools:
 class TestStreamingIntegration:
     """Runtime context is injectable into the streaming path."""
 
-    def test_context_injectable_into_hermes_prompt(self):
-        """Runtime context can be rendered for Hermes ephemeral_system_prompt."""
+    def test_context_injectable_into_ares_prompt(self):
+        """Runtime context can be rendered for Ares ephemeral_system_prompt."""
         from api.ares_runtime_context import (
             build_runtime_context,
             render_context_prompt,
         )
 
-        ctx = build_runtime_context(backend="hermes")
+        ctx = build_runtime_context(backend="ares")
         prompt = render_context_prompt(ctx)
         # Must contain backend designation
-        assert "hermes" in prompt.lower()
+        assert "ares" in prompt.lower()
 
     def test_context_injectable_into_jros_prompt(self):
         """Runtime context can be rendered for JROS system_prompt."""
@@ -240,26 +240,28 @@ class TestStreamingIntegration:
         # In hybrid mode, prompt should mention JROS embodiment
         assert "jros" in prompt.lower()
         # The context dict should have both backends
-        assert ctx["capabilities"]["hermes"]["available"] is True
+        assert ctx["capabilities"]["ares"]["available"] is True
         assert ctx["capabilities"]["jros"]["available"] is True
 
 
 # ── Route Registration ────────────────────────────────────────────
 
 class TestRouteRegistration:
-    """ARES runtime-context and tools routes are registered in routes.py."""
+    """ARES runtime-context and tools routes are registered in FastAPI."""
+
+    @staticmethod
+    def _get(path):
+        from fastapi.testclient import TestClient
+        from fastapi_app.main import create_app
+
+        with TestClient(create_app()) as client:
+            return client.get(path)
 
     def test_runtime_context_route_is_registered(self):
-        """/api/ares/runtime-context route exists in routes.py."""
-        import api.routes as routes_mod
-        source = open(routes_mod.__file__).read()
-        assert "/api/ares/runtime-context" in source
+        assert self._get("/api/ares/runtime-context").status_code != 404
 
     def test_tools_route_is_registered(self):
-        """/api/ares/tools route exists in routes.py."""
-        import api.routes as routes_mod
-        source = open(routes_mod.__file__).read()
-        assert "/api/ares/tools" in source
+        assert self._get("/api/ares/tools").status_code != 404
 
 
 # ── Streaming Wiring ──────────────────────────────────────────────

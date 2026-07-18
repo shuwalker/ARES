@@ -1,4 +1,4 @@
-"""Hermes Web UI -- startup helpers."""
+"""Ares Web UI -- startup helpers."""
 from __future__ import annotations
 import os, stat, subprocess, sys
 from pathlib import Path
@@ -14,30 +14,30 @@ _SENSITIVE_FILES = (
 
 
 def fix_credential_permissions() -> None:
-    """Ensure sensitive files in HERMES_HOME have safe permissions.
+    """Ensure sensitive files in ARES_HOME have safe permissions.
 
     Respects:
-      - HERMES_SKIP_CHMOD=1  → bypass entirely
-      - HERMES_HOME_MODE     → group bits are allowed if set by the operator,
+      - ARES_SKIP_CHMOD=1  → bypass entirely
+      - ARES_HOME_MODE     → group bits are allowed if set by the operator,
                                only world-readable/world-writable files are fixed
     """
-    if os.environ.get('HERMES_SKIP_CHMOD', '').strip() in ('1', 'true'):
+    if os.environ.get('ARES_SKIP_CHMOD', '').strip() in ('1', 'true'):
         return
 
     # Parse operator-declared mode to know if group bits are intentional
     declared_mode = None
-    raw_mode = os.environ.get('HERMES_HOME_MODE', '').strip()
+    raw_mode = os.environ.get('ARES_HOME_MODE', '').strip()
     if raw_mode:
         try:
             declared_mode = int(raw_mode, 8)
         except ValueError:
             pass
 
-    hermes_home = Path(os.environ.get('HERMES_HOME', str(Path.home() / '.hermes')))
-    if not hermes_home.is_dir():
+    ares_home = Path(os.environ.get('ARES_HOME', str(Path.home() / '.ares')))
+    if not ares_home.is_dir():
         return
     for name in _SENSITIVE_FILES:
-        fpath = hermes_home / name
+        fpath = ares_home / name
         if not fpath.exists():
             continue
         try:
@@ -56,8 +56,8 @@ def fix_credential_permissions() -> None:
 
 
 def _agent_dir() -> Path | None:
-    hermes_home = Path(os.environ.get('HERMES_HOME', str(Path.home() / '.hermes')))
-    for raw in [os.environ.get('HERMES_WEBUI_AGENT_DIR', '').strip(), str(hermes_home / 'hermes-agent')]:
+    ares_home = Path(os.environ.get('ARES_HOME', str(Path.home() / '.ares')))
+    for raw in [os.environ.get('ARES_WEBUI_AGENT_DIR', '').strip(), str(ares_home / 'ares-agent')]:
         if not raw:
             continue
         p = Path(raw).expanduser()
@@ -72,8 +72,8 @@ def _trusted_agent_dir(agent_dir: Path) -> bool:
     on POSIX systems, is owned by the current process user.
 
     Intentionally does NOT enforce a canonical path (i.e. does not require
-    the dir to be ~/.hermes/hermes-agent), so custom HERMES_WEBUI_AGENT_DIR
-    paths work correctly when HERMES_WEBUI_AUTO_INSTALL=1 is set.
+    the dir to be ~/.ares/ares-agent), so custom ARES_WEBUI_AGENT_DIR
+    paths work correctly when ARES_WEBUI_AUTO_INSTALL=1 is set.
     """
     try:
         st = agent_dir.stat()
@@ -89,9 +89,9 @@ def _trusted_agent_dir(agent_dir: Path) -> bool:
 
 
 def auto_install_agent_deps() -> bool:
-    enabled = os.environ.get('HERMES_WEBUI_AUTO_INSTALL', '').strip().lower() in ('1', 'true', 'yes')
+    enabled = os.environ.get('ARES_WEBUI_AUTO_INSTALL', '').strip().lower() in ('1', 'true', 'yes')
     if not enabled:
-        print('[!!] Auto-install disabled. Set HERMES_WEBUI_AUTO_INSTALL=1 to enable.', flush=True)
+        print('[!!] Auto-install disabled. Set ARES_WEBUI_AUTO_INSTALL=1 to enable.', flush=True)
         return False
     agent_dir = _agent_dir()
     if agent_dir is None:

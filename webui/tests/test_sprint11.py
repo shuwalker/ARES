@@ -36,10 +36,9 @@ def test_models_has_required_fields():
     assert 'active_provider' in d
 
 def test_models_groups_structure():
-    """Each group has provider name and models list."""
+    """Connected groups are typed; no connection is a valid empty catalog."""
     d, _ = get("/api/models")
     assert isinstance(d['groups'], list)
-    assert len(d['groups']) > 0
     for group in d['groups']:
         assert 'provider' in group
         assert 'models' in group
@@ -58,22 +57,18 @@ def test_models_model_structure():
             assert len(model['id']) > 0
             assert len(model['label']) > 0
 
-def test_models_default_model_not_empty():
-    """When HERMES_WEBUI_DEFAULT_MODEL env var is set (as in conftest), the
-    /api/models response includes a non-empty default_model string."""
+def test_models_default_model_is_optional_when_disconnected():
+    """The standalone UI does not invent a model when no runtime is connected."""
     d, _ = get("/api/models")
-    assert isinstance(d['default_model'], str)
-    # conftest sets HERMES_WEBUI_DEFAULT_MODEL to "openai/gpt-5.4-mini", so
-    # this value should be non-empty in the test environment.
-    # When no env var is set (production with empty default), default_model
-    # can be "" — that is intentional (see PR #649).
-    assert len(d['default_model']) > 0  # only holds because conftest sets the env var
+    assert d['default_model'] is None or (
+        isinstance(d['default_model'], str) and d['default_model']
+    )
 
-def test_models_at_least_one_provider():
-    """At least one provider group should exist (fallback list at minimum)."""
+def test_models_disconnected_catalog_is_bounded():
+    """Disconnected operation is represented by an empty, successful catalog."""
     d, _ = get("/api/models")
     providers = [g['provider'] for g in d['groups']]
-    assert len(providers) >= 1
+    assert providers == list(dict.fromkeys(providers))
 
 def test_models_no_duplicate_ids():
     """Model IDs should not be duplicated within a single group."""

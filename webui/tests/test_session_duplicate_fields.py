@@ -8,40 +8,30 @@ branching a session, preventing data loss scenarios like:
   - enabled_toolsets not carried → toolset override lost
   - context_engine_state not carried → context engine state lost
 
-These are static-analysis tests (source inspection) matching the
-conventions of the existing test suite.
+These inspect the transport-neutral mutation functions used by FastAPI.
 """
+import inspect
 import re
 
 
 def _extract_duplicate_block():
-    """Extract the duplicate handler block from routes.py."""
-    with open('api/routes.py') as f:
-        src = f.read()
-    match = re.search(
-        r'parsed\.path == "/api/session/duplicate"(.*?)(?=\n    if parsed\.path|$)',
-        src, re.DOTALL
-    )
-    assert match, "Could not find /api/session/duplicate handler block"
-    return match.group(1), src
+    from api.session_mutations import duplicate_session
+
+    src = inspect.getsource(duplicate_session)
+    return src, src
 
 
 def _extract_branch_block():
-    """Extract the branch handler block from routes.py."""
-    with open('api/routes.py') as f:
-        src = f.read()
-    match = re.search(
-        r'parsed\.path == "/api/session/branch"(.*?)(?=\n    if parsed\.path|$)',
-        src, re.DOTALL
-    )
-    assert match, "Could not find /api/session/branch handler block"
-    return match.group(1), src
+    from api.session_mutations import branch_session
+
+    src = inspect.getsource(branch_session)
+    return src, src
 
 
-def _find_session_ctor(block, var_name='copied_session'):
+def _find_session_ctor(block, var_name='duplicate'):
     """Find the Session() constructor call in a block and return its body."""
     # Match from "var_name = Session(" to the closing ")"
-    pattern = rf'{var_name}\s*=\s*Session\((.*?)\)\s*$'
+    pattern = rf'{var_name}\s*=\s*Session\((.*?)\n    \)'
     match = re.search(pattern, block, re.DOTALL)
     assert match, f"Could not find {var_name} = Session() constructor"
     return match.group(1)

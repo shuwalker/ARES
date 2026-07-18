@@ -1,7 +1,10 @@
 """Session-list cache helpers extracted from api.routes."""
 
+from __future__ import annotations
+
 import os
 import copy
+import logging
 import threading
 import time
 from collections import OrderedDict
@@ -10,6 +13,9 @@ from pathlib import Path
 from api.config import LOCK, SESSION_DIR, SESSIONS, SETTINGS_FILE
 from api.models import _active_state_db_path, _active_stream_ids
 from api.profiles import _profiles_match
+
+
+logger = logging.getLogger(__name__)
 
 
 _SESSIONS_CACHE_TTL_SECONDS = 2.5
@@ -35,77 +41,32 @@ _SESSIONS_CACHE_PROFILE_INVALIDATION_VERSION: dict[str, int] = {}
 
 
 def _session_list_cache_session_dir() -> Path:
-    try:
-        import api.routes as _routes
-
-        value = getattr(_routes, "SESSION_DIR", SESSION_DIR)
-        return Path(value)
-    except Exception:
-        return SESSION_DIR
+    return Path(SESSION_DIR)
 
 
 def _session_list_cache_settings_file() -> Path:
-    try:
-        import api.routes as _routes
-
-        value = getattr(_routes, "SETTINGS_FILE", SETTINGS_FILE)
-        return Path(value)
-    except Exception:
-        return SETTINGS_FILE
+    return Path(SETTINGS_FILE)
 
 
 def _session_list_cache_state_db_path():
-    try:
-        import api.routes as _routes
-
-        override = getattr(_routes, "_active_state_db_path", None)
-        if callable(override) and override is not _session_list_cache_state_db_path:
-            return override()
-    except Exception:
-        pass
     return _active_state_db_path()
 
 
 def _session_list_cache_gateway_session_metadata_path() -> Path:
     try:
-        import api.routes as _routes
+        from api.profiles import get_active_ares_home
 
-        override = getattr(_routes, "_gateway_session_metadata_path", None)
-        if callable(override) and override is not _session_list_cache_gateway_session_metadata_path:
-            return Path(override())
+        ares_home = Path(get_active_ares_home()).expanduser().resolve()
     except Exception:
-        pass
-
-    try:
-        from api.profiles import get_active_hermes_home
-
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
-    except Exception:
-        hermes_home = Path(os.getenv("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser().resolve()
-    return hermes_home / "sessions" / "sessions.json"
+        ares_home = Path(os.getenv("ARES_HOME", str(Path.home() / ".ares"))).expanduser().resolve()
+    return ares_home / "sessions" / "sessions.json"
 
 
 def _session_list_cache_active_stream_ids():
-    try:
-        import api.routes as _routes
-
-        override = getattr(_routes, "_active_stream_ids", None)
-        if callable(override) and override is not _session_list_cache_active_stream_ids:
-            return override()
-    except Exception:
-        pass
     return _active_stream_ids()
 
 
 def _session_list_cache_resolved_source_stamp(key: tuple):
-    try:
-        import api.routes as _routes
-
-        override = getattr(_routes, "_session_list_cache_source_stamp", None)
-        if callable(override) and override is not _session_list_cache_source_stamp:
-            return override(key)
-    except Exception:
-        pass
     return _session_list_cache_source_stamp(key)
 
 
@@ -249,6 +210,16 @@ def _clear_session_list_cache(profile: str | None = None) -> None:
     _session_list_cache_clear(profile=profile)
 
 
+def _on_session_list_changed(profile: str | None = None) -> None:
+    _session_list_cache_clear(profile=profile)
+    # Structural changes must also invalidate the CLI/cron projection. During
+    # an active stream that projection deliberately ignores per-token database
+    # writes, so the event listener is its authoritative invalidation signal.
+    from api.models import clear_cli_sessions_cache
+
+    clear_cli_sessions_cache()
+
+
 def _session_list_cache_invalidation_stamp(key: tuple) -> tuple[int, int]:
     cache_profile, cache_all_profiles, *_rest = key
     with _SESSIONS_CACHE_LOCK:
@@ -315,14 +286,6 @@ def _session_list_cache_streaming_freeze_marker():
 
 
 def _session_list_cache_state_db_fingerprint(state_db_path: Path | None):
-    try:
-        import api.routes as _routes
-
-        override = getattr(_routes, "_session_list_cache_state_db_fingerprint", None)
-        if callable(override) and override is not _session_list_cache_state_db_fingerprint:
-            return override(state_db_path)
-    except Exception:
-        pass
     return _session_list_cache_state_db_fingerprint_impl(state_db_path)
 
 
@@ -344,7 +307,7 @@ def _session_list_cache_source_stamp(key: tuple) -> tuple[tuple[int, int], tuple
     except Exception:
         swv = 0
     # WebUI-origin sessions can also receive settled rows in state.db when the
-    # official Hermes Desktop App continues the same agent session.  The sidebar
+    # official Ares Desktop App continues the same agent session.  The sidebar
     # therefore watches state.db even when the CLI/external-session tab is hidden.
     #
     # Streaming hold-down (#4672): while a turn is in flight, collapse the
@@ -400,14 +363,6 @@ def _session_list_cache_source_stamp(key: tuple) -> tuple[tuple[int, int], tuple
 
 
 def _session_list_cache_settings_write_version() -> int:
-    try:
-        import api.routes as _routes
-
-        override = getattr(_routes, "_session_list_cache_settings_write_version", None)
-        if callable(override) and override is not _session_list_cache_settings_write_version:
-            return int(override())
-    except Exception:
-        pass
     try:
         from api.config import _SETTINGS_WRITE_VERSION
 
@@ -517,3 +472,94 @@ def _session_list_cache_done(key: tuple, event: threading.Event | None) -> None:
             _SESSIONS_CACHE_INFLIGHT.pop(key, None)
     if event is not None:
         event.set()
+
+
+def get_cached_session_list_payload(*, key: tuple, builder, diag=None) -> dict:
+    """Return a cached sidebar payload, coordinating one rebuild per key."""
+
+    def stage(name: str) -> None:
+        if diag is not None:
+            try:
+                diag.stage(name)
+            except Exception:
+                pass
+
+    stage("session_list_cache_lookup")
+    cached, fresh = _session_list_cache_get(key, allow_stale=True)
+    if cached is not None and fresh:
+        stage("session_list_cache_hit")
+        return cached
+
+    stale = cached
+    stale_reason = _session_list_cache_stale_reason(key) if stale is not None else None
+    if stale is not None and stale_reason != "source":
+        event, owner = _session_list_cache_claim_rebuild(key)
+        if owner:
+            stage("session_list_cache_stale_background_rebuild")
+
+            def rebuild() -> None:
+                try:
+                    for _attempt in range(3):
+                        stamp = _session_list_cache_invalidation_stamp(key)
+                        try:
+                            payload = builder()
+                        except Exception:
+                            logger.exception("session list stale-cache background rebuild failed")
+                            return
+                        if _session_list_cache_invalidation_stamp(key) == stamp:
+                            _session_list_cache_set(key, payload)
+                            return
+                finally:
+                    _session_list_cache_done(key, event)
+
+            try:
+                threading.Thread(target=rebuild, name="session-list-cache-rebuild", daemon=True).start()
+            except Exception:
+                _session_list_cache_done(key, event)
+        else:
+            stage("session_list_cache_stale_return")
+        return stale
+
+    event, owner = _session_list_cache_claim_rebuild(key)
+    if owner:
+        stage("session_list_cache_rebuild_owner")
+        try:
+            payload = {}
+            for attempt in range(3):
+                stamp = _session_list_cache_invalidation_stamp(key)
+                payload = builder()
+                if _session_list_cache_invalidation_stamp(key) == stamp:
+                    _session_list_cache_set(key, payload)
+                    stage("session_list_cache_stored")
+                    return payload
+                stage("session_list_cache_invalidated_during_rebuild")
+                if attempt == 2:
+                    return payload
+            return payload
+        finally:
+            _session_list_cache_done(key, event)
+
+    stage("session_list_cache_wait_stale" if stale is not None else "session_list_cache_wait")
+    event.wait(_SESSIONS_CACHE_STALE_WAIT_SECONDS if stale is not None else _SESSIONS_CACHE_WAIT_SECONDS)
+    latest, _fresh = _session_list_cache_get(key, allow_stale=False)
+    if latest is not None:
+        stage("session_list_cache_wait_hit")
+        return latest
+    if stale is not None:
+        stage("session_list_cache_wait_stale_fallback")
+        return stale
+    stage("session_list_cache_fallback_rebuild")
+    stamp = _session_list_cache_invalidation_stamp(key)
+    payload = builder()
+    if _session_list_cache_invalidation_stamp(key) == stamp:
+        _session_list_cache_set(key, payload)
+    return payload
+
+
+_get_cached_session_list_payload = get_cached_session_list_payload
+
+
+# Cache invalidation belongs with the cache, not with an HTTP dispatcher.
+from api.session_events import add_session_list_changed_listener
+
+add_session_list_changed_listener(_on_session_list_changed)

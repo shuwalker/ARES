@@ -17,7 +17,7 @@ def _write_skill(root: pathlib.Path, *parts: str) -> pathlib.Path:
 
 
 def test_external_skill_categories_keep_local_flat_and_label_external_roots(tmp_path):
-    from api import routes
+    from api.skills_store import _category
 
     local_root = tmp_path / "skills"
     external_flat_root = tmp_path / "partner-skills"
@@ -33,12 +33,9 @@ def test_external_skill_categories_keep_local_flat_and_label_external_roots(tmp_
 
     search_dirs = [local_root, external_flat_root, external_nested_root]
 
-    assert routes._skill_category_from_path(local_skill, search_dirs) is None
-    assert (
-        routes._skill_category_from_path(flat_external_skill, search_dirs)
-        == external_flat_root.name
-    )
-    assert routes._skill_category_from_path(nested_external_skill, search_dirs) == "ops"
+    assert _category(local_skill, search_dirs, local_root) is None
+    assert _category(flat_external_skill, search_dirs, local_root) == external_flat_root.name
+    assert _category(nested_external_skill, search_dirs, local_root) == "ops"
 
 
 def test_external_skill_category_when_local_dir_absent_from_search_dirs(tmp_path):
@@ -47,7 +44,7 @@ def test_external_skill_category_when_local_dir_absent_from_search_dirs(tmp_path
     local dir explicitly must keep its flat skills uncategorized AND still let a
     flat external root use its directory name — instead of misidentifying the
     first surviving (external) root as local."""
-    from api import routes
+    from api.skills_store import _category
 
     local_root = tmp_path / "skills"  # intentionally never created
     external_flat_root = tmp_path / "partner-skills"
@@ -60,8 +57,6 @@ def test_external_skill_category_when_local_dir_absent_from_search_dirs(tmp_path
     # external root as local and return None. With it passed explicitly, the
     # external root is correctly labeled.
     assert (
-        routes._skill_category_from_path(
-            flat_external_skill, search_dirs, local_skills_dir=local_root
-        )
+        _category(flat_external_skill, search_dirs, local_root)
         == external_flat_root.name
     )

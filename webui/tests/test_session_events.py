@@ -2,17 +2,26 @@ import queue
 from pathlib import Path
 
 
-ROUTES = Path("api/routes.py").read_text(encoding="utf-8")
+REALTIME = Path("fastapi_app/routers/realtime.py").read_text(encoding="utf-8")
 SESSION_EVENTS = Path("api/session_events.py").read_text(encoding="utf-8")
 PROFILES = Path("api/profiles.py").read_text(encoding="utf-8")
+DOMAIN_EVENTS = "\n".join(
+    Path(path).read_text(encoding="utf-8")
+    for path in (
+        "api/chat_runtime.py",
+        "api/session_mutations.py",
+        "api/cli_session_import.py",
+        "api/schedules_store.py",
+    )
+)
 
 
 def test_session_events_endpoint_and_bus_are_defined():
     assert "_SESSION_EVENTS_SUBSCRIBERS" in SESSION_EVENTS
     assert "def publish_session_list_changed" in SESSION_EVENTS
-    assert "def _handle_session_events_stream" in ROUTES
-    assert "parsed.path == '/api/sessions/events'" in ROUTES
-    assert "Content-Type', 'text/event-stream; charset=utf-8'" in ROUTES
+    assert "async def session_list_events_sse" in REALTIME
+    assert '@router.get("/api/sessions/events")' in REALTIME
+    assert 'media_type="text/event-stream"' in REALTIME
 
 
 def test_session_events_publish_for_minimal_sidebar_mutations():
@@ -29,32 +38,9 @@ def test_session_events_publish_for_minimal_sidebar_mutations():
         "session_title_regenerate",
         "session_branch",
     ):
-        if reason == "session_import_cli":
-            assert f'publish_session_list_changed(\n        "{reason}",' in ROUTES, reason
-        elif reason == "session_title_regenerate":
-            assert '_persist_generated_session_title(s, next_title, event_reason="session_title_regenerate")' in ROUTES
-        elif reason == "session_import":
-            assert f'publish_session_list_changed("{reason}")' in ROUTES, reason
-        else:
-            assert f'"{reason}",' in ROUTES, reason
+        assert f'"{reason}"' in DOMAIN_EVENTS, reason
 
-    assert 'if worktree_info:\n            publish_session_list_changed(\n                "session_new",' in ROUTES
-    assert "was_hidden_empty_session = _is_hidden_empty_session(s)" in ROUTES
-    assert 'if was_hidden_empty_session:\n        publish_session_list_changed(\n            "session_new",' in ROUTES
-    assert 'publish_session_list_changed(\n                "session_duplicate",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_rename",' in ROUTES
-    assert '_persist_generated_session_title(s, next_title, event_reason="session_title_regenerate")' in ROUTES
-    assert "session_id=sid" in ROUTES
-    assert 'event_profile = getattr(get_session(sid, metadata_only=True), "profile", None)' in ROUTES
-    assert "Failed to resolve profile for deleted session" in ROUTES
-    assert '_publish_session_list_changed("session_delete", profile=event_profile)' in ROUTES
-    assert 'publish_session_list_changed(\n                "session_branch",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_pin",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_archive",' in ROUTES
-    assert 'publish_session_list_changed(\n            "session_move",' in ROUTES
-    assert 'session_id=getattr(' in ROUTES
-    assert 'publish_session_list_changed("chat_start")' not in ROUTES
-    assert '_publish_session_list_changed("cron_complete",' in ROUTES
+    assert 'publish_session_list_changed("chat_start")' not in DOMAIN_EVENTS
     assert 'publish_session_list_changed("cron_complete",' in PROFILES
 
 

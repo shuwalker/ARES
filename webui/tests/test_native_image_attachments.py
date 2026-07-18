@@ -1,17 +1,14 @@
 """Tests for native multimodal image attachment support (PR #1229).
 
 Verifies _build_native_multimodal_message, _normalize_chat_attachments,
-and _attachment_name from api.streaming / api.routes behave correctly
+and _attachment_name from the transport-neutral streaming runtime behave correctly
 across the workspace-path safety, size ceiling, multi-image, MIME, and
 fallback cases the maintainer asked about.
 """
 import base64
 import os
-import struct
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
-import pytest
 
 from api.streaming import (
     _attachment_name,
@@ -19,7 +16,7 @@ from api.streaming import (
     _NATIVE_IMAGE_MAX_BYTES,
     _sanitize_messages_for_api,
 )
-from api.routes import _normalize_chat_attachments
+from api.chat_runtime import normalize_chat_attachments as _normalize_chat_attachments
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -354,15 +351,15 @@ class TestBuildNativeMultimodalMessage:
 
         assert sanitized == [{'role': 'user', 'content': content}]
 
-    def test_sync_chat_history_sanitizer_receives_config(self):
-        """#2398: fallback POST /api/chat must use the text-mode history sanitizer too."""
-        src = Path('api/routes.py').read_text()
+    def test_runtime_history_sanitizer_receives_config(self):
+        """#2398: runtime generation passes provider configuration to sanitization."""
+        src = Path('api/streaming.py').read_text()
         assert 'conversation_history=_sanitize_messages_for_api(' in src, (
-            'The legacy synchronous /api/chat endpoint must sanitize history through '
+            'The runtime must sanitize history through '
             '_sanitize_messages_for_api.'
         )
-        assert 'cfg=get_config(),' in src, (
-            'The legacy synchronous /api/chat endpoint must pass current config into '
+        assert 'cfg=_cfg,' in src, (
+            'The runtime must pass current config into '
             '_sanitize_messages_for_api so historical image_url parts are stripped '
             'for text-mode providers just like the streaming endpoint.'
         )
@@ -430,7 +427,7 @@ class TestIsValidImage:
 
 
 class TestAttachmentRootIntegration:
-    """Stage-361 regression: #2319 moved chat uploads to ~/.hermes/webui/attachments/<sid>/.
+    """Stage-361 regression: #2319 moved chat uploads to ~/.ares/webui/attachments/<sid>/.
 
     Pre-fix, _build_native_multimodal_message required uploads to be under
     workspace_root, which silently rejected every image upload from the new
@@ -445,7 +442,7 @@ class TestAttachmentRootIntegration:
         # Set up isolated attachment root
         attachment_root = tmp_path / "attachments"
         attachment_root.mkdir(parents=True)
-        monkeypatch.setenv("HERMES_WEBUI_ATTACHMENT_DIR", str(attachment_root))
+        monkeypatch.setenv("ARES_WEBUI_ATTACHMENT_DIR", str(attachment_root))
 
         # The image lives in the attachment inbox, NOT in the workspace
         session_inbox = attachment_root / "sess123"
@@ -481,7 +478,7 @@ class TestAttachmentRootIntegration:
         """Paths outside BOTH allowed roots remain rejected — no security regression."""
         attachment_root = tmp_path / "attachments"
         attachment_root.mkdir()
-        monkeypatch.setenv("HERMES_WEBUI_ATTACHMENT_DIR", str(attachment_root))
+        monkeypatch.setenv("ARES_WEBUI_ATTACHMENT_DIR", str(attachment_root))
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -511,7 +508,7 @@ class TestAttachmentRootIntegration:
         """Workspace-resident images still work (backward compat with pre-#2319 uploads)."""
         attachment_root = tmp_path / "attachments"
         attachment_root.mkdir()
-        monkeypatch.setenv("HERMES_WEBUI_ATTACHMENT_DIR", str(attachment_root))
+        monkeypatch.setenv("ARES_WEBUI_ATTACHMENT_DIR", str(attachment_root))
 
         workspace = tmp_path / "workspace"
         workspace.mkdir()

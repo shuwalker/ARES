@@ -2,7 +2,7 @@
 
 ARES projects the active backend's identity. This module produces a compact context
 packet that gets injected into the agent's system prompt every turn,
-regardless of which backend (Hermes or JROS) is active.
+regardless of which backend (Ares or JROS) is active.
 
 The context tells the agent:
   - Who it is (projected backend identity)
@@ -12,7 +12,7 @@ The context tells the agent:
   - Whether JROS embodiment is connected
 
 This is backend-agnostic — the same dict and prompt render work for
-both Hermes (injected via ephemeral_system_prompt) and JROS (injected
+both Ares (injected via ephemeral_system_prompt) and JROS (injected
 via JaegerAgent system_prompt).
 """
 
@@ -102,7 +102,7 @@ def _ensure_db() -> sqlite3.Connection:
 # ── Build Runtime Context ─────────────────────────────────────────
 
 def build_runtime_context(
-    backend: str = "hermes",
+    backend: str = "ares",
     *,
     session_id: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -112,7 +112,7 @@ def build_runtime_context(
     the agent knows the projected identity, backend, and available capabilities.
 
     Args:
-        backend: Active backend mode — 'hermes', 'jros', or 'hybrid'.
+        backend: Active backend mode — 'ares', 'jros', or 'hybrid'.
         session_id: Optional session identifier.
 
     Returns:
@@ -130,13 +130,13 @@ def build_runtime_context(
     # Determine effective backend
     effective_backend = backend
     if backend == "jros" and not jros_up:
-        effective_backend = "hermes"
+        effective_backend = "ares"
     elif backend == "hybrid" and not jros_up:
-        effective_backend = "hermes"
+        effective_backend = "ares"
 
     # Capability map — what each backend provides
     capabilities = {
-        "hermes": {
+        "ares": {
             "available": True,
             "provides": [
                 "tools", "skills", "cron", "memory",
@@ -241,7 +241,7 @@ def render_context_prompt(context: dict[str, Any]) -> str:
 
     Designed to be under 500 chars to minimize context window impact.
     """
-    backend = context.get("active_backend", "hermes")
+    backend = context.get("active_backend", "ares")
     identity = context.get("identity_projection", {})
     if not isinstance(identity, dict):
         identity = {}
@@ -276,7 +276,7 @@ def render_context_prompt(context: dict[str, Any]) -> str:
 def _identity_projection_for_backend(backend: str) -> dict[str, Any]:
     """Return the active backend identity projection without making ARES canonical."""
 
-    normalized = backend if backend in {"hermes", "jros", "hybrid"} else "hermes"
+    normalized = backend if backend in {"ares", "jros", "hybrid"} else "ares"
     try:
         from api.backends.router import get_router
 
@@ -290,7 +290,7 @@ def _identity_projection_for_backend(backend: str) -> dict[str, Any]:
 
     return {
         "name": {
-            "hermes": "Hermes",
+            "ares": "Ares",
             "jros": "JROS",
             "hybrid": "Hybrid",
         }.get(normalized, normalized.title()),

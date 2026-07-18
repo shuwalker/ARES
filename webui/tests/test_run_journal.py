@@ -52,7 +52,7 @@ def test_run_journal_default_fsyncs_terminal_events_only(tmp_path, monkeypatch):
     path.parent.mkdir(parents=True)
     path.touch()
     fsync_calls = []
-    monkeypatch.delenv("HERMES_WEBUI_RUN_JOURNAL_FSYNC", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_RUN_JOURNAL_FSYNC", raising=False)
     monkeypatch.setattr("api.run_journal.os.fsync", lambda fd: fsync_calls.append(fd))
 
     append_run_event("session_1", "run_1", "token", {"text": "ok"}, session_dir=tmp_path)
@@ -69,7 +69,7 @@ def test_run_journal_eager_fsync_mode_fsyncs_non_terminal_events(tmp_path, monke
     path.parent.mkdir(parents=True)
     path.touch()
     fsync_calls = []
-    monkeypatch.setenv("HERMES_WEBUI_RUN_JOURNAL_FSYNC", "eager")
+    monkeypatch.setenv("ARES_WEBUI_RUN_JOURNAL_FSYNC", "eager")
     monkeypatch.setattr("api.run_journal.os.fsync", lambda fd: fsync_calls.append(fd))
 
     append_run_event("session_1", "run_1", "token", {"text": "ok"}, session_dir=tmp_path)

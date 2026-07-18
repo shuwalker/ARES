@@ -35,10 +35,9 @@ from unittest.mock import patch
 
 import pytest
 
-# Importing an api module first injects the hermes-agent dir onto sys.path
+# Importing an api module first injects the ares-agent dir onto sys.path
 # (api.config._AGENT_DIR), which is what makes `tools.approval` importable.
 # Import order matters: tools.* will not resolve until api.config has run.
-from api import routes
 from api import models
 
 try:
@@ -144,14 +143,9 @@ def test_local_mirrored_approval_resolves_not_409():
     _register_session(sid)
     try:
         entry, approval_id = _seed_local_pending_approval(sid)
-        handler = _FakeHandler()
         with patch("api.gateway_chat.webui_gateway_chat_enabled", return_value=False):
-            routes._handle_approval_respond(
-                handler,
-                {"session_id": sid, "choice": "once", "approval_id": approval_id},
-            )
-        resp = handler.json()
-        assert handler.status == 200, f"expected 200, got {handler.status}: {resp}"
+            resp, status = ra.respond_approval(sid, approval_id, "once")
+        assert status == 200, f"expected 200, got {status}: {resp}"
         assert resp.get("ok") is True
         assert resp.get("code") != "gateway_run_unavailable"
         # The parked agent thread must be released with the user's choice.
@@ -167,14 +161,9 @@ def test_local_mirrored_approval_deny_resolves():
     _register_session(sid)
     try:
         entry, approval_id = _seed_local_pending_approval(sid)
-        handler = _FakeHandler()
         with patch("api.gateway_chat.webui_gateway_chat_enabled", return_value=False):
-            routes._handle_approval_respond(
-                handler,
-                {"session_id": sid, "choice": "deny", "approval_id": approval_id},
-            )
-        resp = handler.json()
-        assert handler.status == 200, f"expected 200, got {handler.status}: {resp}"
+            resp, status = ra.respond_approval(sid, approval_id, "deny")
+        assert status == 200, f"expected 200, got {status}: {resp}"
         assert resp.get("ok") is True
         assert entry.event.is_set()
         assert entry.result == "deny"
@@ -190,14 +179,9 @@ def test_gateway_mirrored_approval_without_run_still_409s():
     _register_session(sid)  # no active_stream_id -> no _STREAM_RUN_IDS mapping
     try:
         entry, approval_id = _seed_local_pending_approval(sid)
-        handler = _FakeHandler()
         with patch("api.gateway_chat.webui_gateway_chat_enabled", return_value=True):
-            routes._handle_approval_respond(
-                handler,
-                {"session_id": sid, "choice": "once", "approval_id": approval_id},
-            )
-        resp = handler.json()
-        assert handler.status == 409, f"expected 409, got {handler.status}: {resp}"
+            resp, status = ra.respond_approval(sid, approval_id, "once")
+        assert status == 409, f"expected 409, got {status}: {resp}"
         assert resp.get("ok") is False
         assert resp.get("relayed") is False
         assert resp.get("code") == "gateway_run_unavailable"
@@ -215,8 +199,8 @@ def test_gateway_pending_without_run_id_flag_detection():
     sid = f"flag-detect-{uuid.uuid4().hex[:8]}"
     try:
         entry, approval_id = _seed_local_pending_approval(sid)
-        assert routes._gateway_pending_approval_without_run_id(sid, approval_id) is True
+        assert ra._gateway_pending_without_run_id(sid, approval_id) is True
         # A non-existent approval_id must not match.
-        assert routes._gateway_pending_approval_without_run_id(sid, "no-such-id") is False
+        assert ra._gateway_pending_without_run_id(sid, "no-such-id") is False
     finally:
         _cleanup(sid)

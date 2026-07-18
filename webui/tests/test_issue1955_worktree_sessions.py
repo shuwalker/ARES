@@ -25,38 +25,38 @@ def _isolate_sessions(tmp_path, monkeypatch):
 def test_worktree_metadata_round_trips_through_session_file(_isolate_sessions):
     s = Session(
         session_id="worktree001",
-        workspace=str(_isolate_sessions.parent / "repo" / ".worktrees" / "hermes-1234"),
-        worktree_path=str(_isolate_sessions.parent / "repo" / ".worktrees" / "hermes-1234"),
-        worktree_branch="hermes/hermes-1234",
+        workspace=str(_isolate_sessions.parent / "repo" / ".worktrees" / "ares-1234"),
+        worktree_path=str(_isolate_sessions.parent / "repo" / ".worktrees" / "ares-1234"),
+        worktree_branch="ares/ares-1234",
         worktree_repo_root=str(_isolate_sessions.parent / "repo"),
         worktree_created_at=123.5,
     )
     s.save()
 
     raw = json.loads(s.path.read_text(encoding="utf-8"))
-    assert Path(raw["worktree_path"]).as_posix().endswith(".worktrees/hermes-1234")
-    assert raw["worktree_branch"] == "hermes/hermes-1234"
+    assert Path(raw["worktree_path"]).as_posix().endswith(".worktrees/ares-1234")
+    assert raw["worktree_branch"] == "ares/ares-1234"
     assert raw["worktree_repo_root"].endswith("repo")
     assert raw["worktree_created_at"] == 123.5
 
     loaded = Session.load("worktree001")
     assert loaded.worktree_path == s.worktree_path
-    assert loaded.worktree_branch == "hermes/hermes-1234"
+    assert loaded.worktree_branch == "ares/ares-1234"
     assert loaded.worktree_repo_root == s.worktree_repo_root
     assert loaded.worktree_created_at == 123.5
-    assert loaded.compact()["worktree_branch"] == "hermes/hermes-1234"
+    assert loaded.compact()["worktree_branch"] == "ares/ares-1234"
 
 
 def test_new_session_with_worktree_info_persists_immediately(_isolate_sessions):
     repo = _isolate_sessions.parent / "repo"
-    worktree = repo / ".worktrees" / "hermes-abcd1234"
+    worktree = repo / ".worktrees" / "ares-abcd1234"
     worktree.mkdir(parents=True)
 
     s = new_session(
         workspace=str(worktree),
         worktree_info={
             "path": str(worktree),
-            "branch": "hermes/hermes-abcd1234",
+            "branch": "ares/ares-abcd1234",
             "repo_root": str(repo),
             "created_at": 456.0,
         },
@@ -67,21 +67,21 @@ def test_new_session_with_worktree_info_persists_immediately(_isolate_sessions):
         "real filesystem worktree is not orphaned by a browser/server restart"
     )
     assert s.worktree_path == str(worktree.resolve())
-    assert s.worktree_branch == "hermes/hermes-abcd1234"
+    assert s.worktree_branch == "ares/ares-abcd1234"
     assert s.worktree_repo_root == str(repo.resolve())
     assert s.worktree_created_at == 456.0
 
 
 def test_empty_worktree_session_remains_visible_in_sidebar(_isolate_sessions):
     repo = _isolate_sessions.parent / "repo"
-    worktree = repo / ".worktrees" / "hermes-visible"
+    worktree = repo / ".worktrees" / "ares-visible"
     worktree.mkdir(parents=True)
 
     s = new_session(
         workspace=str(worktree),
         worktree_info={
             "path": str(worktree),
-            "branch": "hermes/hermes-visible",
+            "branch": "ares/ares-visible",
             "repo_root": str(repo),
             "created_at": 789.0,
         },
@@ -124,8 +124,8 @@ def test_create_worktree_for_workspace_calls_agent_setup_with_repo_root(tmp_path
     def fake_setup(repo_root):
         seen["repo_root"] = repo_root
         return {
-            "path": str(repo / ".worktrees" / "hermes-test"),
-            "branch": "hermes/hermes-test",
+            "path": str(repo / ".worktrees" / "ares-test"),
+            "branch": "ares/ares-test",
             "repo_root": str(repo),
         }
 
@@ -135,109 +135,75 @@ def test_create_worktree_for_workspace_calls_agent_setup_with_repo_root(tmp_path
     info = worktrees.create_worktree_for_workspace(nested)
 
     assert seen["repo_root"] == str(repo.resolve())
-    assert Path(info["path"]).as_posix().endswith(".worktrees/hermes-test")
-    assert info["branch"] == "hermes/hermes-test"
+    assert Path(info["path"]).as_posix().endswith(".worktrees/ares-test")
+    assert info["branch"] == "ares/ares-test"
     assert info["repo_root"] == str(repo.resolve())
     assert info["created_at"] >= now
 
 
+
+
+
+
 def test_session_new_route_creates_worktree_backed_session(tmp_path, monkeypatch):
-    import api.routes as routes
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
     import api.worktrees as worktrees
 
     repo = tmp_path / "repo"
-    worktree = repo / ".worktrees" / "hermes-route"
-    repo.mkdir()
+    worktree = repo / ".worktrees" / "ares-route"
     worktree.mkdir(parents=True)
-
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    monkeypatch.setattr(
-        routes,
-        "read_body",
-        lambda handler: {
-            "workspace": str(repo),
-            "worktree": True,
-            "profile": "default",
-        },
-    )
-    monkeypatch.setattr(routes, "resolve_trusted_workspace", lambda raw: repo if raw == str(repo) else raw)
+    monkeypatch.setattr("api.workspace.resolve_trusted_workspace", lambda raw: Path(raw).resolve())
     monkeypatch.setattr(
         worktrees,
         "create_worktree_for_workspace",
         lambda workspace: {
             "path": str(worktree),
-            "branch": "hermes/hermes-route",
+            "branch": "ares/ares-route",
             "repo_root": str(repo),
             "created_at": 321.0,
         },
     )
-    captured = {}
-    monkeypatch.setattr(
-        routes,
-        "j",
-        lambda handler, payload, status=200, extra_headers=None: captured.update(
-            payload=payload,
-            status=status,
-        ) or True,
-    )
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/session/new",
+            json={"workspace": str(repo), "worktree": True, "profile": "default"},
+        )
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/new")) is True
-    assert captured["status"] == 200
-    session = captured["payload"]["session"]
+    assert response.status_code == 200
+    session = response.json()["session"]
     assert session["workspace"] == str(worktree.resolve())
     assert session["worktree_path"] == str(worktree.resolve())
-    assert session["worktree_branch"] == "hermes/hermes-route"
+    assert session["worktree_branch"] == "ares/ares-route"
 
 
 def test_session_new_worktree_fallback_workspace_is_resolved(tmp_path, monkeypatch):
-    import api.routes as routes
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
     import api.worktrees as worktrees
 
     repo = tmp_path / "repo"
-    worktree = repo / ".worktrees" / "hermes-route"
-    repo.mkdir()
+    worktree = repo / ".worktrees" / "ares-route"
     worktree.mkdir(parents=True)
-    seen = {"resolved": []}
-
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    monkeypatch.setattr(
-        routes,
-        "read_body",
-        lambda handler: {
-            "worktree": True,
-            "profile": "default",
-        },
-    )
-    monkeypatch.setattr(routes, "get_last_workspace", lambda: str(repo))
-
-    def fake_resolve(raw):
-        seen["resolved"].append(raw)
-        return repo
-
-    monkeypatch.setattr(routes, "resolve_trusted_workspace", fake_resolve)
+    seen = []
+    monkeypatch.setattr("api.workspace.get_last_workspace", lambda: str(repo))
+    monkeypatch.setattr("api.workspace.resolve_trusted_workspace", lambda raw: Path(raw).resolve())
     monkeypatch.setattr(
         worktrees,
         "create_worktree_for_workspace",
-        lambda workspace: {
+        lambda workspace: seen.append(workspace) or {
             "path": str(worktree),
-            "branch": "hermes/hermes-route",
+            "branch": "ares/ares-route",
             "repo_root": str(repo),
             "created_at": 321.0,
         },
     )
-    captured = {}
-    monkeypatch.setattr(
-        routes,
-        "j",
-        lambda handler, payload, status=200, extra_headers=None: captured.update(
-            payload=payload,
-            status=status,
-        ) or True,
-    )
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/session/new",
+            json={"worktree": True, "profile": "default"},
+        )
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/new")) is True
-
-    assert seen["resolved"] == [str(repo)]
-    assert captured["status"] == 200
-    session = captured["payload"]["session"]
-    assert session["workspace"] == str(worktree.resolve())
+    assert response.status_code == 200
+    assert seen == [str(repo.resolve())]
+    assert response.json()["session"]["workspace"] == str(worktree.resolve())

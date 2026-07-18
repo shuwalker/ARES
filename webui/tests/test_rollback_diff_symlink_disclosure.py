@@ -19,18 +19,18 @@ def _commit_checkpoint_file(repo: Path, rel: str, content: str) -> None:
 
 
 def _init_checkpoint(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "home"
+    ares_home = tmp_path / "home"
     workspace = tmp_path / "workspace"
-    hermes_home.mkdir()
+    ares_home.mkdir()
     workspace.mkdir()
     ws_hash = rollback._workspace_hash(str(workspace.resolve()))
     checkpoint = "abc123"
-    ckpt_dir = hermes_home / "checkpoints" / ws_hash / checkpoint
+    ckpt_dir = ares_home / "checkpoints" / ws_hash / checkpoint
     ckpt_dir.mkdir(parents=True)
     subprocess.run(["git", "-C", str(ckpt_dir), "init"], check=True)
     subprocess.run(["git", "-C", str(ckpt_dir), "config", "user.email", "test@example.invalid"], check=True)
     subprocess.run(["git", "-C", str(ckpt_dir), "config", "user.name", "Test"], check=True)
-    monkeypatch.setattr(rollback, "_hermes_home", lambda: hermes_home)
+    monkeypatch.setattr(rollback, "_ares_home", lambda: ares_home)
     monkeypatch.setattr(workspace_mod, "load_workspaces", lambda: [{"path": str(workspace)}])
     return workspace, ckpt_dir, checkpoint
 

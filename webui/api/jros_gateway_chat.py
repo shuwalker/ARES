@@ -1,6 +1,6 @@
 """Default-off JROS gateway bridge for browser-originated ARES chat turns.
 
-This is the JROS twin of ``api.gateway_chat`` (the Hermes Gateway bridge)
+This is the JROS twin of ``api.gateway_chat`` (the Ares Gateway bridge)
 and is deliberately shaped like it: /api/chat/start still creates a normal
 local WebUI stream, /api/chat/stream still receives WebUI SSE event names,
 and the final turn is persisted back into the same WebUI session model.
@@ -75,7 +75,7 @@ _START_GATEWAY_HINT = (
 
 def jros_gateway_base_url(config_data=None, environ: dict[str, str] | None = None) -> str:
     """Resolve the JROS gateway base URL: env override, then config, then
-    the localhost default (same precedence as the Hermes gateway bridge)."""
+    the localhost default (same precedence as the Ares gateway bridge)."""
     source = os.environ if environ is None else environ
     cfg = config_data if isinstance(config_data, dict) else {}
     raw = str(
@@ -174,14 +174,14 @@ def _jros_instance_name() -> str | None:
     return os.environ.get(_JROS_INSTANCE_ENV, "").strip() or jros_instance_name()
 
 
-def _jros_hermes_tools_enabled() -> bool:
-    """Whether the Companion should boot with Hermes's tools reachable over
+def _jros_ares_tools_enabled() -> bool:
+    """Whether the Companion should boot with Ares's tools reachable over
     MCP — an opt-in addition on top of the jros backend, not a competing
-    backend mode. See api.jros_hermes_mcp for the config-sync side."""
+    backend mode. See api.jros_ares_mcp for the config-sync side."""
     try:
         from api.config import get_config
 
-        return bool(get_config().get("jros_hermes_tools_enabled"))
+        return bool(get_config().get("jros_ares_tools_enabled"))
     except Exception:
         return False
 
@@ -368,6 +368,7 @@ def _merge_and_save_jros_turn(
     model: str,
     model_provider: str | None,
     attachments: list | None,
+    usage: dict | None = None,
 ) -> Any:
     with _get_session_agent_lock(session_id):
         s = get_session(session_id)
@@ -445,6 +446,27 @@ def _merge_and_save_jros_turn(
         s.workspace = str(workspace)
         s.model = model or getattr(s, "model", "") or ""
         s.model_provider = selected_model_provider
+        if usage:
+            # JaegerAI's usage dict is per-turn (an OpenAI-style chunk's
+            # prompt/completion_tokens, or a fresh word-count estimate), unlike
+            # the "ares" backend's Agent SDK counters which are already
+            # session-cumulative — so accumulate here instead of overwriting,
+            # or multi-turn sessions would report only their last turn's usage.
+            turn_input = int(usage.get("input_tokens") or 0)
+            turn_output = int(usage.get("output_tokens") or 0)
+            turn_cost = usage.get("estimated_cost")
+            if turn_input > 0:
+                s.input_tokens = int(getattr(s, "input_tokens", 0) or 0) + turn_input
+            if turn_output > 0:
+                s.output_tokens = int(getattr(s, "output_tokens", 0) or 0) + turn_output
+            if turn_cost:
+                try:
+                    s.estimated_cost = float(getattr(s, "estimated_cost", 0) or 0) + float(turn_cost)
+                except (TypeError, ValueError):
+                    pass
+            # TODO: cache tokens and the local-bridge fallback's input_tokens/
+            # estimated_cost are not reported upstream yet (see usage dict
+            # construction above) — this only persists what's computed today.
         s.save()
         return s
 
@@ -452,10 +474,10 @@ def _merge_and_save_jros_turn(
 def _run_jros_goal_hook(*, session_id: str, stream_id: str, goal_related: bool, assistant_text: str, put_jros_event) -> None:
     try:
         from api.goals import evaluate_goal_after_turn, has_active_goal
-        from api.profiles import get_hermes_home_for_profile
+        from api.profiles import get_ares_home_for_profile
 
         s = get_session(session_id)
-        profile_home = get_hermes_home_for_profile(str(getattr(s, "profile", None) or "default"))
+        profile_home = get_ares_home_for_profile(str(getattr(s, "profile", None) or "default"))
         if goal_related and has_active_goal(session_id, profile_home=profile_home):
             put_jros_event("goal", {
                 "session_id": session_id,
@@ -530,7 +552,7 @@ def _run_jros_chat_streaming(
     model_provider=None,
     goal_related=False,
 ):
-    """Bridge a WebUI chat turn through JaegerAI using the Hermes
+    """Bridge a WebUI chat turn through JaegerAI using the Ares
     worker contract (same signature routes._select_chat_worker_target
     dispatches to)."""
     q = STREAMS.get(stream_id)
@@ -605,6 +627,33 @@ def _run_jros_chat_streaming(
             "Accept": "text/event-stream",
             **_auth_headers(),
         }
+        # JaegerAI has no HTTP gateway — default to local bridge. Only try the
+        # legacy HTTP gateway path when the operator has explicitly configured one.
+        # Computed here (rather than just below, where the branch it guards
+        # actually lives) so the Context Store retrieval right after it can
+        # skip work entirely on turns that won't use `body`/`req` at all.
+        explicit_gateway = bool(
+            os.environ.get(_JROS_GATEWAY_URL_ENV) or cfg.get("jros_gateway_url")
+        )
+        # ARES-owned project context (Local Profile notes, project-context
+        # files) the JaegerAI gateway has no other visibility into -- NOT a
+        # replacement for the gateway's own per-session context, which it
+        # already keeps server-side. Only reachable on the HTTP-gateway path
+        # today (the local-bridge path below has no context parameter); skip
+        # the retrieval call entirely rather than doing wasted work when the
+        # local-bridge branch is what's actually going to run. Degrades to an
+        # empty list on any failure (disabled, sqlite-vec absent, embeddings
+        # unreachable), so this can never block or fail a turn.
+        context_messages: list[dict] = []
+        if explicit_gateway or local_jros_root() is None:
+            try:
+                from api.context_store import build_context_block, retrieve as retrieve_context
+
+                context_chunks = retrieve_context(str(msg_text or ""), config_data=cfg)
+                if context_chunks:
+                    context_messages = [{"role": "system", "content": build_context_block(context_chunks)}]
+            except Exception:
+                logger.debug("Context Store retrieval failed for jros turn %s", stream_id, exc_info=True)
         body = {
             "model": model or "jros",
             "stream": True,
@@ -612,7 +661,7 @@ def _run_jros_chat_streaming(
             # the session key, so each WebUI conversation stays its own JROS
             # conversation.
             "user": f"webui:{session_id}",
-            "messages": [{"role": "user", "content": str(msg_text or "")}],
+            "messages": [*context_messages, {"role": "user", "content": str(msg_text or "")}],
         }
         req = urllib.request.Request(
             url,
@@ -621,7 +670,7 @@ def _run_jros_chat_streaming(
             method="POST",
         )
 
-        # Reuse the Hermes gateway SSE translators — the JROS gateway
+        # Reuse the Ares gateway SSE translators — the JROS gateway
         # deliberately speaks the same dialect.
         from api.gateway_chat import (
             _gateway_sse_delta,
@@ -635,11 +684,6 @@ def _run_jros_chat_streaming(
         sse_event = "message"
         resp_ctx = None
 
-        # JaegerAI has no HTTP gateway — default to local bridge. Only try the
-        # legacy HTTP gateway path when the operator has explicitly configured one.
-        explicit_gateway = bool(
-            os.environ.get(_JROS_GATEWAY_URL_ENV) or cfg.get("jros_gateway_url")
-        )
         if not explicit_gateway and local_jros_root() is not None:
             ran_locally = True
             update_active_run(stream_id, phase="jros-local")
@@ -730,7 +774,7 @@ def _run_jros_chat_streaming(
                         turn_error = str(payload.get("message") or "JROS turn failed")
                         sse_event = "message"
                         continue
-                    if sse_event == "hermes.tool.progress":
+                    if sse_event == "ares.tool.progress":
                         translated = _gateway_tool_progress_event(payload)
                         if translated:
                             event_name, event_payload = translated
@@ -790,6 +834,7 @@ def _run_jros_chat_streaming(
             model=model or "",
             model_provider=model_provider,
             attachments=attachments,
+            usage=usage,
         )
         if saved_session is None:
             return

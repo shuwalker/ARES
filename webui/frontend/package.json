@@ -1,0 +1,46 @@
+{
+  "name": "@ares/webui-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework-independent ARES WebUI frontend.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.3.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@types/three": "^0.185.1",
+    "@xyflow/react": "^12.11.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "lucide-react": "^0.577.0",
+    "radix-ui": "^1.6.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-resizable-panels": "^4.12.1",
+    "react-router-dom": "^7.16.0",
+    "recharts": "^3.9.2",
+    "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^22.19.21",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^4.1.8"
+  }
+}

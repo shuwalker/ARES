@@ -33,11 +33,11 @@ def _isolate_sessions(tmp_path, monkeypatch):
 def git_worktree(tmp_path):
     repo = tmp_path / "repo"
     remote = tmp_path / "remote.git"
-    worktree = tmp_path / "hermes-status"
+    worktree = tmp_path / "ares-status"
     repo.mkdir()
     _git(repo, "init")
     _git(repo, "config", "user.email", "test@example.com")
-    _git(repo, "config", "user.name", "Hermes Test")
+    _git(repo, "config", "user.name", "Ares Test")
     _git(repo, "branch", "-M", "main")
     (repo / "README.md").write_text("hello\n", encoding="utf-8")
     _git(repo, "add", "README.md")
@@ -45,8 +45,8 @@ def git_worktree(tmp_path):
     _git(remote.parent, "init", "--bare", remote.name)
     _git(repo, "remote", "add", "origin", str(remote))
     _git(repo, "push", "-u", "origin", "main")
-    _git(repo, "worktree", "add", "-b", "hermes/status", str(worktree), "main")
-    _git(worktree, "push", "-u", "origin", "hermes/status")
+    _git(repo, "worktree", "add", "-b", "ares/status", str(worktree), "main")
+    _git(worktree, "push", "-u", "origin", "ares/status")
     return repo, worktree
 
 
@@ -55,7 +55,7 @@ def _session_for_worktree(repo, worktree, **kwargs):
         session_id=kwargs.pop("session_id", "wtstatus001"),
         workspace=str(worktree),
         worktree_path=str(worktree),
-        worktree_branch="hermes/status",
+        worktree_branch="ares/status",
         worktree_repo_root=str(repo),
         worktree_created_at=123.0,
         **kwargs,
@@ -166,56 +166,36 @@ def test_worktree_status_reports_live_terminal_lock(git_worktree, monkeypatch):
 
 
 def test_worktree_status_endpoint_returns_session_owned_status(git_worktree, monkeypatch):
-    import api.routes as routes
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
 
     repo, worktree = git_worktree
     session = _session_for_worktree(repo, worktree, session_id="route_wt")
     session.save()
-    captured = {}
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/api/session/worktree/status",
+            params={"session_id": "route_wt"},
+        )
 
-    monkeypatch.setattr(
-        routes,
-        "j",
-        lambda handler, payload, status=200, extra_headers=None: captured.update(
-            payload=payload,
-            status=status,
-        ) or True,
-    )
-
-    handled = routes.handle_get(
-        object(),
-        urlparse("/api/session/worktree/status?session_id=route_wt"),
-    )
-
-    assert handled is True
-    assert captured["status"] == 200
-    assert captured["payload"]["status"]["path"] == str(worktree.resolve())
-    assert captured["payload"]["status"]["exists"] is True
+    assert response.status_code == 200
+    assert response.json()["status"]["path"] == str(worktree.resolve())
+    assert response.json()["status"]["exists"] is True
 
 
 def test_worktree_status_endpoint_rejects_non_worktree_session(tmp_path, monkeypatch):
-    import api.routes as routes
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     session = Session(session_id="plain", workspace=str(workspace))
     session.save()
-    captured = {}
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/api/session/worktree/status",
+            params={"session_id": "plain"},
+        )
 
-    monkeypatch.setattr(
-        routes,
-        "bad",
-        lambda handler, message, status=400: captured.update(
-            message=message,
-            status=status,
-        ) or True,
-    )
-
-    handled = routes.handle_get(
-        object(),
-        urlparse("/api/session/worktree/status?session_id=plain"),
-    )
-
-    assert handled is True
-    assert captured["status"] == 400
-    assert "not worktree-backed" in captured["message"]
+    assert response.status_code == 400
+    assert "not worktree-backed" in response.json()["error"]

@@ -1,64 +1,27 @@
-"""Regression coverage for the shell/home route fallback.
+"""The React shell fails as HTML, never as an API-shaped JSON page."""
 
-The WebUI shell should never render a JSON error page for `/`, even if
-index.html serving fails during a restart/update race. API routes still keep
-their normal JSON error behavior; this only pins the shell route contract.
-"""
+from pathlib import Path
 
-from urllib.parse import urlparse
-from types import SimpleNamespace
+from fastapi.testclient import TestClient
+
+from fastapi_app.main import create_app
 
 
-class _FakeHandler:
-    def __init__(self):
-        self.status = None
-        self.sent_headers = []
-        self.body = bytearray()
-        self.wfile = self
-        self.headers = {}
+def test_home_route_internal_error_returns_html_503_not_json(monkeypatch, tmp_path):
+    index = tmp_path / "index.html"
+    index.write_text("<!doctype html><title>ARES</title>", encoding="utf-8")
+    original = Path.read_text
 
-    def send_response(self, status):
-        self.status = status
+    def failed_read(path, *args, **kwargs):
+        if path.resolve() == index.resolve():
+            raise OSError("simulated read failure")
+        return original(path, *args, **kwargs)
 
-    def send_header(self, name, value):
-        self.sent_headers.append((name, value))
-
-    def end_headers(self):
-        pass
-
-    def write(self, data):
-        self.body.extend(data)
-
-    def header(self, name):
-        for key, value in self.sent_headers:
-            if key.lower() == name.lower():
-                return value
-        return None
-
-
-class _BrokenIndexPath:
-    def stat(self):
-        return SimpleNamespace(st_size=1, st_mtime_ns=1)
-
-    def read_text(self, *args, **kwargs):
-        raise RuntimeError("simulated index.html read failure")
-
-
-def test_home_route_internal_error_returns_html_503_not_json(monkeypatch):
-    from api import config as api_config
-    from api import routes
-
-    monkeypatch.setattr(api_config, "get_index_html_path", lambda: _BrokenIndexPath())
-    monkeypatch.setattr(routes, "_INDEX_SHELL_CACHE", {})
-
-    handler = _FakeHandler()
-    assert routes.handle_get(handler, urlparse("http://example.com/")) is True
-
-    assert handler.status == 503
-    assert (handler.header("Content-Type") or "").startswith("text/html; charset=utf-8")
-    assert handler.header("Cache-Control") == "no-store"
-
-    body = bytes(handler.body).decode("utf-8")
-    assert "Hermes is restarting" in body
-    assert "application/json" not in (handler.header("Content-Type") or "")
-    assert '"error"' not in body
+    monkeypatch.setattr(Path, "read_text", failed_read)
+    with TestClient(create_app(frontend_root=tmp_path)) as client:
+        response = client.get("/")
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["cache-control"] == "no-store"
+    assert "Ares is restarting" in response.text
+    assert '"error"' not in response.text

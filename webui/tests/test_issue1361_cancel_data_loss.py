@@ -419,7 +419,7 @@ def test_stale_stream_cleanup_materializes_pending_turn_before_clearing_state():
     agent merges the user turn, /api/session stale cleanup must not clear that
     pending field without first appending a durable user message.
     """
-    from api.routes import _clear_stale_stream_state
+    from api.session_runtime_state import _clear_stale_stream_state
 
     sid = "test_pending_error_d3_stale"
     s = _make_session(
@@ -455,7 +455,7 @@ def test_stale_stream_cleanup_recovers_journaled_visible_output():
     """The /api/session stale cleanup path can run before a full chat reload;
     it must preserve journaled partial output instead of only clearing runtime
     flags."""
-    from api.routes import _clear_stale_stream_state
+    from api.session_runtime_state import _clear_stale_stream_state
 
     sid = "test_pending_error_d4_journal"
     s = _make_session(
@@ -565,14 +565,14 @@ def test_cancel_copy_uses_profile_name_for_non_default_profile(monkeypatch):
     assert 'before Research finished' in streaming._cancelled_turn_content(agent_name=name)
 
 
-def test_cancel_copy_falls_back_to_hermes_for_blank_bot_name(monkeypatch):
+def test_cancel_copy_falls_back_to_ares_for_blank_bot_name(monkeypatch):
     """Blank or missing bot_name should not leak old persona copy."""
     import api.streaming as streaming
 
     monkeypatch.setattr(streaming, 'load_settings', lambda: {'bot_name': '   '})
 
     assert streaming._cancelled_turn_hint() == (
-        'The run was cancelled by the user before Hermes finished. '
+        'The run was cancelled by the user before Ares finished. '
         'No provider failure occurred.'
     )
 
@@ -587,7 +587,7 @@ class TestCancelStreamIdempotentWithWorkerFinalizer:
             session_id=sid,
             messages=[
                 {'role': 'user', 'content': 'Help me debug this', 'timestamp': 100},
-                {'role': 'assistant', 'content': '**Task cancelled:** Task cancelled.\n\n*The run was cancelled by the user before Hermes finished. No provider failure occurred.*', '_error': True, 'timestamp': 101},
+                {'role': 'assistant', 'content': '**Task cancelled:** Task cancelled.\n\n*The run was cancelled by the user before Ares finished. No provider failure occurred.*', '_error': True, 'timestamp': 101},
             ],
         )
         _setup_cancel_state(sid, stream_id)

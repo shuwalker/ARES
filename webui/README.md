@@ -2,10 +2,10 @@
 
 Browser surface for ARES — Artificial Reasoning Entity System.
 
-The WebUI is forked from [hermes-webui](https://github.com/nesquena/hermes-webui)
+The WebUI is forked from [ares-webui](https://github.com/nesquena/ares-webui)
 and extended into the remote-access face of ARES: chat, sessions, backend
 adapters, character projection, model/provider management, and presence controls
-for one assistant interface assembled from JROS, Hermes, OpenAI-compatible
+for one assistant interface assembled from JROS, Ares, OpenAI-compatible
 providers, local tools, and future body/avatar renderers.
 
 ## Install
@@ -38,7 +38,7 @@ http://localhost:8787
 cd ARES/webui
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python server.py
+.venv/bin/python bootstrap.py --foreground
 ```
 
 ## Backend Modes
@@ -46,7 +46,7 @@ python3 -m venv .venv
 | Mode | Purpose |
 | --- | --- |
 | `jros` | Embodied JROS/Jaeger runtime through an existing gateway/bridge. Best for character, voice, robotics, and body-aware workflows. |
-| `hermes` | Hermes Agent runtime for coding, terminal work, MCP, skills, cron, provider routing, and operations. |
+| `ares` | Ares Agent runtime for coding, terminal work, MCP, skills, cron, provider routing, and operations. |
 | `hybrid` | Explicit composition: one clear turn owner with extra capabilities borrowed from another runtime only when configured. |
 
 Backend selection is independent from provider/model selection. Do not add fake `jros` model entries; JROS mode still uses real configured providers/models.
@@ -68,13 +68,13 @@ Path resolution is centralized in `api/jros_paths.py`:
 
 See [`../docs/jros-integration.md`](../docs/jros-integration.md).
 
-## What Changed from Hermes WebUI
+## What Changed from Ares WebUI
 
 - ARES title, favicon, manifest, skin, and server header.
-- Backend selector for Hermes, JROS, and hybrid runtime modes.
+- Backend selector for Ares, JROS, and hybrid runtime modes.
 - JROS bridge client (`api/jros_client.py`) and streaming integration (`api/jros_bridge.py`).
 - Shared JROS path resolver (`api/jros_paths.py`) so Jaeger/JROS paths have one source of truth.
-- Provider sync helpers for keeping Hermes/JROS model config aligned without copying secrets.
+- Provider sync helpers for keeping Ares/JROS model config aligned without copying secrets.
 - Character/persona APIs for JROS `character/v1` and legacy `persona/v1` data.
 - Characters panel, checked-in avatar art, and public showcase assets.
 
@@ -96,7 +96,7 @@ The public showcase image lives at `../docs/assets/character-tab-showcase.png`.
 ## JROS Backend (gateway)
 
 The backend selector's JROS mode runs each chat turn on a **JROS gateway
-server** over HTTP — the same integration shape as the Hermes Gateway bridge.
+server** over HTTP — the same integration shape as the Ares Gateway bridge.
 JROS runs as its own process (so it never fights a running JROS TUI/app for
 the instance lock), and it can live on a different machine:
 
@@ -141,13 +141,13 @@ update checker.
 ## Dependencies
 
 - Python 3.11+
-- Hermes Agent for Hermes runtime mode
+- Ares Agent for Ares runtime mode
 - Optional JROS install for `jros` / `hybrid` runtime modes
 - See `requirements.txt` for WebUI Python dependencies
 
 ## Compatibility
 
-- Upgrade both together: WebUI and hermes-agent must match.
+- Upgrade both together: WebUI and ares-agent must match.
 - Always pin both image tags in Docker configurations to avoid interface mismatches.
 - See [docs/docker.md](docs/docker.md) and [docs/rfcs/agent-source-boundary.md](docs/rfcs/agent-source-boundary.md).
 - Policy defined in context of issue #2491.
@@ -156,11 +156,11 @@ update checker.
 
 - [Root README](../README.md)
 - [ARES + JROS Integration](../docs/jros-integration.md)
-- [Why Hermes?](../docs/why-hermes.md)
+- [Why Ares?](../docs/why-ares.md)
 - [WSL Autostart](../docs/wsl-autostart.md)
 - [Docker Guide](docs/docker.md)
 
 ## Common Local Host / Docker Failures
 
 - Host API at `localhost` fails from WebUI. Container `localhost` means the container itself, not the host. Use `host.docker.internal` to reach host-local services.
-- `sudo docker compose up -d` can make `${HOME}` expand to the root user's home, so Docker mounts the wrong `.hermes` directory instead of your real `~/.hermes`. Set `HERMES_HOME=/home/you/.hermes` explicitly.
+- `sudo docker compose up -d` can make `${HOME}` expand to the root user's home, so Docker mounts the wrong `.ares` directory instead of your real `~/.ares`. Set `ARES_HOME=/home/you/.ares` explicitly.

@@ -2,7 +2,7 @@ import api.ares_identity as identity
 import api.persona as persona_api
 
 
-def test_persona_names_apply_to_jros_and_hybrid_not_hermes(monkeypatch):
+def test_persona_names_apply_to_jros_and_hybrid_not_ares(monkeypatch):
     def fake_load_persona(persona_id):
         assert persona_id == "anakin"
         return {"identity": {"display_name": "Anakin Skywalker"}, "name": "Anakin"}
@@ -10,8 +10,8 @@ def test_persona_names_apply_to_jros_and_hybrid_not_hermes(monkeypatch):
     monkeypatch.setattr(persona_api, "load_persona", fake_load_persona)
     monkeypatch.setattr(identity, "_jros_default_agent_name", lambda: None)
 
-    hermes = identity.build_identity_payload(
-        bot_name="Astra", backend="hermes", persona_id="anakin"
+    ares = identity.build_identity_payload(
+        bot_name="Astra", backend="ares", persona_id="anakin"
     )
     jros = identity.build_identity_payload(
         bot_name="Astra", backend="jros", persona_id="anakin"
@@ -20,8 +20,8 @@ def test_persona_names_apply_to_jros_and_hybrid_not_hermes(monkeypatch):
         bot_name="Astra", backend="hybrid", persona_id="anakin"
     )
 
-    assert hermes["display_name"] == "Astra"
-    assert hermes["identity_kind"] == "default"
+    assert ares["display_name"] == "Astra"
+    assert ares["identity_kind"] == "default"
     assert jros["display_name"] == "Anakin Skywalker"
     assert jros["identity_kind"] == "character"
     assert hybrid["display_name"] == "Anakin Skywalker"
@@ -31,7 +31,7 @@ def test_persona_names_apply_to_jros_and_hybrid_not_hermes(monkeypatch):
 def test_incomplete_setup_falls_back_to_jarvis(monkeypatch):
     monkeypatch.setattr(identity, "_jros_default_agent_name", lambda: None)
 
-    payload = identity.build_identity_payload(bot_name="Hermes", backend="jros")
+    payload = identity.build_identity_payload(bot_name="Ares", backend="jros")
 
     assert payload["display_name"] == "Jarvis"
     assert payload["default_display_name"] == "Jarvis"
@@ -40,7 +40,7 @@ def test_incomplete_setup_falls_back_to_jarvis(monkeypatch):
 def test_backend_badges_are_runtime_badges(monkeypatch):
     monkeypatch.setattr(identity, "_jros_default_agent_name", lambda: None)
 
-    assert "Hermes" in identity.get_backend_badge_html("hermes")
+    assert "Ares" in identity.get_backend_badge_html("ares")
     assert "JROS" in identity.get_backend_badge_html("jros")
     assert "Hybrid" in identity.get_backend_badge_html("hybrid")
 

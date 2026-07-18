@@ -1,5 +1,4 @@
-"""Tests for GET /api/commands -- exposes hermes-agent COMMAND_REGISTRY."""
-import io
+"""Tests for GET /api/commands -- exposes ares-agent COMMAND_REGISTRY."""
 import json
 import urllib.error
 import urllib.request
@@ -9,7 +8,9 @@ from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from fastapi.testclient import TestClient
 
+from fastapi_app.main import create_app
 from tests.conftest import TEST_BASE, requires_agent_modules
 
 
@@ -29,13 +30,13 @@ def _install_fake_mcp_tool(monkeypatch, shutdown, discover, servers=None, lock=N
 
 def _install_fake_codex_runtime_switch(monkeypatch):
     import sys
-    hermes_cli_pkg = sys.modules.get("hermes_cli") or ModuleType("hermes_cli")
-    # Restore the real hermes_cli.__path__ on teardown instead of emptying it in
+    ares_cli_pkg = sys.modules.get("ares_cli") or ModuleType("ares_cli")
+    # Restore the real ares_cli.__path__ on teardown instead of emptying it in
     # place: `sys.modules.get(...)` grabs the REAL package object, so a bare
-    # `__path__ = []` permanently strands it (later `import hermes_cli.<sub>`
+    # `__path__ = []` permanently strands it (later `import ares_cli.<sub>`
     # fails for the rest of the suite). monkeypatch.setattr snapshots and restores.
-    monkeypatch.setattr(hermes_cli_pkg, "__path__", [], raising=False)
-    codex_runtime_switch = ModuleType("hermes_cli.codex_runtime_switch")
+    monkeypatch.setattr(ares_cli_pkg, "__path__", [], raising=False)
+    codex_runtime_switch = ModuleType("ares_cli.codex_runtime_switch")
     calls = []
 
     def parse_args(arg_string):
@@ -60,8 +61,8 @@ def _install_fake_codex_runtime_switch(monkeypatch):
     codex_runtime_switch_any = cast(Any, codex_runtime_switch)
     codex_runtime_switch_any.parse_args = parse_args
     codex_runtime_switch_any.apply = apply
-    monkeypatch.setitem(sys.modules, "hermes_cli", hermes_cli_pkg)
-    monkeypatch.setitem(sys.modules, "hermes_cli.codex_runtime_switch", codex_runtime_switch)
+    monkeypatch.setitem(sys.modules, "ares_cli", ares_cli_pkg)
+    monkeypatch.setitem(sys.modules, "ares_cli.codex_runtime_switch", codex_runtime_switch)
     return calls
 
 
@@ -213,7 +214,7 @@ def test_commands_exec_runs_reload_skills_alias():
 
 
 def test_credits_command_renders_shared_credits_view(monkeypatch):
-    """`/credits` should reuse the shared Hermes credits view in WebUI output."""
+    """`/credits` should reuse the shared Ares credits view in WebUI output."""
     _install_fake_account_usage(
         monkeypatch,
         view=SimpleNamespace(
@@ -245,33 +246,7 @@ def test_credits_command_renders_shared_credits_view(monkeypatch):
 def test_commands_exec_routes_credits_through_agent_dispatch(monkeypatch):
     """`/credits` should go through the POST route's agent-command path, not the plugin fallback."""
 
-    class _FakeHandler:
-        def __init__(self, body_bytes: bytes):
-            self.status = None
-            self.sent_headers = []
-            self.body = bytearray()
-            self.wfile = self
-            self.rfile = io.BytesIO(body_bytes)
-            self.headers = {"Content-Length": str(len(body_bytes))}
-            self.request = None
-
-        def send_response(self, status):
-            self.status = status
-
-        def send_header(self, name, value):
-            self.sent_headers.append((name, value))
-
-        def end_headers(self):
-            pass
-
-        def write(self, data):
-            self.body.extend(data)
-
-        def json_body(self):
-            return json.loads(bytes(self.body).decode("utf-8"))
-
     import api.commands as commands
-    from api import routes
 
     calls = []
 
@@ -285,13 +260,12 @@ def test_commands_exec_routes_credits_through_agent_dispatch(monkeypatch):
     monkeypatch.setattr(commands, "execute_agent_command", _fake_execute_agent_command)
     monkeypatch.setattr(commands, "execute_plugin_command", _fake_execute_plugin_command)
 
-    raw = json.dumps({"command": "/credits"}).encode("utf-8")
-    handler = _FakeHandler(raw)
-    routes.handle_post(handler, SimpleNamespace(path="/api/commands/exec", query=""))
+    with TestClient(create_app()) as client:
+        response = client.post("/api/commands/exec", json={"command": "/credits"})
 
     assert calls == ["/credits"]
-    assert handler.status == 200
-    assert handler.json_body() == {"output": "credits ok"}
+    assert response.status_code == 200
+    assert response.json() == {"output": "credits ok"}
 
 
 def test_credits_command_returns_not_logged_in_message(monkeypatch):
@@ -310,7 +284,7 @@ def test_credits_command_returns_not_logged_in_message(monkeypatch):
 
     output = execute_agent_command('/credits')
 
-    assert output == "Not logged into Nous. Run `hermes auth login nous` in Hermes CLI, then try /credits again."
+    assert output == "Not logged into Nous. Run `ares auth login nous` in Ares CLI, then try /credits again."
 
 
 def test_credits_command_fail_opens_on_runtime_error(monkeypatch):
@@ -470,7 +444,7 @@ def test_reload_skills_command_accepts_underscore_alias(monkeypatch):
 def test_reload_skills_error_is_generic(monkeypatch):
     """`/reload-skills` failures must return a generic message, not internals."""
     def reload_skills():
-        raise RuntimeError("secret_path=C:/Users/Rod/.hermes/skills/private")
+        raise RuntimeError("secret_path=C:/Users/Rod/.ares/skills/private")
 
     _install_fake_skill_commands(monkeypatch, reload_skills)
 
@@ -570,17 +544,17 @@ def test_commands_exec_regular_agent_command_returns_404():
 
 def test_list_commands_returns_empty_for_empty_registry():
     """list_commands(_registry=[]) returns [] -- the same path as when
-    hermes_cli is missing (the empty-or-missing case)."""
+    ares_cli is missing (the empty-or-missing case)."""
     from api.commands import list_commands
     assert list_commands(_registry=[]) == []
 
 
 def test_list_commands_degrades_when_agent_missing(monkeypatch):
-    """If hermes_cli.commands is not importable, list_commands() returns []
+    """If ares_cli.commands is not importable, list_commands() returns []
     via the ImportError path. Verified by stubbing sys.modules; test cleanup
     is handled by monkeypatch + the fact that we don't reload api.commands."""
     import sys
-    monkeypatch.setitem(sys.modules, 'hermes_cli.commands', None)
+    monkeypatch.setitem(sys.modules, 'ares_cli.commands', None)
     # NOTE: we do NOT reload api.commands. The lazy import inside
     # list_commands() will re-attempt the import on each call and hit
     # the stubbed-None module, raising ImportError, taking the fallback path.

@@ -5,7 +5,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from api.routes import _session_row_lineage_root_id, _visible_pinned_lineage_ids
+from api.session_mutations import _session_row_lineage_root_id, _visible_pinned_lineage_ids
 
 
 def test_visible_pinned_lineage_ids_dedupes_multiple_pinned_continuations():

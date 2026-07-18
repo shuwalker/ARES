@@ -11,7 +11,7 @@ import api.models as models
 def _patch_active_home(monkeypatch, home):
     import api.profiles as profiles
 
-    monkeypatch.setattr(profiles, "get_active_hermes_home", lambda: home)
+    monkeypatch.setattr(profiles, "get_active_ares_home", lambda: home)
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: None)
 
 
@@ -70,10 +70,10 @@ def _create_state_db_with_tool_turn(path, session_id="cli_tool_session_001"):
 
 
 def test_get_cli_session_messages_preserves_tool_call_metadata(tmp_path, monkeypatch):
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir()
-    _patch_active_home(monkeypatch, hermes_home)
-    expected_tool_calls = _create_state_db_with_tool_turn(hermes_home / "state.db")
+    ares_home = tmp_path / "ares"
+    ares_home.mkdir()
+    _patch_active_home(monkeypatch, ares_home)
+    expected_tool_calls = _create_state_db_with_tool_turn(ares_home / "state.db")
 
     messages = models.get_cli_session_messages("cli_tool_session_001")
 
@@ -96,7 +96,7 @@ def test_existing_cli_import_refreshes_same_length_tool_metadata(monkeypatch):
     tool_call_id, or tool_name. A later import after the loader fix has the same
     message count, so the refresh path must still replace the stripped messages.
     """
-    import api.routes as routes
+    import api.cli_session_import as routes
 
     session_id = "existing_cli_tool_session_001"
     stripped = [
@@ -122,6 +122,8 @@ def test_existing_cli_import_refreshes_same_length_tool_metadata(monkeypatch):
 
     class FakeSession:
         def __init__(self):
+            self.session_id = session_id
+            self.profile = "default"
             self.messages = list(stripped)
             self.source_tag = "cli"
             self.raw_source = "cli"
@@ -139,12 +141,10 @@ def test_existing_cli_import_refreshes_same_length_tool_metadata(monkeypatch):
     save_calls = []
     existing = FakeSession()
     monkeypatch.setattr(routes.Session, "load", classmethod(lambda _cls, sid: existing if sid == session_id else None))
-    monkeypatch.setattr(routes, "require", lambda body, *keys: None)
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200, extra_headers=None: payload)
     monkeypatch.setattr(routes, "get_cli_session_messages", lambda sid, profile=None: enriched if sid == session_id else [])
     monkeypatch.setattr(routes, "get_cli_sessions", lambda source_filter=None, all_profiles=False: [{"session_id": session_id, "source_tag": "cli", "raw_source": "cli", "session_source": "cli", "source_label": "CLI"}])
 
-    response = routes._handle_session_import_cli(object(), {"session_id": session_id})
+    response = routes.import_cli_session_record(session_id, active_profile="default")
 
     assert response["imported"] is False
     assert existing.messages == enriched
