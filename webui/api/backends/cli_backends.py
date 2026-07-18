@@ -250,6 +250,7 @@ class GeminiLocalBackend(CliBackend):
     display_label = "Google Gemini"
     supports_tools = True
     prompt_flag = "-p"
+    extra_args = ["--skip-trust"]
 
 class GrokLocalBackend(CliBackend):
     name = "grok_local"
@@ -271,11 +272,23 @@ class CursorLocalBackend(CliBackend):
     supports_tools = True
     prompt_flag = "-p"
 
+    def _cli_path(self) -> str:
+        # Cursor has no stable CLI; only claim availability if a real `cursor` binary exists.
+        return shutil.which(self.cli_name) or ""
+
 class PiLocalBackend(CliBackend):
     name = "pi_local"
     cli_name = "pi"
     display_label = "Pi Coding Agent"
     supports_tools = True
+    prompt_flag = "-p"
+
+    def _build_args(self, cli: str, message: str, model: str) -> list[str]:
+        args = [cli, "-p"]
+        if model:
+            args.extend(["--provider", "ollama", "--model", model])
+        args.append(message)
+        return args
 
 
 # ---------------------------------------------------------------------------
@@ -391,17 +404,23 @@ class OllamaLocalBackend(AgenticBackend):
             return {"text": "", "error": "Ollama not running.", "tool_activity": []}
         try:
             import requests
+            model = kwargs.get("model") or "llama3.2"
             r = requests.post(
-                "http://127.0.0.1:11434/api/generate",
+                "http://127.0.0.1:11434/api/chat",
                 json={
-                    "model": kwargs.get("model") or "llama3.2",
-                    "prompt": message,
+                    "model": model,
+                    "messages": [{"role": "user", "content": message}],
                     "stream": False,
+                    "options": {
+                        "num_predict": 120,
+                        "temperature": 0.1,
+                    },
                 },
                 timeout=120,
             )
             data = r.json()
-            return {"text": data.get("response", ""), "error": None, "tool_activity": []}
+            msg = data.get("message", {})
+            return {"text": msg.get("content", ""), "error": None, "tool_activity": []}
         except Exception as exc:
             return {"text": "", "error": str(exc), "tool_activity": []}
 

@@ -2,7 +2,7 @@ import Foundation
 
 public struct UpdateCheckService: Sendable {
     public static let areLatestReleaseURL = URL(
-        string: "https://api.github.com/repos/shuwalker/ARES-Desktop/releases/latest"
+        string: "https://api.github.com/repos/nousresearch/ARES/releases/latest",
     )!
 
     private let latestReleaseURL: URL
