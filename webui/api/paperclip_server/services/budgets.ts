@@ -6,7 +6,7 @@ import {
   budgetIncidents,
   budgetPolicies,
   domains,
-  costEvents,
+  financeEvents,
   projects,
 } from "@paperclipai/db";
 import type {
@@ -26,7 +26,7 @@ import { notFound, unprocessable } from "../errors.js";
 import { logActivity } from "./activity-log.js";
 
 type ScopeRecord = {
-  companyId: string;
+  domainId: string;
   name: string;
   paused: boolean;
   pauseReason: PauseReason | null;
@@ -36,7 +36,7 @@ type PolicyRow = typeof budgetPolicies.$inferSelect;
 type IncidentRow = typeof budgetIncidents.$inferSelect;
 
 export type BudgetEnforcementScope = {
-  companyId: string;
+  domainId: string;
   scopeType: BudgetScopeType;
   scopeId: string;
 };
@@ -75,15 +75,15 @@ function budgetStatusFromObserved(
 }
 
 function normalizeScopeName(scopeType: BudgetScopeType, name: string) {
-  if (scopeType === "company") return name;
+  if (scopeType === "domain") return name;
   return name.trim().length > 0 ? name : scopeType;
 }
 
 async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: string): Promise<ScopeRecord> {
-  if (scopeType === "company") {
+  if (scopeType === "domain") {
     const row = await db
       .select({
-        companyId: domains.id,
+        domainId: domains.id,
         name: domains.name,
         status: domains.status,
         pauseReason: domains.pauseReason,
@@ -94,7 +94,7 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Domain not found");
     return {
-      companyId: row.companyId,
+      domainId: row.domainId,
       name: row.name,
       paused: row.status === "paused" || Boolean(row.pausedAt),
       pauseReason: (row.pauseReason as ScopeRecord["pauseReason"]) ?? null,
@@ -104,7 +104,7 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
   if (scopeType === "agent") {
     const row = await db
       .select({
-        companyId: agents.companyId,
+        domainId: agents.domainId,
         name: agents.name,
         status: agents.status,
         pauseReason: agents.pauseReason,
@@ -114,7 +114,7 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Agent not found");
     return {
-      companyId: row.companyId,
+      domainId: row.domainId,
       name: row.name,
       paused: row.status === "paused",
       pauseReason: (row.pauseReason as ScopeRecord["pauseReason"]) ?? null,
@@ -123,7 +123,7 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
 
   const row = await db
     .select({
-      companyId: projects.companyId,
+      domainId: projects.domainId,
       name: projects.name,
       pauseReason: projects.pauseReason,
       pausedAt: projects.pausedAt,
@@ -133,7 +133,7 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
     .then((rows) => rows[0] ?? null);
   if (!row) throw notFound("Project not found");
   return {
-    companyId: row.companyId,
+    domainId: row.domainId,
     name: row.name,
     paused: Boolean(row.pausedAt),
     pauseReason: (row.pauseReason as ScopeRecord["pauseReason"]) ?? null,
@@ -142,24 +142,24 @@ async function resolveScopeRecord(db: Db, scopeType: BudgetScopeType, scopeId: s
 
 async function computeObservedAmount(
   db: Db,
-  policy: Pick<PolicyRow, "companyId" | "scopeType" | "scopeId" | "windowKind" | "metric">,
+  policy: Pick<PolicyRow, "domainId" | "scopeType" | "scopeId" | "windowKind" | "metric">,
 ) {
   if (policy.metric !== "billed_cents") return 0;
 
-  const conditions = [eq(costEvents.companyId, policy.companyId)];
-  if (policy.scopeType === "agent") conditions.push(eq(costEvents.agentId, policy.scopeId));
-  if (policy.scopeType === "project") conditions.push(eq(costEvents.projectId, policy.scopeId));
+  const conditions = [eq(financeEvents.domainId, policy.domainId)];
+  if (policy.scopeType === "agent") conditions.push(eq(financeEvents.agentId, policy.scopeId));
+  if (policy.scopeType === "project") conditions.push(eq(financeEvents.projectId, policy.scopeId));
   const { start, end } = resolveWindow(policy.windowKind as BudgetWindowKind);
   if (policy.windowKind === "calendar_month_utc") {
-    conditions.push(gte(costEvents.occurredAt, start));
-    conditions.push(lt(costEvents.occurredAt, end));
+    conditions.push(gte(financeEvents.occurredAt, start));
+    conditions.push(lt(financeEvents.occurredAt, end));
   }
 
   const [row] = await db
     .select({
-      total: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
+      total: sql<number>`coalesce(sum(${financeEvents.financeCents}), 0)::double precision`,
     })
-    .from(costEvents)
+    .from(financeEvents)
     .where(and(...conditions));
 
   return Number(row?.total ?? 0);
@@ -252,7 +252,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
   async function pauseAndCancelScopeForBudget(policy: PolicyRow) {
     await pauseScopeForBudget(policy);
     await hooks.cancelWorkForScope?.({
-      companyId: policy.companyId,
+      domainId: policy.domainId,
       scopeType: policy.scopeType as BudgetScopeType,
       scopeId: policy.scopeId,
     });
@@ -306,11 +306,11 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     return policy;
   }
 
-  async function listPolicyRows(companyId: string) {
+  async function listPolicyRows(domainId: string) {
     return db
       .select()
       .from(budgetPolicies)
-      .where(eq(budgetPolicies.companyId, companyId))
+      .where(eq(budgetPolicies.domainId, domainId))
       .orderBy(desc(budgetPolicies.updatedAt));
   }
 
@@ -323,7 +323,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       amount > 0 ? Number(((observedAmount / amount) * 100).toFixed(2)) : 0;
     return {
       policyId: policy.id,
-      companyId: policy.companyId,
+      domainId: policy.domainId,
       scopeType: policy.scopeType as BudgetScopeType,
       scopeId: policy.scopeId,
       scopeName: normalizeScopeName(policy.scopeType as BudgetScopeType, scope.name),
@@ -381,7 +381,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       ? await db
         .insert(approvals)
         .values({
-          companyId: policy.companyId,
+          domainId: policy.domainId,
           type: "budget_override_required",
           requestedByUserId: null,
           requestedByAgentId: null,
@@ -395,7 +395,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     const incident = await db
       .insert(budgetIncidents)
       .values({
-        companyId: policy.companyId,
+        domainId: policy.domainId,
         policyId: policy.id,
         scopeType: policy.scopeType,
         scopeId: policy.scopeId,
@@ -471,7 +471,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         const scope = await resolveScopeRecord(db, row.scopeType as BudgetScopeType, row.scopeId);
         return {
           id: row.id,
-          companyId: row.companyId,
+          domainId: row.domainId,
           policyId: row.policyId,
           scopeType: row.scopeType as BudgetScopeType,
           scopeId: row.scopeId,
@@ -495,8 +495,8 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
   }
 
   return {
-    listPolicies: async (companyId: string): Promise<BudgetPolicy[]> => {
-      const rows = await listPolicyRows(companyId);
+    listPolicies: async (domainId: string): Promise<BudgetPolicy[]> => {
+      const rows = await listPolicyRows(domainId);
       return rows.map((row) => ({
         ...row,
         scopeType: row.scopeType as BudgetScopeType,
@@ -506,13 +506,13 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     },
 
     upsertPolicy: async (
-      companyId: string,
+      domainId: string,
       input: BudgetPolicyUpsertInput,
       actorUserId: string | null,
     ): Promise<BudgetPolicySummary> => {
       const scope = await resolveScopeRecord(db, input.scopeType, input.scopeId);
-      if (scope.companyId !== companyId) {
-        throw unprocessable("Budget scope does not belong to company");
+      if (scope.domainId !== domainId) {
+        throw unprocessable("Budget scope does not belong to domain");
       }
 
       const metric = input.metric ?? "billed_cents";
@@ -524,7 +524,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         .from(budgetPolicies)
         .where(
           and(
-            eq(budgetPolicies.companyId, companyId),
+            eq(budgetPolicies.domainId, domainId),
             eq(budgetPolicies.scopeType, input.scopeType),
             eq(budgetPolicies.scopeId, input.scopeId),
             eq(budgetPolicies.metric, metric),
@@ -552,7 +552,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         : await db
           .insert(budgetPolicies)
           .values({
-            companyId,
+            domainId,
             scopeType: input.scopeType,
             scopeId: input.scopeId,
             metric,
@@ -568,7 +568,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           .returning()
           .then((rows) => rows[0]);
 
-      if (input.scopeType === "company" && windowKind === "calendar_month_utc") {
+      if (input.scopeType === "domain" && windowKind === "calendar_month_utc") {
         await db
           .update(domains)
           .set({
@@ -610,7 +610,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       }
 
       await logActivity(db, {
-        companyId,
+        domainId,
         actorType: "user",
         actorId: actorUserId ?? "board",
         action: "budget.policy_upserted",
@@ -627,17 +627,17 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       return buildPolicySummary(row);
     },
 
-    overview: async (companyId: string): Promise<BudgetOverview> => {
-      const rows = await listPolicyRows(companyId);
+    overview: async (domainId: string): Promise<BudgetOverview> => {
+      const rows = await listPolicyRows(domainId);
       const policies = await Promise.all(rows.map((row) => buildPolicySummary(row)));
       const activeIncidentRows = await db
         .select()
         .from(budgetIncidents)
-        .where(and(eq(budgetIncidents.companyId, companyId), eq(budgetIncidents.status, "open")))
+        .where(and(eq(budgetIncidents.domainId, domainId), eq(budgetIncidents.status, "open")))
         .orderBy(desc(budgetIncidents.createdAt));
       const activeIncidents = await hydrateIncidentRows(activeIncidentRows);
       return {
-        companyId,
+        domainId,
         policies,
         activeIncidents,
         pausedAgentCount: policies.filter((policy) => policy.scopeType === "agent" && policy.paused).length,
@@ -646,20 +646,20 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       };
     },
 
-    evaluateCostEvent: async (event: typeof costEvents.$inferSelect) => {
+    evaluateFinanceEvent: async (event: typeof financeEvents.$inferSelect) => {
       const candidatePolicies = await db
         .select()
         .from(budgetPolicies)
         .where(
           and(
-            eq(budgetPolicies.companyId, event.companyId),
+            eq(budgetPolicies.domainId, event.domainId),
             eq(budgetPolicies.isActive, true),
-            inArray(budgetPolicies.scopeType, ["company", "agent", "project"]),
+            inArray(budgetPolicies.scopeType, ["domain", "agent", "project"]),
           ),
         );
 
       const relevantPolicies = candidatePolicies.filter((policy) => {
-        if (policy.scopeType === "company") return policy.scopeId === event.companyId;
+        if (policy.scopeType === "domain") return policy.scopeId === event.domainId;
         if (policy.scopeType === "agent") return policy.scopeId === event.agentId;
         if (policy.scopeType === "project") return Boolean(event.projectId) && policy.scopeId === event.projectId;
         return false;
@@ -674,7 +674,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           const softIncident = await createIncidentIfNeeded(policy, "soft", observedAmount);
           if (softIncident?.created) {
             await logActivity(db, {
-              companyId: policy.companyId,
+              domainId: policy.domainId,
               actorType: "system",
               actorId: "budget_service",
               action: "budget.soft_threshold_crossed",
@@ -696,7 +696,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           await pauseAndCancelScopeForBudget(policy);
           if (hardIncident?.created) {
             await logActivity(db, {
-              companyId: policy.companyId,
+              domainId: policy.domainId,
               actorType: "system",
               actorId: "budget_service",
               action: "budget.hard_threshold_crossed",
@@ -716,7 +716,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     },
 
     getInvocationBlock: async (
-      companyId: string,
+      domainId: string,
       agentId: string,
       context?: { issueId?: string | null; projectId?: string | null },
     ) => {
@@ -724,56 +724,56 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         .select({
           status: agents.status,
           pauseReason: agents.pauseReason,
-          companyId: agents.companyId,
+          domainId: agents.domainId,
           name: agents.name,
         })
         .from(agents)
         .where(eq(agents.id, agentId))
         .then((rows) => rows[0] ?? null);
-      if (!agent || agent.companyId !== companyId) throw notFound("Agent not found");
+      if (!agent || agent.domainId !== domainId) throw notFound("Agent not found");
 
-      const company = await db
+      const domain = await db
         .select({
           status: domains.status,
           pauseReason: domains.pauseReason,
           name: domains.name,
         })
         .from(domains)
-        .where(eq(domains.id, companyId))
+        .where(eq(domains.id, domainId))
         .then((rows) => rows[0] ?? null);
-      if (!company) throw notFound("Domain not found");
-      if (company.status === "paused") {
+      if (!domain) throw notFound("Domain not found");
+      if (domain.status === "paused") {
         return {
-          scopeType: "company" as const,
-          scopeId: companyId,
-          scopeName: company.name,
+          scopeType: "domain" as const,
+          scopeId: domainId,
+          scopeName: domain.name,
           reason:
-            company.pauseReason === "budget"
+            domain.pauseReason === "budget"
               ? "Domain is paused because its budget hard-stop was reached."
               : "Domain is paused and cannot start new work.",
         };
       }
 
-      const companyPolicy = await db
+      const domainPolicy = await db
         .select()
         .from(budgetPolicies)
         .where(
           and(
-            eq(budgetPolicies.companyId, companyId),
-            eq(budgetPolicies.scopeType, "company"),
-            eq(budgetPolicies.scopeId, companyId),
+            eq(budgetPolicies.domainId, domainId),
+            eq(budgetPolicies.scopeType, "domain"),
+            eq(budgetPolicies.scopeId, domainId),
             eq(budgetPolicies.isActive, true),
             eq(budgetPolicies.metric, "billed_cents"),
           ),
         )
         .then((rows) => rows[0] ?? null);
-      if (companyPolicy && companyPolicy.hardStopEnabled && companyPolicy.amount > 0) {
-        const observed = await computeObservedAmount(db, companyPolicy);
-        if (observed >= companyPolicy.amount) {
+      if (domainPolicy && domainPolicy.hardStopEnabled && domainPolicy.amount > 0) {
+        const observed = await computeObservedAmount(db, domainPolicy);
+        if (observed >= domainPolicy.amount) {
           return {
-            scopeType: "company" as const,
-            scopeId: companyId,
-            scopeName: company.name,
+            scopeType: "domain" as const,
+            scopeId: domainId,
+            scopeName: domain.name,
             reason: "Domain cannot start new work because its budget hard-stop is exceeded.",
           };
         }
@@ -793,7 +793,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         .from(budgetPolicies)
         .where(
           and(
-            eq(budgetPolicies.companyId, companyId),
+            eq(budgetPolicies.domainId, domainId),
             eq(budgetPolicies.scopeType, "agent"),
             eq(budgetPolicies.scopeId, agentId),
             eq(budgetPolicies.isActive, true),
@@ -820,7 +820,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         .select({
           id: projects.id,
           name: projects.name,
-          companyId: projects.companyId,
+          domainId: projects.domainId,
           pauseReason: projects.pauseReason,
           pausedAt: projects.pausedAt,
         })
@@ -828,13 +828,13 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         .where(eq(projects.id, candidateProjectId))
         .then((rows) => rows[0] ?? null);
 
-      if (!project || project.companyId !== companyId) return null;
+      if (!project || project.domainId !== domainId) return null;
       const projectPolicy = await db
         .select()
         .from(budgetPolicies)
         .where(
           and(
-            eq(budgetPolicies.companyId, companyId),
+            eq(budgetPolicies.domainId, domainId),
             eq(budgetPolicies.scopeType, "project"),
             eq(budgetPolicies.scopeId, project.id),
             eq(budgetPolicies.isActive, true),
@@ -864,7 +864,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
     },
 
     resolveIncident: async (
-      companyId: string,
+      domainId: string,
       incidentId: string,
       input: BudgetIncidentResolutionInput,
       actorUserId: string,
@@ -875,7 +875,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
         .where(eq(budgetIncidents.id, incidentId))
         .then((rows) => rows[0] ?? null);
       if (!incident) throw notFound("Budget incident not found");
-      if (incident.companyId !== companyId) throw notFound("Budget incident not found");
+      if (incident.domainId !== domainId) throw notFound("Budget incident not found");
 
       const policy = await getPolicyRow(incident.policyId);
       if (input.action === "raise_budget_and_resume") {
@@ -896,7 +896,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
           })
           .where(eq(budgetPolicies.id, policy.id));
 
-        if (policy.scopeType === "company" && policy.windowKind === "calendar_month_utc") {
+        if (policy.scopeType === "domain" && policy.windowKind === "calendar_month_utc") {
           await db
             .update(domains)
             .set({ budgetMonthlyCents: nextAmount, updatedAt: now })
@@ -934,7 +934,7 @@ export function budgetService(db: Db, hooks: BudgetServiceHooks = {}) {
       }
 
       await logActivity(db, {
-        companyId: incident.companyId,
+        domainId: incident.domainId,
         actorType: "user",
         actorId: actorUserId,
         action: "budget.incident_resolved",

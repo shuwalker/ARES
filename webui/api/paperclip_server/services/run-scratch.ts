@@ -6,7 +6,7 @@ export const HEARTBEAT_RUN_SCRATCH_MARKER = ".paperclip-run-scratch.json";
 
 export interface HeartbeatRunScratchMetadata {
   version: 1;
-  companyId: string;
+  domainId: string;
   agentId: string;
   runId: string;
   issueId: string | null;
@@ -56,7 +56,7 @@ async function readMarker(markerPath: string): Promise<HeartbeatRunScratchMetada
     const rec = parsed as Record<string, unknown>;
     if (
       rec.version !== 1 ||
-      typeof rec.companyId !== "string" ||
+      typeof rec.domainId !== "string" ||
       typeof rec.agentId !== "string" ||
       typeof rec.runId !== "string" ||
       typeof rec.createdAt !== "string"
@@ -65,7 +65,7 @@ async function readMarker(markerPath: string): Promise<HeartbeatRunScratchMetada
     }
     return {
       version: 1,
-      companyId: rec.companyId,
+      domainId: rec.domainId,
       agentId: rec.agentId,
       runId: rec.runId,
       issueId: typeof rec.issueId === "string" ? rec.issueId : null,
@@ -78,7 +78,7 @@ async function readMarker(markerPath: string): Promise<HeartbeatRunScratchMetada
 }
 
 export async function prepareHeartbeatRunScratch(input: {
-  companyId: string;
+  domainId: string;
   agentId: string;
   runId: string;
   issueId?: string | null;
@@ -91,7 +91,7 @@ export async function prepareHeartbeatRunScratch(input: {
   const markerPath = path.join(dir, HEARTBEAT_RUN_SCRATCH_MARKER);
   const metadata: HeartbeatRunScratchMetadata = {
     version: 1,
-    companyId: input.companyId,
+    domainId: input.domainId,
     agentId: input.agentId,
     runId: input.runId,
     issueId: input.issueId ?? null,
@@ -142,7 +142,7 @@ export async function cleanupHeartbeatRunScratch(input: {
   const marker = await readMarker(path.join(dir, HEARTBEAT_RUN_SCRATCH_MARKER));
   if (!marker) return { removed: false, dir, reason: "unmarked" };
   if (
-    marker.companyId !== input.scratch.metadata.companyId ||
+    marker.domainId !== input.scratch.metadata.domainId ||
     marker.agentId !== input.scratch.metadata.agentId ||
     marker.runId !== input.scratch.metadata.runId
   ) {

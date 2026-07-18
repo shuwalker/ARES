@@ -62,7 +62,7 @@ function catalogTeam(overrides: Record<string, unknown> = {}) {
     entrypoint: "TEAM.md",
     schema: "agentdomains/v1",
     defaultInstall: true,
-    recommendedForCompanyTypes: ["software"],
+    recommendedForDomainTypes: ["software"],
     tags: ["engineering"],
     counts: { agents: 3, projects: 1, tasks: 1, routines: 0, localSkills: 0, catalogSkills: 1, externalSkillSources: 0 },
     rootAgentSlugs: ["cto"],
@@ -79,7 +79,7 @@ function catalogTeam(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const companyId = "11111111-1111-4111-8111-111111111111";
+const domainId = "11111111-1111-4111-8111-111111111111";
 
 describe("teams catalog routes", () => {
   beforeEach(() => {
@@ -90,7 +90,7 @@ describe("teams catalog routes", () => {
     mockAccessService.hasPermission.mockResolvedValue(false);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId,
+      domainId,
       permissions: { canCreateAgents: true },
     });
     mockCatalogModule.listCatalogTeams.mockReturnValue([catalogTeam()]);
@@ -106,7 +106,7 @@ describe("teams catalog routes", () => {
     mockTeamsCatalogService.previewCatalogTeamImport.mockResolvedValue({
       team: catalogTeam(),
       portabilityPreview: {
-        plan: { companyAction: "none", agentPlans: [], projectPlans: [], issuePlans: [] },
+        plan: { domainAction: "none", agentPlans: [], projectPlans: [], issuePlans: [] },
         warnings: [],
         errors: [],
       },
@@ -128,7 +128,7 @@ describe("teams catalog routes", () => {
     mockTeamsCatalogService.installCatalogTeam.mockResolvedValue({
       team: catalogTeam(),
       portabilityImport: {
-        company: { id: companyId, name: "Paperclip", action: "unchanged" },
+        domain: { id: domainId, name: "Paperclip", action: "unchanged" },
         agents: [],
         projects: [],
         envInputs: [],
@@ -143,7 +143,7 @@ describe("teams catalog routes", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
@@ -160,19 +160,19 @@ describe("teams catalog routes", () => {
     expect(mockCatalogModule.readCatalogTeamFile).toHaveBeenCalledWith("product-engineering", "TEAM.md");
   });
 
-  it("returns server-computed installed-team state for actors with company access", async () => {
+  it("returns server-computed installed-team state for actors with domain access", async () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
-    const res = await request(app).get(`/api/domains/${companyId}/teams/catalog/installed`);
+    const res = await request(app).get(`/api/domains/${domainId}/teams/catalog/installed`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(mockTeamsCatalogService.listInstalledCatalogTeams).toHaveBeenCalledWith(companyId);
+    expect(mockTeamsCatalogService.listInstalledCatalogTeams).toHaveBeenCalledWith(domainId);
     expect(res.body).toEqual([
       expect.objectContaining({
         catalogId: "paperclipai:bundled:software-development:product-engineering",
@@ -183,16 +183,16 @@ describe("teams catalog routes", () => {
     ]);
   });
 
-  it("denies installed-team state to actors without company access", async () => {
+  it("denies installed-team state to actors without domain access", async () => {
     const app = await createApp({
       type: "board",
       userId: "other",
-      companyIds: ["22222222-2222-4222-8222-222222222222"],
+      domainIds: ["22222222-2222-4222-8222-222222222222"],
       source: "session",
       isInstanceAdmin: false,
     });
 
-    const res = await request(app).get(`/api/domains/${companyId}/teams/catalog/installed`);
+    const res = await request(app).get(`/api/domains/${domainId}/teams/catalog/installed`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(mockTeamsCatalogService.listInstalledCatalogTeams).not.toHaveBeenCalled();
@@ -211,18 +211,18 @@ describe("teams catalog routes", () => {
     expect(mockCatalogModule.listCatalogTeams).not.toHaveBeenCalled();
   });
 
-  it("previews catalog teams with company access and actor/source policy context", async () => {
+  it("previews catalog teams with domain access and actor/source policy context", async () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "local_implicit",
       isInstanceAdmin: false,
       runId: "run-1",
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/teams/catalog/ref/preview?ref=paperclipai%2Fbundled%2Fsoftware-development%2Fproduct-engineering`)
+      .post(`/api/domains/${domainId}/teams/catalog/ref/preview?ref=paperclipai%2Fbundled%2Fsoftware-development%2Fproduct-engineering`)
       .send({
         targetManagerSlug: "engineering-lead",
         sourcePolicy: { allowExternalSources: true },
@@ -230,7 +230,7 @@ describe("teams catalog routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockTeamsCatalogService.previewCatalogTeamImport).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       "paperclipai/bundled/software-development/product-engineering",
       expect.objectContaining({
         targetManagerSlug: "engineering-lead",
@@ -244,19 +244,19 @@ describe("teams catalog routes", () => {
     );
   });
 
-  it("rejects catalog preview requests that try to include company metadata", async () => {
+  it("rejects catalog preview requests that try to include domain metadata", async () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/teams/catalog/product-engineering/preview`)
+      .post(`/api/domains/${domainId}/teams/catalog/product-engineering/preview`)
       .send({
-        include: { company: true, agents: true },
+        include: { domain: true, agents: true },
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(400);
@@ -267,12 +267,12 @@ describe("teams catalog routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId,
+      domainId,
       runId: "run-1",
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/teams/catalog/product-engineering/install`)
+      .post(`/api/domains/${domainId}/teams/catalog/product-engineering/install`)
       .send({
         collisionStrategy: "rename",
         secretValues: { "agent:cto:OPENAI_API_KEY": "sk-test" },
@@ -280,7 +280,7 @@ describe("teams catalog routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockTeamsCatalogService.installCatalogTeam).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       "product-engineering",
       expect.objectContaining({
         collisionStrategy: "rename",
@@ -295,22 +295,22 @@ describe("teams catalog routes", () => {
     );
   });
 
-  it("blocks same-company agents without management permission from installing catalog teams", async () => {
+  it("blocks same-domain agents without management permission from installing catalog teams", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId,
+      domainId,
       permissions: {},
     });
     mockAccessService.hasPermission.mockResolvedValue(false);
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId,
+      domainId,
       runId: "run-1",
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/teams/catalog/product-engineering/install`)
+      .post(`/api/domains/${domainId}/teams/catalog/product-engineering/install`)
       .send({});
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);

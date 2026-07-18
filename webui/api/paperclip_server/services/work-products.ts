@@ -8,7 +8,7 @@ type IssueWorkProductRow = typeof issueWorkProducts.$inferSelect;
 function toIssueWorkProduct(row: IssueWorkProductRow): IssueWorkProduct {
   return {
     id: row.id,
-    companyId: row.companyId,
+    domainId: row.domainId,
     projectId: row.projectId ?? null,
     issueId: row.issueId,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
@@ -51,7 +51,7 @@ export function workProductService(db: Db) {
       return row ? toIssueWorkProduct(row) : null;
     },
 
-    createForIssue: async (issueId: string, companyId: string, data: Omit<typeof issueWorkProducts.$inferInsert, "issueId" | "companyId">) => {
+    createForIssue: async (issueId: string, domainId: string, data: Omit<typeof issueWorkProducts.$inferInsert, "issueId" | "domainId">) => {
       const row = await db.transaction(async (tx) => {
         if (data.isPrimary) {
           await tx
@@ -59,7 +59,7 @@ export function workProductService(db: Db) {
             .set({ isPrimary: false, updatedAt: new Date() })
             .where(
               and(
-                eq(issueWorkProducts.companyId, companyId),
+                eq(issueWorkProducts.domainId, domainId),
                 eq(issueWorkProducts.issueId, issueId),
                 eq(issueWorkProducts.type, data.type),
               ),
@@ -69,7 +69,7 @@ export function workProductService(db: Db) {
           .insert(issueWorkProducts)
           .values({
             ...data,
-            companyId,
+            domainId,
             issueId,
           })
           .returning()
@@ -93,7 +93,7 @@ export function workProductService(db: Db) {
             .set({ isPrimary: false, updatedAt: new Date() })
             .where(
               and(
-                eq(issueWorkProducts.companyId, existing.companyId),
+                eq(issueWorkProducts.domainId, existing.domainId),
                 eq(issueWorkProducts.issueId, existing.issueId),
                 eq(issueWorkProducts.type, existing.type),
               ),

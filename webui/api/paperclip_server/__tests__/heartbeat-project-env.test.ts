@@ -91,7 +91,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
       });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       executionRunConfig: { env: { SHARED_KEY: "agent" } },
       environmentId: "environment-1",
       environmentEnv: { SHARED_KEY: "environment" },
@@ -136,7 +136,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
   });
 
   it("drops Paperclip runtime-owned env before resolving environment, agent, project, and routine overlays", async () => {
-    const resolveAdapterConfigForRuntime = vi.fn(async (_companyId, config: Record<string, unknown>) => ({
+    const resolveAdapterConfigForRuntime = vi.fn(async (_domainId, config: Record<string, unknown>) => ({
       config: {
         ...config,
         env: { ...(config.env as Record<string, unknown>) },
@@ -144,7 +144,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
       secretKeys: new Set<string>(),
       manifest: [],
     }));
-    const resolveEnvBindings = vi.fn(async (_companyId, env: Record<string, unknown>) => ({
+    const resolveEnvBindings = vi.fn(async (_domainId, env: Record<string, unknown>) => ({
       env: Object.fromEntries(
         Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
       ),
@@ -153,7 +153,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
     }));
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       environmentId: "environment-1",
       environmentEnv: {
@@ -170,7 +170,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
       },
       projectEnv: {
         PAPERCLIP_API_KEY: "project-api-key",
-        PAPERCLIP_COMPANY_ID: "spoofed-company",
+        PAPERCLIP_DOMAIN_ID: "spoofed-domain",
         PROJECT_ONLY: "project-only",
       },
       routineEnv: {
@@ -217,7 +217,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
     const resolveEnvBindings = vi.fn();
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       executionRunConfig: { env: { AGENT_ONLY: "agent-only" } },
       projectEnv: null,
       secretsSvc: {
@@ -244,7 +244,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
     });
 
     await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       issueId: "issue-1",
       heartbeatRunId: "run-1",
@@ -260,7 +260,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
         preset: LOW_TRUST_REVIEW_PRESET,
         boundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: "company-1",
+          domainId: "domain-1",
           issueIds: ["issue-1"],
           allowedSecretBindingIds: ["binding-1"],
         },
@@ -289,7 +289,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
   it("blocks required missing user secrets before runtime env resolution", async () => {
     const resolveAdapterConfigForRuntime = vi.fn();
     const resolveEnvBindings = vi.fn();
-    const collectMissingRuntimeBindings = vi.fn(async (_companyId, _env, context) =>
+    const collectMissingRuntimeBindings = vi.fn(async (_domainId, _env, context) =>
       context.consumerType === "agent"
         ? [
             {
@@ -311,7 +311,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
     );
 
     await expect(resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       issueId: "issue-1",
       heartbeatRunId: "run-1",
@@ -332,7 +332,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
       resultJson: {
         configurationIncomplete: {
           reason: "secret_binding_missing",
-          companyId: "company-1",
+          domainId: "domain-1",
           agentId: "agent-1",
           issueId: "issue-1",
           missingBindings: [
@@ -354,7 +354,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
 
   it("rejects inline sensitive env values for low-trust runs", async () => {
     await expect(resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       issueId: "issue-1",
       executionRunConfig: {
@@ -368,7 +368,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
         preset: LOW_TRUST_REVIEW_PRESET,
         boundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: "company-1",
+          domainId: "domain-1",
           issueIds: ["issue-1"],
         },
         sourcePresets: {},
@@ -385,7 +385,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
 
   it("fails push-capability preflight when no GitHub write credential is bound at agent or project scope", async () => {
     await expect(resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       issueId: "issue-1",
       executionRunConfig: { env: { AGENT_ONLY: "agent-only" } },
@@ -428,7 +428,7 @@ describe("resolveExecutionRunAdapterConfig", () => {
     const collectMissingRuntimeBindings = vi.fn().mockResolvedValue([]);
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       issueId: "issue-1",
       projectId: "project-1",
@@ -493,7 +493,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
       "instances",
       "default",
       "domains",
-      "company-1",
+      "domain-1",
       "agents",
       "agent-1",
       "codex-home",
@@ -511,7 +511,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
 
     await expect(
       resolveExecutionRunAdapterConfig({
-        companyId: "company-1",
+        domainId: "domain-1",
         agentId: "agent-1",
         adapterType: "codex_local",
         issueId: "issue-1",
@@ -531,7 +531,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
         configurationIncomplete: {
           reason: "codex_credentials_missing",
           adapterType: "codex_local",
-          companyId: "company-1",
+          domainId: "domain-1",
           agentId: "agent-1",
           issueId: "issue-1",
           responsibleUserId: "user-1",
@@ -542,7 +542,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     // The blocker message must not leak any secret value.
     await expect(
       resolveExecutionRunAdapterConfig({
-        companyId: "company-1",
+        domainId: "domain-1",
         agentId: "agent-1",
         adapterType: "codex_local",
         executionRunConfig: { command: "codex", env: { CODEX_HOME: managedAgentHome, OPENAI_API_KEY: "" } },
@@ -565,7 +565,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       adapterType: "codex_local",
       executionRunConfig: { command: "codex", env: { CODEX_HOME: managedAgentHome, OPENAI_API_KEY: { type: "secret_ref" } } },
@@ -588,7 +588,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       adapterType: "codex_local",
       executionRunConfig: { command: "codex", env: { CODEX_HOME: managedAgentHome, OPENAI_API_KEY: "" } },
@@ -611,7 +611,7 @@ describe("resolveExecutionRunAdapterConfig codex_local credential pre-dispatch g
     });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       adapterType: "claude_local",
       executionRunConfig: { command: "claude", env: { OPENAI_API_KEY: "" } },
@@ -665,9 +665,9 @@ describe("applyRunScopedMentionedSkillKeys", () => {
     };
 
     const updatedConfig = applyRunScopedMentionedSkillKeys(originalConfig, [
-      "company/company-1/release-changelog",
+      "domain/domain-1/release-changelog",
       "paperclipai/paperclip/paperclip",
-      "company/company-1/release-changelog",
+      "domain/domain-1/release-changelog",
     ]);
 
     expect(updatedConfig).toEqual({
@@ -675,7 +675,7 @@ describe("applyRunScopedMentionedSkillKeys", () => {
       paperclipSkillSync: {
         desiredSkills: [
           "paperclipai/paperclip/paperclip",
-          "company/company-1/release-changelog",
+          "domain/domain-1/release-changelog",
         ],
       },
     });
@@ -692,21 +692,21 @@ describe("applyRunScopedMentionedSkillKeys", () => {
       command: "codex",
       paperclipSkillSync: {
         desiredSkills: [
-          { key: "company/company-1/release-changelog", versionId: "version-1" },
+          { key: "domain/domain-1/release-changelog", versionId: "version-1" },
         ],
       },
     };
 
     const updatedConfig = applyRunScopedMentionedSkillKeys(originalConfig, [
-      "company/company-1/security-review",
+      "domain/domain-1/security-review",
     ]);
 
     expect(updatedConfig).toEqual({
       command: "codex",
       paperclipSkillSync: {
         desiredSkills: [
-          { key: "company/company-1/release-changelog", versionId: "version-1" },
-          { key: "company/company-1/security-review", versionId: null },
+          { key: "domain/domain-1/release-changelog", versionId: "version-1" },
+          { key: "domain/domain-1/security-review", versionId: null },
         ],
       },
     });

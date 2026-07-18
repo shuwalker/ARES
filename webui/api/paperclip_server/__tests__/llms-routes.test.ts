@@ -58,7 +58,7 @@ describe("llm routes", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: true,
     });
@@ -77,7 +77,7 @@ describe("llm routes", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: true,
     });

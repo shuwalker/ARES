@@ -61,7 +61,7 @@ describe("actorMiddleware authenticated session profile", () => {
       userName: "User One",
       userEmail: "user@example.com",
       source: "session",
-      companyIds: [],
+      domainIds: [],
       memberships: [],
       isInstanceAdmin: false,
     });
@@ -85,7 +85,7 @@ describe("actorMiddleware authenticated session profile", () => {
           },
           returning() {
             return Promise.resolve([{
-              companyId: inserts.at(-1)?.values.companyId,
+              domainId: inserts.at(-1)?.values.domainId,
               membershipRole: inserts.at(-1)?.values.membershipRole,
               status: inserts.at(-1)?.values.status,
             }]);
@@ -114,7 +114,7 @@ describe("actorMiddleware authenticated session profile", () => {
       .set("x-paperclip-cloud-user-email", "owner@example.com")
       .set("x-paperclip-cloud-user-name", "Stack Owner")
       .set("x-paperclip-cloud-stack-id", "stack-alpha")
-      .set("x-paperclip-cloud-paperclip-company-id", "paperclip-stack-alpha")
+      .set("x-paperclip-cloud-paperclip-domain-id", "paperclip-stack-alpha")
       .set("x-paperclip-cloud-stack-role", "owner");
 
     expect(res.status).toBe(200);
@@ -127,8 +127,8 @@ describe("actorMiddleware authenticated session profile", () => {
       isInstanceAdmin: false,
       memberships: [expect.objectContaining({ membershipRole: "owner", status: "active" })],
     });
-    expect(res.body.companyIds[0]).toMatch(/^[0-9a-f-]{36}$/);
-    // authUsers, domains, companyMemberships, and the role-default
+    expect(res.body.domainIds[0]).toMatch(/^[0-9a-f-]{36}$/);
+    // authUsers, domains, domainMemberships, and the role-default
     // principalPermissionGrants seeded in place of instance-admin elevation.
     expect(inserts).toHaveLength(4);
     expect(inserts[0]?.values).toMatchObject({
@@ -155,7 +155,7 @@ describe("actorMiddleware authenticated session profile", () => {
         return insertChain;
       },
       returning() {
-        return Promise.resolve([{ companyId: "company-1", membershipRole: "owner", status: "active" }]);
+        return Promise.resolve([{ domainId: "domain-1", membershipRole: "owner", status: "active" }]);
       },
       then(resolve: (value: unknown) => unknown) {
         return Promise.resolve(undefined).then(resolve);

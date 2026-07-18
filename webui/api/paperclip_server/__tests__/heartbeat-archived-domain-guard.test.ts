@@ -20,16 +20,16 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres archived-company heartbeat guard tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres archived-domain heartbeat guard tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
-describeEmbeddedPostgres("heartbeat archived-company guard", () => {
+describeEmbeddedPostgres("heartbeat archived-domain guard", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
   beforeAll(async () => {
-    tempDb = await startEmbeddedPostgresTestDatabase("heartbeat-archived-company-guard-");
+    tempDb = await startEmbeddedPostgresTestDatabase("heartbeat-archived-domain-guard-");
     db = createDb(tempDb.connectionString);
   }, 20_000);
 
@@ -47,20 +47,20 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   async function insertArchivedAgent() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Archived Co",
       status: "archived",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Archived Agent",
       role: "engineer",
       status: "idle",
@@ -76,26 +76,26 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
       permissions: {},
     });
 
-    return { companyId, agentId };
+    return { domainId, agentId };
   }
 
   async function insertInvalidOrgChainAgent() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const managerId = randomUUID();
     const childId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Invalid Org Co",
       status: "active",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values([
       {
         id: managerId,
-        companyId,
+        domainId,
         name: "Terminated Manager",
         role: "cto",
         status: "terminated",
@@ -112,7 +112,7 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
       },
       {
         id: childId,
-        companyId,
+        domainId,
         name: "Invalid Chain Child",
         role: "engineer",
         reportsTo: managerId,
@@ -130,10 +130,10 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
       },
     ]);
 
-    return { companyId, managerId, childId };
+    return { domainId, managerId, childId };
   }
 
-  it("does not iterate archived-company agents in tickTimers", async () => {
+  it("does not iterate archived-domain agents in tickTimers", async () => {
     const { agentId } = await insertArchivedAgent();
 
     const heartbeat = heartbeatService(db);
@@ -152,7 +152,7 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
     expect(runCount).toBe(0);
   });
 
-  it("skips background wakeups for non-active domains with a company.inactive reason", async () => {
+  it("skips background wakeups for non-active domains with a domain.inactive reason", async () => {
     const { agentId } = await insertArchivedAgent();
 
     const heartbeat = heartbeatService(db);
@@ -179,20 +179,20 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
 
     expect(wakeup).toMatchObject({
       status: "skipped",
-      reason: "company.inactive",
-      error: "Wake suppressed because company status is archived",
+      reason: "domain.inactive",
+      error: "Wake suppressed because domain status is archived",
     });
   });
 
   it("does not advance issue monitors for archived domains", async () => {
-    const { companyId, agentId } = await insertArchivedAgent();
+    const { domainId, agentId } = await insertArchivedAgent();
     const issueId = randomUUID();
     const monitorScheduledAt = new Date("2026-06-04T00:00:00Z");
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
-      title: "Archived-company monitor issue",
+      domainId,
+      title: "Archived-domain monitor issue",
       status: "in_progress",
       assigneeAgentId: agentId,
       monitorNextCheckAt: monitorScheduledAt,
@@ -219,12 +219,12 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   it("does not resume queued runs for archived domains", async () => {
-    const { companyId, agentId } = await insertArchivedAgent();
+    const { domainId, agentId } = await insertArchivedAgent();
     const runId = randomUUID();
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "timer",
       status: "queued",
@@ -288,20 +288,20 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   it("cancels existing queued runs for invalid-org-chain agents instead of starting them", async () => {
-    const { companyId, childId } = await insertInvalidOrgChainAgent();
+    const { domainId, childId } = await insertInvalidOrgChainAgent();
     const wakeupRequestId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId: childId,
       source: "assignment",
       status: "queued",
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId: childId,
       invocationSource: "assignment",
       status: "queued",
@@ -337,21 +337,21 @@ describeEmbeddedPostgres("heartbeat archived-company guard", () => {
   });
 
   it("suppresses due scheduled retries for invalid-org-chain agents", async () => {
-    const { companyId, childId } = await insertInvalidOrgChainAgent();
+    const { domainId, childId } = await insertInvalidOrgChainAgent();
     const wakeupRequestId = randomUUID();
     const runId = randomUUID();
     const now = new Date("2026-06-04T00:10:00Z");
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId: childId,
       source: "automation",
       status: "queued",
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId: childId,
       invocationSource: "automation",
       status: "scheduled_retry",

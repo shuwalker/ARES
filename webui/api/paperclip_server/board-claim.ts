@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { domains, companyMemberships, instanceUserRoles } from "@paperclipai/db";
+import { domains, domainMemberships, instanceUserRoles } from "@paperclipai/db";
 import type { DeploymentMode } from "@paperclipai/shared";
 import { ensureHumanRoleDefaultGrants } from "./services/principal-access-compatibility.js";
 
@@ -90,7 +90,7 @@ export async function claimBoardOwnership(
   const status = getChallengeStatus(opts.token, opts.code);
   if (status !== "available") return { status };
 
-  const claimedCompanyIds: string[] = [];
+  const claimedDomainIds: string[] = [];
   await db.transaction(async (tx) => {
     const existingTargetAdmin = await tx
       .select({ id: instanceUserRoles.id })
@@ -109,23 +109,23 @@ export async function claimBoardOwnership(
       .where(and(eq(instanceUserRoles.userId, LOCAL_BOARD_USER_ID), eq(instanceUserRoles.role, "instance_admin")));
 
     const allDomains = await tx.select({ id: domains.id }).from(domains);
-    for (const company of allDomains) {
-      claimedCompanyIds.push(company.id);
+    for (const domain of allDomains) {
+      claimedDomainIds.push(domain.id);
       const existing = await tx
-        .select({ id: companyMemberships.id, status: companyMemberships.status })
-        .from(companyMemberships)
+        .select({ id: domainMemberships.id, status: domainMemberships.status })
+        .from(domainMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, company.id),
-            eq(companyMemberships.principalType, "user"),
-            eq(companyMemberships.principalId, opts.userId),
+            eq(domainMemberships.domainId, domain.id),
+            eq(domainMemberships.principalType, "user"),
+            eq(domainMemberships.principalId, opts.userId),
           ),
         )
         .then((rows) => rows[0] ?? null);
 
       if (!existing) {
-        await tx.insert(companyMemberships).values({
-          companyId: company.id,
+        await tx.insert(domainMemberships).values({
+          domainId: domain.id,
           principalType: "user",
           principalId: opts.userId,
           status: "active",
@@ -136,16 +136,16 @@ export async function claimBoardOwnership(
 
       if (existing.status !== "active") {
         await tx
-          .update(companyMemberships)
+          .update(domainMemberships)
           .set({ status: "active", membershipRole: "owner", updatedAt: new Date() })
-          .where(eq(companyMemberships.id, existing.id));
+          .where(eq(domainMemberships.id, existing.id));
       }
     }
   });
 
-  for (const companyId of claimedCompanyIds) {
+  for (const domainId of claimedDomainIds) {
     await ensureHumanRoleDefaultGrants(db, {
-      companyId,
+      domainId,
       principalId: opts.userId,
       membershipRole: "owner",
       grantedByUserId: opts.userId,

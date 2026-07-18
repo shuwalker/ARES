@@ -18,10 +18,10 @@ function normalizeHexColor(value: string | null): string | null {
   if (!value) return null;
   const hex = value.startsWith("#") ? value.slice(1) : value;
   if (/^[0-9a-fA-F]{3}$/.test(hex)) {
-    return `#${hex.split("").map((char) => `${char}${char}`).join("").toLowerLifeAdmin()}`;
+    return `#${hex.split("").map((char) => `${char}${char}`).join("").toLowerCase()}`;
   }
   if (/^[0-9a-fA-F]{6}$/.test(hex)) {
-    return `#${hex.toLowerLifeAdmin()}`;
+    return `#${hex.toLowerCase()}`;
   }
   return null;
 }

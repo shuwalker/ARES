@@ -159,7 +159,7 @@ export function externalObjectProviderLabel(providerKey: string | null | undefin
   if (lookup) return lookup;
   return providerKey
     .split(/[._-]/)
-    .map((part) => part.charAt(0).toUpperLifeAdmin() + part.slice(1))
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
 

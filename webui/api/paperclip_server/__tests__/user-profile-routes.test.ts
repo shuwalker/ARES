@@ -7,8 +7,8 @@ import {
   agents,
   authUsers,
   domains,
-  companyMemberships,
-  costEvents,
+  domainMemberships,
+  financeEvents,
   createDb,
   issueComments,
   issues,
@@ -29,10 +29,10 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () => {
+describeEmbeddedPostgres("GET /domains/:domainId/users/:userSlug/profile", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId!: string;
+  let domainId!: string;
   let userId!: string;
   let agentId!: string;
 
@@ -52,15 +52,15 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
     ]);
     userProfileRoutes = routes.userProfileRoutes;
     errorHandler = middleware.errorHandler;
-    companyId = randomUUID();
+    domainId = randomUUID();
     userId = randomUUID();
     agentId = randomUUID();
     const now = new Date();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `U${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `U${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(authUsers).values({
@@ -72,8 +72,8 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
       createdAt: now,
       updatedAt: now,
     });
-    await db.insert(companyMemberships).values({
-      companyId,
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -83,7 +83,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Coder",
       role: "engineer",
       adapterType: "process",
@@ -92,12 +92,12 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
   });
 
   afterEach(async () => {
-    await db.delete(costEvents);
+    await db.delete(financeEvents);
     await db.delete(issueComments);
     await db.delete(activityLog);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(authUsers);
     await db.delete(domains);
   });
@@ -117,7 +117,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
         type: "board",
         source: "local_implicit",
         userId,
-        companyIds: [companyId],
+        domainIds: [domainId],
       };
       next();
     });
@@ -126,7 +126,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
     return app;
   }
 
-  it("resolves a user slug and returns issue, activity, and attributed cost stats", async () => {
+  it("resolves a user slug and returns issue, activity, and attributed finance stats", async () => {
     const doneIssueId = randomUUID();
     const openIssueId = randomUUID();
     const now = new Date();
@@ -135,7 +135,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
     await db.insert(issues).values([
       {
         id: doneIssueId,
-        companyId,
+        domainId,
         title: "Ship profile page",
         status: "done",
         priority: "high",
@@ -147,7 +147,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
       },
       {
         id: openIssueId,
-        companyId,
+        domainId,
         title: "Review profile copy",
         status: "in_progress",
         priority: "medium",
@@ -158,7 +158,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
       },
     ]);
     await db.insert(issueComments).values({
-      companyId,
+      domainId,
       issueId: openIssueId,
       authorUserId: userId,
       body: "Looks good.",
@@ -166,7 +166,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
       updatedAt: now,
     });
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       actorType: "user",
       actorId: userId,
       action: "issue.updated",
@@ -174,8 +174,8 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
       entityId: doneIssueId,
       createdAt: now,
     });
-    await db.insert(costEvents).values({
-      companyId,
+    await db.insert(financeEvents).values({
+      domainId,
       agentId,
       issueId: doneIssueId,
       provider: "openai",
@@ -185,11 +185,11 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
       inputTokens: 120,
       cachedInputTokens: 30,
       outputTokens: 40,
-      costCents: 42,
+      financeCents: 42,
       occurredAt: now,
     });
 
-    const response = await request(createApp()).get(`/api/domains/${companyId}/users/dotta/profile`);
+    const response = await request(createApp()).get(`/api/domains/${domainId}/users/dotta/profile`);
 
     expect(response.status).toBe(200);
     expect(response.body.user.slug).toBe("dotta");
@@ -204,15 +204,15 @@ describeEmbeddedPostgres("GET /domains/:companyId/users/:userSlug/profile", () =
       assignedOpenIssues: 1,
       commentCount: 1,
       activityCount: 1,
-      costCents: 42,
+      financeCents: 42,
       inputTokens: 120,
       cachedInputTokens: 30,
       outputTokens: 40,
-      costEventCount: 1,
+      financeEventCount: 1,
     });
     expect(response.body.recentIssues.map((issue: { identifier: string }) => issue.identifier)).toEqual(["USR-1", "USR-2"]);
     expect(response.body.recentActivity[0].action).toBe("issue.updated");
-    expect(response.body.topAgents[0]).toMatchObject({ agentId, agentName: "Coder", costCents: 42 });
-    expect(response.body.topProviders[0]).toMatchObject({ provider: "openai", model: "gpt-test", costCents: 42 });
+    expect(response.body.topAgents[0]).toMatchObject({ agentId, agentName: "Coder", financeCents: 42 });
+    expect(response.body.topProviders[0]).toMatchObject({ provider: "openai", model: "gpt-test", financeCents: 42 });
   });
 });

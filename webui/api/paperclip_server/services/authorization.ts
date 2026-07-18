@@ -3,7 +3,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   authUsers,
-  companyMemberships,
+  domainMemberships,
   heartbeatRuns,
   instanceUserRoles,
   issueComments,
@@ -31,13 +31,13 @@ export type AuthorizationActor =
   {
     type: "board" | "agent" | "none";
     userId?: string | null;
-    companyIds?: string[];
-    memberships?: Array<{ companyId: string; membershipRole?: string | null; status?: string }>;
-    onBehalfOfMemberships?: Array<{ companyId: string; membershipRole?: string | null; status?: string }>;
+    domainIds?: string[];
+    memberships?: Array<{ domainId: string; membershipRole?: string | null; status?: string }>;
+    onBehalfOfMemberships?: Array<{ domainId: string; membershipRole?: string | null; status?: string }>;
     isInstanceAdmin?: boolean;
     ignoreInstanceAdmin?: boolean;
     agentId?: string | null;
-    companyId?: string | null;
+    domainId?: string | null;
     keyId?: string | null;
     keyScope?: AgentApiKeyScope | null;
     runId?: string | null;
@@ -59,7 +59,7 @@ export type AuthorizationAction =
   | "skill_config:update"
   | "agent:read"
   | "agent:wake"
-  | "company_scope:read"
+  | "domain_scope:read"
   | "issue:comment"
   | "issue:mutate"
   | "issue:read"
@@ -68,12 +68,12 @@ export type AuthorizationAction =
   | "secrets:read";
 
 export type AuthorizationResource =
-  | { type: "company"; companyId: string }
-  | { type: "agent"; companyId: string; agentId?: string | null }
-  | { type: "project"; companyId: string; projectId?: string | null }
+  | { type: "domain"; domainId: string }
+  | { type: "agent"; domainId: string; agentId?: string | null }
+  | { type: "project"; domainId: string; projectId?: string | null }
   | {
       type: "issue";
-      companyId: string;
+      domainId: string;
       issueId?: string | null;
       projectId?: string | null;
       parentIssueId?: string | null;
@@ -99,12 +99,12 @@ export type AuthorizationDecision = {
     | "allow_legacy_agent_creator"
     | "allow_issue_mention_grant"
     | "allow_self"
-    | "allow_company_agent"
-    | "allow_company_member"
-    | "allow_simple_company_member"
+    | "allow_domain_agent"
+    | "allow_domain_member"
+    | "allow_simple_domain_member"
     | "allow_manager_chain"
     | "deny_unauthenticated"
-    | "deny_company_boundary"
+    | "deny_domain_boundary"
     | "deny_missing_membership"
     | "deny_missing_grant"
     | "deny_missing_consent"
@@ -125,8 +125,8 @@ type PrincipalGrantDecision = AuthorizationDecision & {
   grant?: NonNullable<AuthorizationDecision["grant"]>;
 };
 
-function companyIdForResource(resource: AuthorizationResource) {
-  return resource.companyId;
+function domainIdForResource(resource: AuthorizationResource) {
+  return resource.domainId;
 }
 
 function permissionForAction(action: AuthorizationAction): PermissionKey | null {
@@ -136,7 +136,7 @@ function permissionForAction(action: AuthorizationAction): PermissionKey | null 
   if (
     action === "agent:read" ||
     action === "agent:wake" ||
-    action === "company_scope:read" ||
+    action === "domain_scope:read" ||
     action === "issue:read" ||
     action === "project:read" ||
     action === "runtime:manage" ||
@@ -210,10 +210,10 @@ type AssignmentPolicyEffect =
   | { kind: "unknown"; explanation: string };
 
 type AgentHierarchyRow = { id: string; reportsTo: string | null };
-type LowTrustBoundaryWithDomain = LowTrustBoundary & { companyId: string };
+type LowTrustBoundaryWithDomain = LowTrustBoundary & { domainId: string };
 type AgentAuthorizationRow = {
   id: string;
-  companyId: string;
+  domainId: string;
   role: string;
   status: string;
   reportsTo: string | null;
@@ -221,12 +221,12 @@ type AgentAuthorizationRow = {
 };
 type ProjectAuthorizationRow = {
   id: string;
-  companyId: string;
+  domainId: string;
   executionWorkspacePolicy: unknown;
 };
 type IssueAuthorizationRow = {
   id: string;
-  companyId: string;
+  domainId: string;
   projectId: string | null;
   parentId: string | null;
   assigneeAgentId: string | null;
@@ -270,7 +270,7 @@ function evaluateAuthorizationPolicyForAssignment(
   }
 
   const assignmentMode = readString(assignmentPolicy?.mode);
-  if (assignmentMode && assignmentMode !== "company_default" && assignmentMode !== "protected") {
+  if (assignmentMode && assignmentMode !== "domain_default" && assignmentMode !== "protected") {
     return {
       kind: "unknown",
       explanation: `${label} has an unsupported assignment policy mode.`,
@@ -293,7 +293,7 @@ function evaluateAuthorizationPolicyForAssignment(
   ) {
     return {
       kind: "restricted",
-      explanation: `${label} is private and cannot use simple company-wide task assignment.`,
+      explanation: `${label} is private and cannot use simple domain-wide task assignment.`,
     };
   }
 
@@ -324,17 +324,17 @@ function agentIsInSubtree(
   return false;
 }
 
-async function loadCompanyAgentHierarchy(db: Db, companyId: string) {
+async function loadDomainAgentHierarchy(db: Db, domainId: string) {
   const rows = await db
     .select({ id: agents.id, reportsTo: agents.reportsTo })
     .from(agents)
-    .where(eq(agents.companyId, companyId));
+    .where(eq(agents.domainId, domainId));
   return new Map(rows.map((agent) => [agent.id, agent]));
 }
 
-async function isAgentInSubtree(db: Db, companyId: string, rootAgentId: string, targetAgentId: string) {
+async function isAgentInSubtree(db: Db, domainId: string, rootAgentId: string, targetAgentId: string) {
   return agentIsInSubtree(
-    await loadCompanyAgentHierarchy(db, companyId),
+    await loadDomainAgentHierarchy(db, domainId),
     rootAgentId,
     targetAgentId,
   );
@@ -342,7 +342,7 @@ async function isAgentInSubtree(db: Db, companyId: string, rootAgentId: string, 
 
 async function scopeAllows(
   db: Db,
-  companyId: string,
+  domainId: string,
   grantScope: Record<string, unknown> | null,
   requestedScope: Record<string, unknown> | null | undefined,
   options: { requireStructuredScope?: boolean } = {},
@@ -401,7 +401,7 @@ async function scopeAllows(
   if (subtreeRootAgentIds.length > 0) {
     constrained = true;
     if (!targetAssigneeAgentId) return false;
-    const agentsById = await loadCompanyAgentHierarchy(db, companyId);
+    const agentsById = await loadDomainAgentHierarchy(db, domainId);
     let matchesSubtree = false;
     for (const rootAgentId of subtreeRootAgentIds) {
       if (agentIsInSubtree(agentsById, rootAgentId, targetAssigneeAgentId)) {
@@ -427,9 +427,9 @@ function deny(input: Omit<AuthorizationDecision, "allowed">): AuthorizationDecis
 
 type ResponsibleUserSnapshot = {
   userId: string;
-  companyId: string;
+  domainId: string;
   userExists: boolean;
-  activeMembership: { companyId: string; membershipRole?: string | null; status?: string } | null;
+  activeMembership: { domainId: string; membershipRole?: string | null; status?: string } | null;
 };
 
 type ResponsibleUserActorWithMemo = AuthorizationActor & {
@@ -455,10 +455,10 @@ export function responsibleUserAuthzShadowMode() {
 }
 
 function activeActorMembership(
-  memberships: Array<{ companyId: string; membershipRole?: string | null; status?: string }> | null | undefined,
-  companyId: string,
+  memberships: Array<{ domainId: string; membershipRole?: string | null; status?: string }> | null | undefined,
+  domainId: string,
 ) {
-  return memberships?.find((membership) => membership.companyId === companyId && membership.status === "active") ?? null;
+  return memberships?.find((membership) => membership.domainId === domainId && membership.status === "active") ?? null;
 }
 
 function activeResponsibleUserCanAuthorizeIssueAction(
@@ -500,25 +500,25 @@ export function authorizationService(db: Db) {
   }
 
   async function getActiveMembership(
-    companyId: string,
+    domainId: string,
     principalType: PrincipalType,
     principalId: string,
   ) {
     return db
       .select()
-      .from(companyMemberships)
+      .from(domainMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, companyId),
-          eq(companyMemberships.principalType, principalType),
-          eq(companyMemberships.principalId, principalId),
-          eq(companyMemberships.status, "active"),
+          eq(domainMemberships.domainId, domainId),
+          eq(domainMemberships.principalType, principalType),
+          eq(domainMemberships.principalId, principalId),
+          eq(domainMemberships.status, "active"),
         ),
       )
       .then((rows) => rows[0] ?? null);
   }
 
-  async function loadResponsibleUserSnapshot(companyId: string, userId: string): Promise<ResponsibleUserSnapshot> {
+  async function loadResponsibleUserSnapshot(domainId: string, userId: string): Promise<ResponsibleUserSnapshot> {
     const [user, membership] = await Promise.all([
       db
         .select({ id: authUsers.id })
@@ -527,24 +527,24 @@ export function authorizationService(db: Db) {
         .then((rows) => rows[0] ?? null),
       db
         .select({
-          companyId: companyMemberships.companyId,
-          membershipRole: companyMemberships.membershipRole,
-          status: companyMemberships.status,
+          domainId: domainMemberships.domainId,
+          membershipRole: domainMemberships.membershipRole,
+          status: domainMemberships.status,
         })
-        .from(companyMemberships)
+        .from(domainMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, companyId),
-            eq(companyMemberships.principalType, "user"),
-            eq(companyMemberships.principalId, userId),
-            eq(companyMemberships.status, "active"),
+            eq(domainMemberships.domainId, domainId),
+            eq(domainMemberships.principalType, "user"),
+            eq(domainMemberships.principalId, userId),
+            eq(domainMemberships.status, "active"),
           ),
         )
         .then((rows) => rows[0] ?? null),
     ]);
     return {
       userId,
-      companyId,
+      domainId,
       userExists: Boolean(user),
       activeMembership: user ? membership : null,
     };
@@ -552,20 +552,20 @@ export function authorizationService(db: Db) {
 
   function getResponsibleUserSnapshot(input: {
     actor: AuthorizationActor;
-    companyId: string;
+    domainId: string;
     userId: string;
   }): Promise<ResponsibleUserSnapshot> {
     const actorWithMemo = input.actor as ResponsibleUserActorWithMemo;
-    const key = `${input.companyId}:${input.userId}`;
+    const key = `${input.domainId}:${input.userId}`;
     actorWithMemo.__responsibleUserSnapshotMemo ??= new Map();
     const requestMemo = actorWithMemo.__responsibleUserSnapshotMemo.get(key);
     if (requestMemo) return requestMemo;
 
-    const actorMembership = activeActorMembership(input.actor.onBehalfOfMemberships, input.companyId);
+    const actorMembership = activeActorMembership(input.actor.onBehalfOfMemberships, input.domainId);
     if (actorMembership) {
       const promise = Promise.resolve({
         userId: input.userId,
-        companyId: input.companyId,
+        domainId: input.domainId,
         userExists: true,
         activeMembership: actorMembership,
       });
@@ -581,7 +581,7 @@ export function authorizationService(db: Db) {
     }
 
     const ttlMs = responsibleUserSnapshotTtlMs();
-    const promise = loadResponsibleUserSnapshot(input.companyId, input.userId);
+    const promise = loadResponsibleUserSnapshot(input.domainId, input.userId);
     if (ttlMs > 0) {
       responsibleUserSnapshotCache.set(key, { expiresAt: now + ttlMs, promise });
       promise.catch(() => {
@@ -595,7 +595,7 @@ export function authorizationService(db: Db) {
   }
 
   async function findGrant(
-    companyId: string,
+    domainId: string,
     principalType: PrincipalType,
     principalId: string,
     permissionKey: PermissionKey,
@@ -605,7 +605,7 @@ export function authorizationService(db: Db) {
       .from(principalPermissionGrants)
       .where(
         and(
-          eq(principalPermissionGrants.companyId, companyId),
+          eq(principalPermissionGrants.domainId, domainId),
           eq(principalPermissionGrants.principalType, principalType),
           eq(principalPermissionGrants.principalId, principalId),
           eq(principalPermissionGrants.permissionKey, permissionKey),
@@ -615,23 +615,23 @@ export function authorizationService(db: Db) {
   }
 
   async function decidePrincipalGrant(input: {
-    companyId: string;
+    domainId: string;
     principalType: PrincipalType;
     principalId: string;
     action: AuthorizationAction;
     permissionKey: PermissionKey;
     scope?: Record<string, unknown> | null;
   }): Promise<PrincipalGrantDecision> {
-    const membership = await getActiveMembership(input.companyId, input.principalType, input.principalId);
+    const membership = await getActiveMembership(input.domainId, input.principalType, input.principalId);
     if (!membership) {
       return deny({
         action: input.action,
         reason: "deny_missing_membership",
-        explanation: `${input.principalType} principal ${input.principalId} is not an active member of company ${input.companyId}.`,
+        explanation: `${input.principalType} principal ${input.principalId} is not an active member of domain ${input.domainId}.`,
       });
     }
 
-    const grant = await findGrant(input.companyId, input.principalType, input.principalId, input.permissionKey);
+    const grant = await findGrant(input.domainId, input.principalType, input.principalId, input.permissionKey);
     if (!grant) {
       return deny({
         action: input.action,
@@ -641,7 +641,7 @@ export function authorizationService(db: Db) {
     }
 
     if (
-      !(await scopeAllows(db, input.companyId, grant.scope, input.scope, {
+      !(await scopeAllows(db, input.domainId, grant.scope, input.scope, {
         requireStructuredScope: input.permissionKey === "tasks:assign_scope",
       }))
     ) {
@@ -675,7 +675,7 @@ export function authorizationService(db: Db) {
     return db
       .select({
         id: agents.id,
-        companyId: agents.companyId,
+        domainId: agents.domainId,
         role: agents.role,
         status: agents.status,
         reportsTo: agents.reportsTo,
@@ -690,7 +690,7 @@ export function authorizationService(db: Db) {
     return db
       .select({
         id: projects.id,
-        companyId: projects.companyId,
+        domainId: projects.domainId,
         executionWorkspacePolicy: projects.executionWorkspacePolicy,
       })
       .from(projects)
@@ -702,7 +702,7 @@ export function authorizationService(db: Db) {
     return db
       .select({
         id: issues.id,
-        companyId: issues.companyId,
+        domainId: issues.domainId,
         projectId: issues.projectId,
         parentId: issues.parentId,
         assigneeAgentId: issues.assigneeAgentId,
@@ -717,39 +717,39 @@ export function authorizationService(db: Db) {
       .then((rows) => rows[0] ?? null);
   }
 
-  async function loadRunPolicy(runId: string | null | undefined, companyId: string, agentId: string) {
+  async function loadRunPolicy(runId: string | null | undefined, domainId: string, agentId: string) {
     if (!runId) return null;
     const row = await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
+        domainId: heartbeatRuns.domainId,
         agentId: heartbeatRuns.agentId,
         contextSnapshot: heartbeatRuns.contextSnapshot,
       })
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
-    if (!row || row.companyId !== companyId || row.agentId !== agentId) return null;
+    if (!row || row.domainId !== domainId || row.agentId !== agentId) return null;
     const context = isPlainRecord(row.contextSnapshot) ? row.contextSnapshot : null;
     return isPlainRecord(context?.executionPolicy)
-      ? { companyId: row.companyId, executionPolicy: context.executionPolicy }
+      ? { domainId: row.domainId, executionPolicy: context.executionPolicy }
       : null;
   }
 
-  async function loadProjectAuthorizationPolicy(companyId: string, projectId: string) {
+  async function loadProjectAuthorizationPolicy(domainId: string, projectId: string) {
     const row = await db
       .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
       .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.companyId, companyId)))
+      .where(and(eq(projects.id, projectId), eq(projects.domainId, domainId)))
       .then((rows) => rows[0] ?? null);
     return readPolicyObject(row?.executionWorkspacePolicy, "authorizationPolicy");
   }
 
-  async function loadIssueAuthorizationPolicy(companyId: string, issueId: string) {
+  async function loadIssueAuthorizationPolicy(domainId: string, issueId: string) {
     const row = await db
       .select({ executionPolicy: issues.executionPolicy })
       .from(issues)
-      .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
+      .where(and(eq(issues.id, issueId), eq(issues.domainId, domainId)))
       .then((rows) => rows[0] ?? null);
     return readPolicyObject(row?.executionPolicy, "authorizationPolicy");
   }
@@ -769,13 +769,13 @@ export function authorizationService(db: Db) {
   async function resolveActorTrust(input: {
     actorAgent: AgentAuthorizationRow;
     actor: AuthorizationActor;
-    companyId: string;
+    domainId: string;
     resource: AuthorizationResource;
   }): Promise<TrustPresetResolution> {
     const { issue, project } = await loadResourceContext(input.resource);
-    const run = await loadRunPolicy(input.actor.runId, input.companyId, input.actorAgent.id);
+    const run = await loadRunPolicy(input.actor.runId, input.domainId, input.actorAgent.id);
     return resolveCoreTrustPreset({
-      companyId: input.companyId,
+      domainId: input.domainId,
       agent: input.actorAgent,
       project,
       issue,
@@ -783,18 +783,18 @@ export function authorizationService(db: Db) {
     });
   }
 
-  async function issueIdIsDescendantOf(issueId: string, rootIssueId: string, companyId: string) {
+  async function issueIdIsDescendantOf(issueId: string, rootIssueId: string, domainId: string) {
     const rows = await db.execute(sql`
       WITH RECURSIVE ancestors(id, parent_id, depth) AS (
         SELECT id, parent_id, 0
         FROM issues
-        WHERE company_id = ${companyId}
+        WHERE domain_id = ${domainId}
           AND id = ${issueId}
         UNION ALL
         SELECT parent.id, parent.parent_id, ancestors.depth + 1
         FROM issues parent
         JOIN ancestors ON parent.id = ancestors.parent_id
-        WHERE parent.company_id = ${companyId}
+        WHERE parent.domain_id = ${domainId}
           AND ancestors.depth < ${LOW_TRUST_ISSUE_ANCESTRY_MAX_DEPTH - 1}
       )
       SELECT EXISTS(SELECT 1 FROM ancestors WHERE id = ${rootIssueId}) AS is_descendant
@@ -813,20 +813,20 @@ export function authorizationService(db: Db) {
   ) {
     const issue = resource.issueId ? await loadIssue(resource.issueId) : null;
     const candidate = {
-      companyId: resource.companyId,
+      domainId: resource.domainId,
       id: issue?.id ?? resource.issueId ?? null,
       projectId: issue?.projectId ?? resource.projectId ?? null,
     };
     if (isIssueWithinLowTrustBoundary(boundary, candidate)) return true;
     if (candidate.id && boundary.rootIssueId) {
-      return issueIdIsDescendantOf(candidate.id, boundary.rootIssueId, boundary.companyId);
+      return issueIdIsDescendantOf(candidate.id, boundary.rootIssueId, boundary.domainId);
     }
     if (!resource.parentIssueId) return false;
     const parent = await loadIssue(resource.parentIssueId);
     if (!parent) return false;
     if (
       isIssueWithinLowTrustBoundary(boundary, {
-        companyId: parent.companyId,
+        domainId: parent.domainId,
         id: parent.id,
         projectId: parent.projectId,
       })
@@ -834,7 +834,7 @@ export function authorizationService(db: Db) {
       return true;
     }
     return boundary.rootIssueId
-      ? issueIdIsDescendantOf(parent.id, boundary.rootIssueId, boundary.companyId)
+      ? issueIdIsDescendantOf(parent.id, boundary.rootIssueId, boundary.domainId)
       : false;
   }
 
@@ -846,7 +846,7 @@ export function authorizationService(db: Db) {
     if (boundary.projectIds?.includes(projectId)) return true;
     if (!boundary.rootIssueId) return false;
     const rootIssue = await loadIssue(boundary.rootIssueId);
-    return rootIssue?.companyId === boundary.companyId && rootIssue.projectId === projectId;
+    return rootIssue?.domainId === boundary.domainId && rootIssue.projectId === projectId;
   }
 
   function agentWithinLowTrustBoundary(
@@ -888,7 +888,7 @@ export function authorizationService(db: Db) {
       });
 
     if (
-      input.action === "company_scope:read" ||
+      input.action === "domain_scope:read" ||
       input.action === "agent_config:read" ||
       input.action === "agent_config:update" ||
       input.action === "skill_config:update" ||
@@ -896,7 +896,7 @@ export function authorizationService(db: Db) {
       input.action === "secrets:read"
     ) {
       return lowTrustDeny(
-        `${LOW_TRUST_REVIEW_PRESET} agents cannot use company-wide or privileged ${input.action} APIs by default.`,
+        `${LOW_TRUST_REVIEW_PRESET} agents cannot use domain-wide or privileged ${input.action} APIs by default.`,
       );
     }
 
@@ -933,7 +933,7 @@ export function authorizationService(db: Db) {
         input.resource.issueId &&
         await agentHasMentionGrantOnIssue({
           action: input.action,
-          companyId: boundary.companyId,
+          domainId: boundary.domainId,
           issueId: input.resource.issueId,
           issueAssigneeAgentId: input.resource.assigneeAgentId ?? null,
           actorAgentId: input.actorAgentId,
@@ -979,13 +979,13 @@ export function authorizationService(db: Db) {
 
   async function parentIssueMatchesTaskBridgeBoundary(
     parentIssueId: string | null | undefined,
-    companyId: string,
+    domainId: string,
     allowedParentIssueIds: string[],
   ) {
     if (!parentIssueId || allowedParentIssueIds.length === 0) return false;
     if (allowedParentIssueIds.includes(parentIssueId)) return true;
     for (const rootIssueId of allowedParentIssueIds) {
-      if (await issueIdIsDescendantOf(parentIssueId, rootIssueId, companyId)) return true;
+      if (await issueIdIsDescendantOf(parentIssueId, rootIssueId, domainId)) return true;
     }
     return false;
   }
@@ -997,12 +997,12 @@ export function authorizationService(db: Db) {
     const allowedProjectIds = taskBridgeScopeIds(scope, "projectId", "projectIds");
     const allowedParentIssueIds = taskBridgeScopeIds(scope, "parentIssueId", "parentIssueIds");
     if (resource.projectId && allowedProjectIds.includes(resource.projectId)) return true;
-    if (await parentIssueMatchesTaskBridgeBoundary(resource.parentIssueId, resource.companyId, allowedParentIssueIds)) {
+    if (await parentIssueMatchesTaskBridgeBoundary(resource.parentIssueId, resource.domainId, allowedParentIssueIds)) {
       return true;
     }
     if (resource.parentIssueId && allowedProjectIds.length > 0) {
       const parent = await loadIssue(resource.parentIssueId);
-      if (parent?.companyId === resource.companyId && parent.projectId && allowedProjectIds.includes(parent.projectId)) {
+      if (parent?.domainId === resource.domainId && parent.projectId && allowedProjectIds.includes(parent.projectId)) {
         return true;
       }
     }
@@ -1043,14 +1043,14 @@ export function authorizationService(db: Db) {
       });
 
     if (
-      input.action === "company_scope:read" ||
+      input.action === "domain_scope:read" ||
       input.action === "agent:read" ||
       input.action === "agent:wake" ||
       input.action === "project:read" ||
       input.action === "runtime:manage" ||
       input.action === "secrets:read"
     ) {
-      return denyBridge("Task bridge keys cannot use company-wide, peer-agent, project, runtime, or secret APIs.");
+      return denyBridge("Task bridge keys cannot use domain-wide, peer-agent, project, runtime, or secret APIs.");
     }
 
     if (input.action === "tasks:assign") {
@@ -1109,7 +1109,7 @@ export function authorizationService(db: Db) {
       });
 
     if (
-      input.action === "company_scope:read" ||
+      input.action === "domain_scope:read" ||
       input.action === "agent:read" ||
       input.action === "agent:wake" ||
       input.action === "project:read" ||
@@ -1117,7 +1117,7 @@ export function authorizationService(db: Db) {
       input.action === "secrets:read" ||
       input.action === "tasks:assign"
     ) {
-      return denySkillTest("Skill-test run tokens cannot use company-wide, peer-agent, project, runtime, secret, or task-create APIs.");
+      return denySkillTest("Skill-test run tokens cannot use domain-wide, peer-agent, project, runtime, secret, or task-create APIs.");
     }
 
     if (input.action === "issue:read" || input.action === "issue:comment" || input.action === "issue:mutate") {
@@ -1138,12 +1138,12 @@ export function authorizationService(db: Db) {
       const target = await loadAgent(resource.assigneeAgentId);
       return Boolean(
         target &&
-        target.companyId === resource.companyId &&
+        target.domainId === resource.domainId &&
         isSimpleAssignableAgentStatus(target.status),
       );
     }
     if (resource.assigneeUserId) {
-      return Boolean(await getActiveMembership(resource.companyId, "user", resource.assigneeUserId));
+      return Boolean(await getActiveMembership(resource.domainId, "user", resource.assigneeUserId));
     }
     return true;
   }
@@ -1164,21 +1164,21 @@ export function authorizationService(db: Db) {
     }
     if (resource.projectId) {
       checks.push(
-        loadProjectAuthorizationPolicy(resource.companyId, resource.projectId).then((policy) =>
+        loadProjectAuthorizationPolicy(resource.domainId, resource.projectId).then((policy) =>
           evaluateAuthorizationPolicyForAssignment(policy, "Target project"),
         ),
       );
     }
     if (resource.issueId) {
       checks.push(
-        loadIssueAuthorizationPolicy(resource.companyId, resource.issueId).then((policy) =>
+        loadIssueAuthorizationPolicy(resource.domainId, resource.issueId).then((policy) =>
           evaluateAuthorizationPolicyForAssignment(policy, "Target issue"),
         ),
       );
     }
     if (resource.parentIssueId && resource.parentIssueId !== resource.issueId) {
       checks.push(
-        loadIssueAuthorizationPolicy(resource.companyId, resource.parentIssueId).then((policy) =>
+        loadIssueAuthorizationPolicy(resource.domainId, resource.parentIssueId).then((policy) =>
           evaluateAuthorizationPolicyForAssignment(policy, "Parent issue"),
         ),
       );
@@ -1194,8 +1194,8 @@ export function authorizationService(db: Db) {
     );
   }
 
-  async function isManagerOf(companyId: string, managerAgentId: string, assigneeAgentId: string) {
-    return isAgentInSubtree(db, companyId, managerAgentId, assigneeAgentId);
+  async function isManagerOf(domainId: string, managerAgentId: string, assigneeAgentId: string) {
+    return isAgentInSubtree(db, domainId, managerAgentId, assigneeAgentId);
   }
 
   function commentAuthorCanGrantIssueMention(input: {
@@ -1217,7 +1217,7 @@ export function authorizationService(db: Db) {
 
   async function agentHasMentionGrantOnIssue(input: {
     action: AuthorizationAction;
-    companyId: string;
+    domainId: string;
     issueId: string;
     issueAssigneeAgentId: string | null;
     actorAgentId: string;
@@ -1231,7 +1231,7 @@ export function authorizationService(db: Db) {
       })
       .from(issueComments)
       .where(and(
-        eq(issueComments.companyId, input.companyId),
+        eq(issueComments.domainId, input.domainId),
         eq(issueComments.issueId, input.issueId),
         isNull(issueComments.deletedAt),
         sql`${issueComments.body} LIKE ${"%agent://" + input.actorAgentId + "%"}`,
@@ -1243,13 +1243,13 @@ export function authorizationService(db: Db) {
       authorUserIds.length === 0
         ? []
         : await db
-          .select({ principalId: companyMemberships.principalId })
-          .from(companyMemberships)
+          .select({ principalId: domainMemberships.principalId })
+          .from(domainMemberships)
           .where(and(
-            eq(companyMemberships.companyId, input.companyId),
-            eq(companyMemberships.principalType, "user"),
-            eq(companyMemberships.status, "active"),
-            inArray(companyMemberships.principalId, authorUserIds),
+            eq(domainMemberships.domainId, input.domainId),
+            eq(domainMemberships.principalType, "user"),
+            eq(domainMemberships.status, "active"),
+            inArray(domainMemberships.principalId, authorUserIds),
           ))
           .then((memberships) => memberships.map((membership) => membership.principalId)),
     );
@@ -1266,7 +1266,7 @@ export function authorizationService(db: Db) {
         logger.info({
           actorAgentId: input.actorAgentId,
           issueId: input.issueId,
-          companyId: input.companyId,
+          domainId: input.domainId,
           commentId: row.id,
           grantedAction: input.action,
           grant: "issue_mention_comment",
@@ -1292,14 +1292,14 @@ export function authorizationService(db: Db) {
     scope?: Record<string, unknown> | null;
   }): Promise<AuthorizationDecision> {
     const permissionKey = permissionForAction(input.action);
-    const companyId = companyIdForResource(input.resource);
+    const domainId = domainIdForResource(input.resource);
 
     async function decideWithTaskAssignmentGrants(
       principalType: PrincipalType,
       principalId: string,
     ): Promise<AuthorizationDecision> {
       const broadDecision = await decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType,
         principalId,
         action: input.action,
@@ -1308,7 +1308,7 @@ export function authorizationService(db: Db) {
       });
       if (broadDecision.allowed || broadDecision.reason === "deny_missing_membership") return broadDecision;
       const scopedDecision = await decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType,
         principalId,
         action: input.action,
@@ -1324,7 +1324,7 @@ export function authorizationService(db: Db) {
       principalId: string,
     ): Promise<AuthorizationDecision> {
       const configureDecision = await decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType,
         principalId,
         action: input.action,
@@ -1336,7 +1336,7 @@ export function authorizationService(db: Db) {
       }
 
       const suggestDecision = await decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType,
         principalId,
         action: input.action,
@@ -1355,7 +1355,7 @@ export function authorizationService(db: Db) {
       keys: { direct: PermissionKey; suggest: PermissionKey },
     ): Promise<AuthorizationDecision> {
       const directDecision = await decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType,
         principalId,
         action: input.action,
@@ -1373,7 +1373,7 @@ export function authorizationService(db: Db) {
       if (directDecision.reason === "deny_missing_membership") return directDecision;
 
       const suggestDecision = await decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType,
         principalId,
         action: input.action,
@@ -1425,7 +1425,7 @@ export function authorizationService(db: Db) {
         explanation:
           policyEffect.kind === "restricted"
             ? policyEffect.explanation
-            : "Restrictive authorization policy blocks simple company-wide task assignment.",
+            : "Restrictive authorization policy blocks simple domain-wide task assignment.",
       });
     }
 
@@ -1446,7 +1446,7 @@ export function authorizationService(db: Db) {
           explanation: "Allowed because the actor is the local implicit board.",
         });
       }
-      // cloud_tenant actors are company-scoped by contract and must never be
+      // cloud_tenant actors are domain-scoped by contract and must never be
       // elevated — not even via stale instance_admin rows left behind by
       // deployments that ran the pre-hardening cloud_tenant path.
       if (
@@ -1461,23 +1461,23 @@ export function authorizationService(db: Db) {
         });
       }
       // What instance-admin elevation used to give cloud tenant users is
-      // replaced by company-scoped visibility: an active membership in the
-      // resource company grants the same read surface a same-company agent
-      // gets, and non-viewer members may mutate issues inside their company.
-      // Cross-company access stays denied.
+      // replaced by domain-scoped visibility: an active membership in the
+      // resource domain grants the same read surface a same-domain agent
+      // gets, and non-viewer members may mutate issues inside their domain.
+      // Cross-domain access stays denied.
       if (input.actor.source === "cloud_tenant" && input.actor.userId) {
-        const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+        const membership = await getActiveMembership(domainId, "user", input.actor.userId);
         if (membership) {
           if (
             input.action === "agent:read" ||
-            input.action === "company_scope:read" ||
+            input.action === "domain_scope:read" ||
             input.action === "issue:read" ||
             input.action === "project:read"
           ) {
             return allow({
               action: input.action,
-              reason: "allow_company_member",
-              explanation: "Allowed by active cloud tenant company membership.",
+              reason: "allow_domain_member",
+              explanation: "Allowed by active cloud tenant domain membership.",
             });
           }
           if (
@@ -1486,8 +1486,8 @@ export function authorizationService(db: Db) {
           ) {
             return allow({
               action: input.action,
-              reason: "allow_company_member",
-              explanation: "Allowed by active cloud tenant company membership.",
+              reason: "allow_domain_member",
+              explanation: "Allowed by active cloud tenant domain membership.",
             });
           }
         }
@@ -1503,33 +1503,33 @@ export function authorizationService(db: Db) {
         if (!(await assignmentTargetIsInDomain(input.resource))) {
           return deny({
             action: input.action,
-            reason: "deny_company_boundary",
-            explanation: "Task assignment target agent is not active in the target company.",
+            reason: "deny_domain_boundary",
+            explanation: "Task assignment target agent is not active in the target domain.",
           });
         }
         const policyEffect = await assignmentPolicyEffect(input.resource);
         taskAssignmentPolicyEffect = policyEffect;
         const policyDeny = await denyForAssignmentPolicyIfNeeded(policyEffect);
         if (policyDeny) return policyDeny;
-        const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+        const membership = await getActiveMembership(domainId, "user", input.actor.userId);
         if (policyEffect.kind === "none" && membership && membership.membershipRole !== "viewer") {
           return allow({
             action: input.action,
-            reason: "allow_simple_company_member",
-            explanation: "Allowed by simple mode company-wide task assignment default.",
+            reason: "allow_simple_domain_member",
+            explanation: "Allowed by simple mode domain-wide task assignment default.",
           });
         }
       }
       if (!permissionKey) {
         if (
           input.action === "agent:read" ||
-          input.action === "company_scope:read" ||
+          input.action === "domain_scope:read" ||
           input.action === "issue:read" ||
           input.action === "project:read" ||
           input.action === "runtime:manage" ||
           input.action === "secrets:read"
         ) {
-          const membership = await getActiveMembership(companyId, "user", input.actor.userId);
+          const membership = await getActiveMembership(domainId, "user", input.actor.userId);
           // Mirroring the tasks:assign carve-out above, viewers keep the
           // read-only visibility actions but not the privileged ones.
           const requiresNonViewer =
@@ -1537,8 +1537,8 @@ export function authorizationService(db: Db) {
           if (membership && (!requiresNonViewer || membership.membershipRole !== "viewer")) {
             return allow({
               action: input.action,
-              reason: "allow_simple_company_member",
-              explanation: "Allowed by standard same-company board membership visibility.",
+              reason: "allow_simple_domain_member",
+              explanation: "Allowed by standard same-domain board membership visibility.",
             });
           }
           if (membership) {
@@ -1551,7 +1551,7 @@ export function authorizationService(db: Db) {
           return deny({
             action: input.action,
             reason: "deny_missing_membership",
-            explanation: `user principal ${input.actor.userId} is not an active member of company ${companyId}.`,
+            explanation: `user principal ${input.actor.userId} is not an active member of domain ${domainId}.`,
           });
         }
         return deny({
@@ -1583,7 +1583,7 @@ export function authorizationService(db: Db) {
         });
       }
       return decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType: "user",
         principalId: input.actor.userId,
         action: input.action,
@@ -1600,20 +1600,20 @@ export function authorizationService(db: Db) {
         explanation: "Agent authentication required.",
       });
     }
-    if (input.actor.companyId !== companyId) {
+    if (input.actor.domainId !== domainId) {
       return deny({
         action: input.action,
-        reason: "deny_company_boundary",
-        explanation: "Agent key cannot access another company.",
+        reason: "deny_domain_boundary",
+        explanation: "Agent key cannot access another domain.",
       });
     }
 
     const actorAgent = await loadAgent(actorAgentId);
-    if (!actorAgent || actorAgent.companyId !== companyId) {
+    if (!actorAgent || actorAgent.domainId !== domainId) {
       return deny({
         action: input.action,
-        reason: "deny_company_boundary",
-        explanation: "Actor agent was not found in the target company.",
+        reason: "deny_domain_boundary",
+        explanation: "Actor agent was not found in the target domain.",
       });
     }
 
@@ -1652,7 +1652,7 @@ export function authorizationService(db: Db) {
       resolution: await resolveActorTrust({
         actorAgent,
         actor: input.actor,
-        companyId,
+        domainId,
         resource: input.resource,
       }),
     });
@@ -1661,7 +1661,7 @@ export function authorizationService(db: Db) {
       if (
         input.action === "agent:read" ||
         input.action === "agent:wake" ||
-        input.action === "company_scope:read" ||
+        input.action === "domain_scope:read" ||
         input.action === "issue:comment" ||
         input.action === "issue:read" ||
         input.action === "project:read" ||
@@ -1674,7 +1674,7 @@ export function authorizationService(db: Db) {
 
     if (
       input.action === "agent:read" ||
-      input.action === "company_scope:read" ||
+      input.action === "domain_scope:read" ||
       input.action === "issue:read" ||
       input.action === "project:read" ||
       input.action === "runtime:manage" ||
@@ -1682,8 +1682,8 @@ export function authorizationService(db: Db) {
     ) {
       return allow({
         action: input.action,
-        reason: "allow_company_agent",
-        explanation: "Allowed by standard same-company agent visibility.",
+        reason: "allow_domain_agent",
+        explanation: "Allowed by standard same-domain agent visibility.",
       });
     }
 
@@ -1706,8 +1706,8 @@ export function authorizationService(db: Db) {
       if (!(await assignmentTargetIsInDomain(input.resource))) {
         return deny({
           action: input.action,
-          reason: "deny_company_boundary",
-          explanation: "Task assignment target agent is not active in the target company.",
+          reason: "deny_domain_boundary",
+          explanation: "Task assignment target agent is not active in the target domain.",
         });
       }
       const policyEffect = await assignmentPolicyEffect(input.resource);
@@ -1720,8 +1720,8 @@ export function authorizationService(db: Db) {
       }
       return allow({
         action: input.action,
-        reason: "allow_simple_company_member",
-        explanation: "Allowed by simple mode company-wide task assignment default.",
+        reason: "allow_simple_domain_member",
+        explanation: "Allowed by simple mode domain-wide task assignment default.",
       });
     }
 
@@ -1737,7 +1737,7 @@ export function authorizationService(db: Db) {
       if (!resource?.assigneeAgentId) {
         return allow({
           action: input.action,
-          reason: "allow_company_agent",
+          reason: "allow_domain_agent",
           explanation: "Allowed because the issue has no agent assignee.",
         });
       }
@@ -1746,7 +1746,7 @@ export function authorizationService(db: Db) {
         resource?.issueId &&
         await agentHasMentionGrantOnIssue({
           action: input.action,
-          companyId,
+          domainId,
           issueId: resource.issueId,
           issueAssigneeAgentId: resource.assigneeAgentId ?? null,
           actorAgentId,
@@ -1795,7 +1795,7 @@ export function authorizationService(db: Db) {
 
     if (permissionKey) {
       const grantDecision = await decidePrincipalGrant({
-        companyId,
+        domainId,
         principalType: "agent",
         principalId: actorAgentId,
         action: input.action,
@@ -1821,7 +1821,7 @@ export function authorizationService(db: Db) {
       input.action === "tasks:manage_active_checkouts" &&
       input.resource.type === "issue" &&
       input.resource.assigneeAgentId &&
-      await isManagerOf(companyId, actorAgentId, input.resource.assigneeAgentId)
+      await isManagerOf(domainId, actorAgentId, input.resource.assigneeAgentId)
     ) {
       return allow({
         action: input.action,
@@ -1853,10 +1853,10 @@ export function authorizationService(db: Db) {
       return agentDecision;
     }
 
-    const companyId = companyIdForResource(input.resource);
+    const domainId = domainIdForResource(input.resource);
     const snapshot = await getResponsibleUserSnapshot({
       actor: input.actor,
-      companyId,
+      domainId,
       userId: responsibleUserId,
     });
     const denyCode: AuthorizationDecision["code"] =
@@ -1870,7 +1870,7 @@ export function authorizationService(db: Db) {
           actor: {
             type: "board",
             userId: responsibleUserId,
-            companyIds: [companyId],
+            domainIds: [domainId],
             memberships: [snapshot.activeMembership],
             isInstanceAdmin: false,
             ignoreInstanceAdmin: true,
@@ -1880,7 +1880,7 @@ export function authorizationService(db: Db) {
       : deny({
           action: input.action,
           reason: "deny_missing_membership",
-          explanation: `Responsible user ${responsibleUserId} is unavailable for company ${companyId}.`,
+          explanation: `Responsible user ${responsibleUserId} is unavailable for domain ${domainId}.`,
         });
 
     if (
@@ -1899,7 +1899,7 @@ export function authorizationService(db: Db) {
       code: denyCode,
       explanation:
         denyCode === "RESPONSIBLE_USER_UNAVAILABLE"
-          ? `Responsible user ${responsibleUserId} is unavailable for company ${companyId}.`
+          ? `Responsible user ${responsibleUserId} is unavailable for domain ${domainId}.`
           : `Responsible user ${responsibleUserId} is not authorized for ${input.action}: ${userDecision.explanation}`,
       grant: userDecision.grant,
     });
@@ -1910,7 +1910,7 @@ export function authorizationService(db: Db) {
       reason: userDecision.reason,
       action: input.action,
       resourceType: input.resource.type,
-      companyId,
+      domainId,
       actorAgentId: input.actor.agentId ?? null,
       responsibleUserId,
     }, "responsible-user authorization intersection denied");

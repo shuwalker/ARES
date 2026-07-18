@@ -104,7 +104,7 @@ export function isCeLowTrustBoundaryEditable(boundary: LowTrustBoundary | null |
 
 export function setSingleLowTrustBoundaryTarget(
   permissions: Partial<AgentPermissions> | null | undefined,
-  companyId: string,
+  domainId: string,
   target: LowTrustBoundaryTarget,
 ): Partial<AgentPermissions> {
   const current = buildPermissionsForTrustPreset(permissions, LOW_TRUST_REVIEW_PRESET);
@@ -114,7 +114,7 @@ export function setSingleLowTrustBoundaryTarget(
   const trustBoundary: LowTrustBoundary = {
     ...nonScopeBoundary,
     mode: LOW_TRUST_REVIEW_PRESET,
-    companyId,
+    domainId,
     ...(target.type === "project" ? { projectIds: [target.id] } : {}),
     ...(target.type === "root_issue" ? { rootIssueId: target.id } : {}),
     ...(target.type === "issue" ? { issueIds: [target.id] } : {}),

@@ -173,7 +173,7 @@ async function expectPersistedBranchMismatchRejected(input: {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       enableWorkspaceBranchReconcileForward: true,
     });
@@ -250,7 +250,7 @@ function realizeWorktreeForTest(repoRoot: string, repoRef: string | null) {
     agent: {
       id: "agent-1",
       name: "Codex Coder",
-      companyId: "company-1",
+      domainId: "domain-1",
     },
   });
 }
@@ -307,7 +307,7 @@ function createWorkspaceOperationRecorderDouble() {
       });
       return {
         id: `op-${operations.length}`,
-        companyId: "company-1",
+        domainId: "domain-1",
         executionWorkspaceId,
         heartbeatRunId: "run-1",
         issueId: null,
@@ -524,7 +524,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -559,7 +559,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -592,7 +592,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -627,7 +627,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
     expect(initial.baseRefSha).toMatch(/^[0-9a-f]{40}$/);
@@ -659,7 +659,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -817,7 +817,7 @@ describe("realizeExecutionWorkspace", () => {
         agent: {
           id: "agent-1",
           name: "Codex Coder",
-          companyId: "company-1",
+          domainId: "domain-1",
         },
       }),
     ).rejects.toThrow(/not a reusable git worktree \(path is not registered in `git worktree list`\)\./);
@@ -854,7 +854,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -891,7 +891,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -920,7 +920,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       recorder,
     });
@@ -978,7 +978,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       recorder,
     });
@@ -1023,7 +1023,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -1060,7 +1060,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -1109,7 +1109,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -1147,7 +1147,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -1193,7 +1193,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -1237,7 +1237,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -1361,7 +1361,7 @@ describe("realizeExecutionWorkspace", () => {
         agent: {
           id: "agent-1",
           name: "Codex Coder",
-          companyId: "company-1",
+          domainId: "domain-1",
         },
       } satisfies Parameters<typeof realizeExecutionWorkspace>[0];
       const workspace = await realizeExecutionWorkspace(workspaceInput);
@@ -1521,7 +1521,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -1601,7 +1601,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2013,7 +2013,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2070,7 +2070,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       recorder,
     });
@@ -2124,7 +2124,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       recorder,
     });
@@ -2172,7 +2172,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2230,7 +2230,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2267,7 +2267,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2322,7 +2322,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       recorder,
     });
@@ -2389,7 +2389,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2440,7 +2440,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       enableWorkspaceDirtyQuarantineRepair: false,
     })).rejects.toMatchObject({
@@ -2511,7 +2511,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     })).rejects.toMatchObject({
       code: "workspace_validation_failed",
@@ -2552,7 +2552,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2592,7 +2592,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2653,7 +2653,7 @@ describe("realizeExecutionWorkspace", () => {
         agent: {
           id: "agent-1",
           name: "Codex Coder",
-          companyId: "company-1",
+          domainId: "domain-1",
         },
         enableWorkspaceBranchReconcileForward: true,
       });
@@ -2726,7 +2726,7 @@ describe("realizeExecutionWorkspace", () => {
         agent: {
           id: "agent-1",
           name: "Codex Coder",
-          companyId: "company-1",
+          domainId: "domain-1",
         },
         enableWorkspaceBranchReconcileForward: true,
       });
@@ -2883,7 +2883,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2930,7 +2930,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -2967,7 +2967,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -3013,7 +3013,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       recorder,
     });
@@ -3065,7 +3065,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       recorder,
     });
@@ -3103,7 +3103,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -3165,7 +3165,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -3232,7 +3232,7 @@ describe("realizeExecutionWorkspace", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
     });
 
@@ -3284,7 +3284,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -3320,7 +3320,7 @@ describe("ensureRuntimeServicesForRun", () => {
           agent: {
             id: "agent-1",
             name: "Codex Coder",
-            companyId: "company-1",
+            domainId: "domain-1",
           },
           issue: null,
           workspace,
@@ -3401,7 +3401,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -3420,7 +3420,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -3444,7 +3444,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -3514,7 +3514,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace: primaryWorkspace,
@@ -3527,7 +3527,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace: executionWorkspace,
@@ -3587,7 +3587,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -3643,7 +3643,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -3702,7 +3702,7 @@ describe("ensureRuntimeServicesForRun", () => {
       agent: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace: siblingWorkspace,
@@ -3753,7 +3753,7 @@ describe("ensureRuntimeServicesForRun", () => {
       actor: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -3814,7 +3814,7 @@ describe("ensureRuntimeServicesForRun", () => {
       actor: {
         id: "agent-1",
         name: "Codex Coder",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,
@@ -4245,7 +4245,7 @@ describe("readLocalServicePortOwner", () => {
       })).resolves.toBeNull();
 
       await expect(startRuntimeServicesForWorkspaceControl({
-        actor: { id: "agent-1", name: "Codex Coder", companyId: "company-1" },
+        actor: { id: "agent-1", name: "Codex Coder", domainId: "domain-1" },
         issue: null,
         workspace: buildWorkspace(targetWorkspace),
         config: {
@@ -4318,7 +4318,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     sourceIdentifier?: string;
     claimant?: "idle" | "active" | "none";
   }) {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
@@ -4328,14 +4328,14 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     const now = new Date();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `Q${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `Q${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Codex Coder",
       role: "engineer",
       status: "active",
@@ -4346,13 +4346,13 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Paperclip App",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: input.repoRoot,
@@ -4360,7 +4360,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -4369,7 +4369,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     });
     await db.insert(issues).values({
       id: sourceIssueId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       title: "Repair dirty branch mismatch",
@@ -4380,7 +4380,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: sourceWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       sourceIssueId,
@@ -4416,7 +4416,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
       const claimantIdentifier = "PAP-999";
       await db.insert(issues).values({
         id: claimantIssueId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         title: "Live branch claimant",
@@ -4428,7 +4428,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
       if (claimantRunId) {
         await db.insert(heartbeatRuns).values({
           id: claimantRunId,
-          companyId,
+          domainId,
           agentId,
           invocationSource: "manual",
           status: "running",
@@ -4438,7 +4438,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
       }
       await db.insert(executionWorkspaces).values({
         id: claimantWorkspaceId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         sourceIssueId: claimantIssueId,
@@ -4471,7 +4471,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     }
 
     return {
-      companyId,
+      domainId,
       agentId,
       projectId,
       projectWorkspaceId,
@@ -4521,7 +4521,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
       agent: {
         id: input.ids.agentId,
         name: "Codex Coder",
-        companyId: input.ids.companyId,
+        domainId: input.ids.domainId,
       },
       heartbeatRunId: input.ids.runId,
       enableWorkspaceBranchReconcileForward: true,
@@ -4570,7 +4570,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     const comments = await db
       .select()
       .from(issueComments)
-      .where(eq(issueComments.companyId, ids.companyId));
+      .where(eq(issueComments.domainId, ids.domainId));
     expect(comments).toHaveLength(1);
     expect(comments[0]?.issueId).toBe(ids.sourceIssueId);
     expect(comments[0]?.body).toContain(`Rescue branch: \`${rescueBranch}\``);
@@ -4582,7 +4582,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     const activityRows = await db
       .select()
       .from(activityLog)
-      .where(eq(activityLog.companyId, ids.companyId));
+      .where(eq(activityLog.domainId, ids.domainId));
     expect(activityRows).toEqual([
       expect.objectContaining({
         action: "execution_workspace.dirty_worktree_quarantined",
@@ -4667,7 +4667,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     const comments = await db
       .select()
       .from(issueComments)
-      .where(eq(issueComments.companyId, ids.companyId));
+      .where(eq(issueComments.domainId, ids.domainId));
     expect(comments).toHaveLength(1);
     expect(comments[0]?.body).toContain("Interrupted operation: `git rebase`");
   }, 20_000);
@@ -4775,7 +4775,7 @@ describeEmbeddedPostgres("workspace dirty quarantine branch repair", () => {
     const runtimeServiceId = randomUUID();
     await db.insert(workspaceRuntimeServices).values({
       id: runtimeServiceId,
-      companyId: ids.companyId,
+      domainId: ids.domainId,
       projectId: ids.projectId,
       projectWorkspaceId: ids.projectWorkspaceId,
       executionWorkspaceId: ids.sourceWorkspaceId,
@@ -4943,7 +4943,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
     process.env.PAPERCLIP_HOME = paperclipHome;
     process.env.PAPERCLIP_INSTANCE_ID = `runtime-control-${randomUUID()}`;
 
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const issueId = randomUUID();
@@ -4961,20 +4961,20 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
     const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(serverScript)}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Runtime control",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       sourceType: "local_path",
@@ -4983,7 +4983,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       projectId,
       title: "Source task",
       status: "in_progress",
@@ -4991,7 +4991,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       sourceIssueId: issueId,
@@ -5034,7 +5034,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
       actor: {
         id: null,
         name: "Board",
-        companyId,
+        domainId,
       },
       issue: {
         id: issueId,
@@ -5080,7 +5080,7 @@ describeEmbeddedPostgres("workspace runtime service control persistence", () => 
       await waitForMarker();
       const startingRow = await waitForPersistedStatus("starting");
       expect(startingRow).toMatchObject({
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         executionWorkspaceId,
@@ -5148,20 +5148,20 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     process.env.PAPERCLIP_HOME = paperclipHome;
     process.env.PAPERCLIP_INSTANCE_ID = `runtime-reconcile-${randomUUID()}`;
 
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Codex Coder",
       role: "engineer",
       status: "active",
@@ -5172,7 +5172,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -5193,7 +5193,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       agent: {
         id: agentId,
         name: "Codex Coder",
-        companyId,
+        domainId,
       },
       issue: null,
       workspace,
@@ -5269,7 +5269,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     });
     expect(stalePort).toBeTypeOf("number");
 
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const projectId = randomUUID();
     const runId = randomUUID();
@@ -5321,14 +5321,14 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       await expect(fetch(healthUrl)).resolves.toMatchObject({ ok: false, status: 503 });
 
       await db.insert(domains).values({
-        id: companyId,
+        id: domainId,
         name: "Paperclip",
-        issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+        issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
         requireBoardApprovalForNewAgents: false,
       });
       await db.insert(agents).values({
         id: agentId,
-        companyId,
+        domainId,
         name: "Codex Coder",
         role: "engineer",
         status: "active",
@@ -5339,7 +5339,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       });
       await db.insert(heartbeatRuns).values({
         id: runId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "manual",
         status: "running",
@@ -5348,13 +5348,13 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       });
       await db.insert(projects).values({
         id: projectId,
-        companyId,
+        domainId,
         name: "Runtime unhealthy adoption test",
         status: "in_progress",
       });
       await db.insert(executionWorkspaces).values({
         id: executionWorkspaceId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId: null,
         mode: "isolated_workspace",
@@ -5367,7 +5367,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       });
       await db.insert(workspaceRuntimeServices).values({
         id: stoppedServiceId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId: null,
         executionWorkspaceId,
@@ -5400,7 +5400,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
         agent: {
           id: agentId,
           name: "Codex Coder",
-          companyId,
+          domainId,
         },
         issue: null,
         workspace: {
@@ -5470,7 +5470,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
   }, 20_000);
 
   it("marks persisted local services stopped when the registry pid is stale", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const runtimeServiceId = randomUUID();
     const startedAt = new Date("2026-04-04T17:00:00.000Z");
     const updatedAt = new Date("2026-04-04T17:10:00.000Z");
@@ -5478,20 +5478,20 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const projectWorkspaceId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Runtime reconcile test",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       sourceType: "local_path",
@@ -5500,7 +5500,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     });
     await db.insert(workspaceRuntimeServices).values({
       id: runtimeServiceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       executionWorkspaceId: null,
@@ -5561,21 +5561,21 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
 
   it("persists controlled execution workspace stops as stopped", async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-stop-persisted-"));
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const projectId = randomUUID();
     const runId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Codex Coder",
       role: "engineer",
       status: "active",
@@ -5586,13 +5586,13 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Runtime stop test",
       status: "active",
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "isolated_workspace",
       strategyType: "git_worktree",
@@ -5604,7 +5604,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -5625,7 +5625,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
       agent: {
         id: agentId,
         name: "Codex Coder",
-        companyId,
+        domainId,
       },
       issue: null,
       workspace,
@@ -5682,20 +5682,20 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
 
   it("restarts a stopped auto-port service on the same port when it is available", async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-port-reuse-"));
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const projectId = randomUUID();
     const executionWorkspaceId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Codex Coder",
       role: "engineer",
       status: "active",
@@ -5706,13 +5706,13 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Runtime port reuse test",
       status: "active",
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "isolated_workspace",
       strategyType: "git_worktree",
@@ -5726,7 +5726,7 @@ describeEmbeddedPostgres("workspace runtime startup reconciliation", () => {
     const actor = {
       id: agentId,
       name: "Codex Coder",
-      companyId,
+      domainId,
     };
     const workspace = {
       ...buildWorkspace(workspaceRoot),
@@ -5816,7 +5816,7 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
       agent: {
         id: "agent-1",
         name: "Gateway Agent",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: {
         id: "issue-1",
@@ -5841,7 +5841,7 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
       agent: {
         id: "agent-1",
         name: "Gateway Agent",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: {
         id: "issue-1",
@@ -5862,7 +5862,7 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
 
     expect(first).toHaveLength(1);
     expect(first[0]).toMatchObject({
-      companyId: "company-1",
+      domainId: "domain-1",
       projectId: "project-1",
       projectWorkspaceId: "workspace-1",
       executionWorkspaceId: null,
@@ -5885,7 +5885,7 @@ describe("normalizeAdapterManagedRuntimeServices", () => {
       agent: {
         id: "agent-1",
         name: "Gateway Agent",
-        companyId: "company-1",
+        domainId: "domain-1",
       },
       issue: null,
       workspace,

@@ -13,8 +13,8 @@ import {
 import {
   agents,
   domains,
-  companySecretVersions,
-  companySecrets,
+  domainSecretVersions,
+  domainSecrets,
   createDb,
   environmentLeases,
   environments,
@@ -152,8 +152,8 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     await db.delete(environments);
     await db.delete(executionWorkspaces);
     await db.delete(plugins);
-    await db.delete(companySecretVersions);
-    await db.delete(companySecrets);
+    await db.delete(domainSecretVersions);
+    await db.delete(domainSecrets);
     await db.delete(projects);
     await db.delete(domains);
   });
@@ -168,7 +168,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     status?: "active" | "disabled";
     config?: Record<string, unknown>;
   } = {}) {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const environmentId = randomUUID();
     const runId = randomUUID();
@@ -177,7 +177,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     let config = input.config ?? {};
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -185,7 +185,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -197,13 +197,13 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       updatedAt: new Date(),
     });
     if (typeof config.privateKey === "string" && config.privateKey.length > 0) {
-      const secret = await secretService(db).create(companyId, {
+      const secret = await secretService(db).create(domainId, {
         name: `environment-runtime-private-key-${randomUUID()}`,
         provider: "local_encrypted",
         value: config.privateKey,
       });
       await secretService(db).createBinding({
-        companyId,
+        domainId,
         secretId: secret.id,
         targetType: "environment",
         targetId: environmentId,
@@ -250,7 +250,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     }
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -259,11 +259,11 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     return {
-      companyId,
+      domainId,
       agentId,
       environment: {
         id: environmentRecord.id,
-        companyId,
+        domainId,
         name: environmentRecord.name,
         description: environmentRecord.description,
         driver: environmentRecord.driver,
@@ -279,7 +279,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   async function seedReusablePluginSandboxLease() {
     const pluginId = randomUUID();
-    const { companyId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const { domainId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
     const providerConfig = {
       provider: "fake-plugin",
       image: "fake:test",
@@ -339,7 +339,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const projectId = randomUUID();
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: `Workspace ${projectId.slice(0, 8)}`,
       status: "active",
       createdAt: new Date(),
@@ -347,7 +347,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "shared_workspace",
       strategyType: "project_primary",
@@ -358,7 +358,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       updatedAt: new Date(),
     });
     const reusableLease = await environmentService(db).acquireLease({
-      companyId,
+      domainId,
       environmentId: environment.id,
       executionWorkspaceId,
       heartbeatRunId: runId,
@@ -377,7 +377,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
         reuseLease: true,
         reusableSandboxLease: {
           version: 1,
-          companyId,
+          domainId,
           environmentId: environment.id,
           executionWorkspaceId,
           agentId,
@@ -392,14 +392,14 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       },
     });
 
-    return { pluginId, companyId, agentId, environment, runId, executionWorkspaceId, reusableLease };
+    return { pluginId, domainId, agentId, environment, runId, executionWorkspaceId, reusableLease };
   }
 
   it("acquires and releases a local run lease through the runtime seam", async () => {
-    const { companyId, environment, runId } = await seedEnvironment();
+    const { domainId, environment, runId } = await seedEnvironment();
 
     const acquired = await runtime.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -430,10 +430,10 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("allows projectless runs through the runtime seam", async () => {
-    const { companyId, environment, runId } = await seedEnvironment();
+    const { domainId, environment, runId } = await seedEnvironment();
 
     const acquired = await runtime.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -446,7 +446,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("rejects truly unsupported drivers before acquiring a lease", async () => {
-    const { companyId, agentId, environment, runId } = await seedEnvironment({
+    const { domainId, agentId, environment, runId } = await seedEnvironment({
       driver: "ssh",
       name: "Fixture SSH",
       config: {
@@ -473,7 +473,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
     await expect(
       runtimeWithoutSsh.acquireRunLease({
-        companyId,
+        domainId,
         environment,
         issueId: null,
         heartbeatRunId: runId,
@@ -498,14 +498,14 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const statePath = path.join(fixtureRoot, "state.json");
     const fixture = await startSshEnvLabFixture({ statePath });
     const sshConfig = await buildSshEnvLabFixtureConfig(fixture);
-    const { companyId, environment, runId } = await seedEnvironment({
+    const { domainId, environment, runId } = await seedEnvironment({
       driver: "ssh",
       name: "Fixture SSH",
       config: sshConfig,
     });
     try {
       const acquired = await runtime.acquireRunLease({
-        companyId,
+        domainId,
         environment,
         issueId: null,
         heartbeatRunId: runId,
@@ -533,7 +533,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("acquires and releases a fake sandbox run lease through the runtime seam", async () => {
-    const { companyId, environment, runId } = await seedEnvironment({
+    const { domainId, environment, runId } = await seedEnvironment({
       driver: "sandbox",
       name: "Fake Sandbox",
       config: {
@@ -544,7 +544,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     const acquired = await runtime.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -570,7 +570,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("uses plugin-backed sandbox config for execute and release", async () => {
     const pluginId = randomUUID();
-    const { companyId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const { domainId, environment: baseEnvironment, runId } = await seedEnvironment();
     const fakePluginConfig = {
       provider: "fake-plugin",
       image: "fake:test",
@@ -669,7 +669,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -700,8 +700,8 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("uses resolved secret-ref config for plugin-backed sandbox execute and release", async () => {
     const pluginId = randomUUID();
-    const { companyId, environment: baseEnvironment, runId } = await seedEnvironment();
-    const apiSecret = await secretService(db).create(companyId, {
+    const { domainId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const apiSecret = await secretService(db).create(domainId, {
       name: `secure-plugin-api-key-${randomUUID()}`,
       provider: "local_encrypted",
       value: "resolved-provider-key",
@@ -720,7 +720,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       config: providerConfig,
     };
     await secretService(db).createBinding({
-      companyId,
+      domainId,
       secretId: apiSecret.id,
       targetType: "environment",
       targetId: environment.id,
@@ -806,7 +806,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -851,7 +851,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("waits briefly for a ready sandbox provider plugin worker to come online", async () => {
     const pluginId = randomUUID();
-    const { companyId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const { domainId, environment: baseEnvironment, runId } = await seedEnvironment();
     const providerConfig = {
       provider: "fake-plugin",
       image: "fake:test",
@@ -929,7 +929,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -943,7 +943,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("extends plugin-backed sandbox lease RPC timeouts from provider config", async () => {
     const pluginId = randomUUID();
-    const { companyId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const { domainId, environment: baseEnvironment, runId } = await seedEnvironment();
     const providerConfig = {
       provider: "fake-plugin",
       image: "fake:test",
@@ -1014,7 +1014,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -1040,7 +1040,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("falls back to acquire when plugin-backed sandbox lease resume throws", async () => {
     const pluginId = randomUUID();
-    const { companyId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const { domainId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
     const providerConfig = {
       provider: "fake-plugin",
       image: "fake:test",
@@ -1100,7 +1100,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const projectId = randomUUID();
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: `Workspace ${projectId.slice(0, 8)}`,
       status: "active",
       createdAt: new Date(),
@@ -1108,7 +1108,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "shared_workspace",
       strategyType: "project_primary",
@@ -1119,7 +1119,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       updatedAt: new Date(),
     });
     const staleLease = await environmentService(db).acquireLease({
-      companyId,
+      domainId,
       environmentId: environment.id,
       executionWorkspaceId,
       heartbeatRunId: runId,
@@ -1138,7 +1138,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
         reuseLease: true,
         reusableSandboxLease: {
           version: 1,
-          companyId,
+          domainId,
           environmentId: environment.id,
           executionWorkspaceId,
           agentId,
@@ -1180,7 +1180,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       agentId,
@@ -1219,7 +1219,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("does not resume released reusable plugin sandbox leases after provider config drift", async () => {
     const pluginId = randomUUID();
-    const { companyId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const { domainId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
     const providerConfig = {
       provider: "fake-plugin",
       image: "template-a",
@@ -1279,7 +1279,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const projectId = randomUUID();
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: `Workspace ${projectId.slice(0, 8)}`,
       status: "active",
       createdAt: new Date(),
@@ -1287,7 +1287,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "shared_workspace",
       strategyType: "project_primary",
@@ -1322,7 +1322,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const first = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       agentId,
@@ -1344,7 +1344,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const nextRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: nextRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -1363,7 +1363,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     const second = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment: updatedEnvironment,
       issueId: null,
       agentId,
@@ -1393,8 +1393,8 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("does not resume released reusable plugin sandbox leases after secret version drift", async () => {
     const pluginId = randomUUID();
-    const { companyId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
-    const apiSecret = await secretService(db).create(companyId, {
+    const { domainId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const apiSecret = await secretService(db).create(domainId, {
       name: `secure-plugin-api-key-${randomUUID()}`,
       provider: "local_encrypted",
       value: "resolved-provider-key",
@@ -1413,7 +1413,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       config: providerConfig,
     };
     await secretService(db).createBinding({
-      companyId,
+      domainId,
       secretId: apiSecret.id,
       targetType: "environment",
       targetId: environment.id,
@@ -1467,7 +1467,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const projectId = randomUUID();
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: `Workspace ${projectId.slice(0, 8)}`,
       status: "active",
       createdAt: new Date(),
@@ -1475,7 +1475,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "shared_workspace",
       strategyType: "project_primary",
@@ -1511,7 +1511,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const first = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       agentId,
@@ -1527,7 +1527,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const nextRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: nextRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -1535,7 +1535,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       updatedAt: new Date(),
     });
     const second = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       agentId,
@@ -1567,12 +1567,12 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("preserves active reusable sandbox leases held by another running run", async () => {
-    const { pluginId, companyId, agentId, environment, executionWorkspaceId, reusableLease } =
+    const { pluginId, domainId, agentId, environment, executionWorkspaceId, reusableLease } =
       await seedReusablePluginSandboxLease();
     const nextRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: nextRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -1600,7 +1600,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       agentId,
@@ -1626,7 +1626,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
   it("does not retain or resume plugin-backed sandbox leases unless the provider opts in", async () => {
     const pluginId = randomUUID();
-    const { companyId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
+    const { domainId, agentId, environment: baseEnvironment, runId } = await seedEnvironment();
     const providerConfig = {
       provider: "fake-plugin",
       image: "fake:test",
@@ -1678,7 +1678,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const projectId = randomUUID();
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: `Workspace ${projectId.slice(0, 8)}`,
       status: "active",
       createdAt: new Date(),
@@ -1686,7 +1686,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "shared_workspace",
       strategyType: "project_primary",
@@ -1697,7 +1697,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
       updatedAt: new Date(),
     });
     await environmentService(db).acquireLease({
-      companyId,
+      domainId,
       environmentId: environment.id,
       executionWorkspaceId,
       heartbeatRunId: runId,
@@ -1712,7 +1712,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
         reuseLease: true,
         reusableSandboxLease: {
           version: 1,
-          companyId,
+          domainId,
           environmentId: environment.id,
           executionWorkspaceId,
           agentId,
@@ -1748,7 +1748,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       agentId,
@@ -1766,7 +1766,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("destroys scoped reusable plugin-backed sandbox leases", async () => {
-    const { pluginId, companyId, executionWorkspaceId, reusableLease } =
+    const { pluginId, domainId, executionWorkspaceId, reusableLease } =
       await seedReusablePluginSandboxLease();
 
     const workerManager = {
@@ -1781,7 +1781,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const destroyed = await runtimeWithPlugin.destroyReusableSandboxLeases({
-      companyId,
+      domainId,
       executionWorkspaceId,
       failureReason: "execution_workspace_closed",
     });
@@ -1806,7 +1806,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("retries reusable plugin-backed sandbox destroy when the worker is unavailable", async () => {
-    const { pluginId, companyId, executionWorkspaceId, reusableLease } =
+    const { pluginId, domainId, executionWorkspaceId, reusableLease } =
       await seedReusablePluginSandboxLease();
 
     const offlineWorkerManager = {
@@ -1818,7 +1818,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     const pending = await runtimeWithOfflinePlugin.destroyReusableSandboxLeases({
-      companyId,
+      domainId,
       executionWorkspaceId,
       failureReason: "execution_workspace_closed",
     });
@@ -1847,7 +1847,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     const retried = await runtimeWithRecoveredPlugin.destroyReusableSandboxLeases({
-      companyId,
+      domainId,
       executionWorkspaceId,
       failureReason: "cleanup_retry",
     });
@@ -1872,7 +1872,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("releases a sandbox run lease from metadata after the environment config changes", async () => {
-    const { companyId, environment, runId } = await seedEnvironment({
+    const { domainId, environment, runId } = await seedEnvironment({
       driver: "sandbox",
       name: "Fake Sandbox",
       config: {
@@ -1883,7 +1883,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     const acquired = await runtime.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -1903,7 +1903,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("does not reuse a sandbox lease owned by a different agent for the same execution workspace", async () => {
-    const { companyId, agentId, environment, runId } = await seedEnvironment({
+    const { domainId, agentId, environment, runId } = await seedEnvironment({
       driver: "plugin",
       name: "Plugin Fake plugin",
       config: {
@@ -1921,7 +1921,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: `Workspace ${projectId.slice(0, 8)}`,
       status: "active",
       createdAt: new Date(),
@@ -1929,7 +1929,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "shared_workspace",
       strategyType: "project_primary",
@@ -1972,7 +1972,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     } as any);
 
     await environmentService(db).acquireLease({
-      companyId,
+      domainId,
       environmentId: environment.id,
       executionWorkspaceId,
       heartbeatRunId: runId,
@@ -2006,7 +2006,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, { pluginWorkerManager: workerManager });
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       agentId: otherAgentId,
@@ -2052,7 +2052,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, {
       pluginWorkerManager: workerManager,
     });
-    const { companyId, environment, runId } = await seedEnvironment({
+    const { domainId, environment, runId } = await seedEnvironment({
       driver: "plugin",
       name: "Plugin Fake plugin",
       config: {
@@ -2095,7 +2095,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     } as any);
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -2104,7 +2104,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
 
     expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentAcquireLease", {
       driverKey: "fake-plugin",
-      companyId,
+      domainId,
       environmentId: environment.id,
       issueId: null,
       config: { template: "base" },
@@ -2140,7 +2140,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     expect(released).toHaveLength(1);
     expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentReleaseLease", {
       driverKey: "fake-plugin",
-      companyId,
+      domainId,
       environmentId: environment.id,
       issueId: null,
       config: {},
@@ -2203,7 +2203,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     const runtimeWithPlugin = environmentRuntimeService(db, {
       pluginWorkerManager: workerManager,
     });
-    const { companyId, environment, runId } = await seedEnvironment({
+    const { domainId, environment, runId } = await seedEnvironment({
       driver: "plugin",
       name: "Plugin Full Lifecycle",
       config: {
@@ -2246,7 +2246,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     } as any);
 
     const acquired = await runtimeWithPlugin.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,
@@ -2299,7 +2299,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     expect(destroyed?.status).toBe("failed");
     expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentResumeLease", {
       driverKey: "fake-plugin",
-      companyId,
+      domainId,
       environmentId: environment.id,
       issueId: null,
       config: { template: "base" },
@@ -2311,7 +2311,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
     expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentRealizeWorkspace", expect.objectContaining({
       driverKey: "fake-plugin",
-      companyId,
+      domainId,
       environmentId: environment.id,
       config: { template: "base" },
       workspace: {
@@ -2321,7 +2321,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     }));
     expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentExecute", expect.objectContaining({
       driverKey: "fake-plugin",
-      companyId,
+      domainId,
       environmentId: environment.id,
       command: "echo",
       args: ["ok"],
@@ -2330,7 +2330,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     }), 31000);
     expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentDestroyLease", {
       driverKey: "fake-plugin",
-      companyId,
+      domainId,
       environmentId: environment.id,
       issueId: null,
       config: { template: "base" },
@@ -2343,7 +2343,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
   });
 
   it("releases with the driver captured on the lease even if the environment driver changes later", async () => {
-    const { companyId, environment, runId } = await seedEnvironment();
+    const { domainId, environment, runId } = await seedEnvironment();
     const environmentsSvc = environmentService(db);
     const localRelease = vi.fn(async ({ lease, status }: { lease: { id: string }; status: "released" | "expired" | "failed" }) =>
       await environmentsSvc.releaseLease(lease.id, status)
@@ -2356,7 +2356,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
         {
           driver: "local",
           acquireRunLease: async (input) => await environmentsSvc.acquireLease({
-            companyId: input.companyId,
+            domainId: input.domainId,
             environmentId: input.environment.id,
             executionWorkspaceId: input.executionWorkspaceId,
             issueId: input.issueId,
@@ -2379,7 +2379,7 @@ describeEmbeddedPostgres("environmentRuntimeService", () => {
     });
 
     const acquired = await runtimeWithSpies.acquireRunLease({
-      companyId,
+      domainId,
       environment,
       issueId: null,
       heartbeatRunId: runId,

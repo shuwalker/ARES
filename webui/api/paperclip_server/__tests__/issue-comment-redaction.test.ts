@@ -5,20 +5,20 @@ import { sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   domains,
-  companyMemberships,
+  domainMemberships,
   createDb,
   issueComments,
   issueReferenceMentions,
   issues,
 } from "@paperclipai/db";
-import { companySearchQuerySchema } from "@paperclipai/shared";
+import { domainSearchQuerySchema } from "@paperclipai/shared";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { errorHandler } from "../middleware/index.js";
 import { issueRoutes } from "../routes/issues.js";
-import { companySearchService } from "../services/company-search.js";
+import { domainSearchService } from "../services/domain-search.js";
 import { buildPaperclipWakePayload } from "../services/heartbeat.js";
 import { issueReferenceService } from "../services/issue-references.js";
 import { issueService } from "../services/issues.js";
@@ -47,7 +47,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     await db.delete(issueReferenceMentions);
     await db.delete(issueComments);
     await db.delete(issues);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(domains);
   });
 
@@ -56,45 +56,45 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
   });
 
   async function seedIssue() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Comment Redaction Co",
-      issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `R${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       identifier: "RED-1",
       title: "Deleted comment redaction",
       status: "todo",
       priority: "medium",
     });
-    await db.insert(companyMemberships).values({
-      companyId,
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: "board-user-1",
       status: "active",
       membershipRole: "owner",
       updatedAt: new Date(),
     });
-    return { companyId, issueId };
+    return { domainId, issueId };
   }
 
-  function createApp(companyId: string) {
+  function createApp(domainId: string) {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).actor = {
         type: "board",
         userId: "board-user-1",
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+        domainIds: [domainId],
+        memberships: [{ domainId, membershipRole: "owner", status: "active" }],
         source: "cloud_tenant",
         // cloud_tenant actors are never instance admins — reads flow through
-        // the active company membership seeded in seedIssue().
+        // the active domain membership seeded in seedIssue().
         isInstanceAdmin: false,
       };
       next();
@@ -116,12 +116,12 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
   }
 
   it("redacts deleted comment bodies from ordinary reads, heartbeat context, and wake payloads", async () => {
-    const { companyId, issueId } = await seedIssue();
+    const { domainId, issueId } = await seedIssue();
     const commentId = randomUUID();
     const deletedAt = new Date("2026-06-03T12:00:00.000Z");
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
+      domainId,
       issueId,
       authorUserId: "board-user-1",
       body: "secret deleted body",
@@ -148,7 +148,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     expect(exactComment?.body).toBe("");
     expect(exactComment?.metadata).toBeNull();
 
-    const heartbeatContext = await request(createApp(companyId))
+    const heartbeatContext = await request(createApp(domainId))
       .get(`/api/issues/${issueId}/heartbeat-context`)
       .query({ wakeCommentId: commentId });
     expect(heartbeatContext.status, JSON.stringify(heartbeatContext.body)).toBe(200);
@@ -163,7 +163,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
 
     const wakePayload = await buildPaperclipWakePayload({
       db,
-      companyId,
+      domainId,
       contextSnapshot: {
         issueId,
         commentId,
@@ -187,10 +187,10 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     expect(JSON.stringify(wakePayload)).not.toContain("secret metadata");
   });
 
-  it("excludes deleted comment bodies from company search", async () => {
-    const { companyId, issueId } = await seedIssue();
+  it("excludes deleted comment bodies from domain search", async () => {
+    const { domainId, issueId } = await seedIssue();
     await db.insert(issueComments).values({
-      companyId,
+      domainId,
       issueId,
       body: "vanished-search-needle",
       deletedAt: new Date("2026-06-03T12:00:00.000Z"),
@@ -198,21 +198,21 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
       deletedByUserId: "board-user-1",
     });
 
-    const result = await companySearchService(db).search(
-      companyId,
-      companySearchQuerySchema.parse({ q: "vanished-search-needle", scope: "comments" }),
+    const result = await domainSearchService(db).search(
+      domainId,
+      domainSearchQuerySchema.parse({ q: "vanished-search-needle", scope: "comments" }),
     );
 
     expect(result.results).toEqual([]);
   });
 
   it("clears issue references sourced from deleted comment bodies", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const sourceIssueId = randomUUID();
     const targetIssueId = randomUUID();
     const commentId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Reference Redaction Co",
       issuePrefix: "REF",
       requireBoardApprovalForNewAgents: false,
@@ -220,7 +220,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     await db.insert(issues).values([
       {
         id: sourceIssueId,
-        companyId,
+        domainId,
         identifier: "REF-1",
         title: "Source issue",
         status: "todo",
@@ -228,7 +228,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
       },
       {
         id: targetIssueId,
-        companyId,
+        domainId,
         identifier: "REF-2",
         title: "Target issue",
         status: "todo",
@@ -237,7 +237,7 @@ describeEmbeddedPostgres("deleted issue comment redaction", () => {
     ]);
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
+      domainId,
       issueId: sourceIssueId,
       body: "Follow up in REF-2",
     });

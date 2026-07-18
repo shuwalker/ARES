@@ -463,11 +463,11 @@ function fingerprintForCategory(
   category: EffectiveRunConfigFingerprintCategory,
 ) {
   switch (category) {
-    case "session":
+    life_admin "session":
       return fingerprints.sessionFingerprint.fingerprint;
-    case "workspace":
+    life_admin "workspace":
       return fingerprints.workspaceFingerprint.fingerprint;
-    case "lease":
+    life_admin "lease":
       return fingerprints.leaseFingerprint.fingerprint;
   }
 }

@@ -42,17 +42,17 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
   });
 
   async function seedEmptyDomain() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
-      name: "Clean install company",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      id: domainId,
+      name: "Clean install domain",
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    return companyId;
+    return domainId;
   }
 
-  async function listAdapterTypesByName(companyId: string) {
+  async function listAdapterTypesByName(domainId: string) {
     const rows = await db
       .select({
         name: agents.name,
@@ -61,20 +61,20 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
         permissions: agents.permissions,
       })
       .from(agents)
-      .where(eq(agents.companyId, companyId));
+      .where(eq(agents.domainId, domainId));
     return new Map(rows.map((row) => [row.name, row]));
   }
 
   it("installs core-exec-team end-to-end with no caller overrides and creates 3 claude_local agents", async () => {
-    const companyId = await seedEmptyDomain();
+    const domainId = await seedEmptyDomain();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "core-exec-team", {
+    await svc.installCatalogTeam(domainId, "core-exec-team", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName(domainId);
     expect(byName.size).toBe(3);
 
     const adapterTypes = Array.from(byName.values()).map((row) => row.adapterType);
@@ -84,15 +84,15 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
   });
 
   it("installs product-design end-to-end with no caller overrides and uses claude_local", async () => {
-    const companyId = await seedEmptyDomain();
+    const domainId = await seedEmptyDomain();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "product-design", {
+    await svc.installCatalogTeam(domainId, "product-design", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName(domainId);
     expect(byName.size).toBe(1);
     const adapterTypes = Array.from(byName.values()).map((row) => row.adapterType);
     expect(adapterTypes).toEqual(["claude_local"]);
@@ -100,15 +100,15 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
   });
 
   it("installs product-engineering end-to-end with no caller overrides and uses claude_local for every agent", async () => {
-    const companyId = await seedEmptyDomain();
+    const domainId = await seedEmptyDomain();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "product-engineering", {
+    await svc.installCatalogTeam(domainId, "product-engineering", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName(domainId);
     expect(byName.size).toBe(3);
     const adapterTypes = Array.from(byName.values()).map((row) => row.adapterType);
     expect(adapterTypes).toEqual(["claude_local", "claude_local", "claude_local"]);
@@ -117,10 +117,10 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
   });
 
   it("honors an explicit caller adapter override for a single slug while defaulting the rest to claude_local", async () => {
-    const companyId = await seedEmptyDomain();
+    const domainId = await seedEmptyDomain();
     const svc = teamsCatalogService(db);
 
-    await svc.installCatalogTeam(companyId, "core-exec-team", {
+    await svc.installCatalogTeam(domainId, "core-exec-team", {
       collisionStrategy: "rename",
       include: { projects: false, issues: false },
       adapterOverrides: {
@@ -128,7 +128,7 @@ describeEmbeddedPostgres("teams catalog install with no caller adapter overrides
       },
     });
 
-    const byName = await listAdapterTypesByName(companyId);
+    const byName = await listAdapterTypesByName(domainId);
     expect(byName.size).toBe(3);
     const ctoRow = Array.from(byName.values()).find((row) => row.role === "engineering-manager" || row.name === "CTO");
     expect(ctoRow?.adapterType).toBe("opencode_local");

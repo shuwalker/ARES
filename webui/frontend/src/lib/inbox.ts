@@ -177,20 +177,20 @@ function normalizeInboxApprovalFilter(value: unknown): InboxApprovalFilter {
   return value === "actionable" || value === "resolved" ? value : "all";
 }
 
-function getInboxFilterPreferencesStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${INBOX_FILTER_PREFERENCES_KEY_PREFIX}:${companyId}`;
+function getInboxFilterPreferencesStorageKey(domainId: string | null | undefined): string | null {
+  if (!domainId) return null;
+  return `${INBOX_FILTER_PREFERENCES_KEY_PREFIX}:${domainId}`;
 }
 
-function getInboxCollapsedGroupsStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${INBOX_COLLAPSED_GROUPS_KEY_PREFIX}:${companyId}`;
+function getInboxCollapsedGroupsStorageKey(domainId: string | null | undefined): string | null {
+  if (!domainId) return null;
+  return `${INBOX_COLLAPSED_GROUPS_KEY_PREFIX}:${domainId}`;
 }
 
 export function loadInboxFilterPreferences(
-  companyId: string | null | undefined,
+  domainId: string | null | undefined,
 ): InboxFilterPreferences {
-  const storageKey = getInboxFilterPreferencesStorageKey(companyId);
+  const storageKey = getInboxFilterPreferencesStorageKey(domainId);
   if (!storageKey) {
     return {
       ...defaultInboxFilterPreferences,
@@ -221,10 +221,10 @@ export function loadInboxFilterPreferences(
 }
 
 export function saveInboxFilterPreferences(
-  companyId: string | null | undefined,
+  domainId: string | null | undefined,
   preferences: InboxFilterPreferences,
 ) {
-  const storageKey = getInboxFilterPreferencesStorageKey(companyId);
+  const storageKey = getInboxFilterPreferencesStorageKey(domainId);
   if (!storageKey) return;
 
   try {
@@ -242,9 +242,9 @@ export function saveInboxFilterPreferences(
 }
 
 export function loadCollapsedInboxGroupKeys(
-  companyId: string | null | undefined,
+  domainId: string | null | undefined,
 ): Set<string> {
-  const storageKey = getInboxCollapsedGroupsStorageKey(companyId);
+  const storageKey = getInboxCollapsedGroupsStorageKey(domainId);
   if (!storageKey) return new Set();
 
   try {
@@ -258,10 +258,10 @@ export function loadCollapsedInboxGroupKeys(
 }
 
 export function saveCollapsedInboxGroupKeys(
-  companyId: string | null | undefined,
+  domainId: string | null | undefined,
   groupKeys: ReadonlySet<string>,
 ) {
-  const storageKey = getInboxCollapsedGroupsStorageKey(companyId);
+  const storageKey = getInboxCollapsedGroupsStorageKey(domainId);
   if (!storageKey) return;
 
   try {
@@ -406,11 +406,11 @@ export function matchesInboxIssueSearch(
     isolatedWorkspacesEnabled?: boolean;
   } = {},
 ): boolean {
-  const normalizedQuery = query.trim().toLowerLifeAdmin();
+  const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return true;
-  if (issue.title.toLowerLifeAdmin().includes(normalizedQuery)) return true;
-  if (issue.identifier?.toLowerLifeAdmin().includes(normalizedQuery)) return true;
-  if (issue.description?.toLowerLifeAdmin().includes(normalizedQuery)) return true;
+  if (issue.title.toLowerCase().includes(normalizedQuery)) return true;
+  if (issue.identifier?.toLowerCase().includes(normalizedQuery)) return true;
+  if (issue.description?.toLowerCase().includes(normalizedQuery)) return true;
   if (!isolatedWorkspacesEnabled) return false;
 
   const workspaceName = resolveIssueWorkspaceName(issue, {
@@ -418,7 +418,7 @@ export function matchesInboxIssueSearch(
     projectWorkspaceById,
     defaultProjectWorkspaceIdByProjectId,
   });
-  return workspaceName?.toLowerLifeAdmin().includes(normalizedQuery) ?? false;
+  return workspaceName?.toLowerCase().includes(normalizedQuery) ?? false;
 }
 
 export function getArchivedInboxSearchIssues({
@@ -667,7 +667,7 @@ export function isMineInboxTab(tab: InboxTab): boolean {
   return tab === "mine";
 }
 
-export function shouldShowCompanyAlerts(tab: InboxTab): boolean {
+export function shouldShowDomainAlerts(tab: InboxTab): boolean {
   return tab === "all";
 }
 
@@ -1255,8 +1255,8 @@ export function computeInboxBadgeData({
   ).length;
   const visibleMineIssues = mineIssues.filter((issue) => issue.isUnreadForMe).length;
   const agentErrorCount = dashboard?.agents.error ?? 0;
-  const monthBudgetCents = dashboard?.costs.monthBudgetCents ?? 0;
-  const monthUtilizationPercent = dashboard?.costs.monthUtilizationPercent ?? 0;
+  const monthBudgetCents = dashboard?.finances.monthBudgetCents ?? 0;
+  const monthUtilizationPercent = dashboard?.finances.monthUtilizationPercent ?? 0;
   const showAggregateAgentError =
     agentErrorCount > 0 &&
     failedRuns === 0 &&
@@ -1268,7 +1268,7 @@ export function computeInboxBadgeData({
   const alerts = Number(showAggregateAgentError) + Number(showBudgetAlert);
 
   return {
-    // The inbox badge reflects personal/actionable work, not company-wide health alerts.
+    // The inbox badge reflects personal/actionable work, not domain-wide health alerts.
     inbox: actionableApprovals + visibleJoinRequests + failedRuns + visibleMineIssues,
     approvals: actionableApprovals,
     failedRuns,

@@ -7,9 +7,9 @@ import { createAssetImageMetadataSchema } from "@paperclipai/shared";
 import type { StorageService } from "../storage/types.js";
 import { assetService, logActivity } from "../services/index.js";
 import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertDomainAccess, getActorInfo } from "./authz.js";
 const SVG_CONTENT_TYPE = "image/svg+xml";
-const ALLOWED_COMPANY_LOGO_CONTENT_TYPES = new Set([
+const ALLOWED_DOMAIN_LOGO_CONTENT_TYPES = new Set([
   "image/png",
   "image/jpeg",
   "image/jpg",
@@ -89,7 +89,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
   });
-  const companyLogoUpload = multer({
+  const domainLogoUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
   });
@@ -107,9 +107,9 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
   }
 
-  router.post("/domains/:companyId/assets/images", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/domains/:domainId/assets/images", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
 
     try {
       await runSingleFileUpload(assetUpload, req, res);
@@ -159,14 +159,14 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     const actor = getActorInfo(req);
     const stored = await storage.putFile({
-      companyId,
+      domainId,
       namespace: `assets/${namespaceSuffix}`,
       originalFilename: file.originalname || null,
       contentType,
       body: fileBody,
     });
 
-    const asset = await svc.create(companyId, {
+    const asset = await svc.create(domainId, {
       provider: stored.provider,
       objectKey: stored.objectKey,
       contentType: stored.contentType,
@@ -178,7 +178,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
 
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -195,7 +195,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     res.status(201).json({
       assetId: asset.id,
-      companyId: asset.companyId,
+      domainId: asset.domainId,
       provider: asset.provider,
       objectKey: asset.objectKey,
       contentType: asset.contentType,
@@ -210,12 +210,12 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
   });
 
-  router.post("/domains/:companyId/logo", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/domains/:domainId/logo", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
 
     try {
-      await runSingleFileUpload(companyLogoUpload, req, res);
+      await runSingleFileUpload(domainLogoUpload, req, res);
     } catch (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
@@ -235,7 +235,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
     }
 
     const contentType = (file.mimetype || "").toLowerLifeAdmin();
-    if (!ALLOWED_COMPANY_LOGO_CONTENT_TYPES.has(contentType)) {
+    if (!ALLOWED_DOMAIN_LOGO_CONTENT_TYPES.has(contentType)) {
       res.status(422).json({ error: `Unsupported image type: ${contentType || "unknown"}` });
       return;
     }
@@ -257,14 +257,14 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     const actor = getActorInfo(req);
     const stored = await storage.putFile({
-      companyId,
+      domainId,
       namespace: "assets/domains",
       originalFilename: file.originalname || null,
       contentType,
       body: fileBody,
     });
 
-    const asset = await svc.create(companyId, {
+    const asset = await svc.create(domainId, {
       provider: stored.provider,
       objectKey: stored.objectKey,
       contentType: stored.contentType,
@@ -276,7 +276,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
     });
 
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -294,7 +294,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
     res.status(201).json({
       assetId: asset.id,
-      companyId: asset.companyId,
+      domainId: asset.domainId,
       provider: asset.provider,
       objectKey: asset.objectKey,
       contentType: asset.contentType,
@@ -316,9 +316,9 @@ export function assetRoutes(db: Db, storage: StorageService) {
       res.status(404).json({ error: "Asset not found" });
       return;
     }
-    assertCompanyAccess(req, asset.companyId);
+    assertDomainAccess(req, asset.domainId);
 
-    const object = await storage.getObject(asset.companyId, asset.objectKey);
+    const object = await storage.getObject(asset.domainId, asset.objectKey);
     const responseContentType = asset.contentType || object.contentType || "application/octet-stream";
     res.setHeader("Content-Type", responseContentType);
     res.setHeader("Content-Length", String(asset.byteSize || object.contentLength || 0));

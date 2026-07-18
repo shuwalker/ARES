@@ -82,11 +82,11 @@ describe("GET /invites/:token", () => {
     mockStorage.headObject.mockResolvedValue({ exists: true, contentLength: 3, contentType: "image/png" });
   });
 
-  it("returns company branding in the invite summary response", async () => {
+  it("returns domain branding in the invite summary response", async () => {
     const invite = {
       id: "invite-1",
-      companyId: "company-1",
-      inviteType: "company_join",
+      domainId: "domain-1",
+      inviteType: "domain_join",
       allowedJoinTypes: "human",
       tokenHash: "hash",
       defaultsPayload: null,
@@ -109,8 +109,8 @@ describe("GET /invites/:token", () => {
         ],
         [
           {
-            companyId: "company-1",
-            objectKey: "company-1/assets/domains/logo-1",
+            domainId: "domain-1",
+            objectKey: "domain-1/assets/domains/logo-1",
             contentType: "image/png",
             byteSize: 3,
             originalFilename: "logo.png",
@@ -122,20 +122,20 @@ describe("GET /invites/:token", () => {
     const res = await request(app).get("/api/invites/pcp_invite_test");
 
     expect(res.status).toBe(200);
-    expect(res.body.companyId).toBe("company-1");
-    expect(res.body.companyName).toBe("Acme Robotics");
-    expect(res.body.companyBrandColor).toBe("#114488");
-    expect(res.body.companyLogoUrl).toBe("/api/invites/pcp_invite_test/logo");
-    expect(res.body.inviteType).toBe("company_join");
+    expect(res.body.domainId).toBe("domain-1");
+    expect(res.body.domainName).toBe("Acme Robotics");
+    expect(res.body.domainBrandColor).toBe("#114488");
+    expect(res.body.domainLogoUrl).toBe("/api/invites/pcp_invite_test/logo");
+    expect(res.body.inviteType).toBe("domain_join");
   }, 10_000);
 
-  it("omits companyLogoUrl when the stored logo object is missing", async () => {
+  it("omits domainLogoUrl when the stored logo object is missing", async () => {
     mockStorage.headObject.mockResolvedValue({ exists: false });
 
     const invite = {
       id: "invite-1",
-      companyId: "company-1",
-      inviteType: "company_join",
+      domainId: "domain-1",
+      inviteType: "domain_join",
       allowedJoinTypes: "human",
       tokenHash: "hash",
       defaultsPayload: null,
@@ -158,8 +158,8 @@ describe("GET /invites/:token", () => {
         ],
         [
           {
-            companyId: "company-1",
-            objectKey: "company-1/assets/domains/logo-1",
+            domainId: "domain-1",
+            objectKey: "domain-1/assets/domains/logo-1",
             contentType: "image/png",
             byteSize: 3,
             originalFilename: "logo.png",
@@ -171,14 +171,14 @@ describe("GET /invites/:token", () => {
     const res = await request(app).get("/api/invites/pcp_invite_test");
 
     expect(res.status).toBe(200);
-    expect(res.body.companyLogoUrl).toBeNull();
+    expect(res.body.domainLogoUrl).toBeNull();
   }, 10_000);
 
   it("returns pending join-request status for an already-accepted invite", async () => {
     const invite = {
       id: "invite-1",
-      companyId: "company-1",
-      inviteType: "company_join",
+      domainId: "domain-1",
+      inviteType: "domain_join",
       allowedJoinTypes: "human",
       tokenHash: "hash",
       defaultsPayload: null,
@@ -202,8 +202,8 @@ describe("GET /invites/:token", () => {
         ],
         [
           {
-            companyId: "company-1",
-            objectKey: "company-1/assets/domains/logo-1",
+            domainId: "domain-1",
+            objectKey: "domain-1/assets/domains/logo-1",
             contentType: "image/png",
             byteSize: 3,
             originalFilename: "logo.png",
@@ -217,14 +217,14 @@ describe("GET /invites/:token", () => {
     expect(res.status).toBe(200);
     expect(res.body.joinRequestStatus).toBe("pending_approval");
     expect(res.body.joinRequestType).toBe("human");
-    expect(res.body.companyName).toBe("Acme Robotics");
+    expect(res.body.domainName).toBe("Acme Robotics");
   }, 10_000);
 
   it("falls back to a reusable human join request when the accepted invite reused an existing queue entry", async () => {
     const invite = {
       id: "invite-2",
-      companyId: "company-1",
-      inviteType: "company_join",
+      domainId: "domain-1",
+      inviteType: "domain_join",
       allowedJoinTypes: "human",
       tokenHash: "hash",
       defaultsPayload: null,
@@ -242,14 +242,14 @@ describe("GET /invites/:token", () => {
       requestingUserId: "user-1",
       requestEmailSnapshot: "jane@example.com",
     };
-    const companyBranding = {
+    const domainBranding = {
       name: "Acme Robotics",
       brandColor: "#114488",
       logoAssetId: "logo-1",
     };
     const logoAsset = {
-      companyId: "company-1",
-      objectKey: "company-1/assets/domains/logo-1",
+      domainId: "domain-1",
+      objectKey: "domain-1/assets/domains/logo-1",
       contentType: "image/png",
       byteSize: 3,
       originalFilename: "logo.png",
@@ -261,8 +261,8 @@ describe("GET /invites/:token", () => {
         [{ email: "jane@example.com" }],
         [reusableJoinRequest],
         [reusableJoinRequest],
-        [companyBranding],
-        [companyBranding],
+        [domainBranding],
+        [domainBranding],
         [logoAsset],
         [logoAsset],
       ),

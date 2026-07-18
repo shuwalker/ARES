@@ -15,7 +15,7 @@ import {
   buildIssueThreadInteractionSummary,
   type IssueThreadInteraction,
 } from "./issue-thread-interactions";
-import type { IssueJournalEvent } from "./issue-timeline-events";
+import type { IssueJournalEvent } from "./issue-journal-events";
 import {
   summarizeNotice,
 } from "./transcriptPresentation";
@@ -79,7 +79,7 @@ export interface IssueChatTranscriptEntry {
   inputTokens?: number;
   outputTokens?: number;
   cachedTokens?: number;
-  costUsd?: number;
+  financeUsd?: number;
   changeType?: "add" | "remove" | "context" | "hunk" | "file_header" | "truncation";
 }
 
@@ -262,7 +262,7 @@ function latestSameRunHandoffTimestamp(args: {
   interactionCreatedAtMs: number;
   sourceRunId: string;
   comments: readonly IssueChatComment[];
-  timelineEvents: readonly IssueJournalEvent[];
+  journalEvents: readonly IssueJournalEvent[];
   linkedRuns: readonly IssueChatLinkedRun[];
   liveRuns: readonly LiveRunForIssue[];
 }) {
@@ -270,7 +270,7 @@ function latestSameRunHandoffTimestamp(args: {
     interactionCreatedAtMs,
     sourceRunId,
     comments,
-    timelineEvents,
+    journalEvents,
     linkedRuns,
     liveRuns,
   } = args;
@@ -279,7 +279,7 @@ function latestSameRunHandoffTimestamp(args: {
       createdAtMs: toTimestamp(comment.createdAt),
       runId: comment.runId ?? null,
     })),
-    ...timelineEvents.map((event) => ({
+    ...journalEvents.map((event) => ({
       createdAtMs: toTimestamp(event.createdAt),
       runId: event.runId ?? null,
     })),
@@ -488,10 +488,10 @@ function createCommentMessage(args: {
   agentMap?: Map<string, Agent>;
   currentUserId?: string | null;
   userLabelMap?: ReadonlyMap<string, string> | null;
-  companyId?: string | null;
+  domainId?: string | null;
   projectId?: string | null;
 }): ThreadMessage {
-  const { comment, agentMap, currentUserId, userLabelMap, companyId, projectId } = args;
+  const { comment, agentMap, currentUserId, userLabelMap, domainId, projectId } = args;
   const createdAt = toDate(comment.createdAt);
   const isSystemNotice = comment.authorType === "system";
   const authorAgentId = effectiveCommentAuthorAgentId(comment);
@@ -504,7 +504,7 @@ function createCommentMessage(args: {
     authorType: effectiveCommentAuthorType(comment),
     authorAgentId,
     authorUserId: comment.authorUserId,
-    companyId: companyId ?? comment.companyId,
+    domainId: domainId ?? comment.domainId,
     projectId: projectId ?? null,
     runId: effectiveCommentRunId(comment),
     runAgentId: effectiveCommentRunAgentId(comment),
@@ -1033,7 +1033,7 @@ function createLiveRunMessage(args: {
 export function buildIssueChatMessages(args: {
   comments: readonly IssueChatComment[];
   interactions?: readonly IssueThreadInteraction[];
-  timelineEvents: readonly IssueJournalEvent[];
+  journalEvents: readonly IssueJournalEvent[];
   linkedRuns: readonly IssueChatLinkedRun[];
   liveRuns: readonly LiveRunForIssue[];
   activeRun?: ActiveRunForIssue | null;
@@ -1041,7 +1041,7 @@ export function buildIssueChatMessages(args: {
   hasOutputForRun?: (runId: string) => boolean;
   includeSucceededRunsWithoutOutput?: boolean;
   issueId?: string;
-  companyId?: string | null;
+  domainId?: string | null;
   projectId?: string | null;
   agentMap?: Map<string, Agent>;
   currentUserId?: string | null;
@@ -1050,7 +1050,7 @@ export function buildIssueChatMessages(args: {
   const {
     comments,
     interactions = [],
-    timelineEvents,
+    journalEvents,
     linkedRuns,
     liveRuns,
     activeRun,
@@ -1058,7 +1058,7 @@ export function buildIssueChatMessages(args: {
     hasOutputForRun,
     includeSucceededRunsWithoutOutput = false,
     issueId,
-    companyId,
+    domainId,
     projectId,
     agentMap,
     currentUserId,
@@ -1071,7 +1071,7 @@ export function buildIssueChatMessages(args: {
     orderedMessages.push({
       createdAtMs: toTimestamp(comment.createdAt),
       order: 1,
-      message: createCommentMessage({ comment, agentMap, currentUserId, userLabelMap, companyId, projectId }),
+      message: createCommentMessage({ comment, agentMap, currentUserId, userLabelMap, domainId, projectId }),
     });
   }
 
@@ -1082,7 +1082,7 @@ export function buildIssueChatMessages(args: {
         interactionCreatedAtMs: createdAtMs,
         sourceRunId: interaction.sourceRunId,
         comments,
-        timelineEvents,
+        journalEvents,
         linkedRuns,
         liveRuns,
       })
@@ -1094,7 +1094,7 @@ export function buildIssueChatMessages(args: {
     });
   }
 
-  for (const event of sortByCreated(timelineEvents)) {
+  for (const event of sortByCreated(journalEvents)) {
     orderedMessages.push({
       createdAtMs: toTimestamp(event.createdAt),
       order: 0,

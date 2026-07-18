@@ -95,7 +95,7 @@ describe("errorHandler", () => {
       actor: {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         runId: "run-1",
         source: "agent_jwt",
       },
@@ -117,7 +117,7 @@ describe("errorHandler", () => {
     expect(recordResponsibleUserDenialOnActiveRunMock).toHaveBeenCalledWith(db, {
       runId: "run-1",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       code: "RESPONSIBLE_USER_UNAUTHORIZED",
     });
   });

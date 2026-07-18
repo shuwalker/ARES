@@ -5,7 +5,7 @@ import type { Db } from "@paperclipai/db";
 import { conflict, unprocessable } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import {
-  readCustomImageSetupSessionCompanyId,
+  readCustomImageSetupSessionDomainId,
   requireFutureCustomImageSetupExpiry,
 } from "../services/environment-custom-image-setup-session-utils.js";
 import { environmentCustomImageService } from "../services/environment-custom-images.js";
@@ -323,9 +323,9 @@ async function validateTerminalUpgrade(input: {
     input.sessionStore.delete(terminalSession.id);
     throw unprocessable("Invalid terminal setup session.");
   }
-  const storedSetupCompanyId = readCustomImageSetupSessionCompanyId(storedSetupSession);
+  const storedSetupDomainId = readCustomImageSetupSessionDomainId(storedSetupSession);
   if (
-    storedSetupCompanyId !== terminalSession.companyId
+    storedSetupDomainId !== terminalSession.domainId
     || storedSetupSession.environmentId !== terminalSession.environmentId
     || storedSetupSession.provider !== terminalSession.provider
   ) {
@@ -339,7 +339,7 @@ async function validateTerminalUpgrade(input: {
   });
   if (
     refreshed.session.id !== terminalSession.setupSessionId
-    || readCustomImageSetupSessionCompanyId(refreshed.session) !== terminalSession.companyId
+    || readCustomImageSetupSessionDomainId(refreshed.session) !== terminalSession.domainId
     || refreshed.session.environmentId !== terminalSession.environmentId
     || refreshed.session.provider !== terminalSession.provider
   ) {

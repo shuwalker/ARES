@@ -61,7 +61,7 @@ export function summarizeHeartbeatRunResultJson(
     }
   }
 
-  const numericFieldAliases = ["total_cost_usd", "cost_usd", "costUsd"] as const;
+  const numericFieldAliases = ["total_finance_usd", "finance_usd", "financeUsd"] as const;
   for (const key of numericFieldAliases) {
     const value = readNumericField(resultJson, key);
     if (value !== undefined && value !== null) {

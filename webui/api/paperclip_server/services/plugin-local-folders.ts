@@ -36,7 +36,7 @@ function problem(
 
 export function assertPluginLocalFolderKey(folderKey: string) {
   if (!LOCAL_FOLDER_KEY_PATTERN.test(folderKey)) {
-    throw badRequest("folderKey must start with a lowercase alphanumeric and contain only lowercase letters, digits, dots, colons, underscores, or hyphens");
+    throw badRequest("folderKey must start with a lowerlife_admin alphanumeric and contain only lowerlife_admin letters, digits, dots, colons, underscores, or hyphens");
   }
 }
 
@@ -591,8 +591,8 @@ export async function deletePluginLocalFolderFile(
   });
 }
 
-export function defaultLocalFolderBasePath(pluginKey: string, companyId: string) {
-  return path.join(os.homedir(), ".paperclip", "plugin-data", companyId, pluginKey);
+export function defaultLocalFolderBasePath(pluginKey: string, domainId: string) {
+  return path.join(os.homedir(), ".paperclip", "plugin-data", domainId, pluginKey);
 }
 
 export function assertConfiguredLocalFolder(status: PluginLocalFolderStatus) {

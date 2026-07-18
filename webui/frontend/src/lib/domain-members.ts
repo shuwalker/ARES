@@ -1,22 +1,22 @@
-import type { CompanyMember, CompanyUserDirectoryEntry } from "@/api/access";
+import type { DomainMember, DomainUserDirectoryEntry } from "@/api/access";
 import type { InlineEntityOption } from "@/components/InlineEntitySelector";
 import type { MentionOption } from "@/components/MarkdownEditor";
 import type { Agent, Issue, Project } from "@paperclipai/shared";
 
-export interface CompanyUserProfile {
+export interface DomainUserProfile {
   label: string;
   image: string | null;
 }
 
-type CompanyUserRecord = Pick<CompanyMember, "principalId" | "status" | "user">
-  | CompanyUserDirectoryEntry;
+type DomainUserRecord = Pick<DomainMember, "principalId" | "status" | "user">
+  | DomainUserDirectoryEntry;
 
 function fallbackUserLabel(userId: string): string {
   if (userId === "local-board") return "Board";
   return userId.slice(0, 5);
 }
 
-function baseMemberLabel(member: Pick<CompanyUserRecord, "principalId" | "user">): string {
+function baseMemberLabel(member: Pick<DomainUserRecord, "principalId" | "user">): string {
   const name = member.user?.name?.trim();
   if (name) return name;
   const email = member.user?.email?.trim();
@@ -24,8 +24,8 @@ function baseMemberLabel(member: Pick<CompanyUserRecord, "principalId" | "user">
   return fallbackUserLabel(member.principalId);
 }
 
-function activeUniqueMembers(members: CompanyUserRecord[] | null | undefined) {
-  const byId = new Map<string, CompanyUserRecord>();
+function activeUniqueMembers(members: DomainUserRecord[] | null | undefined) {
+  const byId = new Map<string, DomainUserRecord>();
   for (const member of members ?? []) {
     if (member.status !== "active") continue;
     if (!byId.has(member.principalId)) {
@@ -35,7 +35,7 @@ function activeUniqueMembers(members: CompanyUserRecord[] | null | undefined) {
   return [...byId.values()].sort((left, right) => baseMemberLabel(left).localeCompare(baseMemberLabel(right)));
 }
 
-export function buildCompanyUserLabelMap(members: CompanyUserRecord[] | null | undefined): Map<string, string> {
+export function buildDomainUserLabelMap(members: DomainUserRecord[] | null | undefined): Map<string, string> {
   const labels = new Map<string, string>();
   for (const member of members ?? []) {
     labels.set(member.principalId, baseMemberLabel(member));
@@ -43,10 +43,10 @@ export function buildCompanyUserLabelMap(members: CompanyUserRecord[] | null | u
   return labels;
 }
 
-export function buildCompanyUserProfileMap(
-  members: CompanyUserRecord[] | null | undefined,
-): Map<string, CompanyUserProfile> {
-  const profiles = new Map<string, CompanyUserProfile>();
+export function buildDomainUserProfileMap(
+  members: DomainUserRecord[] | null | undefined,
+): Map<string, DomainUserProfile> {
+  const profiles = new Map<string, DomainUserProfile>();
   for (const member of members ?? []) {
     profiles.set(member.principalId, {
       label: baseMemberLabel(member),
@@ -56,8 +56,8 @@ export function buildCompanyUserProfileMap(
   return profiles;
 }
 
-export function buildCompanyUserInlineOptions(
-  members: CompanyUserRecord[] | null | undefined,
+export function buildDomainUserInlineOptions(
+  members: DomainUserRecord[] | null | undefined,
   options?: { excludeUserIds?: Iterable<string | null | undefined> },
 ): InlineEntityOption[] {
   const exclude = new Set(
@@ -73,8 +73,8 @@ export function buildCompanyUserInlineOptions(
     }));
 }
 
-export function buildCompanyUserMentionOptions(
-  members: CompanyUserRecord[] | null | undefined,
+export function buildDomainUserMentionOptions(
+  members: DomainUserRecord[] | null | undefined,
 ): MentionOption[] {
   return activeUniqueMembers(members).map((member) => ({
     id: `user:${member.principalId}`,
@@ -118,11 +118,11 @@ export function buildIssueMentionOptions(
 export function buildMarkdownMentionOptions(args: {
   agents?: Array<Pick<Agent, "id" | "name" | "status" | "icon"> & Partial<Pick<Agent, "orgChainHealth">>> | null | undefined;
   projects?: Array<Pick<Project, "id" | "name" | "color">> | null | undefined;
-  members?: CompanyUserRecord[] | null | undefined;
+  members?: DomainUserRecord[] | null | undefined;
   issues?: Array<Pick<Issue, "id" | "identifier" | "title">> | null | undefined;
 }): MentionOption[] {
   const options: MentionOption[] = [
-    ...buildCompanyUserMentionOptions(args.members),
+    ...buildDomainUserMentionOptions(args.members),
     ...[...(args.agents ?? [])]
       .filter(isAgentTaskTarget)
       .sort((left, right) => left.name.localeCompare(right.name))

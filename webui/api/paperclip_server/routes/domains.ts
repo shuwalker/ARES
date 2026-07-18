@@ -6,16 +6,16 @@ import type { Db } from "@paperclipai/db";
 import { agents as agentsTable } from "@paperclipai/db";
 import {
   DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION,
-  companyArtifactsQuerySchema,
-  companyPortabilityExportSchema,
-  companyPortabilityImportSchema,
-  companyPortabilityPreviewSchema,
-  createCompanySchema,
+  domainArtifactsQuerySchema,
+  domainPortabilityExportSchema,
+  domainPortabilityImportSchema,
+  domainPortabilityPreviewSchema,
+  createDomainSchema,
   feedbackTargetTypeSchema,
   feedbackTraceStatusSchema,
   feedbackVoteValueSchema,
-  updateCompanyBrandingSchema,
-  updateCompanySchema,
+  updateDomainBrandingSchema,
+  updateDomainSchema,
 } from "@paperclipai/shared";
 import { badRequest, forbidden } from "../errors.js";
 import { validate } from "../middleware/validate.js";
@@ -23,25 +23,25 @@ import {
   accessService,
   agentService,
   budgetService,
-  companyArtifactsService,
-  companyPortabilityService,
-  companyService,
+  domainArtifactsService,
+  domainPortabilityService,
+  domainService,
   feedbackService,
   logActivity,
   workJournalService,
 } from "../services/index.js";
 import type { StorageService } from "../storage/types.js";
-import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
-import { COMPANY_IMPORT_ROUTE_PATH } from "./company-import-paths.js";
+import { assertBoard, assertDomainAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
+import { DOMAIN_IMPORT_ROUTE_PATH } from "./domain-import-paths.js";
 
-export function companyRoutes(db: Db, storage?: StorageService) {
+export function domainRoutes(db: Db, storage?: StorageService) {
   const router = Router();
-  const svc = companyService(db);
+  const svc = domainService(db);
   const agents = agentService(db);
-  const portability = companyPortabilityService(db, storage);
+  const portability = domainPortabilityService(db, storage);
   const access = accessService(db);
   const budgets = budgetService(db);
-  const artifacts = companyArtifactsService(db, storage);
+  const artifacts = domainArtifactsService(db, storage);
   const feedback = feedbackService(db);
   const importJobs = new Map<string, ImportJobRecord>();
   const importJobTerminalRetentionMs = 5 * 60 * 1000;
@@ -81,25 +81,25 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   function assertImportTargetAccess(
     req: Request,
-    target: { mode: "new_company" } | { mode: "existing_company"; companyId: string },
+    target: { mode: "new_domain" } | { mode: "existing_domain"; domainId: string },
   ) {
-    if (target.mode === "new_company") {
+    if (target.mode === "new_domain") {
       assertInstanceAdmin(req);
       return;
     }
-    assertCompanyAccess(req, target.companyId);
+    assertDomainAccess(req, target.domainId);
   }
 
-  async function assertSameCompanyCeoAgentOrBoard(req: Request, companyId: string, capability: string) {
-    assertCompanyAccess(req, companyId);
+  async function assertSameDomainCeoAgentOrBoard(req: Request, domainId: string, capability: string) {
+    assertDomainAccess(req, domainId);
     if (req.actor.type === "board") {
       return;
     }
     if (!req.actor.agentId) throw forbidden("Agent authentication required");
 
     const actorAgent = await agents.getById(req.actor.agentId);
-    if (!actorAgent || actorAgent.companyId !== companyId) {
-      throw forbidden("Agent key cannot access another company");
+    if (!actorAgent || actorAgent.domainId !== domainId) {
+      throw forbidden("Agent key cannot access another domain");
     }
     if (actorAgent.role !== "ceo") {
       throw forbidden(`Only CEO agents can manage ${capability}`);
@@ -113,48 +113,48 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       res.json(result);
       return;
     }
-    const allowed = new Set(req.actor.companyIds ?? []);
-    res.json(result.filter((company) => allowed.has(company.id)));
+    const allowed = new Set(req.actor.domainIds ?? []);
+    res.json(result.filter((domain) => allowed.has(domain.id)));
   });
 
   router.get("/stats", async (req, res) => {
     assertBoard(req);
     const allowed = req.actor.source === "local_implicit" || req.actor.isInstanceAdmin
       ? null
-      : new Set(req.actor.companyIds ?? []);
+      : new Set(req.actor.domainIds ?? []);
     const stats = await svc.stats();
     if (!allowed) {
       res.json(stats);
       return;
     }
-    const filtered = Object.fromEntries(Object.entries(stats).filter(([companyId]) => allowed.has(companyId)));
+    const filtered = Object.fromEntries(Object.entries(stats).filter(([domainId]) => allowed.has(domainId)));
     res.json(filtered);
   });
 
-  // Common malformed path when companyId is empty in "/api/domains/{companyId}/issues".
+  // Common malformed path when domainId is empty in "/api/domains/{domainId}/issues".
   router.get("/issues", (_req, res) => {
     res.status(400).json({
-      error: "Missing companyId in path. Use /api/domains/{companyId}/issues.",
+      error: "Missing domainId in path. Use /api/domains/{domainId}/issues.",
     });
   });
 
-  router.get("/:companyId/artifacts", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    const query = companyArtifactsQuerySchema.parse(req.query);
-    res.json(await artifacts.list(companyId, query));
+  router.get("/:domainId/artifacts", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    const query = domainArtifactsQuerySchema.parse(req.query);
+    res.json(await artifacts.list(domainId, query));
   });
 
-  router.get("/:companyId/journal", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/:domainId/journal", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
 
-    const companyScopeDecision = await access.decide({
+    const domainScopeDecision = await access.decide({
       actor: req.actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId },
     });
-    if (!companyScopeDecision.allowed) {
+    if (!domainScopeDecision.allowed) {
       res.status(403).json({ error: "Journal is outside this actor's authorization boundary" });
       return;
     }
@@ -162,7 +162,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const query = journalQuerySchema.parse(req.query);
     const journal = workJournalService(db);
     const result = await journal.getJournal({
-      companyId,
+      domainId,
       from: parseDateQuery(query.from, "from"),
       to: parseDateQuery(query.to, "to"),
       userId: query.userId,
@@ -177,7 +177,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
           action: "issue:read",
           resource: {
             type: "issue",
-            companyId: issue.companyId,
+            domainId: issue.domainId,
             issueId: issue.id,
             projectId: issue.projectId,
             parentIssueId: issue.parentId,
@@ -199,24 +199,24 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(result);
   });
 
-  router.get("/:companyId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    // Allow agents (CEO) to read their own company; board always allowed
+  router.get("/:domainId", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    // Allow agents (CEO) to read their own domain; board always allowed
     if (req.actor.type !== "agent") {
       assertBoard(req);
     }
-    const company = await svc.getById(companyId);
-    if (!company) {
+    const domain = await svc.getById(domainId);
+    if (!domain) {
       res.status(404).json({ error: "Domain not found" });
       return;
     }
-    res.json(company);
+    res.json(domain);
   });
 
-  router.get("/:companyId/feedback-traces", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/:domainId/feedback-traces", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     assertBoard(req);
 
     const targetTypeRaw = typeof req.query.targetType === "string" ? req.query.targetType : undefined;
@@ -228,7 +228,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       : undefined;
 
     const traces = await feedback.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       projectId,
       targetType: targetTypeRaw ? feedbackTargetTypeSchema.parse(targetTypeRaw) : undefined,
@@ -242,17 +242,17 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(traces);
   });
 
-  router.post("/:companyId/export", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company exports");
-    const body = companyPortabilityExportSchema.parse(req.body);
-    const result = await portability.exportBundle(companyId, body);
+  router.post("/:domainId/export", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    await assertSameDomainCeoAgentOrBoard(req, domainId, "domain exports");
+    const body = domainPortabilityExportSchema.parse(req.body);
+    const result = await portability.exportBundle(domainId, body);
     res.json(result);
   });
 
   router.post("/import/preview", async (req, res) => {
     assertBoard(req);
-    const body = companyPortabilityPreviewSchema.parse(req.body);
+    const body = domainPortabilityPreviewSchema.parse(req.body);
     assertImportTargetAccess(req, body.target);
     const preview = await portability.previewImport(body);
     res.json(preview);
@@ -269,7 +269,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(importJobResponse(job));
   });
 
-  router.post(COMPANY_IMPORT_ROUTE_PATH, async (req, res) => {
+  router.post(DOMAIN_IMPORT_ROUTE_PATH, async (req, res) => {
     assertBoard(req);
     const rawImportBody: unknown = req.body;
     const actor = getActorInfo(req);
@@ -280,11 +280,11 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       const job = createImportJob(cloudTenantRequestKey(req));
       importJobs.set(job.id, job);
       const operation = async () => {
-        const importBody = companyPortabilityImportSchema.parse(rawImportBody);
+        const importBody = domainPortabilityImportSchema.parse(rawImportBody);
         assertImportTargetAccess(req, importBody.target);
-        const activity = importedCompanyActivityContext(actor, importBody.include ?? null);
+        const activity = importedDomainActivityContext(actor, importBody.include ?? null);
         const result = await portability.importBundle(importBody, boardUserId);
-        await logImportedCompanyActivity(db, activity, result);
+        await logImportedDomainActivity(db, activity, result);
         return result;
       };
       res.status(202).json(importJobAcceptedResponse(job));
@@ -294,53 +294,53 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       return;
     }
 
-    const importBody = companyPortabilityImportSchema.parse(rawImportBody);
+    const importBody = domainPortabilityImportSchema.parse(rawImportBody);
     assertImportTargetAccess(req, importBody.target);
-    const activity = importedCompanyActivityContext(actor, importBody.include ?? null);
+    const activity = importedDomainActivityContext(actor, importBody.include ?? null);
     const result = await portability.importBundle(importBody, boardUserId);
-    await logImportedCompanyActivity(db, activity, result);
+    await logImportedDomainActivity(db, activity, result);
     res.json(result);
   });
 
-  router.post("/:companyId/exports/preview", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company exports");
-    const body = companyPortabilityExportSchema.parse(req.body);
-    const preview = await portability.previewExport(companyId, body);
+  router.post("/:domainId/exports/preview", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    await assertSameDomainCeoAgentOrBoard(req, domainId, "domain exports");
+    const body = domainPortabilityExportSchema.parse(req.body);
+    const preview = await portability.previewExport(domainId, body);
     res.json(preview);
   });
 
-  router.post("/:companyId/exports", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company exports");
-    const body = companyPortabilityExportSchema.parse(req.body);
-    const result = await portability.exportBundle(companyId, body);
+  router.post("/:domainId/exports", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    await assertSameDomainCeoAgentOrBoard(req, domainId, "domain exports");
+    const body = domainPortabilityExportSchema.parse(req.body);
+    const result = await portability.exportBundle(domainId, body);
     res.json(result);
   });
 
-  router.post("/:companyId/imports/preview", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company imports");
-    const body = companyPortabilityPreviewSchema.parse(req.body);
-    if (body.target.mode === "existing_company" && body.target.companyId !== companyId) {
-      throw forbidden("Safe import route can only target the route company");
+  router.post("/:domainId/imports/preview", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    await assertSameDomainCeoAgentOrBoard(req, domainId, "domain imports");
+    const body = domainPortabilityPreviewSchema.parse(req.body);
+    if (body.target.mode === "existing_domain" && body.target.domainId !== domainId) {
+      throw forbidden("Safe import route can only target the route domain");
     }
     if (body.collisionStrategy === "replace") {
       throw forbidden("Safe import route does not allow replace collision strategy");
     }
     const preview = await portability.previewImport(body, {
       mode: "agent_safe",
-      sourceCompanyId: companyId,
+      sourceDomainId: domainId,
     });
     res.json(preview);
   });
 
-  router.post("/:companyId/imports/apply", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company imports");
-    const body = companyPortabilityImportSchema.parse(req.body);
-    if (body.target.mode === "existing_company" && body.target.companyId !== companyId) {
-      throw forbidden("Safe import route can only target the route company");
+  router.post("/:domainId/imports/apply", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    await assertSameDomainCeoAgentOrBoard(req, domainId, "domain imports");
+    const body = domainPortabilityImportSchema.parse(req.body);
+    if (body.target.mode === "existing_domain" && body.target.domainId !== domainId) {
+      throw forbidden("Safe import route can only target the route domain");
     }
     if (body.collisionStrategy === "replace") {
       throw forbidden("Safe import route does not allow replace collision strategy");
@@ -348,83 +348,83 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const actor = getActorInfo(req);
     const result = await portability.importBundle(body, req.actor.type === "board" ? req.actor.userId : null, {
       mode: "agent_safe",
-      sourceCompanyId: companyId,
+      sourceDomainId: domainId,
     });
     await logActivity(db, {
-      companyId: result.company.id,
+      domainId: result.domain.id,
       actorType: actor.actorType,
       actorId: actor.actorId,
-      entityType: "company",
-      entityId: result.company.id,
+      entityType: "domain",
+      entityId: result.domain.id,
       agentId: actor.agentId,
       runId: actor.runId,
-      action: "company.imported",
+      action: "domain.imported",
       details: {
         include: body.include ?? null,
         agentCount: result.agents.length,
         warningCount: result.warnings.length,
-        companyAction: result.company.action,
+        domainAction: result.domain.action,
         importMode: "agent_safe",
       },
     });
     res.json(result);
   });
 
-  router.post("/", validate(createCompanySchema), async (req, res) => {
+  router.post("/", validate(createDomainSchema), async (req, res) => {
     assertBoard(req);
     if (!(req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)) {
       throw forbidden("Instance admin required");
     }
     const ownerPrincipalId = req.actor.userId ?? "local-board";
-    const company = await svc.create({
+    const domain = await svc.create({
       ...req.body,
       defaultResponsibleUserId: req.body.defaultResponsibleUserId ?? ownerPrincipalId,
     });
-    await access.ensureMembership(company.id, "user", ownerPrincipalId, "owner", "active");
+    await access.ensureMembership(domain.id, "user", ownerPrincipalId, "owner", "active");
     await access.ensureRoleDefaultGrants(
-      company.id,
+      domain.id,
       ownerPrincipalId,
       "owner",
       req.actor.userId ?? null,
     );
     await logActivity(db, {
-      companyId: company.id,
+      domainId: domain.id,
       actorType: "user",
       actorId: req.actor.userId ?? "board",
-      action: "company.created",
-      entityType: "company",
-      entityId: company.id,
-      details: { name: company.name },
+      action: "domain.created",
+      entityType: "domain",
+      entityId: domain.id,
+      details: { name: domain.name },
     });
-    if (company.budgetMonthlyCents > 0) {
+    if (domain.budgetMonthlyCents > 0) {
       await budgets.upsertPolicy(
-        company.id,
+        domain.id,
         {
-          scopeType: "company",
-          scopeId: company.id,
-          amount: company.budgetMonthlyCents,
+          scopeType: "domain",
+          scopeId: domain.id,
+          amount: domain.budgetMonthlyCents,
           windowKind: "calendar_month_utc",
         },
         req.actor.userId ?? "board",
       );
     }
-    res.status(201).json(company);
+    res.status(201).json(domain);
   });
 
-  router.patch("/:companyId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company settings");
+  router.patch("/:domainId", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    await assertSameDomainCeoAgentOrBoard(req, domainId, "domain settings");
 
     const actor = getActorInfo(req);
     let body: Record<string, unknown>;
 
     if (req.actor.type === "agent") {
-      body = updateCompanyBrandingSchema.parse(req.body);
+      body = updateDomainBrandingSchema.parse(req.body);
     } else {
-      body = updateCompanySchema.parse(req.body);
+      body = updateDomainSchema.parse(req.body);
     }
 
-    const existingDomain = await svc.getById(companyId);
+    const existingDomain = await svc.getById(domainId);
     if (!existingDomain) {
       res.status(404).json({ error: "Domain not found" });
       return;
@@ -454,9 +454,9 @@ export function companyRoutes(db: Db, storage?: StorageService) {
         .select({ value: countFn() })
         .from(agentsTable)
         .where(and(
-          eq(agentsTable.companyId, companyId),
+          eq(agentsTable.domainId, domainId),
           eq(agentsTable.status, "paused"),
-          eq(agentsTable.pauseReason, "company_archived"),
+          eq(agentsTable.pauseReason, "domain_archived"),
         ));
       transitionsPausedToActiveWithArchivePausedAgents =
         Number(archivedPausedCount?.value ?? 0) > 0;
@@ -466,69 +466,69 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       transitionsArchivedToActive ||
       transitionsPausedToActiveWithArchivePausedAgents;
 
-    const company = await svc.update(companyId, body, actor);
-    if (!company) {
+    const domain = await svc.update(domainId, body, actor);
+    if (!domain) {
       res.status(404).json({ error: "Domain not found" });
       return;
     }
     if (!lifecycleEventEmittedByService) {
       await logActivity(db, {
-        companyId,
+        domainId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
-        action: "company.updated",
-        entityType: "company",
-        entityId: companyId,
+        action: "domain.updated",
+        entityType: "domain",
+        entityId: domainId,
         details: body,
       });
     }
-    res.json(company);
+    res.json(domain);
   });
 
-  router.patch("/:companyId/branding", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    await assertSameCompanyCeoAgentOrBoard(req, companyId, "company branding");
-    const body = updateCompanyBrandingSchema.parse(req.body);
-    const company = await svc.update(companyId, body);
-    if (!company) {
+  router.patch("/:domainId/branding", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    await assertSameDomainCeoAgentOrBoard(req, domainId, "domain branding");
+    const body = updateDomainBrandingSchema.parse(req.body);
+    const domain = await svc.update(domainId, body);
+    if (!domain) {
       res.status(404).json({ error: "Domain not found" });
       return;
     }
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
       runId: actor.runId,
-      action: "company.branding_updated",
-      entityType: "company",
-      entityId: companyId,
+      action: "domain.branding_updated",
+      entityType: "domain",
+      entityId: domainId,
       details: body,
     });
-    res.json(company);
+    res.json(domain);
   });
 
-  router.post("/:companyId/archive", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/:domainId/archive", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     assertBoard(req);
-    const company = await svc.archive(companyId, getActorInfo(req));
-    if (!company) {
+    const domain = await svc.archive(domainId, getActorInfo(req));
+    if (!domain) {
       res.status(404).json({ error: "Domain not found" });
       return;
     }
-    res.json(company);
+    res.json(domain);
   });
 
-  router.delete("/:companyId", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.delete("/:domainId", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     assertBoard(req);
-    const company = await svc.remove(companyId);
-    if (!company) {
+    const domain = await svc.remove(domainId);
+    if (!domain) {
       res.status(404).json({ error: "Domain not found" });
       return;
     }
@@ -538,8 +538,8 @@ export function companyRoutes(db: Db, storage?: StorageService) {
   return router;
 }
 
-type CompanyImportResult = {
-  company: { id: string; action: unknown };
+type DomainImportResult = {
+  domain: { id: string; action: unknown };
   agents: unknown[];
   warnings: unknown[];
 };
@@ -553,14 +553,14 @@ interface ImportJobRecord {
   completedAt?: string;
   error?: { message: string };
   result?: {
-    companyId: string;
+    domainId: string;
     agentCount: number;
     warningCount: number;
-    companyAction: unknown;
+    domainAction: unknown;
   };
 }
 
-interface ImportedCompanyActivityContext {
+interface ImportedDomainActivityContext {
   actorType: "user" | "agent";
   actorId: string;
   agentId: string | null;
@@ -578,7 +578,7 @@ function cloudTenantRequestKey(req: Request) {
   return [
     req.actor.userId ?? "",
     req.header("x-paperclip-cloud-stack-id")?.trim() ?? "",
-    req.header("x-paperclip-cloud-paperclip-company-id")?.trim() ?? "",
+    req.header("x-paperclip-cloud-paperclip-domain-id")?.trim() ?? "",
   ].join(":");
 }
 
@@ -595,7 +595,7 @@ function createImportJob(cloudTenantKey: string): ImportJobRecord {
 
 async function runImportJob(
   job: ImportJobRecord,
-  operation: () => Promise<CompanyImportResult>,
+  operation: () => Promise<DomainImportResult>,
 ) {
   try {
     const result = await operation();
@@ -604,10 +604,10 @@ async function runImportJob(
     job.updatedAt = now;
     job.completedAt = now;
     job.result = {
-      companyId: result.company.id,
+      domainId: result.domain.id,
       agentCount: result.agents.length,
       warningCount: result.warnings.length,
-      companyAction: result.company.action,
+      domainAction: result.domain.action,
     };
   } catch (error) {
     const now = new Date().toISOString();
@@ -618,10 +618,10 @@ async function runImportJob(
   }
 }
 
-function importedCompanyActivityContext(
+function importedDomainActivityContext(
   actor: ReturnType<typeof getActorInfo>,
   include: unknown,
-): ImportedCompanyActivityContext {
+): ImportedDomainActivityContext {
   return {
     actorType: actor.actorType,
     actorId: actor.actorId,
@@ -631,25 +631,25 @@ function importedCompanyActivityContext(
   };
 }
 
-async function logImportedCompanyActivity(
+async function logImportedDomainActivity(
   db: Db,
-  activity: ImportedCompanyActivityContext,
-  result: CompanyImportResult,
+  activity: ImportedDomainActivityContext,
+  result: DomainImportResult,
 ) {
   await logActivity(db, {
-    companyId: result.company.id,
+    domainId: result.domain.id,
     actorType: activity.actorType,
     actorId: activity.actorId,
-    action: "company.imported",
-    entityType: "company",
-    entityId: result.company.id,
+    action: "domain.imported",
+    entityType: "domain",
+    entityId: result.domain.id,
     agentId: activity.agentId,
     runId: activity.runId,
     details: {
       include: activity.include,
       agentCount: result.agents.length,
       warningCount: result.warnings.length,
-      companyAction: result.company.action,
+      domainAction: result.domain.action,
     },
   });
 }

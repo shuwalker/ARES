@@ -9,7 +9,7 @@ interface JwtHeader {
 
 export interface LocalAgentJwtClaims {
   sub: string;
-  company_id: string;
+  domain_id: string;
   adapter_type: string;
   run_id: string;
   responsible_user_id?: string | null;
@@ -56,12 +56,12 @@ function jwtConfig() {
 }
 
 /**
- * Derive a per-instance, per-company signing key from the master JWT secret,
- * the control-plane instanceId, and a companyId.
+ * Derive a per-instance, per-domain signing key from the master JWT secret,
+ * the control-plane instanceId, and a domainId.
  *
  * Two isolation properties fall out of this derivation:
- *  - Per-company: a JWT signed for company A cannot be reused to authenticate
- *    as an agent in company B, even if the raw token leaks.
+ *  - Per-domain: a JWT signed for domain A cannot be reused to authenticate
+ *    as an agent in domain B, even if the raw token leaks.
  *  - Per-instance: a JWT minted by a worktree/fork control-plane instance
  *    cannot authenticate against the live plane, even though forks
  *    deliberately share the same master secret (it is copied into worktree
@@ -81,8 +81,8 @@ function jwtConfig() {
  * The derivation domain-separates with the `jwt:` prefix so the same master
  * secret can safely be reused for other HMAC purposes without key reuse.
  */
-function deriveCompanySigningKey(masterSecret: string, companyId: string, instanceId: string): string {
-  return createHmac("sha256", masterSecret).update(`jwt:${instanceId}:${companyId}`).digest("hex");
+function deriveDomainSigningKey(masterSecret: string, domainId: string, instanceId: string): string {
+  return createHmac("sha256", masterSecret).update(`jwt:${instanceId}:${domainId}`).digest("hex");
 }
 
 function base64UrlEncode(value: string) {
@@ -115,7 +115,7 @@ function safeCompare(a: string, b: string) {
 
 export function createLocalAgentJwt(
   agentId: string,
-  companyId: string,
+  domainId: string,
   adapterType: string,
   runId: string,
   responsibleUserId?: string | null,
@@ -127,7 +127,7 @@ export function createLocalAgentJwt(
   const now = Math.floor(Date.now() / 1000);
   const claims: LocalAgentJwtClaims = {
     sub: agentId,
-    company_id: companyId,
+    domain_id: domainId,
     adapter_type: adapterType,
     run_id: runId,
     responsible_user_id: responsibleUserId?.trim() || null,
@@ -145,10 +145,10 @@ export function createLocalAgentJwt(
   };
 
   const signingInput = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(claims))}`;
-  // Sign with the per-instance, per-company derived key so a leaked token
+  // Sign with the per-instance, per-domain derived key so a leaked token
   // cannot be reused across tenants and a fork-minted token cannot authenticate
   // against a different control-plane instance.
-  const signingKey = deriveCompanySigningKey(config.secret, companyId, config.instanceId);
+  const signingKey = deriveDomainSigningKey(config.secret, domainId, config.instanceId);
   const signature = signPayload(signingKey, signingInput);
 
   return `${signingInput}.${signature}`;
@@ -169,30 +169,30 @@ export function verifyLocalAgentJwt(token: string): LocalAgentJwtClaims | null {
   const claims = parseJson(base64UrlDecode(claimsB64));
   if (!claims) return null;
 
-  const claimedCompanyId = typeof claims.company_id === "string" ? claims.company_id : null;
-  if (!claimedCompanyId) return null;
+  const claimedDomainId = typeof claims.domain_id === "string" ? claims.domain_id : null;
+  if (!claimedDomainId) return null;
 
   const signingInput = `${headerB64}.${claimsB64}`;
-  // Try the per-instance, per-company derived key first (current tokens),
+  // Try the per-instance, per-domain derived key first (current tokens),
   // deriving under THIS control plane's own instanceId. A token minted by a
   // worktree/fork instance was signed under a different instanceId, so it will
   // not match here — that is the boundary that keeps fork tokens out of the
   // live plane (PAP-12896/PAP-12899). Fall back to the raw master secret so
-  // tokens issued before per-company derivation existed continue to verify —
+  // tokens issued before per-domain derivation existed continue to verify —
   // this preserves backward compatibility for any outstanding tokens (TTL
   // bounds the legacy window naturally).
   //
   // Operators should set `PAPERCLIP_AGENT_JWT_DISABLE_LEGACY_FALLBACK=true`
   // approximately one JWT TTL (~1h by default, see PAPERCLIP_AGENT_JWT_TTL_SECONDS)
-  // after deploying per-company signing. Once set, the master-secret fallback
-  // is disabled and only tokens validating under the per-instance/per-company
+  // after deploying per-domain signing. Once set, the master-secret fallback
+  // is disabled and only tokens validating under the per-instance/per-domain
   // derived key are accepted — closing the window in which a leaked master
   // secret could be used to forge tokens with arbitrary future `exp` values for
   // any tenant, and completing cryptographic isolation between control-plane
   // instances (the raw-secret fallback is instance-agnostic).
-  const perCompanyKey = deriveCompanySigningKey(config.secret, claimedCompanyId, config.instanceId);
-  const perCompanySig = signPayload(perCompanyKey, signingInput);
-  let signatureOk = safeCompare(signature, perCompanySig);
+  const perDomainKey = deriveDomainSigningKey(config.secret, claimedDomainId, config.instanceId);
+  const perDomainSig = signPayload(perDomainKey, signingInput);
+  let signatureOk = safeCompare(signature, perDomainSig);
   if (!signatureOk && !config.disableLegacyFallback) {
     const legacySig = signPayload(config.secret, signingInput);
     signatureOk = safeCompare(signature, legacySig);
@@ -213,7 +213,7 @@ export function verifyLocalAgentJwt(token: string): LocalAgentJwtClaims | null {
   const iat = typeof claims.iat === "number" ? claims.iat : null;
   const exp = typeof claims.exp === "number" ? claims.exp : null;
   if (!sub || !adapterType || !runId || !iat || !exp) return null;
-  const companyId = claimedCompanyId;
+  const domainId = claimedDomainId;
 
   const now = Math.floor(Date.now() / 1000);
   if (exp < now) return null;
@@ -234,7 +234,7 @@ export function verifyLocalAgentJwt(token: string): LocalAgentJwtClaims | null {
 
   return {
     sub,
-    company_id: companyId,
+    domain_id: domainId,
     adapter_type: adapterType,
     run_id: runId,
     ...(responsibleUserClaim !== undefined ? { responsible_user_id: responsibleUserClaim } : {}),

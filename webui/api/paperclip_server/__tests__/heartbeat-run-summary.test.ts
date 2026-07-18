@@ -6,15 +6,15 @@ import {
 } from "../services/heartbeat-run-summary.js";
 
 describe("summarizeHeartbeatRunResultJson", () => {
-  it("truncates text fields and preserves cost aliases", () => {
+  it("truncates text fields and preserves finance aliases", () => {
     const summary = summarizeHeartbeatRunResultJson({
       summary: "a".repeat(600),
       result: "ok",
       message: "done",
       error: "failed",
-      total_cost_usd: 1.23,
-      cost_usd: 0.45,
-      costUsd: 0.67,
+      total_finance_usd: 1.23,
+      finance_usd: 0.45,
+      financeUsd: 0.67,
       stopReason: "timeout",
       effectiveTimeoutSec: 30,
       timeoutConfigured: true,
@@ -27,9 +27,9 @@ describe("summarizeHeartbeatRunResultJson", () => {
       result: "ok",
       message: "done",
       error: "failed",
-      total_cost_usd: 1.23,
-      cost_usd: 0.45,
-      costUsd: 0.67,
+      total_finance_usd: 1.23,
+      finance_usd: 0.45,
+      financeUsd: 0.67,
       stopReason: "timeout",
       effectiveTimeoutSec: 30,
       timeoutConfigured: true,
@@ -61,7 +61,7 @@ describe("buildHeartbeatRunIssueComment", () => {
   });
 
   it("returns null when there is no usable final text", () => {
-    expect(buildHeartbeatRunIssueComment({ costUsd: 1.2 })).toBeNull();
+    expect(buildHeartbeatRunIssueComment({ financeUsd: 1.2 })).toBeNull();
   });
 });
 

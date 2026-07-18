@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "@/lib/router";
-import { useDomain } from "../context/CompanyContext";
-import { toCompanyRelativePath } from "../lib/domain-routes";
+import { useDomain } from "../context/DomainContext";
+import { toDomainRelativePath } from "../lib/domain-routes";
 import {
-  getRememberedPathOwnerCompanyId,
-  isRememberableCompanyPath,
+  getRememberedPathOwnerDomainId,
+  isRememberableDomainPath,
   sanitizeRememberedPathForDomain,
 } from "../lib/domain-page-memory";
 
-const STORAGE_KEY = "paperclip.companyPaths";
+const STORAGE_KEY = "paperclip.domainPaths";
 
-function getCompanyPaths(): Record<string, string> {
+function getDomainPaths(): Record<string, string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
@@ -20,60 +20,60 @@ function getCompanyPaths(): Record<string, string> {
   return {};
 }
 
-function saveCompanyPath(companyId: string, path: string) {
-  const paths = getCompanyPaths();
-  paths[companyId] = path;
+function saveDomainPath(domainId: string, path: string) {
+  const paths = getDomainPaths();
+  paths[domainId] = path;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(paths));
 }
 
 /**
- * Remembers the last visited page per company and navigates to it on company switch.
- * Falls back to /dashboard if no page was previously visited for a company.
+ * Remembers the last visited page per domain and navigates to it on domain switch.
+ * Falls back to /dashboard if no page was previously visited for a domain.
  */
 export function useDomainPageMemory() {
-  const { companies, selectedCompanyId, selectedDomain, selectionSource } = useDomain();
+  const { domains, selectedDomainId, selectedDomain, selectionSource } = useDomain();
   const location = useLocation();
   const navigate = useNavigate();
-  const prevCompanyId = useRef<string | null>(selectedCompanyId);
-  const rememberedPathOwnerCompanyId = useMemo(
+  const prevDomainId = useRef<string | null>(selectedDomainId);
+  const rememberedPathOwnerDomainId = useMemo(
     () =>
-      getRememberedPathOwnerCompanyId({
-        companies,
+      getRememberedPathOwnerDomainId({
+        domains,
         pathname: location.pathname,
-        fallbackCompanyId: prevCompanyId.current,
+        fallbackDomainId: prevDomainId.current,
       }),
-    [companies, location.pathname],
+    [domains, location.pathname],
   );
 
-  // Save current path for current company on every location change.
-  // Uses prevCompanyId ref so we save under the correct company even
-  // during the render where selectedCompanyId has already changed.
+  // Save current path for current domain on every location change.
+  // Uses prevDomainId ref so we save under the correct domain even
+  // during the render where selectedDomainId has already changed.
   const fullPath = location.pathname + location.search;
   useEffect(() => {
-    const companyId = rememberedPathOwnerCompanyId;
-    const relativePath = toCompanyRelativePath(fullPath);
-    if (companyId && isRememberableCompanyPath(relativePath)) {
-      saveCompanyPath(companyId, relativePath);
+    const domainId = rememberedPathOwnerDomainId;
+    const relativePath = toDomainRelativePath(fullPath);
+    if (domainId && isRememberableDomainPath(relativePath)) {
+      saveDomainPath(domainId, relativePath);
     }
-  }, [fullPath, rememberedPathOwnerCompanyId]);
+  }, [fullPath, rememberedPathOwnerDomainId]);
 
-  // Navigate to saved path when company changes
+  // Navigate to saved path when domain changes
   useEffect(() => {
-    if (!selectedCompanyId) return;
+    if (!selectedDomainId) return;
 
     if (
-      prevCompanyId.current !== null &&
-      selectedCompanyId !== prevCompanyId.current
+      prevDomainId.current !== null &&
+      selectedDomainId !== prevDomainId.current
     ) {
       if (selectionSource !== "route_sync" && selectedDomain) {
-        const paths = getCompanyPaths();
+        const paths = getDomainPaths();
         const targetPath = sanitizeRememberedPathForDomain({
-          path: paths[selectedCompanyId],
-          companyPrefix: selectedDomain.issuePrefix,
+          path: paths[selectedDomainId],
+          domainPrefix: selectedDomain.issuePrefix,
         });
         navigate(`/${selectedDomain.issuePrefix}${targetPath}`, { replace: true });
       }
     }
-    prevCompanyId.current = selectedCompanyId;
-  }, [selectedDomain, selectedCompanyId, selectionSource, navigate]);
+    prevDomainId.current = selectedDomainId;
+  }, [selectedDomain, selectedDomainId, selectionSource, navigate]);
 }

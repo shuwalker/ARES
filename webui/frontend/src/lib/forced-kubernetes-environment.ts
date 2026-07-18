@@ -29,7 +29,7 @@ export interface ForcedKubernetesEnvironment {
    */
   forced: boolean;
   /**
-   * The company's managed Kubernetes sandbox environment, if one is present in
+   * The domain's managed Kubernetes sandbox environment, if one is present in
    * the loaded environment list. `null` when forced but no such environment is
    * available yet (the UI should show a clear notice rather than silently
    * defaulting to local).

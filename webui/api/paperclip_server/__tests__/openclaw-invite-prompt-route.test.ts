@@ -14,8 +14,8 @@ const mockAccessService = vi.hoisted(() => ({
   setMemberPermissions: vi.fn(),
   promoteInstanceAdmin: vi.fn(),
   demoteInstanceAdmin: vi.fn(),
-  listUserCompanyAccess: vi.fn(),
-  setUserCompanyAccess: vi.fn(),
+  listUserDomainAccess: vi.fn(),
+  setUserDomainAccess: vi.fn(),
   setPrincipalGrants: vi.fn(),
 }));
 
@@ -76,8 +76,8 @@ function createSelectChain(rows: unknown[]) {
 function createDbStub(...selectResponses: unknown[][]) {
   const createdInvite = {
     id: "invite-1",
-    companyId: "company-1",
-    inviteType: "company_join",
+    domainId: "domain-1",
+    inviteType: "domain_join",
     allowedJoinTypes: "agent",
     defaultsPayload: null,
     expiresAt: new Date("2099-03-07T00:10:00.000Z"),
@@ -126,15 +126,15 @@ function createApp(actor: Record<string, unknown>, db: Record<string, unknown>) 
   return app;
 }
 
-describe.sequential("POST /domains/:companyId/openclaw/invite-prompt", () => {
-  const companyBranding = {
+describe.sequential("POST /domains/:domainId/openclaw/invite-prompt", () => {
+  const domainBranding = {
     name: "Acme AI",
     brandColor: "#225577",
     logoAssetId: "logo-1",
   };
   const logoAsset = {
-    companyId: "company-1",
-    objectKey: "company-1/assets/domains/logo-1",
+    domainId: "domain-1",
+    objectKey: "domain-1/assets/domains/logo-1",
     contentType: "image/png",
     byteSize: 3,
     originalFilename: "logo.png",
@@ -152,89 +152,89 @@ describe.sequential("POST /domains/:companyId/openclaw/invite-prompt", () => {
     const db = createDbStub();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
     });
     const app = createApp(
       {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
       },
       db,
     );
 
     const res = await request(app)
-      .post("/api/domains/company-1/openclaw/invite-prompt")
+      .post("/api/domains/domain-1/openclaw/invite-prompt")
       .send({});
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Only CEO agents");
   });
 
-  it("rejects CEO agent callers outside the target company scope", async () => {
+  it("rejects CEO agent callers outside the target domain scope", async () => {
     const db = createDbStub();
     const app = createApp(
       {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-2",
+        domainId: "domain-2",
         source: "agent_key",
       },
       db,
     );
 
     const res = await request(app)
-      .post("/api/domains/company-1/openclaw/invite-prompt")
+      .post("/api/domains/domain-1/openclaw/invite-prompt")
       .send({});
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toContain("another company");
+    expect(res.body.error).toContain("another domain");
     expect(mockAgentService.getById).not.toHaveBeenCalled();
     expect((db as any).__insertValues).not.toHaveBeenCalled();
   });
 
   it("allows CEO agent callers and creates an agent-only invite", async () => {
-    const db = createDbStub([companyBranding], [logoAsset]);
+    const db = createDbStub([domainBranding], [logoAsset]);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "ceo",
     });
     const app = createApp(
       {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
       },
       db,
     );
 
     const res = await request(app)
-      .post("/api/domains/company-1/openclaw/invite-prompt")
+      .post("/api/domains/domain-1/openclaw/invite-prompt")
       .send({ agentMessage: "Join and configure OpenClaw gateway." });
 
     expect([200, 201]).toContain(res.status);
-    expect(res.body.companyName).toBe("Acme AI");
+    expect(res.body.domainName).toBe("Acme AI");
     expect(res.body.onboardingTextPath).toContain("/api/invites/");
     expect((db as any).__insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
-        companyId: "company-1",
-        inviteType: "company_join",
+        domainId: "domain-1",
+        inviteType: "domain_join",
         allowedJoinTypes: "agent",
       }),
     );
   });
 
-  it("includes companyName in invite summary responses", async () => {
-    const db = createDbStub([companyBranding], [logoAsset]);
+  it("includes domainName in invite summary responses", async () => {
+    const db = createDbStub([domainBranding], [logoAsset]);
     const app = createApp(
       {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -244,21 +244,21 @@ describe.sequential("POST /domains/:companyId/openclaw/invite-prompt", () => {
     const res = await request(app).get("/api/invites/pcp_invite_test");
 
     expect(res.status).toBe(200);
-    expect(res.body.companyName).toBe("Acme AI");
-    expect(res.body.companyBrandColor).toBe("#225577");
-    expect(res.body.companyLogoUrl).toBe("/api/invites/pcp_invite_test/logo");
-    expect(res.body.inviteType).toBe("company_join");
+    expect(res.body.domainName).toBe("Acme AI");
+    expect(res.body.domainBrandColor).toBe("#225577");
+    expect(res.body.domainLogoUrl).toBe("/api/invites/pcp_invite_test/logo");
+    expect(res.body.inviteType).toBe("domain_join");
     expect(res.body.allowedJoinTypes).toBe("agent");
   });
 
   it("allows board callers with invite permission", async () => {
-    const db = createDbStub([companyBranding], [logoAsset]);
+    const db = createDbStub([domainBranding], [logoAsset]);
     mockAccessService.canUser.mockResolvedValue(true);
     const app = createApp(
       {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -266,11 +266,11 @@ describe.sequential("POST /domains/:companyId/openclaw/invite-prompt", () => {
     );
 
     const res = await request(app)
-      .post("/api/domains/company-1/openclaw/invite-prompt")
+      .post("/api/domains/domain-1/openclaw/invite-prompt")
       .send({});
 
     expect([200, 201]).toContain(res.status);
-    expect(res.body.companyName).toBe("Acme AI");
+    expect(res.body.domainName).toBe("Acme AI");
     expect(res.body.inviteUrl).toContain("/invite/");
     expect(res.body.onboardingTextPath).toContain("/api/invites/");
   }, 15_000);
@@ -282,7 +282,7 @@ describe.sequential("POST /domains/:companyId/openclaw/invite-prompt", () => {
       {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         source: "session",
         isInstanceAdmin: false,
       },
@@ -290,7 +290,7 @@ describe.sequential("POST /domains/:companyId/openclaw/invite-prompt", () => {
     );
 
     const res = await request(app)
-      .post("/api/domains/company-1/openclaw/invite-prompt")
+      .post("/api/domains/domain-1/openclaw/invite-prompt")
       .send({});
 
     expect(res.status).toBe(403);

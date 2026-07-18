@@ -9,7 +9,7 @@ import {
   agentWakeupRequests,
   agents,
   domains,
-  costEvents,
+  financeEvents,
   createDb,
   executionWorkspaces,
   heartbeatRuns,
@@ -63,7 +63,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await Promise.all(tempRoots.map((root) => fs.rm(root, { recursive: true, force: true })));
     tempRoots.length = 0;
     await db.delete(activityLog);
-    await db.delete(costEvents);
+    await db.delete(financeEvents);
     await db.delete(heartbeatRuns);
     await db.delete(agentWakeupRequests);
     await db.delete(issueRelations);
@@ -80,18 +80,18 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await tempDb?.cleanup();
   });
 
-  async function seedCompanyAndAgent() {
-    const companyId = randomUUID();
+  async function seedDomainAndAgent() {
+    const domainId = randomUUID();
     const agentId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: issuePrefix(companyId),
+      issuePrefix: issuePrefix(domainId),
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Engineer",
       role: "engineer",
       status: "idle",
@@ -100,7 +100,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       runtimeConfig: {},
       permissions: {},
     });
-    return { companyId, agentId };
+    return { domainId, agentId };
   }
 
   async function makeLocalRoot() {
@@ -109,26 +109,26 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     return root;
   }
 
-  it("returns plugin-safe execution workspace metadata scoped to the company", async () => {
-    const { companyId } = await seedCompanyAndAgent();
-    const otherCompanyId = randomUUID();
+  it("returns plugin-safe execution workspace metadata scoped to the domain", async () => {
+    const { domainId } = await seedDomainAndAgent();
+    const otherDomainId = randomUUID();
     const projectId = randomUUID();
     const workspaceId = randomUUID();
     await db.insert(domains).values({
-      id: otherCompanyId,
+      id: otherDomainId,
       name: "Other",
-      issuePrefix: issuePrefix(otherCompanyId),
+      issuePrefix: issuePrefix(otherDomainId),
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Workspaces",
       status: "in_progress",
     });
     await db.insert(executionWorkspaces).values({
       id: workspaceId,
-      companyId,
+      domainId,
       projectId,
       mode: "isolated_workspace",
       strategyType: "git_worktree",
@@ -148,9 +148,9 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
 
     const services = buildHostServices(db, "plugin-record-id", "paperclip.workspace", createEventBusStub());
 
-    await expect(services.executionWorkspaces.get({ workspaceId, companyId })).resolves.toMatchObject({
+    await expect(services.executionWorkspaces.get({ workspaceId, domainId })).resolves.toMatchObject({
       id: workspaceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId: null,
       path: "/tmp/paperclip-feature",
@@ -161,16 +161,16 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       providerType: "git_worktree",
       providerMetadata: { sandboxId: "sandbox-1" },
     });
-    await expect(services.executionWorkspaces.get({ workspaceId, companyId: otherCompanyId })).resolves.toBeNull();
+    await expect(services.executionWorkspaces.get({ workspaceId, domainId: otherDomainId })).resolves.toBeNull();
   });
 
   it("creates plugin-origin issues with full orchestration fields and audit activity", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const blockerIssueId = randomUUID();
     const originRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: originRunId,
-      companyId,
+      domainId,
       agentId,
       status: "running",
       invocationSource: "assignment",
@@ -178,16 +178,16 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     });
     await db.insert(issues).values({
       id: blockerIssueId,
-      companyId,
+      domainId,
       title: "Blocker",
       status: "todo",
       priority: "medium",
-      identifier: `${issuePrefix(companyId)}-blocker`,
+      identifier: `${issuePrefix(domainId)}-blocker`,
     });
 
     const services = buildHostServices(db, "plugin-record-id", "paperclip.missions", createEventBusStub());
     const issue = await services.issues.create({
-      companyId,
+      domainId,
       title: "Plugin child issue",
       status: "todo",
       assigneeAgentId: agentId,
@@ -236,11 +236,11 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
   });
 
   it("enforces plugin origin namespaces", async () => {
-    const { companyId } = await seedCompanyAndAgent();
+    const { domainId } = await seedDomainAndAgent();
     const services = buildHostServices(db, "plugin-record-id", "paperclip.missions", createEventBusStub());
 
     const featureIssue = await services.issues.create({
-      companyId,
+      domainId,
       title: "Feature issue",
       originKind: "plugin:paperclip.missions:feature",
       originId: "mission-alpha:feature-1",
@@ -249,7 +249,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
 
     await expect(
       services.issues.create({
-        companyId,
+        domainId,
         title: "Spoofed issue",
         originKind: "plugin:other.plugin:feature",
       }),
@@ -258,18 +258,18 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await expect(
       services.issues.update({
         issueId: featureIssue.id,
-        companyId,
+        domainId,
         patch: { originKind: "plugin:other.plugin:feature" },
       }),
     ).rejects.toThrow("Plugin may only use originKind values under plugin:paperclip.missions");
   });
 
   it("creates plugin operation issues with the generic operation origin", async () => {
-    const { companyId } = await seedCompanyAndAgent();
+    const { domainId } = await seedDomainAndAgent();
     const services = buildHostServices(db, "plugin-record-id", "paperclip.missions", createEventBusStub());
 
     const issue = await services.issues.create({
-      companyId,
+      domainId,
       title: "Background operation",
       surfaceVisibility: "plugin_operation",
       originId: "mission-alpha:operation-1",
@@ -280,7 +280,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
   });
 
   it("lets bootstrap-style actions initialize required local folders from an empty root", async () => {
-    const { companyId } = await seedCompanyAndAgent();
+    const { domainId } = await seedDomainAndAgent();
     const pluginId = randomUUID();
     await db.insert(plugins).values({
       id: pluginId,
@@ -341,7 +341,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     );
 
     const configured = await services.localFolders.configure({
-      companyId,
+      domainId,
       folderKey: "wiki-root",
       path: root,
       access: "readWrite",
@@ -354,22 +354,22 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
 
     await fs.rm(path.join(root, "raw"), { recursive: true, force: true });
     await fs.rm(path.join(root, "wiki"), { recursive: true, force: true });
-    await expect(services.localFolders.readText({ companyId, folderKey: "wiki-root", relativePath: "WIKI.md" }))
+    await expect(services.localFolders.readText({ domainId, folderKey: "wiki-root", relativePath: "WIKI.md" }))
       .rejects.toThrow("Local folder is not healthy");
     await services.localFolders.writeTextAtomic({
-      companyId,
+      domainId,
       folderKey: "wiki-root",
       relativePath: "WIKI.md",
       contents: "# Wiki\n",
     });
     await services.localFolders.writeTextAtomic({
-      companyId,
+      domainId,
       folderKey: "wiki-root",
       relativePath: "AGENTS.md",
       contents: "# Agents\n",
     });
 
-    const finalStatus = await services.localFolders.status({ companyId, folderKey: "wiki-root" });
+    const finalStatus = await services.localFolders.status({ domainId, folderKey: "wiki-root" });
     expect(finalStatus.healthy).toBe(true);
     await expect(fs.stat(path.join(root, "raw"))).resolves.toMatchObject({});
     await expect(fs.stat(path.join(root, "wiki/concepts"))).resolves.toMatchObject({});
@@ -377,7 +377,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
   });
 
   it("rejects worker local-folder access for undeclared manifest keys", async () => {
-    const { companyId } = await seedCompanyAndAgent();
+    const { domainId } = await seedDomainAndAgent();
     const pluginId = randomUUID();
     await db.insert(plugins).values({
       id: pluginId,
@@ -432,17 +432,17 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       },
     );
     await expect(services.localFolders.configure({
-      companyId,
+      domainId,
       folderKey: "ssh",
       path: "/tmp",
       access: "read",
     })).rejects.toThrow("Local folder key is not declared");
-    await expect(services.localFolders.status({ companyId, folderKey: "ssh" }))
+    await expect(services.localFolders.status({ domainId, folderKey: "ssh" }))
       .rejects.toThrow("Local folder key is not declared");
-    await expect(services.localFolders.readText({ companyId, folderKey: "ssh", relativePath: "id_rsa" }))
+    await expect(services.localFolders.readText({ domainId, folderKey: "ssh", relativePath: "id_rsa" }))
       .rejects.toThrow("Local folder key is not declared");
     await expect(services.localFolders.writeTextAtomic({
-      companyId,
+      domainId,
       folderKey: "ssh",
       relativePath: "id_rsa",
       contents: "secret",
@@ -450,7 +450,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
   });
 
   it("resolves plugin-managed projects by stable key without overwriting user edits", async () => {
-    const { companyId } = await seedCompanyAndAgent();
+    const { domainId } = await seedDomainAndAgent();
     const pluginId = randomUUID();
     await db.insert(plugins).values({
       id: pluginId,
@@ -482,7 +482,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     });
 
     const services = buildHostServices(db, pluginId, "paperclip.missions", createEventBusStub());
-    const missing = await services.projects.getManaged({ companyId, projectKey: "operations" });
+    const missing = await services.projects.getManaged({ domainId, projectKey: "operations" });
     expect(missing.status).toBe("missing");
     expect(missing.projectId).toBeNull();
     await expect(
@@ -490,14 +490,14 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
         .select()
         .from(pluginManagedResources)
         .where(and(
-          eq(pluginManagedResources.companyId, companyId),
+          eq(pluginManagedResources.domainId, domainId),
           eq(pluginManagedResources.pluginId, pluginId),
           eq(pluginManagedResources.resourceKind, "project"),
           eq(pluginManagedResources.resourceKey, "operations"),
         )),
     ).resolves.toHaveLength(0);
 
-    const created = await services.projects.reconcileManaged({ companyId, projectKey: "operations" });
+    const created = await services.projects.reconcileManaged({ domainId, projectKey: "operations" });
 
     expect(created.status).toBe("created");
     expect(created.projectId).toEqual(expect.any(String));
@@ -539,7 +539,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       })
       .where(eq(plugins.id, pluginId));
 
-    const resolved = await services.projects.reconcileManaged({ companyId, projectKey: "operations" });
+    const resolved = await services.projects.reconcileManaged({ domainId, projectKey: "operations" });
 
     expect(resolved.status).toBe("resolved");
     expect(resolved.projectId).toBe(created.projectId);
@@ -552,12 +552,12 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
   });
 
   it("asserts checkout ownership for run-scoped plugin actions", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const issueId = randomUUID();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       status: "running",
       invocationSource: "assignment",
@@ -565,7 +565,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Checked out issue",
       status: "in_progress",
       priority: "medium",
@@ -578,7 +578,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await expect(
       services.issues.assertCheckoutOwner({
         issueId,
-        companyId,
+        domainId,
         actorAgentId: agentId,
         actorRunId: runId,
       }),
@@ -591,20 +591,20 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
   });
 
   it("refuses plugin wakeups for issues with unresolved blockers", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const blockerIssueId = randomUUID();
     const blockedIssueId = randomUUID();
     await db.insert(issues).values([
       {
         id: blockerIssueId,
-        companyId,
+        domainId,
         title: "Unresolved blocker",
         status: "todo",
         priority: "medium",
       },
       {
         id: blockedIssueId,
-        companyId,
+        domainId,
         title: "Blocked issue",
         status: "todo",
         priority: "medium",
@@ -612,7 +612,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       },
     ]);
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerIssueId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
@@ -622,21 +622,21 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     await expect(
       services.issues.requestWakeup({
         issueId: blockedIssueId,
-        companyId,
+        domainId,
         reason: "mission_advance",
       }),
     ).rejects.toThrow("Issue is blocked by unresolved blockers");
   });
 
-  it("narrows orchestration cost summaries by subtree and billing code", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+  it("narrows orchestration finance summaries by subtree and billing code", async () => {
+    const { domainId, agentId } = await seedDomainAndAgent();
     const rootIssueId = randomUUID();
     const childIssueId = randomUUID();
     const unrelatedIssueId = randomUUID();
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
+        domainId,
         title: "Root mission",
         status: "todo",
         priority: "medium",
@@ -644,7 +644,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       },
       {
         id: childIssueId,
-        companyId,
+        domainId,
         parentId: rootIssueId,
         title: "Child mission",
         status: "todo",
@@ -653,16 +653,16 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
       },
       {
         id: unrelatedIssueId,
-        companyId,
+        domainId,
         title: "Different mission",
         status: "todo",
         priority: "medium",
         billingCode: "mission:alpha",
       },
     ]);
-    await db.insert(costEvents).values([
+    await db.insert(financeEvents).values([
       {
-        companyId,
+        domainId,
         agentId,
         issueId: rootIssueId,
         billingCode: "mission:alpha",
@@ -671,11 +671,11 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
         inputTokens: 10,
         cachedInputTokens: 1,
         outputTokens: 2,
-        costCents: 100,
+        financeCents: 100,
         occurredAt: new Date(),
       },
       {
-        companyId,
+        domainId,
         agentId,
         issueId: childIssueId,
         billingCode: "mission:alpha",
@@ -684,11 +684,11 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
         inputTokens: 20,
         cachedInputTokens: 2,
         outputTokens: 4,
-        costCents: 200,
+        financeCents: 200,
         occurredAt: new Date(),
       },
       {
-        companyId,
+        domainId,
         agentId,
         issueId: childIssueId,
         billingCode: "mission:beta",
@@ -697,11 +697,11 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
         inputTokens: 30,
         cachedInputTokens: 3,
         outputTokens: 6,
-        costCents: 300,
+        financeCents: 300,
         occurredAt: new Date(),
       },
       {
-        companyId,
+        domainId,
         agentId,
         issueId: unrelatedIssueId,
         billingCode: "mission:alpha",
@@ -710,14 +710,14 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
         inputTokens: 40,
         cachedInputTokens: 4,
         outputTokens: 8,
-        costCents: 400,
+        financeCents: 400,
         occurredAt: new Date(),
       },
     ]);
 
     const services = buildHostServices(db, "plugin-record-id", "paperclip.missions", createEventBusStub());
     const summary = await services.issues.getOrchestrationSummary({
-      companyId,
+      domainId,
       issueId: rootIssueId,
       includeSubtree: true,
     });
@@ -725,7 +725,7 @@ describeEmbeddedPostgres("plugin orchestration APIs", () => {
     expect(new Set(summary.subtreeIssueIds)).toEqual(new Set([rootIssueId, childIssueId]));
     expect(summary.finances).toMatchObject({
       billingCode: "mission:alpha",
-      costCents: 300,
+      financeCents: 300,
       inputTokens: 30,
       cachedInputTokens: 3,
       outputTokens: 6,

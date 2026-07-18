@@ -61,7 +61,7 @@ export function isIssueThreadInteraction(
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<IssueThreadInteraction>;
   return typeof candidate.id === "string"
-    && typeof candidate.companyId === "string"
+    && typeof candidate.domainId === "string"
     && typeof candidate.issueId === "string"
     && (
       candidate.kind === "suggest_tasks"

@@ -7,11 +7,11 @@ export function isOnboardingPath(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
 
   if (segments.length === 1) {
-    return segments[0]?.toLowerLifeAdmin() === "onboarding";
+    return segments[0]?.toLowerCase() === "onboarding";
   }
 
   if (segments.length === 2) {
-    return segments[1]?.toLowerLifeAdmin() === "onboarding";
+    return segments[1]?.toLowerCase() === "onboarding";
   }
 
   return false;
@@ -19,31 +19,31 @@ export function isOnboardingPath(pathname: string): boolean {
 
 export function resolveRouteOnboardingOptions(params: {
   pathname: string;
-  companyPrefix?: string;
-  companies: OnboardingRouteDomain[];
-}): { initialStep: 1 | 2; companyId?: string } | null {
-  const { pathname, companyPrefix, companies } = params;
+  domainPrefix?: string;
+  domains: OnboardingRouteDomain[];
+}): { initialStep: 1 | 2; domainId?: string } | null {
+  const { pathname, domainPrefix, domains } = params;
 
   if (!isOnboardingPath(pathname)) return null;
 
-  if (!companyPrefix) {
+  if (!domainPrefix) {
     return { initialStep: 1 };
   }
 
   const matchedDomain =
-    companies.find(
-      (company) =>
-        company.issuePrefix.toUpperLifeAdmin() === companyPrefix.toUpperLifeAdmin(),
+    domains.find(
+      (domain) =>
+        domain.issuePrefix.toUpperCase() === domainPrefix.toUpperCase(),
     ) ?? null;
 
   if (!matchedDomain) {
     return { initialStep: 1 };
   }
 
-  return { initialStep: 2, companyId: matchedDomain.id };
+  return { initialStep: 2, domainId: matchedDomain.id };
 }
 
-export function shouldRedirectCompanylessRouteToOnboarding(params: {
+export function shouldRedirectDomainlessRouteToOnboarding(params: {
   pathname: string;
   hasDomains: boolean;
 }): boolean {

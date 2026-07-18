@@ -13,8 +13,8 @@ import {
   approvals,
   assets,
   domains,
-  companyMemberships,
-  companySkills,
+  domainMemberships,
+  domainSkills,
   createDb,
   documentAnnotationComments,
   documentAnnotationThreads,
@@ -97,10 +97,10 @@ async function deleteHeartbeatRunsAndWakeupsAfterActivityLogDrains(db: Db) {
   }
 }
 
-async function deleteCompanySkillsAfterLateHeartbeatWritesDrain(db: Db) {
+async function deleteDomainSkillsAfterLateHeartbeatWritesDrain(db: Db) {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     try {
       await db.delete(domains);
       return;
@@ -121,7 +121,7 @@ function agentActor(fixture: Fixture, agentId = fixture.agents.lowTrust.id): Exp
   return {
     type: "agent",
     agentId,
-    companyId: fixture.company.id,
+    domainId: fixture.domain.id,
     runId: agentId === fixture.agents.lowTrust.id ? fixture.runs.lowTrust.id : fixture.runs.standard.id,
     source: "agent_jwt",
   };
@@ -131,7 +131,7 @@ function skillTestActor(fixture: Fixture, issueId = fixture.issues.assignedRevie
   return {
     type: "agent",
     agentId: fixture.agents.standard.id,
-    companyId: fixture.company.id,
+    domainId: fixture.domain.id,
     runId: fixture.runs.standard.id,
     source: "agent_jwt",
     keyScope: { kind: "skill_test", issueId },
@@ -142,8 +142,8 @@ function boardActor(fixture: Fixture): Express.Request["actor"] {
   return {
     type: "board",
     userId: "board-user",
-    companyIds: [fixture.company.id],
-    memberships: [{ companyId: fixture.company.id, membershipRole: "operator", status: "active" }],
+    domainIds: [fixture.domain.id],
+    memberships: [{ domainId: fixture.domain.id, membershipRole: "operator", status: "active" }],
     isInstanceAdmin: true,
     source: "local_implicit",
   };
@@ -321,7 +321,7 @@ async function createQuarantinedContinuationSummary(db: Db, fixture: Fixture, is
     sourceAgentId: fixture.agents.lowTrust.id,
   };
   const [document] = await db.insert(documents).values({
-    companyId: fixture.company.id,
+    domainId: fixture.domain.id,
     title: "Continuation Summary",
     latestBody: `Continuation must not leak ${fixture.canaries.raw}`,
     createdByAgentId: fixture.agents.lowTrust.id,
@@ -329,7 +329,7 @@ async function createQuarantinedContinuationSummary(db: Db, fixture: Fixture, is
     sourceTrust,
   }).returning();
   const [revision] = await db.insert(documentRevisions).values({
-    companyId: fixture.company.id,
+    domainId: fixture.domain.id,
     documentId: document!.id,
     revisionNumber: 1,
     title: "Continuation Summary",
@@ -338,7 +338,7 @@ async function createQuarantinedContinuationSummary(db: Db, fixture: Fixture, is
   }).returning();
   await db.update(documents).set({ latestRevisionId: revision!.id }).where(eq(documents.id, document!.id));
   await db.insert(issueDocuments).values({
-    companyId: fixture.company.id,
+    domainId: fixture.domain.id,
     issueId,
     documentId: document!.id,
     key: ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
@@ -362,25 +362,25 @@ async function seedLowTrustFixture(db: Db) {
     raw: canary("IGNORE_ALL_PREVIOUS_INSTRUCTIONS FLAG-RAW-7R4G"),
   };
 
-  const [company] = await db.insert(domains).values({
+  const [domain] = await db.insert(domains).values({
     name: `Low trust ${nonce}`,
     issuePrefix: `LT${nonce.slice(0, 4).toUpperLifeAdmin()}`,
     defaultResponsibleUserId: "board-user",
   }).returning();
   const [allowedProject] = await db.insert(projects).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     name: `Allowed ${nonce}`,
     status: "in_progress",
   }).returning();
   const [outOfScopeProject] = await db.insert(projects).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     name: `Out ${nonce}`,
     description: canary("FLAG-PROJECT-7R4G"),
     status: "in_progress",
   }).returning();
 
   const [collaborator] = await db.insert(agents).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     name: "Same Boundary Collaborator",
     role: "engineer",
     adapterType: "process",
@@ -389,7 +389,7 @@ async function seedLowTrustFixture(db: Db) {
     permissions: {},
   }).returning();
   const [standard] = await db.insert(agents).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     name: "Standard Engineer",
     role: "engineer",
     adapterType: "process",
@@ -398,7 +398,7 @@ async function seedLowTrustFixture(db: Db) {
     permissions: {},
   }).returning();
   const [cto] = await db.insert(agents).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     name: "CTO",
     role: "cto",
     adapterType: "process",
@@ -408,7 +408,7 @@ async function seedLowTrustFixture(db: Db) {
   }).returning();
 
   const [reviewRoot] = await db.insert(issues).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     projectId: allowedProject!.id,
     title: "Review root",
     status: "todo",
@@ -416,7 +416,7 @@ async function seedLowTrustFixture(db: Db) {
     responsibleUserId: "board-user",
   }).returning();
   const [assignedReview] = await db.insert(issues).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     projectId: allowedProject!.id,
     parentId: reviewRoot!.id,
     title: "Assigned low-trust review",
@@ -425,7 +425,7 @@ async function seedLowTrustFixture(db: Db) {
     responsibleUserId: "board-user",
   }).returning();
   const [sameBoundaryChild] = await db.insert(issues).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     projectId: allowedProject!.id,
     parentId: reviewRoot!.id,
     title: "Same boundary child",
@@ -434,7 +434,7 @@ async function seedLowTrustFixture(db: Db) {
     responsibleUserId: "board-user",
   }).returning();
   const [siblingOutOfScope] = await db.insert(issues).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     projectId: outOfScopeProject!.id,
     title: `Sibling ${canaries.issueSibling}`,
     description: canaries.issueSibling,
@@ -444,7 +444,7 @@ async function seedLowTrustFixture(db: Db) {
   }).returning();
 
   const [lowTrust] = await db.insert(agents).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     name: "Low Trust Reviewer",
     role: "engineer",
     adapterType: "process",
@@ -455,7 +455,7 @@ async function seedLowTrustFixture(db: Db) {
       authorizationPolicy: {
         trustBoundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: company!.id,
+          domainId: domain!.id,
           projectIds: [allowedProject!.id],
           rootIssueId: reviewRoot!.id,
           issueIds: [reviewRoot!.id, assignedReview!.id, sameBoundaryChild!.id],
@@ -474,7 +474,7 @@ async function seedLowTrustFixture(db: Db) {
     },
   };
   const [lowTrustRun] = await db.insert(heartbeatRuns).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     agentId: lowTrust!.id,
     status: "running",
     contextSnapshot: {
@@ -483,7 +483,7 @@ async function seedLowTrustFixture(db: Db) {
     },
   }).returning();
   const [standardRun] = await db.insert(heartbeatRuns).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     agentId: standard!.id,
     status: "running",
     contextSnapshot: { issueId: assignedReview!.id },
@@ -498,21 +498,21 @@ async function seedLowTrustFixture(db: Db) {
   assignedReview!.executionPolicy = executionPolicy;
 
   await db.insert(issueComments).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     issueId: siblingOutOfScope!.id,
     authorAgentId: standard!.id,
     authorType: "agent",
     body: canaries.commentSibling,
   });
   const [siblingDoc] = await db.insert(documents).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     title: "Sibling doc",
     latestBody: canaries.documentSibling,
     createdByAgentId: standard!.id,
     updatedByAgentId: standard!.id,
   }).returning();
   const [siblingRevision] = await db.insert(documentRevisions).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     documentId: siblingDoc!.id,
     revisionNumber: 1,
     title: "Sibling doc",
@@ -521,13 +521,13 @@ async function seedLowTrustFixture(db: Db) {
   }).returning();
   await db.update(documents).set({ latestRevisionId: siblingRevision!.id }).where(eq(documents.id, siblingDoc!.id));
   await db.insert(issueDocuments).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     issueId: siblingOutOfScope!.id,
     documentId: siblingDoc!.id,
     key: "canary",
   });
   const [siblingAnnotationThread] = await db.insert(documentAnnotationThreads).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     issueId: siblingOutOfScope!.id,
     documentId: siblingDoc!.id,
     documentKey: "canary",
@@ -549,7 +549,7 @@ async function seedLowTrustFixture(db: Db) {
     createdByAgentId: standard!.id,
   }).returning();
   await db.insert(documentAnnotationComments).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     threadId: siblingAnnotationThread!.id,
     issueId: siblingOutOfScope!.id,
     documentId: siblingDoc!.id,
@@ -558,7 +558,7 @@ async function seedLowTrustFixture(db: Db) {
     authorAgentId: standard!.id,
   });
   const [siblingAttachmentAsset] = await db.insert(assets).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     provider: "local_disk",
     objectKey: `issues/${siblingOutOfScope!.id}/attachment-canary.txt`,
     contentType: "text/plain",
@@ -568,12 +568,12 @@ async function seedLowTrustFixture(db: Db) {
     createdByAgentId: standard!.id,
   }).returning();
   const [siblingAttachment] = await db.insert(issueAttachments).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     issueId: siblingOutOfScope!.id,
     assetId: siblingAttachmentAsset!.id,
   }).returning();
   const [siblingExternalObject] = await db.insert(externalObjects).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     providerKey: "url",
     objectType: "link",
     externalId: `external-${nonce}`,
@@ -584,7 +584,7 @@ async function seedLowTrustFixture(db: Db) {
     data: { canary: canaries.externalObjectSibling },
   }).returning();
   await db.insert(externalObjectMentions).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     sourceIssueId: siblingOutOfScope!.id,
     sourceKind: "description",
     matchedTextRedacted: canaries.externalObjectSibling,
@@ -597,7 +597,7 @@ async function seedLowTrustFixture(db: Db) {
     objectType: "link",
   });
   await db.insert(issueWorkProducts).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     projectId: outOfScopeProject!.id,
     issueId: siblingOutOfScope!.id,
     type: "artifact",
@@ -607,27 +607,27 @@ async function seedLowTrustFixture(db: Db) {
     summary: canaries.workProductSibling,
   });
   const [approval] = await db.insert(approvals).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     type: "request_board_approval",
     requestedByAgentId: standard!.id,
     status: "pending",
     payload: { summary: canaries.approval },
   }).returning();
   await db.insert(issueApprovals).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     issueId: assignedReview!.id,
     approvalId: approval!.id,
     linkedByAgentId: standard!.id,
   });
   await db.insert(issueApprovals).values({
-    companyId: company!.id,
+    domainId: domain!.id,
     issueId: siblingOutOfScope!.id,
     approvalId: approval!.id,
     linkedByAgentId: standard!.id,
   });
 
   return {
-    company: company!,
+    domain: domain!,
     agents: { lowTrust: lowTrust!, standard: standard!, collaborator: collaborator!, cto: cto! },
     projects: { allowed: allowedProject!, outOfScope: outOfScopeProject! },
     issues: { reviewRoot: reviewRoot!, assignedReview: assignedReview!, sameBoundaryChild: sameBoundaryChild!, siblingOutOfScope: siblingOutOfScope! },
@@ -672,10 +672,10 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     await db.delete(issues);
     await db.delete(agentRuntimeState);
     await db.delete(principalPermissionGrants);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(agents);
     await db.delete(projects);
-    await deleteCompanySkillsAfterLateHeartbeatWritesDrain(db);
+    await deleteDomainSkillsAfterLateHeartbeatWritesDrain(db);
   });
 
   afterAll(async () => {
@@ -730,7 +730,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
   it("allows mentioned low-trust agents to comment on out-of-bound assigned issues", async () => {
     const fixture = await seedLowTrustFixture(db);
     const [targetIssue] = await db.insert(issues).values({
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       projectId: fixture.projects.outOfScope.id,
       title: "Coach-owned mention target",
       status: "in_progress",
@@ -739,7 +739,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
       responsibleUserId: "board-user",
     }).returning();
     await db.insert(issueComments).values({
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       issueId: targetIssue!.id,
       authorAgentId: fixture.agents.standard.id,
       authorType: "agent",
@@ -747,7 +747,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     });
 
     const unmentioned = await db.insert(agents).values({
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       name: "Unmentioned Low Trust Reviewer",
       role: "engineer",
       adapterType: "process",
@@ -778,7 +778,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
       authorizationPolicy: {
         trustBoundary: {
           mode: LOW_TRUST_REVIEW_PRESET,
-          companyId: fixture.company.id,
+          domainId: fixture.domain.id,
           rootIssueId: fixture.issues.siblingOutOfScope.id,
         },
       },
@@ -801,8 +801,8 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
 
   it("restricts low-trust self inspection without changing standard-agent visibility", async () => {
     const fixture = await seedLowTrustFixture(db);
-    await db.insert(companyMemberships).values({
-      companyId: fixture.company.id,
+    await db.insert(domainMemberships).values({
+      domainId: fixture.domain.id,
       principalType: "agent",
       principalId: fixture.agents.lowTrust.id,
       status: "active",
@@ -810,14 +810,14 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     });
     await db.insert(principalPermissionGrants).values([
       {
-        companyId: fixture.company.id,
+        domainId: fixture.domain.id,
         principalType: "agent",
         principalId: fixture.agents.lowTrust.id,
         permissionKey: "agents:configure",
         grantedByUserId: null,
       },
       {
-        companyId: fixture.company.id,
+        domainId: fixture.domain.id,
         principalType: "agent",
         principalId: fixture.agents.lowTrust.id,
         permissionKey: "skills:create",
@@ -829,7 +829,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     expect(lowTrustRes.status, JSON.stringify(lowTrustRes.body)).toBe(200);
     expect(lowTrustRes.body).toMatchObject({
       id: fixture.agents.lowTrust.id,
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       trustPreset: LOW_TRUST_REVIEW_PRESET,
     });
     expect(lowTrustRes.body).not.toHaveProperty("adapterConfig");
@@ -843,7 +843,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     expect(lowTrustSelfByIdRes.status, JSON.stringify(lowTrustSelfByIdRes.body)).toBe(200);
     expect(lowTrustSelfByIdRes.body).toMatchObject({
       id: fixture.agents.lowTrust.id,
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       trustPreset: LOW_TRUST_REVIEW_PRESET,
     });
     expect(lowTrustSelfByIdRes.body).not.toHaveProperty("adapterConfig");
@@ -871,7 +871,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     expect(issueScopedLowTrustRes.status, JSON.stringify(issueScopedLowTrustRes.body)).toBe(200);
     expect(issueScopedLowTrustRes.body).toMatchObject({
       id: fixture.agents.standard.id,
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       trustPreset: LOW_TRUST_REVIEW_PRESET,
     });
     expect(issueScopedLowTrustRes.body).not.toHaveProperty("adapterConfig");
@@ -885,7 +885,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: fixture.company.id,
+            domainId: fixture.domain.id,
             projectIds: [fixture.projects.allowed.id],
           },
         },
@@ -896,7 +896,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     expect(projectScopedLowTrustRes.status, JSON.stringify(projectScopedLowTrustRes.body)).toBe(200);
     expect(projectScopedLowTrustRes.body).toMatchObject({
       id: fixture.agents.standard.id,
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       trustPreset: LOW_TRUST_REVIEW_PRESET,
     });
     expect(projectScopedLowTrustRes.body).not.toHaveProperty("adapterConfig");
@@ -972,9 +972,9 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
           .send({ title: `child ${fixture.canaries.issueSibling}` }),
       },
       {
-        id: "LT-26 company issue",
+        id: "LT-26 domain issue",
         req: () => request(app)
-          .post(`/api/domains/${fixture.company.id}/issues`)
+          .post(`/api/domains/${fixture.domain.id}/issues`)
           .send({ title: `child ${fixture.canaries.issueSibling}`, parentId: fixture.issues.assignedReview.id }),
       },
       {
@@ -1031,7 +1031,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
 
     const beforeBulkSummary = await snapshot(db);
     const bulkSummary = await request(app)
-      .post(`/api/domains/${fixture.company.id}/issues/external-object-summaries`)
+      .post(`/api/domains/${fixture.domain.id}/issues/external-object-summaries`)
       .send({ issueIds: [fixture.issues.siblingOutOfScope.id] });
     expect(bulkSummary.status, JSON.stringify(bulkSummary.body)).toBe(200);
     expect(bulkSummary.body.summaries).toEqual({});
@@ -1105,7 +1105,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     }
 
     const bulkSummary = await request(app)
-      .post(`/api/domains/${fixture.company.id}/issues/external-object-summaries`)
+      .post(`/api/domains/${fixture.domain.id}/issues/external-object-summaries`)
       .send({ issueIds: [fixture.issues.siblingOutOfScope.id] });
     expect(bulkSummary.status, JSON.stringify(bulkSummary.body)).toBe(200);
     expect(bulkSummary.body.summaries).toEqual({});
@@ -1116,7 +1116,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     const fixture = await seedLowTrustFixture(db);
     await db.insert(issues).values([
       {
-        companyId: fixture.company.id,
+        domainId: fixture.domain.id,
         projectId: fixture.projects.allowed.id,
         parentId: fixture.issues.reviewRoot.id,
         title: "Visible blocked vendor wait",
@@ -1125,7 +1125,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
         description: "external owner: Visible vendor\nexternal action: Finish visible review",
       },
       {
-        companyId: fixture.company.id,
+        domainId: fixture.domain.id,
         projectId: fixture.projects.outOfScope.id,
         title: "Hidden blocked vendor wait",
         status: "blocked",
@@ -1135,13 +1135,13 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     ]);
 
     const boardCount = await request(createApp(db, boardActor(fixture)))
-      .get(`/api/domains/${fixture.company.id}/issues/count`)
+      .get(`/api/domains/${fixture.domain.id}/issues/count`)
       .query({ attention: "blocked", q: "blocked vendor wait" });
     expect(boardCount.status, JSON.stringify(boardCount.body)).toBe(200);
     expect(boardCount.body.count).toBe(2);
 
     const lowTrustCount = await request(createApp(db, agentActor(fixture)))
-      .get(`/api/domains/${fixture.company.id}/issues/count`)
+      .get(`/api/domains/${fixture.domain.id}/issues/count`)
       .query({ attention: "blocked", q: "blocked vendor wait" });
     expect(lowTrustCount.status, JSON.stringify(lowTrustCount.body)).toBe(200);
     expect(lowTrustCount.body.count).toBe(1);
@@ -1325,7 +1325,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
     expect(JSON.stringify(approvalsRes.body)).toContain(fixture.canaries.approval);
 
     const [rawProduct] = await db.insert(issueWorkProducts).values({
-      companyId: fixture.company.id,
+      domainId: fixture.domain.id,
       projectId: fixture.projects.allowed.id,
       issueId: fixture.issues.assignedReview.id,
       type: "artifact",
@@ -1348,7 +1348,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
       defaultResponsibleUserId: "board-user",
     }).returning();
     const [foreignIssue] = await db.insert(issues).values({
-      companyId: otherDomain!.id,
+      domainId: otherDomain!.id,
       parentId: fixture.issues.assignedReview.id,
       title: "Foreign quarantined issue",
       status: "done",
@@ -1368,7 +1368,7 @@ describeEmbeddedPostgres("low-trust red-team HTTP route regression suite", () =>
         sourceArtifactKind: "issue",
         sourceArtifactId: foreignIssue!.id,
         title: "Rejected foreign issue",
-        summary: "Should not promote across company boundaries.",
+        summary: "Should not promote across domain boundaries.",
       });
     expect(rejectedPromotion.status, JSON.stringify(rejectedPromotion.body)).toBe(404);
     expect(rejectedPromotion.body.error).toBe("Low-trust source artifact not found");

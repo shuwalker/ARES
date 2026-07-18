@@ -1,7 +1,7 @@
 const BOARD_ROUTE_ROOTS = new Set([
   "dashboard",
-  "companies",
-  "company",
+  "domains",
+  "domain",
   "skills",
   "teams-catalog",
   "org",
@@ -14,7 +14,7 @@ const BOARD_ROUTE_ROOTS = new Set([
   "goals",
   "artifacts",
   "approvals",
-  "costs",
+  "finances",
   "usage",
   "activity",
   "decisions",
@@ -25,13 +25,13 @@ const BOARD_ROUTE_ROOTS = new Set([
   "design-guide",
   "search",
   "settings",
-  "timeline",
+  "journal",
 ]);
 
 const GLOBAL_ROUTE_ROOTS = new Set(["auth", "invite", "board-claim", "cli-auth", "docs", "instance"]);
 
-export function normalizeCompanyPrefix(prefix: string): string {
-  return prefix.trim().toUpperLifeAdmin();
+export function normalizeDomainPrefix(prefix: string): string {
+  return prefix.trim().toUpperCase();
 }
 
 function splitPath(path: string): { pathname: string; search: string; hash: string } {
@@ -52,66 +52,66 @@ export function isGlobalPath(pathname: string): boolean {
   if (pathname === "/") return true;
   const root = getRootSegment(pathname);
   if (!root) return true;
-  return GLOBAL_ROUTE_ROOTS.has(root.toLowerLifeAdmin());
+  return GLOBAL_ROUTE_ROOTS.has(root.toLowerCase());
 }
 
 export function isBoardPathWithoutPrefix(pathname: string): boolean {
   const root = getRootSegment(pathname);
   if (!root) return false;
-  return BOARD_ROUTE_ROOTS.has(root.toLowerLifeAdmin());
+  return BOARD_ROUTE_ROOTS.has(root.toLowerCase());
 }
 
-export function extractCompanyPrefixFromPath(pathname: string): string | null {
+export function extractDomainPrefixFromPath(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return null;
-  const first = segments[0]!.toLowerLifeAdmin();
+  const first = segments[0]!.toLowerCase();
   if (GLOBAL_ROUTE_ROOTS.has(first) || BOARD_ROUTE_ROOTS.has(first)) {
     return null;
   }
-  return normalizeCompanyPrefix(segments[0]!);
+  return normalizeDomainPrefix(segments[0]!);
 }
 
-export function applyCompanyPrefix(path: string, companyPrefix: string | null | undefined): string {
+export function applyDomainPrefix(path: string, domainPrefix: string | null | undefined): string {
   const { pathname, search, hash } = splitPath(path);
   if (!pathname.startsWith("/")) return path;
   if (isGlobalPath(pathname)) return path;
-  if (!companyPrefix) return path;
+  if (!domainPrefix) return path;
 
-  const prefix = normalizeCompanyPrefix(companyPrefix);
-  const activePrefix = extractCompanyPrefixFromPath(pathname);
+  const prefix = normalizeDomainPrefix(domainPrefix);
+  const activePrefix = extractDomainPrefixFromPath(pathname);
   if (activePrefix) return path;
 
   return `/${prefix}${pathname}${search}${hash}`;
 }
 
 /**
- * Build a company-prefixed href for an experimental LifeAdmin route, e.g.
- * `caseHref("PAP", "PAP-C5")` → `/PAP/cases/PAP-C5`.
+ * Build a domain-prefixed href for an experimental LifeAdmin route, e.g.
+ * `caseHref("PAP", "PAP-C5")` → `/PAP/life-admin/PAP-C5`.
  *
  * LifeAdmin paths carry identifiers like `PAP-C5` in the first segment, which the
- * generic {@link applyCompanyPrefix} mistakes for a company prefix ("CASES") and
- * therefore leaves `/cases/...` unprefixed — every case link then only resolves
+ * generic {@link applyDomainPrefix} mistakes for a domain prefix ("CASES") and
+ * therefore leaves `/life-admin/...` unprefixed — every case link then only resolves
  * via the PAP-13002 unprefixed→prefixed redirect. This builder emits the
  * prefixed href directly so case-to-case navigation matches the rest of the app.
  * Falls back to the unprefixed path (still valid via the redirect) when no
- * company is active.
+ * domain is active.
  */
 export function caseHref(
-  companyPrefix: string | null | undefined,
+  domainPrefix: string | null | undefined,
   ...segments: string[]
 ): string {
-  const suffix = ["cases", ...segments].filter(Boolean).join("/");
-  if (!companyPrefix) return `/${suffix}`;
-  return `/${normalizeCompanyPrefix(companyPrefix)}/${suffix}`;
+  const suffix = ["life-admin", ...segments].filter(Boolean).join("/");
+  if (!domainPrefix) return `/${suffix}`;
+  return `/${normalizeDomainPrefix(domainPrefix)}/${suffix}`;
 }
 
-export function toCompanyRelativePath(path: string): string {
+export function toDomainRelativePath(path: string): string {
   const { pathname, search, hash } = splitPath(path);
   const segments = pathname.split("/").filter(Boolean);
 
   if (segments.length >= 2) {
-    const second = segments[1]!.toLowerLifeAdmin();
-    if (!GLOBAL_ROUTE_ROOTS.has(segments[0]!.toLowerLifeAdmin()) && BOARD_ROUTE_ROOTS.has(second)) {
+    const second = segments[1]!.toLowerCase();
+    if (!GLOBAL_ROUTE_ROOTS.has(segments[0]!.toLowerCase()) && BOARD_ROUTE_ROOTS.has(second)) {
       return `/${segments.slice(1).join("/")}${search}${hash}`;
     }
   }

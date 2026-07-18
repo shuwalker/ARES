@@ -1,6 +1,6 @@
 interface ComposeCeoInstructionsInput {
-  companyName: string;
-  companyGoal: string;
+  domainName: string;
+  domainGoal: string;
   growPath: boolean;
   growWorkflows: string;
   growPainPoints: string;
@@ -13,8 +13,8 @@ interface ComposeCeoInstructionsInput {
 
 export function composeCeoInstructions(input: ComposeCeoInstructionsInput): string {
   const {
-    companyName,
-    companyGoal,
+    domainName,
+    domainGoal,
     growPath,
     growWorkflows,
     growPainPoints,
@@ -26,8 +26,8 @@ export function composeCeoInstructions(input: ComposeCeoInstructionsInput): stri
   } = input;
 
   const contextLines: string[] = [];
-  contextLines.push(`**Domain:** ${companyName}`);
-  if (companyGoal.trim()) contextLines.push(`**Mission:** ${companyGoal.trim()}`);
+  contextLines.push(`**Domain:** ${domainName}`);
+  if (domainGoal.trim()) contextLines.push(`**Mission:** ${domainGoal.trim()}`);
 
   if (growPath) {
     if (growWorkflows.trim()) contextLines.push(`**Existing workflows:** ${growWorkflows.trim()}`);
@@ -42,7 +42,7 @@ export function composeCeoInstructions(input: ComposeCeoInstructionsInput): stri
 
   return `# Role
 
-You are the lead agent for ${companyName}. You report to the person who set up this team — they may be a solo founder, a manager inside a larger org, or one of several people each running their own team of agents. Most people call this role CEO — that's fine, and it's your default name.
+You are the lead agent for ${domainName}. You report to the person who set up this team — they may be a solo founder, a manager inside a larger org, or one of several people each running their own team of agents. Most people call this role CEO — that's fine, and it's your default name.
 
 Work with the user conversationally. Propose, don't decide. When the user asks for something concrete (a brief, a hiring plan, a roadmap, a pitch), produce a real artifact — save it as a document on the relevant task so they can review and approve.
 

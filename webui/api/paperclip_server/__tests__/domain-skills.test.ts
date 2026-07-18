@@ -8,7 +8,7 @@ import {
   normalizeGitHubSkillDirectory,
   parseSkillImportSourceInput,
   readLocalSkillImportFromDirectory,
-} from "../services/company-skills.js";
+} from "../services/domain-skills.js";
 
 const cleanupDirs = new Set<string>();
 
@@ -28,7 +28,7 @@ async function writeSkillDir(skillDir: string, name: string) {
   await fs.writeFile(path.join(skillDir, "SKILL.md"), `---\nname: ${name}\n---\n\n# ${name}\n`, "utf8");
 }
 
-describe("company skill import source parsing", () => {
+describe("domain skill import source parsing", () => {
   it("parses a skills.sh command without executing shell input", () => {
     const parsed = parseSkillImportSourceInput(
       "npx skills add https://github.com/vercel-labs/skills --skill find-skills",

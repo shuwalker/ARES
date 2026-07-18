@@ -39,7 +39,7 @@ describe("adapter session codecs", () => {
 
   it("preserves claude ACP session params for ACP lane resumes", () => {
     const parsed = claudeSessionCodec.deserialize({
-      sessionKey: "paperclip:company:agent:task:fingerprint",
+      sessionKey: "paperclip:domain:agent:task:fingerprint",
       runtimeSessionName: "runtime-session-1",
       acpxRecordId: "record-1",
       acpSessionId: "acp-session-1",
@@ -84,7 +84,7 @@ describe("adapter session codecs", () => {
 
   it("preserves codex ACP session params for ACP lane resumes", () => {
     const parsed = codexSessionCodec.deserialize({
-      sessionKey: "paperclip:company:agent:task:fingerprint",
+      sessionKey: "paperclip:domain:agent:task:fingerprint",
       runtimeSessionName: "runtime-session-1",
       acpxRecordId: "record-1",
       acpSessionId: "acp-session-1",
@@ -165,7 +165,7 @@ describe("adapter session codecs", () => {
 
   it("preserves gemini ACP session params for ACP lane resumes", () => {
     const parsed = geminiSessionCodec.deserialize({
-      sessionKey: "paperclip:company:agent:task:fingerprint",
+      sessionKey: "paperclip:domain:agent:task:fingerprint",
       runtimeSessionName: "runtime-session-1",
       acpxRecordId: "record-1",
       acpSessionId: "acp-session-1",
@@ -192,7 +192,7 @@ describe("adapter session codecs", () => {
 
   it("preserves acpx session params required for compatibility checks", () => {
     const parsed = acpxSessionCodec.deserialize({
-      sessionKey: "paperclip:company:agent:task:fingerprint",
+      sessionKey: "paperclip:domain:agent:task:fingerprint",
       runtimeSessionName: "runtime-session-1",
       acpxRecordId: "record-1",
       acpSessionId: "acp-session-1",
@@ -212,7 +212,7 @@ describe("adapter session codecs", () => {
     });
 
     expect(parsed).toMatchObject({
-      sessionKey: "paperclip:company:agent:task:fingerprint",
+      sessionKey: "paperclip:domain:agent:task:fingerprint",
       runtimeSessionName: "runtime-session-1",
       acpxRecordId: "record-1",
       acpSessionId: "acp-session-1",

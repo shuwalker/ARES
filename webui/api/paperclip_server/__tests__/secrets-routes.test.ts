@@ -46,8 +46,8 @@ function createApp(actor: Record<string, unknown> = {
   type: "board",
   userId: "user-1",
   source: "session",
-  companyIds: ["company-1"],
-  memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+  domainIds: ["domain-1"],
+  memberships: [{ domainId: "domain-1", status: "active", membershipRole: "admin" }],
 }) {
   const app = express();
   app.use(express.json());
@@ -68,7 +68,7 @@ describe("secret routes", () => {
     mockLogActivity.mockReset();
   });
 
-  it("returns provider health checks for board callers with company access", async () => {
+  it("returns provider health checks for board callers with domain access", async () => {
     mockSecretService.checkProviders.mockResolvedValue([
       {
         provider: "local_encrypted",
@@ -78,7 +78,7 @@ describe("secret routes", () => {
       },
     ]);
 
-    const res = await request(createApp()).get("/api/domains/company-1/secret-providers/health");
+    const res = await request(createApp()).get("/api/domains/domain-1/secret-providers/health");
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -94,7 +94,7 @@ describe("secret routes", () => {
   });
 
   it("rejects managed secret creation when externalRef is supplied", async () => {
-    const res = await request(createApp()).post("/api/domains/company-1/secrets").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/secrets").send({
       name: "OpenAI API Key",
       managedMode: "paperclip_managed",
       value: "secret-value",
@@ -127,7 +127,7 @@ describe("secret routes", () => {
       ),
     );
 
-    const res = await request(createApp()).post("/api/domains/company-1/secrets").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/secrets").send({
       name: "Vercel token",
       key: "vercel_token",
       provider: "aws_secrets_manager",
@@ -154,14 +154,14 @@ describe("secret routes", () => {
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
-  it("restricts user secret definition management to company admins", async () => {
+  it("restricts user secret definition management to domain admins", async () => {
     const res = await request(createApp({
       type: "board",
       userId: "user-1",
       source: "session",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "member" }],
-    })).post("/api/domains/company-1/user-secret-definitions").send({
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", status: "active", membershipRole: "member" }],
+    })).post("/api/domains/domain-1/user-secret-definitions").send({
       key: "github_token",
       name: "GitHub token",
       provider: "local_encrypted",
@@ -174,7 +174,7 @@ describe("secret routes", () => {
   it("records implicit user-secret definition admins as system actors instead of board pseudo-users", async () => {
     mockSecretService.createUserSecretDefinition.mockResolvedValue({
       id: "definition-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       key: "github_token",
       name: "GitHub token",
       provider: "local_encrypted",
@@ -185,9 +185,9 @@ describe("secret routes", () => {
       type: "board",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       memberships: [],
-    })).post("/api/domains/company-1/user-secret-definitions").send({
+    })).post("/api/domains/domain-1/user-secret-definitions").send({
       key: "github_token",
       name: "GitHub token",
       provider: "local_encrypted",
@@ -195,7 +195,7 @@ describe("secret routes", () => {
 
     expect(res.status).toBe(201);
     expect(mockSecretService.createUserSecretDefinition).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({ key: "github_token" }),
       { userId: null, agentId: null },
     );
@@ -213,7 +213,7 @@ describe("secret routes", () => {
   it("logs patched user-secret definition deletion as deletion activity", async () => {
     mockSecretService.updateUserSecretDefinition.mockResolvedValue({
       id: "definition-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       key: "github_token__deleted__definition-1",
       name: "GitHub token",
       provider: "local_encrypted",
@@ -221,12 +221,12 @@ describe("secret routes", () => {
     });
 
     const res = await request(createApp())
-      .patch("/api/domains/company-1/user-secret-definitions/definition-1")
+      .patch("/api/domains/domain-1/user-secret-definitions/definition-1")
       .send({ status: "deleted" });
 
     expect(res.status).toBe(200);
     expect(mockSecretService.updateUserSecretDefinition).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       "definition-1",
       expect.objectContaining({ status: "deleted" }),
       { userId: "user-1", agentId: null },
@@ -244,7 +244,7 @@ describe("secret routes", () => {
   it("creates current-user secret values for the authenticated user only", async () => {
     mockSecretService.createCurrentUserSecretValue.mockResolvedValue({
       id: "secret-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       scope: "user",
       ownerUserId: "user-1",
       userSecretDefinitionId: "definition-1",
@@ -252,14 +252,14 @@ describe("secret routes", () => {
       latestVersion: 1,
     });
 
-    const res = await request(createApp()).post("/api/domains/company-1/me/user-secrets").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/me/user-secrets").send({
       definitionKey: "github_token",
       value: "secret-value",
     });
 
     expect(res.status).toBe(201);
     expect(mockSecretService.createCurrentUserSecretValue).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       "user-1",
       {
         definitionKey: "github_token",
@@ -278,9 +278,9 @@ describe("secret routes", () => {
     const res = await request(createApp({
       type: "board",
       source: "local_implicit",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
-    })).post("/api/domains/company-1/me/user-secrets").send({
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", status: "active", membershipRole: "admin" }],
+    })).post("/api/domains/domain-1/me/user-secrets").send({
       definitionKey: "github_token",
       value: "secret-value",
     });
@@ -293,7 +293,7 @@ describe("secret routes", () => {
 
   it("rejects empty current-user secret rotation payloads", async () => {
     const res = await request(createApp())
-      .post("/api/domains/company-1/me/user-secrets/secret-1/rotate")
+      .post("/api/domains/domain-1/me/user-secrets/secret-1/rotate")
       .send({});
 
     expect(res.status).toBe(400);
@@ -301,10 +301,10 @@ describe("secret routes", () => {
     expect(mockSecretService.rotateCurrentUserSecretValue).not.toHaveBeenCalled();
   });
 
-  it("hides user-scoped secrets from legacy company secret mutation routes", async () => {
+  it("hides user-scoped secrets from legacy domain secret mutation routes", async () => {
     mockSecretService.getById.mockResolvedValue({
       id: "secret-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       scope: "user",
       ownerUserId: "user-2",
       status: "active",
@@ -322,21 +322,21 @@ describe("secret routes", () => {
     const res = await request(createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
-    })).get("/api/domains/company-1/secret-provider-configs");
+      domainId: "domain-1",
+    })).get("/api/domains/domain-1/secret-provider-configs");
 
     expect(res.status).toBe(403);
     expect(mockSecretService.listProviderConfigs).not.toHaveBeenCalled();
   });
 
-  it("rejects provider vault cross-company access before calling the service", async () => {
+  it("rejects provider vault cross-domain access before calling the service", async () => {
     const res = await request(createApp({
       type: "board",
       userId: "user-1",
       source: "session",
-      companyIds: ["company-2"],
-      memberships: [{ companyId: "company-2", status: "active", membershipRole: "admin" }],
-    })).get("/api/domains/company-1/secret-provider-configs");
+      domainIds: ["domain-2"],
+      memberships: [{ domainId: "domain-2", status: "active", membershipRole: "admin" }],
+    })).get("/api/domains/domain-1/secret-provider-configs");
 
     expect(res.status).toBe(403);
     expect(mockSecretService.listProviderConfigs).not.toHaveBeenCalled();
@@ -346,9 +346,9 @@ describe("secret routes", () => {
     const res = await request(createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
     }))
-      .post("/api/domains/company-1/secret-provider-configs/discovery/preview")
+      .post("/api/domains/domain-1/secret-provider-configs/discovery/preview")
       .send({
         provider: "aws_secrets_manager",
         config: { region: "us-east-1" },
@@ -359,7 +359,7 @@ describe("secret routes", () => {
   });
 
   it("rejects sensitive provider vault config fields", async () => {
-    const res = await request(createApp()).post("/api/domains/company-1/secret-provider-configs").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/secret-provider-configs").send({
       provider: "aws_secrets_manager",
       displayName: "AWS prod",
       config: {
@@ -375,7 +375,7 @@ describe("secret routes", () => {
 
   it("rejects sensitive provider vault discovery draft config fields", async () => {
     const res = await request(createApp())
-      .post("/api/domains/company-1/secret-provider-configs/discovery/preview")
+      .post("/api/domains/domain-1/secret-provider-configs/discovery/preview")
       .send({
         provider: "aws_secrets_manager",
         config: {
@@ -409,7 +409,7 @@ describe("secret routes", () => {
           },
           sampleCount: 2,
           samples: [
-            { name: "paperclip/prod-use1/company-1/openai", hasKmsKey: false, tagKeys: ["environment"] },
+            { name: "paperclip/prod-use1/domain-1/openai", hasKmsKey: false, tagKeys: ["environment"] },
           ],
           signals: {
             namespace: "prod-use1",
@@ -429,7 +429,7 @@ describe("secret routes", () => {
     });
 
     const res = await request(createApp())
-      .post("/api/domains/company-1/secret-provider-configs/discovery/preview")
+      .post("/api/domains/domain-1/secret-provider-configs/discovery/preview")
       .send({
         provider: "aws_secrets_manager",
         config: { region: "us-east-1" },
@@ -438,7 +438,7 @@ describe("secret routes", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(mockSecretService.previewProviderConfigDiscovery).toHaveBeenCalledWith("company-1", {
+    expect(mockSecretService.previewProviderConfigDiscovery).toHaveBeenCalledWith("domain-1", {
       provider: "aws_secrets_manager",
       config: { region: "us-east-1" },
       query: "paperclip",
@@ -448,7 +448,7 @@ describe("secret routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "secret_provider_config.discovery_previewed",
       entityType: "secret_provider_config_discovery",
-      entityId: "company-1",
+      entityId: "domain-1",
       details: {
         provider: "aws_secrets_manager",
         candidateCount: 1,
@@ -456,7 +456,7 @@ describe("secret routes", () => {
         warningCount: 0,
       },
     }));
-    expect(JSON.stringify(mockLogActivity.mock.calls)).not.toContain("paperclip/prod-use1/company-1/openai");
+    expect(JSON.stringify(mockLogActivity.mock.calls)).not.toContain("paperclip/prod-use1/domain-1/openai");
   });
 
   it("returns actionable sanitized provider vault discovery errors", async () => {
@@ -482,7 +482,7 @@ describe("secret routes", () => {
     );
 
     const res = await request(createApp())
-      .post("/api/domains/company-1/secret-provider-configs/discovery/preview")
+      .post("/api/domains/domain-1/secret-provider-configs/discovery/preview")
       .send({
         provider: "aws_secrets_manager",
         config: { region: "us-east-1" },
@@ -509,7 +509,7 @@ describe("secret routes", () => {
   });
 
   it("rejects ready status for coming-soon provider vaults", async () => {
-    const res = await request(createApp()).post("/api/domains/company-1/secret-provider-configs").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/secret-provider-configs").send({
       provider: "vault",
       displayName: "Vault draft",
       status: "ready",
@@ -524,7 +524,7 @@ describe("secret routes", () => {
   });
 
   it("rejects credential-bearing Vault provider vault addresses before persistence", async () => {
-    const res = await request(createApp()).post("/api/domains/company-1/secret-provider-configs").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/secret-provider-configs").send({
       provider: "vault",
       displayName: "Vault draft",
       config: {
@@ -541,7 +541,7 @@ describe("secret routes", () => {
     "https://vault.example.com?token=hvs.x",
     "https://vault.example.com#token=hvs.x",
   ])("rejects token-bearing Vault provider vault address %s before persistence", async (address) => {
-    const res = await request(createApp()).post("/api/domains/company-1/secret-provider-configs").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/secret-provider-configs").send({
       provider: "vault",
       displayName: "Vault draft",
       config: { address },
@@ -569,7 +569,7 @@ describe("secret routes", () => {
     const createdAt = new Date("2026-05-06T00:00:00.000Z");
     mockSecretService.createProviderConfig.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       provider: "aws_secrets_manager",
       displayName: "AWS prod",
       status: "ready",
@@ -586,7 +586,7 @@ describe("secret routes", () => {
       updatedAt: createdAt,
     });
 
-    const res = await request(createApp()).post("/api/domains/company-1/secret-provider-configs").send({
+    const res = await request(createApp()).post("/api/domains/domain-1/secret-provider-configs").send({
       provider: "aws_secrets_manager",
       displayName: "AWS prod",
       isDefault: true,
@@ -595,7 +595,7 @@ describe("secret routes", () => {
 
     expect(res.status).toBe(201);
     expect(mockSecretService.createProviderConfig).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       {
         provider: "aws_secrets_manager",
         displayName: "AWS prod",
@@ -621,7 +621,7 @@ describe("secret routes", () => {
     const createdAt = new Date("2026-05-06T00:00:00.000Z");
     const providerConfig = {
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       provider: "aws_secrets_manager",
       displayName: "AWS prod",
       status: "ready",
@@ -663,8 +663,8 @@ describe("secret routes", () => {
     const res = await request(createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
-    })).post("/api/domains/company-1/secrets/remote-import/preview").send({
+      domainId: "domain-1",
+    })).post("/api/domains/domain-1/secrets/remote-import/preview").send({
       providerConfigId: "11111111-1111-4111-8111-111111111111",
     });
 
@@ -693,7 +693,7 @@ describe("secret routes", () => {
     });
 
     const res = await request(createApp())
-      .post("/api/domains/company-1/secrets/remote-import/preview")
+      .post("/api/domains/domain-1/secrets/remote-import/preview")
       .send({
         providerConfigId: "11111111-1111-4111-8111-111111111111",
         query: "openai",
@@ -701,7 +701,7 @@ describe("secret routes", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(mockSecretService.previewRemoteImport).toHaveBeenCalledWith("company-1", {
+    expect(mockSecretService.previewRemoteImport).toHaveBeenCalledWith("domain-1", {
       providerConfigId: "11111111-1111-4111-8111-111111111111",
       query: "openai",
       nextToken: undefined,
@@ -730,7 +730,7 @@ describe("secret routes", () => {
     );
 
     const res = await request(createApp())
-      .post("/api/domains/company-1/secrets/remote-import/preview")
+      .post("/api/domains/domain-1/secrets/remote-import/preview")
       .send({
         providerConfigId: "11111111-1111-4111-8111-111111111111",
       });
@@ -767,7 +767,7 @@ describe("secret routes", () => {
     });
 
     const res = await request(createApp())
-      .post("/api/domains/company-1/secrets/remote-import")
+      .post("/api/domains/domain-1/secrets/remote-import")
       .send({
         providerConfigId: "11111111-1111-4111-8111-111111111111",
         secrets: [
@@ -782,7 +782,7 @@ describe("secret routes", () => {
 
     expect(res.status).toBe(200);
     expect(mockSecretService.importRemoteSecrets).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       {
         providerConfigId: "11111111-1111-4111-8111-111111111111",
         secrets: [
@@ -811,7 +811,7 @@ describe("secret routes", () => {
   it("surfaces update-route externalRef retarget rejection without logging raw refs", async () => {
     mockSecretService.getById.mockResolvedValue({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "OpenAI API key",
       key: "openai-api-key",
       provider: "aws_secrets_manager",
@@ -842,7 +842,7 @@ describe("secret routes", () => {
   it("allows DELETE to retry cleanup for already soft-deleted secrets", async () => {
     const secret = {
       id: "33333333-3333-4333-8333-333333333333",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "OpenAI API Key__deleted__33333333-3333-4333-8333-333333333333",
       key: "openai-api-key__deleted__33333333-3333-4333-8333-333333333333",
       provider: "aws_secrets_manager",
@@ -865,7 +865,7 @@ describe("secret routes", () => {
       expect.anything(),
       expect.objectContaining({
         action: "secret.deleted",
-        companyId: "company-1",
+        domainId: "domain-1",
         entityId: secret.id,
       }),
     );

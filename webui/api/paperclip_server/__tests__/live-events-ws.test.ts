@@ -52,7 +52,7 @@ class FakeUpgradeSocket extends EventEmitter {
 
 function createUpgradeRequest(overrides: Partial<IncomingMessage> = {}) {
   return {
-    url: "/api/domains/company-1/events/ws",
+    url: "/api/domains/domain-1/events/ws",
     headers: {},
     ...overrides,
   } as IncomingMessage;
@@ -98,7 +98,7 @@ describe("setupLiveEventsWebSocketServer", () => {
     await flushPromises();
 
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ err: expect.any(Error), path: "/api/domains/company-1/events/ws" }),
+      expect.objectContaining({ err: expect.any(Error), path: "/api/domains/domain-1/events/ws" }),
       "live websocket upgrade socket error",
     );
     expect(socket.endedChunks).toEqual([]);

@@ -31,7 +31,7 @@ import {
   type EnvironmentCustomImageTerminalPayloadValidationResult,
 } from "../services/environment-custom-image-terminal-sessions.js";
 import {
-  readCustomImageSetupSessionCompanyId,
+  readCustomImageSetupSessionDomainId,
   requireFutureCustomImageSetupExpiry,
 } from "../services/environment-custom-image-setup-session-utils.js";
 import {
@@ -84,14 +84,14 @@ export function environmentRoutes(
     assertBoardOrgAccess(req);
   }
 
-  function assertCustomImageCompanyAccess(req: Request, companyId: string) {
+  function assertCustomImageDomainAccess(req: Request, domainId: string) {
     if (req.actor.type !== "board") {
       throw forbidden("Board access required");
     }
     if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
-    const allowedDomains = req.actor.companyIds ?? [];
-    if (!allowedDomains.includes(companyId)) {
-      throw forbidden("User does not have access to this company");
+    const allowedDomains = req.actor.domainIds ?? [];
+    if (!allowedDomains.includes(domainId)) {
+      throw forbidden("User does not have access to this domain");
     }
   }
 
@@ -123,9 +123,9 @@ export function environmentRoutes(
       : redactEnvironmentForRestrictedView(environment);
   }
 
-  async function assertCanReadSecretsForDraftProbe(req: Request, companyId: string) {
+  async function assertCanReadSecretsForDraftProbe(req: Request, domainId: string) {
     assertCanAccessInstanceEnvironments(req);
-    return companyId;
+    return domainId;
   }
 
   async function logInstanceEnvironmentActivity(input: {
@@ -134,11 +134,11 @@ export function environmentRoutes(
     entityId: string;
     details: Record<string, unknown>;
   }) {
-    const companyIds = await instanceSettings.listCompanyIds();
+    const domainIds = await instanceSettings.listDomainIds();
     await Promise.all(
-      companyIds.map((companyId) =>
+      domainIds.map((domainId) =>
         logActivity(db, {
-          companyId,
+          domainId,
           actorType: input.actor.actorType,
           actorId: input.actor.actorId,
           agentId: input.actor.agentId,
@@ -154,13 +154,13 @@ export function environmentRoutes(
 
   async function logEnvironmentCustomImageActivity(input: {
     actor: ReturnType<typeof getActorInfo>;
-    companyId: string;
+    domainId: string;
     action: string;
     entityId: string;
     details: Record<string, unknown>;
   }) {
     await logActivity(db, {
-      companyId: input.companyId,
+      domainId: input.domainId,
       actorType: input.actor.actorType,
       actorId: input.actor.actorId,
       agentId: input.actor.agentId,
@@ -172,69 +172,69 @@ export function environmentRoutes(
     });
   }
 
-  async function resolveCustomImageCompanyId(req: Request): Promise<string> {
-    const queryCompanyId =
-      typeof req.query.companyId === "string" && req.query.companyId.trim().length > 0
-        ? req.query.companyId.trim()
+  async function resolveCustomImageDomainId(req: Request): Promise<string> {
+    const queryDomainId =
+      typeof req.query.domainId === "string" && req.query.domainId.trim().length > 0
+        ? req.query.domainId.trim()
         : null;
-    if (queryCompanyId) {
-      assertCustomImageCompanyAccess(req, queryCompanyId);
-      return queryCompanyId;
+    if (queryDomainId) {
+      assertCustomImageDomainAccess(req, queryDomainId);
+      return queryDomainId;
     }
-    if (req.actor.type === "board" && req.actor.companyIds?.length === 1) {
-      return req.actor.companyIds[0]!;
+    if (req.actor.type === "board" && req.actor.domainIds?.length === 1) {
+      return req.actor.domainIds[0]!;
     }
-    const companyIds = await instanceSettings.listCompanyIds();
-    if (companyIds.length === 1 && companyIds[0]) {
-      const companyId = companyIds[0];
-      assertCustomImageCompanyAccess(req, companyId);
-      return companyId;
+    const domainIds = await instanceSettings.listDomainIds();
+    if (domainIds.length === 1 && domainIds[0]) {
+      const domainId = domainIds[0];
+      assertCustomImageDomainAccess(req, domainId);
+      return domainId;
     }
-    throw unprocessable("companyId query parameter is required for environment customImage setup.");
+    throw unprocessable("domainId query parameter is required for environment customImage setup.");
   }
 
-  async function resolveCustomImageSessionCompanyId(
+  async function resolveCustomImageSessionDomainId(
     req: Request,
     session: { metadata?: Record<string, unknown> | null },
   ): Promise<string> {
-    const metadataCompanyId = readCustomImageSetupSessionCompanyId(session);
-    if (metadataCompanyId) {
-      assertCustomImageCompanyAccess(req, metadataCompanyId);
-      return metadataCompanyId;
+    const metadataDomainId = readCustomImageSetupSessionDomainId(session);
+    if (metadataDomainId) {
+      assertCustomImageDomainAccess(req, metadataDomainId);
+      return metadataDomainId;
     }
-    return await resolveCustomImageCompanyId(req);
+    return await resolveCustomImageDomainId(req);
   }
 
-  async function resolveEnvironmentSecretContextCompanyId(
+  async function resolveEnvironmentSecretContextDomainId(
     req: Request,
     environmentId: string,
     options: { required: boolean },
   ): Promise<string | null> {
-    const routeCompanyId =
-      typeof req.params.companyId === "string" && req.params.companyId.trim().length > 0
-        ? req.params.companyId.trim()
-        : typeof req.query.companyId === "string" && req.query.companyId.trim().length > 0
-          ? req.query.companyId.trim()
+    const routeDomainId =
+      typeof req.params.domainId === "string" && req.params.domainId.trim().length > 0
+        ? req.params.domainId.trim()
+        : typeof req.query.domainId === "string" && req.query.domainId.trim().length > 0
+          ? req.query.domainId.trim()
           : null;
-    const bindingCompanyIds = await secrets.listBindingCompanyIdsForTarget({
+    const bindingDomainIds = await secrets.listBindingDomainIdsForTarget({
       targetType: "environment",
       targetId: environmentId,
     });
-    if (routeCompanyId && bindingCompanyIds.length > 0 && !bindingCompanyIds.includes(routeCompanyId)) {
-      throw conflict("Environment secret bindings already use a different company context.");
+    if (routeDomainId && bindingDomainIds.length > 0 && !bindingDomainIds.includes(routeDomainId)) {
+      throw conflict("Environment secret bindings already use a different domain context.");
     }
-    if (routeCompanyId) return routeCompanyId;
-    if (bindingCompanyIds.length === 1) return bindingCompanyIds[0] ?? null;
-    if (bindingCompanyIds.length > 1) {
-      throw conflict("Environment secret bindings span multiple domains and require explicit companyId context.");
+    if (routeDomainId) return routeDomainId;
+    if (bindingDomainIds.length === 1) return bindingDomainIds[0] ?? null;
+    if (bindingDomainIds.length > 1) {
+      throw conflict("Environment secret bindings span multiple domains and require explicit domainId context.");
     }
-    if (req.actor.type === "agent" && req.actor.companyId) return req.actor.companyId;
-    if (req.actor.type === "board" && Array.isArray(req.actor.companyIds) && req.actor.companyIds.length === 1) {
-      return req.actor.companyIds[0] ?? null;
+    if (req.actor.type === "agent" && req.actor.domainId) return req.actor.domainId;
+    if (req.actor.type === "board" && Array.isArray(req.actor.domainIds) && req.actor.domainIds.length === 1) {
+      return req.actor.domainIds[0] ?? null;
     }
     if (!options.required) return null;
     throw unprocessable(
-      "Environment secret management requires a companyId context during the instance-scoped transition.",
+      "Environment secret management requires a domainId context during the instance-scoped transition.",
     );
   }
 
@@ -360,7 +360,7 @@ export function environmentRoutes(
     throw unprocessable(failure.message);
   }
 
-  router.get("/domains/:companyId/environments", async (req, res) => {
+  router.get("/domains/:domainId/environments", async (req, res) => {
     assertCanReadInstanceEnvironments(req);
     const rows = await svc.list({
       status: req.query.status as string | undefined,
@@ -379,7 +379,7 @@ export function environmentRoutes(
     res.json(impact);
   });
 
-  router.get("/domains/:companyId/environments/capabilities", async (req, res) => {
+  router.get("/domains/:domainId/environments/capabilities", async (req, res) => {
     assertCanReadInstanceEnvironments(req);
     const pluginDrivers = await listReadyPluginEnvironmentDrivers({
       db,
@@ -416,7 +416,7 @@ export function environmentRoutes(
 
   router.get("/environments/:environmentId/custom-image-template", async (req, res) => {
     assertCanAccessInstanceEnvironments(req);
-    await resolveCustomImageCompanyId(req);
+    await resolveCustomImageDomainId(req);
     const overview = await customImages.getOverview({
       environmentId: req.params.environmentId as string,
     });
@@ -428,7 +428,7 @@ export function environmentRoutes(
     validate(startEnvironmentCustomImageSetupSessionSchema),
     async (req, res) => {
       assertCanAccessInstanceEnvironments(req);
-      const companyId = await resolveCustomImageCompanyId(req);
+      const domainId = await resolveCustomImageDomainId(req);
       const actor = getActorInfo(req);
       const result = await customImages.startSetupSession({
         environmentId: req.params.environmentId as string,
@@ -438,11 +438,11 @@ export function environmentRoutes(
           userId: actor.actorType === "user" ? actor.actorId : null,
           agentId: actor.agentId,
         },
-        secretContextCompanyId: companyId,
+        secretContextDomainId: domainId,
       });
       await logEnvironmentCustomImageActivity({
         actor,
-        companyId,
+        domainId,
         action: "environment.custom_image_setup.started",
         entityId: result.session.environmentId,
         details: setupSessionActivityDetails(result.session),
@@ -458,7 +458,7 @@ export function environmentRoutes(
       res.status(404).json({ error: "Environment customImage setup session not found" });
       return;
     }
-    await resolveCustomImageSessionCompanyId(req, session);
+    await resolveCustomImageSessionDomainId(req, session);
     const result = await customImages.refreshSetupSession({
       sessionId: session.id,
       includeConnectionPayload: true,
@@ -476,7 +476,7 @@ export function environmentRoutes(
         res.status(404).json({ error: "Environment customImage setup session not found" });
         return;
       }
-      const companyId = await resolveCustomImageSessionCompanyId(req, session);
+      const domainId = await resolveCustomImageSessionDomainId(req, session);
 
       const refreshed = await customImages.refreshSetupSession({
         sessionId: session.id,
@@ -494,7 +494,7 @@ export function environmentRoutes(
 
       const minted = environmentCustomImageTerminalSessionStore.create({
         setupSessionId: refreshed.session.id,
-        companyId,
+        domainId,
         environmentId: refreshed.session.environmentId,
         provider: refreshed.session.provider,
         ssh: payloadValidation.ssh,
@@ -505,7 +505,7 @@ export function environmentRoutes(
       const actor = getActorInfo(req);
       await logEnvironmentCustomImageActivity({
         actor,
-        companyId,
+        domainId,
         action: "environment.custom_image_terminal_session_token.created",
         entityId: refreshed.session.environmentId,
         details: {
@@ -541,7 +541,7 @@ export function environmentRoutes(
         res.status(404).json({ error: "Environment customImage setup session not found" });
         return;
       }
-      const companyId = await resolveCustomImageSessionCompanyId(req, session);
+      const domainId = await resolveCustomImageSessionDomainId(req, session);
       const actor = getActorInfo(req);
       const result = await customImages.finishSetupSession({
         sessionId: session.id,
@@ -551,7 +551,7 @@ export function environmentRoutes(
       environmentCustomImageTerminalConnectionRegistry.closeBySetupSessionId(session.id, "setup_finished");
       await logEnvironmentCustomImageActivity({
         actor,
-        companyId,
+        domainId,
         action: "environment.custom_image_setup.finished",
         entityId: result.session.environmentId,
         details: {
@@ -573,7 +573,7 @@ export function environmentRoutes(
         res.status(404).json({ error: "Environment customImage setup session not found" });
         return;
       }
-      const companyId = await resolveCustomImageSessionCompanyId(req, session);
+      const domainId = await resolveCustomImageSessionDomainId(req, session);
       const actor = getActorInfo(req);
       const cancelled = await customImages.cancelSetupSession({
         sessionId: session.id,
@@ -583,7 +583,7 @@ export function environmentRoutes(
       environmentCustomImageTerminalConnectionRegistry.closeBySetupSessionId(session.id, "setup_cancelled");
       await logEnvironmentCustomImageActivity({
         actor,
-        companyId,
+        domainId,
         action: "environment.custom_image_setup.cancelled",
         entityId: cancelled.environmentId,
         details: setupSessionActivityDetails(cancelled),
@@ -594,14 +594,14 @@ export function environmentRoutes(
 
   router.post("/environments/:environmentId/custom-image-template/rollback", async (req, res) => {
     assertCanAccessInstanceEnvironments(req);
-    const companyId = await resolveCustomImageCompanyId(req);
+    const domainId = await resolveCustomImageDomainId(req);
     const actor = getActorInfo(req);
     const result = await customImages.rollbackTemplate({
       environmentId: req.params.environmentId as string,
     });
     await logEnvironmentCustomImageActivity({
       actor,
-      companyId,
+      domainId,
       action: "environment.custom_image_template.rolled_back",
       entityId: req.params.environmentId as string,
       details: {
@@ -614,7 +614,7 @@ export function environmentRoutes(
 
   router.delete("/environments/:environmentId/custom-image-template", async (req, res) => {
     assertCanAccessInstanceEnvironments(req);
-    const companyId = await resolveCustomImageCompanyId(req);
+    const domainId = await resolveCustomImageDomainId(req);
     const actor = getActorInfo(req);
     const template = await customImages.disableTemplate({
       environmentId: req.params.environmentId as string,
@@ -622,7 +622,7 @@ export function environmentRoutes(
     });
     await logEnvironmentCustomImageActivity({
       actor,
-      companyId,
+      domainId,
       action: "environment.custom_image_template.disabled",
       entityId: req.params.environmentId as string,
       details: templateActivityDetails(template),
@@ -630,8 +630,8 @@ export function environmentRoutes(
     res.json(template);
   });
 
-  router.post("/domains/:companyId/environments", validate(createEnvironmentSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.post("/domains/:domainId/environments", validate(createEnvironmentSchema), async (req, res) => {
+    const domainId = req.params.domainId as string;
     assertCanAccessInstanceEnvironments(req);
     if (req.body.driver === "local") {
       const existingLocal = await svc.list({ driver: "local" });
@@ -643,13 +643,13 @@ export function environmentRoutes(
     const input = {
       ...req.body,
       envVars: await secrets.normalizeEnvBindingsForPersistence(
-        companyId,
+        domainId,
         req.body.envVars,
         { strictMode: strictSecretsMode, fieldPath: "envVars" },
       ),
       config: await normalizeEnvironmentConfigForPersistence({
         db,
-        companyId,
+        domainId,
         environmentName: req.body.name,
         driver: req.body.driver,
         secretProvider: getConfiguredSecretProvider(),
@@ -663,12 +663,12 @@ export function environmentRoutes(
     };
     const environment = await svc.create(input);
     await secrets.syncSecretRefsForTarget(
-      companyId,
+      domainId,
       { targetType: "environment", targetId: environment.id },
       await collectEnvironmentSecretRefs({ db, environment }),
     );
     await secrets.syncEnvBindingsForTarget(
-      companyId,
+      domainId,
       { targetType: "environment", targetId: environment.id },
       environment.envVars,
     );
@@ -728,9 +728,9 @@ export function environmentRoutes(
     const actor = getActorInfo(req);
     const nextDriver = req.body.driver ?? existing.driver;
     const nextName = req.body.name ?? existing.name;
-    const companyIdForSecrets =
+    const domainIdForSecrets =
       req.body.config !== undefined || req.body.driver !== undefined || req.body.envVars !== undefined
-        ? await resolveEnvironmentSecretContextCompanyId(req, existing.id, { required: true })
+        ? await resolveEnvironmentSecretContextDomainId(req, existing.id, { required: true })
         : null;
     const configSource =
       req.body.config !== undefined
@@ -748,7 +748,7 @@ export function environmentRoutes(
       ...(req.body.envVars !== undefined
         ? {
             envVars: await secrets.normalizeEnvBindingsForPersistence(
-              companyIdForSecrets!,
+              domainIdForSecrets!,
               req.body.envVars,
               { strictMode: strictSecretsMode, fieldPath: "envVars" },
             ),
@@ -758,7 +758,7 @@ export function environmentRoutes(
         ? {
             config: await normalizeEnvironmentConfigForPersistence({
               db,
-              companyId: companyIdForSecrets!,
+              domainId: domainIdForSecrets!,
               environmentName: nextName,
               driver: nextDriver,
               secretProvider: getConfiguredSecretProvider(),
@@ -782,7 +782,7 @@ export function environmentRoutes(
     > = { action: "none" };
     if (patch.config !== undefined || patch.driver !== undefined) {
       await secrets.syncSecretRefsForTarget(
-        companyIdForSecrets!,
+        domainIdForSecrets!,
         { targetType: "environment", targetId: environment.id },
         await collectEnvironmentSecretRefs({ db, environment }),
       );
@@ -798,7 +798,7 @@ export function environmentRoutes(
     }
     if (patch.envVars !== undefined) {
       await secrets.syncEnvBindingsForTarget(
-        companyIdForSecrets!,
+        domainIdForSecrets!,
         { targetType: "environment", targetId: environment.id },
         environment.envVars,
       );
@@ -840,19 +840,19 @@ export function environmentRoutes(
       }
       rejectEnvironmentDelete({ actor, environment: existing, impact: latestImpact });
     }
-    const companyIds = await instanceSettings.listCompanyIds();
+    const domainIds = await instanceSettings.listDomainIds();
     await Promise.all(
-      companyIds.flatMap((companyId) => [
-        executionWorkspaces.clearEnvironmentSelection(companyId, existing.id),
-        issues.clearExecutionWorkspaceEnvironmentSelection(companyId, existing.id),
-        projects.clearExecutionWorkspaceEnvironmentSelection(companyId, existing.id),
+      domainIds.flatMap((domainId) => [
+        executionWorkspaces.clearEnvironmentSelection(domainId, existing.id),
+        issues.clearExecutionWorkspaceEnvironmentSelection(domainId, existing.id),
+        projects.clearExecutionWorkspaceEnvironmentSelection(domainId, existing.id),
         secrets.syncEnvBindingsForTarget(
-          companyId,
+          domainId,
           { targetType: "environment", targetId: existing.id },
           {},
         ),
         secrets.syncSecretRefsForTarget(
-          companyId,
+          domainId,
           { targetType: "environment", targetId: existing.id },
           [],
           { replaceAll: true },
@@ -884,19 +884,19 @@ export function environmentRoutes(
     }
     assertCanAccessInstanceEnvironments(req);
     const actor = getActorInfo(req);
-    const companyIdForSecrets = await resolveEnvironmentSecretContextCompanyId(req, environment.id, { required: false });
-    const companyIdForProbe = companyIdForSecrets
-      ?? (environment.driver === "sandbox" ? await resolveCustomImageCompanyId(req) : null);
-    if (!companyIdForSecrets) {
+    const domainIdForSecrets = await resolveEnvironmentSecretContextDomainId(req, environment.id, { required: false });
+    const domainIdForProbe = domainIdForSecrets
+      ?? (environment.driver === "sandbox" ? await resolveCustomImageDomainId(req) : null);
+    if (!domainIdForSecrets) {
       const secretRefs = await collectEnvironmentSecretRefs({ db, environment });
       if (secretRefs.length > 0) {
         throw unprocessable(
-          "Environment probe requires an explicit companyId to resolve secret-backed config for this environment.",
+          "Environment probe requires an explicit domainId to resolve secret-backed config for this environment.",
         );
       }
     }
     const probe = await probeEnvironment(db, environment, {
-      companyId: companyIdForProbe,
+      domainId: domainIdForProbe,
       pluginWorkerManager: options.pluginWorkerManager,
       applyCustomImageTemplate: environment.driver === "sandbox",
       acquireSandboxRuntimeLease: environment.driver === "sandbox",
@@ -915,18 +915,18 @@ export function environmentRoutes(
   });
 
   router.post(
-    "/domains/:companyId/environments/probe-config",
+    "/domains/:domainId/environments/probe-config",
     validate(probeEnvironmentConfigSchema),
     async (req, res) => {
-      const companyId = req.params.companyId as string;
+      const domainId = req.params.domainId as string;
       assertCanAccessInstanceEnvironments(req);
       if (req.body.driver === "sandbox") {
-        await assertCanReadSecretsForDraftProbe(req, companyId);
+        await assertCanReadSecretsForDraftProbe(req, domainId);
       }
       const actor = getActorInfo(req);
       const normalizedConfig = await normalizeEnvironmentConfigForProbe({
         db,
-        companyId,
+        domainId,
         driver: req.body.driver,
         config: req.body.config,
         accessContext: {
@@ -939,7 +939,7 @@ export function environmentRoutes(
       });
       const environment = {
         id: "unsaved",
-        companyId,
+        domainId,
         name: req.body.name?.trim() || "Unsaved environment",
         description: req.body.description ?? null,
         driver: req.body.driver,
@@ -951,7 +951,7 @@ export function environmentRoutes(
         updatedAt: new Date(),
       };
       const probe = await probeEnvironment(db, environment, {
-        companyId,
+        domainId,
         pluginWorkerManager: options.pluginWorkerManager,
         resolvedConfig: {
           driver: req.body.driver,

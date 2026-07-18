@@ -138,7 +138,7 @@ function buildTestConfig(overrides: Record<string, unknown> = {}) {
     feedbackExportBackendToken: "telemetry-token",
     heartbeatSchedulerEnabled: false,
     heartbeatSchedulerIntervalMs: 30000,
-    companyDeletionEnabled: false,
+    domainDeletionEnabled: false,
     ...overrides,
   };
 }
@@ -162,7 +162,7 @@ vi.mock("@paperclipai/db", () => ({
   runDatabaseBackup: vi.fn(),
   authUsers: {},
   domains: {},
-  companyMemberships: {},
+  domainMemberships: {},
   instanceUserRoles: {},
 }));
 

@@ -26,7 +26,7 @@ import {
   runDatabaseBackup,
   authUsers,
   domains,
-  companyMemberships,
+  domainMemberships,
   instanceUserRoles,
 } from "@paperclipai/db";
 import detectPort from "detect-port";
@@ -282,22 +282,22 @@ export async function startServer(): Promise<StartedServer> {
       });
     }
   
-    const companyRows = await db.select({ id: domains.id }).from(domains);
-    for (const company of companyRows) {
+    const domainRows = await db.select({ id: domains.id }).from(domains);
+    for (const domain of domainRows) {
       const membership = await db
-        .select({ id: companyMemberships.id })
-        .from(companyMemberships)
+        .select({ id: domainMemberships.id })
+        .from(domainMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, company.id),
-            eq(companyMemberships.principalType, "user"),
-            eq(companyMemberships.principalId, LOCAL_BOARD_USER_ID),
+            eq(domainMemberships.domainId, domain.id),
+            eq(domainMemberships.principalType, "user"),
+            eq(domainMemberships.principalId, LOCAL_BOARD_USER_ID),
           ),
         )
         .then((rows: Array<{ id: string }>) => rows[0] ?? null);
       if (membership) continue;
-      await db.insert(companyMemberships).values({
-        companyId: company.id,
+      await db.insert(domainMemberships).values({
+        domainId: domain.id,
         principalType: "user",
         principalId: LOCAL_BOARD_USER_ID,
         status: "active",
@@ -686,7 +686,7 @@ export async function startServer(): Promise<StartedServer> {
     allowedHostnames: config.allowedHostnames,
     bindHost: config.host,
     authReady,
-    companyDeletionEnabled: config.companyDeletionEnabled,
+    domainDeletionEnabled: config.domainDeletionEnabled,
     pluginMigrationDb: pluginMigrationDb as any,
     betterAuthHandler,
     resolveSession,

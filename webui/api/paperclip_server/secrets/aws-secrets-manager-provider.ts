@@ -29,7 +29,7 @@ const PROVIDER_CONFIG_DISCOVERY_CANDIDATE_LIMIT = 6;
 const AWS_RUNTIME_CREDENTIAL_WARNING =
   "AWS bootstrap credentials must be available to the Paperclip server runtime through the AWS SDK default credential provider chain: IAM role/workload identity, AWS_PROFILE/SSO/shared credentials, web identity, container/instance metadata, or short-lived shell credentials.";
 const AWS_CREDENTIAL_CUSTODY_WARNING =
-  "Do not store AWS root credentials or long-lived IAM user access keys in Paperclip company_secrets; the AWS provider bootstrap belongs in deployment infrastructure, the process environment, an AWS profile, or the orchestrator secret store.";
+  "Do not store AWS root credentials or long-lived IAM user access keys in Paperclip domain_secrets; the AWS provider bootstrap belongs in deployment infrastructure, the process environment, an AWS profile, or the orchestrator secret store.";
 
 interface AwsSecretsManagerMaterial extends StoredSecretVersionMaterial {
   scheme: typeof AWS_SECRETS_MANAGER_SCHEME;
@@ -79,7 +79,7 @@ interface CachedAwsCredentialProvider {
   pending: Promise<AwsCredentialIdentity> | null;
 }
 
-type ManagedSecretNamespaceContext = Pick<SecretProviderWriteContext, "companyId" | "secretKey">;
+type ManagedSecretNamespaceContext = Pick<SecretProviderWriteContext, "domainId" | "secretKey">;
 
 const awsCredentialProviders = new Map<string, CachedAwsCredentialProvider>();
 
@@ -444,7 +444,7 @@ function buildManagedSecretName(
   return [
     sanitizePathSegment(config.prefix),
     sanitizePathSegment(config.deploymentId),
-    sanitizePathSegment(context.companyId),
+    sanitizePathSegment(context.domainId),
     sanitizePathSegment(context.secretKey),
   ]
     .filter(Boolean)
@@ -521,7 +521,7 @@ function resolveManagedSecretRef(input: {
   }
   if (sawNonEmptyExternalRef) {
     throw unprocessable(
-      "AWS Secrets Manager managed secret ref drifted outside the derived deployment/company scope",
+      "AWS Secrets Manager managed secret ref drifted outside the derived deployment/domain scope",
     );
   }
   return buildManagedSecretId(input.config, input.context);
@@ -536,7 +536,7 @@ function buildManagedSecretTags(
     { Key: "paperclip:managed-by", Value: "paperclip" },
     { Key: "paperclip:provider-owner", Value: config.providerOwnerTag },
     { Key: "paperclip:deployment-id", Value: config.deploymentId },
-    { Key: "paperclip:company-id", Value: context.companyId },
+    { Key: "paperclip:domain-id", Value: context.domainId },
     { Key: "paperclip:secret-key", Value: context.secretKey },
     { Key: "paperclip:environment", Value: config.environmentTag },
   ];
@@ -667,7 +667,7 @@ function discoveryDisplayName(input: {
 }
 
 function discoverAwsProviderConfigCandidates(input: {
-  companyId: string;
+  domainId: string;
   config: AwsSecretsManagerConfig;
   draftConfig: Record<string, unknown>;
   entries: AwsSecretsManagerListSecretEntry[];
@@ -683,7 +683,7 @@ function discoverAwsProviderConfigCandidates(input: {
     ownerTag: string | null;
     kmsKeyId: string | null;
     paperclipManaged: boolean;
-    paperclipCompanyId: string | null;
+    paperclipDomainId: string | null;
   };
 
   const skippedWarnings: string[] = [];
@@ -695,8 +695,8 @@ function discoverAwsProviderConfigCandidates(input: {
     if (!name) continue;
     const tags = normalizeAwsTags(entry.Tags);
     const paperclipManaged = tagValue(tags, ["paperclip:managed-by"])?.toLowerLifeAdmin() === "paperclip";
-    const paperclipCompanyId = tagValue(tags, ["paperclip:company-id"]);
-    if (paperclipManaged && paperclipCompanyId !== input.companyId) {
+    const paperclipDomainId = tagValue(tags, ["paperclip:domain-id"]);
+    if (paperclipManaged && paperclipDomainId !== input.domainId) {
       skippedForeignPaperclipSampleCount += 1;
       continue;
     }
@@ -711,13 +711,13 @@ function discoverAwsProviderConfigCandidates(input: {
       ownerTag: tagValue(tags, ["paperclip:provider-owner", "owner", "team", "service", "application"]),
       kmsKeyId: asOptionalNonEmptyString(entry.KmsKeyId),
       paperclipManaged,
-      paperclipCompanyId,
+      paperclipDomainId,
     });
   }
 
   if (skippedForeignPaperclipSampleCount > 0) {
     skippedWarnings.push(
-      `Skipped ${skippedForeignPaperclipSampleCount} Paperclip-managed AWS secret sample(s) that were not tagged for this company.`,
+      `Skipped ${skippedForeignPaperclipSampleCount} Paperclip-managed AWS secret sample(s) that were not tagged for this domain.`,
     );
   }
 
@@ -761,8 +761,8 @@ function discoverAwsProviderConfigCandidates(input: {
       if (kmsKeys.length > 1 && !draftKmsKeyId) {
         candidateWarnings.push("Sampled AWS secrets use multiple KMS keys; choose the intended KMS key before saving.");
       }
-      if (group.some((sample) => sample.paperclipManaged && sample.paperclipCompanyId === input.companyId)) {
-        candidateWarnings.push("Sample includes Paperclip-managed secrets for this company; do not import them as external references.");
+      if (group.some((sample) => sample.paperclipManaged && sample.paperclipDomainId === input.domainId)) {
+        candidateWarnings.push("Sample includes Paperclip-managed secrets for this domain; do not import them as external references.");
       }
 
       return {
@@ -848,19 +848,19 @@ function classifyAwsProviderError(message: string): SecretProviderClientErrorCod
 
 function awsProviderSafeMessage(code: SecretProviderClientErrorCode): string {
   switch (code) {
-    case "access_denied":
+    life_admin "access_denied":
       return "AWS Secrets Manager denied the request. Check IAM permissions for this provider vault.";
-    case "throttled":
+    life_admin "throttled":
       return "AWS Secrets Manager throttled the request. Wait and try again.";
-    case "not_found":
+    life_admin "not_found":
       return "AWS Secrets Manager could not find the requested secret.";
-    case "conflict":
+    life_admin "conflict":
       return "AWS Secrets Manager reported that the requested secret already exists.";
-    case "invalid_request":
+    life_admin "invalid_request":
       return "AWS Secrets Manager rejected the request.";
-    case "provider_unavailable":
+    life_admin "provider_unavailable":
       return "AWS Secrets Manager is unavailable right now.";
-    case "provider_error":
+    life_admin "provider_error":
     default:
       return "AWS Secrets Manager request failed.";
   }
@@ -1233,7 +1233,7 @@ export function createAwsSecretsManagerProvider(
           Filters: query ? [{ Key: "all", Values: [query] }] : undefined,
         });
         return discoverAwsProviderConfigCandidates({
-          companyId: input.companyId,
+          domainId: input.domainId,
           config,
           draftConfig: input.providerConfig.config,
           entries: listed.SecretList ?? [],

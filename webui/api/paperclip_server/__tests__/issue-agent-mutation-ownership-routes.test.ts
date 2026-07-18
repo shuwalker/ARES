@@ -4,7 +4,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const issueId = "11111111-1111-4111-8111-111111111111";
-const companyId = "22222222-2222-4222-8222-222222222222";
+const domainId = "22222222-2222-4222-8222-222222222222";
 const ownerAgentId = "33333333-3333-4333-8333-333333333333";
 const peerAgentId = "44444444-4444-4444-8444-444444444444";
 const ownerRunId = "55555555-5555-4555-8555-555555555555";
@@ -44,7 +44,7 @@ const mockAgentService = vi.hoisted(() => ({
   resolveByReference: vi.fn(),
 }));
 
-const mockCompanyService = vi.hoisted(() => ({
+const mockDomainService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
 
@@ -179,10 +179,10 @@ function registerRouteMocks() {
     accessService: () => mockAccessService,
     agentService: () => mockAgentService,
     clampIssueListLimit: (value: number) => Math.min(Math.max(value, 1), 500),
-    companySkillService: () => ({
+    domainSkillService: () => ({
       completeTestRunForIssue: vi.fn(async () => null),
     }),
-    companyService: () => mockCompanyService,
+    domainService: () => mockDomainService,
     documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
     documentService: () => mockDocumentService,
     executionWorkspaceService: () => ({}),
@@ -200,7 +200,7 @@ function registerRouteMocks() {
           feedbackDataSharingPreference: "prompt",
         },
       })),
-      listCompanyIds: vi.fn(async () => [companyId]),
+      listDomainIds: vi.fn(async () => [domainId]),
     }),
     issueApprovalService: () => mockIssueApprovalService,
     issueRecoveryActionService: () => mockIssueRecoveryActionService,
@@ -232,7 +232,7 @@ function registerRouteMocks() {
 function makeIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: issueId,
-    companyId,
+    domainId,
     status: "in_progress",
     priority: "high",
     projectId: null,
@@ -253,7 +253,7 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
 function makeAgent(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
-    companyId,
+    domainId,
     role: "engineer",
     reportsTo: null,
     permissions: { canCreateAgents: false },
@@ -270,20 +270,20 @@ function createRunContextDb(
     ? runAgentOrRows
     : [{
         id: runId,
-        companyId,
+        domainId,
         agentId: runAgentOrRows,
-        agentCompanyId: companyId,
+        agentDomainId: domainId,
         contextSnapshot,
       }];
   const firstRun = runRows[0] ?? {};
   const runAgentId = typeof firstRun.agentId === "string" ? firstRun.agentId : ownerAgentId;
-  const runAgentCompanyId = typeof firstRun.agentCompanyId === "string" ? firstRun.agentCompanyId : companyId;
+  const runAgentDomainId = typeof firstRun.agentDomainId === "string" ? firstRun.agentDomainId : domainId;
   const rowsForSelection = (selection: Record<string, unknown>) => {
     const keys = Object.keys(selection);
     if (keys.includes("entityId")) return [];
     if (keys.includes("contextSnapshot")) return runRows;
-    if (keys.includes("agentCompanyId")) return runRows;
-    return [{ id: runAgentId, companyId: runAgentCompanyId, permissions: {}, role: "engineer", reportsTo: null }];
+    if (keys.includes("agentDomainId")) return runRows;
+    return [{ id: runAgentId, domainId: runAgentDomainId, permissions: {}, role: "engineer", reportsTo: null }];
   };
   const buildQuery = (selection: Record<string, unknown>) => {
     const whereResult = {
@@ -329,7 +329,7 @@ function peerActor(overrides: Record<string, unknown> = {}) {
   return {
     type: "agent",
     agentId: peerAgentId,
-    companyId,
+    domainId,
     source: "agent_key",
     runId: "66666666-6666-4666-8666-666666666666",
     ...overrides,
@@ -340,7 +340,7 @@ function ownerActor() {
   return {
     type: "agent",
     agentId: ownerAgentId,
-    companyId,
+    domainId,
     source: "agent_key",
     runId: ownerRunId,
   };
@@ -350,7 +350,7 @@ function boardActor() {
   return {
     type: "board",
     userId: "board-user",
-    companyIds: [companyId],
+    domainIds: [domainId],
     source: "local_implicit",
     isInstanceAdmin: false,
   };
@@ -382,14 +382,14 @@ describe("agent issue mutation checkout ownership", () => {
         input.action === "issue:comment" ||
         input.action === "issue:read" ||
         input.action === "issue:mutate" ||
-        input.action === "company_scope:read",
+        input.action === "domain_scope:read",
       action: input.action,
       reason:
         input.action === "tasks:assign" ||
           input.action === "issue:comment" ||
           input.action === "issue:read" ||
           input.action === "issue:mutate" ||
-          input.action === "company_scope:read"
+          input.action === "domain_scope:read"
           ? "allow_explicit_grant"
           : "deny_missing_grant",
       explanation:
@@ -397,7 +397,7 @@ describe("agent issue mutation checkout ownership", () => {
           input.action === "issue:comment" ||
           input.action === "issue:read" ||
           input.action === "issue:mutate" ||
-          input.action === "company_scope:read"
+          input.action === "domain_scope:read"
           ? "Allowed by test default."
           : "Missing permission.",
     }));
@@ -405,7 +405,7 @@ describe("agent issue mutation checkout ownership", () => {
     mockAgentService.getById.mockReset();
     mockAgentService.list.mockReset();
     mockAgentService.resolveByReference.mockReset();
-    mockCompanyService.getById.mockReset();
+    mockDomainService.getById.mockReset();
     mockIssueService.addComment.mockReset();
     mockIssueService.assertCheckoutOwner.mockReset();
     mockIssueService.create.mockReset();
@@ -436,7 +436,7 @@ describe("agent issue mutation checkout ownership", () => {
     mockIssueRecoveryActionService.resolveActiveForIssue.mockReset();
     mockIssueRecoveryActionService.resolveActiveForIssue.mockResolvedValue({
       id: recoveryActionId,
-      companyId,
+      domainId,
       sourceIssueId: issueId,
       recoveryIssueId: null,
       kind: "issue_graph_liveness",
@@ -529,25 +529,25 @@ describe("agent issue mutation checkout ownership", () => {
       makeAgent(peerAgentId),
     ]);
     mockAgentService.resolveByReference.mockResolvedValue({ ambiguous: false, agent: null });
-    mockCompanyService.getById.mockResolvedValue({ id: companyId, issuePrefix: "PAP" });
+    mockDomainService.getById.mockResolvedValue({ id: domainId, issuePrefix: "PAP" });
     mockIssueService.getById.mockResolvedValue(makeIssue());
     mockIssueService.getByIdentifier.mockResolvedValue(null);
     mockIssueService.getComment.mockResolvedValue({
       id: "comment-1",
       issueId,
-      companyId,
+      domainId,
       body: "Mentioned reply context.",
     });
     mockIssueService.list.mockResolvedValue([makeIssue()]);
     mockIssueService.assertCheckoutOwner.mockResolvedValue({ adoptedFromRunId: null });
-    mockIssueService.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    mockIssueService.create.mockImplementation(async (_domainId: string, input: Record<string, unknown>) => ({
       ...makeIssue({
         id: "88888888-8888-4888-8888-888888888888",
         status: "todo",
         assigneeAgentId: null,
       }),
       ...input,
-      companyId,
+      domainId,
     }));
     mockIssueService.createChild.mockImplementation(async (_parentId: string, input: Record<string, unknown>) => ({
       issue: {
@@ -558,7 +558,7 @@ describe("agent issue mutation checkout ownership", () => {
           assigneeAgentId: null,
         }),
         ...input,
-        companyId,
+        domainId,
       },
       parentBlockerAdded: false,
     }));
@@ -579,7 +579,7 @@ describe("agent issue mutation checkout ownership", () => {
             assigneeAgentId: child.assigneeAgentId ?? null,
           }),
           ...child,
-          companyId,
+          domainId,
         })),
       };
     });
@@ -594,7 +594,7 @@ describe("agent issue mutation checkout ownership", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "77777777-7777-4777-8777-777777777777",
       issueId,
-      companyId,
+      domainId,
       body: "comment",
     });
     mockIssueService.listAttachments.mockResolvedValue([]);
@@ -602,7 +602,7 @@ describe("agent issue mutation checkout ownership", () => {
       {
         id: "comment-1",
         issueId,
-        companyId,
+        domainId,
         body: "Mentioned reply context.",
       },
     ]);
@@ -610,7 +610,7 @@ describe("agent issue mutation checkout ownership", () => {
     mockIssueService.getAttachmentById.mockResolvedValue({
       id: "attachment-1",
       issueId,
-      companyId,
+      domainId,
       objectKey: "issues/attachment-1/report.txt",
       contentType: "text/plain",
       byteSize: 6,
@@ -619,7 +619,7 @@ describe("agent issue mutation checkout ownership", () => {
     mockIssueService.removeAttachment.mockResolvedValue({
       id: "attachment-1",
       issueId,
-      companyId,
+      domainId,
       objectKey: "issues/attachment-1/report.txt",
     });
     mockDocumentService.upsertIssueDocument.mockResolvedValue({
@@ -635,7 +635,7 @@ describe("agent issue mutation checkout ownership", () => {
     mockWorkProductService.createForIssue.mockResolvedValue({
       id: "product-2",
       issueId,
-      companyId,
+      domainId,
       type: "artifact",
       provider: "test",
       title: "Artifact",
@@ -643,20 +643,20 @@ describe("agent issue mutation checkout ownership", () => {
     mockWorkProductService.getById.mockResolvedValue({
       id: "product-1",
       issueId,
-      companyId,
+      domainId,
       type: "artifact",
     });
     mockWorkProductService.update.mockResolvedValue({
       id: "product-1",
       issueId,
-      companyId,
+      domainId,
       type: "artifact",
       title: "Updated",
     });
     mockWorkProductService.remove.mockResolvedValue({
       id: "product-1",
       issueId,
-      companyId,
+      domainId,
       type: "artifact",
     });
     mockStorageService.putFile.mockResolvedValue({
@@ -674,7 +674,7 @@ describe("agent issue mutation checkout ownership", () => {
     mockStorageService.deleteObject.mockResolvedValue(undefined);
   });
 
-  it("denies company-wide issue list routes for task bridge keys", async () => {
+  it("denies domain-wide issue list routes for task bridge keys", async () => {
     const app = await createApp(peerActor({
       keyId: "99999999-9999-4999-8999-999999999999",
       keyScope: {
@@ -683,25 +683,25 @@ describe("agent issue mutation checkout ownership", () => {
       },
     }));
 
-    const res = await request(app).get(`/api/domains/${companyId}/issues`);
+    const res = await request(app).get(`/api/domains/${domainId}/issues`);
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toContain("Task bridge keys cannot use company-wide issue list APIs");
+    expect(res.body.error).toContain("Task bridge keys cannot use domain-wide issue list APIs");
     expect(mockIssueService.list).not.toHaveBeenCalled();
   });
 
-  it("uses the company-scope fast path on the issue list route", async () => {
+  it("uses the domain-scope fast path on the issue list route", async () => {
     mockAccessService.decide.mockImplementation(async (input: { action: string }) => {
-      if (input.action === "company_scope:read") {
+      if (input.action === "domain_scope:read") {
         return {
           allowed: true,
           action: input.action,
           reason: "allow_explicit_grant",
-          explanation: "Allowed by test company scope.",
+          explanation: "Allowed by test domain scope.",
         };
       }
       if (input.action === "issue:read") {
-        throw new Error("issue:read should not be evaluated for company-scope readers");
+        throw new Error("issue:read should not be evaluated for domain-scope readers");
       }
       return {
         allowed: true,
@@ -712,13 +712,13 @@ describe("agent issue mutation checkout ownership", () => {
     });
 
     const app = await createApp(boardActor());
-    const res = await request(app).get(`/api/domains/${companyId}/issues`);
+    const res = await request(app).get(`/api/domains/${domainId}/issues`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body).toEqual([expect.objectContaining({ id: issueId })]);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
-      action: "company_scope:read",
-      resource: { type: "company", companyId },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId },
     }));
     expect(mockAccessService.decide).not.toHaveBeenCalledWith(expect.objectContaining({
       action: "issue:read",
@@ -748,7 +748,7 @@ describe("agent issue mutation checkout ownership", () => {
       "attachment upload",
       (app: express.Express) =>
         request(app)
-          .post(`/api/domains/${companyId}/issues/${issueId}/attachments`)
+          .post(`/api/domains/${domainId}/issues/${issueId}/attachments`)
           .attach("file", Buffer.from("report"), { filename: "report.txt", contentType: "text/plain" }),
     ],
     ["attachment delete", (app: express.Express) => request(app).delete("/api/attachments/attachment-1")],
@@ -916,10 +916,10 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockIssueService.update).not.toHaveBeenCalled();
   });
 
-  it("denies cross-company agents before comment authorization is evaluated", async () => {
-    const res = await request(await createApp(peerActor({ companyId: "99999999-9999-4999-8999-999999999999" })))
+  it("denies cross-domain agents before comment authorization is evaluated", async () => {
+    const res = await request(await createApp(peerActor({ domainId: "99999999-9999-4999-8999-999999999999" })))
       .post(`/api/issues/${issueId}/comments`)
-      .send({ body: "Wrong company." });
+      .send({ body: "Wrong domain." });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(mockAccessService.decide).not.toHaveBeenCalledWith(expect.objectContaining({ action: "issue:comment" }));
@@ -933,13 +933,13 @@ describe("agent issue mutation checkout ownership", () => {
     const app = await createApp({
       type: "agent",
       agentId: ownerAgentId,
-      companyId,
+      domainId,
       source: "agent_key",
       // intentionally no runId
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues/${issueId}/attachments`)
+      .post(`/api/domains/${domainId}/issues/${issueId}/attachments`)
       .attach("file", Buffer.from("report"), { filename: "report.html", contentType: "text/html" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(401);
@@ -980,7 +980,7 @@ describe("agent issue mutation checkout ownership", () => {
 
     expect(mockWorkProductService.createForIssue).toHaveBeenCalledWith(
       issueId,
-      companyId,
+      domainId,
       expect.objectContaining({ createdByRunId: ownerRunId }),
     );
   });
@@ -1012,14 +1012,14 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockWorkProductService.update).not.toHaveBeenCalled();
   });
 
-  it("rejects board-created work products with a foreign-company run id", async () => {
+  it("rejects board-created work products with a foreign-domain run id", async () => {
     const app = await createApp(
       boardActor(),
       createRunContextDb({}, [{
         id: "66666666-6666-4666-8666-666666666666",
-        companyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        domainId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         agentId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        agentCompanyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        agentDomainId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         contextSnapshot: {},
       }]),
     );
@@ -1032,7 +1032,7 @@ describe("agent issue mutation checkout ownership", () => {
     });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
-    expect(res.body.error).toBe("createdByRunId is not valid for this company");
+    expect(res.body.error).toBe("createdByRunId is not valid for this domain");
     expect(mockWorkProductService.createForIssue).not.toHaveBeenCalled();
   });
 
@@ -1072,7 +1072,7 @@ describe("agent issue mutation checkout ownership", () => {
       "attachment upload",
       (app: express.Express) =>
         request(app)
-          .post(`/api/domains/${companyId}/issues/${issueId}/attachments`)
+          .post(`/api/domains/${domainId}/issues/${issueId}/attachments`)
           .attach("file", Buffer.from("report"), { filename: "report.txt", contentType: "text/plain" }),
       "Cheap status-only recovery runs cannot update issue documents",
     ],
@@ -1126,7 +1126,7 @@ describe("agent issue mutation checkout ownership", () => {
     [
       "issue create",
       (app: express.Express) =>
-        request(app).post(`/api/domains/${companyId}/issues`).send({
+        request(app).post(`/api/domains/${domainId}/issues`).send({
           title: "Downstream source work",
           assigneeAdapterOverrides: { modelProfile: "cheap" },
         }),
@@ -1177,7 +1177,7 @@ describe("agent issue mutation checkout ownership", () => {
     );
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Follow-up in same worktree",
         projectId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -1185,7 +1185,7 @@ describe("agent issue mutation checkout ownership", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       expect.objectContaining({
         title: "Follow-up in same worktree",
         inheritExecutionWorkspaceFromIssueId: issueId,
@@ -1204,7 +1204,7 @@ describe("agent issue mutation checkout ownership", () => {
 
     const explicitExecutionWorkspaceId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Explicit different workspace",
         executionWorkspaceId: explicitExecutionWorkspaceId,
@@ -1213,7 +1213,7 @@ describe("agent issue mutation checkout ownership", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       expect.objectContaining({
         title: "Explicit different workspace",
         executionWorkspaceId: explicitExecutionWorkspaceId,
@@ -1221,7 +1221,7 @@ describe("agent issue mutation checkout ownership", () => {
       }),
     );
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       expect.not.objectContaining({
         inheritExecutionWorkspaceFromIssueId: issueId,
       }),
@@ -1232,7 +1232,7 @@ describe("agent issue mutation checkout ownership", () => {
     const app = await createApp(ownerActor());
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Spoof responsible user",
         responsibleUserId: "spoofed-user",
@@ -1244,11 +1244,11 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId,
+        domainId,
         actorType: "agent",
         actorId: ownerAgentId,
         action: "issue.attribution_spoof_rejected",
-        entityType: "company",
+        entityType: "domain",
         details: expect.objectContaining({
           surface: "issues.create",
           field: "responsibleUserId",
@@ -1262,7 +1262,7 @@ describe("agent issue mutation checkout ownership", () => {
     const app = await createApp(ownerActor());
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Spoof creator",
         createdByUserId: "spoofed-user",
@@ -1270,7 +1270,7 @@ describe("agent issue mutation checkout ownership", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       expect.objectContaining({
         title: "Spoof creator",
         createdByAgentId: ownerAgentId,
@@ -1279,7 +1279,7 @@ describe("agent issue mutation checkout ownership", () => {
       }),
     );
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       expect.not.objectContaining({
         createdByUserId: "spoofed-user",
       }),
@@ -1287,7 +1287,7 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId,
+        domainId,
         actorType: "agent",
         actorId: ownerAgentId,
         action: "issue.attribution_spoof_stripped",
@@ -1304,7 +1304,7 @@ describe("agent issue mutation checkout ownership", () => {
     const app = await createApp(boardActor());
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Board-owned work",
         responsibleUserId: "responsible-board-user",
@@ -1312,7 +1312,7 @@ describe("agent issue mutation checkout ownership", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      companyId,
+      domainId,
       expect.objectContaining({
         title: "Board-owned work",
         responsibleUserId: "responsible-board-user",
@@ -1337,7 +1337,7 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId,
+        domainId,
         action: "issue.attribution_spoof_rejected",
         entityType: "issue",
         entityId: issueId,
@@ -1369,7 +1369,7 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId,
+        domainId,
         action: "issue.attribution_spoof_rejected",
         entityType: "issue",
         entityId: issueId,
@@ -1490,7 +1490,7 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockIssueService.addComment).not.toHaveBeenCalled();
   });
 
-  it("allows same-company agent mutations on unassigned in-progress issues", async () => {
+  it("allows same-domain agent mutations on unassigned in-progress issues", async () => {
     mockIssueService.getById.mockResolvedValue(makeIssue({ assigneeAgentId: null }));
     mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
       ...makeIssue({ assigneeAgentId: null }),
@@ -1641,7 +1641,7 @@ describe("agent issue mutation checkout ownership", () => {
       action: "tasks:assign",
       resource: expect.objectContaining({
         type: "issue",
-        companyId,
+        domainId,
         issueId,
         assigneeAgentId: peerAgentId,
       }),
@@ -1660,7 +1660,7 @@ describe("agent issue mutation checkout ownership", () => {
       return {
         type: "agent",
         agentId: peerAgentId,
-        companyId,
+        domainId,
         source: "agent_key",
         runId,
       };
@@ -1675,13 +1675,13 @@ describe("agent issue mutation checkout ownership", () => {
       const watchedIssueId = options.watchedIssueId ?? issueId;
       const runRows = [{
         id: watchdogRunId,
-        companyId,
+        domainId,
         agentId: peerAgentId,
         contextSnapshot: { taskWatchdog: { watchedIssueId, stopFingerprint: "task_watchdog_stop:test" } },
       }];
       const watchdogRows = options.watchdogRows ?? [{
         id: "dddddddd-dddd-4ddd-8ddd-ddddddddddde",
-        companyId,
+        domainId,
         issueId: watchedIssueId,
         watchdogAgentId: peerAgentId,
         watchdogIssueId: options.watchdogIssueId ?? watchdogReportIssueId,
@@ -1689,7 +1689,7 @@ describe("agent issue mutation checkout ownership", () => {
       }];
       const ancestryRows = [{
         id: "ancestry",
-        companyId,
+        domainId,
         parentId: options.ancestryParentId ?? null,
       }];
       const rowsForSelection = (selection: Record<string, unknown>) => {
@@ -1699,8 +1699,8 @@ describe("agent issue mutation checkout ownership", () => {
         if (keys.includes("watchdogAgentId")) return watchdogRows;
         if (keys.includes("parentId")) return ancestryRows;
         if (keys.includes("status")) return [];
-        if (keys.includes("agentCompanyId")) return runRows;
-        return [{ id: peerAgentId, companyId, permissions: {}, role: "engineer", reportsTo: null }];
+        if (keys.includes("agentDomainId")) return runRows;
+        return [{ id: peerAgentId, domainId, permissions: {}, role: "engineer", reportsTo: null }];
       };
       const buildQuery = (selection: Record<string, unknown>) => {
         const whereResult = {
@@ -1725,10 +1725,10 @@ describe("agent issue mutation checkout ownership", () => {
     // watchdog scope can widen access. Denying it here proves the grant works.
     function denyBaseBoundary() {
       mockAccessService.decide.mockImplementation(async (input: { action: string }) => ({
-        allowed: input.action === "company_scope:read" || input.action === "issue:read" || input.action === "tasks:assign",
+        allowed: input.action === "domain_scope:read" || input.action === "issue:read" || input.action === "tasks:assign",
         action: input.action,
         reason:
-          input.action === "company_scope:read" || input.action === "issue:read" || input.action === "tasks:assign"
+          input.action === "domain_scope:read" || input.action === "issue:read" || input.action === "tasks:assign"
             ? "allow_explicit_grant"
             : "deny_missing_grant",
         explanation: "Watchdog test boundary default.",
@@ -1829,7 +1829,7 @@ describe("agent issue mutation checkout ownership", () => {
     it("serializes watchdog accepted-plan follow-ups behind one active child lane", async () => {
       denyBaseBoundary();
       mockIssueService.list.mockResolvedValue([]);
-      mockAgentService.resolveByReference.mockImplementation(async (_companyId: string, reference: string) => ({
+      mockAgentService.resolveByReference.mockImplementation(async (_domainId: string, reference: string) => ({
         ambiguous: false,
         agent: reference === ownerAgentId ? makeAgent(ownerAgentId) : null,
       }));
@@ -1889,7 +1889,7 @@ describe("agent issue mutation checkout ownership", () => {
     });
 
     it("preserves normal accepted-plan decomposition parallel wakeups outside watchdog context", async () => {
-      mockAgentService.resolveByReference.mockImplementation(async (_companyId: string, reference: string) => ({
+      mockAgentService.resolveByReference.mockImplementation(async (_domainId: string, reference: string) => ({
         ambiguous: false,
         agent: reference === ownerAgentId ? makeAgent(ownerAgentId) : null,
       }));
@@ -1932,7 +1932,7 @@ describe("agent issue mutation checkout ownership", () => {
       );
     });
 
-    it("lets a watchdog run reassign a watched issue to an active same-company agent", async () => {
+    it("lets a watchdog run reassign a watched issue to an active same-domain agent", async () => {
       denyBaseBoundary();
       mockIssueService.getById.mockResolvedValue(makeIssue({ assigneeAgentId: ownerAgentId }));
       mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
@@ -1973,9 +1973,9 @@ describe("agent issue mutation checkout ownership", () => {
       // Base boundary denied AND tasks:assign denied: the watchdog grant lets the
       // mutation past the ownership boundary, but the assignment guard must still bite.
       mockAccessService.decide.mockImplementation(async (input: { action: string }) => ({
-        allowed: input.action === "company_scope:read",
+        allowed: input.action === "domain_scope:read",
         action: input.action,
-        reason: input.action === "company_scope:read" ? "allow_explicit_grant" : "deny_policy_restricted",
+        reason: input.action === "domain_scope:read" ? "allow_explicit_grant" : "deny_policy_restricted",
         explanation:
           input.action === "tasks:assign"
             ? "Target agent requires approval before task assignment."

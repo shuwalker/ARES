@@ -8,7 +8,7 @@ import {
   agents,
   authUsers,
   domains,
-  companyMemberships,
+  domainMemberships,
   heartbeatRuns,
   instanceUserRoles,
 } from "@paperclipai/db";
@@ -30,7 +30,7 @@ function normalizeOptionalString(value: string | null | undefined) {
 
 async function resolveLegacyRunResponsibleUserId(
   db: Db,
-  input: { companyId: string; agentId: string; runId: string },
+  input: { domainId: string; agentId: string; runId: string },
 ) {
   if (!isUuidLike(input.runId)) return null;
   const run = await db
@@ -39,7 +39,7 @@ async function resolveLegacyRunResponsibleUserId(
     .where(
       and(
         eq(heartbeatRuns.id, input.runId),
-        eq(heartbeatRuns.companyId, input.companyId),
+        eq(heartbeatRuns.domainId, input.domainId),
         eq(heartbeatRuns.agentId, input.agentId),
       ),
     )
@@ -49,7 +49,7 @@ async function resolveLegacyRunResponsibleUserId(
 
 async function loadResponsibleUserMemberships(
   db: Db,
-  input: { companyId: string; userId: string | null },
+  input: { domainId: string; userId: string | null },
 ) {
   if (!input.userId) return [];
   const [user, memberships] = await Promise.all([
@@ -60,17 +60,17 @@ async function loadResponsibleUserMemberships(
       .then((rows) => rows[0] ?? null),
     db
       .select({
-        companyId: companyMemberships.companyId,
-        membershipRole: companyMemberships.membershipRole,
-        status: companyMemberships.status,
+        domainId: domainMemberships.domainId,
+        membershipRole: domainMemberships.membershipRole,
+        status: domainMemberships.status,
       })
-      .from(companyMemberships)
+      .from(domainMemberships)
       .where(
         and(
-          eq(companyMemberships.companyId, input.companyId),
-          eq(companyMemberships.principalType, "user"),
-          eq(companyMemberships.principalId, input.userId),
-          eq(companyMemberships.status, "active"),
+          eq(domainMemberships.domainId, input.domainId),
+          eq(domainMemberships.principalType, "user"),
+          eq(domainMemberships.principalId, input.userId),
+          eq(domainMemberships.status, "active"),
         ),
       ),
   ]);
@@ -79,11 +79,11 @@ async function loadResponsibleUserMemberships(
 
 async function auditAgentJwtRunHeaderMismatch(
   db: Db,
-  input: { companyId: string; agentId: string; claimRunId: string; headerRunId: string; method: string; url: string },
+  input: { domainId: string; agentId: string; claimRunId: string; headerRunId: string; method: string; url: string },
 ) {
   try {
     await db.insert(activityLog).values({
-      companyId: input.companyId,
+      domainId: input.domainId,
       actorType: "agent",
       actorId: input.agentId,
       action: "auth.agent_jwt_run_header_mismatch",
@@ -100,7 +100,7 @@ async function auditAgentJwtRunHeaderMismatch(
     });
   } catch (err) {
     logger.warn(
-      { err, companyId: input.companyId, agentId: input.agentId, claimRunId: input.claimRunId },
+      { err, domainId: input.domainId, agentId: input.agentId, claimRunId: input.claimRunId },
       "Failed to audit rejected agent JWT run header mismatch",
     );
   }
@@ -108,11 +108,11 @@ async function auditAgentJwtRunHeaderMismatch(
 
 async function auditAgentKeyMissingResponsibleUser(
   db: Db,
-  input: { companyId: string; agentId: string; keyId: string; method: string; url: string },
+  input: { domainId: string; agentId: string; keyId: string; method: string; url: string },
 ) {
   try {
     await db.insert(activityLog).values({
-      companyId: input.companyId,
+      domainId: input.domainId,
       actorType: "agent",
       actorId: input.agentId,
       action: "auth.agent_key_missing_responsible_user",
@@ -126,7 +126,7 @@ async function auditAgentKeyMissingResponsibleUser(
     });
   } catch (err) {
     logger.warn(
-      { err, companyId: input.companyId, agentId: input.agentId, keyId: input.keyId },
+      { err, domainId: input.domainId, agentId: input.agentId, keyId: input.keyId },
       "Failed to audit rejected agent key without responsible user binding",
     );
   }
@@ -186,16 +186,16 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
               .then((rows) => rows[0] ?? null),
             db
               .select({
-                companyId: companyMemberships.companyId,
-                membershipRole: companyMemberships.membershipRole,
-                status: companyMemberships.status,
+                domainId: domainMemberships.domainId,
+                membershipRole: domainMemberships.membershipRole,
+                status: domainMemberships.status,
               })
-              .from(companyMemberships)
+              .from(domainMemberships)
               .where(
                 and(
-                  eq(companyMemberships.principalType, "user"),
-                  eq(companyMemberships.principalId, userId),
-                  eq(companyMemberships.status, "active"),
+                  eq(domainMemberships.principalType, "user"),
+                  eq(domainMemberships.principalId, userId),
+                  eq(domainMemberships.status, "active"),
                 ),
               ),
           ]);
@@ -204,7 +204,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
             userId,
             userName: session.user.name ?? null,
             userEmail: session.user.email ?? null,
-            companyIds: memberships.map((row) => row.companyId),
+            domainIds: memberships.map((row) => row.domainId),
             memberships,
             isInstanceAdmin: Boolean(roleRow),
             runId: runIdHeader ?? undefined,
@@ -235,7 +235,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
           userId: boardKey.userId,
           userName: access.user?.name ?? null,
           userEmail: access.user?.email ?? null,
-          companyIds: access.companyIds,
+          domainIds: access.domainIds,
           memberships: access.memberships,
           isInstanceAdmin: access.isInstanceAdmin,
           keyId: boardKey.id,
@@ -267,7 +267,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         .where(eq(agents.id, claims.sub))
         .then((rows) => rows[0] ?? null);
 
-      if (!agentRecord || agentRecord.companyId !== claims.company_id) {
+      if (!agentRecord || agentRecord.domainId !== claims.domain_id) {
         next();
         return;
       }
@@ -280,7 +280,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       const normalizedRunIdHeader = normalizeOptionalString(runIdHeader);
       if (normalizedRunIdHeader && normalizedRunIdHeader !== claims.run_id) {
         await auditAgentJwtRunHeaderMismatch(db, {
-          companyId: claims.company_id,
+          domainId: claims.domain_id,
           agentId: claims.sub,
           claimRunId: claims.run_id,
           headerRunId: normalizedRunIdHeader,
@@ -300,19 +300,19 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       const onBehalfOfUserId = claims.responsible_user_id !== undefined
         ? normalizeOptionalString(claims.responsible_user_id)
         : await resolveLegacyRunResponsibleUserId(db, {
-            companyId: claims.company_id,
+            domainId: claims.domain_id,
             agentId: claims.sub,
             runId: claims.run_id,
           });
       const onBehalfOfMemberships = await loadResponsibleUserMemberships(db, {
-        companyId: claims.company_id,
+        domainId: claims.domain_id,
         userId: onBehalfOfUserId,
       });
 
       req.actor = {
         type: "agent",
         agentId: claims.sub,
-        companyId: claims.company_id,
+        domainId: claims.domain_id,
         keyId: undefined,
         keyScope: normalizeAgentApiKeyScope(claims.key_scope),
         runId: claims.run_id,
@@ -343,7 +343,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     const responsibleUserId = normalizeOptionalString(key.responsibleUserId);
     if (!responsibleUserId) {
       await auditAgentKeyMissingResponsibleUser(db, {
-        companyId: key.companyId,
+        domainId: key.domainId,
         agentId: key.agentId,
         keyId: key.id,
         method: req.method,
@@ -358,12 +358,12 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     req.actor = {
       type: "agent",
       agentId: key.agentId,
-      companyId: key.companyId,
+      domainId: key.domainId,
       keyId: key.id,
       keyScope: normalizeAgentApiKeyScope(key.scopeConfig),
       onBehalfOfUserId: responsibleUserId,
       onBehalfOfMemberships: await loadResponsibleUserMemberships(db, {
-        companyId: key.companyId,
+        domainId: key.domainId,
         userId: responsibleUserId,
       }),
       runId: runIdHeader || undefined,
@@ -386,9 +386,9 @@ export async function resolveCloudTenantActor(db: Db, req: Request): Promise<Exp
   const stackId = requiredCloudHeader(req, "x-paperclip-cloud-stack-id");
   const stackRole = stackMembershipRole(req.header("x-paperclip-cloud-stack-role"));
   const userName = req.header("x-paperclip-cloud-user-name")?.trim() || userEmail;
-  const paperclipCompanyId = req.header("x-paperclip-cloud-paperclip-company-id")?.trim();
-  const companyId = cloudTenantCompanyId(stackId);
-  const companyName = paperclipCompanyId || `${stackId} Paperclip`;
+  const paperclipDomainId = req.header("x-paperclip-cloud-paperclip-domain-id")?.trim();
+  const domainId = cloudTenantDomainId(stackId);
+  const domainName = paperclipDomainId || `${stackId} Paperclip`;
   const now = new Date();
 
   await db
@@ -424,8 +424,8 @@ export async function resolveCloudTenantActor(db: Db, req: Request): Promise<Exp
   await db
     .insert(domains)
     .values({
-      id: companyId,
-      name: companyName,
+      id: domainId,
+      name: domainName,
       description: `Provisioned by Paperclip Cloud for stack ${stackId}.`,
       status: "active",
       issuePrefix: issuePrefixForCloudStack(stackId),
@@ -437,9 +437,9 @@ export async function resolveCloudTenantActor(db: Db, req: Request): Promise<Exp
 
   const membershipRole = stackRole === "owner" || stackRole === "admin" ? "owner" : stackRole;
   const membership = await db
-    .insert(companyMemberships)
+    .insert(domainMemberships)
     .values({
-      companyId,
+      domainId,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -448,9 +448,9 @@ export async function resolveCloudTenantActor(db: Db, req: Request): Promise<Exp
     })
     .onConflictDoUpdate({
       target: [
-        companyMemberships.companyId,
-        companyMemberships.principalType,
-        companyMemberships.principalId,
+        domainMemberships.domainId,
+        domainMemberships.principalType,
+        domainMemberships.principalId,
       ],
       set: {
         status: "active",
@@ -460,16 +460,16 @@ export async function resolveCloudTenantActor(db: Db, req: Request): Promise<Exp
     })
     .returning()
     .then((rows) => rows[0] ?? {
-      companyId,
+      domainId,
       membershipRole,
       status: "active",
     });
 
   // Without instance-admin elevation, cloud tenant users are authorized purely
-  // through company-scoped permission grants — seed the same role defaults the
+  // through domain-scoped permission grants — seed the same role defaults the
   // regular membership flows create.
   await ensureHumanRoleDefaultGrants(db, {
-    companyId,
+    domainId,
     principalId: userId,
     membershipRole: membership.membershipRole,
     grantedByUserId: null,
@@ -480,9 +480,9 @@ export async function resolveCloudTenantActor(db: Db, req: Request): Promise<Exp
     userId,
     userName,
     userEmail,
-    companyIds: [companyId],
+    domainIds: [domainId],
     memberships: [{
-      companyId,
+      domainId,
       membershipRole: membership.membershipRole,
       status: membership.status,
     }],
@@ -512,8 +512,8 @@ function constantTimeStringEqual(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function cloudTenantCompanyId(stackId: string): string {
-  const bytes = createHash("sha256").update(`paperclip-cloud-tenant-company:${stackId}`).digest();
+function cloudTenantDomainId(stackId: string): string {
+  const bytes = createHash("sha256").update(`paperclip-cloud-tenant-domain:${stackId}`).digest();
   bytes[6] = (bytes[6] & 0x0f) | 0x50;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.subarray(0, 16).toString("hex");

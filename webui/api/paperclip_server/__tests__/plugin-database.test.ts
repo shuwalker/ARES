@@ -393,20 +393,20 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     );
     expect(constraints).toEqual(
       expect.arrayContaining([
-        "wiki_pages_company_wiki_space_path_key",
-        "distillation_cursors_company_wiki_space_scope_key",
-        "distillation_work_items_company_wiki_space_idempotency_key",
-        "page_bindings_company_wiki_space_page_path_key",
+        "wiki_pages_domain_wiki_space_path_key",
+        "distillation_cursors_domain_wiki_space_scope_key",
+        "distillation_work_items_domain_wiki_space_idempotency_key",
+        "page_bindings_domain_wiki_space_page_path_key",
       ]),
     );
-    expect(constraints).not.toContain("wiki_pages_company_id_wiki_id_path_key");
-    expect(constraints).not.toContain("paperclip_distillation_cursor_company_id_wiki_id_source_sco_key");
-    expect(constraints).not.toContain("paperclip_distillation_work_i_company_id_wiki_id_idempotenc_key");
-    expect(constraints).not.toContain("paperclip_page_bindings_company_id_wiki_id_page_path_key");
-    expect(uniqueColumnSets).not.toContain("wiki_pages:company_id,wiki_id,path");
-    expect(uniqueColumnSets).not.toContain("paperclip_distillation_cursors:company_id,wiki_id,source_scope,scope_key,source_kind");
-    expect(uniqueColumnSets).not.toContain("paperclip_distillation_work_items:company_id,wiki_id,idempotency_key");
-    expect(uniqueColumnSets).not.toContain("paperclip_page_bindings:company_id,wiki_id,page_path");
+    expect(constraints).not.toContain("wiki_pages_domain_id_wiki_id_path_key");
+    expect(constraints).not.toContain("paperclip_distillation_cursor_domain_id_wiki_id_source_sco_key");
+    expect(constraints).not.toContain("paperclip_distillation_work_i_domain_id_wiki_id_idempotenc_key");
+    expect(constraints).not.toContain("paperclip_page_bindings_domain_id_wiki_id_page_path_key");
+    expect(uniqueColumnSets).not.toContain("wiki_pages:domain_id,wiki_id,path");
+    expect(uniqueColumnSets).not.toContain("paperclip_distillation_cursors:domain_id,wiki_id,source_scope,scope_key,source_kind");
+    expect(uniqueColumnSets).not.toContain("paperclip_distillation_work_items:domain_id,wiki_id,idempotency_key");
+    expect(uniqueColumnSets).not.toContain("paperclip_page_bindings:domain_id,wiki_id,page_path");
   });
 
   it("applies migrations once and allows whitelisted core joins at runtime", async () => {
@@ -423,17 +423,17 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
       `,
     );
     const pluginId = await installPluginRecord(pluginManifest);
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: "TST",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Joined issue",
       status: "todo",
       priority: "medium",
@@ -558,9 +558,9 @@ describeEmbeddedPostgres("plugin database namespaces", () => {
     const packageRoot = await createInstallablePluginPackage(
       refreshedManifest,
       `
-      CREATE TABLE ${namespace}.company_refs (
+      CREATE TABLE ${namespace}.domain_refs (
         id uuid PRIMARY KEY,
-        company_id uuid NOT NULL REFERENCES public.domains(id)
+        domain_id uuid NOT NULL REFERENCES public.domains(id)
       );
       `,
     );

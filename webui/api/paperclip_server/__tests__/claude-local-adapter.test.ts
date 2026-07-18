@@ -175,7 +175,7 @@ describe("claude_local cli formatter", () => {
           subtype: "success",
           result: "Done",
           usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 2 },
-          total_cost_usd: 0.00042,
+          total_finance_usd: 0.00042,
         }),
         false,
       );
@@ -195,7 +195,7 @@ describe("claude_local cli formatter", () => {
           "AGENTS.md\nREADME.md",
           "result:",
           "Done",
-          "tokens: in=10 out=5 cached=2 cost=$0.000420",
+          "tokens: in=10 out=5 cached=2 finance=$0.000420",
         ]),
       );
     } finally {

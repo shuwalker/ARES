@@ -3,8 +3,8 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const routineId = "11111111-1111-4111-8111-111111111111";
-const companyId = "22222222-2222-4222-8222-222222222222";
-const otherCompanyId = "33333333-3333-4333-8333-333333333333";
+const domainId = "22222222-2222-4222-8222-222222222222";
+const otherDomainId = "33333333-3333-4333-8333-333333333333";
 const agentId = "77777777-7777-4777-8777-777777777777";
 const firstRevisionId = "44444444-4444-4444-8444-444444444444";
 const secondRevisionId = "99999999-9999-4999-8999-999999999999";
@@ -27,7 +27,7 @@ const mockLogActivity = vi.hoisted(() => vi.fn(async () => undefined));
 
 const routine = {
   id: routineId,
-  companyId,
+  domainId,
   title: "Daily summary",
   description: "Alpha selected text omega",
   status: "active",
@@ -38,7 +38,7 @@ const routine = {
 
 const descriptionDocument = {
   id: "document-1",
-  companyId,
+  domainId,
   routineId,
   key: "description",
   title: "Routine instructions",
@@ -69,7 +69,7 @@ const selector = {
 
 const annotationThread = {
   id: "55555555-5555-4555-8555-555555555555",
-  companyId,
+  domainId,
   issueId: null,
   routineId,
   documentId: descriptionDocument.id,
@@ -100,7 +100,7 @@ const annotationThread = {
 
 const annotationComment = {
   id: "66666666-6666-4666-8666-666666666666",
-  companyId,
+  domainId,
   threadId: annotationThread.id,
   issueId: null,
   routineId,
@@ -125,7 +125,7 @@ function registerModuleMocks() {
   }));
 }
 
-async function createApp(actor: "board" | "agent" = "board", actorCompanyId = companyId) {
+async function createApp(actor: "board" | "agent" = "board", actorDomainId = domainId) {
   const [{ routineRoutes }, { errorHandler }] = await Promise.all([
     vi.importActual<typeof import("../routes/routines.js")>("../routes/routines.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
@@ -137,13 +137,13 @@ async function createApp(actor: "board" | "agent" = "board", actorCompanyId = co
       ? {
         type: "agent",
         agentId,
-        companyId: actorCompanyId,
+        domainId: actorDomainId,
         runId: "88888888-8888-4888-8888-888888888888",
       }
       : {
         type: "board",
         userId: "board-user",
-        companyIds: [actorCompanyId],
+        domainIds: [actorDomainId],
         source: "local_implicit",
         isInstanceAdmin: false,
       };
@@ -294,8 +294,8 @@ describe("routine description annotation routes", () => {
     }));
   });
 
-  it("rejects agent cross-company routine annotation reads", async () => {
-    await request(await createApp("agent", otherCompanyId))
+  it("rejects agent cross-domain routine annotation reads", async () => {
+    await request(await createApp("agent", otherDomainId))
       .get(`/api/routines/${routineId}/description/annotations`)
       .expect(403);
   });

@@ -46,13 +46,13 @@ describeEmbeddedPostgres("agent service clearError", () => {
   });
 
   it("moves an error agent to idle without deleting run history or runtime diagnostics", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -60,7 +60,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "error",
@@ -75,7 +75,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       status: "failed",
@@ -89,7 +89,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
     });
 
     await db.insert(heartbeatRunEvents).values({
-      companyId,
+      domainId,
       runId,
       agentId,
       seq: 1,
@@ -101,7 +101,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(agentRuntimeState).values({
       agentId,
-      companyId,
+      domainId,
       adapterType: "codex_local",
       sessionId: "codex-session-1",
       stateJson: { taskKey: "issue:test" },
@@ -159,12 +159,12 @@ describeEmbeddedPostgres("agent service clearError", () => {
   });
 
   it("rejects non-error agents with a 409 conflict", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -172,7 +172,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -189,13 +189,13 @@ describeEmbeddedPostgres("agent service clearError", () => {
   });
 
   it("keeps resume-style terminal and pending-approval protections", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const terminatedAgentId = randomUUID();
     const pendingAgentId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -204,7 +204,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
     await db.insert(agents).values([
       {
         id: terminatedAgentId,
-        companyId,
+        domainId,
         name: "Terminated",
         role: "engineer",
         status: "terminated",
@@ -215,7 +215,7 @@ describeEmbeddedPostgres("agent service clearError", () => {
       },
       {
         id: pendingAgentId,
-        companyId,
+        domainId,
         name: "Pending",
         role: "engineer",
         status: "pending_approval",

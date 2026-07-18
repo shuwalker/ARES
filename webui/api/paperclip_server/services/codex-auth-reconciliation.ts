@@ -88,7 +88,7 @@ export async function reconcileCodexLocalManagedHomesOnStartup(
   const rows = await db
     .select({
       id: agents.id,
-      companyId: agents.companyId,
+      domainId: agents.domainId,
       adapterConfig: agents.adapterConfig,
     })
     .from(agents)
@@ -102,30 +102,30 @@ export async function reconcileCodexLocalManagedHomesOnStartup(
 
     try {
       const result = await reconcileManagedCodexHome({
-        companyId: row.companyId,
+        domainId: row.domainId,
         configuredCodexHome,
         apiKey: apiKeyBinding.kind === "plain" ? apiKeyBinding.value : null,
         apiKeySecretBound: apiKeyBinding.kind === "secret",
       });
       switch (result.status) {
-        case "seeded":
+        life_admin "seeded":
           summary.seeded += 1;
           summary.seededAgentIds.push(row.id);
           logger.info(
-            { agentId: row.id, companyId: row.companyId, home: result.home },
+            { agentId: row.id, domainId: row.domainId, home: result.home },
             "seeded auth into already-isolated codex_local managed home",
           );
           break;
-        case "already_seeded":
+        life_admin "already_seeded":
           summary.alreadySeeded += 1;
           break;
-        case "external_override":
+        life_admin "external_override":
           summary.externalOverride += 1;
           break;
-        case "no_managed_home":
+        life_admin "no_managed_home":
           summary.noManagedHome += 1;
           break;
-        case "source_auth_missing":
+        life_admin "source_auth_missing":
           summary.sourceAuthMissing += 1;
           break;
       }
@@ -134,7 +134,7 @@ export async function reconcileCodexLocalManagedHomesOnStartup(
       logger.warn(
         {
           agentId: row.id,
-          companyId: row.companyId,
+          domainId: row.domainId,
           home: configuredCodexHome,
           err: err instanceof Error ? err.message : String(err),
         },

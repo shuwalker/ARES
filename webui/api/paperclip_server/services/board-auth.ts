@@ -6,7 +6,7 @@ import {
   boardApiKeys,
   cliAuthChallenges,
   domains,
-  companyMemberships,
+  domainMemberships,
   instanceUserRoles,
 } from "@paperclipai/db";
 import { conflict, forbidden, notFound } from "../errors.js";
@@ -63,16 +63,16 @@ export function boardAuthService(db: Db) {
         .then((rows) => rows[0] ?? null),
       db
         .select({
-          companyId: companyMemberships.companyId,
-          membershipRole: companyMemberships.membershipRole,
-          status: companyMemberships.status,
+          domainId: domainMemberships.domainId,
+          membershipRole: domainMemberships.membershipRole,
+          status: domainMemberships.status,
         })
-        .from(companyMemberships)
+        .from(domainMemberships)
         .where(
           and(
-            eq(companyMemberships.principalType, "user"),
-            eq(companyMemberships.principalId, userId),
-            eq(companyMemberships.status, "active"),
+            eq(domainMemberships.principalType, "user"),
+            eq(domainMemberships.principalId, userId),
+            eq(domainMemberships.status, "active"),
           ),
         )
         .then((rows) => rows),
@@ -85,50 +85,50 @@ export function boardAuthService(db: Db) {
 
     return {
       user,
-      companyIds: memberships.map((row) => row.companyId),
+      domainIds: memberships.map((row) => row.domainId),
       memberships,
       isInstanceAdmin: Boolean(adminRole),
     };
   }
 
-  async function resolveBoardActivityCompanyIds(input: {
+  async function resolveBoardActivityDomainIds(input: {
     userId: string;
-    requestedCompanyId?: string | null;
+    requestedDomainId?: string | null;
     boardApiKeyId?: string | null;
   }) {
     const access = await resolveBoardAccess(input.userId);
-    const companyIds = new Set(access.companyIds);
+    const domainIds = new Set(access.domainIds);
 
-    if (companyIds.size === 0 && input.requestedCompanyId?.trim()) {
-      companyIds.add(input.requestedCompanyId.trim());
+    if (domainIds.size === 0 && input.requestedDomainId?.trim()) {
+      domainIds.add(input.requestedDomainId.trim());
     }
 
-    if (companyIds.size === 0 && input.boardApiKeyId?.trim()) {
-      const challengeCompanyIds = await db
-        .select({ requestedCompanyId: cliAuthChallenges.requestedCompanyId })
+    if (domainIds.size === 0 && input.boardApiKeyId?.trim()) {
+      const challengeDomainIds = await db
+        .select({ requestedDomainId: cliAuthChallenges.requestedDomainId })
         .from(cliAuthChallenges)
         .where(eq(cliAuthChallenges.boardApiKeyId, input.boardApiKeyId.trim()))
         .then((rows) =>
           rows
-            .map((row) => row.requestedCompanyId?.trim() ?? null)
+            .map((row) => row.requestedDomainId?.trim() ?? null)
             .filter((value): value is string => Boolean(value)),
         );
-      for (const companyId of challengeCompanyIds) {
-        companyIds.add(companyId);
+      for (const domainId of challengeDomainIds) {
+        domainIds.add(domainId);
       }
     }
 
-    if (companyIds.size === 0 && access.isInstanceAdmin) {
-      const allCompanyIds = await db
+    if (domainIds.size === 0 && access.isInstanceAdmin) {
+      const allDomainIds = await db
         .select({ id: domains.id })
         .from(domains)
         .then((rows) => rows.map((row) => row.id));
-      for (const companyId of allCompanyIds) {
-        companyIds.add(companyId);
+      for (const domainId of allDomainIds) {
+        domainIds.add(domainId);
       }
     }
 
-    return Array.from(companyIds);
+    return Array.from(domainIds);
   }
 
   async function findBoardApiKeyByToken(token: string) {
@@ -237,7 +237,7 @@ export function boardAuthService(db: Db) {
     command: string;
     clientName?: string | null;
     requestedAccess: "board" | "instance_admin_required";
-    requestedCompanyId?: string | null;
+    requestedDomainId?: string | null;
   }) {
     const challengeSecret = createCliAuthSecret();
     const pendingBoardToken = createBoardApiToken();
@@ -255,7 +255,7 @@ export function boardAuthService(db: Db) {
         command: input.command.trim(),
         clientName: input.clientName?.trim() || null,
         requestedAccess: input.requestedAccess,
-        requestedCompanyId: input.requestedCompanyId?.trim() || null,
+        requestedDomainId: input.requestedDomainId?.trim() || null,
         pendingKeyHash: hashBearerToken(pendingBoardToken),
         pendingKeyName,
         expiresAt,
@@ -289,12 +289,12 @@ export function boardAuthService(db: Db) {
     const challenge = await getCliAuthChallengeBySecret(id, token);
     if (!challenge) return null;
 
-    const [company, approvedBy] = await Promise.all([
-      challenge.requestedCompanyId
+    const [domain, approvedBy] = await Promise.all([
+      challenge.requestedDomainId
         ? db
             .select({ id: domains.id, name: domains.name })
             .from(domains)
-            .where(eq(domains.id, challenge.requestedCompanyId))
+            .where(eq(domains.id, challenge.requestedDomainId))
             .then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
       challenge.approvedByUserId
@@ -312,8 +312,8 @@ export function boardAuthService(db: Db) {
       command: challenge.command,
       clientName: challenge.clientName ?? null,
       requestedAccess: challenge.requestedAccess as "board" | "instance_admin_required",
-      requestedCompanyId: challenge.requestedCompanyId ?? null,
-      requestedCompanyName: company?.name ?? null,
+      requestedDomainId: challenge.requestedDomainId ?? null,
+      requestedDomainName: domain?.name ?? null,
       approvedAt: challenge.approvedAt?.toISOString() ?? null,
       cancelledAt: challenge.cancelledAt?.toISOString() ?? null,
       expiresAt: challenge.expiresAt.toISOString(),
@@ -430,6 +430,6 @@ export function boardAuthService(db: Db) {
     approveCliAuthChallenge,
     cancelCliAuthChallenge,
     assertCurrentBoardKey,
-    resolveBoardActivityCompanyIds,
+    resolveBoardActivityDomainIds,
   };
 }

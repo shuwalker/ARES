@@ -159,10 +159,10 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   });
 
   async function seed() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const environmentId = randomUUID();
     await db.insert(domains).values(
-      { id: companyId, name: "Acme", issuePrefix: `A${companyId.slice(0, 4)}` },
+      { id: domainId, name: "Acme", issuePrefix: `A${domainId.slice(0, 4)}` },
     );
     await db.insert(environments).values({
       id: environmentId,
@@ -185,7 +185,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       manifestJson: pluginManifest(),
       status: "ready",
     });
-    return { companyId, environmentId };
+    return { domainId, environmentId };
   }
 
   it("starts, refreshes, finishes, refreshes again, and rolls back setup sessions", async () => {
@@ -232,18 +232,18 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     expect(rollback.supersededTemplate.id).toBe(replacement.template.id);
   });
 
-  it("reuses the setup provider company context across lifecycle calls", async () => {
-    const { companyId, environmentId } = await seed();
+  it("reuses the setup provider domain context across lifecycle calls", async () => {
+    const { domainId, environmentId } = await seed();
     const workerManager = createWorkerManager();
     const service = environmentCustomImageService(db, { pluginWorkerManager: workerManager });
 
     const started = await service.startSetupSession({
       environmentId,
       actor: { userId: "user-1" },
-      secretContextCompanyId: companyId,
+      secretContextDomainId: domainId,
     });
     expect(started.session.metadata).toMatchObject({
-      setupRpcCompanyId: companyId,
+      setupRpcDomainId: domainId,
     });
 
     await service.refreshSetupSession({
@@ -261,20 +261,20 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       ].includes(method))
       .map(([, method, params]) => ({
         method,
-        companyId: (params as Record<string, unknown>).companyId,
+        domainId: (params as Record<string, unknown>).domainId,
       }));
 
     expect(lifecycleCalls).toEqual([
-      { method: "environmentStartInteractiveSetup", companyId },
-      { method: "environmentGetInteractiveSetup", companyId },
-      { method: "environmentCaptureTemplate", companyId },
-      { method: "environmentCancelInteractiveSetup", companyId },
+      { method: "environmentStartInteractiveSetup", domainId },
+      { method: "environmentGetInteractiveSetup", domainId },
+      { method: "environmentCaptureTemplate", domainId },
+      { method: "environmentCancelInteractiveSetup", domainId },
     ]);
     expect(promoted.session.metadata).toMatchObject({
-      setupRpcCompanyId: companyId,
+      setupRpcDomainId: domainId,
     });
     expect(promoted.template.metadata).toMatchObject({
-      setupRpcCompanyId: companyId,
+      setupRpcDomainId: domainId,
     });
   });
 
@@ -423,10 +423,10 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   });
 
   it("applies the active template regardless of base-config changes and falls back when none exists", async () => {
-    const { companyId, environmentId } = await seed();
+    const { domainId, environmentId } = await seed();
     const environment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
 
-    const fallback = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const fallback = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -444,7 +444,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       }),
       status: "active",
     });
-    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -466,7 +466,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       })
       .where(eq(environments.id, environment.id));
     const afterResourceChangeEnvironment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
-    const afterResourceChange = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const afterResourceChange = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: afterResourceChangeEnvironment.id,
       driver: "sandbox",
       config: afterResourceChangeEnvironment.config,
@@ -476,7 +476,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     expect(afterResourceChange.config).not.toHaveProperty("image");
 
     // Changing the base image is a meaningful source-template change. In that
-    // case, the old capture must not mask the newly saved image.
+    // life_admin, the old capture must not mask the newly saved image.
     await db.update(environmentCustomImageTemplates)
       .set({
         sourceEnvironmentConfigFingerprint: fingerprintEnvironmentSandboxProviderConfig(environment.config as any, {
@@ -493,7 +493,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
       })
       .where(eq(environments.id, environment.id));
     const afterImageChangeEnvironment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
-    const afterImageChange = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const afterImageChange = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: afterImageChangeEnvironment.id,
       driver: "sandbox",
       config: afterImageChangeEnvironment.config,
@@ -504,7 +504,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   });
 
   it("applies the active template for ad-hoc Test probes only when applyCustomImageTemplate is set", async () => {
-    const { companyId, environmentId } = await seed();
+    const { domainId, environmentId } = await seed();
     const environment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
 
     await db.insert(environmentCustomImageTemplates).values({
@@ -517,7 +517,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
 
     // No issueId/heartbeatRunId and no opt-in: an operator Test probe would
     // otherwise silently boot the base image instead of the captured template.
-    const withoutOptIn = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const withoutOptIn = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -526,7 +526,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     expect(withoutOptIn.config).not.toHaveProperty("snapshot");
 
     // The Test route opts in explicitly so the probe uses the captured image.
-    const withOptIn = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const withOptIn = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -536,7 +536,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
   });
 
   it("applies provider-declared runtime config bindings for captured templates", async () => {
-    const { companyId, environmentId } = await seed();
+    const { domainId, environmentId } = await seed();
     const workerManager = createWorkerManager();
     const service = environmentCustomImageService(db, { pluginWorkerManager: workerManager });
 
@@ -547,7 +547,7 @@ describeEmbeddedPostgres("environmentCustomImageService", () => {
     const promoted = await service.finishSetupSession({ sessionId: started.session.id });
 
     const environment = await db.select().from(environments).where(eq(environments.id, environmentId)).then((rows) => rows[0]!);
-    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: environment.id,
       driver: "sandbox",
       config: environment.config,
@@ -725,10 +725,10 @@ describeEmbeddedPostgres("environmentCustomImageService reconciliation", () => {
   });
 
   async function seed() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const environmentId = randomUUID();
     await db.insert(domains).values(
-      { id: companyId, name: "Acme", issuePrefix: `A${companyId.slice(0, 4)}` },
+      { id: domainId, name: "Acme", issuePrefix: `A${domainId.slice(0, 4)}` },
     );
     await db.insert(environments).values({
       id: environmentId,
@@ -751,11 +751,11 @@ describeEmbeddedPostgres("environmentCustomImageService reconciliation", () => {
       manifestJson: pluginManifest(),
       status: "ready",
     });
-    return { companyId, environmentId };
+    return { domainId, environmentId };
   }
 
   it("re-links the active template on save when only non-identity fields change", async () => {
-    const { companyId, environmentId } = await seed();
+    const { domainId, environmentId } = await seed();
     const workerManager = createWorkerManager();
     const service = environmentCustomImageService(db, { pluginWorkerManager: workerManager });
 
@@ -787,7 +787,7 @@ describeEmbeddedPostgres("environmentCustomImageService reconciliation", () => {
     await db.update(environments)
       .set({ config: nextConfig })
       .where(eq(environments.id, environmentId));
-    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, companyId, {
+    const resolved = await resolveEnvironmentDriverConfigForRuntime(db, domainId, {
       id: environmentId,
       driver: "sandbox",
       config: nextConfig,

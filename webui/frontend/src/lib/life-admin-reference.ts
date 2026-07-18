@@ -21,15 +21,15 @@ export function parseCaseReferenceFromHref(
   if (!value) return null;
   const trimmed = value.trim();
   if (!BARE_CASE_IDENTIFIER_RE.test(trimmed)) return null;
-  const normalized = trimmed.toUpperLifeAdmin();
-  // Only auto-link when the prefix belongs to a known company (mirrors the
+  const normalized = trimmed.toUpperCase();
+  // Only auto-link when the prefix belongs to a known domain (mirrors the
   // issue-reference gate). An empty/omitted set stays permissive so provider-less
   // render surfaces still linkify deliberate references.
   if (knownPrefixes && knownPrefixes.size > 0) {
     const prefix = normalized.split("-")[0];
     if (!prefix || !knownPrefixes.has(prefix)) return null;
   }
-  return { identifier: normalized, href: `/cases/${encodeURIComponent(normalized)}` };
+  return { identifier: normalized, href: `/life-admin/${encodeURIComponent(normalized)}` };
 }
 
 function createCaseLinkNode(
@@ -101,7 +101,7 @@ export interface RemarkLinkCaseReferencesOptions {
 export function remarkLinkCaseReferences(options?: RemarkLinkCaseReferencesOptions) {
   const knownPrefixes =
     options?.knownPrefixes && options.knownPrefixes.length > 0
-      ? new Set(options.knownPrefixes.map((prefix) => prefix.toUpperLifeAdmin()))
+      ? new Set(options.knownPrefixes.map((prefix) => prefix.toUpperCase()))
       : undefined;
   return (tree: MarkdownNode) => {
     rewriteMarkdownTree(tree, knownPrefixes);

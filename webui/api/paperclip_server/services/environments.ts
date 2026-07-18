@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agents,
-  companySecretBindings,
+  domainSecretBindings,
   environmentCustomImageSetupSessions,
   environmentLeases,
   environments,
@@ -40,7 +40,7 @@ const DEFAULT_KUBERNETES_ENVIRONMENT_DESCRIPTION =
   "Managed Kubernetes sandbox environment for hosted tenant execution.";
 /** Provider key (== plugin driverKey) of the first-party Kubernetes sandbox provider. */
 const KUBERNETES_PROVIDER_KEY = "kubernetes";
-/** Metadata marker for the company's managed-by-config Kubernetes sandbox environment. */
+/** Metadata marker for the domain's managed-by-config Kubernetes sandbox environment. */
 const KUBERNETES_MANAGED_MARKER = "managedKubernetesSandbox";
 const ACTIVE_CUSTOM_IMAGE_SETUP_STATUSES = ["starting", "waiting_for_user", "capturing"] as const;
 
@@ -117,41 +117,41 @@ type EnvironmentListFilters = {
 };
 
 function resolveListFilters(
-  companyIdOrFilters?: string | EnvironmentListFilters,
+  domainIdOrFilters?: string | EnvironmentListFilters,
   maybeFilters?: EnvironmentListFilters,
 ): EnvironmentListFilters {
-  if (typeof companyIdOrFilters === "string") {
+  if (typeof domainIdOrFilters === "string") {
     return maybeFilters ?? {};
   }
-  return companyIdOrFilters ?? {};
+  return domainIdOrFilters ?? {};
 }
 
 function resolveCreateInput(
-  companyIdOrInput: string | CreateEnvironment,
+  domainIdOrInput: string | CreateEnvironment,
   maybeInput?: CreateEnvironment,
 ): CreateEnvironment {
-  if (typeof companyIdOrInput === "string") {
+  if (typeof domainIdOrInput === "string") {
     if (!maybeInput) throw new Error("Create environment input is required");
     return maybeInput;
   }
-  return companyIdOrInput;
+  return domainIdOrInput;
 }
 
 function resolveKubernetesConfig(
-  companyIdOrConfig: string | KubernetesEnvironmentConfigInput,
+  domainIdOrConfig: string | KubernetesEnvironmentConfigInput,
   maybeConfig?: KubernetesEnvironmentConfigInput,
 ): KubernetesEnvironmentConfigInput {
-  if (typeof companyIdOrConfig === "string") {
+  if (typeof domainIdOrConfig === "string") {
     if (!maybeConfig) throw new Error("Kubernetes environment config is required");
     return maybeConfig;
   }
-  return companyIdOrConfig;
+  return domainIdOrConfig;
 }
 
 function toEnvironmentLease(row: EnvironmentLeaseRow): EnvironmentLease {
   return {
     id: row.id,
-    companyId: row.companyId,
+    domainId: row.domainId,
     environmentId: row.environmentId,
     executionWorkspaceId: row.executionWorkspaceId ?? null,
     issueId: row.issueId ?? null,
@@ -183,10 +183,10 @@ function countFromRows(rows: Array<{ count: number | string | null | undefined }
 export function environmentService(db: Db) {
   return {
     list: async (
-      companyIdOrFilters?: string | EnvironmentListFilters,
+      domainIdOrFilters?: string | EnvironmentListFilters,
       maybeFilters?: EnvironmentListFilters,
     ): Promise<Environment[]> => {
-      const filters = resolveListFilters(companyIdOrFilters, maybeFilters);
+      const filters = resolveListFilters(domainIdOrFilters, maybeFilters);
       const conditions = [];
       if (filters.status) conditions.push(eq(environments.status, filters.status));
       if (filters.driver) conditions.push(eq(environments.driver, filters.driver));
@@ -212,7 +212,7 @@ export function environmentService(db: Db) {
       return row ? toEnvironmentLease(row) : null;
     },
 
-    ensureLocalEnvironment: async (_companyId?: string): Promise<Environment> => {
+    ensureLocalEnvironment: async (_domainId?: string): Promise<Environment> => {
       const now = new Date();
       const insert = () =>
         db
@@ -268,10 +268,10 @@ export function environmentService(db: Db) {
      * update egress/runtimeClass via gitops without recreating the row).
      */
     ensureKubernetesEnvironment: async (
-      companyIdOrConfig: string | KubernetesEnvironmentConfigInput,
+      domainIdOrConfig: string | KubernetesEnvironmentConfigInput,
       maybeConfig?: KubernetesEnvironmentConfigInput,
     ): Promise<Environment> => {
-      const config = resolveKubernetesConfig(companyIdOrConfig, maybeConfig);
+      const config = resolveKubernetesConfig(domainIdOrConfig, maybeConfig);
       const desiredConfig: Record<string, unknown> = {
         ...config,
         provider: KUBERNETES_PROVIDER_KEY,
@@ -367,7 +367,7 @@ export function environmentService(db: Db) {
      * exists. Read-only counterpart to `ensureKubernetesEnvironment` used by the
      * per-run execution guard (which must not silently create config-less envs).
      */
-    findKubernetesEnvironment: async (_companyId?: string): Promise<Environment | null> => {
+    findKubernetesEnvironment: async (_domainId?: string): Promise<Environment | null> => {
       const rows = await db
         .select()
         .from(environments)
@@ -386,10 +386,10 @@ export function environmentService(db: Db) {
     },
 
     create: async (
-      companyIdOrInput: string | CreateEnvironment,
+      domainIdOrInput: string | CreateEnvironment,
       maybeInput?: CreateEnvironment,
     ): Promise<Environment> => {
-      const input = resolveCreateInput(companyIdOrInput, maybeInput);
+      const input = resolveCreateInput(domainIdOrInput, maybeInput);
       const now = new Date();
       const row = await db
         .insert(environments)
@@ -523,11 +523,11 @@ export function environmentService(db: Db) {
           .where(sql`${projects.executionWorkspacePolicy} ->> 'environmentId' = ${id}`),
         db
           .select({ count: sql<number>`count(*)::int` })
-          .from(companySecretBindings)
+          .from(domainSecretBindings)
           .where(
             and(
-              eq(companySecretBindings.targetType, "environment"),
-              eq(companySecretBindings.targetId, id),
+              eq(domainSecretBindings.targetType, "environment"),
+              eq(domainSecretBindings.targetId, id),
             ),
           ),
         db
@@ -596,7 +596,7 @@ export function environmentService(db: Db) {
     },
 
     acquireLease: async (input: {
-      companyId: string;
+      domainId: string;
       environmentId: string;
       executionWorkspaceId?: string | null;
       issueId?: string | null;
@@ -611,7 +611,7 @@ export function environmentService(db: Db) {
       const row = await db
         .insert(environmentLeases)
         .values({
-          companyId: input.companyId,
+          domainId: input.domainId,
           environmentId: input.environmentId,
           executionWorkspaceId: input.executionWorkspaceId ?? null,
           issueId: input.issueId ?? null,

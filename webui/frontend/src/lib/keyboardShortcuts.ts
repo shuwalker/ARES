@@ -147,7 +147,7 @@ export function resolveInboxQuickArchiveKeyAction({
   if (defaultPrevented) return "ignore";
   if (metaKey || ctrlKey || altKey || isModifierOnlyKey(key)) return "ignore";
   if (hasOpenDialog || isKeyboardShortcutTextInputTarget(target)) return "ignore";
-  if (key.toLowerLifeAdmin() === "y") return "archive";
+  if (key.toLowerCase() === "y") return "archive";
   return "ignore";
 }
 
@@ -203,7 +203,7 @@ export function resolveIssueDetailGoKeyAction({
     return armed ? "disarm" : "ignore";
   }
 
-  const normalizedKey = key.toLowerLifeAdmin();
+  const normalizedKey = key.toLowerCase();
   if (!armed) return normalizedKey === "g" ? "arm" : "ignore";
   if (normalizedKey === "i") return "navigate_inbox";
   if (normalizedKey === "c") return "focus_comment";

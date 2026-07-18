@@ -17,7 +17,7 @@ import { accessService, projectService, logActivity, workspaceOperationService }
 import { conflict, forbidden } from "../errors.js";
 import { externalObjectService } from "../services/external-objects.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertDomainAccess, getActorInfo } from "./authz.js";
 import {
   buildWorkspaceRuntimeDesiredStatePatch,
   listConfiguredRuntimeServiceEntries,
@@ -53,9 +53,9 @@ export function projectRoutes(db: Db) {
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
   const environmentsSvc = environmentService(db);
 
-  async function assertProjectEnvironmentSelection(companyId: string, environmentId: string | null | undefined) {
+  async function assertProjectEnvironmentSelection(domainId: string, environmentId: string | null | undefined) {
     if (environmentId === undefined || environmentId === null) return;
-    await assertEnvironmentSelectionForDomain(environmentsSvc, companyId, environmentId, {
+    await assertEnvironmentSelectionForDomain(environmentsSvc, domainId, environmentId, {
       allowedDrivers: ["local", "ssh", "sandbox"],
     });
   }
@@ -68,50 +68,50 @@ export function projectRoutes(db: Db) {
     return typeof environmentId === "string" || environmentId === null ? environmentId : undefined;
   }
 
-  async function resolveCompanyIdForProjectReference(req: Request) {
-    const companyIdQuery = req.query.companyId;
-    const requestedCompanyId =
-      typeof companyIdQuery === "string" && companyIdQuery.trim().length > 0
-        ? companyIdQuery.trim()
+  async function resolveDomainIdForProjectReference(req: Request) {
+    const domainIdQuery = req.query.domainId;
+    const requestedDomainId =
+      typeof domainIdQuery === "string" && domainIdQuery.trim().length > 0
+        ? domainIdQuery.trim()
         : null;
-    if (requestedCompanyId) {
-      assertCompanyAccess(req, requestedCompanyId);
-      return requestedCompanyId;
+    if (requestedDomainId) {
+      assertDomainAccess(req, requestedDomainId);
+      return requestedDomainId;
     }
-    if (req.actor.type === "agent" && req.actor.companyId) {
-      return req.actor.companyId;
+    if (req.actor.type === "agent" && req.actor.domainId) {
+      return req.actor.domainId;
     }
     return null;
   }
 
   async function normalizeProjectReference(req: Request, rawId: string) {
     if (isUuidLike(rawId)) return rawId;
-    const companyId = await resolveCompanyIdForProjectReference(req);
-    if (!companyId) return rawId;
-    const resolved = await svc.resolveByReference(companyId, rawId);
+    const domainId = await resolveDomainIdForProjectReference(req);
+    if (!domainId) return rawId;
+    const resolved = await svc.resolveByReference(domainId, rawId);
     if (resolved.ambiguous) {
-      throw conflict("Project shortname is ambiguous in this company. Use the project ID.");
+      throw conflict("Project shortname is ambiguous in this domain. Use the project ID.");
     }
     return resolved.project?.id ?? rawId;
   }
 
-  async function assertProjectReadAllowed(req: Request, res: Response, project: { id: string; companyId: string }) {
+  async function assertProjectReadAllowed(req: Request, res: Response, project: { id: string; domainId: string }) {
     const decision = await access.decide({
       actor: req.actor,
       action: "project:read",
-      resource: { type: "project", companyId: project.companyId, projectId: project.id },
+      resource: { type: "project", domainId: project.domainId, projectId: project.id },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Project is outside this actor's authorization boundary" });
     return false;
   }
 
-  async function filterProjectsForActor<T extends { id: string; companyId: string }>(req: Request, rows: T[]) {
+  async function filterProjectsForActor<T extends { id: string; domainId: string }>(req: Request, rows: T[]) {
     const decisions = await Promise.all(rows.map((project) =>
       access.decide({
         actor: req.actor,
         action: "project:read",
-        resource: { type: "project", companyId: project.companyId, projectId: project.id },
+        resource: { type: "project", domainId: project.domainId, projectId: project.id },
       })
     ));
     return rows.filter((_, index) => decisions[index]?.allowed);
@@ -126,10 +126,10 @@ export function projectRoutes(db: Db) {
     }
   });
 
-  router.get("/domains/:companyId/projects", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    const result = await svc.list(companyId);
+  router.get("/domains/:domainId/projects", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    const result = await svc.list(domainId);
     res.json(await filterProjectsForActor(req, result));
   });
 
@@ -140,7 +140,7 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, project.companyId);
+    assertDomainAccess(req, project.domainId);
     if (!(await assertProjectReadAllowed(req, res, project))) return;
     res.json(project);
   });
@@ -152,21 +152,21 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, project.companyId);
+    assertDomainAccess(req, project.domainId);
     const summary = await externalObjectsSvc.getProjectSummary(project.id);
     res.json(summary);
   });
 
-  router.post("/domains/:companyId/projects", validate(createProjectSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/domains/:domainId/projects", validate(createProjectSchema), async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     type CreateProjectPayload = Parameters<typeof svc.create>[1] & {
       workspace?: Parameters<typeof svc.createWorkspace>[1];
     };
 
     const { workspace, ...projectData } = req.body as CreateProjectPayload;
     await assertProjectEnvironmentSelection(
-      companyId,
+      domainId,
       readProjectPolicyEnvironmentId(projectData.executionWorkspacePolicy),
     );
     assertNoAgentHostWorkspaceCommandMutation(
@@ -178,15 +178,15 @@ export function projectRoutes(db: Db) {
     );
     if (projectData.env !== undefined) {
       projectData.env = await secretsSvc.normalizeEnvBindingsForPersistence(
-        companyId,
+        domainId,
         projectData.env,
         { strictMode: strictSecretsMode, fieldPath: "env" },
       );
     }
-    const project = await svc.create(companyId, projectData);
+    const project = await svc.create(domainId, projectData);
     if (project.env) {
       await secretsSvc.syncEnvBindingsForTarget?.(
-        companyId,
+        domainId,
         { targetType: "project", targetId: project.id },
         project.env,
       );
@@ -205,7 +205,7 @@ export function projectRoutes(db: Db) {
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -232,21 +232,21 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    assertDomainAccess(req, existing.domainId);
     const body = { ...req.body };
     assertNoAgentHostWorkspaceCommandMutation(
       req,
       collectProjectExecutionWorkspaceCommandPaths(body.executionWorkspacePolicy),
     );
     await assertProjectEnvironmentSelection(
-      existing.companyId,
+      existing.domainId,
       readProjectPolicyEnvironmentId(body.executionWorkspacePolicy),
     );
     if (typeof body.archivedAt === "string") {
       body.archivedAt = new Date(body.archivedAt);
     }
     if (body.env !== undefined) {
-      body.env = await secretsSvc.normalizeEnvBindingsForPersistence(existing.companyId, body.env, {
+      body.env = await secretsSvc.normalizeEnvBindingsForPersistence(existing.domainId, body.env, {
         strictMode: strictSecretsMode,
         fieldPath: "env",
       });
@@ -258,7 +258,7 @@ export function projectRoutes(db: Db) {
     }
     if (body.env !== undefined) {
       await secretsSvc.syncEnvBindingsForTarget?.(
-        project.companyId,
+        project.domainId,
         { targetType: "project", targetId: project.id },
         project.env,
       );
@@ -266,7 +266,7 @@ export function projectRoutes(db: Db) {
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: project.companyId,
+      domainId: project.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -292,7 +292,7 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    assertDomainAccess(req, existing.domainId);
     const workspaces = await svc.listWorkspaces(id);
     res.json(workspaces);
   });
@@ -304,7 +304,7 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    assertDomainAccess(req, existing.domainId);
     assertNoAgentHostWorkspaceCommandMutation(
       req,
       collectProjectWorkspaceCommandPaths(req.body),
@@ -317,7 +317,7 @@ export function projectRoutes(db: Db) {
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -346,7 +346,7 @@ export function projectRoutes(db: Db) {
         res.status(404).json({ error: "Project not found" });
         return;
       }
-      assertCompanyAccess(req, existing.companyId);
+      assertDomainAccess(req, existing.domainId);
       assertNoAgentHostWorkspaceCommandMutation(
         req,
         collectProjectWorkspaceCommandPaths(req.body),
@@ -364,7 +364,7 @@ export function projectRoutes(db: Db) {
 
       const actor = getActorInfo(req);
       await logActivity(db, {
-        companyId: existing.companyId,
+        domainId: existing.domainId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
@@ -395,7 +395,7 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, project.companyId);
+    assertDomainAccess(req, project.domainId);
 
     const workspace = project.workspaces.find((entry) => entry.id === workspaceId) ?? null;
     if (!workspace) {
@@ -413,7 +413,7 @@ export function projectRoutes(db: Db) {
     }
 
     await assertCanManageProjectWorkspaceRuntimeServices(db, req, {
-      companyId: project.companyId,
+      domainId: project.domainId,
       projectWorkspaceId: workspace.id,
     });
 
@@ -472,7 +472,7 @@ export function projectRoutes(db: Db) {
     }
 
     const actor = getActorInfo(req);
-    const recorder = workspaceOperations.createRecorder({ companyId: project.companyId });
+    const recorder = workspaceOperations.createRecorder({ domainId: project.domainId });
     let runtimeServiceCount = workspace.runtimeServices?.length ?? 0;
     let stdout = "";
     let stderr = "";
@@ -500,7 +500,7 @@ export function projectRoutes(db: Db) {
             actor: {
               id: actor.agentId ?? null,
               name: actor.actorType === "user" ? "Board" : "Agent",
-              companyId: project.companyId,
+              domainId: project.domainId,
             },
             issue: null,
             workspace: {
@@ -555,7 +555,7 @@ export function projectRoutes(db: Db) {
             actor: {
               id: actor.agentId ?? null,
               name: actor.actorType === "user" ? "Board" : "Agent",
-              companyId: project.companyId,
+              domainId: project.domainId,
             },
             issue: null,
             workspace: {
@@ -632,7 +632,7 @@ export function projectRoutes(db: Db) {
     const updatedWorkspace = (await svc.listWorkspaces(project.id)).find((entry) => entry.id === workspace.id) ?? workspace;
 
     await logActivity(db, {
-      companyId: project.companyId,
+      domainId: project.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -667,7 +667,7 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    assertDomainAccess(req, existing.domainId);
     const workspace = await svc.removeWorkspace(id, workspaceId);
     if (!workspace) {
       res.status(404).json({ error: "Project workspace not found" });
@@ -676,7 +676,7 @@ export function projectRoutes(db: Db) {
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -699,7 +699,7 @@ export function projectRoutes(db: Db) {
       res.status(404).json({ error: "Project not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    assertDomainAccess(req, existing.domainId);
     const project = await svc.remove(id);
     if (!project) {
       res.status(404).json({ error: "Project not found" });
@@ -708,7 +708,7 @@ export function projectRoutes(db: Db) {
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: project.companyId,
+      domainId: project.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,

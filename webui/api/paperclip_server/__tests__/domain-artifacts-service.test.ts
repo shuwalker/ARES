@@ -23,8 +23,8 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { errorHandler } from "../middleware/index.js";
-import { companyRoutes } from "../routes/domains.js";
-import { companyArtifactsService } from "../services/company-artifacts.js";
+import { domainRoutes } from "../routes/domains.js";
+import { domainArtifactsService } from "../services/domain-artifacts.js";
 import type { StorageService } from "../storage/types.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
@@ -32,7 +32,7 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres company artifacts tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres domain artifacts tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
@@ -40,7 +40,7 @@ function createStorageService(files: Record<string, Buffer> = {}): StorageServic
   return {
     provider: "local_disk",
     putFile: vi.fn(),
-    getObject: vi.fn(async (_companyId, objectKey, options) => {
+    getObject: vi.fn(async (_domainId, objectKey, options) => {
       const body = files[objectKey] ?? Buffer.alloc(0);
       const range = options?.range;
       const ranged = range ? body.subarray(range.start, range.end + 1) : body;
@@ -55,12 +55,12 @@ function createStorageService(files: Record<string, Buffer> = {}): StorageServic
   };
 }
 
-describeEmbeddedPostgres("companyArtifactsService", () => {
+describeEmbeddedPostgres("domainArtifactsService", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
   beforeAll(async () => {
-    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-company-artifacts-");
+    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-domain-artifacts-");
     db = createDb(tempDb.connectionString);
   }, 20_000);
 
@@ -83,8 +83,8 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   async function seedArtifacts() {
-    const companyId = "11111111-1111-4111-8111-111111111111";
-    const otherCompanyId = "22222222-2222-4222-8222-222222222222";
+    const domainId = "11111111-1111-4111-8111-111111111111";
+    const otherDomainId = "22222222-2222-4222-8222-222222222222";
     const agentId = "33333333-3333-4333-8333-333333333333";
     const otherAgentId = "44444444-4444-4444-8444-444444444444";
     const projectId = "55555555-5555-4555-8555-555555555555";
@@ -97,18 +97,18 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     const workProductAttachmentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
     await db.insert(domains).values([
-      { id: companyId, name: "Paperclip", issuePrefix: "PAP", requireBoardApprovalForNewAgents: false },
-      { id: otherCompanyId, name: "OtherCo", issuePrefix: "OTH", requireBoardApprovalForNewAgents: false },
+      { id: domainId, name: "Paperclip", issuePrefix: "PAP", requireBoardApprovalForNewAgents: false },
+      { id: otherDomainId, name: "OtherCo", issuePrefix: "OTH", requireBoardApprovalForNewAgents: false },
     ]);
     await db.insert(agents).values([
-      { id: agentId, companyId, name: "Coder", role: "engineer" },
-      { id: otherAgentId, companyId: otherCompanyId, name: "Other", role: "engineer" },
+      { id: agentId, domainId, name: "Coder", role: "engineer" },
+      { id: otherAgentId, domainId: otherDomainId, name: "Other", role: "engineer" },
     ]);
-    await db.insert(projects).values({ id: projectId, companyId, name: "Artifacts", status: "in_progress" });
+    await db.insert(projects).values({ id: projectId, domainId, name: "Artifacts", status: "in_progress" });
     await db.insert(issues).values([
       {
         id: issueId,
-        companyId,
+        domainId,
         projectId,
         identifier: "PAP-1",
         title: "Make the reel",
@@ -117,7 +117,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: secondIssueId,
-        companyId,
+        domainId,
         identifier: "PAP-2",
         title: "Write the plan",
         status: "done",
@@ -125,7 +125,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: otherIssueId,
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         identifier: "OTH-1",
         title: "Other output",
         status: "done",
@@ -135,13 +135,13 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: runId,
-        companyId,
+        domainId,
         agentId,
         status: "completed",
       },
       {
         id: otherRunId,
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         agentId: otherAgentId,
         status: "completed",
       },
@@ -149,7 +149,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     await db.insert(documents).values([
       {
         id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-        companyId,
+        domainId,
         title: "Review Notes",
         latestBody: "# Review\n\nAgent-created review document with useful details.",
         createdByAgentId: agentId,
@@ -157,7 +157,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-        companyId,
+        domainId,
         title: "Continuation Summary",
         latestBody: "System handoff",
         createdByAgentId: agentId,
@@ -165,7 +165,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-        companyId,
+        domainId,
         title: "User Upload Notes",
         latestBody: "User-authored context",
         createdByUserId: "user-1",
@@ -173,7 +173,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         title: "Other Domain Plan",
         latestBody: "Must not cross tenants",
         createdByAgentId: otherAgentId,
@@ -182,25 +182,25 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     ]);
     await db.insert(issueDocuments).values([
       {
-        companyId,
+        domainId,
         issueId: secondIssueId,
         documentId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
         key: "review",
       },
       {
-        companyId,
+        domainId,
         issueId,
         documentId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
         key: ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
       },
       {
-        companyId,
+        domainId,
         issueId,
         documentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
         key: "user-notes",
       },
       {
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         issueId: otherIssueId,
         documentId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
         key: "plan",
@@ -208,7 +208,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     ]);
     await db.insert(issueComments).values({
       id: "12121212-1212-4121-8121-121212121212",
-      companyId,
+      domainId,
       issueId,
       authorType: "agent",
       authorAgentId: agentId,
@@ -217,7 +217,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     await db.insert(assets).values([
       {
         id: "13131313-1313-4131-8131-131313131313",
-        companyId,
+        domainId,
         provider: "local_disk",
         objectKey: "direct-video.mp4",
         contentType: "video/mp4",
@@ -228,7 +228,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: "14141414-1414-4141-8141-141414141414",
-        companyId,
+        domainId,
         provider: "local_disk",
         objectKey: "primary-cut.mp4",
         contentType: "video/mp4",
@@ -239,7 +239,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: "15151515-1515-4151-8151-151515151515",
-        companyId,
+        domainId,
         provider: "local_disk",
         objectKey: "operator-screenshot.png",
         contentType: "image/png",
@@ -250,7 +250,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: "16161616-1616-4161-8161-161616161616",
-        companyId,
+        domainId,
         provider: "local_disk",
         objectKey: "comment-screenshot.png",
         contentType: "image/png",
@@ -261,7 +261,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
       {
         id: "17171717-1717-4171-8171-171717171717",
-        companyId,
+        domainId,
         provider: "local_disk",
         objectKey: "notes.txt",
         contentType: "text/plain",
@@ -274,33 +274,33 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     await db.insert(issueAttachments).values([
       {
         id: directAttachmentId,
-        companyId,
+        domainId,
         issueId,
         assetId: "13131313-1313-4131-8131-131313131313",
         updatedAt: new Date("2026-01-03T00:00:00.000Z"),
       },
       {
         id: workProductAttachmentId,
-        companyId,
+        domainId,
         issueId,
         assetId: "14141414-1414-4141-8141-141414141414",
         updatedAt: new Date("2026-01-02T00:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         issueId,
         assetId: "15151515-1515-4151-8151-151515151515",
         updatedAt: new Date("2026-01-08T00:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         issueId,
         assetId: "16161616-1616-4161-8161-161616161616",
         issueCommentId: "12121212-1212-4121-8121-121212121212",
         updatedAt: new Date("2026-01-09T00:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         issueId,
         assetId: "17171717-1717-4171-8171-171717171717",
         updatedAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -308,7 +308,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     ]);
     await db.insert(issueWorkProducts).values({
       id: "18181818-1818-4181-8181-181818181818",
-      companyId,
+      domainId,
       projectId,
       issueId,
       type: "artifact",
@@ -330,13 +330,13 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       updatedAt: new Date("2026-01-02T12:00:00.000Z"),
     });
 
-    return { companyId, otherCompanyId, projectId, issueId, secondIssueId, otherIssueId, otherRunId };
+    return { domainId, otherDomainId, projectId, issueId, secondIssueId, otherIssueId, otherRunId };
   }
 
   it("projects agent-created documents, direct attachments, and work products while excluding noisy sources", async () => {
-    const { companyId } = await seedArtifacts();
+    const { domainId } = await seedArtifacts();
     const storage = createStorageService({ "notes.txt": Buffer.from("Text file preview from an agent output.") });
-    const result = await companyArtifactsService(db, storage).list(companyId, { limit: 20 });
+    const result = await domainArtifactsService(db, storage).list(domainId, { limit: 20 });
 
     expect(result.nextCursor).toBeNull();
     expect(result.artifacts.map((artifact) => artifact.title)).toEqual([
@@ -361,40 +361,40 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   it("supports project, kind, search, and cursor filters", async () => {
-    const { companyId, projectId } = await seedArtifacts();
+    const { domainId, projectId } = await seedArtifacts();
     const storage = createStorageService({ "notes.txt": Buffer.from("Searchable notes preview") });
 
-    const projectVideos = await companyArtifactsService(db, storage).list(companyId, {
+    const projectVideos = await domainArtifactsService(db, storage).list(domainId, {
       projectId,
       kind: "video",
       limit: 10,
     });
     expect(projectVideos.artifacts.map((artifact) => artifact.title)).toEqual(["direct-video.mp4", "Primary Cut"]);
 
-    const search = await companyArtifactsService(db, storage).list(companyId, {
+    const search = await domainArtifactsService(db, storage).list(domainId, {
       q: "review document",
       limit: 10,
     });
     expect(search.artifacts.map((artifact) => artifact.title)).toEqual(["Review Notes"]);
 
-    const firstPage = await companyArtifactsService(db, storage).list(companyId, { limit: 2 });
+    const firstPage = await domainArtifactsService(db, storage).list(domainId, { limit: 2 });
     expect(firstPage.artifacts.map((artifact) => artifact.title)).toEqual(["Review Notes", "direct-video.mp4"]);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
 
-    const secondPage = await companyArtifactsService(db, storage).list(companyId, {
+    const secondPage = await domainArtifactsService(db, storage).list(domainId, {
       limit: 10,
       cursor: firstPage.nextCursor ?? undefined,
     });
     expect(secondPage.artifacts.map((artifact) => artifact.title)).toEqual(["Primary Cut", "notes.txt"]);
 
-    const pageAfterPrimaryWorkProduct = await companyArtifactsService(db, storage).list(companyId, { limit: 3 });
+    const pageAfterPrimaryWorkProduct = await domainArtifactsService(db, storage).list(domainId, { limit: 3 });
     expect(pageAfterPrimaryWorkProduct.artifacts.map((artifact) => artifact.title)).toEqual([
       "Review Notes",
       "direct-video.mp4",
       "Primary Cut",
     ]);
 
-    const afterPrimaryCursor = await companyArtifactsService(db, storage).list(companyId, {
+    const afterPrimaryCursor = await domainArtifactsService(db, storage).list(domainId, {
       limit: 10,
       cursor: pageAfterPrimaryWorkProduct.nextCursor ?? undefined,
     });
@@ -402,12 +402,12 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   it("deduplicates work product attachments beyond the work product fetch window", async () => {
-    const { companyId, projectId, issueId } = await seedArtifacts();
+    const { domainId, projectId, issueId } = await seedArtifacts();
     const dedupedAttachmentId = "abababab-abab-4bab-8bab-abababababab";
 
     await db.insert(assets).values({
       id: "acacacac-acac-4cac-8cac-acacacacacac",
-      companyId,
+      domainId,
       provider: "local_disk",
       objectKey: "late-render.mp4",
       contentType: "video/mp4",
@@ -418,7 +418,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     });
     await db.insert(issueAttachments).values({
       id: dedupedAttachmentId,
-      companyId,
+      domainId,
       issueId,
       assetId: "acacacac-acac-4cac-8cac-acacacacacac",
       updatedAt: new Date("2026-01-20T00:00:00.000Z"),
@@ -426,7 +426,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
 
     const fillerWorkProducts = Array.from({ length: 21 }, (_, index) => ({
       id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-      companyId,
+      domainId,
       projectId,
       issueId,
       type: "artifact" as const,
@@ -442,7 +442,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       ...fillerWorkProducts,
       {
         id: "adadadad-adad-4dad-8dad-adadadadadad",
-        companyId,
+        domainId,
         projectId,
         issueId,
         type: "artifact",
@@ -464,7 +464,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
     ]);
 
-    const result = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const result = await domainArtifactsService(db, createStorageService()).list(domainId, {
       kind: "video",
       limit: 20,
     });
@@ -473,11 +473,11 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   it("does not project a foreign agent from a malformed work product run reference", async () => {
-    const { companyId, issueId, otherRunId } = await seedArtifacts();
+    const { domainId, issueId, otherRunId } = await seedArtifacts();
 
     await db.insert(issueWorkProducts).values({
       id: "1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a",
-      companyId,
+      domainId,
       issueId,
       type: "artifact",
       provider: "paperclip",
@@ -489,7 +489,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       updatedAt: new Date("2026-01-10T00:00:00.000Z"),
     });
 
-    const result = await companyArtifactsService(db, createStorageService()).list(companyId, { limit: 20 });
+    const result = await domainArtifactsService(db, createStorageService()).list(domainId, { limit: 20 });
     const forged = result.artifacts.find((artifact) => artifact.title === "Forged Run Artifact");
 
     expect(forged).toBeTruthy();
@@ -498,34 +498,34 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   it("does not leak foreign issue or project metadata through malformed artifact link rows", async () => {
-    const { companyId, otherCompanyId, otherIssueId } = await seedArtifacts();
+    const { domainId, otherDomainId, otherIssueId } = await seedArtifacts();
     const foreignProjectId = "1b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b";
     const malformedAttachmentId = "1c1c1c1c-1c1c-4c1c-8c1c-1c1c1c1c1c1c";
 
     await db.insert(projects).values({
       id: foreignProjectId,
-      companyId: otherCompanyId,
+      domainId: otherDomainId,
       name: "Foreign Project",
       status: "in_progress",
     });
     await db.update(issues).set({ projectId: foreignProjectId }).where(eq(issues.id, otherIssueId));
     await db.insert(documents).values({
       id: "1d1d1d1d-1d1d-4d1d-8d1d-1d1d1d1d1d1d",
-      companyId,
+      domainId,
       title: "Forged Link Document",
-      latestBody: "This row is company-owned but points at a foreign issue.",
+      latestBody: "This row is domain-owned but points at a foreign issue.",
       createdByAgentId: "33333333-3333-4333-8333-333333333333",
       updatedAt: new Date("2026-01-30T00:00:00.000Z"),
     });
     await db.insert(issueDocuments).values({
-      companyId,
+      domainId,
       issueId: otherIssueId,
       documentId: "1d1d1d1d-1d1d-4d1d-8d1d-1d1d1d1d1d1d",
       key: "forged-link-document",
     });
     await db.insert(assets).values({
       id: "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e1e",
-      companyId,
+      domainId,
       provider: "local_disk",
       objectKey: "forged-link.txt",
       contentType: "text/plain",
@@ -536,26 +536,26 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     });
     await db.insert(issueAttachments).values({
       id: malformedAttachmentId,
-      companyId,
+      domainId,
       issueId: otherIssueId,
       assetId: "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e1e",
       updatedAt: new Date("2026-01-29T00:00:00.000Z"),
     });
     await db.insert(issueWorkProducts).values({
       id: "1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f",
-      companyId,
+      domainId,
       issueId: otherIssueId,
       type: "artifact",
       provider: "paperclip",
       title: "Forged Link Work Product",
       status: "ready_for_review",
-      summary: "This row is company-owned but points at a foreign issue.",
+      summary: "This row is domain-owned but points at a foreign issue.",
       metadata: { contentType: "text/plain" },
       createdByRunId: "99999999-9999-4999-8999-999999999999",
       updatedAt: new Date("2026-01-28T00:00:00.000Z"),
     });
 
-    const flat = await companyArtifactsService(db, createStorageService()).list(companyId, { limit: 20 });
+    const flat = await domainArtifactsService(db, createStorageService()).list(domainId, { limit: 20 });
     expect(flat.artifacts.map((artifact) => artifact.title)).not.toEqual(expect.arrayContaining([
       "Forged Link Document",
       "forged-link.txt",
@@ -565,7 +565,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     expect(flat.artifacts.some((artifact) => artifact.issue.title === "Other output")).toBe(false);
     expect(flat.artifacts.some((artifact) => artifact.project?.name === "Foreign Project")).toBe(false);
 
-    const grouped = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const grouped = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       limit: 20,
     });
@@ -575,7 +575,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       group.previewArtifacts.some((artifact) => artifact.project?.name === "Foreign Project")
     )).toBe(false);
 
-    const selectedForeignGroup = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const selectedForeignGroup = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       groupIssueId: otherIssueId,
       limit: 20,
@@ -588,10 +588,10 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   it("groups artifacts by task after applying media, project, and search filters", async () => {
-    const { companyId, projectId, issueId } = await seedArtifacts();
+    const { domainId, projectId, issueId } = await seedArtifacts();
     const storage = createStorageService({ "notes.txt": Buffer.from("Searchable notes preview") });
 
-    const grouped = await companyArtifactsService(db, storage).list(companyId, {
+    const grouped = await domainArtifactsService(db, storage).list(domainId, {
       groupBy: "task",
       limit: 10,
     });
@@ -619,7 +619,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     expect(grouped.groups?.find((group) => group.issue.id === issueId)?.previewArtifacts.map((artifact) => artifact.title))
       .toEqual(["direct-video.mp4", "Primary Cut", "notes.txt"]);
 
-    const projectVideos = await companyArtifactsService(db, storage).list(companyId, {
+    const projectVideos = await domainArtifactsService(db, storage).list(domainId, {
       groupBy: "task",
       projectId,
       kind: "video",
@@ -638,7 +638,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
       },
     ]);
 
-    const search = await companyArtifactsService(db, storage).list(companyId, {
+    const search = await domainArtifactsService(db, storage).list(domainId, {
       groupBy: "task",
       q: "review document",
       limit: 10,
@@ -649,16 +649,16 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   it("paginates grouped task lists with the active group cursor", async () => {
-    const { companyId } = await seedArtifacts();
+    const { domainId } = await seedArtifacts();
 
-    const firstPage = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const firstPage = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       limit: 1,
     });
     expect(firstPage.groups?.map((group) => group.issue.identifier)).toEqual(["PAP-2"]);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
 
-    const secondPage = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const secondPage = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       limit: 10,
       cursor: firstPage.nextCursor ?? undefined,
@@ -667,15 +667,15 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     expect(secondPage.nextCursor).toBeNull();
   });
 
-  it("groups parent-task artifacts under the topmost same-company ancestor", async () => {
-    const { companyId, issueId, secondIssueId } = await seedArtifacts();
+  it("groups parent-task artifacts under the topmost same-domain ancestor", async () => {
+    const { domainId, issueId, secondIssueId } = await seedArtifacts();
     const grandchildIssueId = "21212121-2121-4212-8121-212121212121";
     const grandchildAttachmentId = "23232323-2323-4232-8232-232323232323";
 
     await db.update(issues).set({ parentId: issueId }).where(eq(issues.id, secondIssueId));
     await db.insert(issues).values({
       id: grandchildIssueId,
-      companyId,
+      domainId,
       parentId: secondIssueId,
       identifier: "PAP-3",
       title: "Grandchild render",
@@ -684,7 +684,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     });
     await db.insert(assets).values({
       id: "24242424-2424-4242-8242-242424242424",
-      companyId,
+      domainId,
       provider: "local_disk",
       objectKey: "grandchild.txt",
       contentType: "text/plain",
@@ -695,13 +695,13 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     });
     await db.insert(issueAttachments).values({
       id: grandchildAttachmentId,
-      companyId,
+      domainId,
       issueId: grandchildIssueId,
       assetId: "24242424-2424-4242-8242-242424242424",
       updatedAt: new Date("2026-01-05T00:00:00.000Z"),
     });
 
-    const grouped = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const grouped = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "parent_task",
       limit: 10,
     });
@@ -721,9 +721,9 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 
   it("returns selected group artifact pages and metadata without leaking foreign group issues", async () => {
-    const { companyId, issueId, otherIssueId } = await seedArtifacts();
+    const { domainId, issueId, otherIssueId } = await seedArtifacts();
 
-    const selected = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const selected = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       groupIssueId: issueId,
       limit: 2,
@@ -738,7 +738,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     expect(selected.artifacts.map((artifact) => artifact.title)).toEqual(["direct-video.mp4", "Primary Cut"]);
     expect(selected.nextCursor).toEqual(expect.any(String));
 
-    const selectedSecondPage = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const selectedSecondPage = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       groupIssueId: issueId,
       limit: 10,
@@ -746,7 +746,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     });
     expect(selectedSecondPage.artifacts.map((artifact) => artifact.title)).toEqual(["notes.txt"]);
 
-    const selectedEmptyByFilter = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const selectedEmptyByFilter = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       groupIssueId: issueId,
       q: "does-not-match-this-stack",
@@ -758,7 +758,7 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
     });
     expect(selectedEmptyByFilter.artifacts).toEqual([]);
 
-    const foreignSelected = await companyArtifactsService(db, createStorageService()).list(companyId, {
+    const foreignSelected = await domainArtifactsService(db, createStorageService()).list(domainId, {
       groupBy: "task",
       groupIssueId: otherIssueId,
       limit: 10,
@@ -771,23 +771,23 @@ describeEmbeddedPostgres("companyArtifactsService", () => {
   });
 });
 
-describe("company artifacts route authorization", () => {
-  it("rejects agent access across company boundaries before reading artifacts", async () => {
+describe("domain artifacts route authorization", () => {
+  it("rejects agent access across domain boundaries before reading artifacts", async () => {
     const app = express();
     app.use((_req, _res, next) => {
       (_req as any).actor = {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-allowed",
+        domainId: "domain-allowed",
       };
       next();
     });
-    app.use("/api/domains", companyRoutes({} as any, createStorageService()));
+    app.use("/api/domains", domainRoutes({} as any, createStorageService()));
     app.use(errorHandler);
 
-    const res = await request(app).get("/api/domains/company-denied/artifacts");
+    const res = await request(app).get("/api/domains/domain-denied/artifacts");
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe("Agent key cannot access another company");
+    expect(res.body.error).toBe("Agent key cannot access another domain");
   });
 });

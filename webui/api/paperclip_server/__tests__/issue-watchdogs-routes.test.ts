@@ -9,7 +9,7 @@ import {
   agentWakeupRequests,
   agents,
   domains,
-  companyMemberships,
+  domainMemberships,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -58,7 +58,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     await db.delete(issues);
     await db.delete(agents);
     await db.delete(principalPermissionGrants);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(domains);
   });
 
@@ -66,15 +66,15 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     await tempDb?.cleanup();
   });
 
-  function createApp(companyId: string, actor?: Record<string, unknown>) {
+  function createApp(domainId: string, actor?: Record<string, unknown>) {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).actor = actor ?? {
         type: "board",
         userId: "cloud-user-1",
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+        domainIds: [domainId],
+        memberships: [{ domainId, membershipRole: "owner", status: "active" }],
         source: "cloud_tenant",
         isInstanceAdmin: false,
       };
@@ -89,9 +89,9 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     return `W${randomUUID().replace(/-/g, "").slice(0, 5).toUpperLifeAdmin()}`;
   }
 
-  async function seedCloudTenantMember(companyId: string) {
-    await db.insert(companyMemberships).values({
-      companyId,
+  async function seedCloudTenantMember(domainId: string) {
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: "cloud-user-1",
       status: "active",
@@ -99,7 +99,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
       updatedAt: new Date(),
     });
     await ensureHumanRoleDefaultGrants(db, {
-      companyId,
+      domainId,
       principalId: "cloud-user-1",
       membershipRole: "owner",
       grantedByUserId: null,
@@ -107,22 +107,22 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   }
 
   async function seedDomain(name = "Paperclip") {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name,
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
-    return companyId;
+    await seedCloudTenantMember(domainId);
+    return domainId;
   }
 
-  async function seedAgent(companyId: string, overrides: Partial<typeof agents.$inferInsert> = {}) {
+  async function seedAgent(domainId: string, overrides: Partial<typeof agents.$inferInsert> = {}) {
     const id = overrides.id ?? randomUUID();
     await db.insert(agents).values({
       id,
-      companyId,
+      domainId,
       name: overrides.name ?? "Watchdog Agent",
       role: overrides.role ?? "engineer",
       status: overrides.status ?? "active",
@@ -135,11 +135,11 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     return id;
   }
 
-  async function seedIssue(companyId: string, overrides: Partial<typeof issues.$inferInsert> = {}) {
+  async function seedIssue(domainId: string, overrides: Partial<typeof issues.$inferInsert> = {}) {
     const id = overrides.id ?? randomUUID();
     await db.insert(issues).values({
       id,
-      companyId,
+      domainId,
       title: overrides.title ?? "Watched task",
       status: overrides.status ?? "todo",
       priority: overrides.priority ?? "medium",
@@ -160,27 +160,27 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   }
 
   async function seedWatchdogRun(input: {
-    companyId: string;
+    domainId: string;
     watchdogAgentId: string;
     watchedIssueId: string;
     watchdogIssueId: string;
   }) {
     await db.insert(issueWatchdogs).values({
-      companyId: input.companyId,
+      domainId: input.domainId,
       issueId: input.watchedIssueId,
       watchdogAgentId: input.watchdogAgentId,
       watchdogIssueId: input.watchdogIssueId,
       status: "active",
     });
-    await taskWatchdogService(db).reconcileTaskWatchdogs({ companyId: input.companyId });
+    await taskWatchdogService(db).reconcileTaskWatchdogs({ domainId: input.domainId });
     const [watchdog] = await db
       .select({ lastObservedFingerprint: issueWatchdogs.lastObservedFingerprint })
       .from(issueWatchdogs)
-      .where(and(eq(issueWatchdogs.companyId, input.companyId), eq(issueWatchdogs.issueId, input.watchedIssueId)));
+      .where(and(eq(issueWatchdogs.domainId, input.domainId), eq(issueWatchdogs.issueId, input.watchedIssueId)));
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: input.companyId,
+      domainId: input.domainId,
       agentId: input.watchdogAgentId,
       status: "running",
       contextSnapshot: {
@@ -196,12 +196,12 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     return runId;
   }
 
-  async function waitForAssignmentWakeup(companyId: string) {
+  async function waitForAssignmentWakeup(domainId: string) {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const rows = await db
         .select({ id: heartbeatRuns.id })
         .from(heartbeatRuns)
-        .where(eq(heartbeatRuns.companyId, companyId))
+        .where(eq(heartbeatRuns.domainId, domainId))
         .limit(1);
       if (rows.length > 0) return;
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -209,11 +209,11 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   }
 
   it("creates, updates, reads, lists, and removes an issue watchdog with activity logs", async () => {
-    const companyId = await seedDomain();
-    const issueId = await seedIssue(companyId, { identifier: "WDOG-1", issueNumber: 1 });
-    const firstAgentId = await seedAgent(companyId, { name: "First Watchdog" });
-    const secondAgentId = await seedAgent(companyId, { name: "Second Watchdog" });
-    const app = createApp(companyId);
+    const domainId = await seedDomain();
+    const issueId = await seedIssue(domainId, { identifier: "WDOG-1", issueNumber: 1 });
+    const firstAgentId = await seedAgent(domainId, { name: "First Watchdog" });
+    const secondAgentId = await seedAgent(domainId, { name: "Second Watchdog" });
+    const app = createApp(domainId);
 
     const created = await request(app)
       .put(`/api/issues/${issueId}/watchdog`)
@@ -248,7 +248,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     expect(detail.status, JSON.stringify(detail.body)).toBe(200);
     expect(detail.body.watchdog).toMatchObject({ id: created.body.id, watchdogAgentId: secondAgentId });
 
-    const list = await request(app).get(`/api/domains/${companyId}/issues`);
+    const list = await request(app).get(`/api/domains/${domainId}/issues`);
     expect(list.status, JSON.stringify(list.body)).toBe(200);
     expect(list.body.find((issue: { id: string }) => issue.id === issueId)?.watchdog)
       .toMatchObject({ id: created.body.id, watchdogAgentId: secondAgentId });
@@ -264,7 +264,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     const stored = await db
       .select()
       .from(issueWatchdogs)
-      .where(and(eq(issueWatchdogs.companyId, companyId), eq(issueWatchdogs.issueId, issueId)))
+      .where(and(eq(issueWatchdogs.domainId, domainId), eq(issueWatchdogs.issueId, issueId)))
       .then((rows) => rows[0] ?? null);
     expect(stored).toMatchObject({
       id: created.body.id,
@@ -286,10 +286,10 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   });
 
   it("handles concurrent first-time watchdog upserts without duplicate-key failures", async () => {
-    const companyId = await seedDomain();
-    const issueId = await seedIssue(companyId, { identifier: "WDOG-RACE", issueNumber: 99 });
-    const agentId = await seedAgent(companyId, { name: "Race Watchdog" });
-    const app = createApp(companyId);
+    const domainId = await seedDomain();
+    const issueId = await seedIssue(domainId, { identifier: "WDOG-RACE", issueNumber: 99 });
+    const agentId = await seedAgent(domainId, { name: "Race Watchdog" });
+    const app = createApp(domainId);
 
     const responses = await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
@@ -304,18 +304,18 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     const stored = await db
       .select()
       .from(issueWatchdogs)
-      .where(and(eq(issueWatchdogs.companyId, companyId), eq(issueWatchdogs.issueId, issueId)));
+      .where(and(eq(issueWatchdogs.domainId, domainId), eq(issueWatchdogs.issueId, issueId)));
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({ status: "active", watchdogAgentId: agentId });
   });
 
   it("creates an issue and watchdog atomically from the create issue route", async () => {
-    const companyId = await seedDomain();
-    const agentId = await seedAgent(companyId);
-    const app = createApp(companyId);
+    const domainId = await seedDomain();
+    const agentId = await seedAgent(domainId);
+    const app = createApp(domainId);
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Create with watchdog",
         watchdog: {
@@ -346,13 +346,13 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   });
 
   it("does not create an immediate watchdog review for a newly assigned issue", async () => {
-    const companyId = await seedDomain();
-    const workerAgentId = await seedAgent(companyId, { name: "Worker" });
-    const watchdogAgentId = await seedAgent(companyId, { name: "Watchdog" });
-    const app = createApp(companyId);
+    const domainId = await seedDomain();
+    const workerAgentId = await seedAgent(domainId, { name: "Worker" });
+    const watchdogAgentId = await seedAgent(domainId, { name: "Watchdog" });
+    const app = createApp(domainId);
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Assigned issue with watchdog",
         assigneeAgentId: workerAgentId,
@@ -363,7 +363,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    await waitForAssignmentWakeup(companyId);
+    await waitForAssignmentWakeup(domainId);
     expect(res.body).toMatchObject({
       assigneeAgentId: workerAgentId,
       watchdog: {
@@ -376,13 +376,13 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     const watchdogReviewIssues = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "task_watchdog")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "task_watchdog")));
     expect(watchdogReviewIssues).toHaveLength(0);
 
     const [watchdog] = await db
       .select()
       .from(issueWatchdogs)
-      .where(and(eq(issueWatchdogs.companyId, companyId), eq(issueWatchdogs.issueId, res.body.id)));
+      .where(and(eq(issueWatchdogs.domainId, domainId), eq(issueWatchdogs.issueId, res.body.id)));
     expect(watchdog?.triggerCount).toBe(0);
 
     const taskWatchdogActivity = await db
@@ -393,32 +393,32 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   });
 
   it("enforces persisted watchdog scope for issue mutations and child creation", async () => {
-    const companyId = await seedDomain();
-    const watchdogAgentId = await seedAgent(companyId, { name: "Scoped Watchdog" });
-    const watchedRootId = await seedIssue(companyId, { title: "Watched root", identifier: "WDOG-ROOT" });
-    const watchedChildId = await seedIssue(companyId, { title: "Watched child", parentId: watchedRootId });
-    const unrelatedRootId = await seedIssue(companyId, { title: "Unrelated root" });
-    const watchdogIssueId = await seedIssue(companyId, {
+    const domainId = await seedDomain();
+    const watchdogAgentId = await seedAgent(domainId, { name: "Scoped Watchdog" });
+    const watchedRootId = await seedIssue(domainId, { title: "Watched root", identifier: "WDOG-ROOT" });
+    const watchedChildId = await seedIssue(domainId, { title: "Watched child", parentId: watchedRootId });
+    const unrelatedRootId = await seedIssue(domainId, { title: "Unrelated root" });
+    const watchdogIssueId = await seedIssue(domainId, {
       title: "Reusable watchdog issue",
       parentId: watchedRootId,
       assigneeAgentId: watchdogAgentId,
       originKind: "task_watchdog",
       originId: watchedRootId,
     });
-    const watchdogIssueChildId = await seedIssue(companyId, {
+    const watchdogIssueChildId = await seedIssue(domainId, {
       title: "Watchdog issue child",
       parentId: watchdogIssueId,
     });
     const runId = await seedWatchdogRun({
-      companyId,
+      domainId,
       watchdogAgentId,
       watchedIssueId: watchedRootId,
       watchdogIssueId,
     });
-    const app = createApp(companyId, {
+    const app = createApp(domainId, {
       type: "agent",
       agentId: watchdogAgentId,
-      companyId,
+      domainId,
       runId,
       source: "agent_jwt",
     });
@@ -455,11 +455,11 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     const deniedVisibleProbeIssues = await db
       .select({ id: issues.id })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.title, "Denied watchdog issue child")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.title, "Denied watchdog issue child")));
     expect(deniedVisibleProbeIssues).toHaveLength(0);
 
     const deniedParentCreate = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({ title: "Denied parent create", parentId: unrelatedRootId });
     expect(deniedParentCreate.status, JSON.stringify(deniedParentCreate.body)).toBe(403);
     expect(deniedParentCreate.body.error).toBe("Task-watchdog runs can only mutate the watched issue subtree.");
@@ -477,7 +477,7 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     const nestedWatchdogs = await db
       .select({ id: issueWatchdogs.id })
       .from(issueWatchdogs)
-      .where(and(eq(issueWatchdogs.companyId, companyId), eq(issueWatchdogs.issueId, watchedChildId)));
+      .where(and(eq(issueWatchdogs.domainId, domainId), eq(issueWatchdogs.issueId, watchedChildId)));
     expect(nestedWatchdogs).toHaveLength(0);
 
     const allowedChild = await request(app)
@@ -488,20 +488,20 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   });
 
   it("routes watchdog-discovered product bugs outside the watched source tree with evidence links", async () => {
-    const companyId = await seedDomain();
-    const watchdogAgentId = await seedAgent(companyId, { name: "Product Bug Watchdog" });
-    const watchedRootId = await seedIssue(companyId, {
+    const domainId = await seedDomain();
+    const watchdogAgentId = await seedAgent(domainId, { name: "Product Bug Watchdog" });
+    const watchedRootId = await seedIssue(domainId, {
       title: "Watched root",
       identifier: "PAP-100",
       issueNumber: 100,
     });
-    const watchedChildId = await seedIssue(companyId, {
+    const watchedChildId = await seedIssue(domainId, {
       title: "Watched child",
       identifier: "PAP-101",
       issueNumber: 101,
       parentId: watchedRootId,
     });
-    const watchdogIssueId = await seedIssue(companyId, {
+    const watchdogIssueId = await seedIssue(domainId, {
       title: "Reusable watchdog issue",
       identifier: "PAP-102",
       issueNumber: 102,
@@ -511,21 +511,21 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
       originId: watchedRootId,
     });
     const runId = await seedWatchdogRun({
-      companyId,
+      domainId,
       watchdogAgentId,
       watchedIssueId: watchedRootId,
       watchdogIssueId,
     });
-    const app = createApp(companyId, {
+    const app = createApp(domainId, {
       type: "agent",
       agentId: watchdogAgentId,
-      companyId,
+      domainId,
       runId,
       source: "agent_jwt",
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title: "Fix watchdog source-tree pollution",
         description: "Watchdog found a Paperclip follow-up routing bug.",
@@ -552,13 +552,13 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     const watchedSourceChildren = await db
       .select({ id: issues.id, title: issues.title })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.parentId, watchedChildId)));
+      .where(and(eq(issues.domainId, domainId), eq(issues.parentId, watchedChildId)));
     expect(watchedSourceChildren).toHaveLength(0);
 
     const [createdActivity] = await db
       .select({ details: activityLog.details })
       .from(activityLog)
-      .where(and(eq(activityLog.companyId, companyId), eq(activityLog.entityId, res.body.id)));
+      .where(and(eq(activityLog.domainId, domainId), eq(activityLog.entityId, res.body.id)));
     expect(createdActivity?.details).toMatchObject({
       watchdogDiscovery: {
         kind: "product_bug",
@@ -569,21 +569,21 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   });
 
   it("rejects watchdog interaction-resolution attempts outside the persisted watched subtree", async () => {
-    const companyId = await seedDomain();
-    const watchdogAgentId = await seedAgent(companyId, { name: "Interaction Watchdog" });
-    const watchedRootId = await seedIssue(companyId, { title: "Watched root" });
-    const unrelatedRootId = await seedIssue(companyId, { title: "Unrelated root" });
-    const watchdogIssueId = await seedIssue(companyId, { title: "Reusable watchdog issue" });
+    const domainId = await seedDomain();
+    const watchdogAgentId = await seedAgent(domainId, { name: "Interaction Watchdog" });
+    const watchedRootId = await seedIssue(domainId, { title: "Watched root" });
+    const unrelatedRootId = await seedIssue(domainId, { title: "Unrelated root" });
+    const watchdogIssueId = await seedIssue(domainId, { title: "Reusable watchdog issue" });
     const runId = await seedWatchdogRun({
-      companyId,
+      domainId,
       watchdogAgentId,
       watchedIssueId: watchedRootId,
       watchdogIssueId,
     });
-    const app = createApp(companyId, {
+    const app = createApp(domainId, {
       type: "agent",
       agentId: watchdogAgentId,
-      companyId,
+      domainId,
       runId,
       source: "agent_jwt",
     });
@@ -596,13 +596,13 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
     expect(res.body.error).toBe("Task-watchdog runs can only mutate the watched issue subtree.");
   });
 
-  it("rejects cross-company watched issues and watchdog agents", async () => {
-    const companyId = await seedDomain("Allowed company");
-    const otherCompanyId = await seedDomain("Other company");
-    const issueId = await seedIssue(companyId);
-    const otherIssueId = await seedIssue(otherCompanyId);
-    const otherAgentId = await seedAgent(otherCompanyId);
-    const app = createApp(companyId);
+  it("rejects cross-domain watched issues and watchdog agents", async () => {
+    const domainId = await seedDomain("Allowed domain");
+    const otherDomainId = await seedDomain("Other domain");
+    const issueId = await seedIssue(domainId);
+    const otherIssueId = await seedIssue(otherDomainId);
+    const otherAgentId = await seedAgent(otherDomainId);
+    const app = createApp(domainId);
 
     const foreignIssue = await request(app)
       .put(`/api/issues/${otherIssueId}/watchdog`)
@@ -618,10 +618,10 @@ describeEmbeddedPostgres("issue watchdog routes", () => {
   it.each(["paused", "terminated", "pending_approval"])(
     "rejects %s watchdog agents",
     async (status) => {
-      const companyId = await seedDomain();
-      const issueId = await seedIssue(companyId);
-      const agentId = await seedAgent(companyId, { status });
-      const app = createApp(companyId);
+      const domainId = await seedDomain();
+      const issueId = await seedIssue(domainId);
+      const agentId = await seedAgent(domainId, { status });
+      const app = createApp(domainId);
 
       const res = await request(app)
         .put(`/api/issues/${issueId}/watchdog`)

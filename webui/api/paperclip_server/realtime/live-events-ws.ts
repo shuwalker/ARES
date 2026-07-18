@@ -4,11 +4,11 @@ import { createRequire } from "node:module";
 import type { Duplex } from "node:stream";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentApiKeys, companyMemberships, instanceUserRoles } from "@paperclipai/db";
+import { agentApiKeys, domainMemberships, instanceUserRoles } from "@paperclipai/db";
 import type { DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "../middleware/logger.js";
-import { subscribeCompanyLiveEvents } from "../services/live-events.js";
+import { subscribeDomainLiveEvents } from "../services/live-events.js";
 
 interface WsSocket {
   readyState: number;
@@ -41,7 +41,7 @@ const { WebSocket, WebSocketServer } = require("ws") as {
 };
 
 interface UpgradeContext {
-  companyId: string;
+  domainId: string;
   actorType: "board" | "agent";
   actorId: string;
 }
@@ -82,7 +82,7 @@ function rejectUpgrade(socket: Duplex, statusLine: string, message: string) {
   }
 }
 
-function parseCompanyId(pathname: string) {
+function parseDomainId(pathname: string) {
   const match = pathname.match(/^\/api\/domains\/([^/]+)\/events\/ws$/);
   if (!match) return null;
 
@@ -117,7 +117,7 @@ function headersFromIncomingMessage(req: IncomingMessage): Headers {
 async function authorizeUpgrade(
   db: Db,
   req: IncomingMessage,
-  companyId: string,
+  domainId: string,
   url: URL,
   opts: {
     deploymentMode: DeploymentMode;
@@ -132,7 +132,7 @@ async function authorizeUpgrade(
   if (!token) {
     if (opts.deploymentMode === "local_trusted") {
       return {
-        companyId,
+        domainId,
         actorType: "board",
         actorId: "board",
       };
@@ -153,22 +153,22 @@ async function authorizeUpgrade(
         .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
         .then((rows) => rows[0] ?? null),
       db
-        .select({ companyId: companyMemberships.companyId })
-        .from(companyMemberships)
+        .select({ domainId: domainMemberships.domainId })
+        .from(domainMemberships)
         .where(
           and(
-            eq(companyMemberships.principalType, "user"),
-            eq(companyMemberships.principalId, userId),
-            eq(companyMemberships.status, "active"),
+            eq(domainMemberships.principalType, "user"),
+            eq(domainMemberships.principalId, userId),
+            eq(domainMemberships.status, "active"),
           ),
         ),
     ]);
 
-    const hasCompanyMembership = memberships.some((row) => row.companyId === companyId);
-    if (!roleRow && !hasCompanyMembership) return null;
+    const hasDomainMembership = memberships.some((row) => row.domainId === domainId);
+    if (!roleRow && !hasDomainMembership) return null;
 
     return {
-      companyId,
+      domainId,
       actorType: "board",
       actorId: userId,
     };
@@ -181,7 +181,7 @@ async function authorizeUpgrade(
     .where(and(eq(agentApiKeys.keyHash, tokenHash), isNull(agentApiKeys.revokedAt)))
     .then((rows) => rows[0] ?? null);
 
-  if (!key || key.companyId !== companyId) {
+  if (!key || key.domainId !== domainId) {
     return null;
   }
 
@@ -191,7 +191,7 @@ async function authorizeUpgrade(
     .where(eq(agentApiKeys.id, key.id));
 
   return {
-    companyId,
+    domainId,
     actorType: "agent",
     actorId: key.agentId,
   };
@@ -227,7 +227,7 @@ export function setupLiveEventsWebSocketServer(
       return;
     }
 
-    const unsubscribe = subscribeCompanyLiveEvents(context.companyId, (event) => {
+    const unsubscribe = subscribeDomainLiveEvents(context.domainId, (event) => {
       if (socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify(event));
     });
@@ -247,7 +247,7 @@ export function setupLiveEventsWebSocketServer(
     });
 
     socket.on("error", (err: Error) => {
-      logger.warn({ err, companyId: context.companyId }, "live websocket client error");
+      logger.warn({ err, domainId: context.domainId }, "live websocket client error");
     });
   });
 
@@ -277,13 +277,13 @@ export function setupLiveEventsWebSocketServer(
     }
 
     const url = new URL(req.url, "http://localhost");
-    const companyId = parseCompanyId(url.pathname);
-    if (!companyId) {
+    const domainId = parseDomainId(url.pathname);
+    if (!domainId) {
       closeUpgradeSocket(socket);
       return;
     }
 
-    void authorizeUpgrade(db, req, companyId, url, {
+    void authorizeUpgrade(db, req, domainId, url, {
       deploymentMode: opts.deploymentMode,
       resolveSessionFromHeaders: opts.resolveSessionFromHeaders,
     })

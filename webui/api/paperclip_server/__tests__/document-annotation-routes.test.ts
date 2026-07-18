@@ -3,8 +3,8 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const issueId = "11111111-1111-4111-8111-111111111111";
-const companyId = "22222222-2222-4222-8222-222222222222";
-const otherCompanyId = "33333333-3333-4333-8333-333333333333";
+const domainId = "22222222-2222-4222-8222-222222222222";
+const otherDomainId = "33333333-3333-4333-8333-333333333333";
 
 const mockIssueService = vi.hoisted(() => ({
   getById: vi.fn(),
@@ -43,7 +43,7 @@ const mockLogActivity = vi.hoisted(() => vi.fn(async () => undefined));
 
 const documentPayload = {
   id: "document-1",
-  companyId,
+  domainId,
   issueId,
   key: "plan",
   title: "Plan",
@@ -61,7 +61,7 @@ const documentPayload = {
 
 const annotationThread = {
   id: "55555555-5555-4555-8555-555555555555",
-  companyId,
+  domainId,
   issueId,
   documentId: "document-1",
   documentKey: "plan",
@@ -94,7 +94,7 @@ const annotationThread = {
 
 const annotationComment = {
   id: "66666666-6666-4666-8666-666666666666",
-  companyId,
+  domainId,
   threadId: annotationThread.id,
   issueId,
   documentId: "document-1",
@@ -120,10 +120,10 @@ function registerModuleMocks() {
       hasPermission: vi.fn(async () => false),
     }),
     agentService: () => ({ getById: vi.fn(), list: vi.fn(async () => []) }),
-    companySkillService: () => ({
+    domainSkillService: () => ({
       completeTestRunForIssue: vi.fn(async () => null),
     }),
-    companyService: () => ({ getById: vi.fn(async () => ({ id: companyId, attachmentMaxBytes: 10_000_000 })) }),
+    domainService: () => ({ getById: vi.fn(async () => ({ id: domainId, attachmentMaxBytes: 10_000_000 })) }),
     documentAnnotationService: () => mockAnnotationService,
     documentService: () => mockDocumentService,
     environmentService: () => ({}),
@@ -135,7 +135,7 @@ function registerModuleMocks() {
       get: vi.fn(async () => ({ id: "settings", general: {} })),
       getExperimental: vi.fn(async () => ({})),
       getGeneral: vi.fn(async () => ({})),
-      listCompanyIds: vi.fn(async () => [companyId]),
+      listDomainIds: vi.fn(async () => [domainId]),
     }),
     issueApprovalService: () => ({}),
     issueRecoveryActionService: () => ({
@@ -155,7 +155,7 @@ function registerModuleMocks() {
   }));
 }
 
-async function createApp(actor: "board" | "agent" = "board", actorCompanyId = companyId) {
+async function createApp(actor: "board" | "agent" = "board", actorDomainId = domainId) {
   const [{ issueRoutes }, { errorHandler }] = await Promise.all([
     vi.importActual<typeof import("../routes/issues.js")>("../routes/issues.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
@@ -167,13 +167,13 @@ async function createApp(actor: "board" | "agent" = "board", actorCompanyId = co
       ? {
         type: "agent",
         agentId: "77777777-7777-4777-8777-777777777777",
-        companyId: actorCompanyId,
+        domainId: actorDomainId,
         runId: "88888888-8888-4888-8888-888888888888",
       }
       : {
         type: "board",
         userId: "board-user",
-        companyIds: [actorCompanyId],
+        domainIds: [actorDomainId],
         source: "local_implicit",
         isInstanceAdmin: false,
       };
@@ -193,7 +193,7 @@ describe("document annotation routes", () => {
     vi.clearAllMocks();
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
+      domainId,
       title: "Annotation API",
       status: "in_progress",
       assigneeAgentId: null,
@@ -253,7 +253,7 @@ describe("document annotation routes", () => {
   it("updates issue documents without waking the assignee through the issue-comment path", async () => {
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
+      domainId,
       title: "Document API",
       status: "in_progress",
       assigneeAgentId: "99999999-9999-4999-8999-999999999999",
@@ -281,7 +281,7 @@ describe("document annotation routes", () => {
   it("creates annotation threads, syncs references, logs activity, and does not wake the assignee", async () => {
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
+      domainId,
       title: "Annotation API",
       status: "todo",
       assigneeAgentId: "99999999-9999-4999-8999-999999999999",
@@ -309,8 +309,8 @@ describe("document annotation routes", () => {
     expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
   });
 
-  it("rejects agent cross-company annotation reads", async () => {
-    await request(await createApp("agent", otherCompanyId))
+  it("rejects agent cross-domain annotation reads", async () => {
+    await request(await createApp("agent", otherDomainId))
       .get(`/api/issues/${issueId}/documents/plan/annotations`)
       .expect(403);
   });
@@ -318,7 +318,7 @@ describe("document annotation routes", () => {
   it("adds annotation comments without waking the assignee and resolves threads", async () => {
     mockIssueService.getById.mockResolvedValue({
       id: issueId,
-      companyId,
+      domainId,
       title: "Annotation API",
       status: "todo",
       assigneeAgentId: "99999999-9999-4999-8999-999999999999",

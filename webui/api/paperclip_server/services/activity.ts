@@ -20,7 +20,7 @@ import { visibleIssueCondition } from "./issue-visibility.js";
 import { classifyRunLiveness } from "./run-liveness.js";
 
 export interface ActivityFilters {
-  companyId: string;
+  domainId: string;
   agentId?: string;
   entityType?: string;
   entityId?: string;
@@ -39,7 +39,7 @@ export function activityService(db: Db) {
   const scheduledLivenessBackfills = new Set<string>();
   const issueIdAsText = sql<string>`${issues.id}::text`;
   const summarizedUsageJson = sql<Record<string, unknown> | null>`
-    case
+    life_admin
       when ${heartbeatRuns.usageJson} is null then null
       else jsonb_strip_nulls(jsonb_build_object(
         'inputTokens', coalesce(${heartbeatRuns.usageJson} -> 'inputTokens', ${heartbeatRuns.usageJson} -> 'input_tokens'),
@@ -63,44 +63,44 @@ export function activityService(db: Db) {
         ),
         'billingType', coalesce(${heartbeatRuns.usageJson} -> 'billingType', ${heartbeatRuns.usageJson} -> 'billing_type'),
         'billing_type', coalesce(${heartbeatRuns.usageJson} -> 'billing_type', ${heartbeatRuns.usageJson} -> 'billingType'),
-        'costUsd', coalesce(
-          ${heartbeatRuns.usageJson} -> 'costUsd',
-          ${heartbeatRuns.usageJson} -> 'cost_usd',
-          ${heartbeatRuns.usageJson} -> 'total_cost_usd'
+        'financeUsd', coalesce(
+          ${heartbeatRuns.usageJson} -> 'financeUsd',
+          ${heartbeatRuns.usageJson} -> 'finance_usd',
+          ${heartbeatRuns.usageJson} -> 'total_finance_usd'
         ),
-        'cost_usd', coalesce(
-          ${heartbeatRuns.usageJson} -> 'cost_usd',
-          ${heartbeatRuns.usageJson} -> 'costUsd',
-          ${heartbeatRuns.usageJson} -> 'total_cost_usd'
+        'finance_usd', coalesce(
+          ${heartbeatRuns.usageJson} -> 'finance_usd',
+          ${heartbeatRuns.usageJson} -> 'financeUsd',
+          ${heartbeatRuns.usageJson} -> 'total_finance_usd'
         ),
-        'total_cost_usd', coalesce(
-          ${heartbeatRuns.usageJson} -> 'total_cost_usd',
-          ${heartbeatRuns.usageJson} -> 'cost_usd',
-          ${heartbeatRuns.usageJson} -> 'costUsd'
+        'total_finance_usd', coalesce(
+          ${heartbeatRuns.usageJson} -> 'total_finance_usd',
+          ${heartbeatRuns.usageJson} -> 'finance_usd',
+          ${heartbeatRuns.usageJson} -> 'financeUsd'
         )
       ))
     end
   `.as("usageJson");
   const summarizedResultJson = sql<Record<string, unknown> | null>`
-    case
+    life_admin
       when ${heartbeatRuns.resultJson} is null then null
       else jsonb_strip_nulls(jsonb_build_object(
         'billingType', coalesce(${heartbeatRuns.resultJson} -> 'billingType', ${heartbeatRuns.resultJson} -> 'billing_type'),
         'billing_type', coalesce(${heartbeatRuns.resultJson} -> 'billing_type', ${heartbeatRuns.resultJson} -> 'billingType'),
-        'costUsd', coalesce(
-          ${heartbeatRuns.resultJson} -> 'costUsd',
-          ${heartbeatRuns.resultJson} -> 'cost_usd',
-          ${heartbeatRuns.resultJson} -> 'total_cost_usd'
+        'financeUsd', coalesce(
+          ${heartbeatRuns.resultJson} -> 'financeUsd',
+          ${heartbeatRuns.resultJson} -> 'finance_usd',
+          ${heartbeatRuns.resultJson} -> 'total_finance_usd'
         ),
-        'cost_usd', coalesce(
-          ${heartbeatRuns.resultJson} -> 'cost_usd',
-          ${heartbeatRuns.resultJson} -> 'costUsd',
-          ${heartbeatRuns.resultJson} -> 'total_cost_usd'
+        'finance_usd', coalesce(
+          ${heartbeatRuns.resultJson} -> 'finance_usd',
+          ${heartbeatRuns.resultJson} -> 'financeUsd',
+          ${heartbeatRuns.resultJson} -> 'total_finance_usd'
         ),
-        'total_cost_usd', coalesce(
-          ${heartbeatRuns.resultJson} -> 'total_cost_usd',
-          ${heartbeatRuns.resultJson} -> 'cost_usd',
-          ${heartbeatRuns.resultJson} -> 'costUsd'
+        'total_finance_usd', coalesce(
+          ${heartbeatRuns.resultJson} -> 'total_finance_usd',
+          ${heartbeatRuns.resultJson} -> 'finance_usd',
+          ${heartbeatRuns.resultJson} -> 'financeUsd'
         ),
         'stopReason', ${heartbeatRuns.resultJson} -> 'stopReason',
         'effectiveTimeoutSec', ${heartbeatRuns.resultJson} -> 'effectiveTimeoutSec',
@@ -145,11 +145,11 @@ export function activityService(db: Db) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
-  async function backfillMissingRunLivenessForIssue(companyId: string, issueId: string) {
+  async function backfillMissingRunLivenessForIssue(domainId: string, issueId: string) {
     const runs = await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
+        domainId: heartbeatRuns.domainId,
         status: heartbeatRuns.status,
         contextSnapshot: heartbeatRuns.contextSnapshot,
         resultJson: heartbeatRuns.resultJson,
@@ -162,7 +162,7 @@ export function activityService(db: Db) {
       .from(heartbeatRuns)
       .where(
         and(
-          eq(heartbeatRuns.companyId, companyId),
+          eq(heartbeatRuns.domainId, domainId),
           isNull(heartbeatRuns.livenessState),
           sql`${heartbeatRuns.status} not in ('queued', 'running')`,
           or(
@@ -170,7 +170,7 @@ export function activityService(db: Db) {
             sql`exists (
               select 1
               from ${activityLog}
-              where ${activityLog.companyId} = ${companyId}
+              where ${activityLog.domainId} = ${domainId}
                 and ${activityLog.entityType} = 'issue'
                 and ${activityLog.entityId} = ${issueId}
                 and ${activityLog.runId} = ${heartbeatRuns.id}
@@ -189,7 +189,7 @@ export function activityService(db: Db) {
         description: issues.description,
       })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.id, issueId)))
+      .where(and(eq(issues.domainId, domainId), eq(issues.id, issueId)))
       .then((rows) => rows[0] ?? null);
 
     for (const run of runs) {
@@ -208,7 +208,7 @@ export function activityService(db: Db) {
         .from(issueComments)
         .where(
           and(
-            eq(issueComments.companyId, companyId),
+            eq(issueComments.domainId, domainId),
             eq(issueComments.issueId, issueId),
             eq(issueComments.createdByRunId, run.id),
           ),
@@ -224,9 +224,9 @@ export function activityService(db: Db) {
         .innerJoin(issueDocuments, eq(documentRevisions.documentId, issueDocuments.documentId))
         .where(
           and(
-            eq(documentRevisions.companyId, companyId),
+            eq(documentRevisions.domainId, domainId),
             eq(documentRevisions.createdByRunId, run.id),
-            eq(issueDocuments.companyId, companyId),
+            eq(issueDocuments.domainId, domainId),
             eq(issueDocuments.issueId, issueId),
             sql`${issueDocuments.key} != ${ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY}`,
           ),
@@ -240,7 +240,7 @@ export function activityService(db: Db) {
         .from(issueWorkProducts)
         .where(
           and(
-            eq(issueWorkProducts.companyId, companyId),
+            eq(issueWorkProducts.domainId, domainId),
             eq(issueWorkProducts.issueId, issueId),
             eq(issueWorkProducts.createdByRunId, run.id),
           ),
@@ -252,7 +252,7 @@ export function activityService(db: Db) {
           latestAt: sql<Date | null>`max(${workspaceOperations.startedAt})`,
         })
         .from(workspaceOperations)
-        .where(and(eq(workspaceOperations.companyId, companyId), eq(workspaceOperations.heartbeatRunId, run.id)));
+        .where(and(eq(workspaceOperations.domainId, domainId), eq(workspaceOperations.heartbeatRunId, run.id)));
 
       const [activityStats] = await db
         .select({
@@ -260,7 +260,7 @@ export function activityService(db: Db) {
           latestAt: sql<Date | null>`max(${activityLog.createdAt})`,
         })
         .from(activityLog)
-        .where(and(eq(activityLog.companyId, companyId), eq(activityLog.runId, run.id)));
+        .where(and(eq(activityLog.domainId, domainId), eq(activityLog.runId, run.id)));
 
       const [eventStats] = await db
         .select({
@@ -268,7 +268,7 @@ export function activityService(db: Db) {
           latestAt: sql<Date | null>`max(${heartbeatRunEvents.createdAt}) filter (where ${heartbeatRunEvents.eventType} not in ('lifecycle', 'adapter.invoke', 'error'))`,
         })
         .from(heartbeatRunEvents)
-        .where(and(eq(heartbeatRunEvents.companyId, companyId), eq(heartbeatRunEvents.runId, run.id)));
+        .where(and(eq(heartbeatRunEvents.domainId, domainId), eq(heartbeatRunEvents.runId, run.id)));
 
       const classification = classifyRunLiveness({
         runStatus: run.status,
@@ -312,13 +312,13 @@ export function activityService(db: Db) {
     }
   }
 
-  function scheduleRunLivenessBackfill(companyId: string, issueId: string) {
-    const key = `${companyId}:${issueId}`;
+  function scheduleRunLivenessBackfill(domainId: string, issueId: string) {
+    const key = `${domainId}:${issueId}`;
     if (scheduledLivenessBackfills.has(key)) return;
     scheduledLivenessBackfills.add(key);
-    void backfillMissingRunLivenessForIssue(companyId, issueId)
+    void backfillMissingRunLivenessForIssue(domainId, issueId)
       .catch((err: unknown) => {
-        logger.warn({ err, companyId, issueId }, "run liveness backfill failed");
+        logger.warn({ err, domainId, issueId }, "run liveness backfill failed");
       })
       .finally(() => {
         scheduledLivenessBackfills.delete(key);
@@ -327,7 +327,7 @@ export function activityService(db: Db) {
 
   return {
     list: (filters: ActivityFilters) => {
-      const conditions = [eq(activityLog.companyId, filters.companyId)];
+      const conditions = [eq(activityLog.domainId, filters.domainId)];
       const limit = normalizeActivityLimit(filters.limit);
 
       if (filters.agentId) {
@@ -376,8 +376,8 @@ export function activityService(db: Db) {
         )
         .orderBy(desc(activityLog.createdAt)),
 
-    runsForIssue: async (companyId: string, issueId: string) => {
-      scheduleRunLivenessBackfill(companyId, issueId);
+    runsForIssue: async (domainId: string, issueId: string) => {
+      scheduleRunLivenessBackfill(domainId, issueId);
       const runs = await db
         .select({
           runId: heartbeatRuns.id,
@@ -408,18 +408,18 @@ export function activityService(db: Db) {
           agents,
           and(
             eq(agents.id, heartbeatRuns.agentId),
-            eq(agents.companyId, heartbeatRuns.companyId),
+            eq(agents.domainId, heartbeatRuns.domainId),
           ),
         )
         .where(
           and(
-            eq(heartbeatRuns.companyId, companyId),
+            eq(heartbeatRuns.domainId, domainId),
             or(
               sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
               sql`exists (
                 select 1
                 from ${activityLog}
-                where ${activityLog.companyId} = ${companyId}
+                where ${activityLog.domainId} = ${domainId}
                   and ${activityLog.entityType} = 'issue'
                   and ${activityLog.entityId} = ${issueId}
                   and ${activityLog.runId} = ${heartbeatRuns.id}
@@ -467,7 +467,7 @@ export function activityService(db: Db) {
         .innerJoin(environments, eq(environmentLeases.environmentId, environments.id))
         .where(
           and(
-            eq(environmentLeases.companyId, companyId),
+            eq(environmentLeases.domainId, domainId),
             inArray(environmentLeases.heartbeatRunId, runIds),
           ),
         )
@@ -521,7 +521,7 @@ export function activityService(db: Db) {
     issuesForRun: async (runId: string) => {
       const run = await db
         .select({
-          companyId: heartbeatRuns.companyId,
+          domainId: heartbeatRuns.domainId,
           contextSnapshot: heartbeatRuns.contextSnapshot,
         })
         .from(heartbeatRuns)
@@ -541,7 +541,7 @@ export function activityService(db: Db) {
         .innerJoin(issues, eq(activityLog.entityId, issueIdAsText))
         .where(
           and(
-            eq(activityLog.companyId, run.companyId),
+            eq(activityLog.domainId, run.domainId),
             eq(activityLog.runId, runId),
             eq(activityLog.entityType, "issue"),
             visibleIssueCondition(),
@@ -568,7 +568,7 @@ export function activityService(db: Db) {
         .from(issues)
         .where(
           and(
-            eq(issues.companyId, run.companyId),
+            eq(issues.domainId, run.domainId),
             eq(issues.id, contextIssueId),
             visibleIssueCondition(),
           ),

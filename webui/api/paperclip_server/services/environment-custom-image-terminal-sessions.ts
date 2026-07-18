@@ -36,7 +36,7 @@ export type EnvironmentCustomImageTerminalPayloadValidationResult =
 export interface EnvironmentCustomImageTerminalSessionRecord {
   id: string;
   setupSessionId: string;
-  companyId: string;
+  domainId: string;
   environmentId: string;
   provider: string;
   connectionType: "ssh";
@@ -184,7 +184,7 @@ export class EnvironmentCustomImageTerminalSessionStore {
 
   create(input: {
     setupSessionId: string;
-    companyId: string;
+    domainId: string;
     environmentId: string;
     provider: string;
     ssh: ParsedCustomImageSetupSshCommand;
@@ -210,7 +210,7 @@ export class EnvironmentCustomImageTerminalSessionStore {
     const session: EnvironmentCustomImageTerminalSessionRecord = {
       id,
       setupSessionId: input.setupSessionId,
-      companyId: input.companyId,
+      domainId: input.domainId,
       environmentId: input.environmentId,
       provider: input.provider,
       connectionType: "ssh",

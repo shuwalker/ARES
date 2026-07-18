@@ -18,14 +18,14 @@ const mockAccessService = vi.hoisted(() => ({
   setPrincipalPermission: vi.fn(),
 }));
 
-const mockCompanySkillService = vi.hoisted(() => ({
+const mockDomainSkillService = vi.hoisted(() => ({
   listRuntimeSkillEntries: vi.fn(),
   resolveRequestedSkillKeys: vi.fn(),
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
-  resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config })),
+  normalizeAdapterConfigForPersistence: vi.fn(async (_domainId: string, config: Record<string, unknown>) => config),
+  resolveAdapterConfigForRuntime: vi.fn(async (_domainId: string, config: Record<string, unknown>) => ({ config })),
 }));
 const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
@@ -80,8 +80,8 @@ function registerModuleMocks() {
     agentInstructionsService: () => mockAgentInstructionsService,
     accessService: () => mockAccessService,
     approvalService: () => mockApprovalService,
-    builtInAgentService: () => ({ ensureCompanyDefaultAgentGrants: vi.fn() }),
-    companySkillService: () => mockCompanySkillService,
+    builtInAgentService: () => ({ ensureDomainDefaultAgentGrants: vi.fn() }),
+    domainSkillService: () => mockDomainSkillService,
     budgetService: () => mockBudgetService,
     heartbeatService: () => mockHeartbeatService,
     issueApprovalService: () => mockIssueApprovalService,
@@ -114,7 +114,7 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -165,8 +165,8 @@ describe("adapter model refresh route", () => {
     vi.doUnmock("../middleware/index.js");
     registerModuleMocks();
     vi.clearAllMocks();
-    mockCompanySkillService.listRuntimeSkillEntries.mockResolvedValue([]);
-    mockCompanySkillService.resolveRequestedSkillKeys.mockResolvedValue([]);
+    mockDomainSkillService.listRuntimeSkillEntries.mockResolvedValue([]);
+    mockDomainSkillService.resolveRequestedSkillKeys.mockResolvedValue([]);
     mockAccessService.canUser.mockResolvedValue(true);
     mockAccessService.hasPermission.mockResolvedValue(true);
     mockAccessService.ensureMembership.mockResolvedValue(undefined);
@@ -203,7 +203,7 @@ describe("adapter model refresh route", () => {
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get(`/api/domains/company-1/adapters/${refreshableAdapterType}/models?refresh=1`),
+      request(baseUrl).get(`/api/domains/domain-1/adapters/${refreshableAdapterType}/models?refresh=1`),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -215,7 +215,7 @@ describe("adapter model refresh route", () => {
   it("skips OpenCode model discovery for non-local environments", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: "env-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Remote SSH",
       driver: "ssh",
       config: {},
@@ -223,7 +223,7 @@ describe("adapter model refresh route", () => {
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get("/api/domains/company-1/adapters/opencode_local/models?environmentId=env-1"),
+      request(baseUrl).get("/api/domains/domain-1/adapters/opencode_local/models?environmentId=env-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -234,7 +234,7 @@ describe("adapter model refresh route", () => {
   it("keeps OpenCode model discovery enabled for local environments", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: "env-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Local",
       driver: "local",
       config: {},
@@ -242,7 +242,7 @@ describe("adapter model refresh route", () => {
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get("/api/domains/company-1/adapters/opencode_local/models?environmentId=env-1"),
+      request(baseUrl).get("/api/domains/domain-1/adapters/opencode_local/models?environmentId=env-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);

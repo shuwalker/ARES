@@ -18,9 +18,9 @@ const IDEMPOTENT_WAKE_STATUSES = ["queued", "deferred_issue_execution", "complet
 type HeartbeatRunRow = typeof heartbeatRuns.$inferSelect;
 type IssueRow = Pick<
   typeof issues.$inferSelect,
-  "id" | "companyId" | "identifier" | "title" | "status" | "assigneeAgentId" | "executionState" | "projectId"
+  "id" | "domainId" | "identifier" | "title" | "status" | "assigneeAgentId" | "executionState" | "projectId"
 >;
-type AgentRow = Pick<typeof agents.$inferSelect, "id" | "companyId" | "status">;
+type AgentRow = Pick<typeof agents.$inferSelect, "id" | "domainId" | "status">;
 
 export type RunContinuationDecision =
   | {
@@ -64,7 +64,7 @@ export function buildRunLivenessContinuationIdempotencyKey(input: {
 export async function findExistingRunLivenessContinuationWake(
   db: Db,
   input: {
-    companyId: string;
+    domainId: string;
     idempotencyKey: string;
   },
 ) {
@@ -73,7 +73,7 @@ export async function findExistingRunLivenessContinuationWake(
     .from(agentWakeupRequests)
     .where(
       and(
-        eq(agentWakeupRequests.companyId, input.companyId),
+        eq(agentWakeupRequests.domainId, input.domainId),
         eq(agentWakeupRequests.idempotencyKey, input.idempotencyKey),
         inArray(agentWakeupRequests.status, IDEMPOTENT_WAKE_STATUSES),
       ),
@@ -110,8 +110,8 @@ export function decideRunLivenessContinuation(input: {
   }
   if (!issue) return { kind: "skip", reason: "issue not found" };
   if (!agent) return { kind: "skip", reason: "agent not found" };
-  if (issue.companyId !== run.companyId || agent.companyId !== run.companyId) {
-    return { kind: "skip", reason: "company scope mismatch" };
+  if (issue.domainId !== run.domainId || agent.domainId !== run.domainId) {
+    return { kind: "skip", reason: "domain scope mismatch" };
   }
   if (issue.assigneeAgentId !== run.agentId) {
     return { kind: "skip", reason: "issue is no longer assigned to the source run agent" };

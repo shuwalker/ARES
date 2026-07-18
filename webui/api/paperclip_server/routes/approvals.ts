@@ -18,7 +18,7 @@ import {
   logActivity,
   secretService,
 } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertDomainAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
@@ -58,22 +58,22 @@ export function approvalRoutes(
     if (!approval) {
       return null;
     }
-    assertCompanyAccess(req, approval.companyId);
+    assertDomainAccess(req, approval.domainId);
     return approval;
   }
 
-  async function assertApprovalAccessAllowed(req: Request, res: any, companyId: string) {
+  async function assertApprovalAccessAllowed(req: Request, res: any, domainId: string) {
     const decision = await access.decide({
       actor: req.actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Approvals are outside this actor's authorization boundary" });
     return false;
   }
 
-  async function assertApprovalMutationAllowedByRunContext(req: Request, res: any, companyId: string) {
+  async function assertApprovalMutationAllowedByRunContext(req: Request, res: any, domainId: string) {
     if (req.actor.type !== "agent") return true;
     const runId = req.actor.runId?.trim();
     if (!runId || !req.actor.agentId) return true;
@@ -81,20 +81,20 @@ export function approvalRoutes(
     const run = await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
+        domainId: heartbeatRuns.domainId,
         agentId: heartbeatRuns.agentId,
         contextSnapshot: heartbeatRuns.contextSnapshot,
       })
       .from(heartbeatRuns)
       .where(eq(heartbeatRuns.id, runId))
       .then((rows) => rows[0] ?? null);
-    if (!run || run.companyId !== companyId || run.agentId !== req.actor.agentId) return true;
+    if (!run || run.domainId !== domainId || run.agentId !== req.actor.agentId) return true;
     if (!isStatusOnlyCheapRecoveryContext(run.contextSnapshot)) return true;
 
     res.status(403).json({
       error: "Cheap status-only recovery runs cannot create or modify approvals",
       details: {
-        companyId,
+        domainId,
         runId: run.id,
         modelProfile: "cheap",
         recoveryIntent: "status_only",
@@ -104,12 +104,12 @@ export function approvalRoutes(
     return false;
   }
 
-  router.get("/domains/:companyId/approvals", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertApprovalAccessAllowed(req, res, companyId))) return;
+  router.get("/domains/:domainId/approvals", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertApprovalAccessAllowed(req, res, domainId))) return;
     const status = req.query.status as string | undefined;
-    const result = await svc.list(companyId, status);
+    const result = await svc.list(domainId, status);
     res.json(result.map((approval) => redactApprovalPayload(approval)));
   });
 
@@ -120,16 +120,16 @@ export function approvalRoutes(
       res.status(404).json({ error: "Approval not found" });
       return;
     }
-    assertCompanyAccess(req, approval.companyId);
-    if (!(await assertApprovalAccessAllowed(req, res, approval.companyId))) return;
+    assertDomainAccess(req, approval.domainId);
+    if (!(await assertApprovalAccessAllowed(req, res, approval.domainId))) return;
     res.json(redactApprovalPayload(approval));
   });
 
-  router.post("/domains/:companyId/approvals", validate(createApprovalSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertApprovalAccessAllowed(req, res, companyId))) return;
-    if (!(await assertApprovalMutationAllowedByRunContext(req, res, companyId))) return;
+  router.post("/domains/:domainId/approvals", validate(createApprovalSchema), async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertApprovalAccessAllowed(req, res, domainId))) return;
+    if (!(await assertApprovalMutationAllowedByRunContext(req, res, domainId))) return;
     const rawIssueIds = req.body.issueIds;
     const issueIds = Array.isArray(rawIssueIds)
       ? rawIssueIds.filter((value: unknown): value is string => typeof value === "string")
@@ -139,14 +139,14 @@ export function approvalRoutes(
     const normalizedPayload =
       approvalInput.type === "hire_agent"
         ? await secretsSvc.normalizeHireApprovalPayloadForPersistence(
-            companyId,
+            domainId,
             approvalInput.payload,
             { strictMode: strictSecretsMode },
           )
         : approvalInput.payload;
 
     const actor = getActorInfo(req);
-    const approval = await svc.create(companyId, {
+    const approval = await svc.create(domainId, {
       ...approvalInput,
       payload: normalizedPayload,
       requestedByUserId: actor.actorType === "user" ? actor.actorId : null,
@@ -167,7 +167,7 @@ export function approvalRoutes(
     }
 
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -187,8 +187,8 @@ export function approvalRoutes(
       res.status(404).json({ error: "Approval not found" });
       return;
     }
-    assertCompanyAccess(req, approval.companyId);
-    if (!(await assertApprovalAccessAllowed(req, res, approval.companyId))) return;
+    assertDomainAccess(req, approval.domainId);
+    if (!(await assertApprovalAccessAllowed(req, res, approval.domainId))) return;
     const issues = await issueApprovalsSvc.listIssuesForApproval(id);
     res.json(issues);
   });
@@ -209,7 +209,7 @@ export function approvalRoutes(
       const primaryIssueId = linkedIssueIds[0] ?? null;
 
       await logActivity(db, {
-        companyId: approval.companyId,
+        domainId: approval.domainId,
         actorType: "user",
         actorId: req.actor.userId ?? "board",
         action: "approval.approved",
@@ -248,7 +248,7 @@ export function approvalRoutes(
           });
 
           await logActivity(db, {
-            companyId: approval.companyId,
+            domainId: approval.domainId,
             actorType: "user",
             actorId: req.actor.userId ?? "board",
             action: "approval.requester_wakeup_queued",
@@ -270,7 +270,7 @@ export function approvalRoutes(
             "failed to queue requester wakeup after approval",
           );
           await logActivity(db, {
-            companyId: approval.companyId,
+            domainId: approval.domainId,
             actorType: "user",
             actorId: req.actor.userId ?? "board",
             action: "approval.requester_wakeup_failed",
@@ -301,7 +301,7 @@ export function approvalRoutes(
 
     if (applied) {
       await logActivity(db, {
-        companyId: approval.companyId,
+        domainId: approval.domainId,
         actorType: "user",
         actorId: req.actor.userId ?? "board",
         action: "approval.rejected",
@@ -328,7 +328,7 @@ export function approvalRoutes(
       const approval = await svc.requestRevision(id, decidedByUserId, req.body.decisionNote);
 
       await logActivity(db, {
-        companyId: approval.companyId,
+        domainId: approval.domainId,
         actorType: "user",
         actorId: req.actor.userId ?? "board",
         action: "approval.revision_requested",
@@ -348,8 +348,8 @@ export function approvalRoutes(
       res.status(404).json({ error: "Approval not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
-    if (!(await assertApprovalMutationAllowedByRunContext(req, res, existing.companyId))) return;
+    assertDomainAccess(req, existing.domainId);
+    if (!(await assertApprovalMutationAllowedByRunContext(req, res, existing.domainId))) return;
 
     if (req.actor.type === "agent" && req.actor.agentId !== existing.requestedByAgentId) {
       res.status(403).json({ error: "Only requesting agent can resubmit this approval" });
@@ -359,7 +359,7 @@ export function approvalRoutes(
     const normalizedPayload = req.body.payload
       ? existing.type === "hire_agent"
         ? await secretsSvc.normalizeHireApprovalPayloadForPersistence(
-            existing.companyId,
+            existing.domainId,
             req.body.payload,
             { strictMode: strictSecretsMode },
           )
@@ -368,7 +368,7 @@ export function approvalRoutes(
     const approval = await svc.resubmit(id, normalizedPayload);
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: approval.companyId,
+      domainId: approval.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -387,7 +387,7 @@ export function approvalRoutes(
       res.status(404).json({ error: "Approval not found" });
       return;
     }
-    assertCompanyAccess(req, approval.companyId);
+    assertDomainAccess(req, approval.domainId);
     const comments = await svc.listComments(id);
     res.json(comments);
   });
@@ -399,8 +399,8 @@ export function approvalRoutes(
       res.status(404).json({ error: "Approval not found" });
       return;
     }
-    assertCompanyAccess(req, approval.companyId);
-    if (!(await assertApprovalMutationAllowedByRunContext(req, res, approval.companyId))) return;
+    assertDomainAccess(req, approval.domainId);
+    if (!(await assertApprovalMutationAllowedByRunContext(req, res, approval.domainId))) return;
     const actor = getActorInfo(req);
     const comment = await svc.addComment(id, req.body.body, {
       agentId: actor.agentId ?? undefined,
@@ -408,7 +408,7 @@ export function approvalRoutes(
     });
 
     await logActivity(db, {
-      companyId: approval.companyId,
+      domainId: approval.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,

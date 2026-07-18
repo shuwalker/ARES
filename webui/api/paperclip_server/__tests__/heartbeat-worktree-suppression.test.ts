@@ -6,7 +6,7 @@ import {
   agents,
   agentWakeupRequests,
   agentRuntimeState,
-  companySkills,
+  domainSkills,
   domains,
   createDb,
   documentRevisions,
@@ -75,7 +75,7 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
     await db.delete(agentWakeupRequests);
     await db.delete(issues);
     await db.delete(agentRuntimeState);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(agents);
     await db.delete(domains);
     await db.delete(instanceSettings);
@@ -86,22 +86,22 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
   });
 
   async function insertAgentAndIssue() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       status: "active",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Worktree Agent",
       role: "engineer",
       status: "idle",
@@ -122,7 +122,7 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Assigned work",
       status: "todo",
       priority: "high",
@@ -130,7 +130,7 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
       responsibleUserId: "responsible-user",
     });
 
-    return { companyId, agentId, issueId };
+    return { domainId, agentId, issueId };
   }
 
   async function armWorktreeRunExecution(cutoff: Date) {
@@ -214,11 +214,11 @@ describeEmbeddedPostgres("heartbeat worktree suppression", () => {
   });
 
   it("does not replay copied queued runs or timer wakes while worktree scheduling is suppressed", async () => {
-    const { companyId, agentId, issueId } = await insertAgentAndIssue();
+    const { domainId, agentId, issueId } = await insertAgentAndIssue();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       triggerDetail: "system",

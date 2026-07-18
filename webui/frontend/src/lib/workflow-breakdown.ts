@@ -1,10 +1,10 @@
-import type { WorkflowStage } from "../api/pipelines";
+import type { WorkflowStage } from "../api/workflows";
 
 /**
  * UI-side reader + copy helpers for the "Break into pieces" stage primitive.
  *
  * The server stores the breakdown config on `stage.config.breakdown` (see
- * `pipelineStageBreakdownSchema`). Only the singular `pieceNoun` is persisted;
+ * `workflowStageBreakdownSchema`). Only the singular `pieceNoun` is persisted;
  * the plural is derived here exactly the way the server's health checks derive
  * it (`${pieceNoun}s`) so every count/banner string stays consistent.
  *
@@ -68,7 +68,7 @@ function readCarryOverPolicy(record: Record<string, unknown>, inheritFields: str
 }
 
 export function isCarryOverIdentityFieldKey(key: string) {
-  const normalized = key.replace(/[^A-Za-z0-9]/g, "").toLowerLifeAdmin();
+  const normalized = key.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
   return normalized === "name" ||
     normalized === "title" ||
     normalized === "casename" ||
@@ -176,7 +176,7 @@ export function breakdownMechanicsBullets(
 ): string[] {
   const noun = config.pieceNoun;
   const bullets: string[] = [
-    `Creates one ${noun} per item the agent returns, in ${names.targetWorkflowName || "the destination pipeline"} → ${names.entryStageName || "its entry step"}.`,
+    `Creates one ${noun} per item the agent returns, in ${names.targetWorkflowName || "the destination workflow"} → ${names.entryStageName || "its entry step"}.`,
     `Links every ${noun} to this case so progress rolls up here.`,
   ];
   if (names.inheritedFieldLabels.length > 0) {

@@ -1,7 +1,7 @@
 /**
- * Generates README.md with Mermaid org chart for company exports.
+ * Generates README.md with Mermaid org chart for domain exports.
  */
-import type { CompanyPortabilityManifest } from "@paperclipai/shared";
+import type { DomainPortabilityManifest } from "@paperclipai/shared";
 
 const ROLE_LABELS: Record<string, string> = {
   ceo: "CEO",
@@ -19,7 +19,7 @@ const ROLE_LABELS: Record<string, string> = {
  * Generate a Mermaid flowchart (TD = top-down) representing the org chart.
  * Returns null if there are no agents.
  */
-export function generateOrgChartMermaid(agents: CompanyPortabilityManifest["agents"]): string | null {
+export function generateOrgChartMermaid(agents: DomainPortabilityManifest["agents"]): string | null {
   if (agents.length === 0) return null;
 
   const lines: string[] = [];
@@ -56,7 +56,7 @@ function mermaidEscape(s: string): string {
 }
 
 /** Build a display label for a skill's source, linking to GitHub when available. */
-function skillSourceLabel(skill: CompanyPortabilityManifest["skills"][number]): string {
+function skillSourceLabel(skill: DomainPortabilityManifest["skills"][number]): string {
   if (skill.sourceLocator) {
     // For GitHub or URL sources, render as a markdown link
     if (skill.sourceType === "github" || skill.sourceType === "skills_sh" || skill.sourceType === "url") {
@@ -69,21 +69,21 @@ function skillSourceLabel(skill: CompanyPortabilityManifest["skills"][number]): 
 }
 
 /**
- * Generate the README.md content for a company export.
+ * Generate the README.md content for a domain export.
  */
 export function generateReadme(
-  manifest: CompanyPortabilityManifest,
+  manifest: DomainPortabilityManifest,
   options: {
-    companyName: string;
-    companyDescription: string | null;
+    domainName: string;
+    domainDescription: string | null;
   },
 ): string {
   const lines: string[] = [];
 
-  lines.push(`# ${options.companyName}`);
+  lines.push(`# ${options.domainName}`);
   lines.push("");
-  if (options.companyDescription) {
-    lines.push(`> ${options.companyDescription}`);
+  if (options.domainDescription) {
+    lines.push(`> ${options.domainDescription}`);
     lines.push("");
   }
 
@@ -157,7 +157,7 @@ export function generateReadme(
   lines.push("## Getting Started");
   lines.push("");
   lines.push("```bash");
-  lines.push("pnpm paperclipai company import this-github-url-or-folder");
+  lines.push("pnpm paperclipai domain import this-github-url-or-folder");
   lines.push("```");
   lines.push("");
   lines.push("See [Paperclip](https://paperclip.ing) for more information.");

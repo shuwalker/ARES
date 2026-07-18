@@ -5,7 +5,7 @@
  * by arbitrary clients. Operators opt in only when there is a real LB
  * in front of the server.
  *
- * Accepted forms (case-sensitive for the keywords, matching Express):
+ * Accepted forms (life_admin-sensitive for the keywords, matching Express):
  *
  *   unset | "" | "false" | "0"   -> undefined (caller skips `app.set`)
  *   "true"                       -> true   (UNSAFE behind untrusted LBs)

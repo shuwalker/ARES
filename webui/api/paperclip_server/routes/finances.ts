@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import {
-  createCostEventSchema,
+  createFinanceEventSchema,
   createFinanceEventSchema,
   normalizeIssueIdentifier,
   resolveBudgetIncidentSchema,
@@ -11,21 +11,21 @@ import {
 import { validate } from "../middleware/validate.js";
 import {
   budgetService,
-  costService,
   financeService,
-  companyService,
+  financeService,
+  domainService,
   agentService,
   issueService,
   heartbeatService,
   accessService,
   logActivity,
 } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertDomainAccess, getActorInfo } from "./authz.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { badRequest } from "../errors.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
-export function parseCostDateRange(query: Record<string, unknown>) {
+export function parseFinanceDateRange(query: Record<string, unknown>) {
   const fromRaw = query.from as string | undefined;
   const toRaw = query.to as string | undefined;
   const from = fromRaw ? new Date(fromRaw) : undefined;
@@ -35,7 +35,7 @@ export function parseCostDateRange(query: Record<string, unknown>) {
   return (from || to) ? { from, to } : undefined;
 }
 
-export function parseCostLimit(query: Record<string, unknown>) {
+export function parseFinanceLimit(query: Record<string, unknown>) {
   const raw = Array.isArray(query.limit) ? query.limit[0] : query.limit;
   if (raw == null || raw === "") return 100;
   const limit = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
@@ -45,7 +45,7 @@ export function parseCostLimit(query: Record<string, unknown>) {
   return limit;
 }
 
-export function costRoutes(
+export function financeRoutes(
   db: Db,
   options: { pluginWorkerManager?: PluginWorkerManager } = {},
 ) {
@@ -56,10 +56,10 @@ export function costRoutes(
   const budgetHooks = {
     cancelWorkForScope: heartbeat.cancelBudgetScopeWork,
   };
-  const finances = costService(db, budgetHooks);
+  const finances = financeService(db, budgetHooks);
   const finance = financeService(db);
   const budgets = budgetService(db, budgetHooks);
-  const domains = companyService(db);
+  const domains = domainService(db);
   const agents = agentService(db);
   const issues = issueService(db);
   const access = accessService(db);
@@ -72,20 +72,20 @@ export function costRoutes(
     return issues.getById(rawId);
   }
 
-  async function assertCompanyCostReadAllowed(req: Parameters<typeof assertCompanyAccess>[0], res: any, companyId: string) {
+  async function assertDomainFinanceReadAllowed(req: Parameters<typeof assertDomainAccess>[0], res: any, domainId: string) {
     const decision = await access.decide({
       actor: req.actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Finances are outside this actor's authorization boundary" });
     return false;
   }
 
-  async function assertIssueCostReadAllowed(req: Parameters<typeof assertCompanyAccess>[0], res: any, issue: {
+  async function assertIssueFinanceReadAllowed(req: Parameters<typeof assertDomainAccess>[0], res: any, issue: {
     id: string;
-    companyId: string;
+    domainId: string;
     projectId: string | null;
     parentId: string | null;
     assigneeAgentId: string | null;
@@ -97,7 +97,7 @@ export function costRoutes(
       action: "issue:read",
       resource: {
         type: "issue",
-        companyId: issue.companyId,
+        domainId: issue.domainId,
         issueId: issue.id,
         projectId: issue.projectId,
         parentIssueId: issue.parentId,
@@ -111,48 +111,48 @@ export function costRoutes(
     return false;
   }
 
-  router.post("/domains/:companyId/cost-events", validate(createCostEventSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/domains/:domainId/finance-events", validate(createFinanceEventSchema), async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
 
     if (req.actor.type === "agent" && req.actor.agentId !== req.body.agentId) {
       res.status(403).json({ error: "Agent can only report its own finances" });
       return;
     }
 
-    const event = await finances.createEvent(companyId, {
+    const event = await finances.createEvent(domainId, {
       ...req.body,
       occurredAt: new Date(req.body.occurredAt),
     });
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
-      action: "cost.reported",
-      entityType: "cost_event",
+      action: "finance.reported",
+      entityType: "finance_event",
       entityId: event.id,
-      details: { costCents: event.costCents, model: event.model },
+      details: { financeCents: event.financeCents, model: event.model },
     });
 
     res.status(201).json(event);
   });
 
-  router.post("/domains/:companyId/finance-events", validate(createFinanceEventSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.post("/domains/:domainId/finance-events", validate(createFinanceEventSchema), async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     assertBoard(req);
 
-    const event = await finance.createEvent(companyId, {
+    const event = await finance.createEvent(domainId, {
       ...req.body,
       occurredAt: new Date(req.body.occurredAt),
     });
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -170,118 +170,118 @@ export function costRoutes(
     res.status(201).json(event);
   });
 
-  router.get("/domains/:companyId/finances/summary", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const summary = await finances.summary(companyId, range);
+  router.get("/domains/:domainId/finances/summary", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const summary = await finances.summary(domainId, range);
     res.json(summary);
   });
 
-  router.get("/issues/:id/cost-summary", async (req, res) => {
+  router.get("/issues/:id/finance-summary", async (req, res) => {
     const rawId = req.params.id as string;
     const issue = await resolveIssueByRef(rawId);
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;
     }
-    assertCompanyAccess(req, issue.companyId);
-    if (!(await assertIssueCostReadAllowed(req, res, issue))) return;
+    assertDomainAccess(req, issue.domainId);
+    if (!(await assertIssueFinanceReadAllowed(req, res, issue))) return;
     const excludeRoot = req.query.excludeRoot === "true" || req.query.excludeRoot === "1";
-    const summary = await finances.issueTreeSummary(issue.companyId, issue.id, { excludeRoot });
+    const summary = await finances.issueTreeSummary(issue.domainId, issue.id, { excludeRoot });
     res.json(summary);
   });
 
-  router.get("/domains/:companyId/finances/by-agent", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const rows = await finances.byAgent(companyId, range);
+  router.get("/domains/:domainId/finances/by-agent", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const rows = await finances.byAgent(domainId, range);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/by-agent-model", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const rows = await finances.byAgentModel(companyId, range);
+  router.get("/domains/:domainId/finances/by-agent-model", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const rows = await finances.byAgentModel(domainId, range);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/by-provider", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const rows = await finances.byProvider(companyId, range);
+  router.get("/domains/:domainId/finances/by-provider", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const rows = await finances.byProvider(domainId, range);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/by-biller", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const rows = await finances.byBiller(companyId, range);
+  router.get("/domains/:domainId/finances/by-biller", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const rows = await finances.byBiller(domainId, range);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/finance-summary", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const summary = await finance.summary(companyId, range);
+  router.get("/domains/:domainId/finances/finance-summary", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const summary = await finance.summary(domainId, range);
     res.json(summary);
   });
 
-  router.get("/domains/:companyId/finances/finance-by-biller", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const rows = await finance.byBiller(companyId, range);
+  router.get("/domains/:domainId/finances/finance-by-biller", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const rows = await finance.byBiller(domainId, range);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/finance-by-kind", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const rows = await finance.byKind(companyId, range);
+  router.get("/domains/:domainId/finances/finance-by-kind", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const rows = await finance.byKind(domainId, range);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/finance-events", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const limit = parseCostLimit(req.query);
-    const rows = await finance.list(companyId, range, limit);
+  router.get("/domains/:domainId/finances/finance-events", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const limit = parseFinanceLimit(req.query);
+    const rows = await finance.list(domainId, range, limit);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/window-spend", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const rows = await finances.windowSpend(companyId);
+  router.get("/domains/:domainId/finances/window-spend", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const rows = await finances.windowSpend(domainId);
     res.json(rows);
   });
 
-  router.get("/domains/:companyId/finances/quota-windows", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+  router.get("/domains/:domainId/finances/quota-windows", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     assertBoard(req);
-    // validate companyId resolves to a real company so the "__none__" sentinel
+    // validate domainId resolves to a real domain so the "__none__" sentinel
     // and any forged ids are rejected before we touch provider credentials
-    const company = await domains.getById(companyId);
-    if (!company) {
+    const domain = await domains.getById(domainId);
+    if (!domain) {
       res.status(404).json({ error: "Domain not found" });
       return;
     }
@@ -289,80 +289,80 @@ export function costRoutes(
     res.json(results);
   });
 
-  router.get("/domains/:companyId/budgets/overview", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const overview = await budgets.overview(companyId);
+  router.get("/domains/:domainId/budgets/overview", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const overview = await budgets.overview(domainId);
     res.json(overview);
   });
 
   router.post(
-    "/domains/:companyId/budgets/policies",
+    "/domains/:domainId/budgets/policies",
     validate(upsertBudgetPolicySchema),
     async (req, res) => {
       assertBoard(req);
-      const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
-      const summary = await budgets.upsertPolicy(companyId, req.body, req.actor.userId ?? "board");
+      const domainId = req.params.domainId as string;
+      assertDomainAccess(req, domainId);
+      const summary = await budgets.upsertPolicy(domainId, req.body, req.actor.userId ?? "board");
       res.json(summary);
     },
   );
 
   router.post(
-    "/domains/:companyId/budget-incidents/:incidentId/resolve",
+    "/domains/:domainId/budget-incidents/:incidentId/resolve",
     validate(resolveBudgetIncidentSchema),
     async (req, res) => {
       assertBoard(req);
-      const companyId = req.params.companyId as string;
+      const domainId = req.params.domainId as string;
       const incidentId = req.params.incidentId as string;
-      assertCompanyAccess(req, companyId);
-      const incident = await budgets.resolveIncident(companyId, incidentId, req.body, req.actor.userId ?? "board");
+      assertDomainAccess(req, domainId);
+      const incident = await budgets.resolveIncident(domainId, incidentId, req.body, req.actor.userId ?? "board");
       res.json(incident);
     },
   );
 
-  router.get("/domains/:companyId/finances/by-project", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
-    const range = parseCostDateRange(req.query);
-    const rows = await finances.byProject(companyId, range);
+  router.get("/domains/:domainId/finances/by-project", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainFinanceReadAllowed(req, res, domainId))) return;
+    const range = parseFinanceDateRange(req.query);
+    const rows = await finances.byProject(domainId, range);
     res.json(rows);
   });
 
-  router.patch("/domains/:companyId/budgets", validate(updateBudgetSchema), async (req, res) => {
+  router.patch("/domains/:domainId/budgets", validate(updateBudgetSchema), async (req, res) => {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    const company = await domains.update(companyId, { budgetMonthlyCents: req.body.budgetMonthlyCents });
-    if (!company) {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    const domain = await domains.update(domainId, { budgetMonthlyCents: req.body.budgetMonthlyCents });
+    if (!domain) {
       res.status(404).json({ error: "Domain not found" });
       return;
     }
 
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: "user",
       actorId: req.actor.userId ?? "board",
-      action: "company.budget_updated",
-      entityType: "company",
-      entityId: companyId,
+      action: "domain.budget_updated",
+      entityType: "domain",
+      entityId: domainId,
       details: { budgetMonthlyCents: req.body.budgetMonthlyCents },
     });
 
     await budgets.upsertPolicy(
-      companyId,
+      domainId,
       {
-        scopeType: "company",
-        scopeId: companyId,
+        scopeType: "domain",
+        scopeId: domainId,
         amount: req.body.budgetMonthlyCents,
         windowKind: "calendar_month_utc",
       },
       req.actor.userId ?? "board",
     );
 
-    res.json(company);
+    res.json(domain);
   });
 
   router.patch("/agents/:agentId/budgets", validate(updateBudgetSchema), async (req, res) => {
@@ -373,7 +373,7 @@ export function costRoutes(
       return;
     }
 
-    assertCompanyAccess(req, agent.companyId);
+    assertDomainAccess(req, agent.domainId);
     assertBoard(req);
 
     const updated = await agents.update(agentId, { budgetMonthlyCents: req.body.budgetMonthlyCents });
@@ -384,7 +384,7 @@ export function costRoutes(
 
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: updated.companyId,
+      domainId: updated.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -395,7 +395,7 @@ export function costRoutes(
     });
 
     await budgets.upsertPolicy(
-      updated.companyId,
+      updated.domainId,
       {
         scopeType: "agent",
         scopeId: updated.id,

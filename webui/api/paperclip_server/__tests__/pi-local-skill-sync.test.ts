@@ -26,7 +26,7 @@ describe("pi local skill sync", () => {
 
     const ctx = {
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       adapterType: "pi_local",
       config: {
         env: {

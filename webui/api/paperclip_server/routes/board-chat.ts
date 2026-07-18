@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Db } from "@paperclipai/db";
 import type { DeploymentMode } from "@paperclipai/shared";
 import { instanceSettingsService, issueService } from "../services/index.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertDomainAccess, getActorInfo } from "./authz.js";
 
 /**
  * Strip structured action signals (`%%ACTIONS%%{...}%%/ACTIONS%%`) from a
@@ -87,7 +87,7 @@ export function boardChatRoutes(
     } catch {
       return (
         "You are a board-level assistant helping a human manage their AI-agent " +
-        "company through Paperclip. Help them create domains, hire agents, " +
+        "domain through Paperclip. Help them create domains, hire agents, " +
         "approve tasks, and monitor their organization. Be conversational, " +
         "strategic, and concise."
       );
@@ -120,20 +120,20 @@ export function boardChatRoutes(
       return;
     }
 
-    const { companyId, message, taskId } = req.body as {
-      companyId?: string;
+    const { domainId, message, taskId } = req.body as {
+      domainId?: string;
       message?: string;
       taskId?: string;
     };
 
-    if (!companyId || !message) {
-      res.status(400).json({ error: "companyId and message are required" });
+    if (!domainId || !message) {
+      res.status(400).json({ error: "domainId and message are required" });
       return;
     }
 
-    // The body-supplied companyId must belong to the authenticated actor —
+    // The body-supplied domainId must belong to the authenticated actor —
     // it scopes issue reads/writes below and is exported to the subprocess.
-    assertCompanyAccess(req, companyId);
+    assertDomainAccess(req, domainId);
 
     // Back-pressure: each request holds a subprocess + SSE stream for up to
     // 2 minutes; cap simultaneous spawns instead of forking without bound.
@@ -152,8 +152,8 @@ export function boardChatRoutes(
     // Find or create the standing "Board Operations" issue that anchors the
     // board conversation + decision log.
     if (!issueId) {
-      const companyIssues = await issueSvc.list(companyId, { q: "Board Operations" });
-      const boardIssue = companyIssues.find(
+      const domainIssues = await issueSvc.list(domainId, { q: "Board Operations" });
+      const boardIssue = domainIssues.find(
         (i) =>
           i.title === "Board Operations" &&
           i.status !== "done" &&
@@ -162,7 +162,7 @@ export function boardChatRoutes(
       if (boardIssue) {
         issueId = boardIssue.id;
       } else {
-        const created = await issueSvc.create(companyId, {
+        const created = await issueSvc.create(domainId, {
           title: "Board Operations",
           description:
             "Standing issue for board concierge conversations and decision log",
@@ -253,7 +253,7 @@ export function boardChatRoutes(
       env: {
         ...process.env,
         PAPERCLIP_API_URL: apiUrl,
-        PAPERCLIP_COMPANY_ID: companyId,
+        PAPERCLIP_DOMAIN_ID: domainId,
       },
     });
 

@@ -1,5 +1,5 @@
 export function normalizeSearchText(value: string): string {
-  return value.trim().toLowerLifeAdmin().replace(/\s+/g, " ");
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export interface FuzzySearchField {

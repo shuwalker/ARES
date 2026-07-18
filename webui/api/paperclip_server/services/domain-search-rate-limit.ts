@@ -1,35 +1,35 @@
-export const COMPANY_SEARCH_RATE_LIMIT_WINDOW_MS = 60_000;
-export const COMPANY_SEARCH_RATE_LIMIT_MAX_REQUESTS = 60;
+export const DOMAIN_SEARCH_RATE_LIMIT_WINDOW_MS = 60_000;
+export const DOMAIN_SEARCH_RATE_LIMIT_MAX_REQUESTS = 60;
 
-export type CompanySearchRateLimitActor = {
-  companyId: string;
+export type DomainSearchRateLimitActor = {
+  domainId: string;
   actorType: "agent" | "board";
   actorId: string;
 };
 
-export type CompanySearchRateLimitResult = {
+export type DomainSearchRateLimitResult = {
   allowed: boolean;
   limit: number;
   remaining: number;
   retryAfterSeconds: number;
 };
 
-export type CompanySearchRateLimiter = {
-  consume(actor: CompanySearchRateLimitActor): CompanySearchRateLimitResult;
+export type DomainSearchRateLimiter = {
+  consume(actor: DomainSearchRateLimitActor): DomainSearchRateLimitResult;
 };
 
-export function createCompanySearchRateLimiter(options: {
+export function createDomainSearchRateLimiter(options: {
   windowMs?: number;
   maxRequests?: number;
   now?: () => number;
-} = {}): CompanySearchRateLimiter {
-  const windowMs = options.windowMs ?? COMPANY_SEARCH_RATE_LIMIT_WINDOW_MS;
-  const maxRequests = options.maxRequests ?? COMPANY_SEARCH_RATE_LIMIT_MAX_REQUESTS;
+} = {}): DomainSearchRateLimiter {
+  const windowMs = options.windowMs ?? DOMAIN_SEARCH_RATE_LIMIT_WINDOW_MS;
+  const maxRequests = options.maxRequests ?? DOMAIN_SEARCH_RATE_LIMIT_MAX_REQUESTS;
   const now = options.now ?? Date.now;
   const hitsByKey = new Map<string, number[]>();
 
-  function key(actor: CompanySearchRateLimitActor) {
-    return `${actor.companyId}:${actor.actorType}:${actor.actorId}`;
+  function key(actor: DomainSearchRateLimitActor) {
+    return `${actor.domainId}:${actor.actorType}:${actor.actorId}`;
   }
 
   return {

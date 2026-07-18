@@ -36,7 +36,7 @@ export type {
 } from "@paperclipai/shared";
 
 export interface WorkJournalQuery {
-  companyId: string;
+  domainId: string;
   from?: Date;
   to?: Date;
   userId?: string;
@@ -50,7 +50,7 @@ export interface WorkJournalQuery {
 
 export interface WorkJournalIssueAccessInput {
   id: string;
-  companyId: string;
+  domainId: string;
   projectId: string | null;
   parentId: string | null;
   assigneeAgentId: string | null;
@@ -60,7 +60,7 @@ export interface WorkJournalIssueAccessInput {
 
 type IssueRow = {
   id: string;
-  companyId: string;
+  domainId: string;
   projectId: string | null;
   goalId: string | null;
   parentId: string | null;
@@ -182,7 +182,7 @@ export function workJournalService(db: Db) {
         issue,
         allowed: await canReadIssue({
           id: issue.id,
-          companyId: issue.companyId,
+          domainId: issue.domainId,
           projectId: issue.projectId,
           parentId: issue.parentId,
           assigneeAgentId: issue.assigneeAgentId,
@@ -205,7 +205,7 @@ export function workJournalService(db: Db) {
     }
 
     const filterConditions = [
-      eq(issues.companyId, input.companyId),
+      eq(issues.domainId, input.domainId),
       visibleIssueCondition(),
       input.goalId ? eq(issues.goalId, input.goalId) : undefined,
       input.projectId ? eq(issues.projectId, input.projectId) : undefined,
@@ -233,7 +233,7 @@ export function workJournalService(db: Db) {
       .from(heartbeatRuns)
       .where(
         and(
-          eq(heartbeatRuns.companyId, input.companyId),
+          eq(heartbeatRuns.domainId, input.domainId),
           runOverlapsWindow(from, to),
           sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' is not null`,
         ),
@@ -249,7 +249,7 @@ export function workJournalService(db: Db) {
       .from(activityLog)
       .where(
         and(
-          eq(activityLog.companyId, input.companyId),
+          eq(activityLog.domainId, input.domainId),
           eq(activityLog.entityType, "issue"),
           gte(activityLog.createdAt, from),
           lte(activityLog.createdAt, to),
@@ -264,7 +264,7 @@ export function workJournalService(db: Db) {
       .from(issueComments)
       .where(
         and(
-          eq(issueComments.companyId, input.companyId),
+          eq(issueComments.domainId, input.domainId),
           isNull(issueComments.deletedAt),
           gte(issueComments.createdAt, from),
           lte(issueComments.createdAt, to),
@@ -279,7 +279,7 @@ export function workJournalService(db: Db) {
       .from(issueThreadInteractions)
       .where(
         and(
-          eq(issueThreadInteractions.companyId, input.companyId),
+          eq(issueThreadInteractions.domainId, input.domainId),
           or(
             and(gte(issueThreadInteractions.createdAt, from), lte(issueThreadInteractions.createdAt, to)),
             and(gte(issueThreadInteractions.resolvedAt, from), lte(issueThreadInteractions.resolvedAt, to)),
@@ -296,7 +296,7 @@ export function workJournalService(db: Db) {
       .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))
       .where(
         and(
-          eq(issueApprovals.companyId, input.companyId),
+          eq(issueApprovals.domainId, input.domainId),
           or(
             and(gte(approvals.createdAt, from), lte(approvals.createdAt, to)),
             and(gte(approvals.decidedAt, from), lte(approvals.decidedAt, to)),
@@ -315,7 +315,7 @@ export function workJournalService(db: Db) {
     return db
       .select({
         id: issues.id,
-        companyId: issues.companyId,
+        domainId: issues.domainId,
         projectId: issues.projectId,
         goalId: issues.goalId,
         parentId: issues.parentId,
@@ -331,7 +331,7 @@ export function workJournalService(db: Db) {
       .from(issues)
       .where(
         and(
-          eq(issues.companyId, input.companyId),
+          eq(issues.domainId, input.domainId),
           visibleIssueCondition(),
           inArray(issues.id, issueIds),
           input.goalId ? eq(issues.goalId, input.goalId) : undefined,
@@ -356,7 +356,7 @@ export function workJournalService(db: Db) {
         .from(issueComments)
         .where(
           and(
-            eq(issueComments.companyId, input.companyId),
+            eq(issueComments.domainId, input.domainId),
             eq(issueComments.authorUserId, input.userId),
             isNull(issueComments.deletedAt),
             gte(issueComments.createdAt, from),
@@ -369,7 +369,7 @@ export function workJournalService(db: Db) {
         .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))
         .where(
           and(
-            eq(issueApprovals.companyId, input.companyId),
+            eq(issueApprovals.domainId, input.domainId),
             eq(approvals.decidedByUserId, input.userId),
             gte(approvals.decidedAt, from),
             lte(approvals.decidedAt, to),
@@ -380,7 +380,7 @@ export function workJournalService(db: Db) {
         .from(issueThreadInteractions)
         .where(
           and(
-            eq(issueThreadInteractions.companyId, input.companyId),
+            eq(issueThreadInteractions.domainId, input.domainId),
             eq(issueThreadInteractions.resolvedByUserId, input.userId),
             gte(issueThreadInteractions.resolvedAt, from),
             lte(issueThreadInteractions.resolvedAt, to),
@@ -391,7 +391,7 @@ export function workJournalService(db: Db) {
         .from(activityLog)
         .where(
           and(
-            eq(activityLog.companyId, input.companyId),
+            eq(activityLog.domainId, input.domainId),
             eq(activityLog.actorType, "user"),
             eq(activityLog.actorId, input.userId),
             eq(activityLog.entityType, "issue"),
@@ -419,7 +419,7 @@ export function workJournalService(db: Db) {
     return rows.filter((issue) => selected.has(issue.id) || byId.get(issue.parentId ?? "") && selected.has(issue.parentId ?? ""));
   }
 
-  async function loadActorMaps(companyId: string, actorIds: Set<string>) {
+  async function loadActorMaps(domainId: string, actorIds: Set<string>) {
     const agentIds = Array.from(actorIds)
       .filter((id) => id.startsWith("agent:"))
       .map((id) => id.slice("agent:".length));
@@ -432,7 +432,7 @@ export function workJournalService(db: Db) {
         ? db
           .select({ id: agents.id, name: agents.name, icon: agents.icon })
           .from(agents)
-          .where(and(eq(agents.companyId, companyId), inArray(agents.id, maybeUuidList(agentIds))))
+          .where(and(eq(agents.domainId, domainId), inArray(agents.id, maybeUuidList(agentIds))))
         : [],
       userIds.length > 0
         ? db
@@ -549,7 +549,7 @@ export function workJournalService(db: Db) {
         .from(heartbeatRuns)
         .where(
           and(
-            eq(heartbeatRuns.companyId, input.companyId),
+            eq(heartbeatRuns.domainId, input.domainId),
             runOverlapsWindow(from, to),
             inArray(sql<string>`${heartbeatRuns.contextSnapshot} ->> 'issueId'`, readableIssueIds),
           ),
@@ -572,8 +572,8 @@ export function workJournalService(db: Db) {
         .innerJoin(heartbeatRuns, eq(activityLog.runId, heartbeatRuns.id))
         .where(
           and(
-            eq(activityLog.companyId, input.companyId),
-            eq(heartbeatRuns.companyId, input.companyId),
+            eq(activityLog.domainId, input.domainId),
+            eq(heartbeatRuns.domainId, input.domainId),
             eq(activityLog.entityType, "issue"),
             inArray(activityLog.entityId, readableIssueIds),
             runOverlapsWindow(from, to),
@@ -589,7 +589,7 @@ export function workJournalService(db: Db) {
         .from(issueComments)
         .where(
           and(
-            eq(issueComments.companyId, input.companyId),
+            eq(issueComments.domainId, input.domainId),
             isNull(issueComments.deletedAt),
             inArray(issueComments.issueId, readableIssueIds),
             gte(issueComments.createdAt, from),
@@ -609,7 +609,7 @@ export function workJournalService(db: Db) {
         .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))
         .where(
           and(
-            eq(issueApprovals.companyId, input.companyId),
+            eq(issueApprovals.domainId, input.domainId),
             inArray(issueApprovals.issueId, readableIssueIds),
             or(
               and(gte(approvals.createdAt, from), lte(approvals.createdAt, to)),
@@ -630,7 +630,7 @@ export function workJournalService(db: Db) {
         .from(issueThreadInteractions)
         .where(
           and(
-            eq(issueThreadInteractions.companyId, input.companyId),
+            eq(issueThreadInteractions.domainId, input.domainId),
             inArray(issueThreadInteractions.issueId, readableIssueIds),
             or(
               and(gte(issueThreadInteractions.createdAt, from), lte(issueThreadInteractions.createdAt, to)),
@@ -650,7 +650,7 @@ export function workJournalService(db: Db) {
         .from(activityLog)
         .where(
           and(
-            eq(activityLog.companyId, input.companyId),
+            eq(activityLog.domainId, input.domainId),
             eq(activityLog.entityType, "issue"),
             inArray(activityLog.entityId, readableIssueIds),
             gte(activityLog.createdAt, from),
@@ -758,7 +758,7 @@ export function workJournalService(db: Db) {
       }
     }
 
-    const actorMaps = await loadActorMaps(input.companyId, actorIds);
+    const actorMaps = await loadActorMaps(input.domainId, actorIds);
     const actors: WorkJournalActor[] = Array.from(actorIds).map((id) => {
       const [type, rawId] = id.split(":", 2) as [JournalActorType, string];
       if (type === "agent") {

@@ -11,61 +11,61 @@ import {
   issueDocuments,
   issues as issueRows,
   issueRelations,
-  pipelineAutomationExecutions,
-  pipelineCaseBlockers,
-  pipelineCaseDocuments,
-  pipelineCaseEvents,
-  pipelineCaseIssueLinks,
-  pipelineLifeAdmin,
-  pipelineDocuments,
-  pipelineStages,
-  pipelineTransitions,
+  workflowAutomationExecutions,
+  workflowLifeAdminBlockers,
+  workflowLifeAdminDocuments,
+  workflowLifeAdminEvents,
+  workflowLifeAdminIssueLinks,
+  workflowLifeAdmin,
+  workflowDocuments,
+  workflowStages,
+  workflowTransitions,
   workflows,
   routines,
 } from "@paperclipai/db";
 import { validate } from "../middleware/validate.js";
 import { badRequest, conflict, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
 import {
-  PIPELINE_CASE_EVENTS_DEFAULT_LIMIT,
-  PIPELINE_CASE_EVENTS_MAX_LIMIT,
-  PIPELINE_CONTEXT_PACK_EVENT_LIMIT,
-  ensureWorkflowCaseBodyDocumentFromSummary,
-  pipelineService,
-  resolveWorkflowCaseConversationSource,
+  WORKFLOW_LIFE_ADMIN_EVENTS_DEFAULT_LIMIT,
+  WORKFLOW_LIFE_ADMIN_EVENTS_MAX_LIMIT,
+  WORKFLOW_CONTEXT_PACK_EVENT_LIMIT,
+  ensureWorkflowLifeAdminBodyDocumentFromSummary,
+  workflowService,
+  resolveWorkflowLifeAdminConversationSource,
   type WorkflowActor,
   type WorkflowStageConfig,
   type WorkflowStageKind,
 } from "../services/workflows.js";
 import {
-  COMPANY_CASE_EVENTS_DEFAULT_LIMIT,
-  COMPANY_CASE_EVENTS_MAX_LIMIT,
-  COMPANY_CASE_EVENTS_MAX_TYPES,
-  getCaseChildrenTree,
+  DOMAIN_LIFE_ADMIN_EVENTS_DEFAULT_LIMIT,
+  DOMAIN_LIFE_ADMIN_EVENTS_MAX_LIMIT,
+  DOMAIN_LIFE_ADMIN_EVENTS_MAX_TYPES,
+  getLifeAdminChildrenTree,
   getDirectChildrenSummary,
   loadDescendantActiveWorkCountsForLifeAdmin,
-  listCompanyCaseEvents,
+  listDomainLifeAdminEvents,
   listWorkflowAttention,
   loadActiveWorkForLifeAdmin,
   loadWorkflowDescendantActiveWorkCounts,
   loadWorkflowConnections,
-  PIPELINE_ATTENTION_DEFAULT_LIMIT,
-  PIPELINE_ATTENTION_MAX_LIMIT,
+  WORKFLOW_ATTENTION_DEFAULT_LIMIT,
+  WORKFLOW_ATTENTION_MAX_LIMIT,
   type AttentionCaller,
 } from "../services/workflows-aggregation.js";
 import { accessService } from "../services/access.js";
 import { authorizationService } from "../services/authorization.js";
 import { issueService } from "../services/issues.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertDomainAccess } from "./authz.js";
 import {
   computeWorkflowHealth,
-  deriveCaseType,
+  deriveLifeAdminType,
   envConfigSchema,
   issueDocumentKeySchema,
-  PIPELINE_CASE_BODY_DOCUMENT_KEY,
-  pipelineAutomationRetryRequestSchema,
-  pipelineAutomationRetryScopeSchema,
+  WORKFLOW_LIFE_ADMIN_BODY_DOCUMENT_KEY,
+  workflowAutomationRetryRequestSchema,
+  workflowAutomationRetryScopeSchema,
   type WorkflowStageAutomation,
-  type WorkflowCaseLiveness,
+  type WorkflowLifeAdminLiveness,
   type WorkflowHealthFailedAutomationInput,
   type WorkflowHealthStageInput,
 } from "@paperclipai/shared";
@@ -74,13 +74,13 @@ import { logActivity } from "../services/activity-log.js";
 import {
   formatWorkflowConversationBodyDocumentContextMarkdown,
   loadWorkflowConversationBodyDocumentContext,
-} from "../services/pipeline-conversation-context.js";
+} from "../services/workflow-conversation-context.js";
 import { resolveActorSourceTrustForIssue } from "../services/source-trust.js";
 import {
-  formatWorkflowCaseOutputContextMarkdown,
-  pipelineCaseOutputsService,
-  summarizeWorkflowCaseOutputsForContext,
-} from "../services/pipeline-case-outputs.js";
+  formatWorkflowLifeAdminOutputContextMarkdown,
+  workflowLifeAdminOutputsService,
+  summarizeWorkflowLifeAdminOutputsForContext,
+} from "../services/workflow-life_admin-outputs.js";
 
 /** Per-stage instructions document keys look like `stage-instructions:{stageId}`. */
 const STAGE_INSTRUCTIONS_PREFIX = "stage-instructions:";
@@ -89,26 +89,26 @@ type WorkflowRouteDb = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
 const stageKindSchema = z.enum(["open", "working", "review", "done", "cancelled"]);
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 const stageConfigSchema = z.record(z.string(), z.unknown()).default({});
-const casePatchSchema = z.object({
+const life_adminPatchSchema = z.object({
   title: z.string().trim().min(1).max(500).optional(),
   summary: z.string().max(8_000).nullable().optional(),
   fields: jsonObjectSchema.optional(),
   workspaceRef: jsonObjectSchema.nullable().optional(),
-  parentCaseId: z.string().uuid().nullable().optional(),
+  parentLifeAdminId: z.string().uuid().nullable().optional(),
   expectedVersion: z.number().int().positive().optional(),
   leaseToken: z.string().uuid().nullable().optional(),
 });
-const ingestCaseSchema = z.object({
-  caseKey: z.string().max(1_024).nullable().optional(),
+const ingestLifeAdminSchema = z.object({
+  life_adminKey: z.string().max(1_024).nullable().optional(),
   title: z.string().trim().min(1).max(500),
   summary: z.string().max(8_000).nullable().optional(),
   fields: jsonObjectSchema.optional(),
   stageKey: z.string().trim().min(1).max(120).optional(),
-  parentCaseId: z.string().uuid().nullable().optional(),
+  parentLifeAdminId: z.string().uuid().nullable().optional(),
   requestKey: z.string().trim().min(1).max(512).optional(),
   workspaceRef: jsonObjectSchema.nullable().optional(),
-  blockedByCaseIds: z.array(z.string().uuid()).max(100).optional(),
-  blockedByCaseKeys: z.array(z.string().max(1_024)).max(100).optional(),
+  blockedByLifeAdminIds: z.array(z.string().uuid()).max(100).optional(),
+  blockedByLifeAdminKeys: z.array(z.string().max(1_024)).max(100).optional(),
 });
 const createWorkflowSchema = z.object({
   key: z.string().trim().min(1).max(120),
@@ -156,8 +156,8 @@ const replaceTransitionsSchema = z.object({
   })).max(500),
   enforceTransitions: z.boolean().optional(),
 });
-const batchIngestSchema = z.object({ items: z.array(ingestCaseSchema).max(200) });
-const breakdownCaseSchema = z.object({
+const batchIngestSchema = z.object({ items: z.array(ingestLifeAdminSchema).max(200) });
+const breakdownLifeAdminSchema = z.object({
   items: z.array(z.object({
     key: z.string().trim().min(1).max(200),
     title: z.string().trim().min(1).max(500),
@@ -165,12 +165,12 @@ const breakdownCaseSchema = z.object({
     fields: jsonObjectSchema.optional(),
   })).max(200),
 });
-const claimCaseSchema = z.object({ leaseSeconds: z.number().int().positive().max(86_400).optional() });
-const releaseCaseSchema = z.object({
+const claimLifeAdminSchema = z.object({ leaseSeconds: z.number().int().positive().max(86_400).optional() });
+const releaseLifeAdminSchema = z.object({
   leaseToken: z.string().uuid().nullable().optional(),
   force: z.boolean().optional(),
 });
-const transitionCaseSchema = z.object({
+const transitionLifeAdminSchema = z.object({
   toStageKey: z.string().trim().min(1).max(120),
   expectedVersion: z.number().int().positive(),
   leaseToken: z.string().uuid().nullable().optional(),
@@ -194,37 +194,37 @@ const acknowledgeDriftSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
 });
 const retryAutomationQuerySchema = z.object({
-  scope: pipelineAutomationRetryScopeSchema.default("previous_stage"),
+  scope: workflowAutomationRetryScopeSchema.default("previous_stage"),
   targetStageId: z.string().uuid().optional(),
 });
 const reviewEditsSchema = z.object({
   title: z.string().trim().min(1).max(500).optional(),
   summary: z.string().max(8_000).nullable().optional(),
   fields: jsonObjectSchema.optional(),
-  parentCaseId: z.string().uuid().nullable().optional(),
+  parentLifeAdminId: z.string().uuid().nullable().optional(),
 });
-const reviewCaseSchema = z.object({
+const reviewLifeAdminSchema = z.object({
   decision: z.enum(["approve", "reject", "request_changes"]),
   reason: z.string().max(4_000).nullable().optional(),
   edits: reviewEditsSchema.optional(),
   expectedVersion: z.number().int().positive(),
   leaseToken: z.string().uuid().nullable().optional(),
 });
-const blockersSchema = z.object({ blockedByCaseIds: z.array(z.string().uuid()).max(100) });
+const blockersSchema = z.object({ blockedByLifeAdminIds: z.array(z.string().uuid()).max(100) });
 const issueLinkRoleSchema = z.enum(["origin", "conversation", "work", "automation"]);
 const createIssueLinkSchema = z.object({
   issueId: z.string().uuid(),
   role: issueLinkRoleSchema,
 });
 const bulkReviewSchema = z.object({
-  items: z.array(reviewCaseSchema.extend({ caseId: z.string().uuid() })).max(100),
+  items: z.array(reviewLifeAdminSchema.extend({ lifeAdminId: z.string().uuid() })).max(100),
 });
 const upsertWorkflowDocumentSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   body: z.string().max(200_000),
   baseRevisionId: z.string().uuid().nullable().optional(),
 });
-const upsertWorkflowCaseDocumentSchema = z.object({
+const upsertWorkflowLifeAdminDocumentSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   format: z.string().trim().min(1).max(80).optional().default("markdown"),
   body: z.string().max(200_000),
@@ -263,7 +263,7 @@ function stageAutomationContext(config: Record<string, unknown>) {
 }
 
 function withDerivedStageAutomation(
-  stage: typeof pipelineStages.$inferSelect,
+  stage: typeof workflowStages.$inferSelect,
   routineById: Map<string, {
     assigneeAgentId: string | null;
     title: string;
@@ -297,7 +297,7 @@ function withDerivedStageAutomation(
   };
 }
 
-function extractIntakeFormFields(stage: typeof pipelineStages.$inferSelect | null) {
+function extractIntakeFormFields(stage: typeof workflowStages.$inferSelect | null) {
   const baseFields = [{ key: "title", label: "Name", type: "text", required: true, options: [] as string[] }];
   const variables = stage?.config && typeof stage.config === "object" && !Array.isArray(stage.config)
     ? (stage.config as { variables?: unknown }).variables
@@ -335,7 +335,7 @@ function extractIntakeFormFields(stage: typeof pipelineStages.$inferSelect | nul
         return [{ key: routineName, label, type, required: variable.required === true, options }];
       }
 
-      // Legacy pipeline variable shape: opt-in via `showInAddForm`, keyed by `key`.
+      // Legacy workflow variable shape: opt-in via `showInAddForm`, keyed by `key`.
       if (!legacyKey) return [];
       if (variable.showInAddForm !== true) return [];
       if (typeof variable.label !== "string" || variable.label.trim().length === 0) return [];
@@ -357,19 +357,19 @@ function isPgUniqueViolation(error: unknown) {
 
 function codedConflictForUnique(error: unknown): never {
   if (isPgUniqueViolation(error)) {
-    throw conflict("Duplicate pipeline resource key", { code: "duplicate_key" });
+    throw conflict("Duplicate workflow resource key", { code: "duplicate_key" });
   }
   throw error;
 }
 
-function assertWorkflowCompanyAccess(req: Request, companyId: string) {
+function assertWorkflowDomainAccess(req: Request, domainId: string) {
   try {
-    assertCompanyAccess(req, companyId);
+    assertDomainAccess(req, domainId);
   } catch (error) {
     if (
       error instanceof HttpError &&
       error.status === 403 &&
-      (error.message.includes("another company") || error.message.includes("does not have access"))
+      (error.message.includes("another domain") || error.message.includes("does not have access"))
     ) {
       throw notFound("Workflow resource not found");
     }
@@ -380,7 +380,7 @@ function assertWorkflowCompanyAccess(req: Request, companyId: string) {
 function actorForMutation(req: Request): WorkflowActor {
   if (req.actor.type === "agent") {
     if (!req.actor.agentId) throw unauthorized();
-    if (!req.actor.runId) throw unprocessable("Agent pipeline mutations require a run id", { code: "run_id_required" });
+    if (!req.actor.runId) throw unprocessable("Agent workflow mutations require a run id", { code: "run_id_required" });
     return { type: "agent", agentId: req.actor.agentId, runId: req.actor.runId };
   }
   if (req.actor.type === "board") {
@@ -408,8 +408,8 @@ function parseEventTypesQuery(value: unknown): string[] | undefined {
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
   if (types.length === 0) return undefined;
-  if (types.length > COMPANY_CASE_EVENTS_MAX_TYPES) {
-    throw badRequest(`types accepts at most ${COMPANY_CASE_EVENTS_MAX_TYPES} values`);
+  if (types.length > DOMAIN_LIFE_ADMIN_EVENTS_MAX_TYPES) {
+    throw badRequest(`types accepts at most ${DOMAIN_LIFE_ADMIN_EVENTS_MAX_TYPES} values`);
   }
   for (const type of types) {
     if (!/^[a-z_]{1,64}$/.test(type)) throw badRequest(`Invalid event type: ${type}`);
@@ -427,73 +427,73 @@ function parseOptionalNonNegativeInteger(value: unknown, name: string) {
   return parsed;
 }
 
-function parseCaseEventsQuery(query: Request["query"]) {
+function parseLifeAdminEventsQuery(query: Request["query"]) {
   const requestedLimit = parseOptionalNonNegativeInteger(query.limit, "limit");
   const offset = parseOptionalNonNegativeInteger(query.offset, "offset") ?? 0;
   if (requestedLimit === 0) throw badRequest("limit must be a positive integer");
   return {
-    limit: Math.min(requestedLimit ?? PIPELINE_CASE_EVENTS_DEFAULT_LIMIT, PIPELINE_CASE_EVENTS_MAX_LIMIT),
+    limit: Math.min(requestedLimit ?? WORKFLOW_LIFE_ADMIN_EVENTS_DEFAULT_LIMIT, WORKFLOW_LIFE_ADMIN_EVENTS_MAX_LIMIT),
     offset,
   };
 }
 
-async function resolveWorkflowCompanyId(db: Db, pipelineId: string) {
+async function resolveWorkflowDomainId(db: Db, workflowId: string) {
   const row = await db
-    .select({ companyId: workflows.companyId })
+    .select({ domainId: workflows.domainId })
     .from(workflows)
-    .where(eq(workflows.id, pipelineId))
+    .where(eq(workflows.id, workflowId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!row) throw notFound("Workflow not found");
-  return row.companyId;
+  return row.domainId;
 }
 
-async function resolveCaseCompanyId(db: Db, caseId: string) {
+async function resolveLifeAdminDomainId(db: Db, lifeAdminId: string) {
   const row = await db
-    .select({ companyId: pipelineLifeAdmin.companyId })
-    .from(pipelineLifeAdmin)
-    .where(eq(pipelineLifeAdmin.id, caseId))
+    .select({ domainId: workflowLifeAdmin.domainId })
+    .from(workflowLifeAdmin)
+    .where(eq(workflowLifeAdmin.id, lifeAdminId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  if (!row) throw notFound("Workflow case not found");
-  return row.companyId;
+  if (!row) throw notFound("Workflow life_admin not found");
+  return row.domainId;
 }
 
-async function assertWorkflowAccess(db: Db, req: Request, pipelineId: string) {
-  const companyId = await resolveWorkflowCompanyId(db, pipelineId);
-  assertWorkflowCompanyAccess(req, companyId);
-  return companyId;
+async function assertWorkflowAccess(db: Db, req: Request, workflowId: string) {
+  const domainId = await resolveWorkflowDomainId(db, workflowId);
+  assertWorkflowDomainAccess(req, domainId);
+  return domainId;
 }
 
 async function assertWorkflowWriteAccess(
   req: Request,
   input: {
     access: ReturnType<typeof accessService>;
-    companyId: string;
-    pipelineId: string;
+    domainId: string;
+    workflowId: string;
   },
 ) {
-  assertWorkflowCompanyAccess(req, input.companyId);
+  assertWorkflowDomainAccess(req, input.domainId);
   const decision = await input.access.decide({
     actor: req.actor,
     action: "workflows:write",
-    resource: { type: "company", companyId: input.companyId },
-    scope: { pipelineId: input.pipelineId },
+    resource: { type: "domain", domainId: input.domainId },
+    scope: { workflowId: input.workflowId },
   });
   if (!decision.allowed) {
     throw new HttpError(403, decision.explanation, {
-      code: decision.code ?? "pipeline_write_forbidden",
+      code: decision.code ?? "workflow_write_forbidden",
       reason: decision.reason,
-      pipelineId: input.pipelineId,
+      workflowId: input.workflowId,
     });
   }
 }
 
 function mapWorkflowDocumentRevision(row: {
   id: string;
-  companyId: string;
+  domainId: string;
   documentId: string;
-  pipelineId: string;
+  workflowId: string;
   key: string;
   revisionNumber: number;
   title: string | null;
@@ -507,29 +507,29 @@ function mapWorkflowDocumentRevision(row: {
   return row;
 }
 
-async function getWorkflowDocumentRow(db: Db, input: { companyId: string; pipelineId: string; key: string }) {
+async function getWorkflowDocumentRow(db: Db, input: { domainId: string; workflowId: string; key: string }) {
   return db
-    .select({ link: pipelineDocuments, document: documents, revision: documentRevisions })
-    .from(pipelineDocuments)
-    .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
+    .select({ link: workflowDocuments, document: documents, revision: documentRevisions })
+    .from(workflowDocuments)
+    .innerJoin(documents, eq(workflowDocuments.documentId, documents.id))
     .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
     .where(and(
-      eq(pipelineDocuments.companyId, input.companyId),
-      eq(pipelineDocuments.pipelineId, input.pipelineId),
-      eq(pipelineDocuments.key, input.key),
+      eq(workflowDocuments.domainId, input.domainId),
+      eq(workflowDocuments.workflowId, input.workflowId),
+      eq(workflowDocuments.key, input.key),
     ))
     .limit(1)
     .then((rows) => rows[0] ?? null);
 }
 
-async function listWorkflowDocumentRevisions(db: Db, input: { companyId: string; pipelineId: string; key: string }) {
+async function listWorkflowDocumentRevisions(db: Db, input: { domainId: string; workflowId: string; key: string }) {
   return db
     .select({
       id: documentRevisions.id,
-      companyId: documentRevisions.companyId,
+      domainId: documentRevisions.domainId,
       documentId: documentRevisions.documentId,
-      pipelineId: pipelineDocuments.pipelineId,
-      key: pipelineDocuments.key,
+      workflowId: workflowDocuments.workflowId,
+      key: workflowDocuments.key,
       revisionNumber: documentRevisions.revisionNumber,
       title: documentRevisions.title,
       format: documentRevisions.format,
@@ -539,13 +539,13 @@ async function listWorkflowDocumentRevisions(db: Db, input: { companyId: string;
       createdByUserId: documentRevisions.createdByUserId,
       createdAt: documentRevisions.createdAt,
     })
-    .from(pipelineDocuments)
-    .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
+    .from(workflowDocuments)
+    .innerJoin(documents, eq(workflowDocuments.documentId, documents.id))
     .innerJoin(documentRevisions, eq(documentRevisions.documentId, documents.id))
     .where(and(
-      eq(pipelineDocuments.companyId, input.companyId),
-      eq(pipelineDocuments.pipelineId, input.pipelineId),
-      eq(pipelineDocuments.key, input.key),
+      eq(workflowDocuments.domainId, input.domainId),
+      eq(workflowDocuments.workflowId, input.workflowId),
+      eq(workflowDocuments.key, input.key),
     ))
     .orderBy(desc(documentRevisions.revisionNumber))
     .then((rows) => rows.map(mapWorkflowDocumentRevision));
@@ -559,11 +559,11 @@ function parseDocumentKey(rawKey: unknown) {
   return parsed.data;
 }
 
-function mapWorkflowCaseDocumentRevision(row: {
+function mapWorkflowLifeAdminDocumentRevision(row: {
   id: string;
-  companyId: string;
+  domainId: string;
   documentId: string;
-  caseId: string;
+  lifeAdminId: string;
   key: string;
   revisionNumber: number;
   title: string | null;
@@ -577,29 +577,29 @@ function mapWorkflowCaseDocumentRevision(row: {
   return row;
 }
 
-async function getWorkflowCaseDocumentRow(db: WorkflowRouteDb, input: { companyId: string; caseId: string; key: string }) {
+async function getWorkflowLifeAdminDocumentRow(db: WorkflowRouteDb, input: { domainId: string; lifeAdminId: string; key: string }) {
   return db
-    .select({ link: pipelineCaseDocuments, document: documents, revision: documentRevisions })
-    .from(pipelineCaseDocuments)
-    .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
+    .select({ link: workflowLifeAdminDocuments, document: documents, revision: documentRevisions })
+    .from(workflowLifeAdminDocuments)
+    .innerJoin(documents, eq(workflowLifeAdminDocuments.documentId, documents.id))
     .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
     .where(and(
-      eq(pipelineCaseDocuments.companyId, input.companyId),
-      eq(pipelineCaseDocuments.caseId, input.caseId),
-      eq(pipelineCaseDocuments.key, input.key),
+      eq(workflowLifeAdminDocuments.domainId, input.domainId),
+      eq(workflowLifeAdminDocuments.lifeAdminId, input.lifeAdminId),
+      eq(workflowLifeAdminDocuments.key, input.key),
     ))
     .limit(1)
-    .then((rows: Array<{ link: typeof pipelineCaseDocuments.$inferSelect; document: typeof documents.$inferSelect; revision: typeof documentRevisions.$inferSelect | null }>) => rows[0] ?? null);
+    .then((rows: Array<{ link: typeof workflowLifeAdminDocuments.$inferSelect; document: typeof documents.$inferSelect; revision: typeof documentRevisions.$inferSelect | null }>) => rows[0] ?? null);
 }
 
-async function listWorkflowCaseDocumentRevisions(db: Db, input: { companyId: string; caseId: string; key: string }) {
+async function listWorkflowLifeAdminDocumentRevisions(db: Db, input: { domainId: string; lifeAdminId: string; key: string }) {
   return db
     .select({
       id: documentRevisions.id,
-      companyId: documentRevisions.companyId,
+      domainId: documentRevisions.domainId,
       documentId: documentRevisions.documentId,
-      caseId: pipelineCaseDocuments.caseId,
-      key: pipelineCaseDocuments.key,
+      lifeAdminId: workflowLifeAdminDocuments.lifeAdminId,
+      key: workflowLifeAdminDocuments.key,
       revisionNumber: documentRevisions.revisionNumber,
       title: documentRevisions.title,
       format: documentRevisions.format,
@@ -609,27 +609,27 @@ async function listWorkflowCaseDocumentRevisions(db: Db, input: { companyId: str
       createdByUserId: documentRevisions.createdByUserId,
       createdAt: documentRevisions.createdAt,
     })
-    .from(pipelineCaseDocuments)
-    .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
+    .from(workflowLifeAdminDocuments)
+    .innerJoin(documents, eq(workflowLifeAdminDocuments.documentId, documents.id))
     .innerJoin(documentRevisions, eq(documentRevisions.documentId, documents.id))
     .where(and(
-      eq(pipelineCaseDocuments.companyId, input.companyId),
-      eq(pipelineCaseDocuments.caseId, input.caseId),
-      eq(pipelineCaseDocuments.key, input.key),
+      eq(workflowLifeAdminDocuments.domainId, input.domainId),
+      eq(workflowLifeAdminDocuments.lifeAdminId, input.lifeAdminId),
+      eq(workflowLifeAdminDocuments.key, input.key),
     ))
     .orderBy(desc(documentRevisions.revisionNumber))
-    .then((rows) => rows.map(mapWorkflowCaseDocumentRevision));
+    .then((rows) => rows.map(mapWorkflowLifeAdminDocumentRevision));
 }
 
-async function resolveCaseWorkflowId(db: Db, input: { companyId: string; caseId: string }) {
+async function resolveLifeAdminWorkflowId(db: Db, input: { domainId: string; lifeAdminId: string }) {
   const row = await db
-    .select({ pipelineId: pipelineLifeAdmin.pipelineId })
-    .from(pipelineLifeAdmin)
-    .where(and(eq(pipelineLifeAdmin.companyId, input.companyId), eq(pipelineLifeAdmin.id, input.caseId)))
+    .select({ workflowId: workflowLifeAdmin.workflowId })
+    .from(workflowLifeAdmin)
+    .where(and(eq(workflowLifeAdmin.domainId, input.domainId), eq(workflowLifeAdmin.id, input.lifeAdminId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  if (!row) throw notFound("Workflow case not found");
-  return row.pipelineId;
+  if (!row) throw notFound("Workflow life_admin not found");
+  return row.workflowId;
 }
 
 function activityActorForWorkflowRoute(actor: WorkflowActor) {
@@ -639,7 +639,7 @@ function activityActorForWorkflowRoute(actor: WorkflowActor) {
   if (actor.type === "user") {
     return { actorType: "user" as const, actorId: actor.userId, agentId: null, runId: null };
   }
-  return { actorType: "system" as const, actorId: "pipeline", agentId: null, runId: null };
+  return { actorType: "system" as const, actorId: "workflow", agentId: null, runId: null };
 }
 
 function issueIdFromWorkflowRouteRunContext(contextSnapshot: unknown) {
@@ -649,17 +649,17 @@ function issueIdFromWorkflowRouteRunContext(contextSnapshot: unknown) {
   return typeof issueId === "string" && issueId.trim().length > 0 ? issueId.trim() : null;
 }
 
-async function sourceTrustForWorkflowCaseDocumentWrite(
+async function sourceTrustForWorkflowLifeAdminDocumentWrite(
   dbOrTx: Db | any,
   input: {
-    companyId: string;
-    caseId: string;
+    domainId: string;
+    lifeAdminId: string;
     actor: WorkflowActor;
   },
 ) {
   if (input.actor.type !== "agent") return null;
 
-  const conversationSource = await resolveWorkflowCaseConversationSource(dbOrTx, input.companyId, input.caseId);
+  const conversationSource = await resolveWorkflowLifeAdminConversationSource(dbOrTx, input.domainId, input.lifeAdminId);
   let issue = conversationSource?.isActive ? conversationSource.issue : null;
 
   if (!issue) {
@@ -667,7 +667,7 @@ async function sourceTrustForWorkflowCaseDocumentWrite(
       .select({ contextSnapshot: heartbeatRuns.contextSnapshot })
       .from(heartbeatRuns)
       .where(and(
-        eq(heartbeatRuns.companyId, input.companyId),
+        eq(heartbeatRuns.domainId, input.domainId),
         eq(heartbeatRuns.id, input.actor.runId),
         eq(heartbeatRuns.agentId, input.actor.agentId),
       ))
@@ -680,7 +680,7 @@ async function sourceTrustForWorkflowCaseDocumentWrite(
       ? await dbOrTx
           .select()
           .from(issueRows)
-          .where(and(eq(issueRows.companyId, input.companyId), eq(issueRows.id, runIssueId)))
+          .where(and(eq(issueRows.domainId, input.domainId), eq(issueRows.id, runIssueId)))
           .limit(1)
           .then((rows: Array<typeof issueRows.$inferSelect>) => rows[0] ?? null)
       : null;
@@ -692,7 +692,7 @@ async function sourceTrustForWorkflowCaseDocumentWrite(
     db: dbOrTx as Db,
     issue: {
       id: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       projectId: issue.projectId,
       executionPolicy: issue.executionPolicy,
     },
@@ -705,22 +705,22 @@ async function sourceTrustForWorkflowCaseDocumentWrite(
   });
 }
 
-async function assertCaseAccess(db: Db, req: Request, caseId: string) {
-  const companyId = await resolveCaseCompanyId(db, caseId);
-  assertWorkflowCompanyAccess(req, companyId);
-  return companyId;
+async function assertLifeAdminAccess(db: Db, req: Request, lifeAdminId: string) {
+  const domainId = await resolveLifeAdminDomainId(db, lifeAdminId);
+  assertWorkflowDomainAccess(req, domainId);
+  return domainId;
 }
 
-async function getStagesByKey(db: Db, pipelineId: string) {
-  const rows = await db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, pipelineId));
+async function getStagesByKey(db: Db, workflowId: string) {
+  const rows = await db.select().from(workflowStages).where(eq(workflowStages.workflowId, workflowId));
   return new Map(rows.map((stage) => [stage.key, stage]));
 }
 
 async function writeRouteEvent(
   db: Pick<Db, "insert">,
   input: {
-    companyId: string;
-    caseId: string;
+    domainId: string;
+    lifeAdminId: string;
     type: string;
     actor: WorkflowActor;
     payload?: Record<string, unknown>;
@@ -731,9 +731,9 @@ async function writeRouteEvent(
     : input.actor.type === "user"
       ? { actorType: "user", actorUserId: input.actor.userId }
       : { actorType: "system" };
-  const [event] = await db.insert(pipelineCaseEvents).values({
-    companyId: input.companyId,
-    caseId: input.caseId,
+  const [event] = await db.insert(workflowLifeAdminEvents).values({
+    domainId: input.domainId,
+    lifeAdminId: input.lifeAdminId,
     type: input.type,
     ...actorPatch,
     payload: input.payload ?? {},
@@ -741,11 +741,11 @@ async function writeRouteEvent(
   return event!;
 }
 
-async function getIssueMutationTarget(db: Db, input: { companyId: string; issueId: string }) {
+async function getIssueMutationTarget(db: Db, input: { domainId: string; issueId: string }) {
   return db
     .select({
       id: issueRows.id,
-      companyId: issueRows.companyId,
+      domainId: issueRows.domainId,
       projectId: issueRows.projectId,
       parentId: issueRows.parentId,
       assigneeAgentId: issueRows.assigneeAgentId,
@@ -753,7 +753,7 @@ async function getIssueMutationTarget(db: Db, input: { companyId: string; issueI
       status: issueRows.status,
     })
     .from(issueRows)
-    .where(and(eq(issueRows.id, input.issueId), eq(issueRows.companyId, input.companyId)))
+    .where(and(eq(issueRows.id, input.issueId), eq(issueRows.domainId, input.domainId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
 }
@@ -771,7 +771,7 @@ async function assertIssueLinkMutationAllowed(
     action: "issue:mutate",
     resource: {
       type: "issue",
-      companyId: input.issue.companyId,
+      domainId: input.issue.domainId,
       issueId: input.issue.id,
       projectId: input.issue.projectId,
       parentIssueId: input.issue.parentId,
@@ -810,103 +810,103 @@ async function assertIssueLinkMutationAllowed(
   await input.issuesSvc.assertCheckoutOwner(input.issue.id, actorAgentId, runId);
 }
 
-export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineService>[1] = {}) {
+export function workflowRoutes(db: Db, options: Parameters<typeof workflowService>[1] = {}) {
   const router = Router();
-  const svc = pipelineService(db, options);
-  const outputsSvc = pipelineCaseOutputsService(db);
+  const svc = workflowService(db, options);
+  const outputsSvc = workflowLifeAdminOutputsService(db);
   const access = accessService(db);
   const issuesSvc = issueService(db);
   const documentAnnotationsSvc = documentAnnotationService(db);
 
-  router.get("/domains/:companyId/workflows", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertWorkflowCompanyAccess(req, companyId);
+  router.get("/domains/:domainId/workflows", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertWorkflowDomainAccess(req, domainId);
     const rows = await db
       .select({
-        pipeline: workflows,
-        stageCount: sql<number>`count(distinct ${pipelineStages.id})::int`,
-        openCaseCount: sql<number>`count(distinct ${pipelineLifeAdmin.id}) filter (where ${pipelineLifeAdmin.terminalKind} is null)::int`,
-        attentionCount: sql<number>`count(distinct ${pipelineLifeAdmin.id}) filter (where ${pipelineLifeAdmin.terminalKind} is null and (${pipelineLifeAdmin.pendingSuggestion} is not null or (${pipelineLifeAdmin.stageId} = ${pipelineStages.id} and ${pipelineStages.kind} = 'review')))::int`,
-        inMotionCount: sql<number>`count(distinct ${pipelineLifeAdmin.id}) filter (where ${pipelineLifeAdmin.terminalKind} is null and ${pipelineLifeAdmin.stageId} = ${pipelineStages.id} and ${pipelineStages.kind} = 'working')::int`,
-        lastActivityAt: sql<string | null>`max(${pipelineLifeAdmin.updatedAt})`,
+        workflow: workflows,
+        stageCount: sql<number>`count(distinct ${workflowStages.id})::int`,
+        openLifeAdminCount: sql<number>`count(distinct ${workflowLifeAdmin.id}) filter (where ${workflowLifeAdmin.terminalKind} is null)::int`,
+        attentionCount: sql<number>`count(distinct ${workflowLifeAdmin.id}) filter (where ${workflowLifeAdmin.terminalKind} is null and (${workflowLifeAdmin.pendingSuggestion} is not null or (${workflowLifeAdmin.stageId} = ${workflowStages.id} and ${workflowStages.kind} = 'review')))::int`,
+        inMotionCount: sql<number>`count(distinct ${workflowLifeAdmin.id}) filter (where ${workflowLifeAdmin.terminalKind} is null and ${workflowLifeAdmin.stageId} = ${workflowStages.id} and ${workflowStages.kind} = 'working')::int`,
+        lastActivityAt: sql<string | null>`max(${workflowLifeAdmin.updatedAt})`,
       })
       .from(workflows)
-      .leftJoin(pipelineStages, eq(pipelineStages.pipelineId, workflows.id))
-      .leftJoin(pipelineLifeAdmin, eq(pipelineLifeAdmin.pipelineId, workflows.id))
-      .where(eq(workflows.companyId, companyId))
+      .leftJoin(workflowStages, eq(workflowStages.workflowId, workflows.id))
+      .leftJoin(workflowLifeAdmin, eq(workflowLifeAdmin.workflowId, workflows.id))
+      .where(eq(workflows.domainId, domainId))
       .groupBy(workflows.id)
       .orderBy(asc(workflows.createdAt));
-    const pipelineIds = rows.map((row) => row.pipeline.id);
+    const workflowIds = rows.map((row) => row.workflow.id);
     const [connections, descendantActiveWorkCounts, stageRows] = await Promise.all([
-      loadWorkflowConnections(db, companyId),
-      loadWorkflowDescendantActiveWorkCounts(db, companyId, pipelineIds),
-      pipelineIds.length > 0
+      loadWorkflowConnections(db, domainId),
+      loadWorkflowDescendantActiveWorkCounts(db, domainId, workflowIds),
+      workflowIds.length > 0
         ? db
         .select()
-        .from(pipelineStages)
-        .where(inArray(pipelineStages.pipelineId, pipelineIds))
-        .orderBy(asc(pipelineStages.position), asc(pipelineStages.createdAt))
+        .from(workflowStages)
+        .where(inArray(workflowStages.workflowId, workflowIds))
+        .orderBy(asc(workflowStages.position), asc(workflowStages.createdAt))
         : Promise.resolve([]),
     ]);
     const stagesByWorkflowId = new Map<string, typeof stageRows>();
     for (const stage of stageRows) {
-      const stages = stagesByWorkflowId.get(stage.pipelineId) ?? [];
+      const stages = stagesByWorkflowId.get(stage.workflowId) ?? [];
       stages.push(stage);
-      stagesByWorkflowId.set(stage.pipelineId, stages);
+      stagesByWorkflowId.set(stage.workflowId, stages);
     }
     res.json(rows.map((row) => ({
-      ...row.pipeline,
+      ...row.workflow,
       stageCount: row.stageCount,
-      stages: stagesByWorkflowId.get(row.pipeline.id) ?? [],
-      openCaseCount: row.openCaseCount,
+      stages: stagesByWorkflowId.get(row.workflow.id) ?? [],
+      openLifeAdminCount: row.openLifeAdminCount,
       attentionCount: row.attentionCount,
       inMotionCount: row.inMotionCount,
-      descendantActiveWorkCount: descendantActiveWorkCounts.get(row.pipeline.id) ?? 0,
+      descendantActiveWorkCount: descendantActiveWorkCounts.get(row.workflow.id) ?? 0,
       lastActivityAt: row.lastActivityAt,
-      connections: connections.get(row.pipeline.id) ?? { upstreamWorkflowIds: [], downstreamWorkflowIds: [] },
+      connections: connections.get(row.workflow.id) ?? { upstreamWorkflowIds: [], downstreamWorkflowIds: [] },
     })));
   });
 
-  router.get("/domains/:companyId/workflows-attention", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertWorkflowCompanyAccess(req, companyId);
+  router.get("/domains/:domainId/workflows-attention", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertWorkflowDomainAccess(req, domainId);
     const caller = attentionCallerFor(req);
     const requestedLimit = parseOptionalNonNegativeInteger(req.query.limit, "limit");
     if (requestedLimit === 0) throw badRequest("limit must be a positive integer");
-    const limit = Math.min(requestedLimit ?? PIPELINE_ATTENTION_DEFAULT_LIMIT, PIPELINE_ATTENTION_MAX_LIMIT);
-    res.json(await listWorkflowAttention(db, { companyId, caller, limit }));
+    const limit = Math.min(requestedLimit ?? WORKFLOW_ATTENTION_DEFAULT_LIMIT, WORKFLOW_ATTENTION_MAX_LIMIT);
+    res.json(await listWorkflowAttention(db, { domainId, caller, limit }));
   });
 
-  router.get("/domains/:companyId/case-events", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertWorkflowCompanyAccess(req, companyId);
+  router.get("/domains/:domainId/life_admin-events", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertWorkflowDomainAccess(req, domainId);
     const types = parseEventTypesQuery(req.query.types);
     const requestedLimit = parseOptionalNonNegativeInteger(req.query.limit, "limit");
     if (requestedLimit === 0) throw badRequest("limit must be a positive integer");
-    const limit = Math.min(requestedLimit ?? COMPANY_CASE_EVENTS_DEFAULT_LIMIT, COMPANY_CASE_EVENTS_MAX_LIMIT);
+    const limit = Math.min(requestedLimit ?? DOMAIN_LIFE_ADMIN_EVENTS_DEFAULT_LIMIT, DOMAIN_LIFE_ADMIN_EVENTS_MAX_LIMIT);
     const offset = parseOptionalNonNegativeInteger(req.query.offset, "offset") ?? 0;
-    res.json(await listCompanyCaseEvents(db, { companyId, types, limit, offset }));
+    res.json(await listDomainLifeAdminEvents(db, { domainId, types, limit, offset }));
   });
 
-  router.post("/domains/:companyId/workflows", validate(createWorkflowSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertWorkflowCompanyAccess(req, companyId);
+  router.post("/domains/:domainId/workflows", validate(createWorkflowSchema), async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertWorkflowDomainAccess(req, domainId);
     const actor = actorForMutation(req);
     const decision = await access.decide({
       actor: req.actor,
       action: "workflows:write",
-      resource: { type: "company", companyId },
+      resource: { type: "domain", domainId },
       scope: null,
     });
     if (!decision.allowed) {
       throw new HttpError(403, decision.explanation, {
-        code: decision.code ?? "pipeline_write_forbidden",
+        code: decision.code ?? "workflow_write_forbidden",
         reason: decision.reason,
       });
     }
     try {
       const created = await svc.createWorkflow({
-        companyId,
+        domainId,
         key: req.body.key,
         name: req.body.name,
         description: req.body.description,
@@ -931,29 +931,29 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }
   });
 
-  router.get("/domains/:companyId/review-life_admin", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertWorkflowCompanyAccess(req, companyId);
-    const pipelineId = typeof req.query.pipelineId === "string" ? req.query.pipelineId : undefined;
-    const parentCaseId = typeof req.query.parentCaseId === "string" ? req.query.parentCaseId : undefined;
-    res.json(await svc.listReviewLifeAdmin({ companyId, pipelineId, parentCaseId }));
+  router.get("/domains/:domainId/review-life_admin", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertWorkflowDomainAccess(req, domainId);
+    const workflowId = typeof req.query.workflowId === "string" ? req.query.workflowId : undefined;
+    const parentLifeAdminId = typeof req.query.parentLifeAdminId === "string" ? req.query.parentLifeAdminId : undefined;
+    res.json(await svc.listReviewLifeAdmin({ domainId, workflowId, parentLifeAdminId }));
   });
 
-  router.post("/domains/:companyId/review-life_admin/bulk", validate(bulkReviewSchema), async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertWorkflowCompanyAccess(req, companyId);
+  router.post("/domains/:domainId/review-life_admin/bulk", validate(bulkReviewSchema), async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertWorkflowDomainAccess(req, domainId);
     const actor = actorForMutation(req);
     const results = [];
     for (const item of req.body.items) {
       try {
-        results.push({ caseId: item.caseId, ok: true, result: await svc.reviewLifeAdmin({ companyId, ...item, actor }) });
+        results.push({ lifeAdminId: item.lifeAdminId, ok: true, result: await svc.reviewLifeAdmin({ domainId, ...item, actor }) });
       } catch (error) {
         const httpError = error as { status?: number; message?: string; details?: unknown };
         const details = httpError.details && typeof httpError.details === "object" && !Array.isArray(httpError.details)
           ? httpError.details as Record<string, unknown>
           : null;
         results.push({
-          caseId: item.caseId,
+          lifeAdminId: item.lifeAdminId,
           ok: false,
           error: {
             status: httpError.status ?? 500,
@@ -967,18 +967,18 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.json({ results });
   });
 
-  router.get("/workflows/:pipelineId", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    const [pipeline, stages, transitions, documentKeys] = await Promise.all([
-      db.select().from(workflows).where(and(eq(workflows.id, pipelineId), eq(workflows.companyId, companyId))).then((rows) => rows[0] ?? null),
-      db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, pipelineId)).orderBy(asc(pipelineStages.position)),
-      db.select().from(pipelineTransitions).where(eq(pipelineTransitions.pipelineId, pipelineId)),
-      db.select({ key: pipelineDocuments.key, documentId: pipelineDocuments.documentId })
-        .from(pipelineDocuments)
-        .where(and(eq(pipelineDocuments.companyId, companyId), eq(pipelineDocuments.pipelineId, pipelineId))),
+  router.get("/workflows/:workflowId", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    const [workflow, stages, transitions, documentKeys] = await Promise.all([
+      db.select().from(workflows).where(and(eq(workflows.id, workflowId), eq(workflows.domainId, domainId))).then((rows) => rows[0] ?? null),
+      db.select().from(workflowStages).where(eq(workflowStages.workflowId, workflowId)).orderBy(asc(workflowStages.position)),
+      db.select().from(workflowTransitions).where(eq(workflowTransitions.workflowId, workflowId)),
+      db.select({ key: workflowDocuments.key, documentId: workflowDocuments.documentId })
+        .from(workflowDocuments)
+        .where(and(eq(workflowDocuments.domainId, domainId), eq(workflowDocuments.workflowId, workflowId))),
     ]);
-    if (!pipeline) throw notFound("Workflow not found");
+    if (!workflow) throw notFound("Workflow not found");
     const automationRoutineIds = stages.flatMap((stage) => {
       const routineId = stageAutomationRoutineId(stage.config);
       return routineId ? [routineId] : [];
@@ -995,7 +995,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
             latestRevisionNumber: routines.latestRevisionNumber,
           })
           .from(routines)
-          .where(and(eq(routines.companyId, companyId), inArray(routines.id, automationRoutineIds)))
+          .where(and(eq(routines.domainId, domainId), inArray(routines.id, automationRoutineIds)))
       : [];
     const routineById = new Map(routineRows.map((row) => [
       row.id,
@@ -1008,68 +1008,68 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         latestRevisionNumber: row.latestRevisionNumber,
       },
     ]));
-    res.json({ ...pipeline, stages: stages.map((stage) => withDerivedStageAutomation(stage, routineById)), transitions, documentKeys });
+    res.json({ ...workflow, stages: stages.map((stage) => withDerivedStageAutomation(stage, routineById)), transitions, documentKeys });
   });
 
   // Setup-health warnings: surface any configuration that won't actually run
   // (paused teammate, missing instructions, no approver, broken hand-off links,
   // unset required details) in plain prosumer language. Assembles the cross-
   // entity inputs the pure `computeWorkflowHealth` needs.
-  router.get("/workflows/:pipelineId/health", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    const [pipeline, stages, instructionDocs, companyAgents, companyWorkflows, companyStages, failedAutomationRows] = await Promise.all([
+  router.get("/workflows/:workflowId/health", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    const [workflow, stages, instructionDocs, domainAgents, domainWorkflows, domainStages, failedAutomationRows] = await Promise.all([
       db.select().from(workflows)
-        .where(and(eq(workflows.id, pipelineId), eq(workflows.companyId, companyId)))
+        .where(and(eq(workflows.id, workflowId), eq(workflows.domainId, domainId)))
         .then((rows) => rows[0] ?? null),
-      db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, pipelineId)).orderBy(asc(pipelineStages.position)),
-      db.select({ key: pipelineDocuments.key, body: documentRevisions.body })
-        .from(pipelineDocuments)
-        .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
+      db.select().from(workflowStages).where(eq(workflowStages.workflowId, workflowId)).orderBy(asc(workflowStages.position)),
+      db.select({ key: workflowDocuments.key, body: documentRevisions.body })
+        .from(workflowDocuments)
+        .innerJoin(documents, eq(workflowDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
         .where(and(
-          eq(pipelineDocuments.companyId, companyId),
-          eq(pipelineDocuments.pipelineId, pipelineId),
-          ilike(pipelineDocuments.key, `${STAGE_INSTRUCTIONS_PREFIX}%`),
+          eq(workflowDocuments.domainId, domainId),
+          eq(workflowDocuments.workflowId, workflowId),
+          ilike(workflowDocuments.key, `${STAGE_INSTRUCTIONS_PREFIX}%`),
         )),
       db.select({ id: agents.id, name: agents.name, status: agents.status })
         .from(agents)
-        .where(eq(agents.companyId, companyId)),
+        .where(eq(agents.domainId, domainId)),
       db.select({ id: workflows.id, name: workflows.name })
         .from(workflows)
-        .where(eq(workflows.companyId, companyId)),
+        .where(eq(workflows.domainId, domainId)),
       db.select({
-        pipelineId: pipelineStages.pipelineId,
-        key: pipelineStages.key,
-        name: pipelineStages.name,
-        kind: pipelineStages.kind,
-        config: pipelineStages.config,
+        workflowId: workflowStages.workflowId,
+        key: workflowStages.key,
+        name: workflowStages.name,
+        kind: workflowStages.kind,
+        config: workflowStages.config,
       })
-        .from(pipelineStages)
-        .innerJoin(workflows, eq(pipelineStages.pipelineId, workflows.id))
-        .where(eq(workflows.companyId, companyId))
-        .orderBy(asc(pipelineStages.position), asc(pipelineStages.createdAt)),
+        .from(workflowStages)
+        .innerJoin(workflows, eq(workflowStages.workflowId, workflows.id))
+        .where(eq(workflows.domainId, domainId))
+        .orderBy(asc(workflowStages.position), asc(workflowStages.createdAt)),
       db.select({
-        caseId: pipelineLifeAdmin.id,
-        caseTitle: pipelineLifeAdmin.title,
-        stageId: pipelineStages.id,
-        stageKey: pipelineStages.key,
-        stageName: pipelineStages.name,
-        error: pipelineAutomationExecutions.error,
+        lifeAdminId: workflowLifeAdmin.id,
+        life_adminTitle: workflowLifeAdmin.title,
+        stageId: workflowStages.id,
+        stageKey: workflowStages.key,
+        stageName: workflowStages.name,
+        error: workflowAutomationExecutions.error,
       })
-        .from(pipelineAutomationExecutions)
-        .innerJoin(pipelineLifeAdmin, eq(pipelineAutomationExecutions.caseId, pipelineLifeAdmin.id))
-        .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
+        .from(workflowAutomationExecutions)
+        .innerJoin(workflowLifeAdmin, eq(workflowAutomationExecutions.lifeAdminId, workflowLifeAdmin.id))
+        .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
         .where(and(
-          eq(pipelineAutomationExecutions.companyId, companyId),
-          eq(pipelineLifeAdmin.pipelineId, pipelineId),
-          eq(pipelineAutomationExecutions.status, "failed"),
-          isNull(pipelineLifeAdmin.terminalKind),
+          eq(workflowAutomationExecutions.domainId, domainId),
+          eq(workflowLifeAdmin.workflowId, workflowId),
+          eq(workflowAutomationExecutions.status, "failed"),
+          isNull(workflowLifeAdmin.terminalKind),
         ))
-        .orderBy(desc(pipelineAutomationExecutions.updatedAt))
+        .orderBy(desc(workflowAutomationExecutions.updatedAt))
         .limit(50),
     ]);
-    if (!pipeline) throw notFound("Workflow not found");
+    if (!workflow) throw notFound("Workflow not found");
 
     const automationRoutineIds = stages.flatMap((stage) => {
       const routineId = stageAutomationRoutineId(stage.config);
@@ -1087,7 +1087,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
             latestRevisionNumber: routines.latestRevisionNumber,
           })
           .from(routines)
-          .where(and(eq(routines.companyId, companyId), inArray(routines.id, automationRoutineIds)))
+          .where(and(eq(routines.domainId, domainId), inArray(routines.id, automationRoutineIds)))
       : [];
     const routineById = new Map(routineRows.map((row) => [
       row.id,
@@ -1108,21 +1108,21 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }
 
     const agentsById: Record<string, { id: string; name: string | null; status: string }> = {};
-    for (const agent of companyAgents) agentsById[agent.id] = agent;
+    for (const agent of domainAgents) agentsById[agent.id] = agent;
 
     const stagesByWorkflowId = new Map<string, Array<{ key: string; name: string; kind: string; config: Record<string, unknown> | null }>>();
-    for (const stage of companyStages) {
-      const list = stagesByWorkflowId.get(stage.pipelineId) ?? [];
+    for (const stage of domainStages) {
+      const list = stagesByWorkflowId.get(stage.workflowId) ?? [];
       list.push({
         key: stage.key,
         name: stage.name,
         kind: stage.kind,
         config: (stage.config ?? null) as Record<string, unknown> | null,
       });
-      stagesByWorkflowId.set(stage.pipelineId, list);
+      stagesByWorkflowId.set(stage.workflowId, list);
     }
     const workflowsById: Record<string, { id: string; name: string; stages: Array<{ key: string; name: string; kind: string; config: Record<string, unknown> | null }> }> = {};
-    for (const p of companyWorkflows) {
+    for (const p of domainWorkflows) {
       workflowsById[p.id] = { id: p.id, name: p.name, stages: stagesByWorkflowId.get(p.id) ?? [] };
     }
 
@@ -1142,36 +1142,36 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       stageId: row.stageId,
       stageKey: row.stageKey,
       stageName: row.stageName,
-      caseId: row.caseId,
-      caseTitle: row.caseTitle,
+      lifeAdminId: row.lifeAdminId,
+      life_adminTitle: row.life_adminTitle,
       error: row.error,
     }));
 
-    res.json(computeWorkflowHealth({ pipelineId, stages: healthStages, agentsById, workflowsById, failedAutomations }));
+    res.json(computeWorkflowHealth({ workflowId, stages: healthStages, agentsById, workflowsById, failedAutomations }));
   });
 
-  router.get("/workflows/:pipelineId/intake-form", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    await assertWorkflowAccess(db, req, pipelineId);
+  router.get("/workflows/:workflowId/intake-form", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    await assertWorkflowAccess(db, req, workflowId);
     const firstStage = await db
       .select()
-      .from(pipelineStages)
-      .where(eq(pipelineStages.pipelineId, pipelineId))
-      .orderBy(asc(pipelineStages.position), asc(pipelineStages.createdAt))
+      .from(workflowStages)
+      .where(eq(workflowStages.workflowId, workflowId))
+      .orderBy(asc(workflowStages.position), asc(workflowStages.createdAt))
       .limit(1)
       .then((rows) => rows[0] ?? null);
     res.json({
-      pipelineId,
+      workflowId,
       stageId: firstStage?.id ?? null,
       stageName: firstStage?.name ?? null,
       fields: extractIntakeFormFields(firstStage),
     });
   });
 
-  router.patch("/workflows/:pipelineId", validate(updateWorkflowSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+  router.patch("/workflows/:workflowId", validate(updateWorkflowSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     actorForMutation(req);
     const patch: Partial<typeof workflows.$inferInsert> = { updatedAt: new Date() };
     if (req.body.name !== undefined) patch.name = req.body.name;
@@ -1181,20 +1181,20 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     const [updated] = await db
       .update(workflows)
       .set(patch)
-      .where(and(eq(workflows.id, pipelineId), eq(workflows.companyId, companyId)))
+      .where(and(eq(workflows.id, workflowId), eq(workflows.domainId, domainId)))
       .returning();
     res.json(updated);
   });
 
-  router.post("/workflows/:pipelineId/stages", validate(createStageSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+  router.post("/workflows/:workflowId/stages", validate(createStageSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
     try {
       const stage = await svc.createStage({
-        companyId,
-        pipelineId,
+        domainId,
+        workflowId,
         key: req.body.key,
         name: req.body.name,
         kind: req.body.kind,
@@ -1208,28 +1208,28 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }
   });
 
-  router.patch("/workflows/:pipelineId/stages/:stageId", validate(updateStageSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
+  router.patch("/workflows/:workflowId/stages/:stageId", validate(updateStageSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
     const stageId = req.params.stageId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
     try {
-      res.json(await svc.updateStage({ companyId, pipelineId, stageId, patch: req.body, actor }));
+      res.json(await svc.updateStage({ domainId, workflowId, stageId, patch: req.body, actor }));
     } catch (error) {
       codedConflictForUnique(error);
     }
   });
 
-  router.patch("/workflows/:pipelineId/stages/:stageId/automation-env", validate(updateStageAutomationEnvSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
+  router.patch("/workflows/:workflowId/stages/:stageId/automation-env", validate(updateStageAutomationEnvSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
     const stageId = req.params.stageId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
     res.json(await svc.updateStageAutomationEnv({
-      companyId,
-      pipelineId,
+      domainId,
+      workflowId,
       stageId,
       env: req.body.env,
       baseRoutineRevisionId: req.body.baseRoutineRevisionId ?? null,
@@ -1237,15 +1237,15 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }));
   });
 
-  router.delete("/workflows/:pipelineId/stages/:stageId", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
+  router.delete("/workflows/:workflowId/stages/:stageId", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
     const stageId = req.params.stageId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
     const result = await svc.deleteStage({
-      companyId,
-      pipelineId,
+      domainId,
+      workflowId,
       stageId,
       moveLifeAdminToStageId: typeof req.query.moveLifeAdminToStageId === "string" ? req.query.moveLifeAdminToStageId : null,
       actor,
@@ -1253,51 +1253,51 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.json(result);
   });
 
-  router.put("/workflows/:pipelineId/transitions", validate(replaceTransitionsSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+  router.put("/workflows/:workflowId/transitions", validate(replaceTransitionsSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     actorForMutation(req);
-    const byKey = await getStagesByKey(db, pipelineId);
+    const byKey = await getStagesByKey(db, workflowId);
     const transitions = req.body.transitions.map((edge: z.infer<typeof replaceTransitionsSchema>["transitions"][number]) => {
       const from = byKey.get(edge.fromStageKey);
       const to = byKey.get(edge.toStageKey);
       if (!from || !to) throw unprocessable("Transition references unknown stage", { code: "validation" });
-      return { pipelineId, fromStageId: from.id, toStageId: to.id, label: edge.label ?? null };
+      return { workflowId, fromStageId: from.id, toStageId: to.id, label: edge.label ?? null };
     });
     const result = await db.transaction(async (tx) => {
-      await tx.delete(pipelineTransitions).where(eq(pipelineTransitions.pipelineId, pipelineId));
+      await tx.delete(workflowTransitions).where(eq(workflowTransitions.workflowId, workflowId));
       if (req.body.enforceTransitions !== undefined) {
         await tx.update(workflows).set({ enforceTransitions: req.body.enforceTransitions, updatedAt: new Date() })
-          .where(and(eq(workflows.id, pipelineId), eq(workflows.companyId, companyId)));
+          .where(and(eq(workflows.id, workflowId), eq(workflows.domainId, domainId)));
       }
-      return transitions.length ? tx.insert(pipelineTransitions).values(transitions).returning() : [];
+      return transitions.length ? tx.insert(workflowTransitions).values(transitions).returning() : [];
     });
     res.json({ transitions: result });
   });
 
-  router.get("/workflows/:pipelineId/documents/:key", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
+  router.get("/workflows/:workflowId/documents/:key", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
     const key = req.params.key as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    const row = await getWorkflowDocumentRow(db, { companyId, pipelineId, key });
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    const row = await getWorkflowDocumentRow(db, { domainId, workflowId, key });
     if (!row) throw notFound("Workflow document not found");
     res.json(row);
   });
 
-  router.put("/workflows/:pipelineId/documents/:key", validate(upsertWorkflowDocumentSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
+  router.put("/workflows/:workflowId/documents/:key", validate(upsertWorkflowDocumentSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
     const key = req.params.key as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
     const result = await db.transaction(async (tx) => {
       const existing = await tx
-        .select({ link: pipelineDocuments, document: documents, revision: documentRevisions })
-        .from(pipelineDocuments)
-        .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
+        .select({ link: workflowDocuments, document: documents, revision: documentRevisions })
+        .from(workflowDocuments)
+        .innerJoin(documents, eq(workflowDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
-        .where(and(eq(pipelineDocuments.companyId, companyId), eq(pipelineDocuments.pipelineId, pipelineId), eq(pipelineDocuments.key, key)))
+        .where(and(eq(workflowDocuments.domainId, domainId), eq(workflowDocuments.workflowId, workflowId), eq(workflowDocuments.key, key)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
 
@@ -1337,7 +1337,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
           updatedByUserId: actor.type === "user" ? actor.userId : null,
         }).where(eq(documents.id, existing.document.id)).returning()
         : await tx.insert(documents).values({
-          companyId,
+          domainId,
           title: req.body.title ?? key,
           latestBody: req.body.body,
           latestRevisionNumber: 1,
@@ -1347,7 +1347,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
           updatedByUserId: actor.type === "user" ? actor.userId : null,
         }).returning();
       const [revision] = await tx.insert(documentRevisions).values({
-        companyId,
+        domainId,
         documentId: document!.id,
         revisionNumber: existing ? existing.document.latestRevisionNumber + 1 : 1,
         title: req.body.title ?? document!.title,
@@ -1366,9 +1366,9 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         updatedByUserId: actor.type === "user" ? actor.userId : null,
       }).where(eq(documents.id, document!.id));
       if (!existing) {
-        await tx.insert(pipelineDocuments).values({ companyId, pipelineId, documentId: document!.id, key, createdAt: now, updatedAt: now });
+        await tx.insert(workflowDocuments).values({ domainId, workflowId, documentId: document!.id, key, createdAt: now, updatedAt: now });
       } else {
-        await tx.update(pipelineDocuments).set({ updatedAt: now }).where(eq(pipelineDocuments.documentId, document!.id));
+        await tx.update(workflowDocuments).set({ updatedAt: now }).where(eq(workflowDocuments.documentId, document!.id));
       }
       return {
         document: {
@@ -1386,29 +1386,29 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.json(result);
   });
 
-  router.get("/workflows/:pipelineId/documents/:key/revisions", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
+  router.get("/workflows/:workflowId/documents/:key/revisions", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
     const key = req.params.key as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    const revisions = await listWorkflowDocumentRevisions(db, { companyId, pipelineId, key });
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    const revisions = await listWorkflowDocumentRevisions(db, { domainId, workflowId, key });
     res.json(revisions);
   });
 
-  router.post("/workflows/:pipelineId/documents/:key/revisions/:revisionId/restore", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
+  router.post("/workflows/:workflowId/documents/:key/revisions/:revisionId/restore", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
     const key = req.params.key as string;
     const revisionId = req.params.revisionId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
 
     const result = await db.transaction(async (tx) => {
       const existing = await tx
-        .select({ link: pipelineDocuments, document: documents, revision: documentRevisions })
-        .from(pipelineDocuments)
-        .innerJoin(documents, eq(pipelineDocuments.documentId, documents.id))
+        .select({ link: workflowDocuments, document: documents, revision: documentRevisions })
+        .from(workflowDocuments)
+        .innerJoin(documents, eq(workflowDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
-        .where(and(eq(pipelineDocuments.companyId, companyId), eq(pipelineDocuments.pipelineId, pipelineId), eq(pipelineDocuments.key, key)))
+        .where(and(eq(workflowDocuments.domainId, domainId), eq(workflowDocuments.workflowId, workflowId), eq(workflowDocuments.key, key)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
       if (!existing) throw notFound("Workflow document not found");
@@ -1430,7 +1430,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       const now = new Date();
       const nextRevisionNumber = existing.document.latestRevisionNumber + 1;
       const [restoredRevision] = await tx.insert(documentRevisions).values({
-        companyId,
+        domainId,
         documentId: existing.document.id,
         revisionNumber: nextRevisionNumber,
         title: sourceRevision.title ?? null,
@@ -1454,7 +1454,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         updatedAt: now,
       }).where(eq(documents.id, existing.document.id)).returning();
 
-      await tx.update(pipelineDocuments).set({ updatedAt: now }).where(eq(pipelineDocuments.documentId, existing.document.id));
+      await tx.update(workflowDocuments).set({ updatedAt: now }).where(eq(workflowDocuments.documentId, existing.document.id));
 
       return {
         document: { ...document!, latestRevisionId: restoredRevision!.id },
@@ -1467,51 +1467,51 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.json(result);
   });
 
-  router.post("/workflows/:pipelineId/life_admin", validate(ingestCaseSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+  router.post("/workflows/:workflowId/life_admin", validate(ingestLifeAdminSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
-    const result = await svc.ingestLifeAdmin({ companyId, pipelineId, ...req.body, actor });
+    const result = await svc.ingestLifeAdmin({ domainId, workflowId, ...req.body, actor });
     res.status(result.created ? 201 : 200).json(result);
   });
 
-  router.post("/workflows/:pipelineId/life_admin/batch", validate(batchIngestSchema), async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+  router.post("/workflows/:workflowId/life_admin/batch", validate(batchIngestSchema), async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
-    res.json(await svc.ingestLifeAdmin({ companyId, pipelineId, items: req.body.items, actor }));
+    res.json(await svc.ingestLifeAdmin({ domainId, workflowId, items: req.body.items, actor }));
   });
 
-  router.post("/life_admin/:caseId/breakdown", validate(breakdownCaseSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    const target = await svc.resolveBreakdownTarget({ companyId, caseId });
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId: target.targetWorkflow.id });
+  router.post("/life_admin/:lifeAdminId/breakdown", validate(breakdownLifeAdminSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    const target = await svc.resolveBreakdownTarget({ domainId, lifeAdminId });
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId: target.targetWorkflow.id });
     const actor = actorForMutation(req);
-    res.json(await svc.breakdownLifeAdmin({ companyId, caseId, items: req.body.items, actor }));
+    res.json(await svc.breakdownLifeAdmin({ domainId, lifeAdminId, items: req.body.items, actor }));
   });
 
-  router.get("/workflows/:pipelineId/life_admin", async (req, res) => {
-    const pipelineId = req.params.pipelineId as string;
-    const companyId = await assertWorkflowAccess(db, req, pipelineId);
+  router.get("/workflows/:workflowId/life_admin", async (req, res) => {
+    const workflowId = req.params.workflowId as string;
+    const domainId = await assertWorkflowAccess(db, req, workflowId);
     const stageKey = typeof req.query.stageKey === "string" ? req.query.stageKey : undefined;
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
     const terminal = req.query.terminal === "true" ? true : req.query.terminal === "false" ? false : undefined;
     const includeRetired = req.query.includeRetired === "true";
-    const parentCaseId = typeof req.query.parentCaseId === "string" ? req.query.parentCaseId : undefined;
-    const parentLifeAdmin = alias(pipelineLifeAdmin, "parent_case");
-    const parentWorkflow = alias(workflows, "parent_pipeline");
+    const parentLifeAdminId = typeof req.query.parentLifeAdminId === "string" ? req.query.parentLifeAdminId : undefined;
+    const parentLifeAdmin = alias(workflowLifeAdmin, "parent_life_admin");
+    const parentWorkflow = alias(workflows, "parent_workflow");
     const rows = await db
       .select({
-        case: pipelineLifeAdmin,
-        stage: pipelineStages,
+        life_admin: workflowLifeAdmin,
+        stage: workflowStages,
         parentLifeAdmin: {
           id: parentLifeAdmin.id,
-          caseKey: parentLifeAdmin.caseKey,
+          life_adminKey: parentLifeAdmin.life_adminKey,
           title: parentLifeAdmin.title,
-          pipelineId: parentLifeAdmin.pipelineId,
+          workflowId: parentLifeAdmin.workflowId,
         },
         parentWorkflow: {
           id: parentWorkflow.id,
@@ -1519,110 +1519,110 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
           name: parentWorkflow.name,
         },
       })
-      .from(pipelineLifeAdmin)
-      .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
+      .from(workflowLifeAdmin)
+      .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
       .leftJoin(parentLifeAdmin, and(
-        eq(parentLifeAdmin.companyId, companyId),
-        eq(parentLifeAdmin.id, pipelineLifeAdmin.parentCaseId),
+        eq(parentLifeAdmin.domainId, domainId),
+        eq(parentLifeAdmin.id, workflowLifeAdmin.parentLifeAdminId),
       ))
       .leftJoin(parentWorkflow, and(
-        eq(parentWorkflow.companyId, companyId),
-        eq(parentWorkflow.id, parentLifeAdmin.pipelineId),
+        eq(parentWorkflow.domainId, domainId),
+        eq(parentWorkflow.id, parentLifeAdmin.workflowId),
       ))
       .where(and(
-        eq(pipelineLifeAdmin.companyId, companyId),
-        eq(pipelineLifeAdmin.pipelineId, pipelineId),
-        stageKey ? eq(pipelineStages.key, stageKey) : undefined,
-        parentCaseId ? eq(pipelineLifeAdmin.parentCaseId, parentCaseId) : undefined,
-        includeRetired ? undefined : isNull(pipelineLifeAdmin.hiddenFromBoardAt),
-        terminal === true ? isNotNull(pipelineLifeAdmin.terminalKind) : terminal === false ? isNull(pipelineLifeAdmin.terminalKind) : undefined,
-        q ? or(ilike(pipelineLifeAdmin.title, `%${q}%`), ilike(pipelineLifeAdmin.summary, `%${q}%`)) : undefined,
+        eq(workflowLifeAdmin.domainId, domainId),
+        eq(workflowLifeAdmin.workflowId, workflowId),
+        stageKey ? eq(workflowStages.key, stageKey) : undefined,
+        parentLifeAdminId ? eq(workflowLifeAdmin.parentLifeAdminId, parentLifeAdminId) : undefined,
+        includeRetired ? undefined : isNull(workflowLifeAdmin.hiddenFromBoardAt),
+        terminal === true ? isNotNull(workflowLifeAdmin.terminalKind) : terminal === false ? isNull(workflowLifeAdmin.terminalKind) : undefined,
+        q ? or(ilike(workflowLifeAdmin.title, `%${q}%`), ilike(workflowLifeAdmin.summary, `%${q}%`)) : undefined,
       ))
-      .orderBy(asc(pipelineLifeAdmin.createdAt));
-    const caseIds = rows.map((row) => row.case.id);
+      .orderBy(asc(workflowLifeAdmin.createdAt));
+    const lifeAdminIds = rows.map((row) => row.life_admin.id);
     const [activeWork, descendantActiveWorkCounts] = await Promise.all([
-      loadActiveWorkForLifeAdmin(db, companyId, caseIds),
-      loadDescendantActiveWorkCountsForLifeAdmin(db, companyId, caseIds),
+      loadActiveWorkForLifeAdmin(db, domainId, lifeAdminIds),
+      loadDescendantActiveWorkCountsForLifeAdmin(db, domainId, lifeAdminIds),
     ]);
     res.json(rows.map((row) => ({
-      case: row.case,
+      life_admin: row.life_admin,
       stage: row.stage,
       parentLifeAdmin: row.parentLifeAdmin?.id && row.parentWorkflow?.id
         ? {
-            case: row.parentLifeAdmin,
-            pipeline: row.parentWorkflow,
+            life_admin: row.parentLifeAdmin,
+            workflow: row.parentWorkflow,
           }
         : null,
-      activeWork: activeWork.get(row.case.id) ?? null,
-      descendantActiveWorkCount: descendantActiveWorkCounts.get(row.case.id) ?? 0,
+      activeWork: activeWork.get(row.life_admin.id) ?? null,
+      descendantActiveWorkCount: descendantActiveWorkCounts.get(row.life_admin.id) ?? 0,
     })));
   });
 
-  router.get("/life_admin/:caseId", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    const detail = await getCaseDetail(db, companyId, caseId);
+  router.get("/life_admin/:lifeAdminId", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    const detail = await getLifeAdminDetail(db, domainId, lifeAdminId);
     res.json(detail);
   });
 
-  router.get("/life_admin/:caseId/documents/:key", async (req, res) => {
-    const caseId = req.params.caseId as string;
+  router.get("/life_admin/:lifeAdminId/documents/:key", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
     const key = parseDocumentKey(req.params.key);
-    const companyId = await assertCaseAccess(db, req, caseId);
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const row = await db.transaction(async (tx) => {
-      const existing = await getWorkflowCaseDocumentRow(tx, { companyId, caseId, key });
+      const existing = await getWorkflowLifeAdminDocumentRow(tx, { domainId, lifeAdminId, key });
       if (existing || key !== "body") return existing;
-      const caseRow = await tx
-        .select({ summary: pipelineLifeAdmin.summary })
-        .from(pipelineLifeAdmin)
-        .where(and(eq(pipelineLifeAdmin.companyId, companyId), eq(pipelineLifeAdmin.id, caseId)))
+      const lifeAdminRow = await tx
+        .select({ summary: workflowLifeAdmin.summary })
+        .from(workflowLifeAdmin)
+        .where(and(eq(workflowLifeAdmin.domainId, domainId), eq(workflowLifeAdmin.id, lifeAdminId)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
-      if (!caseRow?.summary?.trim()) return null;
-      await ensureWorkflowCaseBodyDocumentFromSummary(tx, {
-        companyId,
-        caseId,
-        summary: caseRow.summary,
+      if (!lifeAdminRow?.summary?.trim()) return null;
+      await ensureWorkflowLifeAdminBodyDocumentFromSummary(tx, {
+        domainId,
+        lifeAdminId,
+        summary: lifeAdminRow.summary,
         actor: { type: "system" },
       });
-      return getWorkflowCaseDocumentRow(tx, { companyId, caseId, key });
+      return getWorkflowLifeAdminDocumentRow(tx, { domainId, lifeAdminId, key });
     });
-    if (!row) throw notFound("Workflow case document not found");
+    if (!row) throw notFound("Workflow life_admin document not found");
     res.json(row);
   });
 
-  router.put("/life_admin/:caseId/documents/:key", validate(upsertWorkflowCaseDocumentSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
+  router.put("/life_admin/:lifeAdminId/documents/:key", validate(upsertWorkflowLifeAdminDocumentSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
     const key = parseDocumentKey(req.params.key);
-    const companyId = await assertCaseAccess(db, req, caseId);
-    const pipelineId = await resolveCaseWorkflowId(db, { companyId, caseId });
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    const workflowId = await resolveLifeAdminWorkflowId(db, { domainId, lifeAdminId });
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
-    const sourceTrust = await sourceTrustForWorkflowCaseDocumentWrite(db, { companyId, caseId, actor });
+    const sourceTrust = await sourceTrustForWorkflowLifeAdminDocumentWrite(db, { domainId, lifeAdminId, actor });
 
     const result = await db.transaction(async (tx) => {
       const existing = await tx
-        .select({ link: pipelineCaseDocuments, document: documents, revision: documentRevisions })
-        .from(pipelineCaseDocuments)
-        .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
+        .select({ link: workflowLifeAdminDocuments, document: documents, revision: documentRevisions })
+        .from(workflowLifeAdminDocuments)
+        .innerJoin(documents, eq(workflowLifeAdminDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
         .where(and(
-          eq(pipelineCaseDocuments.companyId, companyId),
-          eq(pipelineCaseDocuments.caseId, caseId),
-          eq(pipelineCaseDocuments.key, key),
+          eq(workflowLifeAdminDocuments.domainId, domainId),
+          eq(workflowLifeAdminDocuments.lifeAdminId, lifeAdminId),
+          eq(workflowLifeAdminDocuments.key, key),
         ))
         .limit(1)
         .then((rows) => rows[0] ?? null);
 
       if (existing && !req.body.baseRevisionId) {
-        throw conflict("Workflow case document update requires baseRevisionId", {
+        throw conflict("Workflow life_admin document update requires baseRevisionId", {
           code: "stale_base_revision",
           latestRevisionId: existing.document.latestRevisionId,
           latestRevisionNumber: existing.document.latestRevisionNumber,
         });
       }
       if (existing && req.body.baseRevisionId !== existing.document.latestRevisionId) {
-        throw conflict("Workflow case document was updated by someone else", {
+        throw conflict("Workflow life_admin document was updated by someone else", {
           code: "stale_base_revision",
           latestRevision: existing.revision
             ? {
@@ -1639,7 +1639,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         });
       }
       if (!existing && req.body.baseRevisionId) {
-        throw conflict("Workflow case document does not exist yet", {
+        throw conflict("Workflow life_admin document does not exist yet", {
           code: "stale_base_revision",
           latestRevision: null,
           latestRevisionId: null,
@@ -1658,7 +1658,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
           sourceTrust,
         }).where(eq(documents.id, existing.document.id)).returning()
         : await tx.insert(documents).values({
-          companyId,
+          domainId,
           title: req.body.title ?? key,
           format: req.body.format,
           latestBody: req.body.body,
@@ -1673,7 +1673,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         }).returning();
       const nextRevisionNumber = existing ? existing.document.latestRevisionNumber + 1 : 1;
       const [revision] = await tx.insert(documentRevisions).values({
-        companyId,
+        domainId,
         documentId: document!.id,
         revisionNumber: nextRevisionNumber,
         title: req.body.title ?? document!.title,
@@ -1697,23 +1697,23 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         sourceTrust,
       }).where(eq(documents.id, document!.id));
       if (!existing) {
-        await tx.insert(pipelineCaseDocuments).values({ companyId, caseId, documentId: document!.id, key, createdAt: now, updatedAt: now });
+        await tx.insert(workflowLifeAdminDocuments).values({ domainId, lifeAdminId, documentId: document!.id, key, createdAt: now, updatedAt: now });
       } else {
-        await tx.update(pipelineCaseDocuments).set({ updatedAt: now }).where(eq(pipelineCaseDocuments.documentId, document!.id));
+        await tx.update(workflowLifeAdminDocuments).set({ updatedAt: now }).where(eq(workflowLifeAdminDocuments.documentId, document!.id));
       }
 
       if (key === "body") {
-        const conversationSource = await resolveWorkflowCaseConversationSource(tx, companyId, caseId);
+        const conversationSource = await resolveWorkflowLifeAdminConversationSource(tx, domainId, lifeAdminId);
         if (conversationSource?.isActive) {
           await tx.insert(issueDocuments).values({
-            companyId,
+            domainId,
             issueId: conversationSource.issue.id,
             documentId: document!.id,
-            key: PIPELINE_CASE_BODY_DOCUMENT_KEY,
+            key: WORKFLOW_LIFE_ADMIN_BODY_DOCUMENT_KEY,
             createdAt: now,
             updatedAt: now,
           }).onConflictDoUpdate({
-            target: [issueDocuments.companyId, issueDocuments.issueId, issueDocuments.key],
+            target: [issueDocuments.domainId, issueDocuments.issueId, issueDocuments.key],
             set: { documentId: document!.id, updatedAt: now },
           });
         }
@@ -1722,7 +1722,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       const linkedIssueDocuments = await tx
         .select({ issueId: issueDocuments.issueId, key: issueDocuments.key })
         .from(issueDocuments)
-        .where(and(eq(issueDocuments.companyId, companyId), eq(issueDocuments.documentId, document!.id)));
+        .where(and(eq(issueDocuments.domainId, domainId), eq(issueDocuments.documentId, document!.id)));
 
       return {
         created: !existing,
@@ -1756,11 +1756,11 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       ));
     }
     await logActivity(db, {
-      companyId,
+      domainId,
       ...activityActorForWorkflowRoute(actor),
-      action: result.created ? "pipeline.case_document_created" : "pipeline.case_document_updated",
-      entityType: "pipeline_case",
-      entityId: caseId,
+      action: result.created ? "workflow.life_admin_document_created" : "workflow.life_admin_document_updated",
+      entityType: "workflow_life_admin",
+      entityId: lifeAdminId,
       details: {
         key,
         documentId: result.document.id,
@@ -1772,37 +1772,37 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.json({ document: result.document, revision: result.revision });
   });
 
-  router.get("/life_admin/:caseId/documents/:key/revisions", async (req, res) => {
-    const caseId = req.params.caseId as string;
+  router.get("/life_admin/:lifeAdminId/documents/:key/revisions", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
     const key = parseDocumentKey(req.params.key);
-    const companyId = await assertCaseAccess(db, req, caseId);
-    const revisions = await listWorkflowCaseDocumentRevisions(db, { companyId, caseId, key });
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    const revisions = await listWorkflowLifeAdminDocumentRevisions(db, { domainId, lifeAdminId, key });
     res.json(revisions);
   });
 
-  router.post("/life_admin/:caseId/documents/:key/revisions/:revisionId/restore", async (req, res) => {
-    const caseId = req.params.caseId as string;
+  router.post("/life_admin/:lifeAdminId/documents/:key/revisions/:revisionId/restore", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
     const key = parseDocumentKey(req.params.key);
     const revisionId = req.params.revisionId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    const pipelineId = await resolveCaseWorkflowId(db, { companyId, caseId });
-    await assertWorkflowWriteAccess(req, { access, companyId, pipelineId });
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    const workflowId = await resolveLifeAdminWorkflowId(db, { domainId, lifeAdminId });
+    await assertWorkflowWriteAccess(req, { access, domainId, workflowId });
     const actor = actorForMutation(req);
 
     const result = await db.transaction(async (tx) => {
       const existing = await tx
-        .select({ link: pipelineCaseDocuments, document: documents, revision: documentRevisions })
-        .from(pipelineCaseDocuments)
-        .innerJoin(documents, eq(pipelineCaseDocuments.documentId, documents.id))
+        .select({ link: workflowLifeAdminDocuments, document: documents, revision: documentRevisions })
+        .from(workflowLifeAdminDocuments)
+        .innerJoin(documents, eq(workflowLifeAdminDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
         .where(and(
-          eq(pipelineCaseDocuments.companyId, companyId),
-          eq(pipelineCaseDocuments.caseId, caseId),
-          eq(pipelineCaseDocuments.key, key),
+          eq(workflowLifeAdminDocuments.domainId, domainId),
+          eq(workflowLifeAdminDocuments.lifeAdminId, lifeAdminId),
+          eq(workflowLifeAdminDocuments.key, key),
         ))
         .limit(1)
         .then((rows) => rows[0] ?? null);
-      if (!existing) throw notFound("Workflow case document not found");
+      if (!existing) throw notFound("Workflow life_admin document not found");
 
       const sourceRevision = await tx
         .select()
@@ -1810,7 +1810,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         .where(and(eq(documentRevisions.id, revisionId), eq(documentRevisions.documentId, existing.document.id)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
-      if (!sourceRevision) throw notFound("Workflow case document revision not found");
+      if (!sourceRevision) throw notFound("Workflow life_admin document revision not found");
       if (existing.document.latestRevisionId === sourceRevision.id) {
         throw conflict("Selected revision is already the latest revision", {
           currentRevisionId: existing.document.latestRevisionId,
@@ -1820,7 +1820,7 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       const now = new Date();
       const nextRevisionNumber = existing.document.latestRevisionNumber + 1;
       const [restoredRevision] = await tx.insert(documentRevisions).values({
-        companyId,
+        domainId,
         documentId: existing.document.id,
         revisionNumber: nextRevisionNumber,
         title: sourceRevision.title ?? null,
@@ -1842,12 +1842,12 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
         updatedByUserId: actor.type === "user" ? actor.userId : null,
         updatedAt: now,
       }).where(eq(documents.id, existing.document.id)).returning();
-      await tx.update(pipelineCaseDocuments).set({ updatedAt: now }).where(eq(pipelineCaseDocuments.documentId, existing.document.id));
+      await tx.update(workflowLifeAdminDocuments).set({ updatedAt: now }).where(eq(workflowLifeAdminDocuments.documentId, existing.document.id));
 
       const linkedIssueDocuments = await tx
         .select({ issueId: issueDocuments.issueId, key: issueDocuments.key })
         .from(issueDocuments)
-        .where(and(eq(issueDocuments.companyId, companyId), eq(issueDocuments.documentId, existing.document.id)));
+        .where(and(eq(issueDocuments.domainId, domainId), eq(issueDocuments.documentId, existing.document.id)));
 
       return {
         document: document!,
@@ -1869,11 +1869,11 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
       })
     ));
     await logActivity(db, {
-      companyId,
+      domainId,
       ...activityActorForWorkflowRoute(actor),
-      action: "pipeline.case_document_restored",
-      entityType: "pipeline_case",
-      entityId: caseId,
+      action: "workflow.life_admin_document_restored",
+      entityType: "workflow_life_admin",
+      entityId: lifeAdminId,
       details: {
         key,
         documentId: result.document.id,
@@ -1887,67 +1887,67 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.json(result);
   });
 
-  // Direct children of a case, scoped by parent rather than pipeline. Children can be
+  // Direct children of a life_admin, scoped by parent rather than workflow. Children can be
   // parented across workflows (release -> feature -> content trees), so this must not
-  // filter by a single pipelineId the way GET /workflows/:pipelineId/life_admin does — that
-  // filter hides cross-pipeline children even though childCount counts them.
-  router.get("/life_admin/:caseId/children", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  // filter by a single workflowId the way GET /workflows/:workflowId/life_admin does — that
+  // filter hides cross-workflow children even though childCount counts them.
+  router.get("/life_admin/:lifeAdminId/children", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const rows = await db
-      .select({ case: pipelineLifeAdmin, stage: pipelineStages })
-      .from(pipelineLifeAdmin)
-      .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
+      .select({ life_admin: workflowLifeAdmin, stage: workflowStages })
+      .from(workflowLifeAdmin)
+      .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
       .where(and(
-        eq(pipelineLifeAdmin.companyId, companyId),
-        eq(pipelineLifeAdmin.parentCaseId, caseId),
-        isNull(pipelineLifeAdmin.hiddenFromBoardAt),
+        eq(workflowLifeAdmin.domainId, domainId),
+        eq(workflowLifeAdmin.parentLifeAdminId, lifeAdminId),
+        isNull(workflowLifeAdmin.hiddenFromBoardAt),
       ))
-      .orderBy(asc(pipelineLifeAdmin.createdAt));
-    const caseIds = rows.map((row) => row.case.id);
+      .orderBy(asc(workflowLifeAdmin.createdAt));
+    const lifeAdminIds = rows.map((row) => row.life_admin.id);
     const [activeWork, descendantActiveWorkCounts] = await Promise.all([
-      loadActiveWorkForLifeAdmin(db, companyId, caseIds),
-      loadDescendantActiveWorkCountsForLifeAdmin(db, companyId, caseIds),
+      loadActiveWorkForLifeAdmin(db, domainId, lifeAdminIds),
+      loadDescendantActiveWorkCountsForLifeAdmin(db, domainId, lifeAdminIds),
     ]);
     res.json(rows.map((row) => ({
       ...row,
-      activeWork: activeWork.get(row.case.id) ?? null,
-      descendantActiveWorkCount: descendantActiveWorkCounts.get(row.case.id) ?? 0,
+      activeWork: activeWork.get(row.life_admin.id) ?? null,
+      descendantActiveWorkCount: descendantActiveWorkCounts.get(row.life_admin.id) ?? 0,
     })));
   });
 
-  router.patch("/life_admin/:caseId", validate(casePatchSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.patch("/life_admin/:lifeAdminId", validate(life_adminPatchSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
-    const updated = await svc.patchCaseContent({ companyId, caseId, ...req.body, actor });
+    const updated = await svc.patchLifeAdminContent({ domainId, lifeAdminId, ...req.body, actor });
     res.json(updated);
   });
 
-  router.post("/life_admin/:caseId/claim", validate(claimCaseSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/claim", validate(claimLifeAdminSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
     if (actor.type === "system") throw forbidden();
-    const claimed = await svc.claimLifeAdmin({ companyId, caseId, actor, leaseMs: req.body.leaseSeconds ? req.body.leaseSeconds * 1000 : undefined });
-    res.json({ case: claimed, leaseToken: claimed.leaseToken, leaseExpiresAt: claimed.leaseExpiresAt });
+    const claimed = await svc.claimLifeAdmin({ domainId, lifeAdminId, actor, leaseMs: req.body.leaseSeconds ? req.body.leaseSeconds * 1000 : undefined });
+    res.json({ life_admin: claimed, leaseToken: claimed.leaseToken, leaseExpiresAt: claimed.leaseExpiresAt });
   });
 
-  router.post("/life_admin/:caseId/release", validate(releaseCaseSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/release", validate(releaseLifeAdminSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
-    if (req.body.force && actor.type === "agent") throw new HttpError(403, "Agents cannot force-release pipeline leases", { code: "forbidden" });
-    res.json(await svc.releaseLifeAdmin({ companyId, caseId, actor, leaseToken: req.body.leaseToken, force: req.body.force }));
+    if (req.body.force && actor.type === "agent") throw new HttpError(403, "Agents cannot force-release workflow leases", { code: "forbidden" });
+    res.json(await svc.releaseLifeAdmin({ domainId, lifeAdminId, actor, leaseToken: req.body.leaseToken, force: req.body.force }));
   });
 
-  router.post("/life_admin/:caseId/transition", validate(transitionCaseSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/transition", validate(transitionLifeAdminSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
     res.json(await svc.transitionLifeAdmin({
-      companyId,
-      caseId,
+      domainId,
+      lifeAdminId,
       toStageKey: req.body.toStageKey,
       expectedVersion: req.body.expectedVersion,
       leaseToken: req.body.leaseToken,
@@ -1958,20 +1958,20 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }));
   });
 
-  router.post("/life_admin/:caseId/suggest-transition", validate(suggestTransitionSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/suggest-transition", validate(suggestTransitionSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
-    res.json(await svc.suggestTransition({ companyId, caseId, ...req.body, actor }));
+    res.json(await svc.suggestTransition({ domainId, lifeAdminId, ...req.body, actor }));
   });
 
-  router.post("/life_admin/:caseId/resolve-suggestion", validate(resolveSuggestionSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/resolve-suggestion", validate(resolveSuggestionSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
     res.json(await svc.resolveSuggestion({
-      companyId,
-      caseId,
+      domainId,
+      lifeAdminId,
       suggestionId: req.body.suggestionId,
       decision: req.body.resolution,
       expectedVersion: req.body.expectedVersion,
@@ -1981,83 +1981,83 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }));
   });
 
-  router.post("/life_admin/:caseId/acknowledge-drift", validate(acknowledgeDriftSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/acknowledge-drift", validate(acknowledgeDriftSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
     res.json(await svc.acknowledgeDrift({
-      companyId,
-      caseId,
+      domainId,
+      lifeAdminId,
       expectedVersion: req.body.expectedVersion,
       actor,
     }));
   });
 
-  router.post("/life_admin/:caseId/review", validate(reviewCaseSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/review", validate(reviewLifeAdminSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
-    res.json(await svc.reviewLifeAdmin({ companyId, caseId, ...req.body, actor }));
+    res.json(await svc.reviewLifeAdmin({ domainId, lifeAdminId, ...req.body, actor }));
   });
 
-  router.put("/life_admin/:caseId/blockers", validate(blockersSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.put("/life_admin/:lifeAdminId/blockers", validate(blockersSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
-    res.json(await svc.replaceBlockers({ companyId, caseId, blockedByCaseIds: req.body.blockedByCaseIds, actor }));
+    res.json(await svc.replaceBlockers({ domainId, lifeAdminId, blockedByLifeAdminIds: req.body.blockedByLifeAdminIds, actor }));
   });
 
-  router.post("/life_admin/:caseId/open-conversation", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/open-conversation", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
-    const conversationSource = await resolveWorkflowCaseConversationSource(db, companyId, caseId);
+    const conversationSource = await resolveWorkflowLifeAdminConversationSource(db, domainId, lifeAdminId);
     if (conversationSource?.isActive) {
       res.json({ issue: conversationSource.issue, created: false });
       return;
     }
-    const detail = await getCaseDetail(db, companyId, caseId);
+    const detail = await getLifeAdminDetail(db, domainId, lifeAdminId);
     const [bodyDocumentContext, outputSummaries] = await Promise.all([
-      loadWorkflowConversationBodyDocumentContext(db, { companyId, caseId }),
-      outputsSvc.listCaseOutputs(companyId, caseId).then((outputs) => summarizeWorkflowCaseOutputsForContext(outputs)),
+      loadWorkflowConversationBodyDocumentContext(db, { domainId, lifeAdminId }),
+      outputsSvc.listLifeAdminOutputs(domainId, lifeAdminId).then((outputs) => summarizeWorkflowLifeAdminOutputsForContext(outputs)),
     ]);
     const result = await db.transaction(async (tx) => {
-      const existingConversationSource = await resolveWorkflowCaseConversationSource(tx, companyId, caseId);
+      const existingConversationSource = await resolveWorkflowLifeAdminConversationSource(tx, domainId, lifeAdminId);
       if (existingConversationSource?.isActive) {
         return { issue: existingConversationSource.issue, created: false };
       }
       const [issue] = await tx.insert(issueRows).values({
-        companyId,
-        title: `Discuss: ${detail.case.title}`,
-        description: buildCaseContextMarkdown(detail, bodyDocumentContext, outputSummaries),
+        domainId,
+        title: `Discuss: ${detail.life_admin.title}`,
+        description: buildLifeAdminContextMarkdown(detail, bodyDocumentContext, outputSummaries),
         status: "todo",
         priority: "medium",
         parentId: existingConversationSource?.issue?.id ?? conversationSource?.issue?.id ?? null,
-        originKind: "pipeline_case_conversation",
-        originId: detail.case.id,
+        originKind: "workflow_life_admin_conversation",
+        originId: detail.life_admin.id,
         createdByAgentId: actor.type === "agent" ? actor.agentId : null,
         createdByUserId: actor.type === "user" ? actor.userId : null,
       }).returning();
-      await tx.insert(pipelineCaseIssueLinks).values({
-        companyId,
-        caseId,
+      await tx.insert(workflowLifeAdminIssueLinks).values({
+        domainId,
+        lifeAdminId,
         issueId: issue!.id,
         role: "conversation",
         createdByRunId: actor.type === "agent" ? actor.runId : null,
       });
       if (bodyDocumentContext.bodyDocument) {
         await tx.insert(issueDocuments).values({
-          companyId,
+          domainId,
           issueId: issue!.id,
           documentId: bodyDocumentContext.bodyDocument.id,
-          key: PIPELINE_CASE_BODY_DOCUMENT_KEY,
+          key: WORKFLOW_LIFE_ADMIN_BODY_DOCUMENT_KEY,
           createdAt: new Date(),
           updatedAt: new Date(),
         }).onConflictDoNothing();
       }
       await writeRouteEvent(tx, {
-        companyId,
-        caseId,
+        domainId,
+        lifeAdminId,
         type: "conversation_opened",
         actor,
         payload: { issueId: issue!.id },
@@ -2067,47 +2067,47 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.status(result.created ? 201 : 200).json(result);
   });
 
-  router.get("/life_admin/:caseId/issue-links", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.get("/life_admin/:lifeAdminId/issue-links", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const links = await db
-      .select({ link: pipelineCaseIssueLinks, issue: issueRows })
-      .from(pipelineCaseIssueLinks)
-      .innerJoin(issueRows, eq(pipelineCaseIssueLinks.issueId, issueRows.id))
+      .select({ link: workflowLifeAdminIssueLinks, issue: issueRows })
+      .from(workflowLifeAdminIssueLinks)
+      .innerJoin(issueRows, eq(workflowLifeAdminIssueLinks.issueId, issueRows.id))
       .where(and(
-        eq(pipelineCaseIssueLinks.companyId, companyId),
-        eq(pipelineCaseIssueLinks.caseId, caseId),
-        eq(issueRows.companyId, companyId),
+        eq(workflowLifeAdminIssueLinks.domainId, domainId),
+        eq(workflowLifeAdminIssueLinks.lifeAdminId, lifeAdminId),
+        eq(issueRows.domainId, domainId),
       ))
-      .orderBy(asc(pipelineCaseIssueLinks.createdAt));
+      .orderBy(asc(workflowLifeAdminIssueLinks.createdAt));
     res.json(links);
   });
 
-  router.get("/life_admin/:caseId/outputs", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    res.json(await outputsSvc.listCaseOutputs(companyId, caseId));
+  router.get("/life_admin/:lifeAdminId/outputs", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    res.json(await outputsSvc.listLifeAdminOutputs(domainId, lifeAdminId));
   });
 
-  router.post("/life_admin/:caseId/issue-links", validate(createIssueLinkSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/issue-links", validate(createIssueLinkSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
-    const targetIssue = await getIssueMutationTarget(db, { companyId, issueId: req.body.issueId });
+    const targetIssue = await getIssueMutationTarget(db, { domainId, issueId: req.body.issueId });
     if (!targetIssue) throw notFound("Issue not found");
     await assertIssueLinkMutationAllowed(req, { access, issuesSvc, issue: targetIssue });
     try {
       const link = await db.transaction(async (tx) => {
-        const [created] = await tx.insert(pipelineCaseIssueLinks).values({
-          companyId,
-          caseId,
+        const [created] = await tx.insert(workflowLifeAdminIssueLinks).values({
+          domainId,
+          lifeAdminId,
           issueId: req.body.issueId,
           role: req.body.role,
           createdByRunId: actor.type === "agent" ? actor.runId : null,
         }).returning();
         await writeRouteEvent(tx, {
-          companyId,
-          caseId,
+          domainId,
+          lifeAdminId,
           type: "issue_linked",
           actor,
           payload: { issueId: req.body.issueId, role: req.body.role },
@@ -2120,38 +2120,38 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }
   });
 
-  router.delete("/life_admin/:caseId/issue-links/:linkId", async (req, res) => {
-    const caseId = req.params.caseId as string;
+  router.delete("/life_admin/:lifeAdminId/issue-links/:linkId", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
     const linkId = req.params.linkId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
     const existingLink = await db
-      .select({ issueId: pipelineCaseIssueLinks.issueId })
-      .from(pipelineCaseIssueLinks)
+      .select({ issueId: workflowLifeAdminIssueLinks.issueId })
+      .from(workflowLifeAdminIssueLinks)
       .where(and(
-        eq(pipelineCaseIssueLinks.id, linkId),
-        eq(pipelineCaseIssueLinks.companyId, companyId),
-        eq(pipelineCaseIssueLinks.caseId, caseId),
+        eq(workflowLifeAdminIssueLinks.id, linkId),
+        eq(workflowLifeAdminIssueLinks.domainId, domainId),
+        eq(workflowLifeAdminIssueLinks.lifeAdminId, lifeAdminId),
       ))
       .limit(1)
       .then((rows) => rows[0] ?? null);
-    if (!existingLink) throw notFound("Workflow case issue link not found");
-    const targetIssue = await getIssueMutationTarget(db, { companyId, issueId: existingLink.issueId });
+    if (!existingLink) throw notFound("Workflow life_admin issue link not found");
+    const targetIssue = await getIssueMutationTarget(db, { domainId, issueId: existingLink.issueId });
     if (!targetIssue) throw notFound("Issue not found");
     await assertIssueLinkMutationAllowed(req, { access, issuesSvc, issue: targetIssue });
     const deleted = await db.transaction(async (tx) => {
       const [removed] = await tx
-        .delete(pipelineCaseIssueLinks)
+        .delete(workflowLifeAdminIssueLinks)
         .where(and(
-          eq(pipelineCaseIssueLinks.id, linkId),
-          eq(pipelineCaseIssueLinks.companyId, companyId),
-          eq(pipelineCaseIssueLinks.caseId, caseId),
+          eq(workflowLifeAdminIssueLinks.id, linkId),
+          eq(workflowLifeAdminIssueLinks.domainId, domainId),
+          eq(workflowLifeAdminIssueLinks.lifeAdminId, lifeAdminId),
         ))
         .returning();
       if (!removed) return null;
       await writeRouteEvent(tx, {
-        companyId,
-        caseId,
+        domainId,
+        lifeAdminId,
         type: "issue_unlinked",
         actor,
         payload: { issueId: removed.issueId, role: removed.role, linkId: removed.id },
@@ -2161,47 +2161,47 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     res.json({ deleted: true });
   });
 
-  router.get("/life_admin/:caseId/events", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    const pagination = parseCaseEventsQuery(req.query);
-    res.json(await svc.listCaseEventsPage(companyId, caseId, pagination));
+  router.get("/life_admin/:lifeAdminId/events", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    const pagination = parseLifeAdminEventsQuery(req.query);
+    res.json(await svc.listLifeAdminEventsPage(domainId, lifeAdminId, pagination));
   });
 
-  router.get("/life_admin/:caseId/children/tree", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    res.json(await getCaseChildrenTree(db, companyId, caseId));
+  router.get("/life_admin/:lifeAdminId/children/tree", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    res.json(await getLifeAdminChildrenTree(db, domainId, lifeAdminId));
   });
 
-  router.get("/life_admin/:caseId/rollup", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    res.json(await svc.getCaseRollup(companyId, caseId));
+  router.get("/life_admin/:lifeAdminId/rollup", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    res.json(await svc.getLifeAdminRollup(domainId, lifeAdminId));
   });
 
-  router.get("/life_admin/:caseId/context-pack", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    const detail = await getCaseDetail(db, companyId, caseId);
+  router.get("/life_admin/:lifeAdminId/context-pack", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    const detail = await getLifeAdminDetail(db, domainId, lifeAdminId);
     const [events, outputs, childOutcomes] = await Promise.all([
-      svc.listCaseEventsPage(companyId, caseId, {
-        limit: PIPELINE_CONTEXT_PACK_EVENT_LIMIT,
+      svc.listLifeAdminEventsPage(domainId, lifeAdminId, {
+        limit: WORKFLOW_CONTEXT_PACK_EVENT_LIMIT,
         order: "desc",
       }),
-      outputsSvc.listCaseOutputs(companyId, caseId),
-      getChildOutcomeSummaries(db, companyId, caseId),
+      outputsSvc.listLifeAdminOutputs(domainId, lifeAdminId),
+      getChildOutcomeSummaries(db, domainId, lifeAdminId),
     ]);
-    const outputSummaries = summarizeWorkflowCaseOutputsForContext(outputs);
+    const outputSummaries = summarizeWorkflowLifeAdminOutputsForContext(outputs);
     res.json({
-      case: {
-        id: detail.case.id,
-        caseKey: detail.case.caseKey,
-        title: detail.case.title,
-        version: detail.case.version,
+      life_admin: {
+        id: detail.life_admin.id,
+        life_adminKey: detail.life_admin.life_adminKey,
+        title: detail.life_admin.title,
+        version: detail.life_admin.version,
         untrustedContent: {
-          summary: detail.case.summary,
-          fields: detail.case.fields,
+          summary: detail.life_admin.summary,
+          fields: detail.life_admin.fields,
         },
       },
       stage: detail.stage,
@@ -2214,38 +2214,38 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     });
   });
 
-  router.get("/life_admin/:caseId/automation/retry-plan", async (req, res) => {
-    const caseId = req.params.caseId as string;
+  router.get("/life_admin/:lifeAdminId/automation/retry-plan", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
     const query = retryAutomationQuerySchema.parse(req.query);
-    const companyId = await assertCaseAccess(db, req, caseId);
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const plan = await svc.getAutomationRetryPlan({
-      companyId,
-      caseId,
+      domainId,
+      lifeAdminId,
       scope: query.scope,
       targetStageId: query.targetStageId,
     });
     if (plan.targetStage) {
-      await assertStageAutomationTargetWriteAccess(db, req, { access, companyId, stage: plan.targetStage });
+      await assertStageAutomationTargetWriteAccess(db, req, { access, domainId, stage: plan.targetStage });
     }
     res.json(plan);
   });
 
-  router.post("/life_admin/:caseId/automation/retry", validate(pipelineAutomationRetryRequestSchema), async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
+  router.post("/life_admin/:lifeAdminId/automation/retry", validate(workflowAutomationRetryRequestSchema), async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
     const actor = actorForMutation(req);
     const plan = await svc.getAutomationRetryPlan({
-      companyId,
-      caseId,
+      domainId,
+      lifeAdminId,
       scope: req.body.scope,
       targetStageId: req.body.targetStageId,
     });
     if (plan.targetStage) {
-      await assertStageAutomationTargetWriteAccess(db, req, { access, companyId, stage: plan.targetStage });
+      await assertStageAutomationTargetWriteAccess(db, req, { access, domainId, stage: plan.targetStage });
     }
     res.json(await svc.retryStageAutomation({
-      companyId,
-      caseId,
+      domainId,
+      lifeAdminId,
       scope: req.body.scope,
       targetStageId: req.body.targetStageId,
       expectedVersion: req.body.expectedVersion,
@@ -2254,46 +2254,46 @@ export function pipelineRoutes(db: Db, options: Parameters<typeof pipelineServic
     }));
   });
 
-  router.post("/life_admin/:caseId/automations/:automationId/retry", async (req, res) => {
-    const caseId = req.params.caseId as string;
+  router.post("/life_admin/:lifeAdminId/automations/:automationId/retry", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
     const automationId = req.params.automationId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, companyId, caseId, automationId });
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, domainId, lifeAdminId, automationId });
     const actor = actorForMutation(req);
-    res.json(await svc.retryAutomation({ companyId, caseId, automationId, actor }));
+    res.json(await svc.retryAutomation({ domainId, lifeAdminId, automationId, actor }));
   });
 
-  router.post("/life_admin/:caseId/automation/current-stage/rerun", async (req, res) => {
-    const caseId = req.params.caseId as string;
-    const companyId = await assertCaseAccess(db, req, caseId);
-    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, companyId, caseId });
+  router.post("/life_admin/:lifeAdminId/automation/current-stage/rerun", async (req, res) => {
+    const lifeAdminId = req.params.lifeAdminId as string;
+    const domainId = await assertLifeAdminAccess(db, req, lifeAdminId);
+    await assertCurrentStageAutomationTargetWriteAccess(db, req, { access, domainId, lifeAdminId });
     const actor = actorForMutation(req);
-    res.json(await svc.rerunCurrentStageAutomation({ companyId, caseId, actor }));
+    res.json(await svc.rerunCurrentStageAutomation({ domainId, lifeAdminId, actor }));
   });
 
   return router;
 }
 
-async function getCaseDetail(db: Db, companyId: string, caseId: string) {
+async function getLifeAdminDetail(db: Db, domainId: string, lifeAdminId: string) {
   const row = await db
-    .select({ case: pipelineLifeAdmin, stage: pipelineStages, pipeline: workflows })
-    .from(pipelineLifeAdmin)
-    .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
-    .innerJoin(workflows, eq(pipelineLifeAdmin.pipelineId, workflows.id))
-    .where(and(eq(pipelineLifeAdmin.companyId, companyId), eq(pipelineLifeAdmin.id, caseId)))
+    .select({ life_admin: workflowLifeAdmin, stage: workflowStages, workflow: workflows })
+    .from(workflowLifeAdmin)
+    .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
+    .innerJoin(workflows, eq(workflowLifeAdmin.workflowId, workflows.id))
+    .where(and(eq(workflowLifeAdmin.domainId, domainId), eq(workflowLifeAdmin.id, lifeAdminId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  if (!row) throw notFound("Workflow case not found");
-  const parentCasePromise = row.case.parentCaseId
+  if (!row) throw notFound("Workflow life_admin not found");
+  const parentLifeAdminPromise = row.life_admin.parentLifeAdminId
     ? db
-      .select({ case: pipelineLifeAdmin, stage: pipelineStages, pipeline: workflows })
-      .from(pipelineLifeAdmin)
-      .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
-      .innerJoin(workflows, eq(pipelineLifeAdmin.pipelineId, workflows.id))
+      .select({ life_admin: workflowLifeAdmin, stage: workflowStages, workflow: workflows })
+      .from(workflowLifeAdmin)
+      .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
+      .innerJoin(workflows, eq(workflowLifeAdmin.workflowId, workflows.id))
       .where(and(
-        eq(pipelineLifeAdmin.companyId, companyId),
-        eq(pipelineLifeAdmin.id, row.case.parentCaseId),
-        eq(workflows.companyId, companyId),
+        eq(workflowLifeAdmin.domainId, domainId),
+        eq(workflowLifeAdmin.id, row.life_admin.parentLifeAdminId),
+        eq(workflows.domainId, domainId),
       ))
       .limit(1)
       .then((rows) => rows[0] ?? null)
@@ -2311,23 +2311,23 @@ async function getCaseDetail(db: Db, companyId: string, caseId: string) {
     liveness,
     builtFromAutomation,
   ] = await Promise.all([
-    db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, row.case.pipelineId)).orderBy(asc(pipelineStages.position)),
-    db.select().from(pipelineCaseIssueLinks).where(and(eq(pipelineCaseIssueLinks.companyId, companyId), eq(pipelineCaseIssueLinks.caseId, caseId))),
-    db.select().from(pipelineCaseBlockers).where(and(eq(pipelineCaseBlockers.companyId, companyId), eq(pipelineCaseBlockers.caseId, caseId))),
-    db.select().from(pipelineCaseBlockers).where(and(eq(pipelineCaseBlockers.companyId, companyId), eq(pipelineCaseBlockers.blockedByCaseId, caseId))),
-    getDirectChildrenSummary(db, companyId, caseId),
-    loadActiveWorkForLifeAdmin(db, companyId, [caseId]),
-    loadDescendantActiveWorkCountsForLifeAdmin(db, companyId, [caseId]),
-    parentCasePromise,
-    resolveWorkflowCaseConversationSource(db, companyId, caseId),
-    deriveWorkflowCaseLiveness(db, companyId, row),
-    loadBuiltFromAutomation(db, companyId, row.case),
+    db.select().from(workflowStages).where(eq(workflowStages.workflowId, row.life_admin.workflowId)).orderBy(asc(workflowStages.position)),
+    db.select().from(workflowLifeAdminIssueLinks).where(and(eq(workflowLifeAdminIssueLinks.domainId, domainId), eq(workflowLifeAdminIssueLinks.lifeAdminId, lifeAdminId))),
+    db.select().from(workflowLifeAdminBlockers).where(and(eq(workflowLifeAdminBlockers.domainId, domainId), eq(workflowLifeAdminBlockers.lifeAdminId, lifeAdminId))),
+    db.select().from(workflowLifeAdminBlockers).where(and(eq(workflowLifeAdminBlockers.domainId, domainId), eq(workflowLifeAdminBlockers.blockedByLifeAdminId, lifeAdminId))),
+    getDirectChildrenSummary(db, domainId, lifeAdminId),
+    loadActiveWorkForLifeAdmin(db, domainId, [lifeAdminId]),
+    loadDescendantActiveWorkCountsForLifeAdmin(db, domainId, [lifeAdminId]),
+    parentLifeAdminPromise,
+    resolveWorkflowLifeAdminConversationSource(db, domainId, lifeAdminId),
+    deriveWorkflowLifeAdminLiveness(db, domainId, row),
+    loadBuiltFromAutomation(db, domainId, row.life_admin),
   ]);
   return {
     ...row,
-    // Derived, invisible: a case's "type" is simply which pipeline it lives in.
+    // Derived, invisible: a life_admin's "type" is simply which workflow it lives in.
     // Used internally for display and ingest sanity-checks; not a user field.
-    caseType: deriveCaseType(row.pipeline),
+    lifeAdminType: deriveLifeAdminType(row.workflow),
     allowedNextStages,
     links,
     blockers,
@@ -2336,19 +2336,19 @@ async function getCaseDetail(db: Db, companyId: string, caseId: string) {
       childCount: childrenCounts.total,
       terminalChildCount: childrenCounts.done + childrenCounts.dropped,
       loadedChildren: childrenCounts.total,
-      descendantActiveWorkCount: descendantActiveWorkCounts.get(caseId) ?? 0,
+      descendantActiveWorkCount: descendantActiveWorkCounts.get(lifeAdminId) ?? 0,
       ...childrenCounts,
     },
-    activeWork: activeWorkByLifeAdmin.get(caseId) ?? null,
+    activeWork: activeWorkByLifeAdmin.get(lifeAdminId) ?? null,
     liveness,
     conversationSource,
     builtFromAutomation,
     parentLifeAdmin,
-    pendingSuggestion: row.case.pendingSuggestion,
+    pendingSuggestion: row.life_admin.pendingSuggestion,
   };
 }
 
-function stageAutomationId(stage: typeof pipelineStages.$inferSelect) {
+function stageAutomationId(stage: typeof workflowStages.$inferSelect) {
   const config = stage.config && typeof stage.config === "object" && !Array.isArray(stage.config)
     ? stage.config as WorkflowStageConfig
     : null;
@@ -2359,33 +2359,33 @@ function stageAutomationId(stage: typeof pipelineStages.$inferSelect) {
 
 async function loadBuiltFromAutomation(
   db: Db,
-  companyId: string,
-  caseRow: typeof pipelineLifeAdmin.$inferSelect,
+  domainId: string,
+  lifeAdminRow: typeof workflowLifeAdmin.$inferSelect,
 ) {
-  if (!caseRow.automationAttemptId) return null;
+  if (!lifeAdminRow.automationAttemptId) return null;
   const row = await db
     .select({
-      execution: pipelineAutomationExecutions,
-      sourceLifeAdmin: pipelineLifeAdmin,
+      execution: workflowAutomationExecutions,
+      sourceLifeAdmin: workflowLifeAdmin,
       sourceWorkflow: workflows,
       routine: routines,
     })
-    .from(pipelineAutomationExecutions)
-    .innerJoin(pipelineLifeAdmin, and(
-      eq(pipelineLifeAdmin.companyId, companyId),
-      eq(pipelineLifeAdmin.id, pipelineAutomationExecutions.caseId),
+    .from(workflowAutomationExecutions)
+    .innerJoin(workflowLifeAdmin, and(
+      eq(workflowLifeAdmin.domainId, domainId),
+      eq(workflowLifeAdmin.id, workflowAutomationExecutions.lifeAdminId),
     ))
     .innerJoin(workflows, and(
-      eq(workflows.companyId, companyId),
-      eq(workflows.id, pipelineLifeAdmin.pipelineId),
+      eq(workflows.domainId, domainId),
+      eq(workflows.id, workflowLifeAdmin.workflowId),
     ))
     .innerJoin(routines, and(
-      eq(routines.companyId, companyId),
-      eq(routines.id, pipelineAutomationExecutions.routineId),
+      eq(routines.domainId, domainId),
+      eq(routines.id, workflowAutomationExecutions.routineId),
     ))
     .where(and(
-      eq(pipelineAutomationExecutions.companyId, companyId),
-      eq(pipelineAutomationExecutions.id, caseRow.automationAttemptId),
+      eq(workflowAutomationExecutions.domainId, domainId),
+      eq(workflowAutomationExecutions.id, lifeAdminRow.automationAttemptId),
     ))
     .limit(1)
     .then((rows) => rows[0] ?? null);
@@ -2393,8 +2393,8 @@ async function loadBuiltFromAutomation(
 
   const stages = await db
     .select()
-    .from(pipelineStages)
-    .where(eq(pipelineStages.pipelineId, row.sourceWorkflow.id));
+    .from(workflowStages)
+    .where(eq(workflowStages.workflowId, row.sourceWorkflow.id));
   const stage = stages.find((candidate) => stageAutomationId(candidate) === row.execution.automationId) ?? null;
 
   return {
@@ -2407,7 +2407,7 @@ async function loadBuiltFromAutomation(
       id: row.routine.id,
       title: row.routine.title,
     },
-    pipeline: {
+    workflow: {
       id: row.sourceWorkflow.id,
       key: row.sourceWorkflow.key,
       name: row.sourceWorkflow.name,
@@ -2420,11 +2420,11 @@ async function loadBuiltFromAutomation(
         kind: stage.kind,
       }
       : null,
-    case: {
+    life_admin: {
       id: row.sourceLifeAdmin.id,
-      caseKey: row.sourceLifeAdmin.caseKey,
+      life_adminKey: row.sourceLifeAdmin.life_adminKey,
       title: row.sourceLifeAdmin.title,
-      pipelineId: row.sourceLifeAdmin.pipelineId,
+      workflowId: row.sourceLifeAdmin.workflowId,
     },
   };
 }
@@ -2467,7 +2467,7 @@ function stageHasChildrenTerminalGate(config: unknown) {
     (typeof record.autoAdvanceOnChildrenTerminal === "string" && record.autoAdvanceOnChildrenTerminal.trim().length > 0);
 }
 
-function readStageAutomationId(stage: typeof pipelineStages.$inferSelect) {
+function readStageAutomationId(stage: typeof workflowStages.$inferSelect) {
   if (!stage.config || typeof stage.config !== "object" || Array.isArray(stage.config)) return null;
   const onEnterValue = (stage.config as Record<string, unknown>).onEnter;
   if (!onEnterValue || typeof onEnterValue !== "object" || Array.isArray(onEnterValue)) return null;
@@ -2478,7 +2478,7 @@ function readStageAutomationId(stage: typeof pipelineStages.$inferSelect) {
   return rawId.length > 0 ? rawId : `${stage.id}:on_enter`;
 }
 
-function readStageAutomationTargetWorkflowId(stage: typeof pipelineStages.$inferSelect) {
+function readStageAutomationTargetWorkflowId(stage: typeof workflowStages.$inferSelect) {
   if (!readStageAutomationId(stage)) return null;
   const breakdown = readStageBreakdownConfig(stage.config);
   const targetWorkflowId = typeof breakdown?.targetWorkflowId === "string" ? breakdown.targetWorkflowId.trim() : "";
@@ -2490,14 +2490,14 @@ async function assertStageAutomationTargetWriteAccess(
   req: Request,
   input: {
     access: ReturnType<typeof accessService>;
-    companyId: string;
+    domainId: string;
     stage: { id: string };
   },
 ) {
   const stage = await db
     .select()
-    .from(pipelineStages)
-    .where(eq(pipelineStages.id, input.stage.id))
+    .from(workflowStages)
+    .where(eq(workflowStages.id, input.stage.id))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (!stage) throw notFound("Workflow stage not found");
@@ -2505,8 +2505,8 @@ async function assertStageAutomationTargetWriteAccess(
   if (!targetWorkflowId) return;
   await assertWorkflowWriteAccess(req, {
     access: input.access,
-    companyId: input.companyId,
-    pipelineId: targetWorkflowId,
+    domainId: input.domainId,
+    workflowId: targetWorkflowId,
   });
 }
 
@@ -2515,19 +2515,19 @@ async function assertCurrentStageAutomationTargetWriteAccess(
   req: Request,
   input: {
     access: ReturnType<typeof accessService>;
-    companyId: string;
-    caseId: string;
+    domainId: string;
+    lifeAdminId: string;
     automationId?: string;
   },
 ) {
   const row = await db
-    .select({ stage: pipelineStages })
-    .from(pipelineLifeAdmin)
-    .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
-    .where(and(eq(pipelineLifeAdmin.companyId, input.companyId), eq(pipelineLifeAdmin.id, input.caseId)))
+    .select({ stage: workflowStages })
+    .from(workflowLifeAdmin)
+    .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
+    .where(and(eq(workflowLifeAdmin.domainId, input.domainId), eq(workflowLifeAdmin.id, input.lifeAdminId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  if (!row) throw notFound("Workflow case not found");
+  if (!row) throw notFound("Workflow life_admin not found");
 
   const currentAutomationId = readStageAutomationId(row.stage);
   if (input.automationId && currentAutomationId !== input.automationId) return;
@@ -2537,8 +2537,8 @@ async function assertCurrentStageAutomationTargetWriteAccess(
 
   await assertWorkflowWriteAccess(req, {
     access: input.access,
-    companyId: input.companyId,
-    pipelineId: targetWorkflowId,
+    domainId: input.domainId,
+    workflowId: targetWorkflowId,
   });
 }
 
@@ -2546,45 +2546,45 @@ function parsePermissionPreflightFingerprint(fingerprint: string | null) {
   if (!fingerprint) return null;
   const parts = fingerprint.split(":");
   if (parts.length < 7) return null;
-  const caseId = parts[0];
+  const lifeAdminId = parts[0];
   const stageId = parts[1];
   const targetWorkflowId = parts[parts.length - 4];
   const principalId = parts[parts.length - 3];
   const permissionKey = parts.slice(parts.length - 2).join(":");
   const automationId = parts.slice(2, parts.length - 4).join(":");
-  if (!caseId || !stageId || !automationId || !targetWorkflowId || !principalId || !permissionKey) return null;
-  return { caseId, stageId, automationId, targetWorkflowId, principalId, permissionKey };
+  if (!lifeAdminId || !stageId || !automationId || !targetWorkflowId || !principalId || !permissionKey) return null;
+  return { lifeAdminId, stageId, automationId, targetWorkflowId, principalId, permissionKey };
 }
 
-async function latestBreakdownCreatedEvent(db: Db, companyId: string, caseId: string) {
+async function latestBreakdownCreatedEvent(db: Db, domainId: string, lifeAdminId: string) {
   return db
     .select()
-    .from(pipelineCaseEvents)
+    .from(workflowLifeAdminEvents)
     .where(and(
-      eq(pipelineCaseEvents.companyId, companyId),
-      eq(pipelineCaseEvents.caseId, caseId),
-      eq(pipelineCaseEvents.type, "updated"),
-      sql`${pipelineCaseEvents.payload}->>'kind' = 'breakdown_created'`,
+      eq(workflowLifeAdminEvents.domainId, domainId),
+      eq(workflowLifeAdminEvents.lifeAdminId, lifeAdminId),
+      eq(workflowLifeAdminEvents.type, "updated"),
+      sql`${workflowLifeAdminEvents.payload}->>'kind' = 'breakdown_created'`,
     ))
-    .orderBy(desc(pipelineCaseEvents.createdAt), desc(pipelineCaseEvents.id))
+    .orderBy(desc(workflowLifeAdminEvents.createdAt), desc(workflowLifeAdminEvents.id))
     .limit(1)
     .then((rows) => rows[0] ?? null);
 }
 
-async function deriveWorkflowCaseLiveness(
+async function deriveWorkflowLifeAdminLiveness(
   db: Db,
-  companyId: string,
-  row: { case: typeof pipelineLifeAdmin.$inferSelect; stage: typeof pipelineStages.$inferSelect },
-): Promise<WorkflowCaseLiveness> {
-  if (row.case.terminalKind) {
+  domainId: string,
+  row: { life_admin: typeof workflowLifeAdmin.$inferSelect; stage: typeof workflowStages.$inferSelect },
+): Promise<WorkflowLifeAdminLiveness> {
+  if (row.life_admin.terminalKind) {
     return {
       state: "terminal",
       reason: "terminal",
-      message: `Workflow item is terminal (${row.case.terminalKind}).`,
+      message: `Workflow item is terminal (${row.life_admin.terminalKind}).`,
     };
   }
 
-  if (row.case.leaseToken && row.case.leaseExpiresAt && row.case.leaseExpiresAt.getTime() > Date.now()) {
+  if (row.life_admin.leaseToken && row.life_admin.leaseExpiresAt && row.life_admin.leaseExpiresAt.getTime() > Date.now()) {
     return {
       state: "live",
       reason: "lease_active",
@@ -2594,27 +2594,27 @@ async function deriveWorkflowCaseLiveness(
 
   const blockerLifeAdmin = await db
     .select({
-      id: pipelineLifeAdmin.id,
-      title: pipelineLifeAdmin.title,
-      terminalKind: pipelineLifeAdmin.terminalKind,
+      id: workflowLifeAdmin.id,
+      title: workflowLifeAdmin.title,
+      terminalKind: workflowLifeAdmin.terminalKind,
     })
-    .from(pipelineCaseBlockers)
-    .innerJoin(pipelineLifeAdmin, eq(pipelineCaseBlockers.blockedByCaseId, pipelineLifeAdmin.id))
+    .from(workflowLifeAdminBlockers)
+    .innerJoin(workflowLifeAdmin, eq(workflowLifeAdminBlockers.blockedByLifeAdminId, workflowLifeAdmin.id))
     .where(and(
-      eq(pipelineCaseBlockers.companyId, companyId),
-      eq(pipelineCaseBlockers.caseId, row.case.id),
-      or(isNull(pipelineLifeAdmin.terminalKind), ne(pipelineLifeAdmin.terminalKind, "done")),
+      eq(workflowLifeAdminBlockers.domainId, domainId),
+      eq(workflowLifeAdminBlockers.lifeAdminId, row.life_admin.id),
+      or(isNull(workflowLifeAdmin.terminalKind), ne(workflowLifeAdmin.terminalKind, "done")),
     ))
-    .orderBy(asc(pipelineLifeAdmin.createdAt))
+    .orderBy(asc(workflowLifeAdmin.createdAt))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (blockerLifeAdmin) {
     return {
       state: "blocked",
-      reason: "case_blocked",
+      reason: "life_admin_blocked",
       message: `Workflow item is blocked by "${blockerLifeAdmin.title}".`,
       blocker: {
-        caseId: blockerLifeAdmin.id,
+        lifeAdminId: blockerLifeAdmin.id,
         title: blockerLifeAdmin.title,
         terminalKind: blockerLifeAdmin.terminalKind,
       },
@@ -2622,17 +2622,17 @@ async function deriveWorkflowCaseLiveness(
   }
 
   const linkedIssues = await db
-    .select({ link: pipelineCaseIssueLinks, issue: issueRows })
-    .from(pipelineCaseIssueLinks)
-    .innerJoin(issueRows, eq(pipelineCaseIssueLinks.issueId, issueRows.id))
+    .select({ link: workflowLifeAdminIssueLinks, issue: issueRows })
+    .from(workflowLifeAdminIssueLinks)
+    .innerJoin(issueRows, eq(workflowLifeAdminIssueLinks.issueId, issueRows.id))
     .where(and(
-      eq(pipelineCaseIssueLinks.companyId, companyId),
-      eq(pipelineCaseIssueLinks.caseId, row.case.id),
-      inArray(pipelineCaseIssueLinks.role, ["automation", "work"]),
-      eq(issueRows.companyId, companyId),
+      eq(workflowLifeAdminIssueLinks.domainId, domainId),
+      eq(workflowLifeAdminIssueLinks.lifeAdminId, row.life_admin.id),
+      inArray(workflowLifeAdminIssueLinks.role, ["automation", "work"]),
+      eq(issueRows.domainId, domainId),
       isNull(issueRows.hiddenAt),
     ))
-    .orderBy(desc(issueRows.updatedAt), desc(pipelineCaseIssueLinks.createdAt));
+    .orderBy(desc(issueRows.updatedAt), desc(workflowLifeAdminIssueLinks.createdAt));
   const blockedIssue = linkedIssues.find(({ issue }) => issue.status === "blocked");
   if (blockedIssue) {
     const blocker = await db
@@ -2645,7 +2645,7 @@ async function deriveWorkflowCaseLiveness(
       .from(issueRelations)
       .innerJoin(issueRows, eq(issueRelations.issueId, issueRows.id))
       .where(and(
-        eq(issueRelations.companyId, companyId),
+        eq(issueRelations.domainId, domainId),
         eq(issueRelations.type, "blocks"),
         eq(issueRelations.relatedIssueId, blockedIssue.issue.id),
       ))
@@ -2683,12 +2683,12 @@ async function deriveWorkflowCaseLiveness(
 
   const latestAutomation = await db
     .select()
-    .from(pipelineAutomationExecutions)
+    .from(workflowAutomationExecutions)
     .where(and(
-      eq(pipelineAutomationExecutions.companyId, companyId),
-      eq(pipelineAutomationExecutions.caseId, row.case.id),
+      eq(workflowAutomationExecutions.domainId, domainId),
+      eq(workflowAutomationExecutions.lifeAdminId, row.life_admin.id),
     ))
-    .orderBy(desc(pipelineAutomationExecutions.updatedAt), desc(pipelineAutomationExecutions.createdAt))
+    .orderBy(desc(workflowAutomationExecutions.updatedAt), desc(workflowAutomationExecutions.createdAt))
     .limit(1)
     .then((rows) => rows[0] ?? null);
   if (latestAutomation?.status === "failed") {
@@ -2701,12 +2701,12 @@ async function deriveWorkflowCaseLiveness(
         actor: {
           type: "agent",
           agentId: parsedFingerprint.principalId,
-          companyId,
+          domainId,
           source: "agent_key",
         },
         action: "workflows:write",
-        resource: { type: "company", companyId },
-        scope: { pipelineId: parsedFingerprint.targetWorkflowId },
+        resource: { type: "domain", domainId },
+        scope: { workflowId: parsedFingerprint.targetWorkflowId },
       });
       if (decision.allowed) {
         return {
@@ -2727,7 +2727,7 @@ async function deriveWorkflowCaseLiveness(
       state: fingerprint ? "blocked" : "attention",
       reason: fingerprint ? "permission_preflight_failed" : "automation_failed",
       message: fingerprint
-        ? "Workflow automation is blocked until the configured assignee can write to the target pipeline."
+        ? "Workflow automation is blocked until the configured assignee can write to the target workflow."
         : "Workflow automation failed and needs retry or recovery.",
       automation: {
         automationId: latestAutomation.automationId,
@@ -2741,7 +2741,7 @@ async function deriveWorkflowCaseLiveness(
 
   const breakdownConfig = readStageBreakdownConfig(row.stage.config);
   if (breakdownConfig) {
-    const breakdownEvent = await latestBreakdownCreatedEvent(db, companyId, row.case.id);
+    const breakdownEvent = await latestBreakdownCreatedEvent(db, domainId, row.life_admin.id);
     if (!breakdownEvent) {
       return {
         state: "attention",
@@ -2752,13 +2752,13 @@ async function deriveWorkflowCaseLiveness(
     const expectedRequestKeys = readBreakdownRequestKeys(breakdownEvent.payload);
     const createdRows = expectedRequestKeys.length > 0
       ? await db
-        .select({ requestKey: pipelineLifeAdmin.requestKey })
-        .from(pipelineLifeAdmin)
+        .select({ requestKey: workflowLifeAdmin.requestKey })
+        .from(workflowLifeAdmin)
         .where(and(
-          eq(pipelineLifeAdmin.companyId, companyId),
-          eq(pipelineLifeAdmin.parentCaseId, row.case.id),
-          inArray(pipelineLifeAdmin.requestKey, expectedRequestKeys),
-          isNull(pipelineLifeAdmin.hiddenFromBoardAt),
+          eq(workflowLifeAdmin.domainId, domainId),
+          eq(workflowLifeAdmin.parentLifeAdminId, row.life_admin.id),
+          inArray(workflowLifeAdmin.requestKey, expectedRequestKeys),
+          isNull(workflowLifeAdmin.hiddenFromBoardAt),
         ))
       : [];
     const createdRequestKeys = [...new Set(createdRows
@@ -2774,7 +2774,7 @@ async function deriveWorkflowCaseLiveness(
       };
     }
     const waitForPieces = breakdownConfig.waitForPieces === true;
-    if (waitForPieces && row.case.childCount !== row.case.terminalChildCount) {
+    if (waitForPieces && row.life_admin.childCount !== row.life_admin.terminalChildCount) {
       return {
         state: "waiting",
         reason: "children_waiting",
@@ -2784,7 +2784,7 @@ async function deriveWorkflowCaseLiveness(
     }
   }
 
-  if (stageHasChildrenTerminalGate(row.stage.config) && row.case.childCount !== row.case.terminalChildCount) {
+  if (stageHasChildrenTerminalGate(row.stage.config) && row.life_admin.childCount !== row.life_admin.terminalChildCount) {
     return {
       state: "waiting",
       reason: "children_waiting",
@@ -2807,21 +2807,21 @@ async function deriveWorkflowCaseLiveness(
   };
 }
 
-function buildCaseContextMarkdown(
-  detail: Awaited<ReturnType<typeof getCaseDetail>>,
+function buildLifeAdminContextMarkdown(
+  detail: Awaited<ReturnType<typeof getLifeAdminDetail>>,
   bodyDocumentContext?: Awaited<ReturnType<typeof loadWorkflowConversationBodyDocumentContext>> | null,
-  outputSummaries?: ReturnType<typeof summarizeWorkflowCaseOutputsForContext> | null,
+  outputSummaries?: ReturnType<typeof summarizeWorkflowLifeAdminOutputsForContext> | null,
 ) {
   const bodyDocumentMarkdown = formatWorkflowConversationBodyDocumentContextMarkdown(bodyDocumentContext ?? null);
-  const outputMarkdown = formatWorkflowCaseOutputContextMarkdown(outputSummaries ?? null);
+  const outputMarkdown = formatWorkflowLifeAdminOutputContextMarkdown(outputSummaries ?? null);
   return [
     "## Workflow LifeAdmin Context",
     "",
     "## Conversation Instructions",
     "",
-    "This task is the conversation thread for the linked pipeline item.",
-    "Treat user comments in this thread as feedback on that pipeline item unless the user explicitly says otherwise.",
-    "Iterate the pipeline item body document unless the user explicitly asks for item metadata, stage changes, or follow-up work.",
+    "This task is the conversation thread for the linked workflow item.",
+    "Treat user comments in this thread as feedback on that workflow item unless the user explicitly says otherwise.",
+    "Iterate the workflow item body document unless the user explicitly asks for item metadata, stage changes, or follow-up work.",
     "Inspect connected documents and outputs when present; if feedback affects a connected document, revise it too so the item and supporting documents stay in sync.",
     "Editing this discussion task itself is not the primary deliverable unless the user specifically requests it.",
     "",
@@ -2831,26 +2831,26 @@ function buildCaseContextMarkdown(
     outputMarkdown ? "" : null,
     "## Workflow Item Context",
     "",
-    `Item: ${detail.case.title}`,
-    `Workflow: ${detail.pipeline.name} (${detail.pipeline.key})`,
+    `Item: ${detail.life_admin.title}`,
+    `Workflow: ${detail.workflow.name} (${detail.workflow.key})`,
     `Stage: ${detail.stage.name} (${detail.stage.key}, ${detail.stage.kind})`,
-    `Item link: /PAP/workflows/${detail.pipeline.id}/items/${detail.case.id}`,
+    `Item link: /PAP/workflows/${detail.workflow.id}/items/${detail.life_admin.id}`,
     "",
     "```json",
     JSON.stringify({
-      pipeline: {
-        id: detail.pipeline.id,
-        key: detail.pipeline.key,
-        name: detail.pipeline.name,
+      workflow: {
+        id: detail.workflow.id,
+        key: detail.workflow.key,
+        name: detail.workflow.name,
       },
-      case: {
-        id: detail.case.id,
-        caseKey: detail.case.caseKey,
-        title: detail.case.title,
-        version: detail.case.version,
+      life_admin: {
+        id: detail.life_admin.id,
+        life_adminKey: detail.life_admin.life_adminKey,
+        title: detail.life_admin.title,
+        version: detail.life_admin.version,
         untrustedContent: {
-          summary: detail.case.summary,
-          fields: detail.case.fields,
+          summary: detail.life_admin.summary,
+          fields: detail.life_admin.fields,
         },
       },
       stage: {
@@ -2864,49 +2864,49 @@ function buildCaseContextMarkdown(
   ].filter((line) => line !== null).join("\n");
 }
 
-async function getChildOutcomeSummaries(db: Db, companyId: string, caseId: string) {
+async function getChildOutcomeSummaries(db: Db, domainId: string, lifeAdminId: string) {
   const children = await db
-    .select({ case: pipelineLifeAdmin, stage: pipelineStages, pipeline: workflows })
-    .from(pipelineLifeAdmin)
-    .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
-    .innerJoin(workflows, eq(pipelineLifeAdmin.pipelineId, workflows.id))
-    .where(and(eq(pipelineLifeAdmin.companyId, companyId), eq(pipelineLifeAdmin.parentCaseId, caseId)))
-    .orderBy(asc(pipelineLifeAdmin.createdAt));
+    .select({ life_admin: workflowLifeAdmin, stage: workflowStages, workflow: workflows })
+    .from(workflowLifeAdmin)
+    .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
+    .innerJoin(workflows, eq(workflowLifeAdmin.workflowId, workflows.id))
+    .where(and(eq(workflowLifeAdmin.domainId, domainId), eq(workflowLifeAdmin.parentLifeAdminId, lifeAdminId)))
+    .orderBy(asc(workflowLifeAdmin.createdAt));
   if (children.length === 0) return [];
 
-  const childIds = children.map((row) => row.case.id);
+  const childIds = children.map((row) => row.life_admin.id);
   const reviewEvents = await db
     .select()
-    .from(pipelineCaseEvents)
+    .from(workflowLifeAdminEvents)
     .where(and(
-      eq(pipelineCaseEvents.companyId, companyId),
-      inArray(pipelineCaseEvents.caseId, childIds),
-      eq(pipelineCaseEvents.type, "review_decided"),
+      eq(workflowLifeAdminEvents.domainId, domainId),
+      inArray(workflowLifeAdminEvents.lifeAdminId, childIds),
+      eq(workflowLifeAdminEvents.type, "review_decided"),
     ))
-    .orderBy(desc(pipelineCaseEvents.createdAt), desc(pipelineCaseEvents.id));
-  const latestReviewByCaseId = new Map<string, typeof pipelineCaseEvents.$inferSelect>();
+    .orderBy(desc(workflowLifeAdminEvents.createdAt), desc(workflowLifeAdminEvents.id));
+  const latestReviewByLifeAdminId = new Map<string, typeof workflowLifeAdminEvents.$inferSelect>();
   for (const event of reviewEvents) {
-    if (!latestReviewByCaseId.has(event.caseId)) latestReviewByCaseId.set(event.caseId, event);
+    if (!latestReviewByLifeAdminId.has(event.lifeAdminId)) latestReviewByLifeAdminId.set(event.lifeAdminId, event);
   }
 
   return children.map((row) => {
-    const review = latestReviewByCaseId.get(row.case.id);
+    const review = latestReviewByLifeAdminId.get(row.life_admin.id);
     const reviewPayload = review?.payload && typeof review.payload === "object" && !Array.isArray(review.payload)
       ? review.payload as Record<string, unknown>
       : {};
     const decision = typeof reviewPayload.decision === "string" ? reviewPayload.decision : null;
     const reason = typeof reviewPayload.reason === "string" ? reviewPayload.reason : null;
     return {
-      id: row.case.id,
-      caseKey: row.case.caseKey,
-      title: row.case.title,
-      href: `/workflows/${row.pipeline.id}/items/${row.case.id}`,
-      pipeline: { id: row.pipeline.id, key: row.pipeline.key, name: row.pipeline.name },
+      id: row.life_admin.id,
+      life_adminKey: row.life_admin.life_adminKey,
+      title: row.life_admin.title,
+      href: `/workflows/${row.workflow.id}/items/${row.life_admin.id}`,
+      workflow: { id: row.workflow.id, key: row.workflow.key, name: row.workflow.name },
       stage: { id: row.stage.id, key: row.stage.key, name: row.stage.name, kind: row.stage.kind },
-      status: row.case.terminalKind ? "terminal" : "open",
-      terminalKind: row.case.terminalKind,
-      approved: decision === "approve" ? true : row.case.terminalKind === "done" ? true : null,
-      rejected: decision === "reject" ? true : row.case.terminalKind === "cancelled" ? true : null,
+      status: row.life_admin.terminalKind ? "terminal" : "open",
+      terminalKind: row.life_admin.terminalKind,
+      approved: decision === "approve" ? true : row.life_admin.terminalKind === "done" ? true : null,
+      rejected: decision === "reject" ? true : row.life_admin.terminalKind === "cancelled" ? true : null,
       reason,
     };
   });

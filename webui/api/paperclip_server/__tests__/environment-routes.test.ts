@@ -26,7 +26,7 @@ const mockProjectService = vi.hoisted(() => ({
 }));
 
 const mockInstanceSettingsService = vi.hoisted(() => ({
-  listCompanyIds: vi.fn(),
+  listDomainIds: vi.fn(),
 }));
 
 const mockEnvironmentService = vi.hoisted(() => ({
@@ -58,7 +58,7 @@ const mockProbeEnvironment = vi.hoisted(() => vi.fn());
 const mockSecretService = vi.hoisted(() => ({
   create: vi.fn(),
   normalizeEnvBindingsForPersistence: vi.fn(),
-  listBindingCompanyIdsForTarget: vi.fn(),
+  listBindingDomainIdsForTarget: vi.fn(),
   resolveSecretValue: vi.fn(),
   resolveSecretValueForEphemeralAccess: vi.fn(),
   syncEnvBindingsForTarget: vi.fn(),
@@ -119,7 +119,7 @@ function createEnvironment() {
   const now = new Date("2026-04-16T05:00:00.000Z");
   return {
     id: "env-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     name: "Local",
     description: "Current development machine",
     driver: "local",
@@ -227,7 +227,7 @@ describe("environment routes", () => {
     mockIssueService.clearExecutionWorkspaceEnvironmentSelection.mockReset();
     mockProjectService.getById.mockReset();
     mockProjectService.clearExecutionWorkspaceEnvironmentSelection.mockReset();
-    mockInstanceSettingsService.listCompanyIds.mockReset();
+    mockInstanceSettingsService.listDomainIds.mockReset();
     mockEnvironmentService.list.mockReset();
     mockEnvironmentService.list.mockResolvedValue([]);
     mockEnvironmentService.getById.mockReset();
@@ -250,7 +250,7 @@ describe("environment routes", () => {
     mockProbeEnvironment.mockReset();
     mockSecretService.create.mockReset();
     mockSecretService.normalizeEnvBindingsForPersistence.mockReset();
-    mockSecretService.listBindingCompanyIdsForTarget.mockReset();
+    mockSecretService.listBindingDomainIdsForTarget.mockReset();
     mockSecretService.resolveSecretValue.mockReset();
     mockSecretService.resolveSecretValueForEphemeralAccess.mockReset();
     mockSecretService.syncEnvBindingsForTarget.mockReset();
@@ -259,12 +259,12 @@ describe("environment routes", () => {
     mockSecretService.create.mockResolvedValue({
       id: "11111111-1111-1111-1111-111111111111",
     });
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1"]);
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-1"]);
     mockIssueService.clearExecutionWorkspaceEnvironmentSelection.mockResolvedValue(0);
     mockProjectService.clearExecutionWorkspaceEnvironmentSelection.mockResolvedValue(0);
     mockExecutionWorkspaceService.clearEnvironmentSelection.mockResolvedValue(0);
-    mockSecretService.normalizeEnvBindingsForPersistence.mockImplementation(async (_companyId, env) => env ?? {});
-    mockSecretService.listBindingCompanyIdsForTarget.mockResolvedValue([]);
+    mockSecretService.normalizeEnvBindingsForPersistence.mockImplementation(async (_domainId, env) => env ?? {});
+    mockSecretService.listBindingDomainIdsForTarget.mockResolvedValue([]);
     mockSecretService.syncEnvBindingsForTarget.mockResolvedValue([]);
     mockSecretService.syncSecretRefsForTarget.mockResolvedValue([]);
     mockSecretService.remove.mockResolvedValue(null);
@@ -320,7 +320,7 @@ describe("environment routes", () => {
     });
   });
 
-  it("lists instance-scoped environments through the company route alias", async () => {
+  it("lists instance-scoped environments through the domain route alias", async () => {
     mockEnvironmentService.list.mockResolvedValue([createEnvironment()]);
     const app = createApp({
       type: "board",
@@ -328,7 +328,7 @@ describe("environment routes", () => {
       source: "local_implicit",
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments?driver=local");
+    const res = await request(app).get("/api/domains/domain-1/environments?driver=local");
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
@@ -344,12 +344,12 @@ describe("environment routes", () => {
       type: "board",
       userId: "user-2",
       source: "session",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "member" }],
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", status: "active", membershipRole: "member" }],
       isInstanceAdmin: false,
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments");
+    const res = await request(app).get("/api/domains/domain-1/environments");
 
     expect(res.status).toBe(200);
     expect(res.body[0]).toMatchObject({
@@ -367,8 +367,8 @@ describe("environment routes", () => {
       type: "board",
       userId: "user-2",
       source: "session",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "member" }],
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", status: "active", membershipRole: "member" }],
       isInstanceAdmin: false,
     });
 
@@ -388,8 +388,8 @@ describe("environment routes", () => {
       type: "board",
       userId: "user-2",
       source: "session",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "member" }],
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", status: "active", membershipRole: "member" }],
       isInstanceAdmin: false,
     });
 
@@ -409,7 +409,7 @@ describe("environment routes", () => {
       type: "board",
       userId: "admin-1",
       source: "session",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       isInstanceAdmin: true,
     });
 
@@ -446,7 +446,7 @@ describe("environment routes", () => {
       type: "board",
       userId: "admin-1",
       source: "session",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       isInstanceAdmin: true,
     });
 
@@ -456,14 +456,14 @@ describe("environment routes", () => {
     expect(res.body.error).toBe("Environment not found");
   });
 
-  it("returns provider capabilities for the company", async () => {
+  it("returns provider capabilities for the domain", async () => {
     const app = createApp({
       type: "board",
       userId: "user-1",
       source: "local_implicit",
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments/capabilities");
+    const res = await request(app).get("/api/domains/domain-1/environments/capabilities");
 
     expect(res.status).toBe(200);
     expect(res.body.drivers.ssh).toBe("supported");
@@ -503,7 +503,7 @@ describe("environment routes", () => {
       source: "local_implicit",
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments/capabilities");
+    const res = await request(app).get("/api/domains/domain-1/environments/capabilities");
 
     expect(res.status).toBe(200);
     expect(res.body.sandboxProviders["secure-plugin"]).toMatchObject({
@@ -539,7 +539,7 @@ describe("environment routes", () => {
     mockEnvironmentService.list.mockResolvedValue([createEnvironment()]);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
       permissions: { canCreateAgents: false },
     });
@@ -547,12 +547,12 @@ describe("environment routes", () => {
     const app = createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments");
+    const res = await request(app).get("/api/domains/domain-1/environments");
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Board access required");
@@ -563,7 +563,7 @@ describe("environment routes", () => {
     mockEnvironmentService.getById.mockResolvedValue(createEnvironment());
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "cto",
       permissions: { canCreateAgents: true },
     });
@@ -571,7 +571,7 @@ describe("environment routes", () => {
     const app = createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
@@ -592,7 +592,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Local",
         driver: "local",
@@ -612,7 +612,7 @@ describe("environment routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
+        domainId: "domain-1",
         actorType: "user",
         actorId: "user-1",
         agentId: null,
@@ -633,7 +633,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Another Local",
         driver: "local",
@@ -645,7 +645,7 @@ describe("environment routes", () => {
     expect(mockEnvironmentService.create).not.toHaveBeenCalled();
   });
 
-  it("rejects non-admin board users even when they have company environment permissions", async () => {
+  it("rejects non-admin board users even when they have domain environment permissions", async () => {
     const environment = createEnvironment();
     mockAccessService.canUser.mockResolvedValue(true);
     mockEnvironmentService.create.mockResolvedValue(environment);
@@ -653,12 +653,12 @@ describe("environment routes", () => {
       type: "board",
       userId: "user-1",
       source: "session",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       isInstanceAdmin: false,
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Local",
         driver: "local",
@@ -676,12 +676,12 @@ describe("environment routes", () => {
       type: "board",
       userId: "user-1",
       source: "session",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       isInstanceAdmin: false,
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Local",
         driver: "local",
@@ -693,11 +693,11 @@ describe("environment routes", () => {
     expect(mockEnvironmentService.create).not.toHaveBeenCalled();
   });
 
-  it("rejects agent environment creation even with explicit company grants", async () => {
+  it("rejects agent environment creation even with explicit domain grants", async () => {
     const environment = createEnvironment();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
       permissions: { canCreateAgents: false },
     });
@@ -706,13 +706,13 @@ describe("environment routes", () => {
     const app = createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Local",
         driver: "local",
@@ -805,7 +805,7 @@ describe("environment routes", () => {
     mockEnvironmentService.getById.mockResolvedValue(environment);
     mockEnvironmentService.getDeleteBlastRadius.mockResolvedValue(createDeleteBlastRadius());
     mockEnvironmentService.removeIfDeletable.mockResolvedValue(environment);
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1", "company-2"]);
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-1", "domain-2"]);
     const app = createApp({
       type: "board",
       userId: "admin-1",
@@ -816,20 +816,20 @@ describe("environment routes", () => {
 
     expect(res.status).toBe(200);
     expect(mockEnvironmentService.removeIfDeletable).toHaveBeenCalledWith("env-ssh");
-    for (const companyId of ["company-1", "company-2"]) {
+    for (const domainId of ["domain-1", "domain-2"]) {
       expect(mockExecutionWorkspaceService.clearEnvironmentSelection)
-        .toHaveBeenCalledWith(companyId, "env-ssh");
+        .toHaveBeenCalledWith(domainId, "env-ssh");
       expect(mockIssueService.clearExecutionWorkspaceEnvironmentSelection)
-        .toHaveBeenCalledWith(companyId, "env-ssh");
+        .toHaveBeenCalledWith(domainId, "env-ssh");
       expect(mockProjectService.clearExecutionWorkspaceEnvironmentSelection)
-        .toHaveBeenCalledWith(companyId, "env-ssh");
+        .toHaveBeenCalledWith(domainId, "env-ssh");
       expect(mockSecretService.syncEnvBindingsForTarget).toHaveBeenCalledWith(
-        companyId,
+        domainId,
         { targetType: "environment", targetId: "env-ssh" },
         {},
       );
       expect(mockSecretService.syncSecretRefsForTarget).toHaveBeenCalledWith(
-        companyId,
+        domainId,
         { targetType: "environment", targetId: "env-ssh" },
         [],
         { replaceAll: true },
@@ -839,7 +839,7 @@ describe("environment routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
+        domainId: "domain-1",
         action: "environment.deleted",
         entityType: "environment",
         entityId: "env-ssh",
@@ -855,7 +855,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "SSH Fixture",
         driver: "ssh",
@@ -900,7 +900,7 @@ describe("environment routes", () => {
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "SSH Fixture",
         driver: "ssh",
@@ -926,7 +926,7 @@ describe("environment routes", () => {
     }));
     expect(JSON.stringify(mockEnvironmentService.create.mock.calls[0][0])).not.toContain("super-secret-key");
     expect(mockSecretService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         provider: "local_encrypted",
         value: "super-secret-key",
@@ -965,7 +965,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "SSH Fixture",
         driver: "ssh",
@@ -979,7 +979,7 @@ describe("environment routes", () => {
 
     expect(res.status).toBe(201);
     expect(mockSecretService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         provider: "aws_secrets_manager",
         value: "super-secret-key",
@@ -996,7 +996,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Fake Sandbox",
         driver: "sandbox",
@@ -1033,7 +1033,7 @@ describe("environment routes", () => {
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Fake plugin Sandbox",
         driver: "sandbox",
@@ -1118,7 +1118,7 @@ describe("environment routes", () => {
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Secure Sandbox",
         driver: "sandbox",
@@ -1158,7 +1158,7 @@ describe("environment routes", () => {
     });
     expect(JSON.stringify(mockEnvironmentService.create.mock.calls[0][0])).not.toContain("test-provider-key");
     expect(mockSecretService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         provider: "local_encrypted",
         value: "test-provider-key",
@@ -1215,7 +1215,7 @@ describe("environment routes", () => {
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Secure Sandbox",
         driver: "sandbox",
@@ -1230,7 +1230,7 @@ describe("environment routes", () => {
 
     expect(res.status).toBe(201);
     expect(mockSecretService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         provider: "aws_secrets_manager",
         value: "test-provider-key",
@@ -1263,7 +1263,7 @@ describe("environment routes", () => {
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Plugin Sandbox",
         driver: "plugin",
@@ -1297,7 +1297,7 @@ describe("environment routes", () => {
   it("rejects agent mutations for instance-scoped environments", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
       permissions: { canCreateAgents: false },
     });
@@ -1305,13 +1305,13 @@ describe("environment routes", () => {
     const app = createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Sandbox host",
         driver: "local",
@@ -1322,13 +1322,13 @@ describe("environment routes", () => {
     expect(mockEnvironmentService.create).not.toHaveBeenCalled();
   });
 
-  it("lists leases for an environment after company access is confirmed", async () => {
+  it("lists leases for an environment after domain access is confirmed", async () => {
     const environment = createEnvironment();
     mockEnvironmentService.getById.mockResolvedValue(environment);
     mockEnvironmentService.listLeases.mockResolvedValue([
       {
         id: "lease-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         environmentId: environment.id,
         executionWorkspaceId: "workspace-1",
         issueId: null,
@@ -1358,10 +1358,10 @@ describe("environment routes", () => {
     });
   });
 
-  it("returns a single lease after company access is confirmed", async () => {
+  it("returns a single lease after domain access is confirmed", async () => {
     mockEnvironmentService.getLeaseById.mockResolvedValue({
       id: "lease-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       environmentId: "env-1",
       executionWorkspaceId: "workspace-1",
       issueId: null,
@@ -1393,17 +1393,17 @@ describe("environment routes", () => {
     expect(mockEnvironmentService.getLeaseById).toHaveBeenCalledWith("lease-1");
   });
 
-  it("rejects agent access regardless of company when environment management is instance-scoped", async () => {
+  it("rejects agent access regardless of domain when environment management is instance-scoped", async () => {
     mockEnvironmentService.list.mockResolvedValue([]);
     const app = createApp({
       type: "agent",
       agentId: "agent-2",
-      companyId: "company-2",
+      domainId: "domain-2",
       source: "agent_key",
       runId: "run-2",
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments");
+    const res = await request(app).get("/api/domains/domain-1/environments");
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Board access required");
@@ -1424,7 +1424,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .patch(`/api/environments/${environment.id}?companyId=company-1`)
+      .patch(`/api/environments/${environment.id}?domainId=domain-1`)
       .send({
         status: "archived",
         config: {
@@ -1483,7 +1483,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .patch(`/api/environments/${environment.id}?companyId=company-1`)
+      .patch(`/api/environments/${environment.id}?domainId=domain-1`)
       .send({
         driver: "local",
       });
@@ -1506,7 +1506,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .patch("/api/environments/env-1?companyId=company-1")
+      .patch("/api/environments/env-1?domainId=domain-1")
       .send({
         driver: "ssh",
       });
@@ -1525,7 +1525,7 @@ describe("environment routes", () => {
     });
 
     const res = await request(app)
-      .patch("/api/environments/env-1?companyId=company-1")
+      .patch("/api/environments/env-1?domainId=domain-1")
       .send({
         driver: "sandbox",
         config: {
@@ -1594,7 +1594,7 @@ describe("environment routes", () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(mockProbeEnvironment).toHaveBeenCalledWith(expect.anything(), environment, {
-      companyId: null,
+      domainId: null,
       pluginWorkerManager: undefined,
       applyCustomImageTemplate: false,
       acquireSandboxRuntimeLease: false,
@@ -1602,7 +1602,7 @@ describe("environment routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
+        domainId: "domain-1",
         action: "environment.probed",
         entityType: "environment",
         entityId: environment.id,
@@ -1614,7 +1614,7 @@ describe("environment routes", () => {
     );
   });
 
-  it("requires explicit companyId when probing a secret-backed environment without inferable secret context", async () => {
+  it("requires explicit domainId when probing a secret-backed environment without inferable secret context", async () => {
     const environment = {
       ...createEnvironment(),
       driver: "ssh" as const,
@@ -1634,15 +1634,15 @@ describe("environment routes", () => {
       },
     };
     mockEnvironmentService.getById.mockResolvedValue(environment);
-    mockSecretService.listBindingCompanyIdsForTarget.mockResolvedValue([]);
+    mockSecretService.listBindingDomainIdsForTarget.mockResolvedValue([]);
     const app = createApp({
       type: "board",
       userId: "user-1",
       source: "session",
-      companyIds: ["company-1", "company-2"],
+      domainIds: ["domain-1", "domain-2"],
       memberships: [
-        { companyId: "company-1", status: "active", membershipRole: "member" },
-        { companyId: "company-2", status: "active", membershipRole: "member" },
+        { domainId: "domain-1", status: "active", membershipRole: "member" },
+        { domainId: "domain-2", status: "active", membershipRole: "member" },
       ],
       isInstanceAdmin: true,
       runId: "run-1",
@@ -1653,7 +1653,7 @@ describe("environment routes", () => {
       .send({});
 
     expect(res.status).toBe(422);
-    expect(res.body.error).toContain("explicit companyId");
+    expect(res.body.error).toContain("explicit domainId");
     expect(mockProbeEnvironment).not.toHaveBeenCalled();
   });
 
@@ -1694,7 +1694,7 @@ describe("environment routes", () => {
     expect(res.status).toBe(200);
     expect(res.body.driver).toBe("sandbox");
     expect(mockProbeEnvironment).toHaveBeenCalledWith(expect.anything(), environment, {
-      companyId: "company-1",
+      domainId: "domain-1",
       pluginWorkerManager: undefined,
       applyCustomImageTemplate: true,
       acquireSandboxRuntimeLease: true,
@@ -1702,7 +1702,7 @@ describe("environment routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
+        domainId: "domain-1",
         action: "environment.probed",
         entityType: "environment",
         entityId: environment.id,
@@ -1714,7 +1714,7 @@ describe("environment routes", () => {
     );
   });
 
-  it("probes saved sandbox environments with the active custom image template without company context", async () => {
+  it("probes saved sandbox environments with the active custom image template without domain context", async () => {
     const environment = {
       ...createEnvironment(),
       id: "env-sandbox",
@@ -1750,7 +1750,7 @@ describe("environment routes", () => {
     expect(res.status).toBe(200);
     expect(res.body.driver).toBe("sandbox");
     expect(mockProbeEnvironment).toHaveBeenCalledWith(expect.anything(), environment, {
-      companyId: "company-1",
+      domainId: "domain-1",
       pluginWorkerManager: undefined,
       applyCustomImageTemplate: true,
       acquireSandboxRuntimeLease: true,
@@ -1773,7 +1773,7 @@ describe("environment routes", () => {
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments/probe-config")
+      .post("/api/domains/domain-1/environments/probe-config")
       .send({
         name: "Draft Fake plugin",
         driver: "sandbox",
@@ -1848,7 +1848,7 @@ describe("environment routes", () => {
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments/probe-config")
+      .post("/api/domains/domain-1/environments/probe-config")
       .send({
         name: "Draft Secure Sandbox",
         driver: "sandbox",
@@ -1865,7 +1865,7 @@ describe("environment routes", () => {
     expect(mockEnvironmentService.create).not.toHaveBeenCalled();
     expect(mockSecretService.create).not.toHaveBeenCalled();
     expect(mockSecretService.resolveSecretValueForEphemeralAccess).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       "11111111-1111-1111-1111-111111111111",
       "latest",
       {
@@ -1931,12 +1931,12 @@ describe("environment routes", () => {
       type: "board",
       userId: "user-2",
       source: "session",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "member" }],
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", status: "active", membershipRole: "member" }],
     }, { pluginWorkerManager });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments/probe-config")
+      .post("/api/domains/domain-1/environments/probe-config")
       .send({
         name: "Draft Secure Sandbox",
         driver: "sandbox",

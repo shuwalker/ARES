@@ -19,7 +19,7 @@ describe("plugin SDK test harness", () => {
     harness.seed({
       executionWorkspaces: [{
         id: "workspace-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         projectId: "project-1",
         projectWorkspaceId: "project-workspace-1",
         path: "/tmp/paperclip-test",
@@ -32,13 +32,13 @@ describe("plugin SDK test harness", () => {
       }],
     });
 
-    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "company-1")).resolves.toMatchObject({
+    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "domain-1")).resolves.toMatchObject({
       id: "workspace-1",
       cwd: "/tmp/paperclip-test",
       branchName: "feature/test",
       providerMetadata: { sandboxId: "sandbox-1" },
     });
-    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "company-2")).resolves.toBeNull();
+    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "domain-2")).resolves.toBeNull();
   });
 
   it("requires execution.workspaces.read before returning workspace metadata", async () => {
@@ -55,7 +55,7 @@ describe("plugin SDK test harness", () => {
     };
     const harness = createTestHarness({ manifest });
 
-    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "company-1")).rejects.toThrow(
+    await expect(harness.ctx.executionWorkspaces.get("workspace-1", "domain-1")).rejects.toThrow(
       "missing required capability 'execution.workspaces.read'",
     );
   });
@@ -78,7 +78,7 @@ describe("plugin SDK test harness", () => {
     };
     const harness = createTestHarness({ manifest });
 
-    await expect(harness.ctx.skills.managed.reset("unknown-skill", "company-1")).rejects.toThrow(
+    await expect(harness.ctx.skills.managed.reset("unknown-skill", "domain-1")).rejects.toThrow(
       "missing required capability 'skills.managed'",
     );
   });
@@ -97,13 +97,13 @@ describe("plugin SDK test harness", () => {
     };
     const harness = createTestHarness({ manifest });
 
-    await expect(harness.ctx.access.members.list({ companyId: "company-1" })).rejects.toThrow(
+    await expect(harness.ctx.access.members.list({ domainId: "domain-1" })).rejects.toThrow(
       "missing required capability 'access.members.read'",
     );
-    await expect(harness.ctx.authorization.grants.list({ companyId: "company-1" })).rejects.toThrow(
+    await expect(harness.ctx.authorization.grants.list({ domainId: "domain-1" })).rejects.toThrow(
       "missing required capability 'authorization.grants.read'",
     );
-    await expect(harness.ctx.authorization.audit.search({ companyId: "company-1" })).rejects.toThrow(
+    await expect(harness.ctx.authorization.audit.search({ domainId: "domain-1" })).rejects.toThrow(
       "missing required capability 'authorization.audit.read'",
     );
   });
@@ -124,14 +124,14 @@ describe("plugin SDK test harness", () => {
     harness.seed({
       issues: [{
         id: "issue-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         title: "Comment redaction",
         status: "todo",
         priority: "medium",
       }],
       issueComments: [{
         id: "comment-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "issue-1",
         authorType: "user",
         authorAgentId: null,
@@ -147,7 +147,7 @@ describe("plugin SDK test harness", () => {
       }],
     });
 
-    const comments = await harness.ctx.issues.listComments("issue-1", "company-1");
+    const comments = await harness.ctx.issues.listComments("issue-1", "domain-1");
 
     expect(comments).toHaveLength(1);
     expect(comments[0]).toMatchObject({

@@ -7,7 +7,7 @@ import {
   agentWakeupRequests,
   agents,
   domains,
-  companySkills,
+  domainSkills,
   createDb,
   environmentLeases,
   environments,
@@ -91,7 +91,7 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
         await db.delete(agents);
         await db.delete(environments);
         await db.delete(executionWorkspaces);
-        await db.delete(companySkills);
+        await db.delete(domainSkills);
         await db.delete(domains);
         break;
       } catch (error) {
@@ -105,21 +105,21 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
     await tempDb?.cleanup();
   });
 
-  async function seedCompanyAgentIssue() {
-    const companyId = randomUUID();
+  async function seedDomainAgentIssue() {
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -135,7 +135,7 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Interrupted import mission",
       status: "in_progress",
       priority: "medium",
@@ -143,11 +143,11 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
       responsibleUserId: "responsible-user",
     });
 
-    return { companyId, agentId, issueId };
+    return { domainId, agentId, issueId };
   }
 
   async function seedTerminalRun(input: {
-    companyId: string;
+    domainId: string;
     agentId: string;
     issueId: string;
     status?: string;
@@ -161,7 +161,7 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
       : new Date(Date.now() - input.startedSecondsAgo * 1000);
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: input.companyId,
+      domainId: input.domainId,
       agentId: input.agentId,
       invocationSource: "assignment",
       status: input.status ?? "succeeded",
@@ -201,10 +201,10 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
   }
 
   it("skips event-free re-wakes after consecutive no-progress runs and admits them again on new input", async () => {
-    const { companyId, agentId, issueId } = await seedCompanyAgentIssue();
+    const { domainId, agentId, issueId } = await seedDomainAgentIssue();
 
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 40 });
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 10 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 40 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 10 });
 
     const throttledWake = await assignmentWake(agentId, issueId);
     expect(throttledWake).toBeNull();
@@ -221,14 +221,14 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
     const runCount = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(heartbeatRuns)
-      .where(eq(heartbeatRuns.companyId, companyId))
+      .where(eq(heartbeatRuns.domainId, domainId))
       .then((rows) => rows[0]?.count ?? 0);
     expect(runCount).toBe(2);
 
     // A board comment on the issue is new input: the next event-free wake is
     // admitted even though the streak has not been broken by a run.
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       actorType: "user",
       actorId: "board-user",
       action: "issue.comment_added",
@@ -241,10 +241,10 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
   });
 
   it("does not throttle comment-driven wakes even during a no-progress streak", async () => {
-    const { companyId, agentId, issueId } = await seedCompanyAgentIssue();
+    const { domainId, agentId, issueId } = await seedDomainAgentIssue();
 
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 40 });
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 10 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 40 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 10 });
 
     const commentWake = await heartbeat.wakeup(agentId, {
       source: "automation",
@@ -259,23 +259,23 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
   });
 
   it("does not throttle the wake that follows a failed run", async () => {
-    const { companyId, agentId, issueId } = await seedCompanyAgentIssue();
+    const { domainId, agentId, issueId } = await seedDomainAgentIssue();
 
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 70 });
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 40 });
-    await seedTerminalRun({ companyId, agentId, issueId, status: "failed", finishedSecondsAgo: 10 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 70 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 40 });
+    await seedTerminalRun({ domainId, agentId, issueId, status: "failed", finishedSecondsAgo: 10 });
 
     const recoveryWake = await assignmentWake(agentId, issueId);
     expect(recoveryWake).not.toBeNull();
   });
 
   it("does not throttle when a recent run produced issue-visible progress", async () => {
-    const { companyId, agentId, issueId } = await seedCompanyAgentIssue();
+    const { domainId, agentId, issueId } = await seedDomainAgentIssue();
 
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 40 });
-    const progressRunId = await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 10 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 40 });
+    const progressRunId = await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 10 });
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       actorType: "agent",
       actorId: agentId,
       agentId,
@@ -291,11 +291,11 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
   });
 
   it("does not count progress on another issue toward the current issue", async () => {
-    const { companyId, agentId, issueId } = await seedCompanyAgentIssue();
+    const { domainId, agentId, issueId } = await seedDomainAgentIssue();
     const otherIssueId = randomUUID();
     await db.insert(issues).values({
       id: otherIssueId,
-      companyId,
+      domainId,
       title: "Related follow-up",
       status: "in_progress",
       priority: "medium",
@@ -303,10 +303,10 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
       responsibleUserId: "responsible-user",
     });
 
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 40 });
-    const progressRunId = await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 10 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 40 });
+    const progressRunId = await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 10 });
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       actorType: "agent",
       actorId: agentId,
       agentId,
@@ -323,16 +323,16 @@ describeEmbeddedPostgres("heartbeat issue rewake throttle", () => {
   });
 
   it("counts a long-running session that finished inside the lookback window", async () => {
-    const { companyId, agentId, issueId } = await seedCompanyAgentIssue();
+    const { domainId, agentId, issueId } = await seedDomainAgentIssue();
 
     await seedTerminalRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       finishedSecondsAgo: 40,
       startedSecondsAgo: 7 * 60 * 60,
     });
-    await seedTerminalRun({ companyId, agentId, issueId, finishedSecondsAgo: 10 });
+    await seedTerminalRun({ domainId, agentId, issueId, finishedSecondsAgo: 10 });
 
     const wake = await assignmentWake(agentId, issueId);
     expect(wake).toBeNull();

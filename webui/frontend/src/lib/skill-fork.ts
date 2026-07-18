@@ -1,8 +1,8 @@
 import type {
-  CompanySkillForkSummary,
-  CompanySkillOriginalSummary,
-  CompanySkillSourceType,
-  CompanySkillUsageAgent,
+  DomainSkillForkSummary,
+  DomainSkillOriginalSummary,
+  DomainSkillSourceType,
+  DomainSkillUsageAgent,
 } from "@paperclipai/shared";
 
 /**
@@ -24,7 +24,7 @@ export function shortSha(ref: string | null | undefined): string | null {
   return /^[0-9a-f]{8,40}$/i.test(trimmed) ? trimmed.slice(0, 7) : trimmed;
 }
 
-function sourceTypeFallbackLabel(sourceType: CompanySkillSourceType): string {
+function sourceTypeFallbackLabel(sourceType: DomainSkillSourceType): string {
   switch (sourceType) {
     case "github":
       return "GitHub";
@@ -61,7 +61,7 @@ function prettyUrl(locator: string): string {
  * fallback when no locator is recorded.
  */
 export function formatForkSourceName(source: {
-  sourceType: CompanySkillSourceType;
+  sourceType: DomainSkillSourceType;
   sourceLocator: string | null;
 }): string {
   const locator = source.sourceLocator?.trim() ?? "";
@@ -75,7 +75,7 @@ export function formatForkSourceName(source: {
  * The lineage chip label: `owner/repo @ <short-sha>` (the `@ sha` clause is
  * dropped when the source has no pinned ref, e.g. skills.sh / URL sources).
  */
-export function formatLineageLabel(original: CompanySkillOriginalSummary): string {
+export function formatLineageLabel(original: DomainSkillOriginalSummary): string {
   const name = formatForkSourceName(original);
   const sha = shortSha(original.sourceRef);
   return sha ? `${name} @ ${sha}` : name;
@@ -87,8 +87,8 @@ export function formatLineageLabel(original: CompanySkillOriginalSummary): strin
  * "Open your existing copy" instead of minting `-fork-2`, `-fork-3`, … .
  */
 export function pickReusableFork(
-  existingForks: CompanySkillForkSummary[],
-): CompanySkillForkSummary | null {
+  existingForks: DomainSkillForkSummary[],
+): DomainSkillForkSummary | null {
   return (
     existingForks.find((fork) => fork.createdByCurrentActor && !fork.diverged) ?? null
   );
@@ -101,7 +101,7 @@ export function agentUsageSentence(count: number): string {
 }
 
 /** Agent ids to reassign when the "Switch these agents to the copy" toggle is on. */
-export function reassignTargetIds(usedByAgents: CompanySkillUsageAgent[]): string[] {
+export function reassignTargetIds(usedByAgents: DomainSkillUsageAgent[]): string[] {
   return usedByAgents.map((agent) => agent.id);
 }
 

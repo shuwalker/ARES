@@ -4,13 +4,13 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { agents, domains, companySkills, createDb } from "@paperclipai/db";
+import { agents, domains, domainSkills, createDb } from "@paperclipai/db";
 import type { PaperclipSkillEntry } from "@paperclipai/adapter-utils/server-utils";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
-import { companySkillService } from "../services/company-skills.ts";
+import { domainSkillService } from "../services/domain-skills.ts";
 import { heartbeatService } from "../services/heartbeat.ts";
 import { registerServerAdapter, unregisterServerAdapter } from "../adapters/index.ts";
 
@@ -86,8 +86,8 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
         "heartbeat_runs",
         "agent_wakeup_requests",
         "agent_runtime_state",
-        "company_skill_versions",
-        "company_skills",
+        "domain_skill_versions",
+        "domain_skills",
         "agents",
         "domains"
       RESTART IDENTITY CASCADE
@@ -107,26 +107,26 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
   });
 
   it("materializes different pinned skill versions for different agents at runtime", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const firstAgentId = randomUUID();
     const secondAgentId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
-    const skillKey = `company/${companyId}/runtime-coach`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const skillKey = `domain/${domainId}/runtime-coach`;
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-versioned-runtime-skill-"));
     cleanupDirs.add(skillDir);
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Runtime Coach\n\nVersion one.\n", "utf8");
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: skillKey,
       slug: "runtime-coach",
       name: "Runtime Coach",
@@ -140,20 +140,20 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       metadata: { sourceKind: "local_path" },
     });
 
-    const skills = companySkillService(db);
+    const skills = domainSkillService(db);
     const versionOne = await skills.createVersion(
-      companyId,
+      domainId,
       skillId,
       { label: "v1" },
       { type: "user", userId: "board" },
     );
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Runtime Coach\n\nVersion two.\n", "utf8");
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({ markdown: "# Runtime Coach\n\nVersion two.\n", updatedAt: new Date() })
-      .where(eq(companySkills.id, skillId));
+      .where(eq(domainSkills.id, skillId));
     const versionTwo = await skills.createVersion(
-      companyId,
+      domainId,
       skillId,
       { label: "v2" },
       { type: "user", userId: "board" },
@@ -162,7 +162,7 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
     await db.insert(agents).values([
       {
         id: firstAgentId,
-        companyId,
+        domainId,
         name: "Pinned V1",
         role: "engineer",
         status: "idle",
@@ -177,7 +177,7 @@ describeEmbeddedPostgres("heartbeat runtime skill version pins", () => {
       },
       {
         id: secondAgentId,
-        companyId,
+        domainId,
         name: "Pinned V2",
         role: "engineer",
         status: "idle",

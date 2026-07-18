@@ -18,9 +18,9 @@ import { logger } from "../middleware/logger.js";
 type BoardActor = {
   type: "board" | "agent" | "none";
   userId?: string;
-  companyIds?: string[];
+  domainIds?: string[];
   memberships?: Array<{
-    companyId: string;
+    domainId: string;
     membershipRole?: string | null;
     status?: string;
   }>;
@@ -36,7 +36,7 @@ type PolicyDecision = {
 
 export type ResourceMembershipPolicyHook = (input: {
   actor: BoardActor;
-  companyId: string;
+  domainId: string;
   userId: string;
   resourceType: ResourceMembershipResourceType;
   resourceId: string;
@@ -102,7 +102,7 @@ function latestDate(...dates: Array<Date | null | undefined>): Date | null {
   return latest;
 }
 
-function assertBoardSelfMembershipAccess(actor: BoardActor, companyId: string, userId: string) {
+function assertBoardSelfMembershipAccess(actor: BoardActor, domainId: string, userId: string) {
   if (actor.type !== "board" || !actor.userId) {
     throw forbidden("Board user access required");
   }
@@ -112,9 +112,9 @@ function assertBoardSelfMembershipAccess(actor: BoardActor, companyId: string, u
   if (actor.source === "local_implicit" || actor.isInstanceAdmin) {
     return;
   }
-  const membership = actor.memberships?.find((item) => item.companyId === companyId);
+  const membership = actor.memberships?.find((item) => item.domainId === domainId);
   if (!membership || membership.status !== "active") {
-    throw forbidden("User does not have active company access");
+    throw forbidden("User does not have active domain access");
   }
 }
 
@@ -132,7 +132,7 @@ async function evaluatePolicy(
     };
   } catch (err) {
     logger.warn(
-      { err, companyId: input.companyId, resourceType: input.resourceType, resourceId: input.resourceId },
+      { err, domainId: input.domainId, resourceType: input.resourceType, resourceId: input.resourceId },
       "resource membership policy hook failed closed",
     );
     return { allowed: false, reason: "policy_hook_failed", source: "policy_hook" };
@@ -144,19 +144,19 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
 
   async function assertMutationAllowed(input: {
     actor: BoardActor;
-    companyId: string;
+    domainId: string;
     userId: string;
     resourceType: ResourceMembershipResourceType;
     resourceId: string;
     state: ResourceMembershipState;
     starred?: boolean;
   }): Promise<PolicyDecision> {
-    assertBoardSelfMembershipAccess(input.actor, input.companyId, input.userId);
+    assertBoardSelfMembershipAccess(input.actor, input.domainId, input.userId);
     const decision = await evaluatePolicy(policyHook, input);
     if (!decision.allowed) {
       logger.warn(
         {
-          companyId: input.companyId,
+          domainId: input.domainId,
           userId: input.userId,
           resourceType: input.resourceType,
           resourceId: input.resourceId,
@@ -171,8 +171,8 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
   }
 
   return {
-    async listForUser(companyId: string, userId: string, actor: BoardActor): Promise<ResourceMemberships> {
-      assertBoardSelfMembershipAccess(actor, companyId, userId);
+    async listForUser(domainId: string, userId: string, actor: BoardActor): Promise<ResourceMemberships> {
+      assertBoardSelfMembershipAccess(actor, domainId, userId);
       const [projectRows, agentRows] = await Promise.all([
         db
           .select({
@@ -185,10 +185,10 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
           .from(projectMemberships)
           .innerJoin(projects, and(
             eq(projects.id, projectMemberships.projectId),
-            eq(projects.companyId, projectMemberships.companyId),
+            eq(projects.domainId, projectMemberships.domainId),
           ))
           .where(and(
-            eq(projectMemberships.companyId, companyId),
+            eq(projectMemberships.domainId, domainId),
             eq(projectMemberships.userId, userId),
           )),
         db
@@ -202,10 +202,10 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
           .from(agentMemberships)
           .innerJoin(agents, and(
             eq(agents.id, agentMemberships.agentId),
-            eq(agents.companyId, agentMemberships.companyId),
+            eq(agents.domainId, agentMemberships.domainId),
           ))
           .where(and(
-            eq(agentMemberships.companyId, companyId),
+            eq(agentMemberships.domainId, domainId),
             eq(agentMemberships.userId, userId),
           )),
       ]);
@@ -226,7 +226,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
     },
 
     async updateProject(input: {
-      companyId: string;
+      domainId: string;
       userId: string;
       projectId: string;
       state?: ResourceMembershipState;
@@ -236,14 +236,14 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
       const project = await db.query.projects.findFirst({
         where: and(
           eq(projects.id, input.projectId),
-          eq(projects.companyId, input.companyId),
+          eq(projects.domainId, input.domainId),
         ),
       });
       if (!project || project.archivedAt) throw notFound("Project not found");
 
       const existing = await db.query.projectMemberships.findFirst({
         where: and(
-          eq(projectMemberships.companyId, input.companyId),
+          eq(projectMemberships.domainId, input.domainId),
           eq(projectMemberships.userId, input.userId),
           eq(projectMemberships.projectId, input.projectId),
         ),
@@ -262,7 +262,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
       const starredChanged = (previousStarredAt?.getTime() ?? null) !== (nextStarredAt?.getTime() ?? null);
       const decision = await assertMutationAllowed({
         actor: input.actor,
-        companyId: input.companyId,
+        domainId: input.domainId,
         userId: input.userId,
         resourceType: "project",
         resourceId: input.projectId,
@@ -287,7 +287,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
       const [row] = await db
         .insert(projectMemberships)
         .values({
-          companyId: input.companyId,
+          domainId: input.domainId,
           projectId: input.projectId,
           userId: input.userId,
           state: nextState,
@@ -295,7 +295,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: [projectMemberships.companyId, projectMemberships.userId, projectMemberships.projectId],
+          target: [projectMemberships.domainId, projectMemberships.userId, projectMemberships.projectId],
           set: {
             state: nextState,
             starredAt: nextStarredAt,
@@ -319,7 +319,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
     },
 
     async updateAgent(input: {
-      companyId: string;
+      domainId: string;
       userId: string;
       agentId: string;
       state?: ResourceMembershipState;
@@ -329,14 +329,14 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
       const agent = await db.query.agents.findFirst({
         where: and(
           eq(agents.id, input.agentId),
-          eq(agents.companyId, input.companyId),
+          eq(agents.domainId, input.domainId),
         ),
       });
       if (!agent || agent.status === "terminated") throw notFound("Agent not found");
 
       const existing = await db.query.agentMemberships.findFirst({
         where: and(
-          eq(agentMemberships.companyId, input.companyId),
+          eq(agentMemberships.domainId, input.domainId),
           eq(agentMemberships.userId, input.userId),
           eq(agentMemberships.agentId, input.agentId),
         ),
@@ -355,7 +355,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
       const starredChanged = (previousStarredAt?.getTime() ?? null) !== (nextStarredAt?.getTime() ?? null);
       const decision = await assertMutationAllowed({
         actor: input.actor,
-        companyId: input.companyId,
+        domainId: input.domainId,
         userId: input.userId,
         resourceType: "agent",
         resourceId: input.agentId,
@@ -380,7 +380,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
       const [row] = await db
         .insert(agentMemberships)
         .values({
-          companyId: input.companyId,
+          domainId: input.domainId,
           agentId: input.agentId,
           userId: input.userId,
           state: nextState,
@@ -388,7 +388,7 @@ export function resourceMembershipService(db: Db, options: ResourceMembershipSer
           updatedAt: now,
         })
         .onConflictDoUpdate({
-          target: [agentMemberships.companyId, agentMemberships.userId, agentMemberships.agentId],
+          target: [agentMemberships.domainId, agentMemberships.userId, agentMemberships.agentId],
           set: {
             state: nextState,
             starredAt: nextStarredAt,

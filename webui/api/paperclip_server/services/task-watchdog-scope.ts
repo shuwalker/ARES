@@ -8,13 +8,13 @@ export const TASK_WATCHDOG_ORIGIN_KIND = "task_watchdog";
 type AgentRunActor = {
   type: string;
   agentId?: string | null;
-  companyId?: string | null;
+  domainId?: string | null;
   runId?: string | null;
 };
 
 type IssueScopeTarget = {
   id: string;
-  companyId: string;
+  domainId: string;
   parentId?: string | null;
 };
 
@@ -24,7 +24,7 @@ export type TaskWatchdogMutationScope =
   | {
       kind: "watchdog";
       watchdogId: string;
-      companyId: string;
+      domainId: string;
       watchedIssueId: string;
       watchdogIssueId: string | null;
       stopFingerprint: string | null;
@@ -55,13 +55,13 @@ export async function resolveTaskWatchdogMutationScope(
   if (actor.type !== "agent") return { kind: "none" };
   const agentId = readString(actor.agentId);
   const runId = readString(actor.runId);
-  const actorCompanyId = readString(actor.companyId);
+  const actorDomainId = readString(actor.domainId);
   if (!agentId || !runId) return { kind: "none" };
 
   const run = await db
     .select({
       id: heartbeatRuns.id,
-      companyId: heartbeatRuns.companyId,
+      domainId: heartbeatRuns.domainId,
       agentId: heartbeatRuns.agentId,
       contextSnapshot: heartbeatRuns.contextSnapshot,
     })
@@ -72,7 +72,7 @@ export async function resolveTaskWatchdogMutationScope(
   if (!run) return { kind: "none" };
   const taskWatchdog = readTaskWatchdogContext(run.contextSnapshot);
   if (!taskWatchdog) return { kind: "none" };
-  if (run.agentId !== agentId || (actorCompanyId && run.companyId !== actorCompanyId)) {
+  if (run.agentId !== agentId || (actorDomainId && run.domainId !== actorDomainId)) {
     return {
       kind: "invalid",
       detail: "Task-watchdog run context does not belong to this agent.",
@@ -89,7 +89,7 @@ export async function resolveTaskWatchdogMutationScope(
   const watchdog = await db
     .select({
       id: issueWatchdogs.id,
-      companyId: issueWatchdogs.companyId,
+      domainId: issueWatchdogs.domainId,
       issueId: issueWatchdogs.issueId,
       watchdogAgentId: issueWatchdogs.watchdogAgentId,
       watchdogIssueId: issueWatchdogs.watchdogIssueId,
@@ -97,7 +97,7 @@ export async function resolveTaskWatchdogMutationScope(
     })
     .from(issueWatchdogs)
     .where(and(
-      eq(issueWatchdogs.companyId, run.companyId),
+      eq(issueWatchdogs.domainId, run.domainId),
       eq(issueWatchdogs.issueId, taskWatchdog.watchedIssueId),
       eq(issueWatchdogs.watchdogAgentId, agentId),
       eq(issueWatchdogs.status, "active"),
@@ -114,7 +114,7 @@ export async function resolveTaskWatchdogMutationScope(
   return {
     kind: "watchdog",
     watchdogId: watchdog.id,
-    companyId: watchdog.companyId,
+    domainId: watchdog.domainId,
     watchedIssueId: watchdog.issueId,
     watchdogIssueId: watchdog.watchdogIssueId ?? null,
     stopFingerprint: taskWatchdog.stopFingerprint,
@@ -123,7 +123,7 @@ export async function resolveTaskWatchdogMutationScope(
 
 export async function issueIsInTaskWatchdogSubtree(
   db: Db,
-  companyId: string,
+  domainId: string,
   issueId: string,
   watchedIssueId: string,
 ) {
@@ -134,10 +134,10 @@ export async function issueIsInTaskWatchdogSubtree(
     if (seen.has(currentId)) return false;
     seen.add(currentId);
 
-    const parent: { id: string; companyId: string; parentId: string | null; originKind: string | null } | null = await db
-      .select({ id: issues.id, companyId: issues.companyId, parentId: issues.parentId, originKind: issues.originKind })
+    const parent: { id: string; domainId: string; parentId: string | null; originKind: string | null } | null = await db
+      .select({ id: issues.id, domainId: issues.domainId, parentId: issues.parentId, originKind: issues.originKind })
       .from(issues)
-      .where(and(eq(issues.id, currentId), eq(issues.companyId, companyId)))
+      .where(and(eq(issues.id, currentId), eq(issues.domainId, domainId)))
       .then((rows) => rows[0] ?? null);
     if (!parent) return false;
     if (parent.originKind === TASK_WATCHDOG_ORIGIN_KIND) return false;
@@ -155,16 +155,16 @@ export async function taskWatchdogScopeAllowsIssueMutation(
   opts: { allowWatchdogIssue?: boolean } = {},
 ) {
   if (scope.kind !== "watchdog") return scope;
-  if (issue.companyId !== scope.companyId) {
+  if (issue.domainId !== scope.domainId) {
     return {
       kind: "invalid" as const,
-      detail: "Task-watchdog mutation target is outside the watchdog company.",
+      detail: "Task-watchdog mutation target is outside the watchdog domain.",
     };
   }
   if (opts.allowWatchdogIssue !== false && scope.watchdogIssueId && issue.id === scope.watchdogIssueId) {
     return scope;
   }
-  if (await issueIsInTaskWatchdogSubtree(db, scope.companyId, issue.id, scope.watchedIssueId)) {
+  if (await issueIsInTaskWatchdogSubtree(db, scope.domainId, issue.id, scope.watchedIssueId)) {
     return scope;
   }
   return {

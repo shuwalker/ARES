@@ -1,7 +1,7 @@
 type BrowserLocationLike = Pick<Location, "host" | "hostname" | "port" | "protocol">;
 
 function isWildcardHost(hostname: string): boolean {
-  const normalized = hostname.trim().toLowerLifeAdmin();
+  const normalized = hostname.trim().toLowerCase();
   return normalized === "0.0.0.0" || normalized === "::" || normalized === "[::]";
 }
 

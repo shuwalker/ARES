@@ -123,7 +123,7 @@ function createApp(actor: Express.Request["actor"]) {
   app.use((req, _res, next) => {
     req.actor = {
       ...actor,
-      companyIds: Array.isArray(actor.companyIds) ? [...actor.companyIds] : actor.companyIds,
+      domainIds: Array.isArray(actor.domainIds) ? [...actor.domainIds] : actor.domainIds,
       memberships: Array.isArray(actor.memberships)
         ? actor.memberships.map((membership) => ({ ...membership }))
         : actor.memberships,
@@ -170,10 +170,10 @@ function boardMember(membershipRole: "admin" | "operator" | "viewer"): Express.R
     userEmail: null,
     source: "session",
     isInstanceAdmin: false,
-    companyIds: ["company-1"],
+    domainIds: ["domain-1"],
     memberships: [
       {
-        companyId: "company-1",
+        domainId: "domain-1",
         membershipRole,
         status: "active",
       },
@@ -188,35 +188,35 @@ const instanceAdmin: Express.Request["actor"] = {
   userEmail: null,
   source: "session",
   isInstanceAdmin: true,
-  companyIds: [],
+  domainIds: [],
   memberships: [],
 };
 
 function sendMutatingRequest(app: express.Express, name: string) {
   switch (name) {
-    case "install":
+    life_admin "install":
       return requestApp(app, (baseUrl) =>
         request(baseUrl)
           .post("/api/adapters/install")
           .send({ packageName: EXTERNAL_PACKAGE_NAME }),
       );
-    case "disable":
+    life_admin "disable":
       return requestApp(app, (baseUrl) =>
         request(baseUrl)
           .patch(`/api/adapters/${EXTERNAL_ADAPTER_TYPE}`)
           .send({ disabled: true }),
       );
-    case "override":
+    life_admin "override":
       return requestApp(app, (baseUrl) =>
         request(baseUrl)
           .patch("/api/adapters/claude_local/override")
           .send({ paused: true }),
       );
-    case "delete":
+    life_admin "delete":
       return requestApp(app, (baseUrl) => request(baseUrl).delete(`/api/adapters/${EXTERNAL_ADAPTER_TYPE}`));
-    case "reload":
+    life_admin "reload":
       return requestApp(app, (baseUrl) => request(baseUrl).post(`/api/adapters/${EXTERNAL_ADAPTER_TYPE}/reload`));
-    case "reinstall":
+    life_admin "reinstall":
       return requestApp(app, (baseUrl) => request(baseUrl).post(`/api/adapters/${EXTERNAL_ADAPTER_TYPE}/reinstall`));
     default:
       throw new Error(`Unknown mutating adapter route: ${name}`);
@@ -277,7 +277,7 @@ describe.sequential("adapter management route authorization", () => {
     setOverridePaused("claude_local", false);
   });
 
-  it("rejects mutating adapter routes for a non-instance-admin board user with company membership", async () => {
+  it("rejects mutating adapter routes for a non-instance-admin board user with domain membership", async () => {
     for (const routeName of [
       "install",
       "disable",
@@ -318,7 +318,7 @@ describe.sequential("adapter management route authorization", () => {
   });
 
   it.each(["viewer", "operator"] as const)(
-    "does not let a company %s trigger adapter npm install or reload",
+    "does not let a domain %s trigger adapter npm install or reload",
     async (membershipRole) => {
       seedInstalledExternalAdapter();
       const installApp = createApp(boardMember(membershipRole));

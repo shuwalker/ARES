@@ -42,7 +42,7 @@ describe("responsible-user denial run outcomes", () => {
     const startedAt = new Date("2026-07-02T10:00:00.000Z");
     const row = {
       id: "run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "agent-1",
       status: "running",
       invocationSource: "on_demand",
@@ -57,7 +57,7 @@ describe("responsible-user denial run outcomes", () => {
     await recordResponsibleUserDenialOnActiveRun(db, {
       runId: "run-1",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       code: "RESPONSIBLE_USER_UNAUTHORIZED",
     });
 
@@ -66,7 +66,7 @@ describe("responsible-user denial run outcomes", () => {
       errorCode: "RESPONSIBLE_USER_UNAUTHORIZED",
     }));
     expect(publishLiveEventMock).toHaveBeenCalledWith({
-      companyId: "company-1",
+      domainId: "domain-1",
       type: "heartbeat.run.status",
       payload: expect.objectContaining({
         runId: "run-1",

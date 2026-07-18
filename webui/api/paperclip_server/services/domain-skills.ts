@@ -9,14 +9,14 @@ import {
   assets,
   authUsers,
   domains,
-  companySkillComments,
-  companySkillStars,
-  companySkillTestInputs,
-  companySkillTestRunTemplates,
-  companySkillTestRuns,
-  companySkillVersions,
-  companySkills,
-  costEvents,
+  domainSkillComments,
+  domainSkillStars,
+  domainSkillTestInputs,
+  domainSkillTestRunTemplates,
+  domainSkillTestRuns,
+  domainSkillVersions,
+  domainSkills,
+  financeEvents,
   documents,
   issueAttachments,
   issueDocuments,
@@ -29,61 +29,61 @@ import type { PaperclipDesiredSkillEntry, PaperclipSkillEntry } from "@paperclip
 import type {
   AgentDesiredSkillEntry,
   CatalogSkill,
-  CompanySkill,
-  CompanySkillAuditFinding,
-  CompanySkillAuditResult,
-  CompanySkillAuditVerdict,
-  CompanySkillCategoryCount,
-  CompanySkillComment,
-  CompanySkillCommentCreateRequest,
-  CompanySkillCommentUpdateRequest,
-  CompanySkillCreateRequest,
-  CompanySkillCompatibility,
-  CompanySkillDetail,
-  CompanySkillFileDeleteRequest,
-  CompanySkillFileDeleteResult,
-  CompanySkillFileDetail,
-  CompanySkillFileInventoryEntry,
-  CompanySkillForkPrecheckResult,
-  CompanySkillForkRequest,
-  CompanySkillForkResult,
-  CompanySkillForkReassignment,
-  CompanySkillForkSummary,
-  CompanySkillImportResult,
-  CompanySkillInstallCatalogRequest,
-  CompanySkillInstallCatalogResult,
-  CompanySkillListQuery,
-  CompanySkillListItem,
-  CompanySkillLastEditor,
-  CompanySkillOriginalSummary,
-  CompanySkillProjectScanConflict,
-  CompanySkillProjectScanRequest,
-  CompanySkillProjectScanResult,
-  CompanySkillProjectScanSkipped,
-  CompanySkillSharingScope,
-  CompanySkillSourceBadge,
-  CompanySkillSourceType,
-  CompanySkillTestInput,
-  CompanySkillTestInputCreateRequest,
-  CompanySkillTestInputUpdateRequest,
-  CompanySkillTestRun,
-  CompanySkillTestRunCreateRequest,
-  CompanySkillTestRunDetail,
-  CompanySkillTestRunHarnessContent,
-  CompanySkillTestRunListQuery,
-  CompanySkillTestRunTemplate,
-  CompanySkillTestRunTemplateCreateRequest,
-  CompanySkillTestRunTemplateSnapshot,
-  CompanySkillTestRunTemplateUpdateRequest,
-  CompanySkillTestRunStatus,
-  CompanySkillTrustLevel,
-  CompanySkillUpdateRequest,
-  CompanySkillUpdateStatus,
-  CompanySkillUpdateHoldReason,
-  CompanySkillUsageAgent,
-  CompanySkillVersion,
-  CompanySkillVersionCreateRequest,
-  CompanySkillVersionFileInventoryEntry,
+  DomainSkill,
+  DomainSkillAuditFinding,
+  DomainSkillAuditResult,
+  DomainSkillAuditVerdict,
+  DomainSkillCategoryCount,
+  DomainSkillComment,
+  DomainSkillCommentCreateRequest,
+  DomainSkillCommentUpdateRequest,
+  DomainSkillCreateRequest,
+  DomainSkillCompatibility,
+  DomainSkillDetail,
+  DomainSkillFileDeleteRequest,
+  DomainSkillFileDeleteResult,
+  DomainSkillFileDetail,
+  DomainSkillFileInventoryEntry,
+  DomainSkillForkPrecheckResult,
+  DomainSkillForkRequest,
+  DomainSkillForkResult,
+  DomainSkillForkReassignment,
+  DomainSkillForkSummary,
+  DomainSkillImportResult,
+  DomainSkillInstallCatalogRequest,
+  DomainSkillInstallCatalogResult,
+  DomainSkillListQuery,
+  DomainSkillListItem,
+  DomainSkillLastEditor,
+  DomainSkillOriginalSummary,
+  DomainSkillProjectScanConflict,
+  DomainSkillProjectScanRequest,
+  DomainSkillProjectScanResult,
+  DomainSkillProjectScanSkipped,
+  DomainSkillSharingScope,
+  DomainSkillSourceBadge,
+  DomainSkillSourceType,
+  DomainSkillTestInput,
+  DomainSkillTestInputCreateRequest,
+  DomainSkillTestInputUpdateRequest,
+  DomainSkillTestRun,
+  DomainSkillTestRunCreateRequest,
+  DomainSkillTestRunDetail,
+  DomainSkillTestRunHarnessContent,
+  DomainSkillTestRunListQuery,
+  DomainSkillTestRunTemplate,
+  DomainSkillTestRunTemplateCreateRequest,
+  DomainSkillTestRunTemplateSnapshot,
+  DomainSkillTestRunTemplateUpdateRequest,
+  DomainSkillTestRunStatus,
+  DomainSkillTrustLevel,
+  DomainSkillUpdateRequest,
+  DomainSkillUpdateStatus,
+  DomainSkillUpdateHoldReason,
+  DomainSkillUsageAgent,
+  DomainSkillVersion,
+  DomainSkillVersionCreateRequest,
+  DomainSkillVersionFileInventoryEntry,
   IssueAttachment,
   IssueDocument,
 } from "@paperclipai/shared";
@@ -108,16 +108,16 @@ import {
   readPortableCatalogProvenance,
 } from "./catalog-provenance.js";
 
-type CompanySkillRow = typeof companySkills.$inferSelect;
-type CompanySkillVersionRow = typeof companySkillVersions.$inferSelect;
-type CompanySkillCommentRow = typeof companySkillComments.$inferSelect;
-type CompanySkillTestInputRow = typeof companySkillTestInputs.$inferSelect;
-type CompanySkillTestRunTemplateRow = typeof companySkillTestRunTemplates.$inferSelect;
-type CompanySkillTestRunRow = typeof companySkillTestRuns.$inferSelect;
-type CompanySkillListDbRow = Pick<
-  CompanySkillRow,
+type DomainSkillRow = typeof domainSkills.$inferSelect;
+type DomainSkillVersionRow = typeof domainSkillVersions.$inferSelect;
+type DomainSkillCommentRow = typeof domainSkillComments.$inferSelect;
+type DomainSkillTestInputRow = typeof domainSkillTestInputs.$inferSelect;
+type DomainSkillTestRunTemplateRow = typeof domainSkillTestRunTemplates.$inferSelect;
+type DomainSkillTestRunRow = typeof domainSkillTestRuns.$inferSelect;
+type DomainSkillListDbRow = Pick<
+  DomainSkillRow,
   | "id"
-  | "companyId"
+  | "domainId"
   | "key"
   | "slug"
   | "name"
@@ -137,7 +137,7 @@ type CompanySkillListDbRow = Pick<
   | "sharingScope"
   | "publicShareToken"
   | "forkedFromSkillId"
-  | "forkedFromCompanyId"
+  | "forkedFromDomainId"
   | "starCount"
   | "installCount"
   | "forkCount"
@@ -146,10 +146,10 @@ type CompanySkillListDbRow = Pick<
   | "createdAt"
   | "updatedAt"
 >;
-type CompanySkillListRow = Pick<
-  CompanySkill,
+type DomainSkillListRow = Pick<
+  DomainSkill,
   | "id"
-  | "companyId"
+  | "domainId"
   | "key"
   | "slug"
   | "name"
@@ -169,7 +169,7 @@ type CompanySkillListRow = Pick<
   | "sharingScope"
   | "publicShareToken"
   | "forkedFromSkillId"
-  | "forkedFromCompanyId"
+  | "forkedFromDomainId"
   | "starCount"
   | "installCount"
   | "forkCount"
@@ -178,16 +178,16 @@ type CompanySkillListRow = Pick<
   | "createdAt"
   | "updatedAt"
 >;
-type CompanySkillReferenceRow = Pick<
-  CompanySkillRow,
+type DomainSkillReferenceRow = Pick<
+  DomainSkillRow,
   | "id"
   | "key"
   | "slug"
 >;
-type SkillReferenceTarget = Pick<CompanySkill, "id" | "key" | "slug">;
+type SkillReferenceTarget = Pick<DomainSkill, "id" | "key" | "slug">;
 type SkillSourceInfoTarget = Pick<
-  CompanySkill,
-  | "companyId"
+  DomainSkill,
+  | "domainId"
   | "sourceType"
   | "sourceLocator"
   | "metadata"
@@ -200,18 +200,18 @@ type ImportedSkill = {
   description: string | null;
   markdown: string;
   packageDir?: string | null;
-  sourceType: CompanySkillSourceType;
+  sourceType: DomainSkillSourceType;
   sourceLocator: string | null;
   sourceRef: string | null;
-  trustLevel: CompanySkillTrustLevel;
-  compatibility: CompanySkillCompatibility;
-  fileInventory: CompanySkillFileInventoryEntry[];
+  trustLevel: DomainSkillTrustLevel;
+  compatibility: DomainSkillCompatibility;
+  fileInventory: DomainSkillFileInventoryEntry[];
   metadata: Record<string, unknown> | null;
 };
 
 type ImportedSkillPersistValues = Pick<
-  CompanySkill,
-  | "companyId"
+  DomainSkill,
+  | "domainId"
   | "key"
   | "slug"
   | "name"
@@ -239,7 +239,7 @@ type ImportedSkillPersistValues = Pick<
 type PackageSkillConflictStrategy = "replace" | "rename" | "skip";
 
 export type ImportPackageSkillResult = {
-  skill: CompanySkill;
+  skill: DomainSkill;
   action: "created" | "updated" | "skipped";
   originalKey: string;
   originalSlug: string;
@@ -254,7 +254,7 @@ type ParsedSkillImportSource = {
   warnings: string[];
 };
 
-const EXTERNAL_SKILL_SOURCE_TYPES = new Set<CompanySkillSourceType>(["github", "skills_sh", "url"]);
+const EXTERNAL_SKILL_SOURCE_TYPES = new Set<DomainSkillSourceType>(["github", "skills_sh", "url"]);
 
 function isPinnedCommitRef(value: string | null | undefined) {
   return Boolean(value && /^[0-9a-f]{40}$/i.test(value.trim()));
@@ -324,8 +324,8 @@ type SkillSourceMeta = {
   forkedByAgentId?: string | null;
   forkedByUserId?: string | null;
   userModifiedAt?: string | null;
-  updateHoldReason?: CompanySkillUpdateHoldReason | null;
-  auditVerdict?: CompanySkillAuditVerdict;
+  updateHoldReason?: DomainSkillUpdateHoldReason | null;
+  auditVerdict?: DomainSkillAuditVerdict;
   auditCodes?: string[];
   auditScannedAt?: string;
   auditScanVersion?: string;
@@ -362,7 +362,7 @@ type SkillActor = {
 
 type PlannedSkillReassignment = {
   agentId: string;
-  reassignment: CompanySkillForkReassignment;
+  reassignment: DomainSkillForkReassignment;
 };
 
 type RuntimeSkillSourceResolution =
@@ -371,38 +371,38 @@ type RuntimeSkillSourceResolution =
 
 const skillInventoryRefreshPromises = new Map<string, Promise<void>>();
 
-function selectCompanySkillColumns() {
+function selectDomainSkillColumns() {
   return {
-    id: companySkills.id,
-    companyId: companySkills.companyId,
-    key: companySkills.key,
-    slug: companySkills.slug,
-    name: companySkills.name,
-    description: companySkills.description,
-    markdown: companySkills.markdown,
-    sourceType: companySkills.sourceType,
-    sourceLocator: companySkills.sourceLocator,
-    sourceRef: companySkills.sourceRef,
-    trustLevel: companySkills.trustLevel,
-    compatibility: companySkills.compatibility,
-    fileInventory: companySkills.fileInventory,
-    iconUrl: companySkills.iconUrl,
-    color: companySkills.color,
-    tagline: companySkills.tagline,
-    authorName: companySkills.authorName,
-    homepageUrl: companySkills.homepageUrl,
-    categories: companySkills.categories,
-    sharingScope: companySkills.sharingScope,
-    publicShareToken: companySkills.publicShareToken,
-    forkedFromSkillId: companySkills.forkedFromSkillId,
-    forkedFromCompanyId: companySkills.forkedFromCompanyId,
-    starCount: companySkills.starCount,
-    installCount: companySkills.installCount,
-    forkCount: companySkills.forkCount,
-    currentVersionId: companySkills.currentVersionId,
-    metadata: companySkills.metadata,
-    createdAt: companySkills.createdAt,
-    updatedAt: companySkills.updatedAt,
+    id: domainSkills.id,
+    domainId: domainSkills.domainId,
+    key: domainSkills.key,
+    slug: domainSkills.slug,
+    name: domainSkills.name,
+    description: domainSkills.description,
+    markdown: domainSkills.markdown,
+    sourceType: domainSkills.sourceType,
+    sourceLocator: domainSkills.sourceLocator,
+    sourceRef: domainSkills.sourceRef,
+    trustLevel: domainSkills.trustLevel,
+    compatibility: domainSkills.compatibility,
+    fileInventory: domainSkills.fileInventory,
+    iconUrl: domainSkills.iconUrl,
+    color: domainSkills.color,
+    tagline: domainSkills.tagline,
+    authorName: domainSkills.authorName,
+    homepageUrl: domainSkills.homepageUrl,
+    categories: domainSkills.categories,
+    sharingScope: domainSkills.sharingScope,
+    publicShareToken: domainSkills.publicShareToken,
+    forkedFromSkillId: domainSkills.forkedFromSkillId,
+    forkedFromDomainId: domainSkills.forkedFromDomainId,
+    starCount: domainSkills.starCount,
+    installCount: domainSkills.installCount,
+    forkCount: domainSkills.forkCount,
+    currentVersionId: domainSkills.currentVersionId,
+    metadata: domainSkills.metadata,
+    createdAt: domainSkills.createdAt,
+    updatedAt: domainSkills.updatedAt,
   };
 }
 
@@ -527,14 +527,14 @@ function uniqueSkillSlug(baseSlug: string, usedSlugs: Set<string>) {
   return candidate;
 }
 
-function uniqueImportedSkillKey(companyId: string, baseSlug: string, usedKeys: Set<string>) {
-  const initial = `company/${companyId}/${baseSlug}`;
+function uniqueImportedSkillKey(domainId: string, baseSlug: string, usedKeys: Set<string>) {
+  const initial = `domain/${domainId}/${baseSlug}`;
   if (!usedKeys.has(initial)) return initial;
   let attempt = 2;
-  let candidate = `company/${companyId}/${baseSlug}-${attempt}`;
+  let candidate = `domain/${domainId}/${baseSlug}-${attempt}`;
   while (usedKeys.has(candidate)) {
     attempt += 1;
-    candidate = `company/${companyId}/${baseSlug}-${attempt}`;
+    candidate = `domain/${domainId}/${baseSlug}-${attempt}`;
   }
   return candidate;
 }
@@ -561,7 +561,7 @@ function readCanonicalSkillKey(frontmatter: Record<string, unknown>, metadata: R
 }
 
 function deriveCanonicalSkillKey(
-  companyId: string,
+  domainId: string,
   input: Pick<ImportedSkill, "slug" | "sourceType" | "sourceLocator" | "metadata">,
 ) {
   const slug = normalizeSkillSlug(input.slug) ?? "skill";
@@ -595,7 +595,7 @@ function deriveCanonicalSkillKey(
 
   if (input.sourceType === "local_path") {
     if (sourceKind === "managed_local") {
-      return `company/${companyId}/${slug}`;
+      return `domain/${domainId}/${slug}`;
     }
     const locator = asString(input.sourceLocator);
     if (locator) {
@@ -603,10 +603,10 @@ function deriveCanonicalSkillKey(
     }
   }
 
-  return `company/${companyId}/${slug}`;
+  return `domain/${domainId}/${slug}`;
 }
 
-function classifyInventoryKind(relativePath: string): CompanySkillFileInventoryEntry["kind"] {
+function classifyInventoryKind(relativePath: string): DomainSkillFileInventoryEntry["kind"] {
   const normalized = normalizePortablePath(relativePath).toLowerLifeAdmin();
   if (normalized.endsWith("/skill.md") || normalized === "skill.md") return "skill";
   if (normalized.startsWith("references/")) return "reference";
@@ -640,7 +640,7 @@ function classifyInventoryKind(relativePath: string): CompanySkillFileInventoryE
   return "other";
 }
 
-function deriveTrustLevel(fileInventory: CompanySkillFileInventoryEntry[]): CompanySkillTrustLevel {
+function deriveTrustLevel(fileInventory: DomainSkillFileInventoryEntry[]): DomainSkillTrustLevel {
   if (fileInventory.some((entry) => entry.kind === "script")) return "scripts_executables";
   if (fileInventory.some((entry) => entry.kind === "asset" || entry.kind === "other")) return "assets";
   return "markdown_only";
@@ -917,7 +917,7 @@ function deriveImportedSkillSource(
   };
 }
 
-function readInlineSkillImports(companyId: string, files: Record<string, string>): ImportedSkill[] {
+function readInlineSkillImports(domainId: string, files: Record<string, string>): ImportedSkill[] {
   const normalizedFiles = normalizePackageFileMap(files);
   const skillPaths = Object.keys(normalizedFiles).filter(
     (entry) => path.posix.basename(entry).toLowerLifeAdmin() === "skill.md",
@@ -958,7 +958,7 @@ function readInlineSkillImports(companyId: string, files: Record<string, string>
       fileInventory: inventory,
       metadata: source.metadata,
     });
-    imports[imports.length - 1]!.key = deriveCanonicalSkillKey(companyId, imports[imports.length - 1]!);
+    imports[imports.length - 1]!.key = deriveCanonicalSkillKey(domainId, imports[imports.length - 1]!);
   }
 
   return imports;
@@ -985,7 +985,7 @@ async function statPath(targetPath: string) {
 async function collectLocalSkillInventory(
   skillDir: string,
   mode: LocalSkillInventoryMode = "full",
-): Promise<CompanySkillFileInventoryEntry[]> {
+): Promise<DomainSkillFileInventoryEntry[]> {
   const skillFilePath = path.join(skillDir, "SKILL.md");
   const skillFileStat = await statPath(skillFilePath);
   if (!skillFileStat?.isFile()) {
@@ -1021,11 +1021,11 @@ async function collectLocalSkillInventory(
 }
 
 function inventoryEntriesEqual(
-  left: CompanySkillFileInventoryEntry[],
-  right: CompanySkillFileInventoryEntry[],
+  left: DomainSkillFileInventoryEntry[],
+  right: DomainSkillFileInventoryEntry[],
 ) {
   if (left.length !== right.length) return false;
-  const normalize = (entries: CompanySkillFileInventoryEntry[]) =>
+  const normalize = (entries: DomainSkillFileInventoryEntry[]) =>
     entries
       .map((entry) => ({
         path: normalizePortablePath(entry.path),
@@ -1076,7 +1076,7 @@ function stripDerivedPaperclipBundledMetadata(key: string, metadata: unknown): u
   return out;
 }
 
-function importedSkillMetadataEqual(existing: CompanySkill, values: ImportedSkillPersistValues) {
+function importedSkillMetadataEqual(existing: DomainSkill, values: ImportedSkillPersistValues) {
   const incomingMetadata = isPlainRecord(values.metadata) ? values.metadata : null;
   if (isPaperclipBundledSkillKey(values.key) && asString(incomingMetadata?.sourceKind) === "paperclip_bundled") {
     return JSON.stringify(stripDerivedPaperclipBundledMetadata(existing.key, existing.metadata))
@@ -1091,10 +1091,10 @@ function stringArraysEqual(left: string[], right: string[]) {
 }
 
 function importedSkillPersistValuesMatchExisting(
-  existing: CompanySkill,
+  existing: DomainSkill,
   values: ImportedSkillPersistValues,
 ) {
-  return existing.companyId === values.companyId
+  return existing.domainId === values.domainId
     && existing.key === values.key
     && existing.slug === values.slug
     && existing.name === values.name
@@ -1121,7 +1121,7 @@ function importedSkillPersistValuesMatchExisting(
 }
 
 function inferLocalSkillInventoryMode(
-  skill: Pick<CompanySkillRow, "sourceLocator" | "metadata">,
+  skill: Pick<DomainSkillRow, "sourceLocator" | "metadata">,
 ): LocalSkillInventoryMode {
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   const sourceKind = asString(metadata?.sourceKind);
@@ -1133,7 +1133,7 @@ function inferLocalSkillInventoryMode(
 }
 
 export async function readLocalSkillImportFromDirectory(
-  companyId: string,
+  domainId: string,
   skillDir: string,
   options?: {
     inventoryMode?: LocalSkillInventoryMode;
@@ -1156,7 +1156,7 @@ export async function readLocalSkillImportFromDirectory(
   const inventory = await collectLocalSkillInventory(resolvedSkillDir, options?.inventoryMode ?? "full");
 
   return {
-    key: deriveCanonicalSkillKey(companyId, {
+    key: deriveCanonicalSkillKey(domainId, {
       slug,
       sourceType: "local_path",
       sourceLocator: resolvedSkillDir,
@@ -1206,7 +1206,7 @@ export async function discoverProjectWorkspaceSkillDirectories(target: ProjectSk
     .sort((left, right) => left.skillDir.localeCompare(right.skillDir));
 }
 
-async function readLocalSkillImports(companyId: string, sourcePath: string): Promise<ImportedSkill[]> {
+async function readLocalSkillImports(domainId: string, sourcePath: string): Promise<ImportedSkill[]> {
   const resolvedPath = path.resolve(sourcePath);
   const stat = await fs.stat(resolvedPath).catch(() => null);
   if (!stat) {
@@ -1227,7 +1227,7 @@ async function readLocalSkillImports(companyId: string, sourcePath: string): Pro
     };
     const inventory = await collectLocalSkillInventory(sourceDir, "project_root");
     return [{
-      key: deriveCanonicalSkillKey(companyId, {
+      key: deriveCanonicalSkillKey(domainId, {
         slug,
         sourceType: "local_path",
         sourceLocator: sourceDir,
@@ -1269,7 +1269,7 @@ async function readLocalSkillImports(companyId: string, sourcePath: string): Pro
         };
       })
       .sort((left, right) => left.path.localeCompare(right.path));
-    const imported = await readLocalSkillImportFromDirectory(companyId, path.join(root, skillDir));
+    const imported = await readLocalSkillImportFromDirectory(domainId, path.join(root, skillDir));
     imported.fileInventory = inventory;
     imported.trustLevel = deriveTrustLevel(inventory);
     imports.push(imported);
@@ -1279,7 +1279,7 @@ async function readLocalSkillImports(companyId: string, sourcePath: string): Pro
 }
 
 async function readUrlSkillImports(
-  companyId: string,
+  domainId: string,
   sourceUrl: string,
   requestedSkillSlug: string | null = null,
 ): Promise<{ skills: ImportedSkill[]; warnings: string[] }> {
@@ -1358,7 +1358,7 @@ async function readUrlSkillImports(
         }))
         .sort((left, right) => left.path.localeCompare(right.path));
       skills.push({
-        key: deriveCanonicalSkillKey(companyId, {
+        key: deriveCanonicalSkillKey(domainId, {
           slug,
           sourceType: "github",
           sourceLocator: sourceUrl,
@@ -1401,10 +1401,10 @@ async function readUrlSkillImports(
       ...(skillKey ? { skillKey } : {}),
       sourceKind: "url",
     };
-    const inventory: CompanySkillFileInventoryEntry[] = [{ path: "SKILL.md", kind: "skill" }];
+    const inventory: DomainSkillFileInventoryEntry[] = [{ path: "SKILL.md", kind: "skill" }];
     return {
       skills: [{
-        key: deriveCanonicalSkillKey(companyId, {
+        key: deriveCanonicalSkillKey(domainId, {
           slug,
           sourceType: "url",
           sourceLocator: url,
@@ -1429,27 +1429,27 @@ async function readUrlSkillImports(
   throw unprocessable("Unsupported skill source. Use a local path or URL.");
 }
 
-function normalizeFileInventory(row: { fileInventory: unknown }): CompanySkillFileInventoryEntry[] {
+function normalizeFileInventory(row: { fileInventory: unknown }): DomainSkillFileInventoryEntry[] {
   return Array.isArray(row.fileInventory)
     ? row.fileInventory.flatMap((entry) => {
       if (!isPlainRecord(entry)) return [];
       return [{
         path: String(entry.path ?? ""),
-        kind: (String(entry.kind ?? "other") as CompanySkillFileInventoryEntry["kind"]),
+        kind: (String(entry.kind ?? "other") as DomainSkillFileInventoryEntry["kind"]),
       }];
     })
     : [];
 }
 
-function toCompanySkill(row: CompanySkillRow): CompanySkill {
+function toDomainSkill(row: DomainSkillRow): DomainSkill {
   return {
     ...row,
     description: row.description ?? null,
-    sourceType: row.sourceType as CompanySkillSourceType,
+    sourceType: row.sourceType as DomainSkillSourceType,
     sourceLocator: row.sourceLocator ?? null,
     sourceRef: row.sourceRef ?? null,
-    trustLevel: row.trustLevel as CompanySkillTrustLevel,
-    compatibility: row.compatibility as CompanySkillCompatibility,
+    trustLevel: row.trustLevel as DomainSkillTrustLevel,
+    compatibility: row.compatibility as DomainSkillCompatibility,
     fileInventory: normalizeFileInventory(row),
     iconUrl: row.iconUrl ?? null,
     color: row.color ?? null,
@@ -1460,7 +1460,7 @@ function toCompanySkill(row: CompanySkillRow): CompanySkill {
     sharingScope: normalizeSharingScope(row.sharingScope),
     publicShareToken: row.publicShareToken ?? null,
     forkedFromSkillId: row.forkedFromSkillId ?? null,
-    forkedFromCompanyId: row.forkedFromCompanyId ?? null,
+    forkedFromDomainId: row.forkedFromDomainId ?? null,
     starCount: Math.max(0, row.starCount ?? 0),
     installCount: Math.max(0, row.installCount ?? 0),
     forkCount: Math.max(0, row.forkCount ?? 0),
@@ -1469,15 +1469,15 @@ function toCompanySkill(row: CompanySkillRow): CompanySkill {
   };
 }
 
-function toCompanySkillListRow(row: CompanySkillListDbRow): CompanySkillListRow {
+function toDomainSkillListRow(row: DomainSkillListDbRow): DomainSkillListRow {
   return {
     ...row,
     description: row.description ?? null,
-    sourceType: row.sourceType as CompanySkillSourceType,
+    sourceType: row.sourceType as DomainSkillSourceType,
     sourceLocator: row.sourceLocator ?? null,
     sourceRef: row.sourceRef ?? null,
-    trustLevel: row.trustLevel as CompanySkillTrustLevel,
-    compatibility: row.compatibility as CompanySkillCompatibility,
+    trustLevel: row.trustLevel as DomainSkillTrustLevel,
+    compatibility: row.compatibility as DomainSkillCompatibility,
     fileInventory: normalizeFileInventory(row),
     iconUrl: row.iconUrl ?? null,
     color: row.color ?? null,
@@ -1488,7 +1488,7 @@ function toCompanySkillListRow(row: CompanySkillListDbRow): CompanySkillListRow 
     sharingScope: normalizeSharingScope(row.sharingScope),
     publicShareToken: row.publicShareToken ?? null,
     forkedFromSkillId: row.forkedFromSkillId ?? null,
-    forkedFromCompanyId: row.forkedFromCompanyId ?? null,
+    forkedFromDomainId: row.forkedFromDomainId ?? null,
     starCount: Math.max(0, row.starCount ?? 0),
     installCount: Math.max(0, row.installCount ?? 0),
     forkCount: Math.max(0, row.forkCount ?? 0),
@@ -1497,13 +1497,13 @@ function toCompanySkillListRow(row: CompanySkillListDbRow): CompanySkillListRow 
   };
 }
 
-function normalizeSharingScope(value: unknown): CompanySkillSharingScope {
-  return value === "private" || value === "public_link" || value === "company" ? value : "company";
+function normalizeSharingScope(value: unknown): DomainSkillSharingScope {
+  return value === "private" || value === "public_link" || value === "domain" ? value : "domain";
 }
 
-function normalizeMutableSharingScope(value: unknown): CompanySkillSharingScope | null {
+function normalizeMutableSharingScope(value: unknown): DomainSkillSharingScope | null {
   if (value === undefined || value === null) return null;
-  if (value === "private" || value === "company") return value;
+  if (value === "private" || value === "domain") return value;
   if (value === "public_link") {
     throw unprocessable("Public skill sharing is not available in this version.");
   }
@@ -1564,7 +1564,7 @@ function readSkillStoreMetadata(frontmatter: Record<string, unknown>, metadata: 
 }
 
 function serializeFileInventory(
-  fileInventory: CompanySkillFileInventoryEntry[],
+  fileInventory: DomainSkillFileInventoryEntry[],
 ): Array<Record<string, unknown>> {
   return fileInventory.map((entry) => ({
     path: entry.path,
@@ -1573,8 +1573,8 @@ function serializeFileInventory(
 }
 
 function serializeVersionFileInventory(
-  fileInventory: CompanySkillVersionFileInventoryEntry[],
-): CompanySkillVersionFileInventoryEntry[] {
+  fileInventory: DomainSkillVersionFileInventoryEntry[],
+): DomainSkillVersionFileInventoryEntry[] {
   return fileInventory.map((entry) => ({
     path: entry.path,
     kind: entry.kind,
@@ -1582,7 +1582,7 @@ function serializeVersionFileInventory(
   }));
 }
 
-function toCompanySkillVersion(row: CompanySkillVersionRow): CompanySkillVersion {
+function toDomainSkillVersion(row: DomainSkillVersionRow): DomainSkillVersion {
   return {
     ...row,
     label: row.label ?? null,
@@ -1591,7 +1591,7 @@ function toCompanySkillVersion(row: CompanySkillVersionRow): CompanySkillVersion
         if (!isPlainRecord(entry)) return [];
         return [{
           path: String(entry.path ?? ""),
-          kind: (String(entry.kind ?? "other") as CompanySkillFileInventoryEntry["kind"]),
+          kind: (String(entry.kind ?? "other") as DomainSkillFileInventoryEntry["kind"]),
           content: String(entry.content ?? ""),
         }];
       })
@@ -1601,7 +1601,7 @@ function toCompanySkillVersion(row: CompanySkillVersionRow): CompanySkillVersion
   };
 }
 
-function toCompanySkillComment(row: CompanySkillCommentRow): CompanySkillComment {
+function toDomainSkillComment(row: DomainSkillCommentRow): DomainSkillComment {
   return {
     ...row,
     parentCommentId: row.parentCommentId ?? null,
@@ -1611,7 +1611,7 @@ function toCompanySkillComment(row: CompanySkillCommentRow): CompanySkillComment
   };
 }
 
-function toCompanySkillTestInput(row: CompanySkillTestInputRow): CompanySkillTestInput {
+function toDomainSkillTestInput(row: DomainSkillTestInputRow): DomainSkillTestInput {
   return {
     ...row,
     deletedAt: row.deletedAt ?? null,
@@ -1632,10 +1632,10 @@ const BUILT_IN_SKILL_TEST_RUN_TEMPLATE_BODY = [
   "Write the final result to issue document `{{outputDocumentKey}}`, then mark this test task done.",
 ].join("\n");
 
-function builtInSkillTestRunTemplate(companyId: string): CompanySkillTestRunTemplate {
+function builtInSkillTestRunTemplate(domainId: string): DomainSkillTestRunTemplate {
   return {
     id: BUILT_IN_SKILL_TEST_RUN_TEMPLATE_ID,
-    companyId,
+    domainId,
     name: "Default test template",
     description: "Paperclip's read-only default harness instructions for Skills Studio runs.",
     body: BUILT_IN_SKILL_TEST_RUN_TEMPLATE_BODY,
@@ -1650,7 +1650,7 @@ function builtInSkillTestRunTemplate(companyId: string): CompanySkillTestRunTemp
   };
 }
 
-function toCompanySkillTestRunTemplate(row: CompanySkillTestRunTemplateRow): CompanySkillTestRunTemplate {
+function toDomainSkillTestRunTemplate(row: DomainSkillTestRunTemplateRow): DomainSkillTestRunTemplate {
   return {
     ...row,
     description: row.description ?? null,
@@ -1701,26 +1701,26 @@ function buildHarnessIssueDescription(inputSnapshot: string, renderedTemplateBod
   return trimmedTemplate ? `${trimmedInput}\n\n---\n\n${trimmedTemplate}` : trimmedInput;
 }
 
-function normalizeTestRunStatus(value: string): CompanySkillTestRunStatus {
+function normalizeTestRunStatus(value: string): DomainSkillTestRunStatus {
   return value === "running" || value === "succeeded" || value === "failed" || value === "cancelled"
     ? value
     : "queued";
 }
 
-function emptyTestRunCost() {
+function emptyTestRunFinance() {
   return {
-    costCents: 0,
+    financeCents: 0,
     inputTokens: 0,
     cachedInputTokens: 0,
     outputTokens: 0,
   };
 }
 
-function toCompanySkillTestRun(
-  row: CompanySkillTestRunRow,
-  cost = emptyTestRunCost(),
+function toDomainSkillTestRun(
+  row: DomainSkillTestRunRow,
+  finance = emptyTestRunFinance(),
   taskExpired = false,
-): CompanySkillTestRun {
+): DomainSkillTestRun {
   return {
     ...row,
     inputId: row.inputId ?? null,
@@ -1738,21 +1738,21 @@ function toCompanySkillTestRun(
     supersededAt: row.supersededAt ?? null,
     harnessIssueExpiresAt: row.harnessIssueExpiresAt ?? null,
     harnessIssueDeletedAt: row.harnessIssueDeletedAt ?? null,
-    cost,
+    finance,
     taskExpired,
   };
 }
 
 function versionInventorySnapshotEqual(
-  left: CompanySkillVersionFileInventoryEntry[],
-  right: CompanySkillVersionFileInventoryEntry[],
+  left: DomainSkillVersionFileInventoryEntry[],
+  right: DomainSkillVersionFileInventoryEntry[],
 ) {
-  const normalize = (entries: CompanySkillVersionFileInventoryEntry[]) =>
+  const normalize = (entries: DomainSkillVersionFileInventoryEntry[]) =>
     JSON.stringify([...entries].sort((a, b) => a.path.localeCompare(b.path)));
   return normalize(left) === normalize(right);
 }
 
-function getSkillMeta(skill: Pick<CompanySkill, "metadata">): SkillSourceMeta {
+function getSkillMeta(skill: Pick<DomainSkill, "metadata">): SkillSourceMeta {
   return isPlainRecord(skill.metadata) ? skill.metadata as SkillSourceMeta : {};
 }
 
@@ -1770,7 +1770,7 @@ function getMissingSourceMarker(metadata: Record<string, unknown> | null): Recor
 }
 
 function buildMissingLocalSourceMarker(
-  skill: Pick<CompanySkill, "sourceLocator" | "metadata">,
+  skill: Pick<DomainSkill, "sourceLocator" | "metadata">,
 ): SkillMissingSourceMarker {
   const existing = getMissingSourceMarker(skill.metadata);
   return {
@@ -1838,7 +1838,7 @@ function resolveSkillReference(
 }
 
 function resolveRequestedSkillKeysOrThrow(
-  skills: CompanySkill[],
+  skills: DomainSkill[],
   requestedReferences: string[],
 ) {
   const missing = new Set<string>();
@@ -1871,7 +1871,7 @@ function resolveRequestedSkillKeysOrThrow(
     if (missing.size > 0) {
       problems.push(`unknown references: ${Array.from(missing).sort().join(", ")}`);
     }
-    throw unprocessable(`Invalid company skill selection (${problems.join("; ")}).`);
+    throw unprocessable(`Invalid domain skill selection (${problems.join("; ")}).`);
   }
 
   return Array.from(resolved);
@@ -1889,22 +1889,22 @@ function normalizeRequestedDesiredSkillSelection(value: string | AgentDesiredSki
 
 async function assertVersionMatchesSkill(
   db: Db,
-  companyId: string,
+  domainId: string,
   skillId: string,
   versionId: string | null,
 ) {
   if (!versionId) return;
   const row = await db
-    .select({ id: companySkillVersions.id })
-    .from(companySkillVersions)
+    .select({ id: domainSkillVersions.id })
+    .from(domainSkillVersions)
     .where(and(
-      eq(companySkillVersions.companyId, companyId),
-      eq(companySkillVersions.companySkillId, skillId),
-      eq(companySkillVersions.id, versionId),
+      eq(domainSkillVersions.domainId, domainId),
+      eq(domainSkillVersions.domainSkillId, skillId),
+      eq(domainSkillVersions.id, versionId),
     ))
     .then((rows) => rows[0] ?? null);
   if (!row) {
-    throw unprocessable("Selected skill version does not belong to the requested company skill.", {
+    throw unprocessable("Selected skill version does not belong to the requested domain skill.", {
       versionId,
       skillId,
     });
@@ -1912,10 +1912,10 @@ async function assertVersionMatchesSkill(
 }
 
 export interface ResolvedRequestedSkillEntries {
-  /** References that resolved to a company-library skill. */
+  /** References that resolved to a domain-library skill. */
   resolved: PaperclipDesiredSkillEntry[];
   /**
-   * References that could not be resolved to a company-library skill, returned
+   * References that could not be resolved to a domain-library skill, returned
    * in first-seen order. Only populated when `tolerateUnknownReferences` is set;
    * otherwise unknown references throw. Callers preserve these so stale desired
    * keys stay visible (and removable) instead of silently 422-ing a whole save.
@@ -1925,8 +1925,8 @@ export interface ResolvedRequestedSkillEntries {
 
 async function resolveRequestedSkillEntriesOrThrow(
   db: Db,
-  companyId: string,
-  skills: CompanySkill[],
+  domainId: string,
+  skills: DomainSkill[],
   requestedSelections: Array<string | AgentDesiredSkillEntry>,
   options: { tolerateUnknownReferences?: boolean } = {},
 ): Promise<ResolvedRequestedSkillEntries> {
@@ -1948,7 +1948,7 @@ async function resolveRequestedSkillEntriesOrThrow(
         continue;
       }
       const selectedVersionId = selection.versionId ?? null;
-      await assertVersionMatchesSkill(db, companyId, skill.id, selectedVersionId);
+      await assertVersionMatchesSkill(db, domainId, skill.id, selectedVersionId);
       if (!resolved.has(skill.key)) {
         resolved.set(skill.key, { key: skill.key, versionId: selectedVersionId });
       }
@@ -1960,7 +1960,7 @@ async function resolveRequestedSkillEntriesOrThrow(
       continue;
     }
 
-    // Unknown / stale reference (no longer in the company library).
+    // Unknown / stale reference (no longer in the domain library).
     if (options.tolerateUnknownReferences) {
       if (!seenUnresolved.has(selection.key)) {
         seenUnresolved.add(selection.key);
@@ -1982,7 +1982,7 @@ async function resolveRequestedSkillEntriesOrThrow(
     if (missing.size > 0) {
       problems.push(`unknown references: ${Array.from(missing).sort().join(", ")}`);
     }
-    throw unprocessable(`Invalid company skill selection (${problems.join("; ")}).`);
+    throw unprocessable(`Invalid domain skill selection (${problems.join("; ")}).`);
   }
 
   return { resolved: Array.from(resolved.values()), unresolved };
@@ -2036,7 +2036,7 @@ async function resolveExistingSkillDirectory(skillDir: string | null) {
   return dirStat?.isDirectory() && skillFileStat?.isFile() ? skillDir : null;
 }
 
-function buildMissingRuntimeSourceDetail(skill: Pick<CompanySkill, "name" | "sourceLocator" | "metadata">) {
+function buildMissingRuntimeSourceDetail(skill: Pick<DomainSkill, "name" | "sourceLocator" | "metadata">) {
   const marker = getMissingSourceMarker(skill.metadata);
   const sourcePath = asString(marker?.sourcePath) ?? normalizeSourceLocatorDirectory(skill.sourceLocator);
   if (sourcePath) {
@@ -2046,7 +2046,7 @@ function buildMissingRuntimeSourceDetail(skill: Pick<CompanySkill, "name" | "sou
 }
 
 export async function findMissingLocalSkillIds(
-  skills: Array<Pick<CompanySkill, "id" | "sourceType" | "sourceLocator">>,
+  skills: Array<Pick<DomainSkill, "id" | "sourceType" | "sourceLocator">>,
 ) {
   const missingIds: string[] = [];
 
@@ -2068,11 +2068,11 @@ export async function findMissingLocalSkillIds(
   return missingIds;
 }
 
-function resolveManagedSkillsRoot(companyId: string) {
-  return path.resolve(resolvePaperclipInstanceRoot(), "skills", companyId);
+function resolveManagedSkillsRoot(domainId: string) {
+  return path.resolve(resolvePaperclipInstanceRoot(), "skills", domainId);
 }
 
-function resolveLocalSkillFilePath(skill: CompanySkill, relativePath: string) {
+function resolveLocalSkillFilePath(skill: DomainSkill, relativePath: string) {
   const normalized = normalizePortablePath(relativePath);
   const skillDir = normalizeSkillDirectory(skill);
   if (skillDir) {
@@ -2086,11 +2086,11 @@ function resolveLocalSkillFilePath(skill: CompanySkill, relativePath: string) {
 }
 
 async function collectSkillFileBytes(skillDir: string): Promise<{
-  files: Array<{ path: string; bytes: Buffer; sizeBytes: number; kind: CompanySkillFileInventoryEntry["kind"] }>;
-  findings: CompanySkillAuditFinding[];
+  files: Array<{ path: string; bytes: Buffer; sizeBytes: number; kind: DomainSkillFileInventoryEntry["kind"] }>;
+  findings: DomainSkillAuditFinding[];
 }> {
-  const files: Array<{ path: string; bytes: Buffer; sizeBytes: number; kind: CompanySkillFileInventoryEntry["kind"] }> = [];
-  const findings: CompanySkillAuditFinding[] = [];
+  const files: Array<{ path: string; bytes: Buffer; sizeBytes: number; kind: DomainSkillFileInventoryEntry["kind"] }> = [];
+  const findings: DomainSkillAuditFinding[] = [];
   const root = path.resolve(skillDir);
 
   async function visit(current: string) {
@@ -2161,16 +2161,16 @@ function extractMarkdownLinks(markdown: string) {
 }
 
 function pushFinding(
-  findings: CompanySkillAuditFinding[],
+  findings: DomainSkillAuditFinding[],
   code: string,
-  severity: CompanySkillAuditFinding["severity"],
+  severity: DomainSkillAuditFinding["severity"],
   message: string,
   filePath: string | null,
 ) {
   findings.push({ code, severity, message, path: filePath });
 }
 
-async function auditInstalledSkillBytes(skill: CompanySkill): Promise<CompanySkillAuditResult> {
+async function auditInstalledSkillBytes(skill: DomainSkill): Promise<DomainSkillAuditResult> {
   const skillDir = normalizeSkillDirectory(skill);
   const scannedAt = new Date().toISOString();
   const originHash = asString(getSkillMeta(skill).originHash);
@@ -2275,7 +2275,7 @@ async function auditInstalledSkillBytes(skill: CompanySkill): Promise<CompanySki
   }
 
   findings.sort((left, right) => `${left.severity}:${left.code}:${left.path ?? ""}`.localeCompare(`${right.severity}:${right.code}:${right.path ?? ""}`));
-  const verdict: CompanySkillAuditVerdict = findings.some((finding) => finding.severity === "error")
+  const verdict: DomainSkillAuditVerdict = findings.some((finding) => finding.severity === "error")
     ? "fail"
     : findings.length > 0 ? "warning" : "pass";
   return {
@@ -2315,7 +2315,7 @@ function deriveSkillSourceInfo(skill: SkillSourceInfoTarget): {
   editable: boolean;
   editableReason: string | null;
   sourceLabel: string | null;
-  sourceBadge: CompanySkillSourceBadge;
+  sourceBadge: DomainSkillSourceBadge;
   sourcePath: string | null;
 } {
   const metadata = getSkillMeta(skill);
@@ -2365,7 +2365,7 @@ function deriveSkillSourceInfo(skill: SkillSourceInfoTarget): {
   }
 
   if (skill.sourceType === "local_path") {
-    const managedRoot = resolveManagedSkillsRoot(skill.companyId);
+    const managedRoot = resolveManagedSkillsRoot(skill.domainId);
     const projectName = asString(metadata.projectName);
     const workspaceName = asString(metadata.workspaceName);
     const isProjectScan = metadata.sourceKind === "project_scan";
@@ -2401,12 +2401,12 @@ function deriveSkillSourceInfo(skill: SkillSourceInfoTarget): {
 }
 
 function enrichSkill(
-  skill: CompanySkill,
+  skill: DomainSkill,
   attachedAgentCount: number,
-  usedByAgents: CompanySkillUsageAgent[] = [],
-  currentVersion: CompanySkillVersion | null = null,
+  usedByAgents: DomainSkillUsageAgent[] = [],
+  currentVersion: DomainSkillVersion | null = null,
   starredByCurrentActor = false,
-  existingForks: CompanySkillForkSummary[] = [],
+  existingForks: DomainSkillForkSummary[] = [],
 ) {
   const source = deriveSkillSourceInfo(skill);
   return {
@@ -2420,7 +2420,7 @@ function enrichSkill(
   };
 }
 
-function summarizeOriginalSkill(skill: CompanySkill): CompanySkillOriginalSummary {
+function summarizeOriginalSkill(skill: DomainSkill): DomainSkillOriginalSummary {
   return {
     id: skill.id,
     name: skill.name,
@@ -2431,7 +2431,7 @@ function summarizeOriginalSkill(skill: CompanySkill): CompanySkillOriginalSummar
   };
 }
 
-function forkCreatedByActor(skill: CompanySkill, actor?: SkillActor | null) {
+function forkCreatedByActor(skill: DomainSkill, actor?: SkillActor | null) {
   const metadata = getSkillMeta(skill);
   if (actor?.type === "agent" && actor.agentId) {
     return asString(metadata.forkedByAgentId) === actor.agentId;
@@ -2443,16 +2443,16 @@ function forkCreatedByActor(skill: CompanySkill, actor?: SkillActor | null) {
 }
 
 function summarizeForkSkill(
-  skill: CompanySkill,
+  skill: DomainSkill,
   actor: SkillActor | null | undefined,
   versionCount: number,
-): CompanySkillForkSummary {
+): DomainSkillForkSummary {
   const metadata = getSkillMeta(skill);
   return {
     ...summarizeOriginalSkill(skill),
     key: skill.key,
     forkedFromSkillId: skill.forkedFromSkillId,
-    forkedFromCompanyId: skill.forkedFromCompanyId,
+    forkedFromDomainId: skill.forkedFromDomainId,
     currentVersionId: skill.currentVersionId,
     createdByCurrentActor: forkCreatedByActor(skill, actor),
     diverged: versionCount > 1 || Boolean(asString(metadata.userModifiedAt)),
@@ -2461,7 +2461,7 @@ function summarizeForkSkill(
   };
 }
 
-function toCompanySkillListItem(skill: CompanySkillListRow, attachedAgentCount: number): CompanySkillListItem {
+function toDomainSkillListItem(skill: DomainSkillListRow, attachedAgentCount: number): DomainSkillListItem {
   const source = deriveSkillSourceInfo(skill);
   const metadata = getSkillMeta(skill);
   const catalogKind = skill.sourceType === "catalog" && (metadata.catalogKind === "bundled" || metadata.catalogKind === "optional")
@@ -2472,7 +2472,7 @@ function toCompanySkillListItem(skill: CompanySkillListRow, attachedAgentCount: 
   const packageVersion = skill.sourceType === "catalog" ? asString(metadata.packageVersion) : null;
   return {
     id: skill.id,
-    companyId: skill.companyId,
+    domainId: skill.domainId,
     key: skill.key,
     slug: skill.slug,
     name: skill.name,
@@ -2492,7 +2492,7 @@ function toCompanySkillListItem(skill: CompanySkillListRow, attachedAgentCount: 
     sharingScope: skill.sharingScope,
     publicShareToken: skill.publicShareToken,
     forkedFromSkillId: skill.forkedFromSkillId,
-    forkedFromCompanyId: skill.forkedFromCompanyId,
+    forkedFromDomainId: skill.forkedFromDomainId,
     starCount: skill.starCount,
     installCount: skill.installCount,
     forkCount: skill.forkCount,
@@ -2514,43 +2514,43 @@ function toCompanySkillListItem(skill: CompanySkillListRow, attachedAgentCount: 
 
 async function listLastEditorsBySkillId(
   db: Db,
-  companyId: string,
+  domainId: string,
   skillIds: string[],
-): Promise<Map<string, CompanySkillLastEditor | null>> {
+): Promise<Map<string, DomainSkillLastEditor | null>> {
   if (skillIds.length === 0) return new Map();
   const rows = await db
-    .selectDistinctOn([companySkillVersions.companySkillId], {
-      companySkillId: companySkillVersions.companySkillId,
-      authorAgentId: companySkillVersions.authorAgentId,
-      authorUserId: companySkillVersions.authorUserId,
+    .selectDistinctOn([domainSkillVersions.domainSkillId], {
+      domainSkillId: domainSkillVersions.domainSkillId,
+      authorAgentId: domainSkillVersions.authorAgentId,
+      authorUserId: domainSkillVersions.authorUserId,
       userName: authUsers.name,
       userImage: authUsers.image,
       agentName: agentsTable.name,
     })
-    .from(companySkillVersions)
-    .leftJoin(authUsers, eq(authUsers.id, companySkillVersions.authorUserId))
+    .from(domainSkillVersions)
+    .leftJoin(authUsers, eq(authUsers.id, domainSkillVersions.authorUserId))
     .leftJoin(
       agentsTable,
       and(
-        eq(agentsTable.companyId, companyId),
-        eq(agentsTable.id, companySkillVersions.authorAgentId),
+        eq(agentsTable.domainId, domainId),
+        eq(agentsTable.id, domainSkillVersions.authorAgentId),
       ),
     )
     .where(and(
-      eq(companySkillVersions.companyId, companyId),
-      inArray(companySkillVersions.companySkillId, skillIds),
+      eq(domainSkillVersions.domainId, domainId),
+      inArray(domainSkillVersions.domainSkillId, skillIds),
     ))
     .orderBy(
-      companySkillVersions.companySkillId,
-      desc(companySkillVersions.createdAt),
-      desc(companySkillVersions.revisionNumber),
-      desc(companySkillVersions.id),
+      domainSkillVersions.domainSkillId,
+      desc(domainSkillVersions.createdAt),
+      desc(domainSkillVersions.revisionNumber),
+      desc(domainSkillVersions.id),
     );
 
-  const editors = new Map<string, CompanySkillLastEditor | null>();
+  const editors = new Map<string, DomainSkillLastEditor | null>();
   for (const row of rows) {
     if (row.authorUserId) {
-      editors.set(row.companySkillId, {
+      editors.set(row.domainSkillId, {
         kind: "user",
         id: row.authorUserId,
         name: row.userName ?? null,
@@ -2559,7 +2559,7 @@ async function listLastEditorsBySkillId(
       continue;
     }
     if (row.authorAgentId) {
-      editors.set(row.companySkillId, {
+      editors.set(row.domainSkillId, {
         kind: "agent",
         id: row.authorAgentId,
         name: row.agentName ?? null,
@@ -2567,23 +2567,23 @@ async function listLastEditorsBySkillId(
       });
       continue;
     }
-    editors.set(row.companySkillId, null);
+    editors.set(row.domainSkillId, null);
   }
   return editors;
 }
 
-export function companySkillService(db: Db) {
+export function domainSkillService(db: Db) {
   const agents = agentService(db);
   const projects = projectService(db);
 
-  async function ensureBundledSkills(companyId: string) {
+  async function ensureBundledSkills(domainId: string) {
     for (const skillsRoot of resolveBundledSkillsRoot()) {
       const stats = await fs.stat(skillsRoot).catch(() => null);
       if (!stats?.isDirectory()) continue;
-      const bundledSkills = await readLocalSkillImports(companyId, skillsRoot)
+      const bundledSkills = await readLocalSkillImports(domainId, skillsRoot)
         .then((skills) => skills.map((skill) => ({
           ...skill,
-          key: deriveCanonicalSkillKey(companyId, {
+          key: deriveCanonicalSkillKey(domainId, {
             ...skill,
             metadata: {
               ...(skill.metadata ?? {}),
@@ -2597,29 +2597,29 @@ export function companySkillService(db: Db) {
         })))
         .catch(() => [] as ImportedSkill[]);
       if (bundledSkills.length === 0) continue;
-      return upsertImportedSkills(companyId, bundledSkills);
+      return upsertImportedSkills(domainId, bundledSkills);
     }
     return [];
   }
 
-  async function reconcileLocalPathSkillSources(companyId: string) {
+  async function reconcileLocalPathSkillSources(domainId: string) {
     const rows = await db
       .select({
-        id: companySkills.id,
-        key: companySkills.key,
-        slug: companySkills.slug,
-        sourceType: companySkills.sourceType,
-        sourceLocator: companySkills.sourceLocator,
-        trustLevel: companySkills.trustLevel,
-        fileInventory: companySkills.fileInventory,
-        metadata: companySkills.metadata,
+        id: domainSkills.id,
+        key: domainSkills.key,
+        slug: domainSkills.slug,
+        sourceType: domainSkills.sourceType,
+        sourceLocator: domainSkills.sourceLocator,
+        trustLevel: domainSkills.trustLevel,
+        fileInventory: domainSkills.fileInventory,
+        metadata: domainSkills.metadata,
       })
-      .from(companySkills)
-      .where(eq(companySkills.companyId, companyId));
+      .from(domainSkills)
+      .where(eq(domainSkills.domainId, domainId));
     const skills = rows.map((row) => ({
       ...row,
-      sourceType: row.sourceType as CompanySkillSourceType,
-      trustLevel: row.trustLevel as CompanySkillTrustLevel,
+      sourceType: row.sourceType as DomainSkillSourceType,
+      trustLevel: row.trustLevel as DomainSkillTrustLevel,
       fileInventory: normalizeFileInventory(row),
       metadata: isPlainRecord(row.metadata) ? row.metadata : null,
     }));
@@ -2642,19 +2642,19 @@ export function companySkillService(db: Db) {
         const metadataChanged = !stableJsonEqual(metadata ?? {}, skill.metadata ?? {});
         if (inventoryChanged || metadataChanged || nextTrustLevel !== skill.trustLevel) {
           await db
-            .update(companySkills)
+            .update(domainSkills)
             .set({
               ...(nextInventory ? { fileInventory: serializeFileInventory(nextInventory) } : {}),
               trustLevel: nextTrustLevel,
               metadata,
               updatedAt: new Date(),
             })
-            .where(eq(companySkills.id, skill.id));
+            .where(eq(domainSkills.id, skill.id));
         }
         continue;
       }
 
-      const usedByAgents = await usage(companyId, skill.key);
+      const usedByAgents = await usage(domainId, skill.key);
       if (usedByAgents.length > 0) {
         const metadata = withMissingSourceMarker(
           skill.metadata,
@@ -2662,89 +2662,89 @@ export function companySkillService(db: Db) {
         );
         if (!stableJsonEqual(metadata, skill.metadata ?? {})) {
           await db
-            .update(companySkills)
+            .update(domainSkills)
             .set({ metadata, updatedAt: new Date() })
-            .where(eq(companySkills.id, skill.id));
+            .where(eq(domainSkills.id, skill.id));
         }
         continue;
       }
 
       await db
-        .delete(companySkills)
-        .where(eq(companySkills.id, skill.id));
-      await fs.rm(resolveRuntimeSkillMaterializedPath(companyId, skill), { recursive: true, force: true });
+        .delete(domainSkills)
+        .where(eq(domainSkills.id, skill.id));
+      await fs.rm(resolveRuntimeSkillMaterializedPath(domainId, skill), { recursive: true, force: true });
     }
   }
 
-  async function ensureSkillInventoryCurrent(companyId: string) {
-    const existingRefresh = skillInventoryRefreshPromises.get(companyId);
+  async function ensureSkillInventoryCurrent(domainId: string) {
+    const existingRefresh = skillInventoryRefreshPromises.get(domainId);
     if (existingRefresh) {
       await existingRefresh;
       return;
     }
 
     const refreshPromise = (async () => {
-      const companyExists = await db
+      const domainExists = await db
         .select({ id: domains.id })
         .from(domains)
-        .where(eq(domains.id, companyId))
+        .where(eq(domains.id, domainId))
         .then((rows) => rows.length > 0);
-      if (!companyExists) {
+      if (!domainExists) {
         throw notFound("Domain not found");
       }
-      await ensureBundledSkills(companyId);
-      await reconcileLocalPathSkillSources(companyId);
+      await ensureBundledSkills(domainId);
+      await reconcileLocalPathSkillSources(domainId);
     })();
 
-    skillInventoryRefreshPromises.set(companyId, refreshPromise);
+    skillInventoryRefreshPromises.set(domainId, refreshPromise);
     try {
       await refreshPromise;
     } finally {
-      if (skillInventoryRefreshPromises.get(companyId) === refreshPromise) {
-        skillInventoryRefreshPromises.delete(companyId);
+      if (skillInventoryRefreshPromises.get(domainId) === refreshPromise) {
+        skillInventoryRefreshPromises.delete(domainId);
       }
     }
   }
 
-  async function list(companyId: string, query: CompanySkillListQuery = {}): Promise<CompanySkillListItem[]> {
-    await ensureSkillInventoryCurrent(companyId);
+  async function list(domainId: string, query: DomainSkillListQuery = {}): Promise<DomainSkillListItem[]> {
+    await ensureSkillInventoryCurrent(domainId);
     const rows = await db
       .select({
-        id: companySkills.id,
-        companyId: companySkills.companyId,
-        key: companySkills.key,
-        slug: companySkills.slug,
-        name: companySkills.name,
-        description: companySkills.description,
-        sourceType: companySkills.sourceType,
-        sourceLocator: companySkills.sourceLocator,
-        sourceRef: companySkills.sourceRef,
-        trustLevel: companySkills.trustLevel,
-        compatibility: companySkills.compatibility,
-        fileInventory: companySkills.fileInventory,
-        iconUrl: companySkills.iconUrl,
-        color: companySkills.color,
-        tagline: companySkills.tagline,
-        authorName: companySkills.authorName,
-        homepageUrl: companySkills.homepageUrl,
-        categories: companySkills.categories,
-        sharingScope: companySkills.sharingScope,
-        publicShareToken: companySkills.publicShareToken,
-        forkedFromSkillId: companySkills.forkedFromSkillId,
-        forkedFromCompanyId: companySkills.forkedFromCompanyId,
-        starCount: companySkills.starCount,
-        installCount: companySkills.installCount,
-        forkCount: companySkills.forkCount,
-        currentVersionId: companySkills.currentVersionId,
-        metadata: companySkills.metadata,
-        createdAt: companySkills.createdAt,
-        updatedAt: companySkills.updatedAt,
+        id: domainSkills.id,
+        domainId: domainSkills.domainId,
+        key: domainSkills.key,
+        slug: domainSkills.slug,
+        name: domainSkills.name,
+        description: domainSkills.description,
+        sourceType: domainSkills.sourceType,
+        sourceLocator: domainSkills.sourceLocator,
+        sourceRef: domainSkills.sourceRef,
+        trustLevel: domainSkills.trustLevel,
+        compatibility: domainSkills.compatibility,
+        fileInventory: domainSkills.fileInventory,
+        iconUrl: domainSkills.iconUrl,
+        color: domainSkills.color,
+        tagline: domainSkills.tagline,
+        authorName: domainSkills.authorName,
+        homepageUrl: domainSkills.homepageUrl,
+        categories: domainSkills.categories,
+        sharingScope: domainSkills.sharingScope,
+        publicShareToken: domainSkills.publicShareToken,
+        forkedFromSkillId: domainSkills.forkedFromSkillId,
+        forkedFromDomainId: domainSkills.forkedFromDomainId,
+        starCount: domainSkills.starCount,
+        installCount: domainSkills.installCount,
+        forkCount: domainSkills.forkCount,
+        currentVersionId: domainSkills.currentVersionId,
+        metadata: domainSkills.metadata,
+        createdAt: domainSkills.createdAt,
+        updatedAt: domainSkills.updatedAt,
       })
-      .from(companySkills)
-      .where(eq(companySkills.companyId, companyId))
-      .orderBy(asc(companySkills.name), asc(companySkills.key))
-      .then((entries) => entries.map((entry) => toCompanySkillListRow(entry as CompanySkillListDbRow)));
-    const agentRows = await agents.list(companyId);
+      .from(domainSkills)
+      .where(eq(domainSkills.domainId, domainId))
+      .orderBy(asc(domainSkills.name), asc(domainSkills.key))
+      .then((entries) => entries.map((entry) => toDomainSkillListRow(entry as DomainSkillListDbRow)));
+    const agentRows = await agents.list(domainId);
     const q = query.q?.trim().toLowerLifeAdmin() ?? "";
     const categories = new Set(
       (query.categories ?? [])
@@ -2774,7 +2774,7 @@ export function companySkillService(db: Db) {
         const desiredSkills = resolveDesiredSkillKeys(rows, agent.adapterConfig as Record<string, unknown>);
         return desiredSkills.includes(skill.key);
       }).length;
-      return toCompanySkillListItem(skill, attachedAgentCount);
+      return toDomainSkillListItem(skill, attachedAgentCount);
     });
     const sort = query.sort ?? "alphabetical";
     items.sort((left, right) => {
@@ -2786,7 +2786,7 @@ export function companySkillService(db: Db) {
       return left.name.localeCompare(right.name) || left.key.localeCompare(right.key);
     });
     if (query.include?.includes("lastEditor")) {
-      const lastEditors = await listLastEditorsBySkillId(db, companyId, items.map((item) => item.id));
+      const lastEditors = await listLastEditorsBySkillId(db, domainId, items.map((item) => item.id));
       return items.map((item) => ({
         ...item,
         lastEditor: lastEditors.get(item.id) ?? null,
@@ -2795,18 +2795,18 @@ export function companySkillService(db: Db) {
     return items;
   }
 
-  async function listFull(companyId: string): Promise<CompanySkill[]> {
-    await ensureSkillInventoryCurrent(companyId);
+  async function listFull(domainId: string): Promise<DomainSkill[]> {
+    await ensureSkillInventoryCurrent(domainId);
     const rows = await db
-      .select(selectCompanySkillColumns())
-      .from(companySkills)
-      .where(eq(companySkills.companyId, companyId))
-      .orderBy(asc(companySkills.name), asc(companySkills.key));
-    return rows.map((row) => toCompanySkill(row));
+      .select(selectDomainSkillColumns())
+      .from(domainSkills)
+      .where(eq(domainSkills.domainId, domainId))
+      .orderBy(asc(domainSkills.name), asc(domainSkills.key));
+    return rows.map((row) => toDomainSkill(row));
   }
 
-  async function categoryCounts(companyId: string): Promise<CompanySkillCategoryCount[]> {
-    const rows = await listFull(companyId);
+  async function categoryCounts(domainId: string): Promise<DomainSkillCategoryCount[]> {
+    const rows = await listFull(domainId);
     const counts = new Map<string, number>();
     for (const skill of rows) {
       for (const category of skill.categories) {
@@ -2818,81 +2818,81 @@ export function companySkillService(db: Db) {
       .sort((left, right) => right.count - left.count || left.slug.localeCompare(right.slug));
   }
 
-  async function listReferenceTargets(companyId: string): Promise<SkillReferenceTarget[]> {
+  async function listReferenceTargets(domainId: string): Promise<SkillReferenceTarget[]> {
     const rows = await db
       .select({
-        id: companySkills.id,
-        key: companySkills.key,
-        slug: companySkills.slug,
+        id: domainSkills.id,
+        key: domainSkills.key,
+        slug: domainSkills.slug,
       })
-      .from(companySkills)
-      .where(eq(companySkills.companyId, companyId));
-    return rows as CompanySkillReferenceRow[];
+      .from(domainSkills)
+      .where(eq(domainSkills.domainId, domainId));
+    return rows as DomainSkillReferenceRow[];
   }
 
-  async function getById(companyId: string, id: string) {
+  async function getById(domainId: string, id: string) {
     const row = await db
-      .select(selectCompanySkillColumns())
-      .from(companySkills)
-      .where(and(eq(companySkills.companyId, companyId), eq(companySkills.id, id)))
+      .select(selectDomainSkillColumns())
+      .from(domainSkills)
+      .where(and(eq(domainSkills.domainId, domainId), eq(domainSkills.id, id)))
       .then((rows) => rows[0] ?? null);
-    return row ? toCompanySkill(row) : null;
+    return row ? toDomainSkill(row) : null;
   }
 
-  async function getByKey(companyId: string, key: string) {
+  async function getByKey(domainId: string, key: string) {
     const row = await db
-      .select(selectCompanySkillColumns())
-      .from(companySkills)
-      .where(and(eq(companySkills.companyId, companyId), eq(companySkills.key, key)))
+      .select(selectDomainSkillColumns())
+      .from(domainSkills)
+      .where(and(eq(domainSkills.domainId, domainId), eq(domainSkills.key, key)))
       .then((rows) => rows[0] ?? null);
-    return row ? toCompanySkill(row) : null;
+    return row ? toDomainSkill(row) : null;
   }
 
-  async function getBySlugIfUnique(companyId: string, slug: string) {
+  async function getBySlugIfUnique(domainId: string, slug: string) {
     const rows = await db
-      .select(selectCompanySkillColumns())
-      .from(companySkills)
-      .where(and(eq(companySkills.companyId, companyId), eq(companySkills.slug, slug)));
-    return rows.length === 1 ? toCompanySkill(rows[0]!) : null;
+      .select(selectDomainSkillColumns())
+      .from(domainSkills)
+      .where(and(eq(domainSkills.domainId, domainId), eq(domainSkills.slug, slug)));
+    return rows.length === 1 ? toDomainSkill(rows[0]!) : null;
   }
 
-  async function getByRouteRef(companyId: string, ref: string) {
-    return (isUuidLike(ref) ? await getById(companyId, ref) : null)
-      ?? await getBySlugIfUnique(companyId, ref)
-      ?? await getByKey(companyId, ref);
+  async function getByRouteRef(domainId: string, ref: string) {
+    return (isUuidLike(ref) ? await getById(domainId, ref) : null)
+      ?? await getBySlugIfUnique(domainId, ref)
+      ?? await getByKey(domainId, ref);
   }
 
-  async function getVersion(companyId: string, skillId: string, versionId: string): Promise<CompanySkillVersion | null> {
+  async function getVersion(domainId: string, skillId: string, versionId: string): Promise<DomainSkillVersion | null> {
     const row = await db
       .select()
-      .from(companySkillVersions)
+      .from(domainSkillVersions)
       .where(and(
-        eq(companySkillVersions.companyId, companyId),
-        eq(companySkillVersions.companySkillId, skillId),
-        eq(companySkillVersions.id, versionId),
+        eq(domainSkillVersions.domainId, domainId),
+        eq(domainSkillVersions.domainSkillId, skillId),
+        eq(domainSkillVersions.id, versionId),
       ))
       .then((rows) => rows[0] ?? null);
-    return row ? toCompanySkillVersion(row) : null;
+    return row ? toDomainSkillVersion(row) : null;
   }
 
-  async function getCurrentVersion(skill: CompanySkill): Promise<CompanySkillVersion | null> {
-    return skill.currentVersionId ? getVersion(skill.companyId, skill.id, skill.currentVersionId) : null;
+  async function getCurrentVersion(skill: DomainSkill): Promise<DomainSkillVersion | null> {
+    return skill.currentVersionId ? getVersion(skill.domainId, skill.id, skill.currentVersionId) : null;
   }
 
-  async function isStarredByActor(companyId: string, skillId: string, actor: SkillActor | null | undefined) {
+  async function isStarredByActor(domainId: string, skillId: string, actor: SkillActor | null | undefined) {
     if (!actor || actor.type === "system") return false;
     const clause = actor.type === "agent" && actor.agentId
-      ? eq(companySkillStars.agentId, actor.agentId)
+      ? eq(domainSkillStars.agentId, actor.agentId)
       : actor.type === "user" && actor.userId
-        ? eq(companySkillStars.userId, actor.userId)
+        ? eq(domainSkillStars.userId, actor.userId)
         : null;
     if (!clause) return false;
     const row = await db
-      .select({ id: companySkillStars.id })
-      .from(companySkillStars)
+      .select({ id: domainSkillStars.id })
+      .from(domainSkillStars)
       .where(and(
-        eq(companySkillStars.companyId, companyId),
-        eq(companySkillStars.companySkillId, skillId),
+        eq(domainSkillStars.domainId, domainId),
+        eq(domainSkillStars.domainSkillId, skillId),
         clause,
       ))
       .then((rows) => rows[0] ?? null);
@@ -2900,28 +2900,28 @@ export function companySkillService(db: Db) {
   }
 
   async function updateSkillMetadata(
-    skill: CompanySkill,
+    skill: DomainSkill,
     metadataPatch: Record<string, unknown>,
-  ): Promise<CompanySkill> {
+  ): Promise<DomainSkill> {
     const metadata = {
       ...(isPlainRecord(skill.metadata) ? skill.metadata : {}),
       ...metadataPatch,
     };
     const row = await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({ metadata, updatedAt: new Date() })
-      .where(eq(companySkills.id, skill.id))
+      .where(eq(domainSkills.id, skill.id))
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Skill not found");
-    return toCompanySkill(row);
+    return toDomainSkill(row);
   }
 
-  async function persistAuditMetadata(skill: CompanySkill, audit: CompanySkillAuditResult): Promise<CompanySkill> {
+  async function persistAuditMetadata(skill: DomainSkill, audit: DomainSkillAuditResult): Promise<DomainSkill> {
     const userModifiedAt = audit.originHash && audit.installedHash !== audit.originHash
       ? asString(getSkillMeta(skill).userModifiedAt) ?? audit.scannedAt
       : null;
-    const updateHoldReason: CompanySkillUpdateHoldReason | null = audit.verdict === "fail"
+    const updateHoldReason: DomainSkillUpdateHoldReason | null = audit.verdict === "fail"
       ? "audit_hard_stop"
       : userModifiedAt ? "local_modifications" : null;
     return updateSkillMetadata(skill, {
@@ -2935,21 +2935,21 @@ export function companySkillService(db: Db) {
     });
   }
 
-  async function auditSkill(companyId: string, skillId: string): Promise<CompanySkillAuditResult | null> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  async function auditSkill(domainId: string, skillId: string): Promise<DomainSkillAuditResult | null> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) return null;
     if (skill.sourceType !== "catalog" && skill.sourceType !== "local_path") {
-      throw unprocessable("Only local-path and catalog-managed company skills support audit.");
+      throw unprocessable("Only local-path and catalog-managed domain skills support audit.");
     }
     const audit = await auditInstalledSkillBytes(skill);
     await persistAuditMetadata(skill, audit);
     return audit;
   }
 
-  async function usage(companyId: string, key: string): Promise<CompanySkillUsageAgent[]> {
-    const skills = await listReferenceTargets(companyId);
-    const agentRows = await agents.list(companyId);
+  async function usage(domainId: string, key: string): Promise<DomainSkillUsageAgent[]> {
+    const skills = await listReferenceTargets(domainId);
+    const agentRows = await agents.list(domainId);
     const desiredAgents = agentRows.flatMap((agent) => {
       const desiredEntries = resolveDesiredSkillEntries(skills, agent.adapterConfig as Record<string, unknown>);
       const desiredEntry = desiredEntries.find((entry) => entry.key === key);
@@ -2968,73 +2968,73 @@ export function companySkillService(db: Db) {
     }));
   }
 
-  async function versionCount(companyId: string, skillId: string) {
+  async function versionCount(domainId: string, skillId: string) {
     const [{ value }] = await db
       .select({ value: sql<number>`count(*)::int` })
-      .from(companySkillVersions)
-      .where(and(eq(companySkillVersions.companyId, companyId), eq(companySkillVersions.companySkillId, skillId)));
+      .from(domainSkillVersions)
+      .where(and(eq(domainSkillVersions.domainId, domainId), eq(domainSkillVersions.domainSkillId, skillId)));
     return Number(value ?? 0);
   }
 
   async function existingForkSummaries(
-    companyId: string,
+    domainId: string,
     sourceSkillId: string,
     actor?: SkillActor | null,
-  ): Promise<CompanySkillForkSummary[]> {
+  ): Promise<DomainSkillForkSummary[]> {
     const rows = await db
-      .select(selectCompanySkillColumns())
-      .from(companySkills)
-      .where(and(eq(companySkills.companyId, companyId), eq(companySkills.forkedFromSkillId, sourceSkillId)))
-      .orderBy(desc(companySkills.updatedAt), asc(companySkills.name));
-    const summaries: CompanySkillForkSummary[] = [];
+      .select(selectDomainSkillColumns())
+      .from(domainSkills)
+      .where(and(eq(domainSkills.domainId, domainId), eq(domainSkills.forkedFromSkillId, sourceSkillId)))
+      .orderBy(desc(domainSkills.updatedAt), asc(domainSkills.name));
+    const summaries: DomainSkillForkSummary[] = [];
     for (const row of rows) {
-      const skill = toCompanySkill(row);
-      summaries.push(summarizeForkSkill(skill, actor, await versionCount(companyId, skill.id)));
+      const skill = toDomainSkill(row);
+      summaries.push(summarizeForkSkill(skill, actor, await versionCount(domainId, skill.id)));
     }
     return summaries;
   }
 
-  async function detail(companyId: string, id: string, actor?: SkillActor | null): Promise<CompanySkillDetail | null> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getByRouteRef(companyId, id);
+  async function detail(domainId: string, id: string, actor?: SkillActor | null): Promise<DomainSkillDetail | null> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getByRouteRef(domainId, id);
     if (!skill) return null;
-    const usedByAgents = await usage(companyId, skill.key);
-    const existingForks = await existingForkSummaries(companyId, skill.id, actor);
+    const usedByAgents = await usage(domainId, skill.key);
+    const existingForks = await existingForkSummaries(domainId, skill.id, actor);
     return enrichSkill(
       skill,
       usedByAgents.length,
       usedByAgents,
       await getCurrentVersion(skill),
-      await isStarredByActor(companyId, skill.id, actor),
+      await isStarredByActor(domainId, skill.id, actor),
       existingForks,
     );
   }
 
   async function forkPrecheck(
-    companyId: string,
+    domainId: string,
     skillId: string,
     actor?: SkillActor | null,
-  ): Promise<CompanySkillForkPrecheckResult | null> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  ): Promise<DomainSkillForkPrecheckResult | null> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) return null;
-    const usedByAgents = await usage(companyId, skill.key);
+    const usedByAgents = await usage(domainId, skill.key);
     return {
       skillId: skill.id,
       original: summarizeOriginalSkill(skill),
       agentUsageCount: usedByAgents.length,
       usedByAgents,
-      existingForks: await existingForkSummaries(companyId, skill.id, actor),
+      existingForks: await existingForkSummaries(domainId, skill.id, actor),
     };
   }
 
   async function collectVersionFileInventory(
-    companyId: string,
-    skill: CompanySkill,
-  ): Promise<CompanySkillVersionFileInventoryEntry[]> {
-    const out: CompanySkillVersionFileInventoryEntry[] = [];
+    domainId: string,
+    skill: DomainSkill,
+  ): Promise<DomainSkillVersionFileInventoryEntry[]> {
+    const out: DomainSkillVersionFileInventoryEntry[] = [];
     for (const entry of skill.fileInventory) {
-      const detail = await readFile(companyId, skill.id, entry.path);
+      const detail = await readFile(domainId, skill.id, entry.path);
       if (!detail) continue;
       out.push({
         path: detail.path,
@@ -3045,46 +3045,46 @@ export function companySkillService(db: Db) {
     return out;
   }
 
-  async function listVersions(companyId: string, skillId: string): Promise<CompanySkillVersion[]> {
-    const skill = await getById(companyId, skillId);
+  async function listVersions(domainId: string, skillId: string): Promise<DomainSkillVersion[]> {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     const rows = await db
       .select()
-      .from(companySkillVersions)
-      .where(and(eq(companySkillVersions.companyId, companyId), eq(companySkillVersions.companySkillId, skillId)))
-      .orderBy(desc(companySkillVersions.revisionNumber));
-    return rows.map((row) => toCompanySkillVersion(row));
+      .from(domainSkillVersions)
+      .where(and(eq(domainSkillVersions.domainId, domainId), eq(domainSkillVersions.domainSkillId, skillId)))
+      .orderBy(desc(domainSkillVersions.revisionNumber));
+    return rows.map((row) => toDomainSkillVersion(row));
   }
 
   async function createVersion(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    input: CompanySkillVersionCreateRequest = {},
+    input: DomainSkillVersionCreateRequest = {},
     actor: SkillActor | null = null,
-  ): Promise<CompanySkillVersion> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  ): Promise<DomainSkillVersion> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
-    const fileInventory = serializeVersionFileInventory(await collectVersionFileInventory(companyId, skill));
+    const fileInventory = serializeVersionFileInventory(await collectVersionFileInventory(domainId, skill));
     const versionRow = await db.transaction(async (tx) => {
       await tx.execute(sql`
-        select ${companySkills.id}
-        from ${companySkills}
-        where ${companySkills.id} = ${skillId}
-          and ${companySkills.companyId} = ${companyId}
+        select ${domainSkills.id}
+        from ${domainSkills}
+        where ${domainSkills.id} = ${skillId}
+          and ${domainSkills.domainId} = ${domainId}
         for update
       `);
       const [{ nextRevision }] = await tx
         .select({
-          nextRevision: sql<number>`coalesce(max(${companySkillVersions.revisionNumber}), 0) + 1`,
+          nextRevision: sql<number>`coalesce(max(${domainSkillVersions.revisionNumber}), 0) + 1`,
         })
-        .from(companySkillVersions)
-        .where(and(eq(companySkillVersions.companyId, companyId), eq(companySkillVersions.companySkillId, skillId)));
+        .from(domainSkillVersions)
+        .where(and(eq(domainSkillVersions.domainId, domainId), eq(domainSkillVersions.domainSkillId, skillId)));
       const row = await tx
-        .insert(companySkillVersions)
+        .insert(domainSkillVersions)
         .values({
-          companyId,
-          companySkillId: skillId,
+          domainId,
+          domainSkillId: skillId,
           revisionNumber: Number(nextRevision ?? 1),
           label: input.label?.trim() || null,
           fileInventory,
@@ -3095,103 +3095,103 @@ export function companySkillService(db: Db) {
         .then((rows) => rows[0] ?? null);
       if (!row) return null;
       await tx
-        .update(companySkills)
+        .update(domainSkills)
         .set({ currentVersionId: row.id, updatedAt: new Date() })
-        .where(and(eq(companySkills.id, skillId), eq(companySkills.companyId, companyId)));
+        .where(and(eq(domainSkills.id, skillId), eq(domainSkills.domainId, domainId)));
       return row;
     });
     if (!versionRow) throw notFound("Failed to persist skill version");
-    return toCompanySkillVersion(versionRow);
+    return toDomainSkillVersion(versionRow);
   }
 
-  async function refreshStarCount(companyId: string, skillId: string) {
+  async function refreshStarCount(domainId: string, skillId: string) {
     const [{ value }] = await db
       .select({ value: sql<number>`count(*)::int` })
-      .from(companySkillStars)
-      .where(and(eq(companySkillStars.companyId, companyId), eq(companySkillStars.companySkillId, skillId)));
+      .from(domainSkillStars)
+      .where(and(eq(domainSkillStars.domainId, domainId), eq(domainSkillStars.domainSkillId, skillId)));
     const starCount = Number(value ?? 0);
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({ starCount, updatedAt: new Date() })
-      .where(and(eq(companySkills.id, skillId), eq(companySkills.companyId, companyId)));
+      .where(and(eq(domainSkills.id, skillId), eq(domainSkills.domainId, domainId)));
     return starCount;
   }
 
   function actorStarClause(actor: SkillActor) {
-    if (actor.type === "agent" && actor.agentId) return eq(companySkillStars.agentId, actor.agentId);
-    if (actor.type === "user" && actor.userId) return eq(companySkillStars.userId, actor.userId);
+    if (actor.type === "agent" && actor.agentId) return eq(domainSkillStars.agentId, actor.agentId);
+    if (actor.type === "user" && actor.userId) return eq(domainSkillStars.userId, actor.userId);
     throw unprocessable("Skill stars require an agent or board user actor.");
   }
 
-  async function starSkill(companyId: string, skillId: string, actor: SkillActor) {
-    const skill = await getById(companyId, skillId);
+  async function starSkill(domainId: string, skillId: string, actor: SkillActor) {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     const existing = await db
-      .select({ id: companySkillStars.id })
-      .from(companySkillStars)
-      .where(and(eq(companySkillStars.companyId, companyId), eq(companySkillStars.companySkillId, skillId), actorStarClause(actor)))
+      .select({ id: domainSkillStars.id })
+      .from(domainSkillStars)
+      .where(and(eq(domainSkillStars.domainId, domainId), eq(domainSkillStars.domainSkillId, skillId), actorStarClause(actor)))
       .then((rows) => rows[0] ?? null);
     if (!existing) {
-      await db.insert(companySkillStars).values({
-        companyId,
-        companySkillId: skillId,
+      await db.insert(domainSkillStars).values({
+        domainId,
+        domainSkillId: skillId,
         agentId: actor.type === "agent" ? actor.agentId ?? null : null,
         userId: actor.type === "user" ? actor.userId ?? null : null,
       });
     }
-    return { skillId, starred: true, starCount: await refreshStarCount(companyId, skillId) };
+    return { skillId, starred: true, starCount: await refreshStarCount(domainId, skillId) };
   }
 
-  async function unstarSkill(companyId: string, skillId: string, actor: SkillActor) {
-    const skill = await getById(companyId, skillId);
+  async function unstarSkill(domainId: string, skillId: string, actor: SkillActor) {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     await db
-      .delete(companySkillStars)
-      .where(and(eq(companySkillStars.companyId, companyId), eq(companySkillStars.companySkillId, skillId), actorStarClause(actor)));
-    return { skillId, starred: false, starCount: await refreshStarCount(companyId, skillId) };
+      .delete(domainSkillStars)
+      .where(and(eq(domainSkillStars.domainId, domainId), eq(domainSkillStars.domainSkillId, skillId), actorStarClause(actor)));
+    return { skillId, starred: false, starCount: await refreshStarCount(domainId, skillId) };
   }
 
-  async function listComments(companyId: string, skillId: string): Promise<CompanySkillComment[]> {
-    const skill = await getById(companyId, skillId);
+  async function listComments(domainId: string, skillId: string): Promise<DomainSkillComment[]> {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     const rows = await db
       .select()
-      .from(companySkillComments)
+      .from(domainSkillComments)
       .where(and(
-        eq(companySkillComments.companyId, companyId),
-        eq(companySkillComments.companySkillId, skillId),
-        isNull(companySkillComments.deletedAt),
+        eq(domainSkillComments.domainId, domainId),
+        eq(domainSkillComments.domainSkillId, skillId),
+        isNull(domainSkillComments.deletedAt),
       ))
-      .orderBy(asc(companySkillComments.createdAt));
-    return rows.map((row) => toCompanySkillComment(row));
+      .orderBy(asc(domainSkillComments.createdAt));
+    return rows.map((row) => toDomainSkillComment(row));
   }
 
   async function createComment(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    input: CompanySkillCommentCreateRequest,
+    input: DomainSkillCommentCreateRequest,
     actor: SkillActor,
-  ): Promise<CompanySkillComment> {
-    const skill = await getById(companyId, skillId);
+  ): Promise<DomainSkillComment> {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     if (input.parentCommentId) {
       const parent = await db
-        .select({ id: companySkillComments.id })
-        .from(companySkillComments)
+        .select({ id: domainSkillComments.id })
+        .from(domainSkillComments)
         .where(and(
-          eq(companySkillComments.companyId, companyId),
-          eq(companySkillComments.companySkillId, skillId),
-          eq(companySkillComments.id, input.parentCommentId),
-          isNull(companySkillComments.deletedAt),
+          eq(domainSkillComments.domainId, domainId),
+          eq(domainSkillComments.domainSkillId, skillId),
+          eq(domainSkillComments.id, input.parentCommentId),
+          isNull(domainSkillComments.deletedAt),
         ))
         .then((rows) => rows[0] ?? null);
       if (!parent) throw notFound("Parent comment not found");
     }
     const row = await db
-      .insert(companySkillComments)
+      .insert(domainSkillComments)
       .values({
-        companyId,
-        companySkillId: skillId,
+        domainId,
+        domainSkillId: skillId,
         parentCommentId: input.parentCommentId ?? null,
         authorAgentId: actor.type === "agent" ? actor.agentId ?? null : null,
         authorUserId: actor.type === "user" ? actor.userId ?? null : null,
@@ -3200,95 +3200,95 @@ export function companySkillService(db: Db) {
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Failed to persist skill comment");
-    return toCompanySkillComment(row);
+    return toDomainSkillComment(row);
   }
 
-  function assertCanMutateComment(comment: CompanySkillComment, actor: SkillActor) {
+  function assertCanMutateComment(comment: DomainSkillComment, actor: SkillActor) {
     if (actor.type === "user") return;
     if (actor.type === "agent" && actor.agentId && comment.authorAgentId === actor.agentId) return;
     throw unprocessable("Only the comment author or a board user can modify this skill comment.");
   }
 
   async function updateComment(
-    companyId: string,
+    domainId: string,
     skillId: string,
     commentId: string,
-    input: CompanySkillCommentUpdateRequest,
+    input: DomainSkillCommentUpdateRequest,
     actor: SkillActor,
-  ): Promise<CompanySkillComment> {
+  ): Promise<DomainSkillComment> {
     const existing = await db
       .select()
-      .from(companySkillComments)
+      .from(domainSkillComments)
       .where(and(
-        eq(companySkillComments.companyId, companyId),
-        eq(companySkillComments.companySkillId, skillId),
-        eq(companySkillComments.id, commentId),
-        isNull(companySkillComments.deletedAt),
+        eq(domainSkillComments.domainId, domainId),
+        eq(domainSkillComments.domainSkillId, skillId),
+        eq(domainSkillComments.id, commentId),
+        isNull(domainSkillComments.deletedAt),
       ))
       .then((rows) => rows[0] ?? null);
     if (!existing) throw notFound("Skill comment not found");
-    const comment = toCompanySkillComment(existing);
+    const comment = toDomainSkillComment(existing);
     assertCanMutateComment(comment, actor);
     const row = await db
-      .update(companySkillComments)
+      .update(domainSkillComments)
       .set({ body: input.body, updatedAt: new Date() })
       .where(and(
-        eq(companySkillComments.companyId, companyId),
-        eq(companySkillComments.companySkillId, skillId),
-        eq(companySkillComments.id, commentId),
-        isNull(companySkillComments.deletedAt),
+        eq(domainSkillComments.domainId, domainId),
+        eq(domainSkillComments.domainSkillId, skillId),
+        eq(domainSkillComments.id, commentId),
+        isNull(domainSkillComments.deletedAt),
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Skill comment not found");
-    return toCompanySkillComment(row);
+    return toDomainSkillComment(row);
   }
 
   async function deleteComment(
-    companyId: string,
+    domainId: string,
     skillId: string,
     commentId: string,
     actor: SkillActor,
-  ): Promise<CompanySkillComment> {
+  ): Promise<DomainSkillComment> {
     const existing = await db
       .select()
-      .from(companySkillComments)
+      .from(domainSkillComments)
       .where(and(
-        eq(companySkillComments.companyId, companyId),
-        eq(companySkillComments.companySkillId, skillId),
-        eq(companySkillComments.id, commentId),
-        isNull(companySkillComments.deletedAt),
+        eq(domainSkillComments.domainId, domainId),
+        eq(domainSkillComments.domainSkillId, skillId),
+        eq(domainSkillComments.id, commentId),
+        isNull(domainSkillComments.deletedAt),
       ))
       .then((rows) => rows[0] ?? null);
     if (!existing) throw notFound("Skill comment not found");
-    const comment = toCompanySkillComment(existing);
+    const comment = toDomainSkillComment(existing);
     assertCanMutateComment(comment, actor);
     const row = await db
-      .update(companySkillComments)
+      .update(domainSkillComments)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(
-        eq(companySkillComments.companyId, companyId),
-        eq(companySkillComments.companySkillId, skillId),
-        eq(companySkillComments.id, commentId),
-        isNull(companySkillComments.deletedAt),
+        eq(domainSkillComments.domainId, domainId),
+        eq(domainSkillComments.domainSkillId, skillId),
+        eq(domainSkillComments.id, commentId),
+        isNull(domainSkillComments.deletedAt),
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Skill comment not found");
-    return toCompanySkillComment(row);
+    return toDomainSkillComment(row);
   }
 
   async function planSkillReassignments(
-    companyId: string,
-    source: CompanySkill,
+    domainId: string,
+    source: DomainSkill,
     forkKey: string,
     reassignAgentIds: string[] | undefined,
   ): Promise<PlannedSkillReassignment[]> {
     const requestedAgentIds = Array.from(new Set(reassignAgentIds ?? []));
     if (requestedAgentIds.length === 0) return [];
 
-    const skills = await listReferenceTargets(companyId);
-    const agentRows = await agents.list(companyId, { includeTerminated: true });
+    const skills = await listReferenceTargets(domainId);
+    const agentRows = await agents.list(domainId, { includeTerminated: true });
     const byId = new Map(agentRows.map((agent) => [agent.id, agent]));
     const missingAgentIds = requestedAgentIds.filter((agentId) => !byId.has(agentId));
     if (missingAgentIds.length > 0) {
@@ -3297,8 +3297,8 @@ export function companySkillService(db: Db) {
 
     return requestedAgentIds.map((agentId) => {
       const agent = byId.get(agentId)!;
-      if (agent.companyId !== companyId) {
-        throw unprocessable("Cannot reassign a skill for an agent in another company.", { agentId });
+      if (agent.domainId !== domainId) {
+        throw unprocessable("Cannot reassign a skill for an agent in another domain.", { agentId });
       }
       const adapterConfig = agent.adapterConfig as Record<string, unknown>;
       const desiredEntries = resolveDesiredSkillEntries(skills, adapterConfig);
@@ -3322,13 +3322,13 @@ export function companySkillService(db: Db) {
   }
 
   async function applySkillReassignments(
-    companyId: string,
-    source: CompanySkill,
+    domainId: string,
+    source: DomainSkill,
     forkKey: string,
     planned: PlannedSkillReassignment[],
-  ): Promise<CompanySkillForkReassignment[]> {
+  ): Promise<DomainSkillForkReassignment[]> {
     if (planned.length === 0) return [];
-    const skills = await listReferenceTargets(companyId);
+    const skills = await listReferenceTargets(domainId);
     await db.transaction(async (tx) => {
       for (const item of planned) {
         const row = await tx
@@ -3338,7 +3338,7 @@ export function companySkillService(db: Db) {
             adapterConfig: agentsTable.adapterConfig,
           })
           .from(agentsTable)
-          .where(and(eq(agentsTable.companyId, companyId), eq(agentsTable.id, item.agentId)))
+          .where(and(eq(agentsTable.domainId, domainId), eq(agentsTable.id, item.agentId)))
           .for("update")
           .then((rows) => rows[0] ?? null);
         if (!row) throw notFound(`Agent not found for skill reassignment: ${item.agentId}`);
@@ -3363,7 +3363,7 @@ export function companySkillService(db: Db) {
             adapterConfig: writePaperclipSkillSyncPreference(adapterConfig, nextEntries),
             updatedAt: new Date(),
           })
-          .where(and(eq(agentsTable.companyId, companyId), eq(agentsTable.id, item.agentId)))
+          .where(and(eq(agentsTable.domainId, domainId), eq(agentsTable.id, item.agentId)))
           .returning({ id: agentsTable.id })
           .then((rows) => rows[0] ?? null);
         if (!updated) throw notFound(`Agent not found for skill reassignment: ${item.agentId}`);
@@ -3372,57 +3372,57 @@ export function companySkillService(db: Db) {
     return planned.map((item) => item.reassignment);
   }
 
-  async function cleanupFailedFork(companyId: string, sourceSkillId: string, forkSkillId: string, forkDir: string) {
+  async function cleanupFailedFork(domainId: string, sourceSkillId: string, forkSkillId: string, forkDir: string) {
     await db.transaction(async (tx) => {
       await tx
-        .update(companySkills)
+        .update(domainSkills)
         .set({ currentVersionId: null, updatedAt: new Date() })
-        .where(and(eq(companySkills.id, forkSkillId), eq(companySkills.companyId, companyId)));
+        .where(and(eq(domainSkills.id, forkSkillId), eq(domainSkills.domainId, domainId)));
       await tx
-        .delete(companySkillComments)
-        .where(and(eq(companySkillComments.companyId, companyId), eq(companySkillComments.companySkillId, forkSkillId)));
+        .delete(domainSkillComments)
+        .where(and(eq(domainSkillComments.domainId, domainId), eq(domainSkillComments.domainSkillId, forkSkillId)));
       await tx
-        .delete(companySkillStars)
-        .where(and(eq(companySkillStars.companyId, companyId), eq(companySkillStars.companySkillId, forkSkillId)));
+        .delete(domainSkillStars)
+        .where(and(eq(domainSkillStars.domainId, domainId), eq(domainSkillStars.domainSkillId, forkSkillId)));
       await tx
-        .delete(companySkillVersions)
-        .where(and(eq(companySkillVersions.companyId, companyId), eq(companySkillVersions.companySkillId, forkSkillId)));
+        .delete(domainSkillVersions)
+        .where(and(eq(domainSkillVersions.domainId, domainId), eq(domainSkillVersions.domainSkillId, forkSkillId)));
       await tx
-        .delete(companySkills)
-        .where(and(eq(companySkills.id, forkSkillId), eq(companySkills.companyId, companyId)));
+        .delete(domainSkills)
+        .where(and(eq(domainSkills.id, forkSkillId), eq(domainSkills.domainId, domainId)));
       await tx
-        .update(companySkills)
+        .update(domainSkills)
         .set({
-          forkCount: sql`greatest(${companySkills.forkCount} - 1, 0)`,
-          installCount: sql`greatest(${companySkills.installCount} - 1, 0)`,
+          forkCount: sql`greatest(${domainSkills.forkCount} - 1, 0)`,
+          installCount: sql`greatest(${domainSkills.installCount} - 1, 0)`,
           updatedAt: new Date(),
         })
-        .where(and(eq(companySkills.id, sourceSkillId), eq(companySkills.companyId, companyId)));
+        .where(and(eq(domainSkills.id, sourceSkillId), eq(domainSkills.domainId, domainId)));
     });
     await fs.rm(forkDir, { recursive: true, force: true });
   }
 
   async function forkSkill(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    input: CompanySkillForkRequest = {},
+    input: DomainSkillForkRequest = {},
     actor: SkillActor | null = null,
-  ): Promise<CompanySkillForkResult> {
-    await ensureSkillInventoryCurrent(companyId);
-    const source = await getById(companyId, skillId);
+  ): Promise<DomainSkillForkResult> {
+    await ensureSkillInventoryCurrent(domainId);
+    const source = await getById(domainId, skillId);
     if (!source) throw notFound("Skill not found");
-    const existing = await listFull(companyId);
+    const existing = await listFull(domainId);
     const usedSlugs = new Set(existing.map((skill) => normalizeSkillSlug(skill.slug) ?? skill.slug));
     const forkSlug = uniqueSkillSlug(normalizeSkillSlug(input.slug ?? `${source.slug}-fork`) ?? `${source.slug}-fork`, usedSlugs);
     const forkName = input.name?.trim() || `${source.name} Fork`;
-    const forkKey = `company/${companyId}/${forkSlug}`;
-    const plannedReassignments = await planSkillReassignments(companyId, source, forkKey, input.reassignAgentIds);
-    const managedRoot = resolveManagedSkillsRoot(companyId);
+    const forkKey = `domain/${domainId}/${forkSlug}`;
+    const plannedReassignments = await planSkillReassignments(domainId, source, forkKey, input.reassignAgentIds);
+    const managedRoot = resolveManagedSkillsRoot(domainId);
     const forkDir = path.resolve(managedRoot, forkSlug);
     await fs.rm(forkDir, { recursive: true, force: true });
     await fs.mkdir(forkDir, { recursive: true });
     for (const entry of source.fileInventory) {
-      const detail = await readFile(companyId, source.id, entry.path);
+      const detail = await readFile(domainId, source.id, entry.path);
       if (!detail) continue;
       const targetPath = path.resolve(forkDir, detail.path);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
@@ -3438,11 +3438,11 @@ export function companySkillService(db: Db) {
     const metadata = {
       sourceKind: "managed_local",
       forkedFromSkillId: source.id,
-      forkedFromCompanyId: source.companyId,
+      forkedFromDomainId: source.domainId,
       forkedByAgentId: actor?.type === "agent" ? actor.agentId ?? null : null,
       forkedByUserId: actor?.type === "user" ? actor.userId ?? null : null,
     };
-    const imported = await upsertImportedSkills(companyId, [{
+    const imported = await upsertImportedSkills(domainId, [{
       key: forkKey,
       slug: forkSlug,
       name: asString(parsed.frontmatter.name) ?? forkName,
@@ -3458,7 +3458,7 @@ export function companySkillService(db: Db) {
     }]);
     const forked = imported[0]!;
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({
         iconUrl: source.iconUrl,
         color: source.color,
@@ -3466,30 +3466,30 @@ export function companySkillService(db: Db) {
         authorName: source.authorName,
         homepageUrl: source.homepageUrl,
         categories: source.categories,
-        sharingScope: input.sharingScope ?? "company",
+        sharingScope: input.sharingScope ?? "domain",
         forkedFromSkillId: source.id,
-        forkedFromCompanyId: source.companyId,
+        forkedFromDomainId: source.domainId,
         updatedAt: new Date(),
       })
-      .where(and(eq(companySkills.id, forked.id), eq(companySkills.companyId, companyId)));
+      .where(and(eq(domainSkills.id, forked.id), eq(domainSkills.domainId, domainId)));
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({
-        forkCount: sql`${companySkills.forkCount} + 1`,
-        installCount: sql`${companySkills.installCount} + 1`,
+        forkCount: sql`${domainSkills.forkCount} + 1`,
+        installCount: sql`${domainSkills.installCount} + 1`,
         updatedAt: new Date(),
       })
-      .where(and(eq(companySkills.id, source.id), eq(companySkills.companyId, companyId)));
-    await createVersion(companyId, forked.id, { label: "Initial version" }, actor);
-    const persistedFork = await getById(companyId, forked.id).then((skill) => {
+      .where(and(eq(domainSkills.id, source.id), eq(domainSkills.domainId, domainId)));
+    await createVersion(domainId, forked.id, { label: "Initial version" }, actor);
+    const persistedFork = await getById(domainId, forked.id).then((skill) => {
       if (!skill) throw notFound("Forked skill not found");
       return skill;
     });
-    let reassignments: CompanySkillForkReassignment[];
+    let reassignments: DomainSkillForkReassignment[];
     try {
-      reassignments = await applySkillReassignments(companyId, source, forkKey, plannedReassignments);
+      reassignments = await applySkillReassignments(domainId, source, forkKey, plannedReassignments);
     } catch (error) {
-      await cleanupFailedFork(companyId, source.id, forked.id, forkDir);
+      await cleanupFailedFork(domainId, source.id, forked.id, forkDir);
       throw error;
     }
     return {
@@ -3499,9 +3499,9 @@ export function companySkillService(db: Db) {
     };
   }
 
-  async function updateStatus(companyId: string, skillId: string): Promise<CompanySkillUpdateStatus | null> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  async function updateStatus(domainId: string, skillId: string): Promise<DomainSkillUpdateStatus | null> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) return null;
     const audit = skill.sourceType === "catalog" || skill.sourceType === "local_path"
       ? await auditInstalledSkillBytes(skill)
@@ -3521,8 +3521,8 @@ export function companySkillService(db: Db) {
           ? "local_modifications"
           : audit && audit.originHash
             ? null
-          : asString(metadata.updateHoldReason)) as CompanySkillUpdateHoldReason | null,
-      auditVerdict: audit?.verdict ?? (asString(metadata.auditVerdict) as CompanySkillAuditVerdict | null),
+          : asString(metadata.updateHoldReason)) as DomainSkillUpdateHoldReason | null,
+      auditVerdict: audit?.verdict ?? (asString(metadata.auditVerdict) as DomainSkillAuditVerdict | null),
       auditCodes: audit?.codes ?? (Array.isArray(metadata.auditCodes) ? metadata.auditCodes.map(String) : []),
     };
 
@@ -3603,9 +3603,9 @@ export function companySkillService(db: Db) {
     };
   }
 
-  async function readFile(companyId: string, skillId: string, relativePath: string): Promise<CompanySkillFileDetail | null> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  async function readFile(domainId: string, skillId: string, relativePath: string): Promise<DomainSkillFileDetail | null> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) return null;
 
     const normalizedPath = normalizePortablePath(relativePath || "SKILL.md");
@@ -3675,18 +3675,18 @@ export function companySkillService(db: Db) {
   }
 
   async function updateSkill(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    input: CompanySkillUpdateRequest = {},
-  ): Promise<CompanySkill> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+    input: DomainSkillUpdateRequest = {},
+  ): Promise<DomainSkill> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
 
     const sharingScope = Object.prototype.hasOwnProperty.call(input, "sharingScope")
       ? normalizeMutableSharingScope(input.sharingScope)
       : null;
-    const values: Partial<typeof companySkills.$inferInsert> = {
+    const values: Partial<typeof domainSkills.$inferInsert> = {
       updatedAt: new Date(),
     };
 
@@ -3717,35 +3717,35 @@ export function companySkillService(db: Db) {
     }
 
     const row = await db
-      .update(companySkills)
+      .update(domainSkills)
       .set(values)
-      .where(and(eq(companySkills.id, skillId), eq(companySkills.companyId, companyId)))
+      .where(and(eq(domainSkills.id, skillId), eq(domainSkills.domainId, domainId)))
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Skill not found");
-    return toCompanySkill(row);
+    return toDomainSkill(row);
   }
 
   async function createLocalSkill(
-    companyId: string,
-    input: CompanySkillCreateRequest,
+    domainId: string,
+    input: DomainSkillCreateRequest,
     actor: SkillActor | null = null,
-  ): Promise<CompanySkill> {
+  ): Promise<DomainSkill> {
     const slug = normalizeSkillSlug(input.slug ?? input.name) ?? "skill";
-    const key = `company/${companyId}/${slug}`;
-    const existing = await getByKey(companyId, key);
+    const key = `domain/${domainId}/${slug}`;
+    const existing = await getByKey(domainId, key);
     if (existing) {
-      throw conflict(`A company skill with slug "${slug}" already exists.`);
+      throw conflict(`A domain skill with slug "${slug}" already exists.`);
     }
 
     const forkSource = input.forkedFromSkillId
-      ? await getById(companyId, input.forkedFromSkillId)
+      ? await getById(domainId, input.forkedFromSkillId)
       : null;
     if (input.forkedFromSkillId && !forkSource) {
       throw notFound("Fork source skill not found");
     }
-    const sharingScope = normalizeMutableSharingScope(input.sharingScope) ?? "company";
-    const managedRoot = resolveManagedSkillsRoot(companyId);
+    const sharingScope = normalizeMutableSharingScope(input.sharingScope) ?? "domain";
+    const managedRoot = resolveManagedSkillsRoot(domainId);
     const skillDir = path.resolve(managedRoot, slug);
     const skillFilePath = path.resolve(skillDir, "SKILL.md");
 
@@ -3754,7 +3754,7 @@ export function companySkillService(db: Db) {
 
     if (forkSource) {
       for (const entry of forkSource.fileInventory) {
-        const detail = await readFile(companyId, forkSource.id, entry.path);
+        const detail = await readFile(domainId, forkSource.id, entry.path);
         if (!detail) continue;
         const targetPath = path.resolve(skillDir, detail.path);
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
@@ -3787,12 +3787,12 @@ export function companySkillService(db: Db) {
       sourceKind: "managed_local",
       ...(forkSource ? {
         forkedFromSkillId: forkSource.id,
-        forkedFromCompanyId: forkSource.companyId,
+        forkedFromDomainId: forkSource.domainId,
         forkedByAgentId: actor?.type === "agent" ? actor.agentId ?? null : null,
         forkedByUserId: actor?.type === "user" ? actor.userId ?? null : null,
       } : {}),
     };
-    const imported = await upsertImportedSkills(companyId, [{
+    const imported = await upsertImportedSkills(domainId, [{
       key,
       slug,
       name: asString(parsed.frontmatter.name) ?? input.name,
@@ -3809,7 +3809,7 @@ export function companySkillService(db: Db) {
 
     const created = imported[0]!;
     const row = await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({
         iconUrl: normalizeStoreText(input.iconUrl, 2000) ?? forkSource?.iconUrl ?? created.iconUrl,
         color: normalizeStoreText(input.color, 64) ?? forkSource?.color ?? created.color,
@@ -3819,35 +3819,35 @@ export function companySkillService(db: Db) {
         categories: input.categories ? normalizeCategoryList(input.categories) : forkSource?.categories ?? created.categories,
         sharingScope,
         forkedFromSkillId: forkSource?.id ?? null,
-        forkedFromCompanyId: forkSource?.companyId ?? null,
+        forkedFromDomainId: forkSource?.domainId ?? null,
         updatedAt: new Date(),
       })
-      .where(and(eq(companySkills.id, created.id), eq(companySkills.companyId, companyId)))
+      .where(and(eq(domainSkills.id, created.id), eq(domainSkills.domainId, domainId)))
       .returning()
       .then((rows) => rows[0] ?? null);
     if (forkSource) {
       await db
-        .update(companySkills)
+        .update(domainSkills)
         .set({
-          forkCount: sql`${companySkills.forkCount} + 1`,
-          installCount: sql`${companySkills.installCount} + 1`,
+          forkCount: sql`${domainSkills.forkCount} + 1`,
+          installCount: sql`${domainSkills.installCount} + 1`,
           updatedAt: new Date(),
         })
-        .where(and(eq(companySkills.id, forkSource.id), eq(companySkills.companyId, companyId)));
+        .where(and(eq(domainSkills.id, forkSource.id), eq(domainSkills.domainId, domainId)));
     }
-    await createVersion(companyId, created.id, { label: "Initial version" }, actor);
-    return (await getById(companyId, created.id)) ?? (row ? toCompanySkill(row) : created);
+    await createVersion(domainId, created.id, { label: "Initial version" }, actor);
+    return (await getById(domainId, created.id)) ?? (row ? toDomainSkill(row) : created);
   }
 
   async function updateFile(
-    companyId: string,
+    domainId: string,
     skillId: string,
     relativePath: string,
     content: string,
     actor: SkillActor | null = null,
-  ): Promise<CompanySkillFileDetail> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  ): Promise<DomainSkillFileDetail> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
 
     const source = deriveSkillSourceInfo(skill);
@@ -3866,7 +3866,7 @@ export function companySkillService(db: Db) {
     if (normalizedPath === "SKILL.md") {
       const parsed = parseFrontmatterMarkdown(content);
       await db
-        .update(companySkills)
+        .update(domainSkills)
         .set({
           name: asString(parsed.frontmatter.name) ?? skill.name,
           description: asString(parsed.frontmatter.description) ?? skill.description,
@@ -3874,31 +3874,31 @@ export function companySkillService(db: Db) {
           ...readSkillStoreMetadata(parsed.frontmatter, skill.metadata),
           updatedAt: new Date(),
         })
-        .where(eq(companySkills.id, skill.id));
+        .where(eq(domainSkills.id, skill.id));
     } else {
       await db
-        .update(companySkills)
+        .update(domainSkills)
         .set({ updatedAt: new Date() })
-        .where(eq(companySkills.id, skill.id));
+        .where(eq(domainSkills.id, skill.id));
     }
 
     if (previousContent !== content) {
-      await createVersion(companyId, skillId, {}, actor);
+      await createVersion(domainId, skillId, {}, actor);
     }
 
-    const detail = await readFile(companyId, skillId, normalizedPath);
+    const detail = await readFile(domainId, skillId, normalizedPath);
     if (!detail) throw notFound("Skill file not found");
     return detail;
   }
 
   async function deleteFile(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    input: CompanySkillFileDeleteRequest,
+    input: DomainSkillFileDeleteRequest,
     actor: SkillActor | null = null,
-  ): Promise<CompanySkillFileDeleteResult> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  ): Promise<DomainSkillFileDeleteResult> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
 
     const source = deriveSkillSourceInfo(skill);
@@ -3940,11 +3940,11 @@ export function companySkillService(db: Db) {
     });
 
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({ updatedAt: new Date() })
-      .where(eq(companySkills.id, skill.id));
+      .where(eq(domainSkills.id, skill.id));
 
-    await createVersion(companyId, skillId, {
+    await createVersion(domainId, skillId, {
       label: input.target === "folder" ? `Deleted ${normalizedPath}/` : `Deleted ${normalizedPath}`,
     }, actor);
 
@@ -3956,12 +3956,12 @@ export function companySkillService(db: Db) {
     };
   }
 
-  async function installUpdate(companyId: string, skillId: string, options: { force?: boolean } = {}): Promise<CompanySkill | null> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  async function installUpdate(domainId: string, skillId: string, options: { force?: boolean } = {}): Promise<DomainSkill | null> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) return null;
 
-    const status = await updateStatus(companyId, skillId);
+    const status = await updateStatus(domainId, skillId);
     if (!status?.supported) {
       throw unprocessable(status?.reason ?? "This skill does not support updates.");
     }
@@ -3994,7 +3994,7 @@ export function companySkillService(db: Db) {
         });
       }
       assertCatalogSkillInstallable(catalogSkill);
-      const originSnapshotLocator = await materializeCatalogOriginSnapshot(companyId, catalogSkill, skill.slug);
+      const originSnapshotLocator = await materializeCatalogOriginSnapshot(domainId, catalogSkill, skill.slug);
       const snapshotSkill = {
         ...skill,
         sourceLocator: originSnapshotLocator,
@@ -4013,7 +4013,7 @@ export function companySkillService(db: Db) {
         });
       }
       const materializedDir = path.resolve(
-        resolveManagedSkillsRoot(companyId),
+        resolveManagedSkillsRoot(domainId),
         "__catalog__",
         buildSkillRuntimeName(catalogSkill.key, skill.slug),
       );
@@ -4045,13 +4045,13 @@ export function companySkillService(db: Db) {
         updatedAt: new Date(),
       };
       const row = await db
-        .update(companySkills)
+        .update(domainSkills)
         .set(nextValues)
-        .where(and(eq(companySkills.id, skill.id), eq(companySkills.companyId, companyId)))
+        .where(and(eq(domainSkills.id, skill.id), eq(domainSkills.domainId, domainId)))
         .returning()
         .then((rows) => rows[0] ?? null);
       if (!row) throw notFound("Skill not found");
-      const updated = toCompanySkill(row);
+      const updated = toDomainSkill(row);
       const postAudit = await auditInstalledSkillBytes(updated);
       if (postAudit.verdict === "fail") {
         await persistAuditMetadata(updated, postAudit);
@@ -4067,21 +4067,21 @@ export function companySkillService(db: Db) {
       throw unprocessable("Skill source locator is missing.");
     }
 
-    const result = await readUrlSkillImports(companyId, skill.sourceLocator, skill.slug);
+    const result = await readUrlSkillImports(domainId, skill.sourceLocator, skill.slug);
     const matching = result.skills.find((entry) => entry.key === skill.key) ?? result.skills[0] ?? null;
     if (!matching) {
       throw unprocessable(`Skill ${skill.key} could not be re-imported from its source.`);
     }
-    const imported = await upsertImportedSkills(companyId, [matching]);
+    const imported = await upsertImportedSkills(domainId, [matching]);
     return imported[0] ?? null;
   }
 
-  async function resetSkill(companyId: string, skillId: string, options: { force?: boolean } = {}): Promise<CompanySkill | null> {
-    await ensureSkillInventoryCurrent(companyId);
-    const skill = await getById(companyId, skillId);
+  async function resetSkill(domainId: string, skillId: string, options: { force?: boolean } = {}): Promise<DomainSkill | null> {
+    await ensureSkillInventoryCurrent(domainId);
+    const skill = await getById(domainId, skillId);
     if (!skill) return null;
     if (skill.sourceType !== "catalog") {
-      throw unprocessable("Only catalog-managed company skills support reset.");
+      throw unprocessable("Only catalog-managed domain skills support reset.");
     }
 
     const metadata = getSkillMeta(skill);
@@ -4101,7 +4101,7 @@ export function companySkillService(db: Db) {
       const catalogId = asString(metadata.catalogId);
       const catalogSkill = catalogId ? resolveCatalogSkillIfPresent(catalogId) : null;
       if (catalogSkill?.contentHash === originHash) {
-        sourceDir = await materializeCatalogOriginSnapshot(companyId, catalogSkill, skill.slug);
+        sourceDir = await materializeCatalogOriginSnapshot(domainId, catalogSkill, skill.slug);
       }
     }
     if (!sourceDir) {
@@ -4139,7 +4139,7 @@ export function companySkillService(db: Db) {
     const inventory = await collectLocalSkillInventory(targetDir);
     const trustLevel = deriveTrustLevel(inventory);
     const row = await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({
         markdown,
         sourceRef: originHash,
@@ -4159,11 +4159,11 @@ export function companySkillService(db: Db) {
         },
         updatedAt: new Date(),
       })
-      .where(and(eq(companySkills.id, skill.id), eq(companySkills.companyId, companyId)))
+      .where(and(eq(domainSkills.id, skill.id), eq(domainSkills.domainId, domainId)))
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Skill not found");
-    const reset = toCompanySkill(row);
+    const reset = toDomainSkill(row);
     const postAudit = await auditInstalledSkillBytes(reset);
     if (postAudit.installedHash !== originHash || postAudit.verdict === "fail") {
       await persistAuditMetadata(reset, postAudit);
@@ -4176,20 +4176,20 @@ export function companySkillService(db: Db) {
   }
 
   async function scanProjectWorkspaces(
-    companyId: string,
-    input: CompanySkillProjectScanRequest = {},
-  ): Promise<CompanySkillProjectScanResult> {
-    await ensureSkillInventoryCurrent(companyId);
+    domainId: string,
+    input: DomainSkillProjectScanRequest = {},
+  ): Promise<DomainSkillProjectScanResult> {
+    await ensureSkillInventoryCurrent(domainId);
     const projectRows = input.projectIds?.length
-      ? await projects.listByIds(companyId, input.projectIds)
-      : await projects.list(companyId);
+      ? await projects.listByIds(domainId, input.projectIds)
+      : await projects.list(domainId);
     const workspaceFilter = new Set(input.workspaceIds ?? []);
-    const skipped: CompanySkillProjectScanSkipped[] = [];
-    const conflicts: CompanySkillProjectScanConflict[] = [];
+    const skipped: DomainSkillProjectScanSkipped[] = [];
+    const conflicts: DomainSkillProjectScanConflict[] = [];
     const warnings: string[] = [];
-    const imported: CompanySkill[] = [];
-    const updated: CompanySkill[] = [];
-    const availableSkills = await listFull(companyId);
+    const imported: DomainSkill[] = [];
+    const updated: DomainSkill[] = [];
+    const availableSkills = await listFull(domainId);
     const acceptedSkills = [...availableSkills];
     const acceptedByKey = new Map(acceptedSkills.map((skill) => [skill.key, skill]));
     const scanTargets: ProjectSkillScanTarget[] = [];
@@ -4200,7 +4200,7 @@ export function companySkillService(db: Db) {
       warnings.push(message);
       return message;
     };
-    const upsertAcceptedSkill = (skill: CompanySkill) => {
+    const upsertAcceptedSkill = (skill: DomainSkill) => {
       const nextIndex = acceptedSkills.findIndex((entry) => entry.id === skill.id || entry.key === skill.key);
       if (nextIndex >= 0) acceptedSkills[nextIndex] = skill;
       else acceptedSkills.push(skill);
@@ -4255,7 +4255,7 @@ export function companySkillService(db: Db) {
 
         let nextSkill: ImportedSkill;
         try {
-          nextSkill = await readLocalSkillImportFromDirectory(companyId, directory.skillDir, {
+          nextSkill = await readLocalSkillImportFromDirectory(domainId, directory.skillDir, {
             inventoryMode: directory.inventoryMode,
             metadata: {
               sourceKind: "project_scan",
@@ -4305,7 +4305,7 @@ export function companySkillService(db: Db) {
             continue;
           }
 
-          const persisted = (await upsertImportedSkills(companyId, [nextSkill]))[0];
+          const persisted = (await upsertImportedSkills(domainId, [nextSkill]))[0];
           if (!persisted) continue;
           updated.push(persisted);
           upsertAcceptedSkill(persisted);
@@ -4333,7 +4333,7 @@ export function companySkillService(db: Db) {
           continue;
         }
 
-        const persisted = (await upsertImportedSkills(companyId, [nextSkill]))[0];
+        const persisted = (await upsertImportedSkills(domainId, [nextSkill]))[0];
         if (!persisted) continue;
         imported.push(persisted);
         upsertAcceptedSkill(persisted);
@@ -4353,13 +4353,13 @@ export function companySkillService(db: Db) {
   }
 
   async function materializeCatalogSkillFiles(
-    companyId: string,
+    domainId: string,
     skill: ImportedSkill,
     normalizedFiles: Record<string, string>,
   ) {
     const packageDir = skill.packageDir ? normalizePortablePath(skill.packageDir) : null;
     if (!packageDir) return null;
-    const catalogRoot = path.resolve(resolveManagedSkillsRoot(companyId), "__catalog__");
+    const catalogRoot = path.resolve(resolveManagedSkillsRoot(domainId), "__catalog__");
     const skillDir = path.resolve(catalogRoot, buildSkillRuntimeName(skill.key, skill.slug));
     await fs.rm(skillDir, { recursive: true, force: true });
     await fs.mkdir(skillDir, { recursive: true });
@@ -4418,11 +4418,11 @@ export function companySkillService(db: Db) {
   }
 
   async function materializeCatalogManifestSkillFiles(
-    companyId: string,
+    domainId: string,
     catalogSkill: CatalogSkill,
     slug: string,
   ) {
-    const catalogRoot = path.resolve(resolveManagedSkillsRoot(companyId), "__catalog__");
+    const catalogRoot = path.resolve(resolveManagedSkillsRoot(domainId), "__catalog__");
     const skillDir = path.resolve(catalogRoot, buildSkillRuntimeName(catalogSkill.key, slug));
     const replacement = await createDirectoryReplacement(skillDir);
     try {
@@ -4444,11 +4444,11 @@ export function companySkillService(db: Db) {
   }
 
   async function materializeCatalogOriginSnapshot(
-    companyId: string,
+    domainId: string,
     catalogSkill: CatalogSkill,
     slug: string,
   ) {
-    const originsRoot = path.resolve(resolveManagedSkillsRoot(companyId), "__catalog_origins__");
+    const originsRoot = path.resolve(resolveManagedSkillsRoot(domainId), "__catalog_origins__");
     const snapshotDir = path.resolve(
       originsRoot,
       buildSkillRuntimeName(catalogSkill.key, slug),
@@ -4494,7 +4494,7 @@ export function companySkillService(db: Db) {
 
   function buildCatalogSkillMetadata(
     catalogSkill: CatalogSkill,
-    existing: CompanySkill | null,
+    existing: DomainSkill | null,
     originSnapshotLocator: string,
   ) {
     const packageMetadata = getCatalogPackageMetadata();
@@ -4526,14 +4526,14 @@ export function companySkillService(db: Db) {
   }
 
   async function auditCatalogSkillSnapshot(
-    companyId: string,
+    domainId: string,
     catalogSkill: CatalogSkill,
     slug: string,
     sourceDir: string,
   ) {
     return auditInstalledSkillBytes({
       id: randomUUID(),
-      companyId,
+      domainId,
       key: catalogSkill.key,
       slug,
       name: catalogSkill.name,
@@ -4551,10 +4551,10 @@ export function companySkillService(db: Db) {
       authorName: null,
       homepageUrl: null,
       categories: normalizeCategoryList([catalogSkill.category, ...catalogSkill.tags]),
-      sharingScope: "company",
+      sharingScope: "domain",
       publicShareToken: null,
       forkedFromSkillId: null,
-      forkedFromCompanyId: null,
+      forkedFromDomainId: null,
       starCount: 0,
       installCount: 0,
       forkCount: 0,
@@ -4570,10 +4570,10 @@ export function companySkillService(db: Db) {
   }
 
   async function installFromCatalog(
-    companyId: string,
-    input: CompanySkillInstallCatalogRequest,
-  ): Promise<CompanySkillInstallCatalogResult> {
-    await ensureSkillInventoryCurrent(companyId);
+    domainId: string,
+    input: DomainSkillInstallCatalogRequest,
+  ): Promise<DomainSkillInstallCatalogResult> {
+    await ensureSkillInventoryCurrent(domainId);
     const catalogSkill = getCatalogSkillOrThrow(input.catalogSkillId);
     assertCatalogSkillInstallable(catalogSkill);
 
@@ -4582,7 +4582,7 @@ export function companySkillService(db: Db) {
       throw unprocessable("Catalog skill slug is invalid.");
     }
 
-    const existingSkills = await listFull(companyId);
+    const existingSkills = await listFull(domainId);
     const existingByKey = existingSkills.find((skill) => skill.key === catalogSkill.key) ?? null;
     const slugConflict = existingSkills.find((skill) => skill.slug === slug && skill.id !== existingByKey?.id) ?? null;
     if (slugConflict) {
@@ -4631,15 +4631,15 @@ export function companySkillService(db: Db) {
     let originSnapshotLocator: string | null = null;
     let candidateMaterializedDir: string | null = null;
     try {
-      originSnapshotLocator = await materializeCatalogOriginSnapshot(companyId, catalogSkill, slug);
-      const candidateAudit = await auditCatalogSkillSnapshot(companyId, catalogSkill, slug, originSnapshotLocator);
+      originSnapshotLocator = await materializeCatalogOriginSnapshot(domainId, catalogSkill, slug);
+      const candidateAudit = await auditCatalogSkillSnapshot(domainId, catalogSkill, slug, originSnapshotLocator);
       if (candidateAudit.verdict === "fail") {
         throw unprocessable("Catalog install is blocked by hard-stop audit findings.", {
           updateHoldReason: "audit_hard_stop",
           audit: candidateAudit,
         });
       }
-      candidateMaterializedDir = await materializeCatalogManifestSkillFiles(companyId, catalogSkill, slug);
+      candidateMaterializedDir = await materializeCatalogManifestSkillFiles(domainId, catalogSkill, slug);
       materializedDir = candidateMaterializedDir;
     } catch (error) {
       if (candidateMaterializedDir) {
@@ -4659,7 +4659,7 @@ export function companySkillService(db: Db) {
       categories: [catalogSkill.category, ...catalogSkill.tags],
     });
     const values = {
-      companyId,
+      domainId,
       key: catalogSkill.key,
       slug,
       name: catalogSkill.name,
@@ -4680,7 +4680,7 @@ export function companySkillService(db: Db) {
       authorName: storeMetadata.authorName ?? existingByKey?.authorName ?? "Paperclip",
       homepageUrl: storeMetadata.homepageUrl ?? existingByKey?.homepageUrl ?? catalogSkill.source?.url ?? null,
       categories: storeMetadata.categories.length > 0 ? storeMetadata.categories : normalizeCategoryList([catalogSkill.category, ...catalogSkill.tags]),
-      sharingScope: existingByKey?.sharingScope ?? "company",
+      sharingScope: existingByKey?.sharingScope ?? "domain",
       installCount: existingByKey?.installCount ?? 1,
       metadata,
       updatedAt: new Date(),
@@ -4688,19 +4688,19 @@ export function companySkillService(db: Db) {
 
     const row = existingByKey
       ? await db
-        .update(companySkills)
+        .update(domainSkills)
         .set(values)
-        .where(eq(companySkills.id, existingByKey.id))
+        .where(eq(domainSkills.id, existingByKey.id))
         .returning()
         .then((rows) => rows[0] ?? null)
       : await db
-        .insert(companySkills)
+        .insert(domainSkills)
         .values(values)
         .returning()
         .then((rows) => rows[0] ?? null);
 
-    if (!row) throw notFound("Failed to persist company skill");
-    const installed = toCompanySkill(row);
+    if (!row) throw notFound("Failed to persist domain skill");
+    const installed = toDomainSkill(row);
     const postAudit = await auditInstalledSkillBytes(installed);
     if (postAudit.verdict === "fail") {
       await persistAuditMetadata(installed, postAudit);
@@ -4718,8 +4718,8 @@ export function companySkillService(db: Db) {
     };
   }
 
-  async function materializeRuntimeSkillFiles(companyId: string, skill: CompanySkill) {
-    const runtimeRoot = path.resolve(resolveManagedSkillsRoot(companyId), "__runtime__");
+  async function materializeRuntimeSkillFiles(domainId: string, skill: DomainSkill) {
+    const runtimeRoot = path.resolve(resolveManagedSkillsRoot(domainId), "__runtime__");
     const skillDir = path.resolve(runtimeRoot, buildSkillRuntimeName(skill.key, skill.slug));
     await fs.rm(skillDir, { recursive: true, force: true });
     await fs.mkdir(skillDir, { recursive: true });
@@ -4727,7 +4727,7 @@ export function companySkillService(db: Db) {
     let wroteSkillFile = false;
     for (const entry of skill.fileInventory) {
       const normalizedPath = normalizePortablePath(entry.path);
-      const detail = await readFile(companyId, skill.id, normalizedPath).catch(() => null);
+      const detail = await readFile(domainId, skill.id, normalizedPath).catch(() => null);
       const content = detail?.content ?? (normalizedPath === "SKILL.md" ? skill.markdown : null);
       if (content === null) continue;
       const targetPath = path.resolve(skillDir, entry.path);
@@ -4780,7 +4780,7 @@ export function companySkillService(db: Db) {
     }
   }
 
-  async function materializedVersionSnapshotMatches(skillDir: string, version: CompanySkillVersion) {
+  async function materializedVersionSnapshotMatches(skillDir: string, version: DomainSkillVersion) {
     const expected = new Map<string, string>();
     let sawSkillFile = false;
     for (const entry of version.fileInventory) {
@@ -4805,8 +4805,8 @@ export function companySkillService(db: Db) {
     return true;
   }
 
-  async function materializeVersionSnapshot(companyId: string, skill: CompanySkill, version: CompanySkillVersion) {
-    const runtimeRoot = path.resolve(resolveManagedSkillsRoot(companyId), "__versions__");
+  async function materializeVersionSnapshot(domainId: string, skill: DomainSkill, version: DomainSkillVersion) {
+    const runtimeRoot = path.resolve(resolveManagedSkillsRoot(domainId), "__versions__");
     const skillDir = path.resolve(runtimeRoot, skill.id, version.id);
     if (await materializedVersionSnapshotMatches(skillDir, version)) {
       return skillDir;
@@ -4832,27 +4832,27 @@ export function companySkillService(db: Db) {
     return skillDir;
   }
 
-  function resolveRuntimeSkillMaterializedPath(companyId: string, skill: Pick<CompanySkill, "key" | "slug">) {
-    const runtimeRoot = path.resolve(resolveManagedSkillsRoot(companyId), "__runtime__");
+  function resolveRuntimeSkillMaterializedPath(domainId: string, skill: Pick<DomainSkill, "key" | "slug">) {
+    const runtimeRoot = path.resolve(resolveManagedSkillsRoot(domainId), "__runtime__");
     return path.resolve(runtimeRoot, buildSkillRuntimeName(skill.key, skill.slug));
   }
 
   async function resolveRuntimeSkillSource(
-    companyId: string,
-    skill: CompanySkill,
+    domainId: string,
+    skill: DomainSkill,
     options: RuntimeSkillEntryOptions,
   ): Promise<RuntimeSkillSourceResolution | null> {
     const selectedVersionId = options.versionSelections?.get(skill.key) ?? null;
     if (selectedVersionId) {
-      const version = await getVersion(companyId, skill.id, selectedVersionId);
+      const version = await getVersion(domainId, skill.id, selectedVersionId);
       if (!version) {
         return {
           status: "missing",
-          source: path.resolve(resolveManagedSkillsRoot(companyId), "__versions__", skill.id, selectedVersionId),
+          source: path.resolve(resolveManagedSkillsRoot(domainId), "__versions__", skill.id, selectedVersionId),
           detail: "The selected skill version no longer exists.",
         };
       }
-      const versionSource = await materializeVersionSnapshot(companyId, skill, version).catch(() => null);
+      const versionSource = await materializeVersionSnapshot(domainId, skill, version).catch(() => null);
       return versionSource ? { status: "available", source: versionSource } : null;
     }
 
@@ -4860,7 +4860,7 @@ export function companySkillService(db: Db) {
     if (source) return { status: "available", source };
 
     if (options.materializeMissing === false) {
-      const materializedPath = resolveRuntimeSkillMaterializedPath(companyId, skill);
+      const materializedPath = resolveRuntimeSkillMaterializedPath(domainId, skill);
       const materializedSource = await resolveExistingSkillDirectory(materializedPath);
       if (materializedSource) return { status: "available", source: materializedSource };
       return {
@@ -4870,19 +4870,19 @@ export function companySkillService(db: Db) {
       };
     }
 
-    const materializedSource = await materializeRuntimeSkillFiles(companyId, skill).catch(() => null);
+    const materializedSource = await materializeRuntimeSkillFiles(domainId, skill).catch(() => null);
     return materializedSource ? { status: "available", source: materializedSource } : null;
   }
 
   async function listRuntimeSkillEntries(
-    companyId: string,
+    domainId: string,
     options: RuntimeSkillEntryOptions = {},
   ): Promise<PaperclipSkillEntry[]> {
-    const skills = await listFull(companyId);
+    const skills = await listFull(domainId);
 
     const out: PaperclipSkillEntry[] = [];
     for (const skill of skills) {
-      const sourceResolution = await resolveRuntimeSkillSource(companyId, skill, options);
+      const sourceResolution = await resolveRuntimeSkillSource(domainId, skill, options);
       if (!sourceResolution) continue;
 
       out.push({
@@ -4901,27 +4901,27 @@ export function companySkillService(db: Db) {
   }
 
   async function importPackageFiles(
-    companyId: string,
+    domainId: string,
     files: Record<string, string>,
     options?: {
       onConflict?: PackageSkillConflictStrategy;
     },
   ): Promise<ImportPackageSkillResult[]> {
-    await ensureSkillInventoryCurrent(companyId);
+    await ensureSkillInventoryCurrent(domainId);
     const normalizedFiles = normalizePackageFileMap(files);
-    const importedSkills = readInlineSkillImports(companyId, normalizedFiles);
+    const importedSkills = readInlineSkillImports(domainId, normalizedFiles);
     if (importedSkills.length === 0) return [];
 
     for (const skill of importedSkills) {
       if (skill.sourceType !== "catalog") continue;
-      const materializedDir = await materializeCatalogSkillFiles(companyId, skill, normalizedFiles);
+      const materializedDir = await materializeCatalogSkillFiles(domainId, skill, normalizedFiles);
       if (materializedDir) {
         skill.sourceLocator = materializedDir;
       }
     }
 
     const conflictStrategy = options?.onConflict ?? "replace";
-    const existingSkills = await listFull(companyId);
+    const existingSkills = await listFull(domainId);
     const existingByKey = new Map(existingSkills.map((skill) => [skill.key, skill]));
     const existingBySlug = new Map(
       existingSkills.map((skill) => [normalizeSkillSlug(skill.slug) ?? skill.slug, skill]),
@@ -4934,7 +4934,7 @@ export function companySkillService(db: Db) {
       skill: ImportedSkill;
       originalKey: string;
       originalSlug: string;
-      existingBefore: CompanySkill | null;
+      existingBefore: DomainSkill | null;
       actionHint: "created" | "updated";
       reason: string | null;
     }> = [];
@@ -4976,7 +4976,7 @@ export function companySkillService(db: Db) {
       }
 
       const renamedSlug = uniqueSkillSlug(normalizedSlug || "skill", usedSlugs);
-      const renamedKey = uniqueImportedSkillKey(companyId, renamedSlug, usedKeys);
+      const renamedKey = uniqueImportedSkillKey(domainId, renamedSlug, usedKeys);
       const renamedSkill: ImportedSkill = {
         ...importedSkill,
         slug: renamedSlug,
@@ -5003,7 +5003,7 @@ export function companySkillService(db: Db) {
 
     if (toPersist.length === 0) return out;
 
-    const persisted = await upsertImportedSkills(companyId, toPersist);
+    const persisted = await upsertImportedSkills(domainId, toPersist);
     for (let index = 0; index < prepared.length; index += 1) {
       const persistedSkill = persisted[index];
       const preparedSkill = prepared[index];
@@ -5021,12 +5021,12 @@ export function companySkillService(db: Db) {
     return out;
   }
 
-  async function upsertImportedSkills(companyId: string, imported: ImportedSkill[]): Promise<CompanySkill[]> {
-    const out: CompanySkill[] = [];
+  async function upsertImportedSkills(domainId: string, imported: ImportedSkill[]): Promise<DomainSkill[]> {
+    const out: DomainSkill[] = [];
     for (const skill of imported) {
       assertImportedSkillKeyAllowed(skill);
       assertImportedSkillSourceAllowed(skill);
-      const existing = await getByKey(companyId, skill.key);
+      const existing = await getByKey(domainId, skill.key);
       const existingMeta = existing ? getSkillMeta(existing) : {};
       const incomingMeta = skill.metadata && isPlainRecord(skill.metadata) ? skill.metadata : {};
       const incomingOwner = asString(incomingMeta.owner);
@@ -5050,7 +5050,7 @@ export function companySkillService(db: Db) {
       const parsed = parseFrontmatterMarkdown(skill.markdown);
       const storeMetadata = readSkillStoreMetadata(parsed.frontmatter, metadata);
       const values: ImportedSkillPersistValues = {
-        companyId,
+        domainId,
         key: skill.key,
         slug: skill.slug,
         name: skill.name,
@@ -5068,7 +5068,7 @@ export function companySkillService(db: Db) {
         authorName: storeMetadata.authorName ?? existing?.authorName ?? null,
         homepageUrl: storeMetadata.homepageUrl ?? existing?.homepageUrl ?? null,
         categories: storeMetadata.categories.length > 0 ? storeMetadata.categories : existing?.categories ?? [],
-        sharingScope: existing?.sharingScope ?? "company",
+        sharingScope: existing?.sharingScope ?? "domain",
         installCount: existing?.installCount ?? 1,
         metadata,
         updatedAt: new Date(),
@@ -5079,33 +5079,33 @@ export function companySkillService(db: Db) {
       }
       const row = existing
         ? await db
-          .update(companySkills)
+          .update(domainSkills)
           .set(values)
-          .where(eq(companySkills.id, existing.id))
+          .where(eq(domainSkills.id, existing.id))
           .returning()
           .then((rows) => rows[0] ?? null)
         : await db
-          .insert(companySkills)
+          .insert(domainSkills)
           .values(values)
           .returning()
           .then((rows) => rows[0] ?? null);
-      if (!row) throw notFound("Failed to persist company skill");
-      out.push(toCompanySkill(row));
+      if (!row) throw notFound("Failed to persist domain skill");
+      out.push(toDomainSkill(row));
     }
     return out;
   }
 
-  async function importFromSource(companyId: string, source: string): Promise<CompanySkillImportResult> {
-    await ensureSkillInventoryCurrent(companyId);
+  async function importFromSource(domainId: string, source: string): Promise<DomainSkillImportResult> {
+    await ensureSkillInventoryCurrent(domainId);
     const parsed = parseSkillImportSourceInput(source);
     const local = !/^https?:\/\//i.test(parsed.resolvedSource);
     const { skills, warnings } = local
       ? {
-        skills: (await readLocalSkillImports(companyId, parsed.resolvedSource))
+        skills: (await readLocalSkillImports(domainId, parsed.resolvedSource))
           .filter((skill) => !parsed.requestedSkillSlug || skill.slug === parsed.requestedSkillSlug),
         warnings: parsed.warnings,
       }
-      : await readUrlSkillImports(companyId, parsed.resolvedSource, parsed.requestedSkillSlug)
+      : await readUrlSkillImports(domainId, parsed.resolvedSource, parsed.requestedSkillSlug)
         .then((result) => ({
           skills: result.skills,
           warnings: [...parsed.warnings, ...result.warnings],
@@ -5128,40 +5128,40 @@ export function companySkillService(db: Db) {
         if (skill.metadata) {
           (skill.metadata as Record<string, unknown>).sourceKind = "skills_sh";
         }
-        skill.key = deriveCanonicalSkillKey(companyId, skill);
+        skill.key = deriveCanonicalSkillKey(domainId, skill);
       }
     }
-    const imported = await upsertImportedSkills(companyId, filteredSkills);
+    const imported = await upsertImportedSkills(domainId, filteredSkills);
     return { imported, warnings };
   }
 
-  async function listTestInputs(companyId: string, skillId: string): Promise<CompanySkillTestInput[]> {
-    const skill = await getById(companyId, skillId);
+  async function listTestInputs(domainId: string, skillId: string): Promise<DomainSkillTestInput[]> {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     const rows = await db
       .select()
-      .from(companySkillTestInputs)
+      .from(domainSkillTestInputs)
       .where(and(
-        eq(companySkillTestInputs.companyId, companyId),
-        eq(companySkillTestInputs.skillId, skillId),
-        isNull(companySkillTestInputs.deletedAt),
+        eq(domainSkillTestInputs.domainId, domainId),
+        eq(domainSkillTestInputs.skillId, skillId),
+        isNull(domainSkillTestInputs.deletedAt),
       ))
-      .orderBy(asc(companySkillTestInputs.name), asc(companySkillTestInputs.createdAt));
-    return rows.map(toCompanySkillTestInput);
+      .orderBy(asc(domainSkillTestInputs.name), asc(domainSkillTestInputs.createdAt));
+    return rows.map(toDomainSkillTestInput);
   }
 
   async function createTestInput(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    input: CompanySkillTestInputCreateRequest,
+    input: DomainSkillTestInputCreateRequest,
     actor: SkillActor | null = null,
-  ): Promise<CompanySkillTestInput> {
-    const skill = await getById(companyId, skillId);
+  ): Promise<DomainSkillTestInput> {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     const row = await db
-      .insert(companySkillTestInputs)
+      .insert(domainSkillTestInputs)
       .values({
-        companyId,
+        domainId,
         skillId,
         name: input.name.trim(),
         content: input.content,
@@ -5174,69 +5174,69 @@ export function companySkillService(db: Db) {
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Failed to persist test input");
-    return toCompanySkillTestInput(row);
+    return toDomainSkillTestInput(row);
   }
 
   async function updateTestInput(
-    companyId: string,
+    domainId: string,
     skillId: string,
     inputId: string,
-    input: CompanySkillTestInputUpdateRequest,
-  ): Promise<CompanySkillTestInput | null> {
-    const patch: Partial<typeof companySkillTestInputs.$inferInsert> = { updatedAt: new Date() };
+    input: DomainSkillTestInputUpdateRequest,
+  ): Promise<DomainSkillTestInput | null> {
+    const patch: Partial<typeof domainSkillTestInputs.$inferInsert> = { updatedAt: new Date() };
     if (input.name !== undefined) patch.name = input.name.trim();
     if (input.content !== undefined) patch.content = input.content;
     const row = await db
-      .update(companySkillTestInputs)
+      .update(domainSkillTestInputs)
       .set(patch)
       .where(and(
-        eq(companySkillTestInputs.companyId, companyId),
-        eq(companySkillTestInputs.skillId, skillId),
-        eq(companySkillTestInputs.id, inputId),
-        isNull(companySkillTestInputs.deletedAt),
+        eq(domainSkillTestInputs.domainId, domainId),
+        eq(domainSkillTestInputs.skillId, skillId),
+        eq(domainSkillTestInputs.id, inputId),
+        isNull(domainSkillTestInputs.deletedAt),
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
-    return row ? toCompanySkillTestInput(row) : null;
+    return row ? toDomainSkillTestInput(row) : null;
   }
 
-  async function deleteTestInput(companyId: string, skillId: string, inputId: string): Promise<CompanySkillTestInput | null> {
+  async function deleteTestInput(domainId: string, skillId: string, inputId: string): Promise<DomainSkillTestInput | null> {
     const row = await db
-      .update(companySkillTestInputs)
+      .update(domainSkillTestInputs)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(
-        eq(companySkillTestInputs.companyId, companyId),
-        eq(companySkillTestInputs.skillId, skillId),
-        eq(companySkillTestInputs.id, inputId),
-        isNull(companySkillTestInputs.deletedAt),
+        eq(domainSkillTestInputs.domainId, domainId),
+        eq(domainSkillTestInputs.skillId, skillId),
+        eq(domainSkillTestInputs.id, inputId),
+        isNull(domainSkillTestInputs.deletedAt),
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
-    return row ? toCompanySkillTestInput(row) : null;
+    return row ? toDomainSkillTestInput(row) : null;
   }
 
-  async function listTestRunTemplates(companyId: string): Promise<CompanySkillTestRunTemplate[]> {
+  async function listTestRunTemplates(domainId: string): Promise<DomainSkillTestRunTemplate[]> {
     const rows = await db
       .select()
-      .from(companySkillTestRunTemplates)
-      .where(and(eq(companySkillTestRunTemplates.companyId, companyId), isNull(companySkillTestRunTemplates.deletedAt)))
-      .orderBy(asc(companySkillTestRunTemplates.name), asc(companySkillTestRunTemplates.createdAt));
+      .from(domainSkillTestRunTemplates)
+      .where(and(eq(domainSkillTestRunTemplates.domainId, domainId), isNull(domainSkillTestRunTemplates.deletedAt)))
+      .orderBy(asc(domainSkillTestRunTemplates.name), asc(domainSkillTestRunTemplates.createdAt));
     return [
-      builtInSkillTestRunTemplate(companyId),
-      ...rows.map(toCompanySkillTestRunTemplate),
+      builtInSkillTestRunTemplate(domainId),
+      ...rows.map(toDomainSkillTestRunTemplate),
     ];
   }
 
   async function createTestRunTemplate(
-    companyId: string,
-    input: CompanySkillTestRunTemplateCreateRequest,
+    domainId: string,
+    input: DomainSkillTestRunTemplateCreateRequest,
     actor: SkillActor | null = null,
-  ): Promise<CompanySkillTestRunTemplate> {
+  ): Promise<DomainSkillTestRunTemplate> {
     validateSkillTestTemplatePlaceholders(input.body);
     const row = await db
-      .insert(companySkillTestRunTemplates)
+      .insert(domainSkillTestRunTemplates)
       .values({
-        companyId,
+        domainId,
         name: input.name.trim(),
         description: input.description?.trim() || null,
         body: input.body,
@@ -5248,22 +5248,22 @@ export function companySkillService(db: Db) {
       .returning()
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Failed to persist test run template");
-    return toCompanySkillTestRunTemplate(row);
+    return toDomainSkillTestRunTemplate(row);
   }
 
   async function updateTestRunTemplate(
-    companyId: string,
+    domainId: string,
     templateId: string,
-    input: CompanySkillTestRunTemplateUpdateRequest,
+    input: DomainSkillTestRunTemplateUpdateRequest,
     actor: SkillActor | null = null,
-  ): Promise<CompanySkillTestRunTemplate | null> {
+  ): Promise<DomainSkillTestRunTemplate | null> {
     if (templateId === BUILT_IN_SKILL_TEST_RUN_TEMPLATE_ID) {
       throw unprocessable("Built-in test run templates are read-only.");
     }
     if (input.body !== undefined) {
       validateSkillTestTemplatePlaceholders(input.body);
     }
-    const patch: Partial<typeof companySkillTestRunTemplates.$inferInsert> = {
+    const patch: Partial<typeof domainSkillTestRunTemplates.$inferInsert> = {
       updatedAt: new Date(),
       updatedByAgentId: actor?.type === "agent" ? actor.agentId ?? null : null,
       updatedByUserId: actor?.type === "user" ? actor.userId ?? null : null,
@@ -5272,39 +5272,39 @@ export function companySkillService(db: Db) {
     if (input.description !== undefined) patch.description = input.description?.trim() || null;
     if (input.body !== undefined) patch.body = input.body;
     const row = await db
-      .update(companySkillTestRunTemplates)
+      .update(domainSkillTestRunTemplates)
       .set(patch)
       .where(and(
-        eq(companySkillTestRunTemplates.companyId, companyId),
-        eq(companySkillTestRunTemplates.id, templateId),
-        isNull(companySkillTestRunTemplates.deletedAt),
+        eq(domainSkillTestRunTemplates.domainId, domainId),
+        eq(domainSkillTestRunTemplates.id, templateId),
+        isNull(domainSkillTestRunTemplates.deletedAt),
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
-    return row ? toCompanySkillTestRunTemplate(row) : null;
+    return row ? toDomainSkillTestRunTemplate(row) : null;
   }
 
-  async function deleteTestRunTemplate(companyId: string, templateId: string): Promise<CompanySkillTestRunTemplate | null> {
+  async function deleteTestRunTemplate(domainId: string, templateId: string): Promise<DomainSkillTestRunTemplate | null> {
     if (templateId === BUILT_IN_SKILL_TEST_RUN_TEMPLATE_ID) {
       throw unprocessable("Built-in test run templates are read-only.");
     }
     const row = await db
-      .update(companySkillTestRunTemplates)
+      .update(domainSkillTestRunTemplates)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(
-        eq(companySkillTestRunTemplates.companyId, companyId),
-        eq(companySkillTestRunTemplates.id, templateId),
-        isNull(companySkillTestRunTemplates.deletedAt),
+        eq(domainSkillTestRunTemplates.domainId, domainId),
+        eq(domainSkillTestRunTemplates.id, templateId),
+        isNull(domainSkillTestRunTemplates.deletedAt),
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
-    return row ? toCompanySkillTestRunTemplate(row) : null;
+    return row ? toDomainSkillTestRunTemplate(row) : null;
   }
 
   async function resolveTestRunTemplateSnapshot(
-    companyId: string,
-    input: CompanySkillTestRunCreateRequest,
-  ): Promise<CompanySkillTestRunTemplateSnapshot | null> {
+    domainId: string,
+    input: DomainSkillTestRunCreateRequest,
+  ): Promise<DomainSkillTestRunTemplateSnapshot | null> {
     if (input.templateSnapshot !== undefined) {
       const snapshot = input.templateSnapshot;
       if (!snapshot || snapshot.templateId === null) return null;
@@ -5319,7 +5319,7 @@ export function companySkillService(db: Db) {
     const templateId = input.templateId === undefined ? BUILT_IN_SKILL_TEST_RUN_TEMPLATE_ID : input.templateId;
     if (templateId === null) return null;
     if (templateId === BUILT_IN_SKILL_TEST_RUN_TEMPLATE_ID) {
-      const template = builtInSkillTestRunTemplate(companyId);
+      const template = builtInSkillTestRunTemplate(domainId);
       return {
         templateId: template.id,
         templateName: template.name,
@@ -5328,11 +5328,11 @@ export function companySkillService(db: Db) {
     }
     const row = await db
       .select()
-      .from(companySkillTestRunTemplates)
+      .from(domainSkillTestRunTemplates)
       .where(and(
-        eq(companySkillTestRunTemplates.companyId, companyId),
-        eq(companySkillTestRunTemplates.id, templateId),
-        isNull(companySkillTestRunTemplates.deletedAt),
+        eq(domainSkillTestRunTemplates.domainId, domainId),
+        eq(domainSkillTestRunTemplates.id, templateId),
+        isNull(domainSkillTestRunTemplates.deletedAt),
       ))
       .then((rows) => rows[0] ?? null);
     if (!row) throw notFound("Test run template not found");
@@ -5344,18 +5344,18 @@ export function companySkillService(db: Db) {
   }
 
   async function ensureRunSkillVersion(
-    companyId: string,
-    skill: CompanySkill,
+    domainId: string,
+    skill: DomainSkill,
     actor: SkillActor | null,
-  ): Promise<CompanySkillVersion> {
-    const currentSnapshot = serializeVersionFileInventory(await collectVersionFileInventory(companyId, skill));
+  ): Promise<DomainSkillVersion> {
+    const currentSnapshot = serializeVersionFileInventory(await collectVersionFileInventory(domainId, skill));
     if (currentSnapshot.length === 0) {
       throw unprocessable("Cannot run a skill test for a skill with zero files.");
     }
 
     const currentVersion = await getCurrentVersion(skill);
     if (!currentVersion || !versionInventorySnapshotEqual(currentVersion.fileInventory, currentSnapshot)) {
-      return createVersion(companyId, skill.id, { label: "Auto version for test run" }, actor);
+      return createVersion(domainId, skill.id, { label: "Auto version for test run" }, actor);
     }
     return currentVersion;
   }
@@ -5383,22 +5383,22 @@ export function companySkillService(db: Db) {
     };
   }
 
-  async function testRunCostByIssueIds(companyId: string, issueIds: string[]) {
-    if (issueIds.length === 0) return new Map<string, ReturnType<typeof emptyTestRunCost>>();
+  async function testRunFinanceByIssueIds(domainId: string, issueIds: string[]) {
+    if (issueIds.length === 0) return new Map<string, ReturnType<typeof emptyTestRunFinance>>();
     const rows = await db
       .select({
-        issueId: costEvents.issueId,
-        costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::int`,
-        inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::int`,
-        cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::int`,
-        outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::int`,
+        issueId: financeEvents.issueId,
+        financeCents: sql<number>`coalesce(sum(${financeEvents.financeCents}), 0)::int`,
+        inputTokens: sql<number>`coalesce(sum(${financeEvents.inputTokens}), 0)::int`,
+        cachedInputTokens: sql<number>`coalesce(sum(${financeEvents.cachedInputTokens}), 0)::int`,
+        outputTokens: sql<number>`coalesce(sum(${financeEvents.outputTokens}), 0)::int`,
       })
-      .from(costEvents)
-      .where(and(eq(costEvents.companyId, companyId), inArray(costEvents.issueId, issueIds)))
-      .groupBy(costEvents.issueId);
+      .from(financeEvents)
+      .where(and(eq(financeEvents.domainId, domainId), inArray(financeEvents.issueId, issueIds)))
+      .groupBy(financeEvents.issueId);
     return new Map(rows.flatMap((row) => row.issueId
       ? [[row.issueId, {
-        costCents: Number(row.costCents ?? 0),
+        financeCents: Number(row.financeCents ?? 0),
         inputTokens: Number(row.inputTokens ?? 0),
         cachedInputTokens: Number(row.cachedInputTokens ?? 0),
         outputTokens: Number(row.outputTokens ?? 0),
@@ -5406,19 +5406,19 @@ export function companySkillService(db: Db) {
       : []));
   }
 
-  async function hydrateTestRuns(companyId: string, rows: CompanySkillTestRunRow[]): Promise<CompanySkillTestRun[]> {
-    const costByIssueId = await testRunCostByIssueIds(companyId, rows.map((row) => row.issueId));
-    return rows.map((row) => toCompanySkillTestRun(
+  async function hydrateTestRuns(domainId: string, rows: DomainSkillTestRunRow[]): Promise<DomainSkillTestRun[]> {
+    const financeByIssueId = await testRunFinanceByIssueIds(domainId, rows.map((row) => row.issueId));
+    return rows.map((row) => toDomainSkillTestRun(
       row,
-      costByIssueId.get(row.issueId) ?? emptyTestRunCost(),
+      financeByIssueId.get(row.issueId) ?? emptyTestRunFinance(),
       Boolean(row.harnessIssueDeletedAt),
     ));
   }
 
   async function createTestRun(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    input: CompanySkillTestRunCreateRequest,
+    input: DomainSkillTestRunCreateRequest,
     actor: SkillActor | null,
     deps: {
       createHarnessIssue: (issue: {
@@ -5437,22 +5437,22 @@ export function companySkillService(db: Db) {
       cleanupHarnessIssue?: (issueId: string) => Promise<unknown>;
       retentionDays?: number;
     },
-  ): Promise<CompanySkillTestRun> {
-    const skill = await getById(companyId, skillId);
+  ): Promise<DomainSkillTestRun> {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     const agent = await agents.getById(input.agentId);
-    if (!agent || agent.companyId !== companyId) throw notFound("Agent not found");
+    if (!agent || agent.domainId !== domainId) throw notFound("Agent not found");
     if (agent.status === "paused") throw unprocessable("Paused agents cannot run skill tests.");
 
     const sourceInput = input.inputId
       ? await db
         .select()
-        .from(companySkillTestInputs)
+        .from(domainSkillTestInputs)
         .where(and(
-          eq(companySkillTestInputs.companyId, companyId),
-          eq(companySkillTestInputs.skillId, skillId),
-          eq(companySkillTestInputs.id, input.inputId),
-          isNull(companySkillTestInputs.deletedAt),
+          eq(domainSkillTestInputs.domainId, domainId),
+          eq(domainSkillTestInputs.skillId, skillId),
+          eq(domainSkillTestInputs.id, input.inputId),
+          isNull(domainSkillTestInputs.deletedAt),
         ))
         .then((rows) => rows[0] ?? null)
       : null;
@@ -5463,13 +5463,13 @@ export function companySkillService(db: Db) {
     // Re-run pins the viewed run's version so the new run reproduces the same
     // snapshots; a plain run auto-snapshots the live head.
     const version = input.skillVersionId
-      ? await getVersion(companyId, skillId, input.skillVersionId)
-      : await ensureRunSkillVersion(companyId, skill, actor);
+      ? await getVersion(domainId, skillId, input.skillVersionId)
+      : await ensureRunSkillVersion(domainId, skill, actor);
     if (!version) throw notFound("Skill version not found");
     const runId = randomUUID();
     const issueId = randomUUID();
     const outputDocumentKey = "output";
-    const templateSnapshot = await resolveTestRunTemplateSnapshot(companyId, input);
+    const templateSnapshot = await resolveTestRunTemplateSnapshot(domainId, input);
     const renderedTemplateBody = templateSnapshot?.templateBody
       ? renderSkillTestTemplate(templateSnapshot.templateBody, {
         skillName: skill.name,
@@ -5503,37 +5503,37 @@ export function companySkillService(db: Db) {
     };
     const row = await db.transaction(async (tx) => {
       await tx
-        .update(companySkillTestRuns)
+        .update(domainSkillTestRuns)
         .set({
           supersededAt: now,
           status: sql`
-            case when ${companySkillTestRuns.status} in ('queued', 'running')
+            life_admin when ${domainSkillTestRuns.status} in ('queued', 'running')
               then 'cancelled'
-              else ${companySkillTestRuns.status}
+              else ${domainSkillTestRuns.status}
             end
           `,
           error: sql`
-            case when ${companySkillTestRuns.status} in ('queued', 'running')
-              then coalesce(${companySkillTestRuns.error}, 'Superseded by newer run')
-              else ${companySkillTestRuns.error}
+            life_admin when ${domainSkillTestRuns.status} in ('queued', 'running')
+              then coalesce(${domainSkillTestRuns.error}, 'Superseded by newer run')
+              else ${domainSkillTestRuns.error}
             end
           `,
           harnessIssueExpiresAt: previousExpiresAt,
           updatedAt: now,
         })
         .where(and(
-          eq(companySkillTestRuns.companyId, companyId),
-          eq(companySkillTestRuns.skillId, skillId),
+          eq(domainSkillTestRuns.domainId, domainId),
+          eq(domainSkillTestRuns.skillId, skillId),
           sourceInput?.id
-            ? eq(companySkillTestRuns.inputId, sourceInput.id)
-            : isNull(companySkillTestRuns.inputId),
-          isNull(companySkillTestRuns.supersededAt),
+            ? eq(domainSkillTestRuns.inputId, sourceInput.id)
+            : isNull(domainSkillTestRuns.inputId),
+          isNull(domainSkillTestRuns.supersededAt),
         ));
       return await tx
-        .insert(companySkillTestRuns)
+        .insert(domainSkillTestRuns)
         .values({
           id: runId,
-          companyId,
+          domainId,
           skillId,
           inputId: sourceInput?.id ?? null,
           inputSnapshot,
@@ -5560,47 +5560,47 @@ export function companySkillService(db: Db) {
       throw notFound("Failed to persist skill test run");
     }
     await deps.wakeHarnessIssue(issueId, agent.id);
-    return (await hydrateTestRuns(companyId, [row]))[0]!;
+    return (await hydrateTestRuns(domainId, [row]))[0]!;
   }
 
   async function listTestRuns(
-    companyId: string,
+    domainId: string,
     skillId: string,
-    query: CompanySkillTestRunListQuery = {},
-  ): Promise<CompanySkillTestRun[]> {
-    const skill = await getById(companyId, skillId);
+    query: DomainSkillTestRunListQuery = {},
+  ): Promise<DomainSkillTestRun[]> {
+    const skill = await getById(domainId, skillId);
     if (!skill) throw notFound("Skill not found");
     const conditions = [
-      eq(companySkillTestRuns.companyId, companyId),
-      eq(companySkillTestRuns.skillId, skillId),
-      isNull(companySkillTestRuns.deletedAt),
+      eq(domainSkillTestRuns.domainId, domainId),
+      eq(domainSkillTestRuns.skillId, skillId),
+      isNull(domainSkillTestRuns.deletedAt),
     ];
-    if (query.inputId) conditions.push(eq(companySkillTestRuns.inputId, query.inputId));
+    if (query.inputId) conditions.push(eq(domainSkillTestRuns.inputId, query.inputId));
     const rows = await db
       .select()
-      .from(companySkillTestRuns)
+      .from(domainSkillTestRuns)
       .where(and(...conditions))
-      .orderBy(desc(companySkillTestRuns.createdAt), desc(companySkillTestRuns.id));
-    return hydrateTestRuns(companyId, rows);
+      .orderBy(desc(domainSkillTestRuns.createdAt), desc(domainSkillTestRuns.id));
+    return hydrateTestRuns(domainId, rows);
   }
 
-  async function getTestRunDetail(companyId: string, skillId: string, runId: string): Promise<CompanySkillTestRunDetail | null> {
+  async function getTestRunDetail(domainId: string, skillId: string, runId: string): Promise<DomainSkillTestRunDetail | null> {
     const row = await db
       .select()
-      .from(companySkillTestRuns)
+      .from(domainSkillTestRuns)
       .where(and(
-        eq(companySkillTestRuns.companyId, companyId),
-        eq(companySkillTestRuns.skillId, skillId),
-        eq(companySkillTestRuns.id, runId),
-        isNull(companySkillTestRuns.deletedAt),
+        eq(domainSkillTestRuns.domainId, domainId),
+        eq(domainSkillTestRuns.skillId, skillId),
+        eq(domainSkillTestRuns.id, runId),
+        isNull(domainSkillTestRuns.deletedAt),
       ))
       .then((rows) => rows[0] ?? null);
     if (!row) return null;
-    const [run] = await hydrateTestRuns(companyId, [row]);
+    const [run] = await hydrateTestRuns(domainId, [row]);
     if (!run) return null;
     const harnessIssueGone = Boolean(row.harnessIssueDeletedAt);
     const [version, issue, documentRows, interactionRows, attachmentRows, workProductRows] = await Promise.all([
-      getVersion(companyId, skillId, row.skillVersionId),
+      getVersion(domainId, skillId, row.skillVersionId),
       harnessIssueGone
         ? Promise.resolve(null)
         : db
@@ -5612,7 +5612,7 @@ export function companySkillService(db: Db) {
             hiddenAt: issues.hiddenAt,
           })
           .from(issues)
-          .where(and(eq(issues.companyId, companyId), eq(issues.id, row.issueId)))
+          .where(and(eq(issues.domainId, domainId), eq(issues.id, row.issueId)))
           .then((rows) => rows[0] ?? null),
       harnessIssueGone
         ? Promise.resolve([])
@@ -5620,7 +5620,7 @@ export function companySkillService(db: Db) {
           .select(issueDocumentSelect)
           .from(issueDocuments)
           .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
-          .where(and(eq(issueDocuments.companyId, companyId), eq(issueDocuments.issueId, row.issueId)))
+          .where(and(eq(issueDocuments.domainId, domainId), eq(issueDocuments.issueId, row.issueId)))
           .orderBy(asc(issueDocuments.key)),
       harnessIssueGone
         ? Promise.resolve([])
@@ -5634,14 +5634,14 @@ export function companySkillService(db: Db) {
             updatedAt: issueThreadInteractions.updatedAt,
           })
           .from(issueThreadInteractions)
-          .where(and(eq(issueThreadInteractions.companyId, companyId), eq(issueThreadInteractions.issueId, row.issueId)))
+          .where(and(eq(issueThreadInteractions.domainId, domainId), eq(issueThreadInteractions.issueId, row.issueId)))
           .orderBy(desc(issueThreadInteractions.createdAt)),
       harnessIssueGone
         ? Promise.resolve([])
         : db
           .select({
             id: issueAttachments.id,
-            companyId: issueAttachments.companyId,
+            domainId: issueAttachments.domainId,
             issueId: issueAttachments.issueId,
             issueCommentId: issueAttachments.issueCommentId,
             assetId: issueAttachments.assetId,
@@ -5658,14 +5658,14 @@ export function companySkillService(db: Db) {
           })
           .from(issueAttachments)
           .innerJoin(assets, eq(issueAttachments.assetId, assets.id))
-          .where(and(eq(issueAttachments.companyId, companyId), eq(issueAttachments.issueId, row.issueId)))
+          .where(and(eq(issueAttachments.domainId, domainId), eq(issueAttachments.issueId, row.issueId)))
           .orderBy(desc(issueAttachments.createdAt)),
       harnessIssueGone
         ? Promise.resolve([])
         : db
           .select()
           .from(issueWorkProducts)
-          .where(and(eq(issueWorkProducts.companyId, companyId), eq(issueWorkProducts.issueId, row.issueId)))
+          .where(and(eq(issueWorkProducts.domainId, domainId), eq(issueWorkProducts.issueId, row.issueId)))
           .orderBy(desc(issueWorkProducts.isPrimary), desc(issueWorkProducts.updatedAt)),
     ]);
     if (!version) throw notFound("Skill version not found");
@@ -5686,7 +5686,7 @@ export function companySkillService(db: Db) {
       }))
       : [];
     const harnessWorkProducts = harnessAvailable ? workProductRows.map(toIssueWorkProduct) : [];
-    const harnessContent: CompanySkillTestRunHarnessContent = {
+    const harnessContent: DomainSkillTestRunHarnessContent = {
       available: harnessAvailable,
       unavailableReason: harnessAvailable
         ? null
@@ -5745,23 +5745,23 @@ export function companySkillService(db: Db) {
   }
 
   async function completeTestRunForIssue(input: {
-    companyId: string;
+    domainId: string;
     issueId: string;
     outcome: "succeeded" | "failed" | "cancelled";
     error?: string | null;
-  }): Promise<CompanySkillTestRun | null> {
+  }): Promise<DomainSkillTestRun | null> {
     const row = await db
       .select()
-      .from(companySkillTestRuns)
+      .from(domainSkillTestRuns)
       .where(and(
-        eq(companySkillTestRuns.companyId, input.companyId),
-        eq(companySkillTestRuns.issueId, input.issueId),
-        isNull(companySkillTestRuns.deletedAt),
-        isNull(companySkillTestRuns.supersededAt),
+        eq(domainSkillTestRuns.domainId, input.domainId),
+        eq(domainSkillTestRuns.issueId, input.issueId),
+        isNull(domainSkillTestRuns.deletedAt),
+        isNull(domainSkillTestRuns.supersededAt),
       ))
       .then((rows) => rows[0] ?? null);
     if (!row || ["succeeded", "failed", "cancelled"].includes(row.status)) return row
-      ? (await hydrateTestRuns(input.companyId, [row]))[0] ?? null
+      ? (await hydrateTestRuns(input.domainId, [row]))[0] ?? null
       : null;
 
     const outputDocumentKey = row.outputDocumentKey || "output";
@@ -5770,65 +5770,65 @@ export function companySkillService(db: Db) {
       .from(issueDocuments)
       .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
       .where(and(
-        eq(issueDocuments.companyId, input.companyId),
+        eq(issueDocuments.domainId, input.domainId),
         eq(issueDocuments.issueId, input.issueId),
         eq(issueDocuments.key, outputDocumentKey),
       ))
       .then((rows) => rows[0] ?? null);
     const updated = await db
-      .update(companySkillTestRuns)
+      .update(domainSkillTestRuns)
       .set({
         status: input.outcome,
         outputSnapshot: outputDocument?.body ?? row.outputSnapshot ?? "",
         error: input.error ?? null,
         updatedAt: new Date(),
       })
-      .where(and(eq(companySkillTestRuns.companyId, input.companyId), eq(companySkillTestRuns.id, row.id)))
+      .where(and(eq(domainSkillTestRuns.domainId, input.domainId), eq(domainSkillTestRuns.id, row.id)))
       .returning()
       .then((rows) => rows[0] ?? null);
-    return updated ? (await hydrateTestRuns(input.companyId, [updated]))[0] ?? null : null;
+    return updated ? (await hydrateTestRuns(input.domainId, [updated]))[0] ?? null : null;
   }
 
-  async function markTestRunRunning(companyId: string, issueId: string): Promise<CompanySkillTestRun | null> {
+  async function markTestRunRunning(domainId: string, issueId: string): Promise<DomainSkillTestRun | null> {
     const row = await db
-      .update(companySkillTestRuns)
+      .update(domainSkillTestRuns)
       .set({ status: "running", updatedAt: new Date() })
       .where(and(
-        eq(companySkillTestRuns.companyId, companyId),
-        eq(companySkillTestRuns.issueId, issueId),
-        eq(companySkillTestRuns.status, "queued"),
-        isNull(companySkillTestRuns.deletedAt),
-        isNull(companySkillTestRuns.supersededAt),
+        eq(domainSkillTestRuns.domainId, domainId),
+        eq(domainSkillTestRuns.issueId, issueId),
+        eq(domainSkillTestRuns.status, "queued"),
+        isNull(domainSkillTestRuns.deletedAt),
+        isNull(domainSkillTestRuns.supersededAt),
       ))
       .returning()
       .then((rows) => rows[0] ?? null);
-    return row ? (await hydrateTestRuns(companyId, [row]))[0] ?? null : null;
+    return row ? (await hydrateTestRuns(domainId, [row]))[0] ?? null : null;
   }
 
   async function cancelTestRun(
-    companyId: string,
+    domainId: string,
     skillId: string,
     runId: string,
     deps: { cancelHarnessIssue: (issueId: string) => Promise<unknown> },
-  ): Promise<CompanySkillTestRun | null> {
+  ): Promise<DomainSkillTestRun | null> {
     const existing = await db
       .select()
-      .from(companySkillTestRuns)
+      .from(domainSkillTestRuns)
       .where(and(
-        eq(companySkillTestRuns.companyId, companyId),
-        eq(companySkillTestRuns.skillId, skillId),
-        eq(companySkillTestRuns.id, runId),
-        isNull(companySkillTestRuns.deletedAt),
-        isNull(companySkillTestRuns.supersededAt),
+        eq(domainSkillTestRuns.domainId, domainId),
+        eq(domainSkillTestRuns.skillId, skillId),
+        eq(domainSkillTestRuns.id, runId),
+        isNull(domainSkillTestRuns.deletedAt),
+        isNull(domainSkillTestRuns.supersededAt),
       ))
       .then((rows) => rows[0] ?? null);
     if (!existing) return null;
     if (["succeeded", "failed", "cancelled"].includes(existing.status)) {
-      return (await hydrateTestRuns(companyId, [existing]))[0] ?? null;
+      return (await hydrateTestRuns(domainId, [existing]))[0] ?? null;
     }
     await deps.cancelHarnessIssue(existing.issueId);
     return completeTestRunForIssue({
-      companyId,
+      domainId,
       issueId: existing.issueId,
       outcome: "cancelled",
       error: "Cancelled by operator",
@@ -5836,19 +5836,19 @@ export function companySkillService(db: Db) {
   }
 
   async function deleteTestRun(
-    companyId: string,
+    domainId: string,
     skillId: string,
     runId: string,
     deps: { hideHarnessIssue: (issueId: string) => Promise<unknown> },
-  ): Promise<CompanySkillTestRun | null> {
+  ): Promise<DomainSkillTestRun | null> {
     const existing = await db
       .select()
-      .from(companySkillTestRuns)
+      .from(domainSkillTestRuns)
       .where(and(
-        eq(companySkillTestRuns.companyId, companyId),
-        eq(companySkillTestRuns.skillId, skillId),
-        eq(companySkillTestRuns.id, runId),
-        isNull(companySkillTestRuns.deletedAt),
+        eq(domainSkillTestRuns.domainId, domainId),
+        eq(domainSkillTestRuns.skillId, skillId),
+        eq(domainSkillTestRuns.id, runId),
+        isNull(domainSkillTestRuns.deletedAt),
       ))
       .then((rows) => rows[0] ?? null);
     if (!existing) return null;
@@ -5860,11 +5860,11 @@ export function companySkillService(db: Db) {
     const now = new Date();
     const updated = await db.transaction(async (tx) => {
       return await tx
-        .update(companySkillTestRuns)
+        .update(domainSkillTestRuns)
         .set({ deletedAt: now, harnessIssueDeletedAt: existing.harnessIssueDeletedAt ?? now, updatedAt: now })
         .where(and(
-          eq(companySkillTestRuns.companyId, companyId),
-          eq(companySkillTestRuns.id, runId),
+          eq(domainSkillTestRuns.domainId, domainId),
+          eq(domainSkillTestRuns.id, runId),
         ))
         .returning()
         .then((rows) => rows[0] ?? null);
@@ -5874,46 +5874,46 @@ export function companySkillService(db: Db) {
     if (!existing.harnessIssueDeletedAt) {
       await deps.hideHarnessIssue(existing.issueId).catch(() => {});
     }
-    return updated ? (await hydrateTestRuns(companyId, [updated]))[0] ?? null : null;
+    return updated ? (await hydrateTestRuns(domainId, [updated]))[0] ?? null : null;
   }
 
-  async function pruneExpiredTestHarnessIssues(companyId: string, now = new Date()): Promise<{ pruned: number }> {
+  async function pruneExpiredTestHarnessIssues(domainId: string, now = new Date()): Promise<{ pruned: number }> {
     const rows = await db
       .select({
-        id: companySkillTestRuns.id,
-        issueId: companySkillTestRuns.issueId,
+        id: domainSkillTestRuns.id,
+        issueId: domainSkillTestRuns.issueId,
       })
-      .from(companySkillTestRuns)
+      .from(domainSkillTestRuns)
       .where(and(
-        eq(companySkillTestRuns.companyId, companyId),
-        lt(companySkillTestRuns.harnessIssueExpiresAt, now),
-        isNull(companySkillTestRuns.harnessIssueDeletedAt),
+        eq(domainSkillTestRuns.domainId, domainId),
+        lt(domainSkillTestRuns.harnessIssueExpiresAt, now),
+        isNull(domainSkillTestRuns.harnessIssueDeletedAt),
       ));
     for (const row of rows) {
       await db.transaction(async (tx) => {
         await tx
           .update(issues)
           .set({ hiddenAt: now, updatedAt: now })
-          .where(and(eq(issues.companyId, companyId), eq(issues.id, row.issueId), eq(issues.harnessKind, "skill_test")));
+          .where(and(eq(issues.domainId, domainId), eq(issues.id, row.issueId), eq(issues.harnessKind, "skill_test")));
         await tx
-          .update(companySkillTestRuns)
+          .update(domainSkillTestRuns)
           .set({ harnessIssueDeletedAt: now, updatedAt: now })
-          .where(and(eq(companySkillTestRuns.companyId, companyId), eq(companySkillTestRuns.id, row.id)));
+          .where(and(eq(domainSkillTestRuns.domainId, domainId), eq(domainSkillTestRuns.id, row.id)));
       });
     }
     return { pruned: rows.length };
   }
 
-  async function deleteSkill(companyId: string, skillId: string): Promise<CompanySkill | null> {
+  async function deleteSkill(domainId: string, skillId: string): Promise<DomainSkill | null> {
     const row = await db
       .select()
-      .from(companySkills)
-      .where(and(eq(companySkills.id, skillId), eq(companySkills.companyId, companyId)))
+      .from(domainSkills)
+      .where(and(eq(domainSkills.id, skillId), eq(domainSkills.domainId, domainId)))
       .then((rows) => rows[0] ?? null);
     if (!row) return null;
 
-    const skill = toCompanySkill(row);
-    const usedByAgents = await usage(companyId, skill.key);
+    const skill = toDomainSkill(row);
+    const usedByAgents = await usage(domainId, skill.key);
 
     if (usedByAgents.length > 0) {
       const agentNames = usedByAgents.map((agent) => agent.name).sort((left, right) => left.localeCompare(right));
@@ -5934,11 +5934,11 @@ export function companySkillService(db: Db) {
 
     // Delete DB row
     await db
-      .delete(companySkills)
-      .where(eq(companySkills.id, skillId));
+      .delete(domainSkills)
+      .where(eq(domainSkills.id, skillId));
 
     // Clean up materialized runtime files
-    await fs.rm(resolveRuntimeSkillMaterializedPath(companyId, skill), { recursive: true, force: true });
+    await fs.rm(resolveRuntimeSkillMaterializedPath(domainId, skill), { recursive: true, force: true });
 
     return skill;
   }
@@ -5949,17 +5949,17 @@ export function companySkillService(db: Db) {
     getById,
     getByKey,
     getByRouteRef,
-    resolveRequestedSkillKeys: async (companyId: string, requestedReferences: string[]) => {
-      const skills = await listFull(companyId);
+    resolveRequestedSkillKeys: async (domainId: string, requestedReferences: string[]) => {
+      const skills = await listFull(domainId);
       return resolveRequestedSkillKeysOrThrow(skills, requestedReferences);
     },
     resolveRequestedSkillEntries: async (
-      companyId: string,
+      domainId: string,
       requestedSelections: Array<string | AgentDesiredSkillEntry>,
       options?: { tolerateUnknownReferences?: boolean },
     ) => {
-      const skills = await listFull(companyId);
-      return resolveRequestedSkillEntriesOrThrow(db, companyId, skills, requestedSelections, options);
+      const skills = await listFull(domainId);
+      return resolveRequestedSkillEntriesOrThrow(db, domainId, skills, requestedSelections, options);
     },
     categoryCounts,
     detail,

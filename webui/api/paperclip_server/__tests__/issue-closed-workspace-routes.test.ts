@@ -74,14 +74,14 @@ function registerServiceMocks() {
   }));
 
   vi.doMock("../services/index.js", () => ({
-    companyService: () => ({
-      getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+    domainService: () => ({
+      getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
     }),
     accessService: () => mockAccessService,
     agentService: () => ({
       getById: vi.fn(async () => null),
     }),
-    companySkillService: () => ({
+    domainSkillService: () => ({
       completeTestRunForIssue: vi.fn(async () => null),
     }),
     documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
@@ -92,7 +92,7 @@ function registerServiceMocks() {
       saveIssueVote: vi.fn(async () => ({ vote: null, consentEnabledNow: false, sharingEnabled: false })),
     }),
     goalService: () => ({
-      getDefaultCompanyGoal: vi.fn(async () => null),
+      getDefaultDomainGoal: vi.fn(async () => null),
       getById: vi.fn(async () => null),
     }),
     heartbeatService: () => mockHeartbeatService,
@@ -104,7 +104,7 @@ function registerServiceMocks() {
           feedbackDataSharingPreference: "prompt",
         },
       })),
-      listCompanyIds: vi.fn(async () => ["company-1"]),
+      listDomainIds: vi.fn(async () => ["domain-1"]),
     }),
     issueApprovalService: () => ({}),
     issueReferenceService: () => ({
@@ -150,7 +150,7 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -164,7 +164,7 @@ async function createApp() {
 function makeIssue() {
   return {
     id: issueId,
-    companyId: "company-1",
+    domainId: "domain-1",
     status: "todo",
     priority: "medium",
     assigneeAgentId: agentId,

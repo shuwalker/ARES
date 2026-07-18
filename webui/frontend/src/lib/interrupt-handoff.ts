@@ -290,7 +290,7 @@ export interface AssigneeHandoffInfo {
 
 /**
  * Classify the wake outcome of an assignee change, given the *destination*
- * assignee. This drives the timeline "Wake" sub-row so the three required
+ * assignee. This drives the journal "Wake" sub-row so the three required
  * states are self-describing in the activity log.
  */
 export function classifyAssigneeHandoff(

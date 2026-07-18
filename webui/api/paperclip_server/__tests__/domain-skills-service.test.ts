@@ -4,42 +4,42 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { agents, authUsers, domains, companySkillVersions, companySkills, createDb } from "@paperclipai/db";
+import { agents, authUsers, domains, domainSkillVersions, domainSkills, createDb } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
-import { companySkillService } from "../services/company-skills.ts";
+import { domainSkillService } from "../services/domain-skills.ts";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres company skill service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres domain skill service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
-describeEmbeddedPostgres("companySkillService.list", () => {
+describeEmbeddedPostgres("domainSkillService.list", () => {
   let db!: ReturnType<typeof createDb>;
-  let svc!: ReturnType<typeof companySkillService>;
+  let svc!: ReturnType<typeof domainSkillService>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let oldPaperclipHome: string | undefined;
   let paperclipHome: string | null = null;
   const cleanupDirs = new Set<string>();
 
   beforeAll(async () => {
-    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-company-skills-service-");
+    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-domain-skills-service-");
     oldPaperclipHome = process.env.PAPERCLIP_HOME;
-    paperclipHome = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-company-skills-home-"));
+    paperclipHome = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-domain-skills-home-"));
     process.env.PAPERCLIP_HOME = paperclipHome;
     db = createDb(tempDb.connectionString);
-    svc = companySkillService(db);
+    svc = domainSkillService(db);
   }, 20_000);
 
   afterEach(async () => {
     await db.delete(agents);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(domains);
     await db.delete(authUsers);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
@@ -56,23 +56,23 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("lists skills without exposing markdown content", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-heavy-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Heavy Skill\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/heavy-skill`,
+      domainId,
+      key: `domain/${domainId}/heavy-skill`,
       slug: "heavy-skill",
       name: "Heavy Skill",
       description: "Large skill used for list projection regression coverage.",
@@ -85,14 +85,14 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       metadata: { sourceKind: "local_path" },
     });
 
-    const listed = await svc.list(companyId);
+    const listed = await svc.list(domainId);
     const skill = listed.find((entry) => entry.id === skillId);
 
     expect(skill).toBeDefined();
     expect(skill).not.toHaveProperty("markdown");
     expect(skill).toMatchObject({
       id: skillId,
-      key: `company/${companyId}/heavy-skill`,
+      key: `domain/${domainId}/heavy-skill`,
       slug: "heavy-skill",
       name: "Heavy Skill",
       sourceType: "local_path",
@@ -104,7 +104,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("optionally enriches list items with latest version editor identities", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const userSkillId = randomUUID();
     const agentSkillId = randomUUID();
     const unattributedSkillId = randomUUID();
@@ -120,9 +120,9 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     }
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(authUsers).values({
@@ -136,17 +136,17 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       adapterType: "codex_local",
       adapterConfig: {},
     });
-    await db.insert(companySkills).values([
+    await db.insert(domainSkills).values([
       {
         id: userSkillId,
-        companyId,
-        key: `company/${companyId}/user-edited-skill`,
+        domainId,
+        key: `domain/${domainId}/user-edited-skill`,
         slug: "user-edited-skill",
         name: "User Edited Skill",
         description: null,
@@ -159,8 +159,8 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: agentSkillId,
-        companyId,
-        key: `company/${companyId}/agent-edited-skill`,
+        domainId,
+        key: `domain/${domainId}/agent-edited-skill`,
         slug: "agent-edited-skill",
         name: "Agent Edited Skill",
         description: null,
@@ -173,8 +173,8 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: unattributedSkillId,
-        companyId,
-        key: `company/${companyId}/unattributed-skill`,
+        domainId,
+        key: `domain/${domainId}/unattributed-skill`,
         slug: "unattributed-skill",
         name: "Unattributed Skill",
         description: null,
@@ -187,8 +187,8 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: versionlessSkillId,
-        companyId,
-        key: `company/${companyId}/versionless-skill`,
+        domainId,
+        key: `domain/${domainId}/versionless-skill`,
         slug: "versionless-skill",
         name: "Versionless Skill",
         description: null,
@@ -200,19 +200,19 @@ describeEmbeddedPostgres("companySkillService.list", () => {
         fileInventory: [{ path: "SKILL.md", kind: "skill" }],
       },
     ]);
-    await db.insert(companySkillVersions).values([
+    await db.insert(domainSkillVersions).values([
       {
         id: randomUUID(),
-        companyId,
-        companySkillId: userSkillId,
+        domainId,
+        domainSkillId: userSkillId,
         revisionNumber: 1,
         fileInventory: [],
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
       },
       {
         id: randomUUID(),
-        companyId,
-        companySkillId: userSkillId,
+        domainId,
+        domainSkillId: userSkillId,
         revisionNumber: 2,
         fileInventory: [],
         authorUserId: userId,
@@ -220,8 +220,8 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: randomUUID(),
-        companyId,
-        companySkillId: agentSkillId,
+        domainId,
+        domainSkillId: agentSkillId,
         revisionNumber: 1,
         fileInventory: [],
         authorAgentId: agentId,
@@ -229,18 +229,18 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: randomUUID(),
-        companyId,
-        companySkillId: unattributedSkillId,
+        domainId,
+        domainSkillId: unattributedSkillId,
         revisionNumber: 1,
         fileInventory: [],
         createdAt: new Date("2026-01-04T00:00:00.000Z"),
       },
     ]);
 
-    const defaultList = await svc.list(companyId);
+    const defaultList = await svc.list(domainId);
     expect(defaultList.find((skill) => skill.id === userSkillId)).not.toHaveProperty("lastEditor");
 
-    const enriched = await svc.list(companyId, { include: ["lastEditor"] });
+    const enriched = await svc.list(domainId, { include: ["lastEditor"] });
     expect(enriched.find((skill) => skill.id === userSkillId)).toMatchObject({
       lastEditor: {
         kind: "user",
@@ -265,7 +265,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
   });
 
-  it("rejects skill inventory refresh for a missing company", async () => {
+  it("rejects skill inventory refresh for a missing domain", async () => {
     await expect(svc.list(randomUUID())).rejects.toMatchObject({
       status: 404,
       message: "Domain not found",
@@ -273,48 +273,48 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("does not retouch unchanged bundled skills during list refresh", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const initialList = await svc.list(companyId, { sort: "recent" });
+    const initialList = await svc.list(domainId, { sort: "recent" });
     const bundledSkill = initialList.find((skill) => skill.key.startsWith("paperclipai/paperclip/"));
     expect(bundledSkill).toBeDefined();
     if (!bundledSkill) throw new Error("Expected bundled Paperclip skills fixture");
 
     const preservedUpdatedAt = new Date("2026-01-01T00:00:00.000Z");
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({ updatedAt: preservedUpdatedAt })
-      .where(eq(companySkills.id, bundledSkill.id));
+      .where(eq(domainSkills.id, bundledSkill.id));
 
-    const refreshedList = await svc.list(companyId, { sort: "recent" });
+    const refreshedList = await svc.list(domainId, { sort: "recent" });
     const refreshedSkill = refreshedList.find((skill) => skill.id === bundledSkill.id);
 
     expect(refreshedSkill?.updatedAt.toISOString()).toBe(preservedUpdatedAt.toISOString());
   });
 
   it("does not retouch bundled skills with stale missing-source metadata during list refresh", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const initialList = await svc.list(companyId, { sort: "recent" });
+    const initialList = await svc.list(domainId, { sort: "recent" });
     const bundledSkill = initialList.find((skill) => skill.key.startsWith("paperclipai/paperclip/"));
     expect(bundledSkill).toBeDefined();
     if (!bundledSkill) throw new Error("Expected bundled Paperclip skills fixture");
 
     const preservedUpdatedAt = new Date("2026-01-04T00:00:00.000Z");
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({
         metadata: {
           skillKey: bundledSkill.key,
@@ -329,11 +329,11 @@ describeEmbeddedPostgres("companySkillService.list", () => {
         },
         updatedAt: preservedUpdatedAt,
       })
-      .where(eq(companySkills.id, bundledSkill.id));
+      .where(eq(domainSkills.id, bundledSkill.id));
 
-    const refreshedList = await svc.list(companyId, { sort: "recent" });
+    const refreshedList = await svc.list(domainId, { sort: "recent" });
     const refreshedSkill = refreshedList.find((skill) => skill.id === bundledSkill.id);
-    const stored = await svc.getById(companyId, bundledSkill.id);
+    const stored = await svc.getById(domainId, bundledSkill.id);
 
     expect(refreshedSkill?.updatedAt.toISOString()).toBe(preservedUpdatedAt.toISOString());
     expect(stored?.metadata?.missingSource).toMatchObject({
@@ -343,7 +343,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("does not retouch unchanged local-path imports", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-idempotent-import-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(
@@ -352,31 +352,31 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       "utf8",
     );
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const imported = await svc.importFromSource(companyId, skillDir);
+    const imported = await svc.importFromSource(domainId, skillDir);
     const skillId = imported.imported[0]?.id;
     expect(skillId).toEqual(expect.any(String));
     if (!skillId) throw new Error("Expected imported skill id");
 
     const preservedUpdatedAt = new Date("2026-01-02T00:00:00.000Z");
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({ updatedAt: preservedUpdatedAt })
-      .where(eq(companySkills.id, skillId));
+      .where(eq(domainSkills.id, skillId));
 
-    await svc.importFromSource(companyId, skillDir);
-    const stored = await svc.getById(companyId, skillId);
+    await svc.importFromSource(domainId, skillDir);
+    const stored = await svc.getById(domainId, skillId);
 
     expect(stored?.updatedAt.toISOString()).toBe(preservedUpdatedAt.toISOString());
   });
 
   it("refreshes local-path imports with legacy null metadata fields", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-null-metadata-import-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(
@@ -385,13 +385,13 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       "utf8",
     );
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const imported = await svc.importFromSource(companyId, skillDir);
+    const imported = await svc.importFromSource(domainId, skillDir);
     const skillId = imported.imported[0]?.id;
     const skillKey = imported.imported[0]?.key;
     expect(skillId).toEqual(expect.any(String));
@@ -400,7 +400,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
     const preservedUpdatedAt = new Date("2026-01-03T00:00:00.000Z");
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({
         metadata: {
           sourceKind: "local_path",
@@ -413,10 +413,10 @@ describeEmbeddedPostgres("companySkillService.list", () => {
         },
         updatedAt: preservedUpdatedAt,
       })
-      .where(eq(companySkills.id, skillId));
+      .where(eq(domainSkills.id, skillId));
 
-    await svc.importFromSource(companyId, skillDir);
-    const stored = await svc.getById(companyId, skillId);
+    await svc.importFromSource(domainId, skillDir);
+    const stored = await svc.getById(domainId, skillId);
 
     expect(stored?.updatedAt.toISOString()).not.toBe(preservedUpdatedAt.toISOString());
     expect(stored?.metadata).toMatchObject({ sourceKind: "local_path", skillKey });
@@ -426,17 +426,17 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("does not persist audit failures for remote-source skills", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: "github.com/acme/remote-skill",
       slug: "remote-skill",
       name: "Remote Skill",
@@ -451,32 +451,32 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       metadata: { sourceKind: "github", owner: "acme", repo: "remote-skill" },
     });
 
-    await expect(svc.auditSkill(companyId, skillId)).rejects.toMatchObject({
+    await expect(svc.auditSkill(domainId, skillId)).rejects.toMatchObject({
       status: 422,
-      message: "Only local-path and catalog-managed company skills support audit.",
+      message: "Only local-path and catalog-managed domain skills support audit.",
     });
-    await expect(svc.getById(companyId, skillId)).resolves.toMatchObject({
+    await expect(svc.getById(domainId, skillId)).resolves.toMatchObject({
       metadata: { sourceKind: "github", owner: "acme", repo: "remote-skill" },
     });
   });
 
   it("filters store list results by category and creates version snapshots", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-versioned-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "---\nname: Versioned Skill\ncategories:\n  - Memory\n---\n\n# Versioned Skill\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/versioned-skill`,
+      domainId,
+      key: `domain/${domainId}/versioned-skill`,
       slug: "versioned-skill",
       name: "Versioned Skill",
       description: "Tracks revisions.",
@@ -490,16 +490,16 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       tagline: "Tracks revisions",
     });
 
-    const filtered = await svc.list(companyId, { categories: ["memory"], sort: "recent" });
+    const filtered = await svc.list(domainId, { categories: ["memory"], sort: "recent" });
     expect(filtered.some((skill) => skill.id === skillId)).toBe(true);
     expect(filtered.find((skill) => skill.id === skillId)).toMatchObject({
       categories: ["memory"],
       tagline: "Tracks revisions",
     });
 
-    const version = await svc.createVersion(companyId, skillId, { label: "v1" }, { type: "user", userId: "board" });
+    const version = await svc.createVersion(domainId, skillId, { label: "v1" }, { type: "user", userId: "board" });
     expect(version).toMatchObject({
-      companySkillId: skillId,
+      domainSkillId: skillId,
       revisionNumber: 1,
       label: "v1",
       authorUserId: "board",
@@ -511,22 +511,22 @@ describeEmbeddedPostgres("companySkillService.list", () => {
         content: expect.stringContaining("# Versioned Skill"),
       }),
     ]);
-    await expect(svc.getVersion(companyId, skillId, version.id)).resolves.toMatchObject({ id: version.id });
+    await expect(svc.getVersion(domainId, skillId, version.id)).resolves.toMatchObject({ id: version.id });
   });
 
   it("tracks stars and skill comments with actor ownership", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/discussion-skill`,
+      domainId,
+      key: `domain/${domainId}/discussion-skill`,
       slug: "discussion-skill",
       name: "Discussion Skill",
       description: null,
@@ -538,80 +538,80 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       fileInventory: [{ path: "SKILL.md", kind: "skill" }],
     });
 
-    await expect(svc.starSkill(companyId, skillId, { type: "user", userId: "board" })).resolves.toMatchObject({
+    await expect(svc.starSkill(domainId, skillId, { type: "user", userId: "board" })).resolves.toMatchObject({
       starred: true,
       starCount: 1,
     });
-    await expect(svc.starSkill(companyId, skillId, { type: "user", userId: "board" })).resolves.toMatchObject({
+    await expect(svc.starSkill(domainId, skillId, { type: "user", userId: "board" })).resolves.toMatchObject({
       starred: true,
       starCount: 1,
     });
-    await expect(svc.starSkill(companyId, skillId, { type: "user", userId: null })).rejects.toMatchObject({
+    await expect(svc.starSkill(domainId, skillId, { type: "user", userId: null })).rejects.toMatchObject({
       status: 422,
     });
     const comment = await svc.createComment(
-      companyId,
+      domainId,
       skillId,
       { body: "Looks useful." },
       { type: "user", userId: "board" },
     );
     expect(comment).toMatchObject({ body: "Looks useful.", authorUserId: "board" });
     await expect(svc.updateComment(
-      companyId,
+      domainId,
       skillId,
       comment.id,
       { body: "Looks very useful." },
       { type: "agent", agentId: randomUUID() },
     )).rejects.toMatchObject({ status: 422 });
-    await expect(svc.deleteComment(companyId, skillId, comment.id, { type: "user", userId: "board" }))
+    await expect(svc.deleteComment(domainId, skillId, comment.id, { type: "user", userId: "board" }))
       .resolves.toMatchObject({ id: comment.id, deletedAt: expect.any(Date) });
-    await expect(svc.listComments(companyId, skillId)).resolves.toEqual([]);
+    await expect(svc.listComments(domainId, skillId)).resolves.toEqual([]);
     await expect(svc.updateComment(
-      companyId,
+      domainId,
       skillId,
       comment.id,
       { body: "Resurrected." },
       { type: "user", userId: "board" },
     )).rejects.toMatchObject({ status: 404 });
-    await expect(svc.deleteComment(companyId, skillId, comment.id, { type: "user", userId: "board" }))
+    await expect(svc.deleteComment(domainId, skillId, comment.id, { type: "user", userId: "board" }))
       .rejects.toMatchObject({ status: 404 });
     await expect(svc.createComment(
-      companyId,
+      domainId,
       skillId,
       { body: "Reply after delete.", parentCommentId: comment.id },
       { type: "user", userId: "board" },
     )).rejects.toMatchObject({ status: 404 });
-    await expect(svc.unstarSkill(companyId, skillId, { type: "user", userId: "board" })).resolves.toMatchObject({
+    await expect(svc.unstarSkill(domainId, skillId, { type: "user", userId: "board" })).resolves.toMatchObject({
       starred: false,
       starCount: 0,
     });
   });
 
-  it("updates private/company sharing scope and rejects public link publishing", async () => {
-    const companyId = randomUUID();
+  it("updates private/domain sharing scope and rejects public link publishing", async () => {
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const skill = await svc.createLocalSkill(companyId, {
+    const skill = await svc.createLocalSkill(domainId, {
       name: "Sharing Skill",
       tagline: "A scoped skill",
-      sharingScope: "company",
+      sharingScope: "domain",
     });
 
-    await expect(svc.updateSkill(companyId, skill.id, { sharingScope: "private" })).resolves.toMatchObject({
+    await expect(svc.updateSkill(domainId, skill.id, { sharingScope: "private" })).resolves.toMatchObject({
       id: skill.id,
       sharingScope: "private",
       publicShareToken: null,
     });
-    await expect(svc.updateSkill(companyId, skill.id, { sharingScope: "public_link" })).rejects.toMatchObject({
+    await expect(svc.updateSkill(domainId, skill.id, { sharingScope: "public_link" })).rejects.toMatchObject({
       status: 422,
       message: "Public skill sharing is not available in this version.",
     });
-    await expect(svc.createLocalSkill(companyId, {
+    await expect(svc.createLocalSkill(domainId, {
       name: "Public Skill",
       sharingScope: "public_link",
     })).rejects.toMatchObject({
@@ -621,64 +621,64 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("updates categories, allows spaces, and reflects them in list filters and counts", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const skill = await svc.createLocalSkill(companyId, {
+    const skill = await svc.createLocalSkill(domainId, {
       name: "Category Skill",
       tagline: "A categorized skill",
       categories: ["engineering"],
     });
 
-    const updated = await svc.updateSkill(companyId, skill.id, {
+    const updated = await svc.updateSkill(domainId, skill.id, {
       categories: ["Memory Tools", "review", "memory tools", "  "],
     });
 
     expect(updated.categories).toEqual(["Memory Tools", "review"]);
-    await expect(svc.detail(companyId, skill.id)).resolves.toMatchObject({
+    await expect(svc.detail(domainId, skill.id)).resolves.toMatchObject({
       id: skill.id,
       categories: ["Memory Tools", "review"],
     });
-    await expect(svc.list(companyId, { categories: ["review"] })).resolves.toEqual([
+    await expect(svc.list(domainId, { categories: ["review"] })).resolves.toEqual([
       expect.objectContaining({ id: skill.id, categories: ["Memory Tools", "review"] }),
     ]);
-    await expect(svc.list(companyId, { categories: ["memory tools"] })).resolves.toEqual([
+    await expect(svc.list(domainId, { categories: ["memory tools"] })).resolves.toEqual([
       expect.objectContaining({ id: skill.id, categories: ["Memory Tools", "review"] }),
     ]);
-    await expect(svc.list(companyId, { categories: ["engineering"] })).resolves.toEqual([]);
-    await expect(svc.categoryCounts(companyId)).resolves.toEqual([
+    await expect(svc.list(domainId, { categories: ["engineering"] })).resolves.toEqual([]);
+    await expect(svc.categoryCounts(domainId)).resolves.toEqual([
       { slug: "Memory Tools", count: 1 },
       { slug: "review", count: 1 },
     ]);
 
-    await expect(svc.updateSkill(companyId, skill.id, { categories: [] })).resolves.toMatchObject({
+    await expect(svc.updateSkill(domainId, skill.id, { categories: [] })).resolves.toMatchObject({
       id: skill.id,
       categories: [],
     });
-    await expect(svc.categoryCounts(companyId)).resolves.toEqual([]);
+    await expect(svc.categoryCounts(domainId)).resolves.toEqual([]);
   });
 
   it("resolves detail by unique skill slug for Studio deep links", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const skill = await svc.createLocalSkill(companyId, {
+    const skill = await svc.createLocalSkill(domainId, {
       name: "Paperclip Blog Cover Image",
       slug: "paperclip-blog-cover-image",
       markdown: "# Paperclip Blog Cover Image\n",
     });
 
-    await expect(svc.detail(companyId, "paperclip-blog-cover-image")).resolves.toMatchObject({
+    await expect(svc.detail(domainId, "paperclip-blog-cover-image")).resolves.toMatchObject({
       id: skill.id,
       slug: "paperclip-blog-cover-image",
       name: "Paperclip Blog Cover Image",
@@ -686,20 +686,20 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("does not resolve ambiguous skill slugs", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillA = randomUUID();
     const skillB = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values([
+    await db.insert(domainSkills).values([
       {
         id: skillA,
-        companyId,
-        key: `company/${companyId}/duplicate-a`,
+        domainId,
+        key: `domain/${domainId}/duplicate-a`,
         slug: "duplicate",
         name: "Duplicate A",
         markdown: "# Duplicate A\n",
@@ -712,8 +712,8 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: skillB,
-        companyId,
-        key: `company/${companyId}/duplicate-b`,
+        domainId,
+        key: `domain/${domainId}/duplicate-b`,
         slug: "duplicate",
         name: "Duplicate B",
         markdown: "# Duplicate B\n",
@@ -726,11 +726,11 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
     ]);
 
-    await expect(svc.detail(companyId, "duplicate")).resolves.toBeNull();
+    await expect(svc.detail(domainId, "duplicate")).resolves.toBeNull();
   });
 
   it("creates a fork from the creation flow with copied files and lineage", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const sourceSkillId = randomUUID();
     const sourceSkillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-source-fork-skill-"));
     cleanupDirs.add(sourceSkillDir);
@@ -743,15 +743,15 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(sourceSkillDir, "references", "guide.md"), "# Guide\n\nOriginal notes.\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: sourceSkillId,
-      companyId,
-      key: `company/${companyId}/source-skill`,
+      domainId,
+      key: `domain/${domainId}/source-skill`,
       slug: "source-skill",
       name: "Source Skill",
       description: "Source description",
@@ -766,11 +766,11 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       ],
       color: "#0ea5e9",
       categories: ["engineering"],
-      sharingScope: "company",
+      sharingScope: "domain",
       metadata: { sourceKind: "managed_local" },
     });
 
-    const forked = await svc.createLocalSkill(companyId, {
+    const forked = await svc.createLocalSkill(domainId, {
       name: "Source Skill Fork",
       slug: "source-skill-fork",
       markdown: "---\nname: Source Skill Fork\ndescription: Fork description\n---\n\n# Forked Skill\n",
@@ -786,27 +786,27 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       slug: "source-skill-fork",
       sharingScope: "private",
       forkedFromSkillId: sourceSkillId,
-      forkedFromCompanyId: companyId,
+      forkedFromDomainId: domainId,
       color: "#ef4444",
       tagline: "Forked for the team",
       categories: ["review"],
     });
     expect(forked.fileInventory.map((entry) => entry.path).sort()).toEqual(["SKILL.md", "references/guide.md"]);
-    await expect(svc.readFile(companyId, forked.id, "references/guide.md")).resolves.toMatchObject({
+    await expect(svc.readFile(domainId, forked.id, "references/guide.md")).resolves.toMatchObject({
       content: expect.stringContaining("Original notes."),
     });
-    await expect(svc.getById(companyId, sourceSkillId)).resolves.toMatchObject({
+    await expect(svc.getById(domainId, sourceSkillId)).resolves.toMatchObject({
       forkCount: 1,
       installCount: 1,
     });
-    await expect(svc.getById(companyId, forked.id)).resolves.toMatchObject({
+    await expect(svc.getById(domainId, forked.id)).resolves.toMatchObject({
       metadata: expect.objectContaining({
         forkedFromSkillId: sourceSkillId,
-        forkedFromCompanyId: companyId,
+        forkedFromDomainId: domainId,
         forkedByUserId: "board",
       }),
     });
-    const versions = await svc.listVersions(companyId, forked.id);
+    const versions = await svc.listVersions(domainId, forked.id);
     expect(versions).toHaveLength(1);
     expect(versions[0]).toMatchObject({
       revisionNumber: 1,
@@ -815,7 +815,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
 
     const dedicatedForkResult = await svc.forkSkill(
-      companyId,
+      domainId,
       sourceSkillId,
       { name: "Dedicated Fork", slug: "dedicated-fork", sharingScope: "private" },
       { type: "user", userId: "board" },
@@ -837,10 +837,10 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       slug: "dedicated-fork",
       sharingScope: "private",
       forkedFromSkillId: sourceSkillId,
-      forkedFromCompanyId: companyId,
+      forkedFromDomainId: domainId,
       currentVersionId: expect.any(String),
     });
-    const dedicatedVersions = await svc.listVersions(companyId, dedicatedFork.id);
+    const dedicatedVersions = await svc.listVersions(domainId, dedicatedFork.id);
     expect(dedicatedVersions).toHaveLength(1);
     expect(dedicatedVersions[0]).toMatchObject({
       revisionNumber: 1,
@@ -850,21 +850,21 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("prechecks existing forks and reassigns selected agents when forking", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const sourceSkillId = randomUUID();
     const sourceSkillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-reassign-source-"));
     cleanupDirs.add(sourceSkillDir);
     await fs.writeFile(path.join(sourceSkillDir, "SKILL.md"), "# Source Skill\n", "utf8");
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: sourceSkillId,
-      companyId,
-      key: `company/${companyId}/source-skill`,
+      domainId,
+      key: `domain/${domainId}/source-skill`,
       slug: "source-skill",
       name: "Source Skill",
       description: null,
@@ -881,31 +881,31 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await db.insert(agents).values([
       {
         id: reassignAgentId,
-        companyId,
+        domainId,
         name: "Reassign Me",
         role: "engineer",
         adapterType: "codex_local",
         adapterConfig: {
           paperclipSkillSync: {
-            desiredSkills: [`company/${companyId}/source-skill`],
+            desiredSkills: [`domain/${domainId}/source-skill`],
           },
         },
       },
       {
         id: keepAgentId,
-        companyId,
+        domainId,
         name: "Keep Me",
         role: "engineer",
         adapterType: "codex_local",
         adapterConfig: {
           paperclipSkillSync: {
-            desiredSkills: [`company/${companyId}/source-skill`],
+            desiredSkills: [`domain/${domainId}/source-skill`],
           },
         },
       },
     ]);
 
-    const before = await svc.forkPrecheck(companyId, sourceSkillId, { type: "user", userId: "board" });
+    const before = await svc.forkPrecheck(domainId, sourceSkillId, { type: "user", userId: "board" });
     expect(before).toMatchObject({
       skillId: sourceSkillId,
       original: { id: sourceSkillId, slug: "source-skill" },
@@ -914,7 +914,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
 
     const forked = await svc.forkSkill(
-      companyId,
+      domainId,
       sourceSkillId,
       { slug: "source-skill-fork", reassignAgentIds: [reassignAgentId] },
       { type: "user", userId: "board" },
@@ -923,23 +923,23 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     expect(forked).toMatchObject({
       skill: {
         slug: "source-skill-fork",
-        key: `company/${companyId}/source-skill-fork`,
+        key: `domain/${domainId}/source-skill-fork`,
         forkedFromSkillId: sourceSkillId,
       },
       original: { id: sourceSkillId, slug: "source-skill" },
       reassignments: [{
         agentId: reassignAgentId,
-        previousSkillKey: `company/${companyId}/source-skill`,
-        nextSkillKey: `company/${companyId}/source-skill-fork`,
+        previousSkillKey: `domain/${domainId}/source-skill`,
+        nextSkillKey: `domain/${domainId}/source-skill-fork`,
       }],
     });
-    const afterAgents = await db.select().from(agents).where(eq(agents.companyId, companyId));
+    const afterAgents = await db.select().from(agents).where(eq(agents.domainId, domainId));
     const reassignConfig = afterAgents.find((agent) => agent.id === reassignAgentId)?.adapterConfig as Record<string, any>;
     const keepConfig = afterAgents.find((agent) => agent.id === keepAgentId)?.adapterConfig as Record<string, any>;
-    expect(reassignConfig.paperclipSkillSync.desiredSkills).toEqual([`company/${companyId}/source-skill-fork`]);
-    expect(keepConfig.paperclipSkillSync.desiredSkills).toEqual([`company/${companyId}/source-skill`]);
+    expect(reassignConfig.paperclipSkillSync.desiredSkills).toEqual([`domain/${domainId}/source-skill-fork`]);
+    expect(keepConfig.paperclipSkillSync.desiredSkills).toEqual([`domain/${domainId}/source-skill`]);
 
-    const after = await svc.forkPrecheck(companyId, sourceSkillId, { type: "user", userId: "board" });
+    const after = await svc.forkPrecheck(domainId, sourceSkillId, { type: "user", userId: "board" });
     expect(after?.existingForks).toEqual([
       expect.objectContaining({
         id: forked.skill.id,
@@ -951,18 +951,18 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("forks external source types and deduplicates fork slugs", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     const sourceTypes = ["github", "skills_sh", "url", "catalog"] as const;
-    await db.insert(companySkills).values(sourceTypes.map((sourceType) => ({
+    await db.insert(domainSkills).values(sourceTypes.map((sourceType) => ({
       id: randomUUID(),
-      companyId,
-      key: `company/${companyId}/${sourceType}-skill`,
+      domainId,
+      key: `domain/${domainId}/${sourceType}-skill`,
       slug: `${sourceType}-skill`,
       name: `${sourceType} Skill`,
       description: null,
@@ -989,10 +989,10 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
     try {
       for (const sourceType of sourceTypes) {
-        const source = await svc.getByKey(companyId, `company/${companyId}/${sourceType}-skill`);
+        const source = await svc.getByKey(domainId, `domain/${domainId}/${sourceType}-skill`);
         expect(source).not.toBeNull();
-        const first = await svc.forkSkill(companyId, source!.id, { slug: `${sourceType}-skill-fork` }, { type: "user", userId: "board" });
-        const second = await svc.forkSkill(companyId, source!.id, { slug: `${sourceType}-skill-fork` }, { type: "user", userId: "board" });
+        const first = await svc.forkSkill(domainId, source!.id, { slug: `${sourceType}-skill-fork` }, { type: "user", userId: "board" });
+        const second = await svc.forkSkill(domainId, source!.id, { slug: `${sourceType}-skill-fork` }, { type: "user", userId: "board" });
         const normalizedForkSlug = `${sourceType.replace("_", "-")}-skill-fork`;
         expect(first.skill).toMatchObject({
           slug: normalizedForkSlug,
@@ -1011,23 +1011,23 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("validates version-aware desired skill selections", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const otherSkillId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-pinned-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Pinned Skill\n", "utf8");
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values([
+    await db.insert(domainSkills).values([
       {
         id: skillId,
-        companyId,
-        key: `company/${companyId}/pinned-skill`,
+        domainId,
+        key: `domain/${domainId}/pinned-skill`,
         slug: "pinned-skill",
         name: "Pinned Skill",
         description: null,
@@ -1040,8 +1040,8 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: otherSkillId,
-        companyId,
-        key: `company/${companyId}/other-skill`,
+        domainId,
+        key: `domain/${domainId}/other-skill`,
         slug: "other-skill",
         name: "Other Skill",
         description: null,
@@ -1053,47 +1053,47 @@ describeEmbeddedPostgres("companySkillService.list", () => {
         fileInventory: [{ path: "SKILL.md", kind: "skill" }],
       },
     ]);
-    const version = await svc.createVersion(companyId, skillId, {}, { type: "user", userId: "board" });
+    const version = await svc.createVersion(domainId, skillId, {}, { type: "user", userId: "board" });
 
-    await expect(svc.resolveRequestedSkillEntries(companyId, [
+    await expect(svc.resolveRequestedSkillEntries(domainId, [
       "pinned-skill",
     ])).resolves.toEqual({
-      resolved: [{ key: `company/${companyId}/pinned-skill`, versionId: null }],
+      resolved: [{ key: `domain/${domainId}/pinned-skill`, versionId: null }],
       unresolved: [],
     });
-    await expect(svc.resolveRequestedSkillEntries(companyId, [
+    await expect(svc.resolveRequestedSkillEntries(domainId, [
       { key: "pinned-skill", versionId: null },
     ])).resolves.toEqual({
-      resolved: [{ key: `company/${companyId}/pinned-skill`, versionId: null }],
+      resolved: [{ key: `domain/${domainId}/pinned-skill`, versionId: null }],
       unresolved: [],
     });
-    await expect(svc.resolveRequestedSkillEntries(companyId, [
+    await expect(svc.resolveRequestedSkillEntries(domainId, [
       { key: "pinned-skill", versionId: version.id },
     ])).resolves.toEqual({
-      resolved: [{ key: `company/${companyId}/pinned-skill`, versionId: version.id }],
+      resolved: [{ key: `domain/${domainId}/pinned-skill`, versionId: version.id }],
       unresolved: [],
     });
-    await expect(svc.resolveRequestedSkillEntries(companyId, [
+    await expect(svc.resolveRequestedSkillEntries(domainId, [
       { key: "other-skill", versionId: version.id },
     ])).rejects.toMatchObject({ status: 422 });
   });
 
   it("rejects unknown desired keys by default but preserves them when tolerating (PAP-13222)", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-tolerant-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Real Skill\n", "utf8");
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/real-skill`,
+      domainId,
+      key: `domain/${domainId}/real-skill`,
       slug: "real-skill",
       name: "Real Skill",
       description: null,
@@ -1106,7 +1106,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
 
     // Strict (default): a stale/unknown key is a hard 422.
-    await expect(svc.resolveRequestedSkillEntries(companyId, [
+    await expect(svc.resolveRequestedSkillEntries(domainId, [
       "real-skill",
       "stale/removed/skill",
     ])).rejects.toMatchObject({ status: 422 });
@@ -1114,21 +1114,21 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     // Tolerant: the resolvable key resolves, and the stale key is preserved
     // (not thrown) so callers can keep it visible/removable.
     await expect(svc.resolveRequestedSkillEntries(
-      companyId,
+      domainId,
       ["real-skill", "stale/removed/skill"],
       { tolerateUnknownReferences: true },
     )).resolves.toEqual({
-      resolved: [{ key: `company/${companyId}/real-skill`, versionId: null }],
+      resolved: [{ key: `domain/${domainId}/real-skill`, versionId: null }],
       unresolved: ["stale/removed/skill"],
     });
 
     // Ambiguity is still fatal even when tolerating unknown references. Two
     // library skills sharing a slug make a bare-slug reference ambiguous.
     const otherId = randomUUID();
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: otherId,
-      companyId,
-      key: `company/${companyId}/dup-a`,
+      domainId,
+      key: `domain/${domainId}/dup-a`,
       slug: "dup",
       name: "Dup A",
       description: null,
@@ -1140,10 +1140,10 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       fileInventory: [{ path: "SKILL.md", kind: "skill" }],
     });
     const otherId2 = randomUUID();
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: otherId2,
-      companyId,
-      key: `company/${companyId}/dup-b`,
+      domainId,
+      key: `domain/${domainId}/dup-b`,
       slug: "dup",
       name: "Dup B",
       description: null,
@@ -1155,28 +1155,28 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       fileInventory: [{ path: "SKILL.md", kind: "skill" }],
     });
     await expect(svc.resolveRequestedSkillEntries(
-      companyId,
+      domainId,
       ["dup"],
       { tolerateUnknownReferences: true },
     )).rejects.toMatchObject({ status: 422 });
   });
 
   it("preserves missing local-path skills that active agents still desire", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/reflection-coach`;
+    const skillKey = `domain/${domainId}/reflection-coach`;
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-missing-used-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: skillKey,
       slug: "reflection-coach",
       name: "Reflection Coach",
@@ -1191,7 +1191,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       name: "Reviewer",
       role: "engineer",
       status: "active",
@@ -1203,10 +1203,10 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
     });
 
-    const listed = await svc.list(companyId);
+    const listed = await svc.list(domainId);
     const listedSkill = listed.find((skill) => skill.id === skillId);
-    const detail = await svc.detail(companyId, skillId);
-    const stored = await svc.getById(companyId, skillId);
+    const detail = await svc.detail(domainId, skillId);
+    const stored = await svc.getById(domainId, skillId);
     const marker = stored?.metadata?.missingSource;
 
     expect(listedSkill).toMatchObject({
@@ -1229,12 +1229,12 @@ describeEmbeddedPostgres("companySkillService.list", () => {
 
     const preservedUpdatedAt = new Date("2026-01-05T00:00:00.000Z");
     await db
-      .update(companySkills)
+      .update(domainSkills)
       .set({ updatedAt: preservedUpdatedAt })
-      .where(eq(companySkills.id, skillId));
+      .where(eq(domainSkills.id, skillId));
 
-    await svc.list(companyId);
-    const stableStored = await svc.getById(companyId, skillId);
+    await svc.list(domainId);
+    const stableStored = await svc.getById(domainId, skillId);
 
     expect(stableStored?.updatedAt.toISOString()).toBe(preservedUpdatedAt.toISOString());
     expect(stableStored?.metadata?.missingSource).toMatchObject({
@@ -1244,21 +1244,21 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("continues pruning missing local-path skills that no active agent desires", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-missing-unused-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/unused-skill`,
+      domainId,
+      key: `domain/${domainId}/unused-skill`,
       slug: "unused-skill",
       name: "Unused Skill",
       description: null,
@@ -1271,14 +1271,14 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       metadata: { sourceKind: "local_path" },
     });
 
-    const listed = await svc.list(companyId);
+    const listed = await svc.list(domainId);
 
     expect(listed.find((skill) => skill.id === skillId)).toBeUndefined();
-    await expect(svc.getById(companyId, skillId)).resolves.toBeNull();
+    await expect(svc.getById(domainId, skillId)).resolves.toBeNull();
   });
 
   it("refreshes stale local-path file inventory from disk", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-stale-inventory-skill-"));
     cleanupDirs.add(skillDir);
@@ -1287,15 +1287,15 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(skillDir, "references", "guide.md"), "# Guide\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/stale-inventory-skill`,
+      domainId,
+      key: `domain/${domainId}/stale-inventory-skill`,
       slug: "stale-inventory-skill",
       name: "Stale Inventory Skill",
       description: null,
@@ -1308,19 +1308,19 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       metadata: { sourceKind: "local_path" },
     });
 
-    const listed = await svc.list(companyId);
+    const listed = await svc.list(domainId);
     const skill = listed.find((entry) => entry.id === skillId);
 
     expect(new Set(skill?.fileInventory.map((entry) => `${entry.kind}:${entry.path}`))).toEqual(new Set([
       "skill:SKILL.md",
       "reference:references/guide.md",
     ]));
-    await expect(svc.readFile(companyId, skillId, "references/guide.md")).resolves.toMatchObject({
+    await expect(svc.readFile(domainId, skillId, "references/guide.md")).resolves.toMatchObject({
       path: "references/guide.md",
       kind: "reference",
       content: "# Guide\n",
     });
-    await expect(svc.getById(companyId, skillId)).resolves.toMatchObject({
+    await expect(svc.getById(domainId, skillId)).resolves.toMatchObject({
       fileInventory: expect.arrayContaining([
         expect.objectContaining({ path: "SKILL.md", kind: "skill" }),
         expect.objectContaining({ path: "references/guide.md", kind: "reference" }),
@@ -1329,7 +1329,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("imports sibling reference files when the source is a direct SKILL.md path", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-file-import-skill-"));
     cleanupDirs.add(skillDir);
     await fs.mkdir(path.join(skillDir, "references"), { recursive: true });
@@ -1341,13 +1341,13 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(skillDir, "references", "checklist.md"), "# Checklist\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const result = await svc.importFromSource(companyId, path.join(skillDir, "SKILL.md"));
+    const result = await svc.importFromSource(domainId, path.join(skillDir, "SKILL.md"));
 
     expect(result.imported).toHaveLength(1);
     expect(new Set(result.imported[0]?.fileInventory.map((entry) => `${entry.kind}:${entry.path}`))).toEqual(new Set([
@@ -1357,7 +1357,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("bounds direct root SKILL.md imports to known support directories", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-root-skill-"));
     cleanupDirs.add(repoDir);
     await fs.mkdir(path.join(repoDir, "references"), { recursive: true });
@@ -1372,13 +1372,13 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await fs.writeFile(path.join(repoDir, "server", "src", "index.ts"), "export {};\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    const result = await svc.importFromSource(companyId, path.join(repoDir, "SKILL.md"));
+    const result = await svc.importFromSource(domainId, path.join(repoDir, "SKILL.md"));
 
     expect(result.imported).toHaveLength(1);
     expect(result.imported[0]?.fileInventory.map((entry) => entry.path).sort()).toEqual([
@@ -1388,15 +1388,15 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("rejects executable external package skills before persistence", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    await expect(svc.importPackageFiles(companyId, {
+    await expect(svc.importPackageFiles(domainId, {
       "skills/evil/SKILL.md": [
         "---",
         "name: Evil",
@@ -1418,26 +1418,26 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       message: 'External skill source "evil" contains executable scripts and cannot be imported.',
     });
 
-    const rows = await db.select().from(companySkills);
-    expect(rows.some((row) => row.companyId === companyId && row.slug === "evil")).toBe(false);
+    const rows = await db.select().from(domainSkills);
+    expect(rows.some((row) => row.domainId === domainId && row.slug === "evil")).toBe(false);
   });
 
   it("rejects unbundled package imports that claim reserved Paperclip skill keys", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const bundledSkillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-bundled-skill-"));
     cleanupDirs.add(bundledSkillDir);
     await fs.writeFile(path.join(bundledSkillDir, "SKILL.md"), "---\nname: Paperclip\n---\n\n# Official Paperclip\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: "paperclipai/paperclip/paperclip",
       slug: "paperclip",
       name: "Paperclip",
@@ -1451,7 +1451,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       metadata: { sourceKind: "paperclip_bundled" },
     });
 
-    await expect(svc.importPackageFiles(companyId, {
+    await expect(svc.importPackageFiles(domainId, {
       "skills/trojan/SKILL.md": [
         "---",
         "name: Trojan Paperclip",
@@ -1467,7 +1467,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       message: 'Reserved Paperclip skill key "paperclipai/paperclip/paperclip" cannot be imported from unbundled sources.',
     });
 
-    const stored = await svc.getById(companyId, skillId);
+    const stored = await svc.getById(domainId, skillId);
     expect(stored).toMatchObject({
       id: skillId,
       key: "paperclipai/paperclip/paperclip",
@@ -1478,22 +1478,22 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("clears the missing-source marker when a local-path skill source returns", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-restored-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Restored Skill\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/restored-skill`,
+      domainId,
+      key: `domain/${domainId}/restored-skill`,
       slug: "restored-skill",
       name: "Restored Skill",
       description: null,
@@ -1515,28 +1515,28 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
     });
 
-    await svc.list(companyId);
-    const stored = await svc.getById(companyId, skillId);
+    await svc.list(domainId);
+    const stored = await svc.getById(domainId, skillId);
 
     expect(stored?.metadata).toEqual({ sourceKind: "local_path" });
   });
 
-  it("marks source-missing company skills as unavailable during read-only runtime listing", async () => {
-    const companyId = randomUUID();
+  it("marks source-missing domain skills as unavailable during read-only runtime listing", async () => {
+    const domainId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/reflection-coach`;
+    const skillKey = `domain/${domainId}/reflection-coach`;
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-readonly-missing-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: skillKey,
       slug: "reflection-coach",
       name: "Reflection Coach",
@@ -1551,7 +1551,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       name: "Reviewer",
       role: "engineer",
       status: "active",
@@ -1563,7 +1563,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
     });
 
-    const entries = await svc.listRuntimeSkillEntries(companyId, { materializeMissing: false });
+    const entries = await svc.listRuntimeSkillEntries(domainId, { materializeMissing: false });
     const entry = entries.find((candidate) => candidate.key === skillKey);
 
     expect(entry).toMatchObject({
@@ -1574,22 +1574,22 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     await expect(fs.stat(entry!.source)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("materializes source-missing company skills from the stored markdown during runtime listing", async () => {
-    const companyId = randomUUID();
+  it("materializes source-missing domain skills from the stored markdown during runtime listing", async () => {
+    const domainId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/runtime-coach`;
+    const skillKey = `domain/${domainId}/runtime-coach`;
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-runtime-missing-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: skillKey,
       slug: "runtime-coach",
       name: "Runtime Coach",
@@ -1604,7 +1604,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       name: "Runner",
       role: "engineer",
       status: "active",
@@ -1616,7 +1616,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
     });
 
-    const entries = await svc.listRuntimeSkillEntries(companyId);
+    const entries = await svc.listRuntimeSkillEntries(domainId);
     const entry = entries.find((candidate) => candidate.key === skillKey);
 
     expect(entry).toMatchObject({
@@ -1629,21 +1629,21 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("falls back to stored markdown when reading SKILL.md from a missing local source", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/missing-reader`;
+    const skillKey = `domain/${domainId}/missing-reader`;
     const missingSkillDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-missing-read-skill-")), "gone");
     cleanupDirs.add(path.dirname(missingSkillDir));
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: skillKey,
       slug: "missing-reader",
       name: "Missing Reader",
@@ -1661,7 +1661,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     });
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       name: "Reader",
       role: "engineer",
       status: "active",
@@ -1673,28 +1673,28 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
     });
 
-    await expect(svc.readFile(companyId, skillId, "SKILL.md")).resolves.toMatchObject({
+    await expect(svc.readFile(domainId, skillId, "SKILL.md")).resolves.toMatchObject({
       path: "SKILL.md",
       content: "# Missing Reader\n\nRecovered from DB.\n",
     });
-    await expect(svc.readFile(companyId, skillId, "references/guide.md")).rejects.toMatchObject({
+    await expect(svc.readFile(domainId, skillId, "references/guide.md")).rejects.toMatchObject({
       status: 404,
     });
   });
 
   it("reads root-level SKILL.md for github skills with a '.' repoSkillDir", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
-      key: `company/${companyId}/root-skill`,
+      domainId,
+      key: `domain/${domainId}/root-skill`,
       slug: "root-skill",
       name: "Root Skill",
       description: null,
@@ -1714,7 +1714,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       return new Response("# Root Skill (remote)\n", { status: 200 });
     });
     try {
-      await expect(svc.readFile(companyId, skillId, "SKILL.md")).resolves.toMatchObject({
+      await expect(svc.readFile(domainId, skillId, "SKILL.md")).resolves.toMatchObject({
         content: "# Root Skill (remote)\n",
       });
       expect(requestedUrls).toEqual([
@@ -1724,7 +1724,7 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       vi.stubGlobal("fetch", async () => {
         throw new Error("network down");
       });
-      await expect(svc.readFile(companyId, skillId, "SKILL.md")).resolves.toMatchObject({
+      await expect(svc.readFile(domainId, skillId, "SKILL.md")).resolves.toMatchObject({
         content: "# Root Skill (stored)\n",
       });
     } finally {
@@ -1733,20 +1733,20 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("falls back to slug paths for github skills only when repoSkillDir is absent", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const rootSkillId = randomUUID();
     const slugSkillId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values([
+    await db.insert(domainSkills).values([
       {
         id: rootSkillId,
-        companyId,
-        key: `company/${companyId}/empty-root-skill`,
+        domainId,
+        key: `domain/${domainId}/empty-root-skill`,
         slug: "empty-root-skill",
         name: "Empty Root Skill",
         description: null,
@@ -1761,8 +1761,8 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       },
       {
         id: slugSkillId,
-        companyId,
-        key: `company/${companyId}/slug-skill`,
+        domainId,
+        key: `domain/${domainId}/slug-skill`,
         slug: "slug-skill",
         name: "Slug Skill",
         description: null,
@@ -1783,10 +1783,10 @@ describeEmbeddedPostgres("companySkillService.list", () => {
       return new Response("# Remote Skill\n", { status: 200 });
     });
     try {
-      await expect(svc.readFile(companyId, rootSkillId, "SKILL.md")).resolves.toMatchObject({
+      await expect(svc.readFile(domainId, rootSkillId, "SKILL.md")).resolves.toMatchObject({
         content: "# Remote Skill\n",
       });
-      await expect(svc.readFile(companyId, slugSkillId, "SKILL.md")).resolves.toMatchObject({
+      await expect(svc.readFile(domainId, slugSkillId, "SKILL.md")).resolves.toMatchObject({
         content: "# Remote Skill\n",
       });
       expect(requestedUrls).toEqual([
@@ -1799,21 +1799,21 @@ describeEmbeddedPostgres("companySkillService.list", () => {
   });
 
   it("seeds an initial version on create and snapshots a version on each changed save", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     const skill = await svc.createLocalSkill(
-      companyId,
+      domainId,
       { name: "Versioned Editor", description: "Edits with history" },
       { type: "user", userId: "board" },
     );
     expect(skill.currentVersionId).not.toBeNull();
-    let versions = await svc.listVersions(companyId, skill.id);
+    let versions = await svc.listVersions(domainId, skill.id);
     expect(versions).toHaveLength(1);
     expect(versions[0]).toMatchObject({
       revisionNumber: 1,
@@ -1823,20 +1823,20 @@ describeEmbeddedPostgres("companySkillService.list", () => {
     expect(skill.currentVersionId).toBe(versions[0]!.id);
 
     const editedMarkdown = "---\nname: Versioned Editor\n---\n\n# Versioned Editor\n\nEdited body.\n";
-    await expect(svc.updateFile(companyId, skill.id, "SKILL.md", editedMarkdown, { type: "user", userId: "board" }))
+    await expect(svc.updateFile(domainId, skill.id, "SKILL.md", editedMarkdown, { type: "user", userId: "board" }))
       .resolves.toMatchObject({ path: "SKILL.md", content: editedMarkdown });
-    versions = await svc.listVersions(companyId, skill.id);
+    versions = await svc.listVersions(domainId, skill.id);
     expect(versions).toHaveLength(2);
     expect(versions[0]).toMatchObject({ revisionNumber: 2, authorUserId: "board" });
     expect(versions[0]!.fileInventory).toEqual([
       expect.objectContaining({ path: "SKILL.md", content: editedMarkdown }),
     ]);
-    await expect(svc.getById(companyId, skill.id)).resolves.toMatchObject({
+    await expect(svc.getById(domainId, skill.id)).resolves.toMatchObject({
       currentVersionId: versions[0]!.id,
     });
 
-    await svc.updateFile(companyId, skill.id, "SKILL.md", editedMarkdown, { type: "user", userId: "board" });
-    versions = await svc.listVersions(companyId, skill.id);
+    await svc.updateFile(domainId, skill.id, "SKILL.md", editedMarkdown, { type: "user", userId: "board" });
+    versions = await svc.listVersions(domainId, skill.id);
     expect(versions).toHaveLength(2);
   });
 });

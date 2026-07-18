@@ -13,7 +13,7 @@ function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentT
 
 function normalizeMethod(input: string): string {
   const trimmed = input.trim();
-  return trimmed.length > 0 ? trimmed.toUpperCase() : "POST";
+  return trimmed.length > 0 ? trimmed.toUpperLifeAdmin() : "POST";
 }
 
 export async function testEnvironment(

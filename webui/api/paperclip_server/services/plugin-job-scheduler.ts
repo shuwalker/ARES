@@ -244,7 +244,7 @@ export function createPluginJobScheduler(
    * A single scheduler tick. Queries for due jobs and dispatches them.
    */
   async function tick(): Promise<void> {
-    // Prevent overlapping ticks (in case a tick takes longer than the interval)
+    // Prevent overlapping ticks (in life_admin a tick takes longer than the interval)
     if (tickInProgress) {
       log.debug("skipping tick — previous tick still in progress");
       return;

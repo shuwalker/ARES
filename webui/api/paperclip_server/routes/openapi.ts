@@ -34,12 +34,12 @@ import {
   updateProjectSchema,
   createProjectWorkspaceSchema,
   updateProjectWorkspaceSchema,
-  // Company
-  createCompanySchema,
-  updateCompanySchema,
-  updateCompanyBrandingSchema,
-  companyArtifactsQuerySchema,
-  companyArtifactsResponseSchema,
+  // Domain
+  createDomainSchema,
+  updateDomainSchema,
+  updateDomainBrandingSchema,
+  domainArtifactsQuerySchema,
+  domainArtifactsResponseSchema,
   // Routine
   createRoutineSchema,
   updateRoutineSchema,
@@ -65,8 +65,8 @@ import {
   requestApprovalRevisionSchema,
   resubmitApprovalSchema,
   addApprovalCommentSchema,
-  // Cost / budget
-  createCostEventSchema,
+  // Finance / budget
+  createFinanceEventSchema,
   createFinanceEventSchema,
   updateBudgetSchema,
   upsertBudgetPolicySchema,
@@ -90,17 +90,17 @@ import {
   probeEnvironmentConfigSchema,
   startEnvironmentCustomImageSetupSessionSchema,
   // Domain skills
-  companySkillCreateSchema,
-  companySkillFileDeleteSchema,
-  companySkillFileUpdateSchema,
-  companySkillImportSchema,
-  companySkillProjectScanRequestSchema,
-  companySkillTestInputCreateSchema,
-  companySkillTestInputUpdateSchema,
-  companySkillTestRunCreateSchema,
-  companySkillTestRunListQuerySchema,
-  companySkillTestRunTemplateCreateSchema,
-  companySkillTestRunTemplateUpdateSchema,
+  domainSkillCreateSchema,
+  domainSkillFileDeleteSchema,
+  domainSkillFileUpdateSchema,
+  domainSkillImportSchema,
+  domainSkillProjectScanRequestSchema,
+  domainSkillTestInputCreateSchema,
+  domainSkillTestInputUpdateSchema,
+  domainSkillTestRunCreateSchema,
+  domainSkillTestRunListQuerySchema,
+  domainSkillTestRunTemplateCreateSchema,
+  domainSkillTestRunTemplateUpdateSchema,
   // Issue tree
   createIssueTreeHoldSchema,
   previewIssueTreeControlSchema,
@@ -115,22 +115,22 @@ import {
   // Auth / profile
   updateCurrentUserProfileSchema,
   // Domain portability (legacy routes)
-  companyPortabilityExportSchema,
-  companyPortabilityPreviewSchema,
-  companyPortabilityImportSchema,
+  domainPortabilityExportSchema,
+  domainPortabilityPreviewSchema,
+  domainPortabilityImportSchema,
   // Access / membership
   acceptInviteSchema,
-  createCompanyInviteSchema,
+  createDomainInviteSchema,
   createOpenClawInvitePromptSchema,
   claimJoinRequestApiKeySchema,
   createCliAuthChallengeSchema,
   resolveCliAuthChallengeSchema,
   createBoardApiKeySchema,
-  updateCompanyMemberSchema,
-  updateCompanyMemberWithPermissionsSchema,
-  archiveCompanyMemberSchema,
+  updateDomainMemberSchema,
+  updateDomainMemberWithPermissionsSchema,
+  archiveDomainMemberSchema,
   updateMemberPermissionsSchema,
-  updateUserCompanyAccessSchema,
+  updateUserDomainAccessSchema,
   // Instance settings
   patchInstanceGeneralSettingsSchema,
   patchInstanceExperimentalSettingsSchema,
@@ -479,12 +479,12 @@ const refreshExternalObjectsBodySchema = z.object({
   objectIds: z.array(z.string().uuid()).max(50).optional(),
 }).strict();
 
-const environmentCustomImageCompanyQuerySchema = z.object({
-  companyId: z.string().optional(),
+const environmentCustomImageDomainQuerySchema = z.object({
+  domainId: z.string().optional(),
 }).strict();
 
 const disableEnvironmentCustomImageTemplateQuerySchema =
-  environmentCustomImageCompanyQuerySchema.extend({
+  environmentCustomImageDomainQuerySchema.extend({
     deleteProviderTemplate: z.enum(["true", "false"]).optional(),
   });
 
@@ -660,47 +660,47 @@ const BOARD_ONLY_OPERATIONS = new Set([
   "GET /api/domains/issues",
   "POST /api/board-claim/{token}/claim",
   "GET /api/cli-auth/me",
-  "POST /api/domains/{companyId}/invites",
-  "GET /api/domains/{companyId}/invites",
-  "POST /api/domains/{companyId}/openclaw/invite-prompt",
-  "GET /api/domains/{companyId}/join-requests",
-  "POST /api/domains/{companyId}/join-requests/{requestId}/approve",
-  "POST /api/domains/{companyId}/join-requests/{requestId}/reject",
-  "GET /api/domains/{companyId}/members",
-  "PATCH /api/domains/{companyId}/members/{memberId}",
-  "PATCH /api/domains/{companyId}/members/{memberId}/role-and-grants",
-  "POST /api/domains/{companyId}/members/{memberId}/archive",
-  "PATCH /api/domains/{companyId}/members/{memberId}/permissions",
-  "GET /api/domains/{companyId}/user-directory",
+  "POST /api/domains/{domainId}/invites",
+  "GET /api/domains/{domainId}/invites",
+  "POST /api/domains/{domainId}/openclaw/invite-prompt",
+  "GET /api/domains/{domainId}/join-requests",
+  "POST /api/domains/{domainId}/join-requests/{requestId}/approve",
+  "POST /api/domains/{domainId}/join-requests/{requestId}/reject",
+  "GET /api/domains/{domainId}/members",
+  "PATCH /api/domains/{domainId}/members/{memberId}",
+  "PATCH /api/domains/{domainId}/members/{memberId}/role-and-grants",
+  "POST /api/domains/{domainId}/members/{memberId}/archive",
+  "PATCH /api/domains/{domainId}/members/{memberId}/permissions",
+  "GET /api/domains/{domainId}/user-directory",
   "POST /api/execution-workspaces/{id}/reconcile-branch",
   "GET /api/board-api-keys",
   "POST /api/board-api-keys",
   "DELETE /api/board-api-keys/{keyId}",
   "POST /api/bootstrap/claim",
-  "GET /api/domains/{companyId}/resource-memberships/me",
-  "PUT /api/domains/{companyId}/resource-memberships/me/agents/{agentId}",
-  "PUT /api/domains/{companyId}/resource-memberships/me/projects/{projectId}",
-  "GET /api/domains/{companyId}/secret-provider-configs",
-  "POST /api/domains/{companyId}/secret-provider-configs",
-  "GET /api/domains/{companyId}/secret-providers/health",
-  "POST /api/domains/{companyId}/secret-provider-configs/discovery/preview",
+  "GET /api/domains/{domainId}/resource-memberships/me",
+  "PUT /api/domains/{domainId}/resource-memberships/me/agents/{agentId}",
+  "PUT /api/domains/{domainId}/resource-memberships/me/projects/{projectId}",
+  "GET /api/domains/{domainId}/secret-provider-configs",
+  "POST /api/domains/{domainId}/secret-provider-configs",
+  "GET /api/domains/{domainId}/secret-providers/health",
+  "POST /api/domains/{domainId}/secret-provider-configs/discovery/preview",
   "GET /api/secret-provider-configs/{id}",
   "PATCH /api/secret-provider-configs/{id}",
   "DELETE /api/secret-provider-configs/{id}",
   "POST /api/secret-provider-configs/{id}/default",
   "POST /api/secret-provider-configs/{id}/health",
-  "GET /api/domains/{companyId}/user-secret-definitions",
-  "POST /api/domains/{companyId}/user-secret-definitions",
-  "PATCH /api/domains/{companyId}/user-secret-definitions/{definitionId}",
-  "DELETE /api/domains/{companyId}/user-secret-definitions/{definitionId}",
-  "GET /api/domains/{companyId}/user-secret-definitions/{definitionId}/coverage",
-  "GET /api/domains/{companyId}/me/user-secrets",
-  "POST /api/domains/{companyId}/me/user-secrets",
-  "PATCH /api/domains/{companyId}/me/user-secrets/{secretId}",
-  "POST /api/domains/{companyId}/me/user-secrets/{secretId}/rotate",
-  "DELETE /api/domains/{companyId}/me/user-secrets/{secretId}",
-  "POST /api/domains/{companyId}/secrets/remote-import",
-  "POST /api/domains/{companyId}/secrets/remote-import/preview",
+  "GET /api/domains/{domainId}/user-secret-definitions",
+  "POST /api/domains/{domainId}/user-secret-definitions",
+  "PATCH /api/domains/{domainId}/user-secret-definitions/{definitionId}",
+  "DELETE /api/domains/{domainId}/user-secret-definitions/{definitionId}",
+  "GET /api/domains/{domainId}/user-secret-definitions/{definitionId}/coverage",
+  "GET /api/domains/{domainId}/me/user-secrets",
+  "POST /api/domains/{domainId}/me/user-secrets",
+  "PATCH /api/domains/{domainId}/me/user-secrets/{secretId}",
+  "POST /api/domains/{domainId}/me/user-secrets/{secretId}/rotate",
+  "DELETE /api/domains/{domainId}/me/user-secrets/{secretId}",
+  "POST /api/domains/{domainId}/secrets/remote-import",
+  "POST /api/domains/{domainId}/secrets/remote-import/preview",
   "GET /api/secrets/{id}/usage",
   "GET /api/secrets/{id}/access-events",
   "POST /api/health/dev-server/restart",
@@ -718,30 +718,30 @@ const INSTANCE_ADMIN_OPERATIONS = new Set([
   "POST /api/instance/database-backups",
   "POST /api/admin/users/{userId}/promote-instance-admin",
   "POST /api/admin/users/{userId}/demote-instance-admin",
-  "PUT /api/admin/users/{userId}/company-access",
+  "PUT /api/admin/users/{userId}/domain-access",
 ]);
 
 const CREATED_OPERATIONS = new Set([
   "POST /api/adapters/install",
-  "POST /api/domains/{companyId}/agent-hires",
-  "POST /api/domains/{companyId}/agents",
+  "POST /api/domains/{domainId}/agent-hires",
+  "POST /api/domains/{domainId}/agents",
   "POST /api/agents/{id}/keys",
-  "POST /api/domains/{companyId}/approvals",
+  "POST /api/domains/{domainId}/approvals",
   "POST /api/approvals/{id}/comments",
-  "POST /api/domains/{companyId}/assets/images",
-  "POST /api/domains/{companyId}/logo",
+  "POST /api/domains/{domainId}/assets/images",
+  "POST /api/domains/{domainId}/logo",
   "POST /api/cli-auth/challenges",
   "POST /api/board-api-keys",
   "POST /api/domains",
-  "POST /api/domains/{companyId}/invites",
-  "POST /api/domains/{companyId}/openclaw/invite-prompt",
-  "POST /api/domains/{companyId}/cost-events",
-  "POST /api/domains/{companyId}/finance-events",
-  "POST /api/domains/{companyId}/secret-provider-configs",
-  "POST /api/domains/{companyId}/environments",
+  "POST /api/domains/{domainId}/invites",
+  "POST /api/domains/{domainId}/openclaw/invite-prompt",
+  "POST /api/domains/{domainId}/finance-events",
+  "POST /api/domains/{domainId}/finance-events",
+  "POST /api/domains/{domainId}/secret-provider-configs",
+  "POST /api/domains/{domainId}/environments",
   "POST /api/environments/{environmentId}/custom-image-setup-sessions",
-  "POST /api/domains/{companyId}/goals",
-  "POST /api/domains/{companyId}/labels",
+  "POST /api/domains/{domainId}/goals",
+  "POST /api/domains/{domainId}/labels",
   "POST /api/issues/{id}/documents/{key}/annotations",
   "POST /api/issues/{id}/documents/{key}/annotations/{threadId}/comments",
   "POST /api/routines/{id}/description/annotations",
@@ -749,20 +749,20 @@ const CREATED_OPERATIONS = new Set([
   "POST /api/issues/{id}/work-products",
   "POST /api/issues/{id}/low-trust/promotions",
   "POST /api/issues/{id}/approvals",
-  "POST /api/domains/{companyId}/issues",
+  "POST /api/domains/{domainId}/issues",
   "POST /api/issues/{id}/children",
   "POST /api/issues/{id}/interactions",
   "POST /api/issues/{id}/comments",
-  "POST /api/domains/{companyId}/issues/{issueId}/attachments",
-  "POST /api/domains/{companyId}/projects",
+  "POST /api/domains/{domainId}/issues/{issueId}/attachments",
+  "POST /api/domains/{domainId}/projects",
   "POST /api/projects/{id}/workspaces",
-  "POST /api/domains/{companyId}/routines",
+  "POST /api/domains/{domainId}/routines",
   "POST /api/routines/{id}/triggers",
-  "POST /api/domains/{companyId}/secrets",
-  "POST /api/domains/{companyId}/user-secret-definitions",
-  "POST /api/domains/{companyId}/me/user-secrets",
-  "POST /api/domains/{companyId}/skills",
-  "POST /api/domains/{companyId}/skills/import",
+  "POST /api/domains/{domainId}/secrets",
+  "POST /api/domains/{domainId}/user-secret-definitions",
+  "POST /api/domains/{domainId}/me/user-secrets",
+  "POST /api/domains/{domainId}/skills",
+  "POST /api/domains/{domainId}/skills/import",
   "POST /api/join-requests/{requestId}/claim-api-key",
   "POST /api/admin/users/{userId}/promote-instance-admin",
   "POST /api/plugins/install",
@@ -980,8 +980,8 @@ registry.registerPath({
   method: "post",
   path: "/api/domains",
   tags: ["domains"],
-  summary: "Create a company",
-  request: { body: jsonBody(createCompanySchema) },
+  summary: "Create a domain",
+  request: { body: jsonBody(createDomainSchema) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
@@ -995,28 +995,28 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}",
+  path: "/api/domains/{domainId}",
   tags: ["domains"],
-  summary: "Get a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Get a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/artifacts",
+  path: "/api/domains/{domainId}/artifacts",
   tags: ["domains"],
-  summary: "List company artifacts",
+  summary: "List domain artifacts",
   request: {
-    params: z.object({ companyId: z.string() }),
-    query: companyArtifactsQuerySchema,
+    params: z.object({ domainId: z.string() }),
+    query: domainArtifactsQuerySchema,
   },
   responses: {
     200: {
       description: "Domain artifact projection",
       content: {
         "application/json": {
-          schema: companyArtifactsResponseSchema,
+          schema: domainArtifactsResponseSchema,
         },
       },
     },
@@ -1026,11 +1026,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/journal",
+  path: "/api/domains/{domainId}/journal",
   tags: ["domains"],
-  summary: "Get company work journal",
+  summary: "Get domain work journal",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     query: workJournalQuerySchema,
   },
   responses: {
@@ -1043,88 +1043,88 @@ registry.registerPath({
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}",
+  path: "/api/domains/{domainId}",
   tags: ["domains"],
-  summary: "Update a company",
+  summary: "Update a domain",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(updateCompanySchema.partial()),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(updateDomainSchema.partial()),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/branding",
+  path: "/api/domains/{domainId}/branding",
   tags: ["domains"],
-  summary: "Update company branding",
+  summary: "Update domain branding",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(updateCompanyBrandingSchema),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(updateDomainBrandingSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/archive",
+  path: "/api/domains/{domainId}/archive",
   tags: ["domains"],
-  summary: "Archive a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Archive a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}",
+  path: "/api/domains/{domainId}",
   tags: ["domains"],
-  summary: "Delete a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Delete a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/feedback-traces",
+  path: "/api/domains/{domainId}/feedback-traces",
   tags: ["domains"],
-  summary: "List company feedback traces",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List domain feedback traces",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/exports",
+  path: "/api/domains/{domainId}/exports",
   tags: ["domains"],
-  summary: "Export company data",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Export domain data",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/exports/preview",
+  path: "/api/domains/{domainId}/exports/preview",
   tags: ["domains"],
-  summary: "Preview company export",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Preview domain export",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/imports/preview",
+  path: "/api/domains/{domainId}/imports/preview",
   tags: ["domains"],
-  summary: "Preview company import",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Preview domain import",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/imports/apply",
+  path: "/api/domains/{domainId}/imports/apply",
   tags: ["domains"],
-  summary: "Apply company import",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Apply domain import",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
@@ -1134,9 +1134,9 @@ for (const route of [
   ["get", "/api/teams/catalog", "List catalog teams"],
   ["get", "/api/teams/catalog/{catalogId}/files", "Get catalog team file"],
   ["get", "/api/teams/catalog/{catalogId}", "Get catalog team"],
-  ["get", "/api/domains/{companyId}/teams/catalog/installed", "List installed catalog teams"],
-  ["post", "/api/domains/{companyId}/teams/catalog/{catalogId}/preview", "Preview catalog team install"],
-  ["post", "/api/domains/{companyId}/teams/catalog/{catalogId}/install", "Install catalog team"],
+  ["get", "/api/domains/{domainId}/teams/catalog/installed", "List installed catalog teams"],
+  ["post", "/api/domains/{domainId}/teams/catalog/{catalogId}/preview", "Preview catalog team install"],
+  ["post", "/api/domains/{domainId}/teams/catalog/{catalogId}/install", "Install catalog team"],
 ] as const) {
   registerCurrentRoute({
     method: route[0],
@@ -1150,29 +1150,29 @@ for (const route of [
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/built-in-agents",
+  path: "/api/domains/{domainId}/built-in-agents",
   tags: ["agents"],
   summary: "List built-in agent provisioning state",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/built-in-agents/{key}/status",
+  path: "/api/domains/{domainId}/built-in-agents/{key}/status",
   tags: ["agents"],
   summary: "Get built-in agent bundle status",
-  request: { params: z.object({ companyId: z.string(), key: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), key: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/built-in-agents/{key}/reconcile",
+  path: "/api/domains/{domainId}/built-in-agents/{key}/reconcile",
   tags: ["agents"],
   summary: "Reconcile built-in agent managed resources",
   request: {
-    params: z.object({ companyId: z.string(), key: z.string() }),
+    params: z.object({ domainId: z.string(), key: z.string() }),
     body: jsonBody(builtInAgentEmptyMutationSchema),
   },
   responses: {
@@ -1188,11 +1188,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/built-in-agents/{key}/provision",
+  path: "/api/domains/{domainId}/built-in-agents/{key}/provision",
   tags: ["agents"],
   summary: "Provision a built-in agent",
   request: {
-    params: z.object({ companyId: z.string(), key: z.string() }),
+    params: z.object({ domainId: z.string(), key: z.string() }),
     body: jsonBody(builtInAgentProvisionSchema),
   },
   responses: {
@@ -1208,10 +1208,10 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/built-in-agents/{key}/reset",
+  path: "/api/domains/{domainId}/built-in-agents/{key}/reset",
   tags: ["agents"],
   summary: "Reset a built-in agent",
-  request: { params: z.object({ companyId: z.string(), key: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), key: z.string() }) },
   responses: {
     200: r.ok(),
     401: r.unauthorized,
@@ -1228,11 +1228,11 @@ for (const route of [
 ] as const) {
   registry.registerPath({
     method: "post",
-    path: `/api/domains/{companyId}/built-in-agents/{key}/routines/{routineKey}/${route[0]}`,
+    path: `/api/domains/{domainId}/built-in-agents/{key}/routines/{routineKey}/${route[0]}`,
     tags: ["agents"],
     summary: route[1],
     request: {
-      params: z.object({ companyId: z.string(), key: z.string(), routineKey: z.string() }),
+      params: z.object({ domainId: z.string(), key: z.string(), routineKey: z.string() }),
       body: jsonBody(builtInAgentEmptyMutationSchema),
     },
     responses: {
@@ -1249,20 +1249,20 @@ for (const route of [
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/agents",
+  path: "/api/domains/{domainId}/agents",
   tags: ["agents"],
-  summary: "List agents in a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List agents in a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/agents",
+  path: "/api/domains/{domainId}/agents",
   tags: ["agents"],
   summary: "Create an agent",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createAgentSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -1270,11 +1270,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/agent-hires",
+  path: "/api/domains/{domainId}/agent-hires",
   tags: ["agents"],
   summary: "Hire an agent",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createAgentHireSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -1282,19 +1282,19 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/agent-configurations",
+  path: "/api/domains/{domainId}/agent-configurations",
   tags: ["agents"],
-  summary: "List agent configurations for a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List agent configurations for a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/org",
+  path: "/api/domains/{domainId}/org",
   tags: ["agents"],
   summary: "Get org chart data",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
@@ -1604,29 +1604,29 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/adapters/{type}/models",
+  path: "/api/domains/{domainId}/adapters/{type}/models",
   tags: ["adapters"],
   summary: "List models for an adapter type",
-  request: { params: z.object({ companyId: z.string(), type: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), type: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/adapters/{type}/detect-model",
+  path: "/api/domains/{domainId}/adapters/{type}/detect-model",
   tags: ["adapters"],
   summary: "Detect active model for an adapter",
-  request: { params: z.object({ companyId: z.string(), type: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), type: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/adapters/{type}/test-environment",
+  path: "/api/domains/{domainId}/adapters/{type}/test-environment",
   tags: ["adapters"],
-  summary: "Validate adapter environment access for a company",
+  summary: "Validate adapter environment access for a domain",
   request: {
-    params: z.object({ companyId: z.string(), type: z.string() }),
+    params: z.object({ domainId: z.string(), type: z.string() }),
     body: jsonBody(testAdapterEnvironmentSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -1636,12 +1636,12 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/issues",
+  path: "/api/domains/{domainId}/issues",
   tags: ["issues"],
-  summary: "List issues in a company",
+  summary: "List issues in a domain",
   description: "Use `view=compact` for the board issue-list row contract. The default response remains the broad compatibility contract.",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     query: z.object({ view: z.enum(["compact"]).optional() }).passthrough(),
   },
   responses: { 200: r.ok(), 304: { description: "Not Modified" }, 401: r.unauthorized },
@@ -1649,11 +1649,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/issues",
+  path: "/api/domains/{domainId}/issues",
   tags: ["issues"],
   summary: "Create an issue",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createIssueSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2060,20 +2060,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/labels",
+  path: "/api/domains/{domainId}/labels",
   tags: ["issues"],
-  summary: "List labels in a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List labels in a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/labels",
+  path: "/api/domains/{domainId}/labels",
   tags: ["issues"],
   summary: "Create a label",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createIssueLabelSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2092,20 +2092,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/projects",
+  path: "/api/domains/{domainId}/projects",
   tags: ["projects"],
-  summary: "List projects in a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List projects in a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/projects",
+  path: "/api/domains/{domainId}/projects",
   tags: ["projects"],
   summary: "Create a project",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createProjectSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2187,20 +2187,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/routines",
+  path: "/api/domains/{domainId}/routines",
   tags: ["routines"],
-  summary: "List routines in a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List routines in a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/routines",
+  path: "/api/domains/{domainId}/routines",
   tags: ["routines"],
   summary: "Create a routine",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createRoutineSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2306,20 +2306,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/goals",
+  path: "/api/domains/{domainId}/goals",
   tags: ["goals"],
-  summary: "List goals in a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List goals in a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/goals",
+  path: "/api/domains/{domainId}/goals",
   tags: ["goals"],
   summary: "Create a goal",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createGoalSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2359,29 +2359,29 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/secret-providers",
+  path: "/api/domains/{domainId}/secret-providers",
   tags: ["secrets"],
   summary: "List secret providers",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/secrets",
+  path: "/api/domains/{domainId}/secrets",
   tags: ["secrets"],
-  summary: "List secrets in a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List secrets in a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/secrets",
+  path: "/api/domains/{domainId}/secrets",
   tags: ["secrets"],
   summary: "Create a secret",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createSecretSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2422,20 +2422,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/user-secret-definitions",
+  path: "/api/domains/{domainId}/user-secret-definitions",
   tags: ["secrets"],
   summary: "List user secret definitions",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/user-secret-definitions",
+  path: "/api/domains/{domainId}/user-secret-definitions",
   tags: ["secrets"],
   summary: "Create a user secret definition",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createUserSecretDefinitionSchema),
   },
   responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden },
@@ -2443,11 +2443,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/user-secret-definitions/{definitionId}",
+  path: "/api/domains/{domainId}/user-secret-definitions/{definitionId}",
   tags: ["secrets"],
   summary: "Update a user secret definition",
   request: {
-    params: z.object({ companyId: z.string(), definitionId: z.string() }),
+    params: z.object({ domainId: z.string(), definitionId: z.string() }),
     body: jsonBody(updateUserSecretDefinitionSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
@@ -2455,38 +2455,38 @@ registry.registerPath({
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/user-secret-definitions/{definitionId}",
+  path: "/api/domains/{domainId}/user-secret-definitions/{definitionId}",
   tags: ["secrets"],
   summary: "Delete a user secret definition",
-  request: { params: z.object({ companyId: z.string(), definitionId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), definitionId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/user-secret-definitions/{definitionId}/coverage",
+  path: "/api/domains/{domainId}/user-secret-definitions/{definitionId}/coverage",
   tags: ["secrets"],
   summary: "Get user secret definition coverage",
-  request: { params: z.object({ companyId: z.string(), definitionId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), definitionId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/me/user-secrets",
+  path: "/api/domains/{domainId}/me/user-secrets",
   tags: ["secrets"],
   summary: "List my user secret values",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/me/user-secrets",
+  path: "/api/domains/{domainId}/me/user-secrets",
   tags: ["secrets"],
   summary: "Create my user secret value",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createUserSecretValueSchema),
   },
   responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
@@ -2494,11 +2494,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/me/user-secrets/{secretId}",
+  path: "/api/domains/{domainId}/me/user-secrets/{secretId}",
   tags: ["secrets"],
   summary: "Update my user secret value",
   request: {
-    params: z.object({ companyId: z.string(), secretId: z.string() }),
+    params: z.object({ domainId: z.string(), secretId: z.string() }),
     body: jsonBody(updateUserSecretValueSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
@@ -2506,11 +2506,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/me/user-secrets/{secretId}/rotate",
+  path: "/api/domains/{domainId}/me/user-secrets/{secretId}/rotate",
   tags: ["secrets"],
   summary: "Rotate my user secret value",
   request: {
-    params: z.object({ companyId: z.string(), secretId: z.string() }),
+    params: z.object({ domainId: z.string(), secretId: z.string() }),
     body: jsonBody(rotateUserSecretValueSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
@@ -2518,10 +2518,10 @@ registry.registerPath({
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/me/user-secrets/{secretId}",
+  path: "/api/domains/{domainId}/me/user-secrets/{secretId}",
   tags: ["secrets"],
   summary: "Delete my user secret value",
-  request: { params: z.object({ companyId: z.string(), secretId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), secretId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
@@ -2529,20 +2529,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/approvals",
+  path: "/api/domains/{domainId}/approvals",
   tags: ["approvals"],
-  summary: "List approvals in a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List approvals in a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/approvals",
+  path: "/api/domains/{domainId}/approvals",
   tags: ["approvals"],
   summary: "Create an approval",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createApprovalSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2637,42 +2637,30 @@ registry.registerPath({
 
 // ─── Finances ───────────────────────────────────────────────────────────────────
 
-const costSummaryPaths = [
+const financeSummaryPaths = [
   "summary", "by-agent", "by-agent-model", "by-provider",
   "by-biller", "by-project", "finance-summary", "finance-by-biller",
   "finance-by-kind", "finance-events", "window-spend", "quota-windows",
 ] as const;
 
-for (const segment of costSummaryPaths) {
+for (const segment of financeSummaryPaths) {
   registry.registerPath({
     method: "get",
-    path: `/api/domains/{companyId}/finances/${segment}`,
+    path: `/api/domains/{domainId}/finances/${segment}`,
     tags: ["finances"],
-    summary: `Cost report: ${segment}`,
-    request: { params: z.object({ companyId: z.string() }) },
+    summary: `Finance report: ${segment}`,
+    request: { params: z.object({ domainId: z.string() }) },
     responses: { 200: r.ok(), 401: r.unauthorized },
   });
 }
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/cost-events",
-  tags: ["finances"],
-  summary: "Record a cost event",
-  request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(createCostEventSchema),
-  },
-  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
-});
-
-registry.registerPath({
-  method: "post",
-  path: "/api/domains/{companyId}/finance-events",
+  path: "/api/domains/{domainId}/finance-events",
   tags: ["finances"],
   summary: "Record a finance event",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createFinanceEventSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2680,11 +2668,23 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/budgets/policies",
+  path: "/api/domains/{domainId}/finance-events",
+  tags: ["finances"],
+  summary: "Record a finance event",
+  request: {
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(createFinanceEventSchema),
+  },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/domains/{domainId}/budgets/policies",
   tags: ["finances"],
   summary: "Create or update a budget policy",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(upsertBudgetPolicySchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
@@ -2692,11 +2692,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/budget-incidents/{incidentId}/resolve",
+  path: "/api/domains/{domainId}/budget-incidents/{incidentId}/resolve",
   tags: ["finances"],
   summary: "Resolve a budget incident",
   request: {
-    params: z.object({ companyId: z.string(), incidentId: z.string() }),
+    params: z.object({ domainId: z.string(), incidentId: z.string() }),
     body: jsonBody(resolveBudgetIncidentSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
@@ -2704,20 +2704,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/budgets/overview",
+  path: "/api/domains/{domainId}/budgets/overview",
   tags: ["finances"],
   summary: "Get budget overview",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/budgets",
+  path: "/api/domains/{domainId}/budgets",
   tags: ["finances"],
-  summary: "Update company budget",
+  summary: "Update domain budget",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(updateBudgetSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2739,20 +2739,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/activity",
+  path: "/api/domains/{domainId}/activity",
   tags: ["activity"],
-  summary: "List company activity",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List domain activity",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/activity",
+  path: "/api/domains/{domainId}/activity",
   tags: ["activity"],
   summary: "Create an activity entry",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(z.object({
       actorType: z.enum(["agent", "user", "system", "plugin"]).optional(),
       actorId: z.string().min(1),
@@ -2797,10 +2797,10 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/dashboard",
+  path: "/api/domains/{domainId}/dashboard",
   tags: ["dashboard"],
   summary: "Get dashboard data",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
@@ -2808,19 +2808,19 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/sidebar-badges",
+  path: "/api/domains/{domainId}/sidebar-badges",
   tags: ["sidebar"],
   summary: "Get sidebar badge counts",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/attention",
+  path: "/api/domains/{domainId}/attention",
   tags: ["inbox"],
   summary: "List decision-only attention feed items",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden },
 });
 
@@ -2843,20 +2843,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/sidebar-preferences/me",
+  path: "/api/domains/{domainId}/sidebar-preferences/me",
   tags: ["sidebar"],
-  summary: "Get sidebar preferences for company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Get sidebar preferences for domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "put",
-  path: "/api/domains/{companyId}/sidebar-preferences/me",
+  path: "/api/domains/{domainId}/sidebar-preferences/me",
   tags: ["sidebar"],
-  summary: "Update sidebar preferences for company",
+  summary: "Update sidebar preferences for domain",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(upsertSidebarOrderPreferenceSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -2866,20 +2866,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/inbox-dismissals",
+  path: "/api/domains/{domainId}/inbox-dismissals",
   tags: ["inbox"],
   summary: "List inbox dismissals",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/inbox-dismissals",
+  path: "/api/domains/{domainId}/inbox-dismissals",
   tags: ["inbox"],
   summary: "Create an inbox dismissal or snooze",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(z.object({
       itemKey: z.string().trim().min(1).regex(/^(approval|join|run|attention):.+$/, "Unsupported inbox item key"),
       kind: z.enum(["dismiss", "snooze"]).optional(),
@@ -2891,10 +2891,10 @@ registry.registerPath({
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/inbox-dismissals/{itemKey}",
+  path: "/api/domains/{domainId}/inbox-dismissals/{itemKey}",
   tags: ["inbox"],
   summary: "Restore an inbox dismissal or snooze",
-  request: { params: z.object({ companyId: z.string(), itemKey: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), itemKey: z.string() }) },
   responses: { 204: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
@@ -2961,7 +2961,7 @@ registry.registerPath({
   request: {
     body: jsonBody(
       z.object({
-        companyId: z.string(),
+        domainId: z.string(),
         message: z.string(),
         taskId: z.string().optional(),
       }),
@@ -2974,49 +2974,49 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/invites",
+  path: "/api/domains/{domainId}/invites",
   tags: ["access"],
-  summary: "List company invites",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List domain invites",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/invites",
+  path: "/api/domains/{domainId}/invites",
   tags: ["access"],
-  summary: "Create a company invite",
+  summary: "Create a domain invite",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(createCompanyInviteSchema),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(createDomainInviteSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/join-requests",
+  path: "/api/domains/{domainId}/join-requests",
   tags: ["access"],
-  summary: "List company join requests",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List domain join requests",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/join-requests/{requestId}/approve",
+  path: "/api/domains/{domainId}/join-requests/{requestId}/approve",
   tags: ["access"],
-  summary: "Approve a company join request",
-  request: { params: z.object({ companyId: z.string(), requestId: z.string() }) },
+  summary: "Approve a domain join request",
+  request: { params: z.object({ domainId: z.string(), requestId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/join-requests/{requestId}/reject",
+  path: "/api/domains/{domainId}/join-requests/{requestId}/reject",
   tags: ["access"],
-  summary: "Reject a company join request",
-  request: { params: z.object({ companyId: z.string(), requestId: z.string() }) },
+  summary: "Reject a domain join request",
+  request: { params: z.object({ domainId: z.string(), requestId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
@@ -3052,56 +3052,56 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/members",
+  path: "/api/domains/{domainId}/members",
   tags: ["access"],
-  summary: "List company members",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List domain members",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/members/{memberId}",
+  path: "/api/domains/{domainId}/members/{memberId}",
   tags: ["access"],
-  summary: "Update a company member status or role",
+  summary: "Update a domain member status or role",
   request: {
-    params: z.object({ companyId: z.string(), memberId: z.string() }),
-    body: jsonBody(updateCompanyMemberSchema),
+    params: z.object({ domainId: z.string(), memberId: z.string() }),
+    body: jsonBody(updateDomainMemberSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/members/{memberId}/role-and-grants",
+  path: "/api/domains/{domainId}/members/{memberId}/role-and-grants",
   tags: ["access"],
-  summary: "Update a company member role and explicit grants",
+  summary: "Update a domain member role and explicit grants",
   request: {
-    params: z.object({ companyId: z.string(), memberId: z.string() }),
-    body: jsonBody(updateCompanyMemberWithPermissionsSchema),
+    params: z.object({ domainId: z.string(), memberId: z.string() }),
+    body: jsonBody(updateDomainMemberWithPermissionsSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/members/{memberId}/archive",
+  path: "/api/domains/{domainId}/members/{memberId}/archive",
   tags: ["access"],
-  summary: "Archive a company member",
+  summary: "Archive a domain member",
   request: {
-    params: z.object({ companyId: z.string(), memberId: z.string() }),
-    body: jsonBody(archiveCompanyMemberSchema),
+    params: z.object({ domainId: z.string(), memberId: z.string() }),
+    body: jsonBody(archiveDomainMemberSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/members/{memberId}/permissions",
+  path: "/api/domains/{domainId}/members/{memberId}/permissions",
   tags: ["access"],
-  summary: "Update explicit company member permissions",
+  summary: "Update explicit domain member permissions",
   request: {
-    params: z.object({ companyId: z.string(), memberId: z.string() }),
+    params: z.object({ domainId: z.string(), memberId: z.string() }),
     body: jsonBody(updateMemberPermissionsSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
@@ -3109,10 +3109,10 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/user-directory",
+  path: "/api/domains/{domainId}/user-directory",
   tags: ["access"],
-  summary: "Get company user directory",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Get domain user directory",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
@@ -3126,11 +3126,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/openclaw/invite-prompt",
+  path: "/api/domains/{domainId}/openclaw/invite-prompt",
   tags: ["access"],
   summary: "Create an OpenClaw invite prompt bundle",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createOpenClawInvitePromptSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -3251,10 +3251,10 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/users/{userSlug}/profile",
+  path: "/api/domains/{domainId}/users/{userSlug}/profile",
   tags: ["auth"],
-  summary: "Get a user profile within a company",
-  request: { params: z.object({ companyId: z.string(), userSlug: z.string() }) },
+  summary: "Get a user profile within a domain",
+  request: { params: z.object({ domainId: z.string(), userSlug: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
@@ -3262,19 +3262,19 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/heartbeat-runs",
+  path: "/api/domains/{domainId}/heartbeat-runs",
   tags: ["runs"],
-  summary: "List heartbeat runs for a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List heartbeat runs for a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/live-runs",
+  path: "/api/domains/{domainId}/live-runs",
   tags: ["runs"],
-  summary: "List live runs for a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List live runs for a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
@@ -3552,10 +3552,10 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/issues/{issueId}/attachments",
+  path: "/api/domains/{domainId}/issues/{issueId}/attachments",
   tags: ["assets"],
   summary: "Upload an attachment to an issue",
-  request: { params: z.object({ companyId: z.string(), issueId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), issueId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
@@ -3581,19 +3581,19 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/assets/images",
+  path: "/api/domains/{domainId}/assets/images",
   tags: ["assets"],
   summary: "Upload an image asset",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/logo",
+  path: "/api/domains/{domainId}/logo",
   tags: ["assets"],
-  summary: "Upload company logo",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "Upload domain logo",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
@@ -3610,250 +3610,250 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skills",
+  path: "/api/domains/{domainId}/skills",
   tags: ["skills"],
-  summary: "List skills for a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List skills for a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skills/{skillId}",
+  path: "/api/domains/{domainId}/skills/{skillId}",
   tags: ["skills"],
-  summary: "Get a company skill",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string() }) },
+  summary: "Get a domain skill",
+  request: { params: z.object({ domainId: z.string(), skillId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skills/{skillId}/update-status",
+  path: "/api/domains/{domainId}/skills/{skillId}/update-status",
   tags: ["skills"],
   summary: "Get skill update status",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skills/{skillId}/files",
+  path: "/api/domains/{domainId}/skills/{skillId}/files",
   tags: ["skills"],
   summary: "List skill files",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skills",
+  path: "/api/domains/{domainId}/skills",
   tags: ["skills"],
-  summary: "Create a company skill",
+  summary: "Create a domain skill",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(companySkillCreateSchema),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(domainSkillCreateSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/skills/{skillId}/files",
+  path: "/api/domains/{domainId}/skills/{skillId}/files",
   tags: ["skills"],
   summary: "Update a skill file",
   request: {
-    params: z.object({ companyId: z.string(), skillId: z.string() }),
-    body: jsonBody(companySkillFileUpdateSchema),
+    params: z.object({ domainId: z.string(), skillId: z.string() }),
+    body: jsonBody(domainSkillFileUpdateSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/skills/{skillId}/files",
+  path: "/api/domains/{domainId}/skills/{skillId}/files",
   tags: ["skills"],
   summary: "Delete a skill file or folder",
   request: {
-    params: z.object({ companyId: z.string(), skillId: z.string() }),
-    body: jsonBody(companySkillFileDeleteSchema),
+    params: z.object({ domainId: z.string(), skillId: z.string() }),
+    body: jsonBody(domainSkillFileDeleteSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-inputs",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-inputs",
   tags: ["skills"],
   summary: "List skill test inputs",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-inputs",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-inputs",
   tags: ["skills"],
   summary: "Create a skill test input",
   request: {
-    params: z.object({ companyId: z.string(), skillId: z.string() }),
-    body: jsonBody(companySkillTestInputCreateSchema),
+    params: z.object({ domainId: z.string(), skillId: z.string() }),
+    body: jsonBody(domainSkillTestInputCreateSchema),
   },
   responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-inputs/{inputId}",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-inputs/{inputId}",
   tags: ["skills"],
   summary: "Update a skill test input",
   request: {
-    params: z.object({ companyId: z.string(), skillId: z.string(), inputId: z.string() }),
-    body: jsonBody(companySkillTestInputUpdateSchema),
+    params: z.object({ domainId: z.string(), skillId: z.string(), inputId: z.string() }),
+    body: jsonBody(domainSkillTestInputUpdateSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-inputs/{inputId}",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-inputs/{inputId}",
   tags: ["skills"],
   summary: "Delete a skill test input",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string(), inputId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string(), inputId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skill-test-run-templates",
+  path: "/api/domains/{domainId}/skill-test-run-templates",
   tags: ["skills"],
   summary: "List skill test-run templates",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skill-test-run-templates",
+  path: "/api/domains/{domainId}/skill-test-run-templates",
   tags: ["skills"],
   summary: "Create a skill test-run template",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(companySkillTestRunTemplateCreateSchema),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(domainSkillTestRunTemplateCreateSchema),
   },
   responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "patch",
-  path: "/api/domains/{companyId}/skill-test-run-templates/{templateId}",
+  path: "/api/domains/{domainId}/skill-test-run-templates/{templateId}",
   tags: ["skills"],
   summary: "Update a skill test-run template",
   request: {
-    params: z.object({ companyId: z.string(), templateId: z.string() }),
-    body: jsonBody(companySkillTestRunTemplateUpdateSchema),
+    params: z.object({ domainId: z.string(), templateId: z.string() }),
+    body: jsonBody(domainSkillTestRunTemplateUpdateSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/skill-test-run-templates/{templateId}",
+  path: "/api/domains/{domainId}/skill-test-run-templates/{templateId}",
   tags: ["skills"],
   summary: "Delete a skill test-run template",
-  request: { params: z.object({ companyId: z.string(), templateId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), templateId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-runs",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-runs",
   tags: ["skills"],
   summary: "List skill test runs",
   request: {
-    params: z.object({ companyId: z.string(), skillId: z.string() }),
-    query: companySkillTestRunListQuerySchema,
+    params: z.object({ domainId: z.string(), skillId: z.string() }),
+    query: domainSkillTestRunListQuerySchema,
   },
   responses: { 200: r.ok(), 401: r.unauthorized, 422: r.unprocessable },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-runs/{runId}",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-runs/{runId}",
   tags: ["skills"],
   summary: "Get a skill test run",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string(), runId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string(), runId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-runs",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-runs",
   tags: ["skills"],
   summary: "Create a skill test run",
   request: {
-    params: z.object({ companyId: z.string(), skillId: z.string() }),
-    body: jsonBody(companySkillTestRunCreateSchema),
+    params: z.object({ domainId: z.string(), skillId: z.string() }),
+    body: jsonBody(domainSkillTestRunCreateSchema),
   },
   responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-runs/{runId}/cancel",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-runs/{runId}/cancel",
   tags: ["skills"],
   summary: "Cancel a skill test run",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string(), runId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string(), runId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/skills/{skillId}/test-runs/{runId}",
+  path: "/api/domains/{domainId}/skills/{skillId}/test-runs/{runId}",
   tags: ["skills"],
   summary: "Delete a skill test run",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string(), runId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string(), runId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skills/import",
+  path: "/api/domains/{domainId}/skills/import",
   tags: ["skills"],
   summary: "Import a skill",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(companySkillImportSchema),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(domainSkillImportSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skills/scan-projects",
+  path: "/api/domains/{domainId}/skills/scan-projects",
   tags: ["skills"],
   summary: "Scan project for skills",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(companySkillProjectScanRequestSchema),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(domainSkillProjectScanRequestSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/skills/{skillId}/install-update",
+  path: "/api/domains/{domainId}/skills/{skillId}/install-update",
   tags: ["skills"],
   summary: "Install a skill update",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string() }) },
+  request: { params: z.object({ domainId: z.string(), skillId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "delete",
-  path: "/api/domains/{companyId}/skills/{skillId}",
+  path: "/api/domains/{domainId}/skills/{skillId}",
   tags: ["skills"],
-  summary: "Delete a company skill",
-  request: { params: z.object({ companyId: z.string(), skillId: z.string() }) },
+  summary: "Delete a domain skill",
+  request: { params: z.object({ domainId: z.string(), skillId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
@@ -3861,20 +3861,20 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/execution-workspaces",
+  path: "/api/domains/{domainId}/execution-workspaces",
   tags: ["execution-workspaces"],
-  summary: "List execution workspaces for a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List execution workspaces for a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/workspace-overview",
+  path: "/api/domains/{domainId}/workspace-overview",
   tags: ["execution-workspaces"],
-  summary: "List bounded execution workspace overview rows for a company",
+  summary: "List bounded execution workspace overview rows for a domain",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     query: workspaceOverviewQuerySchema,
   },
   responses: { 200: r.ok(), 401: r.unauthorized, 422: r.unprocessable },
@@ -3959,29 +3959,29 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/environments",
+  path: "/api/domains/{domainId}/environments",
   tags: ["environments"],
-  summary: "List environments for a company",
-  request: { params: z.object({ companyId: z.string() }) },
+  summary: "List environments for a domain",
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/environments/capabilities",
+  path: "/api/domains/{domainId}/environments/capabilities",
   tags: ["environments"],
   summary: "Get environment capabilities",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/environments",
+  path: "/api/domains/{domainId}/environments",
   tags: ["environments"],
   summary: "Create an environment",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(createEnvironmentSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -4055,11 +4055,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/environments/probe-config",
+  path: "/api/domains/{domainId}/environments/probe-config",
   tags: ["environments"],
   summary: "Probe environment config",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(probeEnvironmentConfigSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
@@ -4072,7 +4072,7 @@ registry.registerPath({
   summary: "Get the active customImage template and setup status for an environment",
   request: {
     params: z.object({ environmentId: z.string() }),
-    query: environmentCustomImageCompanyQuerySchema,
+    query: environmentCustomImageDomainQuerySchema,
   },
   responses: { 200: r.ok(environmentCustomImageOverviewSchema), 401: r.unauthorized, 403: r.forbidden },
 });
@@ -4084,7 +4084,7 @@ registry.registerPath({
   summary: "Start an interactive environment customImage setup session",
   request: {
     params: z.object({ environmentId: z.string() }),
-    query: environmentCustomImageCompanyQuerySchema,
+    query: environmentCustomImageDomainQuerySchema,
     body: jsonBody(startEnvironmentCustomImageSetupSessionSchema),
   },
   responses: {
@@ -4174,7 +4174,7 @@ registry.registerPath({
   summary: "Roll back an environment customImage template to the previous captured template",
   request: {
     params: z.object({ environmentId: z.string() }),
-    query: environmentCustomImageCompanyQuerySchema,
+    query: environmentCustomImageDomainQuerySchema,
   },
   responses: {
     200: r.ok(environmentCustomImageTemplateRollbackResultSchema),
@@ -4332,7 +4332,7 @@ registry.registerPath({
       runContext: z.object({
         agentId: z.string(),
         runId: z.string(),
-        companyId: z.string(),
+        domainId: z.string(),
         projectId: z.string(),
       }),
     })),
@@ -4507,7 +4507,7 @@ registry.registerPath({
     params: z.object({ pluginId: z.string() }),
     body: jsonBody(z.object({
       key: z.string(),
-      companyId: z.string().optional(),
+      domainId: z.string().optional(),
       params: z.record(z.unknown()).optional(),
     })),
   },
@@ -4523,7 +4523,7 @@ registry.registerPath({
     params: z.object({ pluginId: z.string() }),
     body: jsonBody(z.object({
       key: z.string(),
-      companyId: z.string().optional(),
+      domainId: z.string().optional(),
       params: z.record(z.unknown()).optional(),
     })),
   },
@@ -4538,7 +4538,7 @@ registry.registerPath({
   request: {
     params: z.object({ pluginId: z.string(), key: z.string() }),
     body: jsonBody(z.object({
-      companyId: z.string().optional(),
+      domainId: z.string().optional(),
       params: z.record(z.unknown()).optional(),
     })),
   },
@@ -4553,7 +4553,7 @@ registry.registerPath({
   request: {
     params: z.object({ pluginId: z.string(), key: z.string() }),
     body: jsonBody(z.object({
-      companyId: z.string().optional(),
+      domainId: z.string().optional(),
       params: z.record(z.unknown()).optional(),
     })),
   },
@@ -4603,7 +4603,7 @@ registry.registerPath({
   method: "get",
   path: "/api/issues",
   tags: ["issues"],
-  summary: "Legacy — returns error directing to /api/domains/{companyId}/issues",
+  summary: "Legacy — returns error directing to /api/domains/{domainId}/issues",
   responses: { 400: r.badRequest },
 });
 
@@ -4636,11 +4636,11 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/issues/external-object-summaries",
+  path: "/api/domains/{domainId}/issues/external-object-summaries",
   tags: ["issues"],
   summary: "Get external object status summaries for issues",
   request: {
-    params: z.object({ companyId: z.string() }),
+    params: z.object({ domainId: z.string() }),
     body: jsonBody(externalObjectSummariesBodySchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden },
@@ -4671,19 +4671,19 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/org.svg",
+  path: "/api/domains/{domainId}/org.svg",
   tags: ["domains"],
   summary: "Get org chart as SVG",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: { description: "SVG image" }, 401: r.unauthorized },
 });
 
 registry.registerPath({
   method: "get",
-  path: "/api/domains/{companyId}/org.png",
+  path: "/api/domains/{domainId}/org.png",
   tags: ["domains"],
   summary: "Get org chart as PNG",
-  request: { params: z.object({ companyId: z.string() }) },
+  request: { params: z.object({ domainId: z.string() }) },
   responses: { 200: { description: "PNG image" }, 401: r.unauthorized },
 });
 
@@ -4699,12 +4699,12 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
-  path: "/api/domains/{companyId}/export",
+  path: "/api/domains/{domainId}/export",
   tags: ["domains"],
-  summary: "Export a company (legacy singular form)",
+  summary: "Export a domain (legacy singular form)",
   request: {
-    params: z.object({ companyId: z.string() }),
-    body: jsonBody(companyPortabilityExportSchema),
+    params: z.object({ domainId: z.string() }),
+    body: jsonBody(domainPortabilityExportSchema),
   },
   responses: { 200: r.ok(), 401: r.unauthorized },
 });
@@ -4713,8 +4713,8 @@ registry.registerPath({
   method: "post",
   path: "/api/domains/import/preview",
   tags: ["domains"],
-  summary: "Preview a company import (legacy route)",
-  request: { body: jsonBody(companyPortabilityPreviewSchema) },
+  summary: "Preview a domain import (legacy route)",
+  request: { body: jsonBody(domainPortabilityPreviewSchema) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
@@ -4722,8 +4722,8 @@ registry.registerPath({
   method: "post",
   path: "/api/domains/import",
   tags: ["domains"],
-  summary: "Apply a company import (legacy route)",
-  request: { body: jsonBody(companyPortabilityImportSchema) },
+  summary: "Apply a domain import (legacy route)",
+  request: { body: jsonBody(domainPortabilityImportSchema) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
 });
 
@@ -4762,7 +4762,7 @@ registry.registerPath({
   method: "get",
   path: "/api/invites/{token}/logo",
   tags: ["access"],
-  summary: "Get company logo for an invite",
+  summary: "Get domain logo for an invite",
   request: { params: z.object({ token: z.string() }) },
   responses: { 200: { description: "Image file" }, 404: r.notFound },
 });
@@ -4816,21 +4816,21 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
-  path: "/api/admin/users/{userId}/company-access",
+  path: "/api/admin/users/{userId}/domain-access",
   tags: ["admin"],
-  summary: "Get company access for a user (admin)",
+  summary: "Get domain access for a user (admin)",
   request: { params: z.object({ userId: z.string() }) },
   responses: { 200: r.ok(), 401: r.unauthorized, 403: r.forbidden },
 });
 
 registry.registerPath({
   method: "put",
-  path: "/api/admin/users/{userId}/company-access",
+  path: "/api/admin/users/{userId}/domain-access",
   tags: ["admin"],
-  summary: "Set company access for a user (admin)",
+  summary: "Set domain access for a user (admin)",
   request: {
     params: z.object({ userId: z.string() }),
-    body: jsonBody(updateUserCompanyAccessSchema),
+    body: jsonBody(updateUserDomainAccessSchema),
   },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden },
 });
@@ -4926,9 +4926,9 @@ registerCurrentRoute({
 
 registerCurrentRoute({
   method: "get",
-  path: "/api/domains/{companyId}/adapters/{type}/model-profiles",
+  path: "/api/domains/{domainId}/adapters/{type}/model-profiles",
   tags: ["adapters"],
-  summary: "List adapter model profiles for a company",
+  summary: "List adapter model profiles for a domain",
 });
 
 registerCurrentRoute({
@@ -4972,9 +4972,9 @@ registerCurrentRoute({
 });
 
 for (const route of [
-  ["get", "/api/domains/import/jobs/{jobId}", "Get company import job status"],
-  ["get", "/api/domains/{companyId}/search", "Search company data"],
-  ["get", "/api/domains/{companyId}/issues/count", "Count issues in a company"],
+  ["get", "/api/domains/import/jobs/{jobId}", "Get domain import job status"],
+  ["get", "/api/domains/{domainId}/search", "Search domain data"],
+  ["get", "/api/domains/{domainId}/issues/count", "Count issues in a domain"],
 ] as const) {
   registerCurrentRoute({
     method: route[0],
@@ -4986,15 +4986,15 @@ for (const route of [
 
 registerCurrentRoute({
   method: "get",
-  path: "/api/issues/{id}/cost-summary",
+  path: "/api/issues/{id}/finance-summary",
   tags: ["finances"],
-  summary: "Get issue cost summary",
+  summary: "Get issue finance summary",
 });
 
 for (const route of [
-  ["get", "/api/domains/{companyId}/resource-memberships/me", "List current user's resource memberships"],
-  ["put", "/api/domains/{companyId}/resource-memberships/me/agents/{agentId}", "Join or leave an agent resource"],
-  ["put", "/api/domains/{companyId}/resource-memberships/me/projects/{projectId}", "Join or leave a project resource"],
+  ["get", "/api/domains/{domainId}/resource-memberships/me", "List current user's resource memberships"],
+  ["put", "/api/domains/{domainId}/resource-memberships/me/agents/{agentId}", "Join or leave an agent resource"],
+  ["put", "/api/domains/{domainId}/resource-memberships/me/projects/{projectId}", "Join or leave a project resource"],
 ] as const) {
   registerCurrentRoute({
     method: route[0],
@@ -5005,14 +5005,14 @@ for (const route of [
   });
 }
 
-const cloudCompanyQuerySchema = z.object({
-  companyId: z.string().min(1),
+const cloudDomainQuerySchema = z.object({
+  domainId: z.string().min(1),
 });
-const cloudCompanyBodySchema = z.object({
-  companyId: z.string().min(1),
+const cloudDomainBodySchema = z.object({
+  domainId: z.string().min(1),
 });
 const cloudConnectStartSchema = z.object({
-  companyId: z.string().min(1),
+  domainId: z.string().min(1),
   remoteUrl: z.string().min(1),
   redirectUri: z.string().min(1),
 });
@@ -5021,10 +5021,10 @@ const cloudConnectFinishSchema = z.object({
   code: z.string().min(1),
   state: z.string().min(1),
 });
-const cloudPushRunSchema = cloudCompanyBodySchema.extend({
+const cloudPushRunSchema = cloudDomainBodySchema.extend({
   retryOfRunId: z.string().optional(),
 });
-const cloudPushRunActivationSchema = cloudCompanyBodySchema.extend({
+const cloudPushRunActivationSchema = cloudDomainBodySchema.extend({
   entityType: z.enum(["agents", "routines", "monitors"]),
 });
 
@@ -5033,7 +5033,7 @@ registerCurrentRoute({
   path: "/api/cloud-upstreams",
   tags: ["cloud-upstreams"],
   summary: "List cloud upstream connections",
-  query: cloudCompanyQuerySchema,
+  query: cloudDomainQuerySchema,
 });
 
 registerCurrentRoute({
@@ -5057,7 +5057,7 @@ registerCurrentRoute({
   path: "/api/cloud-upstreams/{connectionId}/push-runs/preview",
   tags: ["cloud-upstreams"],
   summary: "Preview a cloud upstream push run",
-  body: cloudCompanyBodySchema,
+  body: cloudDomainBodySchema,
 });
 
 registerCurrentRoute({
@@ -5073,7 +5073,7 @@ registerCurrentRoute({
   path: "/api/cloud-upstreams/{connectionId}/push-runs/{runId}",
   tags: ["cloud-upstreams"],
   summary: "Get a cloud upstream push run",
-  query: cloudCompanyQuerySchema,
+  query: cloudDomainQuerySchema,
 });
 
 registerCurrentRoute({
@@ -5081,7 +5081,7 @@ registerCurrentRoute({
   path: "/api/cloud-upstreams/{connectionId}/push-runs/{runId}/cancel",
   tags: ["cloud-upstreams"],
   summary: "Cancel a cloud upstream push run",
-  body: cloudCompanyBodySchema,
+  body: cloudDomainBodySchema,
 });
 
 registerCurrentRoute({
@@ -5093,8 +5093,8 @@ registerCurrentRoute({
 });
 
 for (const route of [
-  ["get", "/api/domains/{companyId}/secret-providers/health", "Check configured secret providers"],
-  ["get", "/api/domains/{companyId}/secret-provider-configs", "List secret provider configurations"],
+  ["get", "/api/domains/{domainId}/secret-providers/health", "Check configured secret providers"],
+  ["get", "/api/domains/{domainId}/secret-provider-configs", "List secret provider configurations"],
   ["get", "/api/secret-provider-configs/{id}", "Get a secret provider configuration"],
   ["delete", "/api/secret-provider-configs/{id}", "Delete a secret provider configuration"],
   ["post", "/api/secret-provider-configs/{id}/default", "Set the default secret provider configuration"],
@@ -5112,7 +5112,7 @@ for (const route of [
 
 registerCurrentRoute({
   method: "post",
-  path: "/api/domains/{companyId}/secret-provider-configs",
+  path: "/api/domains/{domainId}/secret-provider-configs",
   tags: ["secrets"],
   summary: "Create a secret provider configuration",
   body: createSecretProviderConfigSchema,
@@ -5129,7 +5129,7 @@ registerCurrentRoute({
 
 registerCurrentRoute({
   method: "post",
-  path: "/api/domains/{companyId}/secret-provider-configs/discovery/preview",
+  path: "/api/domains/{domainId}/secret-provider-configs/discovery/preview",
   tags: ["secrets"],
   summary: "Preview secret provider discovery",
   body: secretProviderConfigDiscoveryPreviewSchema,
@@ -5137,7 +5137,7 @@ registerCurrentRoute({
 
 registerCurrentRoute({
   method: "post",
-  path: "/api/domains/{companyId}/secrets/remote-import/preview",
+  path: "/api/domains/{domainId}/secrets/remote-import/preview",
   tags: ["secrets"],
   summary: "Preview remote secret import",
   body: remoteSecretImportPreviewSchema,
@@ -5145,7 +5145,7 @@ registerCurrentRoute({
 
 registerCurrentRoute({
   method: "post",
-  path: "/api/domains/{companyId}/secrets/remote-import",
+  path: "/api/domains/{domainId}/secrets/remote-import",
   tags: ["secrets"],
   summary: "Import remote secrets",
   body: remoteSecretImportSchema,
@@ -5155,22 +5155,22 @@ for (const route of [
   ["get", "/api/skills/catalog", "List catalog skills"],
   ["get", "/api/skills/catalog/{catalogId}", "Get a catalog skill"],
   ["get", "/api/skills/catalog/{catalogId}/files", "List catalog skill files"],
-  ["post", "/api/domains/{companyId}/skills/install-catalog", "Install a catalog skill"],
-  ["get", "/api/domains/{companyId}/skills/categories", "List company skill categories"],
-  ["post", "/api/domains/{companyId}/skills/{skillId}/audit", "Audit a company skill"],
-  ["patch", "/api/domains/{companyId}/skills/{skillId}", "Update a company skill"],
-  ["get", "/api/domains/{companyId}/skills/{skillId}/versions", "List skill versions"],
-  ["post", "/api/domains/{companyId}/skills/{skillId}/versions", "Create a skill version"],
-  ["get", "/api/domains/{companyId}/skills/{skillId}/versions/{versionId}", "Get a skill version"],
-  ["post", "/api/domains/{companyId}/skills/{skillId}/star", "Star a company skill"],
-  ["delete", "/api/domains/{companyId}/skills/{skillId}/star", "Unstar a company skill"],
-  ["get", "/api/domains/{companyId}/skills/{skillId}/fork-precheck", "Preview company skill fork impact"],
-  ["post", "/api/domains/{companyId}/skills/{skillId}/fork", "Fork a company skill"],
-  ["get", "/api/domains/{companyId}/skills/{skillId}/comments", "List skill comments"],
-  ["post", "/api/domains/{companyId}/skills/{skillId}/comments", "Create a skill comment"],
-  ["patch", "/api/domains/{companyId}/skills/{skillId}/comments/{commentId}", "Update a skill comment"],
-  ["delete", "/api/domains/{companyId}/skills/{skillId}/comments/{commentId}", "Delete a skill comment"],
-  ["post", "/api/domains/{companyId}/skills/{skillId}/reset", "Reset a company skill"],
+  ["post", "/api/domains/{domainId}/skills/install-catalog", "Install a catalog skill"],
+  ["get", "/api/domains/{domainId}/skills/categories", "List domain skill categories"],
+  ["post", "/api/domains/{domainId}/skills/{skillId}/audit", "Audit a domain skill"],
+  ["patch", "/api/domains/{domainId}/skills/{skillId}", "Update a domain skill"],
+  ["get", "/api/domains/{domainId}/skills/{skillId}/versions", "List skill versions"],
+  ["post", "/api/domains/{domainId}/skills/{skillId}/versions", "Create a skill version"],
+  ["get", "/api/domains/{domainId}/skills/{skillId}/versions/{versionId}", "Get a skill version"],
+  ["post", "/api/domains/{domainId}/skills/{skillId}/star", "Star a domain skill"],
+  ["delete", "/api/domains/{domainId}/skills/{skillId}/star", "Unstar a domain skill"],
+  ["get", "/api/domains/{domainId}/skills/{skillId}/fork-precheck", "Preview domain skill fork impact"],
+  ["post", "/api/domains/{domainId}/skills/{skillId}/fork", "Fork a domain skill"],
+  ["get", "/api/domains/{domainId}/skills/{skillId}/comments", "List skill comments"],
+  ["post", "/api/domains/{domainId}/skills/{skillId}/comments", "Create a skill comment"],
+  ["patch", "/api/domains/{domainId}/skills/{skillId}/comments/{commentId}", "Update a skill comment"],
+  ["delete", "/api/domains/{domainId}/skills/{skillId}/comments/{commentId}", "Delete a skill comment"],
+  ["post", "/api/domains/{domainId}/skills/{skillId}/reset", "Reset a domain skill"],
 ] as const) {
   registerCurrentRoute({
     method: route[0],
@@ -5410,10 +5410,10 @@ const pluginLocalFolderRequestSchema = z.object({
 });
 
 for (const route of [
-  ["get", "/api/plugins/{pluginId}/domains/{companyId}/local-folders", "List plugin local folders"],
-  ["get", "/api/plugins/{pluginId}/domains/{companyId}/local-folders/{folderKey}/status", "Get plugin local folder status"],
-  ["post", "/api/plugins/{pluginId}/domains/{companyId}/local-folders/{folderKey}/validate", "Validate a plugin local folder"],
-  ["put", "/api/plugins/{pluginId}/domains/{companyId}/local-folders/{folderKey}", "Save a plugin local folder"],
+  ["get", "/api/plugins/{pluginId}/domains/{domainId}/local-folders", "List plugin local folders"],
+  ["get", "/api/plugins/{pluginId}/domains/{domainId}/local-folders/{folderKey}/status", "Get plugin local folder status"],
+  ["post", "/api/plugins/{pluginId}/domains/{domainId}/local-folders/{folderKey}/validate", "Validate a plugin local folder"],
+  ["put", "/api/plugins/{pluginId}/domains/{domainId}/local-folders/{folderKey}", "Save a plugin local folder"],
 ] as const) {
   registerCurrentRoute({
     method: route[0],

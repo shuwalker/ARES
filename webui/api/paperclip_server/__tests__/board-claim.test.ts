@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   authUsers,
   domains,
-  companyMemberships,
+  domainMemberships,
   createDb,
   instanceUserRoles,
   principalPermissionGrants,
@@ -35,7 +35,7 @@ describeEmbeddedPostgres("board claim", () => {
   afterEach(async () => {
     await initializeBoardClaimChallenge(db, { deploymentMode: "local_trusted" });
     await db.delete(principalPermissionGrants);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(domains);
     await db.delete(instanceUserRoles);
     await db.delete(authUsers);
@@ -48,7 +48,7 @@ describeEmbeddedPostgres("board claim", () => {
   it("lets a signed-in user claim a local-board-only authenticated instance", async () => {
     const now = new Date();
     const userId = `claim-user-${randomUUID()}`;
-    const company = await db
+    const domain = await db
       .insert(domains)
       .values({
         name: "Board Claim Co",
@@ -106,12 +106,12 @@ describeEmbeddedPostgres("board claim", () => {
     await expect(
       db
         .select()
-        .from(companyMemberships)
+        .from(domainMemberships)
         .where(
           and(
-            eq(companyMemberships.companyId, company.id),
-            eq(companyMemberships.principalType, "user"),
-            eq(companyMemberships.principalId, userId),
+            eq(domainMemberships.domainId, domain.id),
+            eq(domainMemberships.principalType, "user"),
+            eq(domainMemberships.principalId, userId),
           ),
         ),
     ).resolves.toMatchObject([

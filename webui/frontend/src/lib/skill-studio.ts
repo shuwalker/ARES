@@ -1,13 +1,13 @@
 import type {
-  CompanySkillLastEditor,
-  CompanySkillListItem,
-  CompanySkillTestInput,
-  CompanySkillTestRun,
-  CompanySkillTestRunCreateRequest,
-  CompanySkillTestRunDetail,
-  CompanySkillTestRunHarnessContentUnavailableReason,
-  CompanySkillTestRunStatus,
-  CompanySkillTestRunTemplate,
+  DomainSkillLastEditor,
+  DomainSkillListItem,
+  DomainSkillTestInput,
+  DomainSkillTestRun,
+  DomainSkillTestRunCreateRequest,
+  DomainSkillTestRunDetail,
+  DomainSkillTestRunHarnessContentUnavailableReason,
+  DomainSkillTestRunStatus,
+  DomainSkillTestRunTemplate,
   IssueAttachment,
   IssueDocument,
 } from "@paperclipai/shared";
@@ -25,7 +25,7 @@ import {
  * routing — are unit-testable in isolation.
  */
 
-export const TERMINAL_RUN_STATUSES: readonly CompanySkillTestRunStatus[] = [
+export const TERMINAL_RUN_STATUSES: readonly DomainSkillTestRunStatus[] = [
   "succeeded",
   "failed",
   "cancelled",
@@ -34,12 +34,12 @@ export const TERMINAL_RUN_STATUSES: readonly CompanySkillTestRunStatus[] = [
 export const DEFAULT_TEST_RUN_TEMPLATE_ID = "built-in:default-test-template";
 export const NO_TEST_RUN_TEMPLATE_STORAGE_VALUE = "__paperclip_no_template__";
 
-export function isTerminalRunStatus(status: CompanySkillTestRunStatus): boolean {
+export function isTerminalRunStatus(status: DomainSkillTestRunStatus): boolean {
   return TERMINAL_RUN_STATUSES.includes(status);
 }
 
 /** V1 poll policy: poll every 2s while a run is non-terminal, stop on terminal. */
-export function shouldPollRun(status: CompanySkillTestRunStatus): boolean {
+export function shouldPollRun(status: DomainSkillTestRunStatus): boolean {
   return !isTerminalRunStatus(status);
 }
 
@@ -50,7 +50,7 @@ export function shouldPollRun(status: CompanySkillTestRunStatus): boolean {
  */
 export type RunBadgeStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
-export function runBadgeStatus(status: CompanySkillTestRunStatus): RunBadgeStatus {
+export function runBadgeStatus(status: DomainSkillTestRunStatus): RunBadgeStatus {
   return status;
 }
 
@@ -65,7 +65,7 @@ export function runBadgeStatus(status: CompanySkillTestRunStatus): RunBadgeStatu
 export type RunOutputMode = "output" | "draft" | "pending" | "none";
 
 export function runOutputMode(run: {
-  status: CompanySkillTestRunStatus;
+  status: DomainSkillTestRunStatus;
   outputBody?: string | null;
 }): RunOutputMode {
   const hasOutput = Boolean(run.outputBody && run.outputBody.trim().length > 0);
@@ -80,7 +80,7 @@ export function runOutputMode(run: {
 }
 
 /** Failed runs get an error card at the top of the detail view; cancelled do not. */
-export function showRunErrorCard(status: CompanySkillTestRunStatus): boolean {
+export function showRunErrorCard(status: DomainSkillTestRunStatus): boolean {
   return status === "failed";
 }
 
@@ -170,7 +170,7 @@ export const EMPTY_SAVED_INPUT_DRAFT_STATE: SavedInputDraftState = {
  */
 export function syncSavedInputDraftState(
   previous: SavedInputDraftState,
-  selectedInput: Pick<CompanySkillTestInput, "id" | "content"> | null,
+  selectedInput: Pick<DomainSkillTestInput, "id" | "content"> | null,
 ): SavedInputDraftState {
   if (!selectedInput) {
     return previous.inputId === null
@@ -203,7 +203,7 @@ export function syncSavedInputDraftState(
 
 export function selectedSavedInputDraft(
   state: SavedInputDraftState,
-  selectedInput: Pick<CompanySkillTestInput, "id" | "content"> | null,
+  selectedInput: Pick<DomainSkillTestInput, "id" | "content"> | null,
 ): string {
   if (!selectedInput) return "";
   return state.inputId === selectedInput.id ? state.draft : selectedInput.content;
@@ -211,7 +211,7 @@ export function selectedSavedInputDraft(
 
 export function savedInputDraftDirty(
   state: SavedInputDraftState,
-  selectedInput: Pick<CompanySkillTestInput, "id" | "content"> | null,
+  selectedInput: Pick<DomainSkillTestInput, "id" | "content"> | null,
 ): boolean {
   return Boolean(
     selectedInput
@@ -267,11 +267,11 @@ export function isAgentSelectable(agent: { status: string }): boolean {
  * Short, stable run identifier for history rows (`#` + first 7 of the id),
  * mirroring how the run detail header labels a run.
  */
-export function runShortId(run: Pick<CompanySkillTestRun, "id">): string {
+export function runShortId(run: Pick<DomainSkillTestRun, "id">): string {
   return `#${run.id.replace(/-/g, "").slice(0, 7)}`;
 }
 
-export function isRunActive(run: Pick<CompanySkillTestRun, "status">): boolean {
+export function isRunActive(run: Pick<DomainSkillTestRun, "status">): boolean {
   return !isTerminalRunStatus(run.status);
 }
 
@@ -283,7 +283,7 @@ export type RunTemplateSelection = string | null;
 
 export interface RunTemplateSelectionResolution {
   selection: RunTemplateSelection;
-  template: CompanySkillTestRunTemplate | null;
+  template: DomainSkillTestRunTemplate | null;
   recovered: boolean;
 }
 
@@ -298,7 +298,7 @@ export function parseRunTemplateSelection(value: string | null): RunTemplateSele
 
 export function resolveRunTemplateSelection(
   selection: RunTemplateSelection,
-  templates: readonly CompanySkillTestRunTemplate[],
+  templates: readonly DomainSkillTestRunTemplate[],
 ): RunTemplateSelectionResolution {
   if (selection === null) {
     return { selection: null, template: null, recovered: false };
@@ -326,7 +326,7 @@ export function buildCreateRunRequest(input: {
   inputId: string | null;
   content: string | null;
   templateId: RunTemplateSelection;
-}): CompanySkillTestRunCreateRequest {
+}): DomainSkillTestRunCreateRequest {
   return {
     agentId: input.agentId,
     inputId: input.inputId,
@@ -336,11 +336,11 @@ export function buildCreateRunRequest(input: {
 }
 
 /** The output document, if the run detail carries one under its output key. */
-export function findOutputDocument(detail: Pick<CompanySkillTestRunDetail, "documents" | "outputDocumentKey">) {
+export function findOutputDocument(detail: Pick<DomainSkillTestRunDetail, "documents" | "outputDocumentKey">) {
   return detail.documents.find((doc) => doc.key === detail.outputDocumentKey) ?? null;
 }
 
-type RunRichOutputDetail = Pick<CompanySkillTestRunDetail, "outputDocumentKey" | "harnessContent">;
+type RunRichOutputDetail = Pick<DomainSkillTestRunDetail, "outputDocumentKey" | "harnessContent">;
 
 export interface RunHarnessUnavailableCopy {
   title: string;
@@ -356,14 +356,14 @@ export interface RunMediaGalleryItem {
   originalFilename: string | null;
 }
 
-function runHarnessUnavailableTitle(reason: CompanySkillTestRunHarnessContentUnavailableReason | null) {
+function runHarnessUnavailableTitle(reason: DomainSkillTestRunHarnessContentUnavailableReason | null) {
   if (reason === "expired") return "Test task expired";
   if (reason === "deleted") return "Test task deleted";
   return "Test task unavailable";
 }
 
 export function runHarnessUnavailableCopy(
-  detail: Pick<CompanySkillTestRunDetail, "harnessContent">,
+  detail: Pick<DomainSkillTestRunDetail, "harnessContent">,
 ): RunHarnessUnavailableCopy | null {
   if (detail.harnessContent.available) return null;
   return {
@@ -444,7 +444,7 @@ export function getRunMediaGalleryItems(detail: RunRichOutputDetail): RunMediaGa
  */
 export function buildReRunRequest(
   detail: Pick<
-    CompanySkillTestRun,
+    DomainSkillTestRun,
     "agentId"
     | "inputId"
     | "inputSnapshot"
@@ -453,7 +453,7 @@ export function buildReRunRequest(
     | "templateName"
     | "templateBody"
   >,
-): CompanySkillTestRunCreateRequest {
+): DomainSkillTestRunCreateRequest {
   return {
     agentId: detail.agentId,
     inputId: detail.inputId ?? undefined,
@@ -480,12 +480,12 @@ export const RECENT_UPDATED_SKILL_LIMIT = 10;
  * a live skill drop out automatically (they simply miss the lookup).
  */
 export function orderRecentlyVisitedSkills(
-  skills: CompanySkillListItem[],
+  skills: DomainSkillListItem[],
   recentIds: string[],
   limit = RECENT_VISITED_SKILL_LIMIT,
-): CompanySkillListItem[] {
+): DomainSkillListItem[] {
   const byId = new Map(skills.map((skill) => [skill.id, skill]));
-  const ordered: CompanySkillListItem[] = [];
+  const ordered: DomainSkillListItem[] = [];
   const seen = new Set<string>();
   for (const id of recentIds) {
     if (seen.has(id)) continue;
@@ -498,7 +498,7 @@ export function orderRecentlyVisitedSkills(
   return ordered;
 }
 
-function updatedAtMs(skill: Pick<CompanySkillListItem, "updatedAt">): number {
+function updatedAtMs(skill: Pick<DomainSkillListItem, "updatedAt">): number {
   const value = skill.updatedAt as unknown;
   const time =
     value instanceof Date ? value.getTime() : new Date(value as string).getTime();
@@ -510,10 +510,10 @@ function updatedAtMs(skill: Pick<CompanySkillListItem, "updatedAt">): number {
  * the visited section (dedupe by id). Ties break by name so ordering is stable.
  */
 export function orderRecentlyUpdatedSkills(
-  skills: CompanySkillListItem[],
+  skills: DomainSkillListItem[],
   excludeIds: Iterable<string>,
   limit = RECENT_UPDATED_SKILL_LIMIT,
-): CompanySkillListItem[] {
+): DomainSkillListItem[] {
   const excluded = new Set(excludeIds);
   return skills
     .filter((skill) => !excluded.has(skill.id))
@@ -534,8 +534,8 @@ export interface SkillEditorAvatar {
 function editorInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperLifeAdmin();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperLifeAdmin();
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
 /**
@@ -543,7 +543,7 @@ function editorInitials(name: string): string {
  * unattributed syncs (`kind !== "user"`, or no editor) render nothing.
  */
 export function skillEditorAvatar(
-  lastEditor: CompanySkillLastEditor | null | undefined,
+  lastEditor: DomainSkillLastEditor | null | undefined,
 ): SkillEditorAvatar | null {
   if (!lastEditor || lastEditor.kind !== "user") return null;
   const name = lastEditor.name?.trim() || "Unknown editor";

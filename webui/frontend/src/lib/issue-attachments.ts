@@ -14,7 +14,7 @@ type AttachmentPathLike = {
 };
 
 function normalizedContentType(attachment: Pick<IssueAttachment, "contentType">) {
-  return attachment.contentType.toLowerLifeAdmin().split(";")[0]?.trim() ?? "";
+  return attachment.contentType.toLowerCase().split(";")[0]?.trim() ?? "";
 }
 
 export function attachmentFilename(attachment: Pick<IssueAttachment, "id" | "originalFilename">) {
@@ -52,7 +52,7 @@ export function isMarkdownAttachment(
     return true;
   }
 
-  const filename = (attachment.originalFilename ?? "").toLowerLifeAdmin();
+  const filename = (attachment.originalFilename ?? "").toLowerCase();
   if (!filename.endsWith(".md") && !filename.endsWith(".markdown")) return false;
   return contentType === "text/plain" || GENERIC_ATTACHMENT_CONTENT_TYPES.has(contentType);
 }

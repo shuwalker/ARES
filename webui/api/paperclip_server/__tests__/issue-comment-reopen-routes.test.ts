@@ -64,7 +64,7 @@ const mockInstanceSettingsService = vi.hoisted(() => ({
       feedbackDataSharingPreference: "prompt",
     },
   })),
-  listCompanyIds: vi.fn(async () => ["company-1"]),
+  listDomainIds: vi.fn(async () => ["domain-1"]),
 }));
 const mockRoutineService = vi.hoisted(() => ({
   syncRunStatusForIssue: vi.fn(async () => undefined),
@@ -126,12 +126,12 @@ vi.mock("../services/routines.js", () => ({
 }));
 
 vi.mock("../services/index.js", () => ({
-  companyService: () => ({
-    getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+  domainService: () => ({
+    getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
   }),
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
-  companySkillService: () => ({
+  domainSkillService: () => ({
     completeTestRunForIssue: vi.fn(async () => null),
   }),
   documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
@@ -184,7 +184,7 @@ async function installActor(app: express.Express, actor?: Record<string, unknown
     (req as any).actor = actor ?? {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -209,7 +209,7 @@ async function normalizePolicy(input: {
 function makeIssue(status: "todo" | "done" | "blocked" | "cancelled" | "in_progress") {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
+    domainId: "domain-1",
     status,
     assigneeAgentId: "22222222-2222-4222-8222-222222222222",
     assigneeUserId: null,
@@ -223,7 +223,7 @@ function agentActor(agentId = "22222222-2222-4222-8222-222222222222") {
   return {
     type: "agent",
     agentId,
-    companyId: "company-1",
+    domainId: "domain-1",
     source: "agent_key",
     runId: "run-1",
   };
@@ -260,7 +260,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockFeedbackService.listIssueVotesForUser.mockReset();
     mockFeedbackService.saveIssueVote.mockReset();
     mockInstanceSettingsService.get.mockReset();
-    mockInstanceSettingsService.listCompanyIds.mockReset();
+    mockInstanceSettingsService.listDomainIds.mockReset();
     mockRoutineService.syncRunStatusForIssue.mockReset();
     mockIssueRecoveryActionService.getActiveForIssue.mockReset();
     mockIssueTreeControlService.getActivePauseHoldGate.mockReset();
@@ -305,14 +305,14 @@ describe.sequential("issue comment reopen routes", () => {
         feedbackDataSharingPreference: "prompt",
       },
     });
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1"]);
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-1"]);
     mockRoutineService.syncRunStatusForIssue.mockResolvedValue(undefined);
     mockIssueRecoveryActionService.getActiveForIssue.mockResolvedValue(null);
     mockIssueTreeControlService.getActivePauseHoldGate.mockResolvedValue(null);
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       body: "hello",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -356,7 +356,7 @@ describe.sequential("issue comment reopen routes", () => {
         permissions: { canCreateAgents: false },
       },
     ]);
-    mockAgentService.resolveByReference.mockImplementation(async (_companyId: string, reference: string) => {
+    mockAgentService.resolveByReference.mockImplementation(async (_domainId: string, reference: string) => {
       if (reference === "ambiguous-codex") {
         return { ambiguous: true, agent: null };
       }
@@ -444,7 +444,7 @@ describe.sequential("issue comment reopen routes", () => {
       .send({ comment: "hello", assigneeAgentId: "codexcoder" });
 
     expect(res.status).toBe(200);
-    expect(mockAgentService.resolveByReference).toHaveBeenCalledWith("company-1", "codexcoder");
+    expect(mockAgentService.resolveByReference).toHaveBeenCalledWith("domain-1", "codexcoder");
     expect(mockIssueService.update).toHaveBeenCalledWith(
       "11111111-1111-4111-8111-111111111111",
       expect.objectContaining({
@@ -542,7 +542,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       body: "hello",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -553,7 +553,7 @@ describe.sequential("issue comment reopen routes", () => {
     const res = await request(await installActor(createApp(), {
       type: "agent",
       agentId: "33333333-3333-4333-8333-333333333333",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "77777777-7777-4777-8777-777777777777",
     }))
@@ -573,7 +573,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       body: "I can answer the mention without reopening.",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -613,7 +613,7 @@ describe.sequential("issue comment reopen routes", () => {
       mockIssueService.addComment.mockResolvedValue({
         id: "comment-1",
         issueId: "11111111-1111-4111-8111-111111111111",
-        companyId: "company-1",
+        domainId: "domain-1",
         body: "Please continue this closed issue.",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -656,7 +656,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       body: "log line",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -668,7 +668,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: assigneeAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         runId: "run-self",
       }),
     )
@@ -698,7 +698,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       body: "log line",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -710,7 +710,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: assigneeAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         runId: "run-self",
       }),
     )
@@ -748,7 +748,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: assigneeAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         runId: "run-self",
       }),
     )
@@ -790,7 +790,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: otherAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         runId: "run-other",
       }),
     )
@@ -878,7 +878,7 @@ describe.sequential("issue comment reopen routes", () => {
     }));
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "retry-run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "cancelled",
     });
@@ -981,7 +981,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       authorType: "user",
       authorAgentId: null,
       authorUserId: "local-board",
@@ -1116,7 +1116,7 @@ describe.sequential("issue comment reopen routes", () => {
     const res = await request(await installActor(createApp(), {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
       runId: "run-same-as-actor",
@@ -1141,7 +1141,7 @@ describe.sequential("issue comment reopen routes", () => {
     const res = await request(await installActor(createApp(), {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
       runId: "run-same-as-actor",
@@ -1170,7 +1170,7 @@ describe.sequential("issue comment reopen routes", () => {
     const res = await request(await installActor(createApp(), {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
       runId: "run-different",
@@ -1200,7 +1200,7 @@ describe.sequential("issue comment reopen routes", () => {
     const res = await request(await installActor(createApp(), {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
       runId: "run-same-as-actor",
@@ -1273,7 +1273,7 @@ describe.sequential("issue comment reopen routes", () => {
     }));
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "retry-run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "cancelled",
     });
@@ -1343,7 +1343,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       body: "hello",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1358,7 +1358,7 @@ describe.sequential("issue comment reopen routes", () => {
     const res = await request(await installActor(createApp(), {
       type: "agent",
       agentId: "33333333-3333-4333-8333-333333333333",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "88888888-8888-4888-8888-888888888888",
     }))
@@ -1639,13 +1639,13 @@ describe.sequential("issue comment reopen routes", () => {
     }));
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "running",
     });
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "cancelled",
     });
@@ -1699,13 +1699,13 @@ describe.sequential("issue comment reopen routes", () => {
     }));
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "running",
     });
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "cancelled",
     });
@@ -1741,7 +1741,7 @@ describe.sequential("issue comment reopen routes", () => {
     }));
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: "22222222-2222-4222-8222-222222222222",
       status: "running",
     });
@@ -1855,7 +1855,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-1",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1876,7 +1876,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-1",
       }),
@@ -1940,7 +1940,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-2",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1961,7 +1961,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-2",
       }),
@@ -2027,7 +2027,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-3",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2055,7 +2055,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-3",
       }),
@@ -2114,7 +2114,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-5",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2138,7 +2138,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-stale-isclosed",
       }),
@@ -2188,7 +2188,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-4",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2245,7 +2245,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-mismatched-kind",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2257,7 +2257,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: sharedId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-kind-mismatch",
       }),
@@ -2305,7 +2305,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-blank-line-metadata",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2317,7 +2317,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-blank-line-metadata",
       }),
@@ -2363,7 +2363,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-5",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2375,7 +2375,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-5",
       }),
@@ -2422,7 +2422,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-6",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2434,7 +2434,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-6",
       }),
@@ -2449,9 +2449,9 @@ describe.sequential("issue comment reopen routes", () => {
   });
 
   describe.each([
-    { name: "uppercase negation", body: "## Review: NOT APPROVED" },
-    { name: "uppercase negation with trailing period", body: "## Review: NOT APPROVED." },
-    { name: "mixed-case negation", body: "## Review: Not approved." },
+    { name: "upperlife_admin negation", body: "## Review: NOT APPROVED" },
+    { name: "upperlife_admin negation with trailing period", body: "## Review: NOT APPROVED." },
+    { name: "mixed-life_admin negation", body: "## Review: Not approved." },
     { name: "do-not phrasing", body: "## Review: Do not approve" },
     { name: "present-progressive negation", body: "## Review: Not approving" },
     { name: "structured rejection", body: "kind: review\ndecision: rejected\nsummary: ship it" },
@@ -2497,7 +2497,7 @@ describe.sequential("issue comment reopen routes", () => {
       mockIssueService.addComment.mockResolvedValue({
         id: "comment-review-negated",
         issueId: issue.id,
-        companyId: issue.companyId,
+        domainId: issue.domainId,
         body,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -2509,7 +2509,7 @@ describe.sequential("issue comment reopen routes", () => {
         await installActor(createApp(), {
           type: "agent",
           agentId: reviewerAgentId,
-          companyId: "company-1",
+          domainId: "domain-1",
           source: "agent_key",
           runId: "run-review-negated",
         }),
@@ -2525,10 +2525,10 @@ describe.sequential("issue comment reopen routes", () => {
   });
 
   describe.each([
-    { name: "uppercase approval", body: "## Review: APPROVED" },
+    { name: "upperlife_admin approval", body: "## Review: APPROVED" },
     { name: "trailing punctuation", body: "## Review: APPROVED!" },
     { name: "ticketed approval", body: "## Review: PAP-580 - APPROVED" },
-    { name: "lowercase approval", body: "## Review: LGTM, approved" },
+    { name: "lowerlife_admin approval", body: "## Review: LGTM, approved" },
     { name: "approval with body context", body: "## Review: APPROVED\n\nReady to ship." },
   ])("auto-approves positive approval phrasings ($name)", ({ body }) => {
     it("triggers the auto-approval transition", async () => {
@@ -2563,7 +2563,7 @@ describe.sequential("issue comment reopen routes", () => {
       mockIssueService.addComment.mockResolvedValue({
         id: "comment-review-positive",
         issueId: issue.id,
-        companyId: issue.companyId,
+        domainId: issue.domainId,
         body,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -2584,7 +2584,7 @@ describe.sequential("issue comment reopen routes", () => {
         await installActor(createApp(), {
           type: "agent",
           agentId: reviewerAgentId,
-          companyId: "company-1",
+          domainId: "domain-1",
           source: "agent_key",
           runId: "run-review-positive",
         }),
@@ -2646,7 +2646,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-atomic",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2660,7 +2660,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-atomic",
       }),
@@ -2716,7 +2716,7 @@ describe.sequential("issue comment reopen routes", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-review-missing",
       issueId: issue.id,
-      companyId: issue.companyId,
+      domainId: issue.domainId,
       body: reviewBody,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -2730,7 +2730,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: reviewerAgentId,
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
         runId: "run-review-missing",
       }),
@@ -2781,7 +2781,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
+        domainId: "domain-1",
         runId: "run-1",
       }),
     )
@@ -2870,7 +2870,7 @@ describe.sequential("issue comment reopen routes", () => {
       await installActor(createApp(), {
         type: "agent",
         agentId: "33333333-3333-4333-8333-333333333333",
-        companyId: "company-1",
+        domainId: "domain-1",
         runId: "run-2",
       }),
     )

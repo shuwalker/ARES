@@ -8,8 +8,8 @@ import { writePaperclipSkillSyncPreference } from "@paperclipai/adapter-utils/se
 import {
   agents,
   domains,
-  companySkills,
-  costEvents,
+  domainSkills,
+  financeEvents,
   createDb,
   documents,
   documentRevisions,
@@ -61,9 +61,9 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     await db.delete(documentRevisions);
     await db.delete(documents);
     await db.delete(issueComments);
-    await db.delete(costEvents);
+    await db.delete(financeEvents);
     await db.delete(heartbeatRuns);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(issues);
     await db.delete(agents);
     await db.delete(domains);
@@ -80,21 +80,21 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   async function seedIssueWithAgentComment() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const commentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `F${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `F${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -106,7 +106,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Add feedback voting",
       status: "todo",
       priority: "medium",
@@ -115,17 +115,17 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
+      domainId,
       issueId,
       authorAgentId: agentId,
       body: "AI generated update",
     });
 
-    return { companyId, issueId, commentId };
+    return { domainId, issueId, commentId };
   }
 
   async function seedIssueWithRichAgentComment() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const targetCommentId = randomUUID();
@@ -146,16 +146,16 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     );
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `R${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
-    await db.insert(companySkills).values([
+    await db.insert(domainSkills).values([
       {
         id: randomUUID(),
-        companyId,
+        domainId,
         key: "paperclipai/paperclip/paperclip",
         slug: "paperclip",
         name: "Paperclip",
@@ -167,7 +167,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
       {
         id: randomUUID(),
-        companyId,
+        domainId,
         key: "octo/research/public-skill",
         slug: "public-skill",
         name: "Public Skill",
@@ -181,7 +181,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -207,7 +207,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Trace-rich feedback",
       description: "Issue context includes ops@example.com and a backup phone 555 111 2222.",
       status: "todo",
@@ -217,7 +217,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "succeeded",
@@ -228,13 +228,13 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
         model: "gpt-5.4",
         inputTokens: 123,
         outputTokens: 45,
-        costUsd: 0.12,
+        financeUsd: 0.12,
       },
     });
 
-    await db.insert(costEvents).values({
+    await db.insert(financeEvents).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       agentId,
       issueId,
       heartbeatRunId: runId,
@@ -245,14 +245,14 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       inputTokens: 123,
       cachedInputTokens: 0,
       outputTokens: 45,
-      costCents: 12,
+      financeCents: 12,
       occurredAt: new Date("2026-03-30T10:05:00.000Z"),
     });
 
     await db.insert(issueComments).values([
       {
         id: earlierCommentId,
-        companyId,
+        domainId,
         issueId,
         authorAgentId: agentId,
         createdByRunId: runId,
@@ -261,7 +261,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
       {
         id: targetCommentId,
-        companyId,
+        domainId,
         issueId,
         authorAgentId: agentId,
         createdByRunId: runId,
@@ -270,7 +270,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
       {
         id: laterCommentId,
-        companyId,
+        domainId,
         issueId,
         authorAgentId: agentId,
         createdByRunId: runId,
@@ -279,26 +279,26 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       },
     ]);
 
-    return { companyId, issueId, targetCommentId, runId };
+    return { domainId, issueId, targetCommentId, runId };
   }
 
   async function seedIssueWithAgentDocument() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const documentId = randomUUID();
     const revisionId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `D${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `D${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -310,7 +310,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Document feedback",
       status: "todo",
       priority: "medium",
@@ -319,7 +319,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId,
+      domainId,
       title: "Plan",
       format: "markdown",
       latestBody: "Drafted by an agent",
@@ -331,7 +331,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId,
+      domainId,
       documentId,
       revisionNumber: 1,
       body: "Drafted by an agent",
@@ -339,35 +339,35 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     await db.insert(issueDocuments).values({
-      companyId,
+      domainId,
       issueId,
       documentId,
       key: "plan",
     });
 
-    return { companyId, issueId, revisionId };
+    return { domainId, issueId, revisionId };
   }
 
   async function seedIssueWithAdapterRunComment(input: {
     adapterType: "claude_local" | "opencode_local";
     sessionId: string;
   }) {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const commentId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "TraceCollector",
       role: "engineer",
       status: "active",
@@ -379,7 +379,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Trace-backed feedback",
       status: "todo",
       priority: "medium",
@@ -388,7 +388,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "succeeded",
@@ -403,18 +403,18 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
+      domainId,
       issueId,
       authorAgentId: agentId,
       createdByRunId: runId,
       body: "Trace-backed agent output",
     });
 
-    return { companyId, issueId, commentId };
+    return { domainId, issueId, commentId };
   }
 
   it("stores a local vote without enabling sharing by default", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { domainId, issueId, commentId } = await seedIssueWithAgentComment();
 
     const result = await svc.saveIssueVote({
       issueId,
@@ -429,14 +429,14 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(result.persistedSharingPreference).toBe("not_allowed");
     expect(result.vote.consentVersion).toBeNull();
 
-    const company = await db
+    const domain = await db
       .select()
       .from(domains)
-      .where(eq(domains.id, companyId))
+      .where(eq(domains.id, domainId))
       .then((rows) => rows[0] ?? null);
 
-    expect(company?.feedbackDataSharingEnabled).toBe(false);
-    expect(company?.feedbackDataSharingConsentAt).toBeNull();
+    expect(domain?.feedbackDataSharingEnabled).toBe(false);
+    expect(domain?.feedbackDataSharingConsentAt).toBeNull();
 
     const settings = await db
       .select()
@@ -449,7 +449,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       includePayload: true,
     });
@@ -458,7 +458,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("enables sharing metadata on the first consented vote and upserts subsequent votes", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { domainId, issueId, commentId } = await seedIssueWithAgentComment();
 
     const first = await svc.saveIssueVote({
       issueId,
@@ -498,15 +498,15 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(votes[0]?.sharedWithLabs).toBe(false);
     expect(votes[0]?.consentVersion).toBeNull();
 
-    const company = await db
+    const domain = await db
       .select()
       .from(domains)
-      .where(eq(domains.id, companyId))
+      .where(eq(domains.id, domainId))
       .then((rows) => rows[0] ?? null);
 
-    expect(company?.feedbackDataSharingEnabled).toBe(true);
-    expect(company?.feedbackDataSharingConsentByUserId).toBe("user-1");
-    expect(company?.feedbackDataSharingTermsVersion).toBe("feedback-data-sharing-v1");
+    expect(domain?.feedbackDataSharingEnabled).toBe(true);
+    expect(domain?.feedbackDataSharingConsentByUserId).toBe("user-1");
+    expect(domain?.feedbackDataSharingTermsVersion).toBe("feedback-data-sharing-v1");
 
     const settings = await db
       .select()
@@ -535,7 +535,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(result.sharingEnabled).toBe(true);
 
     const traces = await svc.listFeedbackTraces({
-      companyId: result.vote.companyId,
+      domainId: result.vote.domainId,
       issueId,
       includePayload: true,
     });
@@ -561,21 +561,21 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
       targetType: "issue_comment",
       targetId: commentId,
       vote: "down",
-      reason: "The update missed the edge case handling.",
+      reason: "The update missed the edge life_admin handling.",
       authorUserId: "user-1",
     });
 
-    expect(result.vote.reason).toBe("The update missed the edge case handling.");
+    expect(result.vote.reason).toBe("The update missed the edge life_admin handling.");
 
     const traces = await svc.listFeedbackTraces({
-      companyId: result.vote.companyId,
+      domainId: result.vote.domainId,
       issueId,
       includePayload: true,
     });
 
     expect(traces[0]?.payloadSnapshot?.vote).toMatchObject({
       value: "down",
-      reason: "The update missed the edge case handling.",
+      reason: "The update missed the edge life_admin handling.",
       sharedWithLabs: false,
     });
   });
@@ -604,7 +604,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(secondResult.vote.reason).toBe("Needed concrete next steps.");
 
     const traces = await svc.listFeedbackTraces({
-      companyId: secondResult.vote.companyId,
+      domainId: secondResult.vote.domainId,
       issueId,
       includePayload: true,
     });
@@ -619,7 +619,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("builds a detailed sanitized shared bundle with issue and agent context", async () => {
-    const { companyId, issueId, targetCommentId, runId } = await seedIssueWithRichAgentComment();
+    const { domainId, issueId, targetCommentId, runId } = await seedIssueWithRichAgentComment();
 
     await svc.saveIssueVote({
       issueId,
@@ -631,7 +631,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       includePayload: true,
     });
@@ -667,7 +667,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("keeps earlier local votes local when a later vote enables sharing", async () => {
-    const { companyId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
+    const { domainId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
     const secondCommentId = randomUUID();
     const agentId = await db
       .select({ authorAgentId: issueComments.authorAgentId })
@@ -677,7 +677,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: secondCommentId,
-      companyId,
+      domainId,
       issueId,
       authorAgentId: agentId,
       body: "Second AI generated update",
@@ -701,7 +701,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       includePayload: true,
     });
@@ -923,20 +923,20 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("rejects feedback votes on human-authored comments", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
     const commentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `H${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `H${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Human-authored comment",
       status: "todo",
       priority: "medium",
@@ -945,7 +945,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
+      domainId,
       issueId,
       authorUserId: "user-2",
       body: "Board comment",
@@ -963,9 +963,9 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("flushes pending shared traces into configured object storage and marks them sent", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { domainId, issueId, commentId } = await seedIssueWithAgentComment();
     const uploadTraceBundle = vi.fn().mockResolvedValue({
-      objectKey: `feedback-traces/${companyId}/2026/04/01/test-trace.json`,
+      objectKey: `feedback-traces/${domainId}/2026/04/01/test-trace.json`,
     });
     const flushingSvc = feedbackService(db, {
       shareClient: {
@@ -990,7 +990,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await flushingSvc.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       includePayload: true,
     });
@@ -1002,7 +1002,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(uploadTraceBundle.mock.calls[0]?.[0]).toMatchObject({
       traceId: traces[0]?.id,
       exportId: traces[0]?.exportId,
-      companyId,
+      domainId,
       issueId,
       issueIdentifier: traces[0]?.issueIdentifier,
       captureStatus: expect.stringMatching(/^(full|partial|unavailable)$/),
@@ -1014,7 +1014,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("can flush a single shared trace immediately by trace id", async () => {
-    const { companyId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
+    const { domainId, issueId, commentId: firstCommentId } = await seedIssueWithAgentComment();
     const secondCommentId = randomUUID();
     const agentId = await db
       .select({ authorAgentId: issueComments.authorAgentId })
@@ -1024,14 +1024,14 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
 
     await db.insert(issueComments).values({
       id: secondCommentId,
-      companyId,
+      domainId,
       issueId,
       authorAgentId: agentId,
       body: "Second AI generated update",
     });
 
     const uploadTraceBundle = vi.fn().mockResolvedValue({
-      objectKey: `feedback-traces/${companyId}/2026/04/01/test-trace.json`,
+      objectKey: `feedback-traces/${domainId}/2026/04/01/test-trace.json`,
     });
     const flushingSvc = feedbackService(db, {
       shareClient: {
@@ -1057,7 +1057,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const flushResult = await flushingSvc.flushPendingFeedbackTraces({
-      companyId,
+      domainId,
       traceId: first.traceId ?? undefined,
       limit: 1,
     });
@@ -1070,7 +1070,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     expect(uploadTraceBundle).toHaveBeenCalledTimes(1);
 
     const traces = await flushingSvc.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       includePayload: true,
     });
@@ -1081,7 +1081,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("marks pending shared traces as failed when remote export upload fails", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { domainId, issueId, commentId } = await seedIssueWithAgentComment();
     const uploadTraceBundle = vi.fn().mockRejectedValue(new Error("telemetry unavailable"));
     const flushingSvc = feedbackService(db, {
       shareClient: {
@@ -1106,7 +1106,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await flushingSvc.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       includePayload: true,
     });
@@ -1119,7 +1119,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
   });
 
   it("marks pending shared traces as failed when no feedback export backend is configured", async () => {
-    const { companyId, issueId, commentId } = await seedIssueWithAgentComment();
+    const { domainId, issueId, commentId } = await seedIssueWithAgentComment();
 
     const result = await svc.saveIssueVote({
       issueId,
@@ -1131,7 +1131,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const flushResult = await svc.flushPendingFeedbackTraces({
-      companyId,
+      domainId,
       traceId: result.traceId ?? undefined,
       limit: 1,
     });
@@ -1143,7 +1143,7 @@ describeEmbeddedPostgres("feedbackService.saveIssueVote", () => {
     });
 
     const traces = await svc.listFeedbackTraces({
-      companyId,
+      domainId,
       issueId,
       includePayload: true,
     });

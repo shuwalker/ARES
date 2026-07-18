@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const updateGeneral = vi.fn();
-const listCompanyIds = vi.fn();
+const listDomainIds = vi.fn();
 const ensureKubernetesEnvironment = vi.fn();
 
 vi.mock("./instance-settings.js", () => ({
   instanceSettingsService: () => ({
     updateGeneral,
-    listCompanyIds,
+    listDomainIds,
   }),
 }));
 
@@ -137,12 +137,12 @@ describe("parseExecutionPolicyBootstrapEnv", () => {
 describe("applyExecutionPolicyBootstrap", () => {
   beforeEach(() => {
     updateGeneral.mockReset().mockResolvedValue(undefined);
-    listCompanyIds.mockReset();
+    listDomainIds.mockReset();
     ensureKubernetesEnvironment.mockReset();
   });
 
-  it("does not throw when every company gets a managed environment", async () => {
-    listCompanyIds.mockResolvedValue(["c1", "c2", "c3"]);
+  it("does not throw when every domain gets a managed environment", async () => {
+    listDomainIds.mockResolvedValue(["c1", "c2", "c3"]);
     ensureKubernetesEnvironment.mockResolvedValue({ id: "env" });
 
     const result = await applyExecutionPolicyBootstrap(fakeDb, bootstrap);
@@ -151,11 +151,11 @@ describe("applyExecutionPolicyBootstrap", () => {
     expect(ensureKubernetesEnvironment).toHaveBeenCalledTimes(3);
   });
 
-  it("throws when at least one company fails, after attempting every company", async () => {
-    listCompanyIds.mockResolvedValue(["c1", "c2", "c3"]);
-    ensureKubernetesEnvironment.mockImplementation(async (companyId: string) => {
-      if (companyId === "c2") throw new Error("operator config missing");
-      return { id: `env-${companyId}` };
+  it("throws when at least one domain fails, after attempting every domain", async () => {
+    listDomainIds.mockResolvedValue(["c1", "c2", "c3"]);
+    ensureKubernetesEnvironment.mockImplementation(async (domainId: string) => {
+      if (domainId === "c2") throw new Error("operator config missing");
+      return { id: `env-${domainId}` };
     });
 
     await expect(applyExecutionPolicyBootstrap(fakeDb, bootstrap)).rejects.toThrow(

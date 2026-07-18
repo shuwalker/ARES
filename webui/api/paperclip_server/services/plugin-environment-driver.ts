@@ -188,14 +188,14 @@ export async function validatePluginEnvironmentDriverConfig(input: {
 export async function probePluginEnvironmentDriver(input: {
   db: Db;
   workerManager: PluginWorkerManager;
-  companyId: string;
+  domainId: string;
   environmentId: string;
   config: PluginEnvironmentConfig;
 }): Promise<EnvironmentProbeResult> {
   const { plugin } = await resolvePluginEnvironmentDriver(input);
   const result = await input.workerManager.call(plugin.id, "environmentProbe", {
     driverKey: input.config.driverKey,
-    companyId: input.companyId,
+    domainId: input.domainId,
     environmentId: input.environmentId,
     config: input.config.driverConfig,
   }, 120_000);
@@ -216,7 +216,7 @@ export async function probePluginEnvironmentDriver(input: {
 export async function probePluginSandboxProviderDriver(input: {
   db: Db;
   workerManager: PluginWorkerManager;
-  companyId: string;
+  domainId: string;
   environmentId: string;
   provider: string;
   config: Record<string, unknown>;
@@ -240,7 +240,7 @@ export async function probePluginSandboxProviderDriver(input: {
   const { provider: _provider, ...driverConfig } = input.config;
   const result = await input.workerManager.call(resolved.plugin.id, "environmentProbe", {
     driverKey: input.provider,
-    companyId: input.companyId,
+    domainId: input.domainId,
     environmentId: input.environmentId,
     config: driverConfig,
   }, 120_000);
@@ -261,7 +261,7 @@ export async function probePluginSandboxProviderDriver(input: {
 export async function resumePluginEnvironmentLease(input: {
   db: Db;
   workerManager: PluginWorkerManager;
-  companyId: string;
+  domainId: string;
   environmentId: string;
   issueId?: string | null;
   config: PluginEnvironmentConfig;
@@ -271,7 +271,7 @@ export async function resumePluginEnvironmentLease(input: {
   const { plugin } = await resolvePluginEnvironmentDriver(input);
   return await input.workerManager.call(plugin.id, "environmentResumeLease", {
     driverKey: input.config.driverKey,
-    companyId: input.companyId,
+    domainId: input.domainId,
     environmentId: input.environmentId,
     issueId: input.issueId ?? null,
     config: input.config.driverConfig,
@@ -283,7 +283,7 @@ export async function resumePluginEnvironmentLease(input: {
 export async function destroyPluginEnvironmentLease(input: {
   db: Db;
   workerManager: PluginWorkerManager;
-  companyId: string;
+  domainId: string;
   environmentId: string;
   issueId?: string | null;
   config: PluginEnvironmentConfig;
@@ -293,7 +293,7 @@ export async function destroyPluginEnvironmentLease(input: {
   const { plugin } = await resolvePluginEnvironmentDriver(input);
   await input.workerManager.call(plugin.id, "environmentDestroyLease", {
     driverKey: input.config.driverKey,
-    companyId: input.companyId,
+    domainId: input.domainId,
     environmentId: input.environmentId,
     issueId: input.issueId ?? null,
     config: input.config.driverConfig,

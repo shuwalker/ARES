@@ -85,7 +85,7 @@ export interface Config {
   feedbackExportBackendToken: string | undefined;
   heartbeatSchedulerEnabled: boolean;
   heartbeatSchedulerIntervalMs: number;
-  companyDeletionEnabled: boolean;
+  domainDeletionEnabled: boolean;
   telemetryEnabled: boolean;
 }
 
@@ -239,10 +239,10 @@ export function loadConfig(): Config {
         .filter(Boolean),
     ),
   );
-  const companyDeletionEnvRaw = process.env.PAPERCLIP_ENABLE_COMPANY_DELETION;
-  const companyDeletionEnabled =
-    companyDeletionEnvRaw !== undefined
-      ? companyDeletionEnvRaw === "true"
+  const domainDeletionEnvRaw = process.env.PAPERCLIP_ENABLE_DOMAIN_DELETION;
+  const domainDeletionEnabled =
+    domainDeletionEnvRaw !== undefined
+      ? domainDeletionEnvRaw === "true"
       : deploymentMode === "local_trusted";
   const databaseBackupEnabled =
     process.env.PAPERCLIP_DB_BACKUP_ENABLED !== undefined
@@ -331,7 +331,7 @@ export function loadConfig(): Config {
     feedbackExportBackendToken,
     heartbeatSchedulerEnabled: process.env.HEARTBEAT_SCHEDULER_ENABLED !== "false",
     heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
-    companyDeletionEnabled,
+    domainDeletionEnabled,
     telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,
   };
 }

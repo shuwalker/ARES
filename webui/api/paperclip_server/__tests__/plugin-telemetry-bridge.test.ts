@@ -65,7 +65,7 @@ describe("plugin telemetry bridge", () => {
     await expect(
       services.telemetry.track({ eventName: "sync.completed" }),
     ).rejects.toThrow(
-      'Plugin telemetry event names must be lowercase slugs using letters, numbers, "_" or "-".',
+      'Plugin telemetry event names must be lowerlife_admin slugs using letters, numbers, "_" or "-".',
     );
   });
 

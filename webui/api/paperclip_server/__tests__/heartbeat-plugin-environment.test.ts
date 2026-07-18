@@ -81,7 +81,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
   });
 
   it("acquires plugin environment leases through the heartbeat execution path", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const workspaceId = randomUUID();
     const environmentId = randomUUID();
@@ -109,9 +109,9 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     } as unknown as PluginWorkerManager;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       status: "active",
       defaultResponsibleUserId: "responsible-user",
       createdAt: new Date(),
@@ -119,7 +119,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Plugin Environment Heartbeat",
       status: "active",
       createdAt: new Date(),
@@ -127,7 +127,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: workspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: workspaceRoot,
@@ -166,7 +166,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     } as any);
     await db.insert(environments).values({
       id: environmentId,
-      companyId,
+      domainId,
       name: "Plugin Sandbox",
       driver: "plugin",
       status: "active",
@@ -182,7 +182,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -210,7 +210,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
 
     expect(workerManager.call).toHaveBeenNthCalledWith(1, pluginId, "environmentAcquireLease", {
       driverKey: "sandbox",
-      companyId,
+      domainId,
       environmentId,
       executionWorkspaceId: expect.any(String),
       issueId: null,
@@ -227,7 +227,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await vi.waitFor(() => {
       expect(workerManager.call).toHaveBeenCalledWith(pluginId, "environmentReleaseLease", {
         driverKey: "sandbox",
-        companyId,
+        domainId,
         environmentId,
         issueId: null,
         config: { template: "base" },
@@ -248,16 +248,16 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     const overrideEnvironmentId = randomUUID();
     const pluginId = randomUUID();
     const pluginKey = `acme.environments.${pluginId}`;
-    const companyAId = randomUUID();
-    const companyBId = randomUUID();
+    const domainAId = randomUUID();
+    const domainBId = randomUUID();
     const projectAId = randomUUID();
     const projectBId = randomUUID();
     const workspaceAId = randomUUID();
     const workspaceBId = randomUUID();
     const agentAId = randomUUID();
     const agentBId = randomUUID();
-    const workspaceRootA = await mkdtemp(path.join(os.tmpdir(), "paperclip-plugin-env-company-a-"));
-    const workspaceRootB = await mkdtemp(path.join(os.tmpdir(), "paperclip-plugin-env-company-b-"));
+    const workspaceRootA = await mkdtemp(path.join(os.tmpdir(), "paperclip-plugin-env-domain-a-"));
+    const workspaceRootB = await mkdtemp(path.join(os.tmpdir(), "paperclip-plugin-env-domain-b-"));
     tempRoots.push(workspaceRootA, workspaceRootB);
     const workerManager = {
       isRunning: vi.fn((id: string) => id === pluginId),
@@ -342,18 +342,18 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
 
     await db.insert(domains).values([
       {
-        id: companyAId,
+        id: domainAId,
         name: "Acme A",
-        issuePrefix: `T${companyAId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+        issuePrefix: `T${domainAId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
         status: "active",
         defaultResponsibleUserId: "responsible-user-a",
         createdAt: new Date(),
         updatedAt: new Date(),
       },
       {
-        id: companyBId,
+        id: domainBId,
         name: "Acme B",
-        issuePrefix: `T${companyBId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+        issuePrefix: `T${domainBId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
         status: "active",
         defaultResponsibleUserId: "responsible-user-b",
         createdAt: new Date(),
@@ -363,7 +363,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(projects).values([
       {
         id: projectAId,
-        companyId: companyAId,
+        domainId: domainAId,
         name: "Domain A Project",
         status: "active",
         createdAt: new Date(),
@@ -371,7 +371,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: projectBId,
-        companyId: companyBId,
+        domainId: domainBId,
         name: "Domain B Project",
         status: "active",
         createdAt: new Date(),
@@ -381,7 +381,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(projectWorkspaces).values([
       {
         id: workspaceAId,
-        companyId: companyAId,
+        domainId: domainAId,
         projectId: projectAId,
         name: "Primary",
         cwd: workspaceRootA,
@@ -391,7 +391,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: workspaceBId,
-        companyId: companyBId,
+        domainId: domainBId,
         projectId: projectBId,
         name: "Primary",
         cwd: workspaceRootB,
@@ -403,7 +403,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(agents).values([
       {
         id: agentAId,
-        companyId: companyAId,
+        domainId: domainAId,
         name: "SharedEnvAgent",
         role: "engineer",
         status: "idle",
@@ -417,7 +417,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: agentBId,
-        companyId: companyBId,
+        domainId: domainBId,
         name: "OverrideEnvAgent",
         role: "engineer",
         status: "idle",
@@ -461,7 +461,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     expect(acquireCalls).toHaveLength(2);
     expect(acquirePayloads).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        companyId: companyAId,
+        domainId: domainAId,
         environmentId: sharedEnvironmentId,
         config: { template: "shared" },
         agentId: agentAId,
@@ -469,7 +469,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
         adapterType: "codex_local",
       }),
       expect.objectContaining({
-        companyId: companyBId,
+        domainId: domainBId,
         environmentId: overrideEnvironmentId,
         config: { template: "override" },
         agentId: agentBId,
@@ -480,7 +480,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
   }, 15_000);
 
   it("ignores stale non-reused workspace environment config in favor of the assignee selection", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const workspaceId = randomUUID();
     const oldEnvironmentId = randomUUID();
@@ -515,9 +515,9 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       enableIsolatedWorkspaces: true,
     });
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       status: "active",
       defaultResponsibleUserId: "responsible-user",
       createdAt: new Date(),
@@ -525,7 +525,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Plugin Environment Issue",
       status: "active",
       createdAt: new Date(),
@@ -533,7 +533,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: workspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: workspaceRoot,
@@ -573,7 +573,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     await db.insert(environments).values([
       {
         id: oldEnvironmentId,
-        companyId,
+        domainId,
         name: "QA SSH",
         driver: "plugin",
         status: "active",
@@ -589,7 +589,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
       },
       {
         id: newEnvironmentId,
-        companyId,
+        domainId,
         name: "QA E2B",
         driver: "plugin",
         status: "active",
@@ -606,7 +606,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     ]);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -620,7 +620,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: staleExecutionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId: workspaceId,
       mode: "shared_workspace",
@@ -640,7 +640,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId: workspaceId,
       title: "Environment matrix: e2b / codex_local",
@@ -671,7 +671,7 @@ describeEmbeddedPostgres("heartbeat plugin environments", () => {
 
     expect(workerManager.call).toHaveBeenNthCalledWith(1, pluginId, "environmentAcquireLease", {
       driverKey: "sandbox",
-      companyId,
+      domainId,
       environmentId: newEnvironmentId,
       executionWorkspaceId: expect.any(String),
       issueId,

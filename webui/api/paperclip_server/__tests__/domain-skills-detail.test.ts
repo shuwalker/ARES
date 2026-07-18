@@ -3,12 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { agents, domains, companySkills, createDb } from "@paperclipai/db";
+import { agents, domains, domainSkills, createDb } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
-import { companySkillService } from "../services/company-skills.js";
+import { domainSkillService } from "../services/domain-skills.js";
 
 const mockListSkills = vi.hoisted(() => vi.fn(() => new Promise(() => {})));
 
@@ -27,26 +27,26 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres company skill detail tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres domain skill detail tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
-describeEmbeddedPostgres("companySkillService.detail", () => {
+describeEmbeddedPostgres("domainSkillService.detail", () => {
   let db!: ReturnType<typeof createDb>;
-  let svc!: ReturnType<typeof companySkillService>;
+  let svc!: ReturnType<typeof domainSkillService>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   const cleanupDirs = new Set<string>();
 
   beforeAll(async () => {
-    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-company-skills-detail-");
+    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-domain-skills-detail-");
     db = createDb(tempDb.connectionString);
-    svc = companySkillService(db);
+    svc = domainSkillService(db);
   }, 20_000);
 
   afterEach(async () => {
     mockListSkills.mockClear();
     await db.delete(agents);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(domains);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
@@ -57,7 +57,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
   });
 
   function createTrackedDb(baseDb: ReturnType<typeof createDb>) {
-    const implicitCompanySkillSelects = vi.fn();
+    const implicitDomainSkillSelects = vi.fn();
 
     const trackedDb = new Proxy(baseDb, {
       get(target, prop, receiver) {
@@ -78,9 +78,9 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
 
               return (table: unknown) => {
                 const fromResult = (builderTarget as { from: (value: unknown) => unknown }).from(table);
-                if (table === companySkills) {
+                if (table === domainSkills) {
                   if (selection === undefined) {
-                    implicitCompanySkillSelects();
+                    implicitDomainSkillSelects();
                   }
                 }
 
@@ -94,27 +94,27 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
 
     return {
       db: trackedDb as typeof baseDb,
-      implicitCompanySkillSelects,
+      implicitDomainSkillSelects,
     };
   }
 
   it("reports attached agents without probing adapter runtime skill state", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/reflection-coach`;
+    const skillKey = `domain/${domainId}/reflection-coach`;
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-reflection-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Reflection Coach\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values({
+    await db.insert(domainSkills).values({
       id: skillId,
-      companyId,
+      domainId,
       key: skillKey,
       slug: "reflection-coach",
       name: "Reflection Coach",
@@ -129,7 +129,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     });
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       name: "Reviewer",
       role: "engineer",
       adapterType: "codex_local",
@@ -141,7 +141,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     });
 
     const detail = await Promise.race([
-      svc.detail(companyId, skillId),
+      svc.detail(domainId, skillId),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("skill detail timed out")), 1_000)),
     ]);
 
@@ -155,24 +155,24 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     ]);
   });
 
-  it("uses explicit company skill column selections when resolving detail usage", async () => {
-    const companyId = randomUUID();
+  it("uses explicit domain skill column selections when resolving detail usage", async () => {
+    const domainId = randomUUID();
     const skillId = randomUUID();
-    const skillKey = `company/${companyId}/reflection-coach`;
+    const skillKey = `domain/${domainId}/reflection-coach`;
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-reflection-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Reflection Coach\n", "utf8");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companySkills).values([
+    await db.insert(domainSkills).values([
       {
         id: skillId,
-        companyId,
+        domainId,
         key: skillKey,
         slug: "reflection-coach",
         name: "Reflection Coach",
@@ -187,8 +187,8 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
       },
       {
         id: randomUUID(),
-        companyId,
-        key: `company/${companyId}/large-reference-skill`,
+        domainId,
+        key: `domain/${domainId}/large-reference-skill`,
         slug: "large-reference-skill",
         name: "Large Reference Skill",
         description: null,
@@ -203,7 +203,7 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     ]);
     await db.insert(agents).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       name: "Reviewer",
       role: "engineer",
       adapterType: "codex_local",
@@ -215,9 +215,9 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
     });
 
     const tracked = createTrackedDb(db);
-    const trackedSvc = companySkillService(tracked.db);
+    const trackedSvc = domainSkillService(tracked.db);
     const detail = await Promise.race([
-      trackedSvc.detail(companyId, skillId),
+      trackedSvc.detail(domainId, skillId),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("skill detail timed out")), 1_000)),
     ]);
 
@@ -227,6 +227,6 @@ describeEmbeddedPostgres("companySkillService.detail", () => {
         desired: true,
       }),
     ]);
-    expect(tracked.implicitCompanySkillSelects).not.toHaveBeenCalled();
+    expect(tracked.implicitDomainSkillSelects).not.toHaveBeenCalled();
   });
 });

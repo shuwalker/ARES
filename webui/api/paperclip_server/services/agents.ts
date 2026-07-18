@@ -9,7 +9,7 @@ import {
   agentTaskSessions,
   agentWakeupRequests,
   activityLog,
-  costEvents,
+  financeEvents,
   heartbeatRunEvents,
   heartbeatRuns,
   issueExecutionDecisions,
@@ -303,18 +303,18 @@ export function agentService(db: Db) {
     });
   }
 
-  function toEligibilityAgent(row: Pick<typeof agents.$inferSelect, "id" | "companyId" | "name" | "status" | "reportsTo">): AgentEligibilityAgent {
+  function toEligibilityAgent(row: Pick<typeof agents.$inferSelect, "id" | "domainId" | "name" | "status" | "reportsTo">): AgentEligibilityAgent {
     return {
       id: row.id,
-      companyId: row.companyId,
+      domainId: row.domainId,
       name: row.name,
       status: row.status,
       reportsTo: row.reportsTo,
     };
   }
 
-  function normalizeAgentRows(rows: (typeof agents.$inferSelect)[], allCompanyRows = rows) {
-    const eligibilityAgents = allCompanyRows.map(toEligibilityAgent);
+  function normalizeAgentRows(rows: (typeof agents.$inferSelect)[], allDomainRows = rows) {
+    const eligibilityAgents = allDomainRows.map(toEligibilityAgent);
     return rows.map((row) => {
       const base = normalizeAgentBaseRow(row);
       return {
@@ -327,40 +327,40 @@ export function agentService(db: Db) {
     });
   }
 
-  function normalizeAgentRow(row: typeof agents.$inferSelect, allCompanyRows?: (typeof agents.$inferSelect)[]) {
-    return normalizeAgentRows([row], allCompanyRows)[0]!;
+  function normalizeAgentRow(row: typeof agents.$inferSelect, allDomainRows?: (typeof agents.$inferSelect)[]) {
+    return normalizeAgentRows([row], allDomainRows)[0]!;
   }
 
-  async function listCompanyAgentRows(companyId: string) {
-    return db.select().from(agents).where(eq(agents.companyId, companyId));
+  async function listDomainAgentRows(domainId: string) {
+    return db.select().from(agents).where(eq(agents.domainId, domainId));
   }
 
-  async function getMonthlySpendByAgentIds(companyId: string, agentIds: string[]) {
+  async function getMonthlySpendByAgentIds(domainId: string, agentIds: string[]) {
     if (agentIds.length === 0) return new Map<string, number>();
     const { start, end } = currentUtcMonthWindow();
     const rows = await db
       .select({
-        agentId: costEvents.agentId,
-        spentMonthlyCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
+        agentId: financeEvents.agentId,
+        spentMonthlyCents: sql<number>`coalesce(sum(${financeEvents.financeCents}), 0)::double precision`,
       })
-      .from(costEvents)
+      .from(financeEvents)
       .where(
         and(
-          eq(costEvents.companyId, companyId),
-          inArray(costEvents.agentId, agentIds),
-          gte(costEvents.occurredAt, start),
-          lt(costEvents.occurredAt, end),
+          eq(financeEvents.domainId, domainId),
+          inArray(financeEvents.agentId, agentIds),
+          gte(financeEvents.occurredAt, start),
+          lt(financeEvents.occurredAt, end),
         ),
       )
-      .groupBy(costEvents.agentId);
+      .groupBy(financeEvents.agentId);
     return new Map(rows.map((row) => [row.agentId, Number(row.spentMonthlyCents ?? 0)]));
   }
 
-  async function hydrateAgentSpend<T extends { id: string; companyId: string; spentMonthlyCents: number }>(rows: T[]) {
+  async function hydrateAgentSpend<T extends { id: string; domainId: string; spentMonthlyCents: number }>(rows: T[]) {
     const agentIds = rows.map((row) => row.id);
-    const companyId = rows[0]?.companyId;
-    if (!companyId || agentIds.length === 0) return rows;
-    const spendByAgentId = await getMonthlySpendByAgentIds(companyId, agentIds);
+    const domainId = rows[0]?.domainId;
+    if (!domainId || agentIds.length === 0) return rows;
+    const spendByAgentId = await getMonthlySpendByAgentIds(domainId, agentIds);
     return rows.map((row) => ({
       ...row,
       spentMonthlyCents: spendByAgentId.get(row.id) ?? 0,
@@ -374,11 +374,11 @@ export function agentService(db: Db) {
       .where(eq(agents.id, id))
       .then((rows) => rows[0] ?? null);
     if (!row) return null;
-    const [companyRows, hydrated] = await Promise.all([
-      listCompanyAgentRows(row.companyId),
+    const [domainRows, hydrated] = await Promise.all([
+      listDomainAgentRows(row.domainId),
       hydrateAgentSpend([row]).then((rows) => rows[0]!),
     ]);
-    return normalizeAgentRow(hydrated, companyRows);
+    return normalizeAgentRow(hydrated, domainRows);
   }
 
   async function requireGetById(id: string) {
@@ -387,11 +387,11 @@ export function agentService(db: Db) {
     return agent;
   }
 
-  async function ensureManager(companyId: string, managerId: string) {
+  async function ensureManager(domainId: string, managerId: string) {
     const manager = await getById(managerId);
     if (!manager) throw notFound("Manager not found");
-    if (manager.companyId !== companyId) {
-      throw unprocessable("Manager must belong to same company");
+    if (manager.domainId !== domainId) {
+      throw unprocessable("Manager must belong to same domain");
     }
     return manager;
   }
@@ -408,8 +408,8 @@ export function agentService(db: Db) {
     }
   }
 
-  async function assertCompanyShortnameAvailable(
-    companyId: string,
+  async function assertDomainShortnameAvailable(
+    domainId: string,
     candidateName: string,
     options?: AgentShortnameCollisionOptions,
   ) {
@@ -423,24 +423,24 @@ export function agentService(db: Db) {
         status: agents.status,
       })
       .from(agents)
-      .where(eq(agents.companyId, companyId));
+      .where(eq(agents.domainId, domainId));
 
     const hasCollision = hasAgentShortnameCollision(candidateName, existingAgents, options);
     if (hasCollision) {
       throw conflict(
-        `Agent shortname '${candidateShortname}' is already in use in this company`,
+        `Agent shortname '${candidateShortname}' is already in use in this domain`,
       );
     }
   }
 
   async function syncAgentSecretBindings(
-    agent: { id: string; companyId: string; adapterConfig: unknown },
+    agent: { id: string; domainId: string; adapterConfig: unknown },
     dbClient: Db = db,
   ) {
     const scopedSecretsSvc = dbClient === db ? secretsSvc : secretService(dbClient);
     await syncAgentAdapterEnvBindings({
       secretsSvc: scopedSecretsSvc,
-      companyId: agent.companyId,
+      domainId: agent.domainId,
       agentId: agent.id,
       adapterConfig: agent.adapterConfig,
     });
@@ -493,7 +493,7 @@ export function agentService(db: Db) {
 
     if (data.reportsTo !== undefined) {
       if (data.reportsTo) {
-        await ensureManager(existing.companyId, data.reportsTo);
+        await ensureManager(existing.domainId, data.reportsTo);
       }
       await assertNoCycle(id, data.reportsTo);
     }
@@ -502,7 +502,7 @@ export function agentService(db: Db) {
       const previousShortname = normalizeAgentUrlKey(existing.name);
       const nextShortname = normalizeAgentUrlKey(data.name);
       if (previousShortname !== nextShortname) {
-        await assertCompanyShortnameAvailable(existing.companyId, data.name, { excludeAgentId: id });
+        await assertDomainShortnameAvailable(existing.domainId, data.name, { excludeAgentId: id });
       }
     }
 
@@ -520,7 +520,7 @@ export function agentService(db: Db) {
       isPlainRecord(normalizedPatch.adapterConfig)
     ) {
       normalizedPatch.adapterConfig = await secretsSvc.normalizeAdapterConfigForPersistence(
-        existing.companyId,
+        existing.domainId,
         normalizedPatch.adapterConfig,
         { adapterType: (normalizedPatch.adapterType ?? existing.adapterType) as string },
       );
@@ -553,7 +553,7 @@ export function agentService(db: Db) {
         const changedKeys = diffConfigSnapshot(beforeConfig, afterConfig);
         if (changedKeys.length > 0) {
           await tx.insert(agentConfigRevisions).values({
-            companyId: normalizedUpdated.companyId,
+            domainId: normalizedUpdated.domainId,
             agentId: normalizedUpdated.id,
             createdByAgentId: options?.recordRevision?.createdByAgentId ?? null,
             createdByUserId: options?.recordRevision?.createdByUserId ?? null,
@@ -571,31 +571,31 @@ export function agentService(db: Db) {
   }
 
   return {
-    list: async (companyId: string, options?: { includeTerminated?: boolean }) => {
-      const conditions = [eq(agents.companyId, companyId)];
+    list: async (domainId: string, options?: { includeTerminated?: boolean }) => {
+      const conditions = [eq(agents.domainId, domainId)];
       if (!options?.includeTerminated) {
         conditions.push(ne(agents.status, "terminated"));
       }
-      const [rows, allCompanyRows] = await Promise.all([
+      const [rows, allDomainRows] = await Promise.all([
         db.select().from(agents).where(and(...conditions)),
-        listCompanyAgentRows(companyId),
+        listDomainAgentRows(domainId),
       ]);
       const hydrated = await hydrateAgentSpend(rows);
-      return normalizeAgentRows(hydrated, allCompanyRows);
+      return normalizeAgentRows(hydrated, allDomainRows);
     },
 
     getById,
 
-    create: async (companyId: string, data: Omit<typeof agents.$inferInsert, "companyId">, options?: CreateAgentOptions) => {
+    create: async (domainId: string, data: Omit<typeof agents.$inferInsert, "domainId">, options?: CreateAgentOptions) => {
       assertBuiltInAgentMetadataMutationAllowed(null, data.metadata, options);
       if (data.reportsTo) {
-        await ensureManager(companyId, data.reportsTo);
+        await ensureManager(domainId, data.reportsTo);
       }
 
       const existingAgents = await db
         .select({ id: agents.id, name: agents.name, status: agents.status })
         .from(agents)
-        .where(eq(agents.companyId, companyId));
+        .where(eq(agents.domainId, domainId));
       const uniqueName = deduplicateAgentName(data.name, existingAgents);
 
       const role = data.role ?? "general";
@@ -603,7 +603,7 @@ export function agentService(db: Db) {
       const runtimeConfig = normalizeRuntimeConfigForNewAgent(data.runtimeConfig);
       const adapterType = data.adapterType ?? "process";
       const adapterConfig = isPlainRecord(data.adapterConfig)
-        ? await secretsSvc.normalizeAdapterConfigForPersistence(companyId, data.adapterConfig, { adapterType })
+        ? await secretsSvc.normalizeAdapterConfigForPersistence(domainId, data.adapterConfig, { adapterType })
         : {};
       return db.transaction(async (tx) => {
         const txDb = tx as unknown as Db;
@@ -612,7 +612,7 @@ export function agentService(db: Db) {
           .values({
             ...data,
             name: uniqueName,
-            companyId,
+            domainId,
             role,
             adapterType,
             adapterConfig,
@@ -781,7 +781,7 @@ export function agentService(db: Db) {
           isPlainRecord(patch.adapterConfig)
         ) {
           patch.adapterConfig = await secretService(txDb).normalizeAdapterConfigForPersistence(
-            existing.companyId,
+            existing.domainId,
             patch.adapterConfig,
             { adapterType: (patch.adapterType ?? existing.adapterType) as string },
           );
@@ -900,7 +900,7 @@ export function agentService(db: Db) {
         .insert(agentApiKeys)
         .values({
           agentId: id,
-          companyId: existing.companyId,
+          domainId: existing.domainId,
           name,
           keyHash,
           responsibleUserId: options?.responsibleUserId?.trim() || null,
@@ -945,7 +945,7 @@ export function agentService(db: Db) {
         .select({
           id: agentApiKeys.id,
           agentId: agentApiKeys.agentId,
-          companyId: agentApiKeys.companyId,
+          domainId: agentApiKeys.domainId,
           name: agentApiKeys.name,
           responsibleUserId: agentApiKeys.responsibleUserId,
           scopeConfig: agentApiKeys.scopeConfig,
@@ -973,10 +973,10 @@ export function agentService(db: Db) {
       return rows[0] ?? null;
     },
 
-    orgForDomain: async (companyId: string) => {
-      const allCompanyRows = await listCompanyAgentRows(companyId);
-      const rows = allCompanyRows.filter((row) => row.status !== "terminated");
-      const normalizedRows = normalizeAgentRows(rows, allCompanyRows);
+    orgForDomain: async (domainId: string) => {
+      const allDomainRows = await listDomainAgentRows(domainId);
+      const rows = allDomainRows.filter((row) => row.status !== "terminated");
+      const normalizedRows = normalizeAgentRows(rows, allDomainRows);
       const byManager = new Map<string | null, typeof normalizedRows>();
       for (const row of normalizedRows) {
         const key = row.reportsTo && rows.some((candidate) => candidate.id === row.reportsTo) ? row.reportsTo : null;
@@ -1017,7 +1017,7 @@ export function agentService(db: Db) {
         .from(heartbeatRuns)
         .where(and(eq(heartbeatRuns.agentId, agentId), inArray(heartbeatRuns.status, ["queued", "running"]))),
 
-    resolveByReference: async (companyId: string, reference: string) => {
+    resolveByReference: async (domainId: string, reference: string) => {
       const raw = reference.trim();
       if (raw.length === 0) {
         return { agent: null, ambiguous: false } as const;
@@ -1025,7 +1025,7 @@ export function agentService(db: Db) {
 
       if (isUuidLike(raw)) {
         const byId = await getById(raw);
-        if (!byId || byId.companyId !== companyId) {
+        if (!byId || byId.domainId !== domainId) {
           return { agent: null, ambiguous: false } as const;
         }
         return { agent: byId, ambiguous: false } as const;
@@ -1036,7 +1036,7 @@ export function agentService(db: Db) {
         return { agent: null, ambiguous: false } as const;
       }
 
-      const rows = await db.select().from(agents).where(eq(agents.companyId, companyId));
+      const rows = await db.select().from(agents).where(eq(agents.domainId, domainId));
       const matches = normalizeAgentRows(rows, rows)
         .filter((agent) => agent.urlKey === urlKey && agent.status !== "terminated");
       if (matches.length === 1) {

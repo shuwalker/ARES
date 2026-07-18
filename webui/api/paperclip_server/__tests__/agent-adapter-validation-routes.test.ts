@@ -19,14 +19,14 @@ const mockAccessService = vi.hoisted(() => ({
   setPrincipalPermission: vi.fn(),
 }));
 
-const mockCompanySkillService = vi.hoisted(() => ({
+const mockDomainSkillService = vi.hoisted(() => ({
   listRuntimeSkillEntries: vi.fn(),
   resolveRequestedSkillKeys: vi.fn(),
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
-  resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config })),
+  normalizeAdapterConfigForPersistence: vi.fn(async (_domainId: string, config: Record<string, unknown>) => config),
+  resolveAdapterConfigForRuntime: vi.fn(async (_domainId: string, config: Record<string, unknown>) => ({ config })),
   syncEnvBindingsForTarget: vi.fn(),
 }));
 
@@ -69,8 +69,8 @@ vi.mock("../services/index.js", () => ({
   agentInstructionsService: () => mockAgentInstructionsService,
   accessService: () => mockAccessService,
   approvalService: () => mockApprovalService,
-  builtInAgentService: () => ({ ensureCompanyDefaultAgentGrants: vi.fn() }),
-  companySkillService: () => mockCompanySkillService,
+  builtInAgentService: () => ({ ensureDomainDefaultAgentGrants: vi.fn() }),
+  domainSkillService: () => mockDomainSkillService,
   budgetService: () => mockBudgetService,
   heartbeatService: () => mockHeartbeatService,
   issueApprovalService: () => mockIssueApprovalService,
@@ -95,8 +95,8 @@ function registerModuleMocks() {
     agentInstructionsService: () => mockAgentInstructionsService,
     accessService: () => mockAccessService,
     approvalService: () => mockApprovalService,
-    builtInAgentService: () => ({ ensureCompanyDefaultAgentGrants: vi.fn() }),
-    companySkillService: () => mockCompanySkillService,
+    builtInAgentService: () => ({ ensureDomainDefaultAgentGrants: vi.fn() }),
+    domainSkillService: () => mockDomainSkillService,
     budgetService: () => mockBudgetService,
     heartbeatService: () => mockHeartbeatService,
     issueApprovalService: () => mockIssueApprovalService,
@@ -140,7 +140,7 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -151,7 +151,7 @@ async function createApp() {
       from: vi.fn(() => ({
         where: vi.fn(async () => [
           {
-            id: "company-1",
+            id: "domain-1",
             requireBoardApprovalForNewAgents: false,
           },
         ]),
@@ -204,8 +204,8 @@ describe("agent routes adapter validation", () => {
     vi.doUnmock("../routes/agents.js");
     registerModuleMocks();
     vi.clearAllMocks();
-    mockCompanySkillService.listRuntimeSkillEntries.mockResolvedValue([]);
-    mockCompanySkillService.resolveRequestedSkillKeys.mockResolvedValue([]);
+    mockDomainSkillService.listRuntimeSkillEntries.mockResolvedValue([]);
+    mockDomainSkillService.resolveRequestedSkillKeys.mockResolvedValue([]);
     mockAccessService.canUser.mockResolvedValue(true);
     mockAccessService.decide.mockResolvedValue({
       allowed: true,
@@ -220,9 +220,9 @@ describe("agent routes adapter validation", () => {
     mockAgentInstructionsService.materializeManagedBundle.mockImplementation(async (agent: { adapterConfig: unknown }) => ({
       adapterConfig: agent.adapterConfig,
     }));
-    mockAgentService.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    mockAgentService.create.mockImplementation(async (_domainId: string, input: Record<string, unknown>) => ({
       id: String(input.id ?? "11111111-1111-4111-8111-111111111111"),
-      companyId: "company-1",
+      domainId: "domain-1",
       name: String(input.name ?? "Agent"),
       urlKey: "agent",
       role: String(input.role ?? "general"),
@@ -246,7 +246,7 @@ describe("agent routes adapter validation", () => {
     }));
     mockAgentService.getById.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Codex",
       urlKey: "codex",
       role: "engineer",
@@ -288,7 +288,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/domains/company-1/agents")
+        .post("/api/domains/domain-1/agents")
         .send({
           name: "External Agent",
           adapterType: "external_test",
@@ -303,7 +303,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/domains/company-1/agents")
+        .post("/api/domains/domain-1/agents")
         .send({
           name: "Codex Agent",
           adapterType: "codex_local",
@@ -357,7 +357,7 @@ describe("agent routes adapter validation", () => {
     const adapterConfig = patch.adapterConfig as Record<string, unknown>;
     const env = adapterConfig.env as Record<string, unknown>;
     expect(env.OPENAI_API_KEY).toBe("sk-test-key");
-    expect(String(env.CODEX_HOME)).toContain(`/domains/company-1/agents/${agentId}/codex-home`);
+    expect(String(env.CODEX_HOME)).toContain(`/domains/domain-1/agents/${agentId}/codex-home`);
   });
 
   it("allows codex_local agents to share the host Codex home", async () => {
@@ -365,7 +365,7 @@ describe("agent routes adapter validation", () => {
     const sharedHome = path.join(os.homedir(), ".codex");
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/domains/company-1/agents")
+        .post("/api/domains/domain-1/agents")
         .send({
           name: "Shared Codex",
           adapterType: "codex_local",
@@ -388,7 +388,7 @@ describe("agent routes adapter validation", () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/domains/company-1/agents")
+        .post("/api/domains/domain-1/agents")
         .send({
           name: "Keyed Codex",
           adapterType: "codex_local",
@@ -406,14 +406,14 @@ describe("agent routes adapter validation", () => {
     const adapterConfig = createInput.adapterConfig as Record<string, unknown>;
     const env = adapterConfig.env as Record<string, unknown>;
     expect(env.OPENAI_API_KEY).toBe("sk-test-key");
-    expect(String(env.CODEX_HOME)).toContain(`/domains/company-1/agents/${agentId}/codex-home`);
+    expect(String(env.CODEX_HOME)).toContain(`/domains/domain-1/agents/${agentId}/codex-home`);
   });
 
   it("rejects unknown adapter types even when schema accepts arbitrary strings", async () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
       request(baseUrl)
-        .post("/api/domains/company-1/agents")
+        .post("/api/domains/domain-1/agents")
         .send({
           name: "Missing Adapter",
           adapterType: missingAdapterType,

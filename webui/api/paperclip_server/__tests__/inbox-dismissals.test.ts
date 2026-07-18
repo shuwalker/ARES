@@ -60,22 +60,22 @@ describeEmbeddedPostgres("inbox dismissals", () => {
   });
 
   it("upserts a single dismissal record per user and inbox item key", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const userId = "board-user";
     const firstDismissedAt = new Date("2026-03-11T01:00:00.000Z");
     const secondDismissedAt = new Date("2026-03-11T02:00:00.000Z");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
     });
 
-    await dismissalsSvc.dismiss(companyId, userId, "approval:approval-1", firstDismissedAt);
-    await dismissalsSvc.dismiss(companyId, userId, "approval:approval-1", secondDismissedAt);
+    await dismissalsSvc.dismiss(domainId, userId, "approval:approval-1", firstDismissedAt);
+    await dismissalsSvc.dismiss(domainId, userId, "approval:approval-1", secondDismissedAt);
 
-    const dismissals = await dismissalsSvc.list(companyId, userId);
+    const dismissals = await dismissalsSvc.list(domainId, userId);
 
     expect(dismissals).toHaveLength(1);
     expect(dismissals[0]?.itemKey).toBe("approval:approval-1");
@@ -85,11 +85,11 @@ describeEmbeddedPostgres("inbox dismissals", () => {
   });
 
   it("snoozes and restores dismissal records through the route", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const userId = "board-user";
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
@@ -102,7 +102,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
         type: "board",
         source: "local_implicit",
         userId,
-        companyIds: [companyId],
+        domainIds: [domainId],
         isInstanceAdmin: false,
       };
       next();
@@ -111,18 +111,18 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     app.use(errorHandler);
 
     await request(app)
-      .post(`/api/domains/${companyId}/inbox-dismissals`)
+      .post(`/api/domains/${domainId}/inbox-dismissals`)
       .send({ itemKey: "attention:approval:old", kind: "snooze", snoozedUntil: "2020-01-01T00:00:00.000Z" })
       .expect(400);
 
     const snoozedUntil = "2099-01-01T00:00:00.000Z";
     const createRes = await request(app)
-      .post(`/api/domains/${companyId}/inbox-dismissals`)
+      .post(`/api/domains/${domainId}/inbox-dismissals`)
       .send({ itemKey: "attention:approval:approval-1", kind: "snooze", snoozedUntil })
       .expect(201);
 
     expect(createRes.body).toMatchObject({
-      companyId,
+      domainId,
       userId,
       itemKey: "attention:approval:approval-1",
       kind: "snooze",
@@ -130,14 +130,14 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     });
 
     await request(app)
-      .delete(`/api/domains/${companyId}/inbox-dismissals/${encodeURIComponent("attention:approval:approval-1")}`)
+      .delete(`/api/domains/${domainId}/inbox-dismissals/${encodeURIComponent("attention:approval:approval-1")}`)
       .expect(204);
 
-    await expect(dismissalsSvc.list(companyId, userId)).resolves.toEqual([]);
+    await expect(dismissalsSvc.list(domainId, userId)).resolves.toEqual([]);
   });
 
   it("honors dismissal timestamps and resurfaces approvals with newer activity", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const userId = "board-user";
     const primaryAgentId = randomUUID();
     const secondaryAgentId = randomUUID();
@@ -149,7 +149,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     const visibleRunId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: "PAP",
       requireBoardApprovalForNewAgents: false,
@@ -158,7 +158,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.insert(agents).values([
       {
         id: primaryAgentId,
-        companyId,
+        domainId,
         name: "Primary",
         role: "engineer",
         status: "active",
@@ -169,7 +169,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
       },
       {
         id: secondaryAgentId,
-        companyId,
+        domainId,
         name: "Secondary",
         role: "engineer",
         status: "active",
@@ -183,7 +183,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.insert(approvals).values([
       {
         id: hiddenApprovalId,
-        companyId,
+        domainId,
         type: "hire_agent",
         status: "pending",
         payload: {},
@@ -191,7 +191,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
       },
       {
         id: resurfacedApprovalId,
-        companyId,
+        domainId,
         type: "hire_agent",
         status: "revision_requested",
         payload: {},
@@ -201,8 +201,8 @@ describeEmbeddedPostgres("inbox dismissals", () => {
 
     await db.insert(invites).values({
       id: inviteId,
-      companyId,
-      inviteType: "company_join",
+      domainId,
+      inviteType: "domain_join",
       tokenHash: "hash-1",
       allowedJoinTypes: "both",
       expiresAt: new Date("2026-03-12T00:00:00.000Z"),
@@ -211,7 +211,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.insert(joinRequests).values({
       id: hiddenJoinRequestId,
       inviteId,
-      companyId,
+      domainId,
       requestType: "human",
       status: "pending_approval",
       requestIp: "127.0.0.1",
@@ -222,7 +222,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: hiddenRunId,
-        companyId,
+        domainId,
         agentId: primaryAgentId,
         invocationSource: "assignment",
         status: "failed",
@@ -231,7 +231,7 @@ describeEmbeddedPostgres("inbox dismissals", () => {
       },
       {
         id: visibleRunId,
-        companyId,
+        domainId,
         agentId: secondaryAgentId,
         invocationSource: "assignment",
         status: "timed_out",
@@ -240,19 +240,19 @@ describeEmbeddedPostgres("inbox dismissals", () => {
       },
     ]);
 
-    await dismissalsSvc.dismiss(companyId, userId, `approval:${hiddenApprovalId}`, new Date("2026-03-11T02:00:00.000Z"));
-    await dismissalsSvc.dismiss(companyId, userId, `approval:${resurfacedApprovalId}`, new Date("2026-03-11T02:00:00.000Z"));
-    await dismissalsSvc.dismiss(companyId, userId, `join:${hiddenJoinRequestId}`, new Date("2026-03-11T02:00:00.000Z"));
-    await dismissalsSvc.dismiss(companyId, userId, `run:${hiddenRunId}`, new Date("2026-03-11T02:00:00.000Z"));
+    await dismissalsSvc.dismiss(domainId, userId, `approval:${hiddenApprovalId}`, new Date("2026-03-11T02:00:00.000Z"));
+    await dismissalsSvc.dismiss(domainId, userId, `approval:${resurfacedApprovalId}`, new Date("2026-03-11T02:00:00.000Z"));
+    await dismissalsSvc.dismiss(domainId, userId, `join:${hiddenJoinRequestId}`, new Date("2026-03-11T02:00:00.000Z"));
+    await dismissalsSvc.dismiss(domainId, userId, `run:${hiddenRunId}`, new Date("2026-03-11T02:00:00.000Z"));
 
     const dismissedAtByKey = new Map(
-      (await dismissalsSvc.list(companyId, userId)).map((dismissal) => [
+      (await dismissalsSvc.list(domainId, userId)).map((dismissal) => [
         dismissal.itemKey,
         new Date(dismissal.dismissedAt).getTime(),
       ]),
     );
 
-    const badges = await badgesSvc.get(companyId, {
+    const badges = await badgesSvc.get(domainId, {
       dismissals: dismissedAtByKey,
       joinRequests: [{
         id: hiddenJoinRequestId,

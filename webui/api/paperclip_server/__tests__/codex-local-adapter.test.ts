@@ -162,7 +162,7 @@ describe("codex_local ui stdout parser", () => {
         inputTokens: 10,
         outputTokens: 4,
         cachedTokens: 2,
-        costUsd: 0,
+        financeUsd: 0,
         subtype: "turn.failed",
         isError: true,
         errors: ["model access denied"],

@@ -1,10 +1,10 @@
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
-import { companyRoutes } from "../routes/domains.js";
+import { domainRoutes } from "../routes/domains.js";
 
 vi.mock("../services/index.js", () => ({
-  companyService: () => ({
+  domainService: () => ({
     list: vi.fn(),
     stats: vi.fn(),
     getById: vi.fn(),
@@ -13,13 +13,13 @@ vi.mock("../services/index.js", () => ({
     archive: vi.fn(),
     remove: vi.fn(),
   }),
-  companyPortabilityService: () => ({
+  domainPortabilityService: () => ({
     exportBundle: vi.fn(),
     previewExport: vi.fn(),
     previewImport: vi.fn(),
     importBundle: vi.fn(),
   }),
-  companyArtifactsService: () => ({
+  domainArtifactsService: () => ({
     list: vi.fn(),
   }),
   accessService: () => ({
@@ -41,25 +41,25 @@ vi.mock("../services/index.js", () => ({
   logActivity: vi.fn(),
 }));
 
-describe("company routes malformed issue path guard", () => {
-  it("returns a clear error when companyId is missing for issues list path", async () => {
+describe("domain routes malformed issue path guard", () => {
+  it("returns a clear error when domainId is missing for issues list path", async () => {
     const app = express();
     app.use((req, _res, next) => {
       (req as any).actor = {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
       };
       next();
     });
-    app.use("/api/domains", companyRoutes({} as any));
+    app.use("/api/domains", domainRoutes({} as any));
 
     const res = await request(app).get("/api/domains/issues");
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
-      error: "Missing companyId in path. Use /api/domains/{companyId}/issues.",
+      error: "Missing domainId in path. Use /api/domains/{domainId}/issues.",
     });
   });
 });

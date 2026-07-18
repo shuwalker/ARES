@@ -57,8 +57,8 @@ describeEmbeddedPostgres("dashboard service", () => {
   });
 
   it("aggregates the full 14-day run activity window without recent-run truncation", async () => {
-    const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
+    const domainId = randomUUID();
+    const otherDomainId = randomUUID();
     const agentId = randomUUID();
     const otherAgentId = randomUUID();
     const today = utcDay(0);
@@ -66,15 +66,15 @@ describeEmbeddedPostgres("dashboard service", () => {
 
     await db.insert(domains).values([
       {
-        id: companyId,
+        id: domainId,
         name: "Paperclip",
-        issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+        issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
         requireBoardApprovalForNewAgents: false,
       },
       {
-        id: otherCompanyId,
+        id: otherDomainId,
         name: "Other",
-        issuePrefix: `T${otherCompanyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+        issuePrefix: `T${otherDomainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
         requireBoardApprovalForNewAgents: false,
       },
     ]);
@@ -82,7 +82,7 @@ describeEmbeddedPostgres("dashboard service", () => {
     await db.insert(agents).values([
       {
         id: agentId,
-        companyId,
+        domainId,
         name: "CodexCoder",
         role: "engineer",
         status: "running",
@@ -93,7 +93,7 @@ describeEmbeddedPostgres("dashboard service", () => {
       },
       {
         id: otherAgentId,
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         name: "OtherAgent",
         role: "engineer",
         status: "running",
@@ -107,7 +107,7 @@ describeEmbeddedPostgres("dashboard service", () => {
     await db.insert(heartbeatRuns).values([
       ...Array.from({ length: 105 }, () => ({
         id: randomUUID(),
-        companyId,
+        domainId,
         agentId,
         invocationSource: "assignment",
         status: "succeeded",
@@ -115,7 +115,7 @@ describeEmbeddedPostgres("dashboard service", () => {
       })),
       {
         id: randomUUID(),
-        companyId,
+        domainId,
         agentId,
         invocationSource: "assignment",
         status: "failed",
@@ -123,7 +123,7 @@ describeEmbeddedPostgres("dashboard service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
+        domainId,
         agentId,
         invocationSource: "assignment",
         status: "timed_out",
@@ -131,7 +131,7 @@ describeEmbeddedPostgres("dashboard service", () => {
       },
       {
         id: randomUUID(),
-        companyId,
+        domainId,
         agentId,
         invocationSource: "assignment",
         status: "cancelled",
@@ -139,7 +139,7 @@ describeEmbeddedPostgres("dashboard service", () => {
       },
       {
         id: randomUUID(),
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         agentId: otherAgentId,
         invocationSource: "assignment",
         status: "succeeded",
@@ -147,7 +147,7 @@ describeEmbeddedPostgres("dashboard service", () => {
       },
     ]);
 
-    const summary = await dashboardService(db).summary(companyId);
+    const summary = await dashboardService(db).summary(domainId);
 
     expect(summary.runActivity).toHaveLength(14);
     const todayBucket = summary.runActivity.find((bucket) => bucket.date === utcDateKey(today));
@@ -173,20 +173,20 @@ describeEmbeddedPostgres("dashboard service", () => {
   });
 
   it("separates recovered restart kills from true failures and breaks failures down by error code", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const day = utcDay(-2);
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -197,7 +197,7 @@ describeEmbeddedPostgres("dashboard service", () => {
     });
 
     const base = {
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       createdAt: day,
@@ -222,7 +222,7 @@ describeEmbeddedPostgres("dashboard service", () => {
       { ...base, id: trueFailure, status: "failed", errorCode: "provider_quota" },
     ]);
 
-    const summary = await dashboardService(db).summary(companyId);
+    const summary = await dashboardService(db).summary(domainId);
     const bucket = summary.runActivity.find((b) => b.date === utcDateKey(day));
 
     expect(bucket).toMatchObject({

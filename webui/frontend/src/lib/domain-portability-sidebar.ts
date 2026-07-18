@@ -1,4 +1,4 @@
-import type { Agent, CompanyPortabilitySidebarOrder, Project } from "@paperclipai/shared";
+import type { Agent, DomainPortabilitySidebarOrder, Project } from "@paperclipai/shared";
 import { deriveProjectUrlKey, normalizeAgentUrlKey } from "@paperclipai/shared";
 
 function uniqueSlug(base: string, used: Set<string>) {
@@ -49,7 +49,7 @@ export function buildPortableSidebarOrder(input: {
   orderedAgents: Agent[];
   projects: Project[];
   orderedProjects: Project[];
-}): CompanyPortabilitySidebarOrder | undefined {
+}): DomainPortabilitySidebarOrder | undefined {
   const agentSlugById = buildPortableAgentSlugMap(input.agents);
   const projectSlugById = buildPortableProjectSlugMap(input.projects);
   const sidebar = {

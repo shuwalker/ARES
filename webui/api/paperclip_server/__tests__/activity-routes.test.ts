@@ -41,7 +41,7 @@ async function createApp(
   actor: Record<string, unknown> = {
     type: "board",
     userId: "user-1",
-    companyIds: ["company-1"],
+    domainIds: ["domain-1"],
     source: "session",
     isInstanceAdmin: false,
   },
@@ -56,7 +56,7 @@ async function createApp(
   app.use((req, _res, next) => {
     (req as any).actor = {
       ...actor,
-      companyIds: Array.isArray(actor.companyIds) ? [...actor.companyIds] : actor.companyIds,
+      domainIds: Array.isArray(actor.domainIds) ? [...actor.domainIds] : actor.domainIds,
     };
     next();
   });
@@ -100,21 +100,21 @@ describe.sequential("activity routes", () => {
     mockAccessService.decide.mockReset();
     mockAccessService.decide.mockResolvedValue({
       allowed: true,
-      action: "company_scope:read",
+      action: "domain_scope:read",
       reason: "allow_test",
       explanation: "Allowed by test mock.",
     });
   });
 
-  it("limits company activity lists by default", async () => {
+  it("limits domain activity lists by default", async () => {
     mockActivityService.list.mockResolvedValue([]);
 
     const app = await createApp();
-    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/domains/company-1/activity"));
+    const res = await requestApp(app, (baseUrl) => request(baseUrl).get("/api/domains/domain-1/activity"));
 
     expect(res.status).toBe(200);
     expect(mockActivityService.list).toHaveBeenCalledWith({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: undefined,
       entityType: undefined,
       entityId: undefined,
@@ -122,17 +122,17 @@ describe.sequential("activity routes", () => {
     });
   });
 
-  it("caps requested company activity list limits", async () => {
+  it("caps requested domain activity list limits", async () => {
     mockActivityService.list.mockResolvedValue([]);
 
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) =>
-      request(baseUrl).get("/api/domains/company-1/activity?limit=5000&entityType=issue"),
+      request(baseUrl).get("/api/domains/domain-1/activity?limit=5000&entityType=issue"),
     );
 
     expect(res.status).toBe(200);
     expect(mockActivityService.list).toHaveBeenCalledWith({
-      companyId: "company-1",
+      domainId: "domain-1",
       agentId: undefined,
       entityType: "issue",
       entityId: undefined,
@@ -143,7 +143,7 @@ describe.sequential("activity routes", () => {
   it("resolves alphanumeric issue identifiers before loading runs", async () => {
     mockIssueService.getByIdentifier.mockResolvedValue({
       id: "issue-uuid-1",
-      companyId: "company-1",
+      domainId: "domain-1",
     });
     mockActivityService.runsForIssue.mockResolvedValue([
       {
@@ -158,14 +158,14 @@ describe.sequential("activity routes", () => {
     expect(res.status).toBe(200);
     expect(mockIssueService.getByIdentifier).toHaveBeenCalledWith("PC1A2-475");
     expect(mockIssueService.getById).not.toHaveBeenCalled();
-    expect(mockActivityService.runsForIssue).toHaveBeenCalledWith("company-1", "issue-uuid-1");
+    expect(mockActivityService.runsForIssue).toHaveBeenCalledWith("domain-1", "issue-uuid-1");
     expect(res.body).toEqual([{ runId: "run-1", adapterType: "codex_local" }]);
   });
 
-  it("requires company access before creating activity events", async () => {
+  it("requires domain access before creating activity events", async () => {
     const app = await createApp();
     const res = await requestApp(app, (baseUrl) => request(baseUrl)
-      .post("/api/domains/company-2/activity")
+      .post("/api/domains/domain-2/activity")
       .send({
         actorId: "user-1",
         action: "test.event",
@@ -177,10 +177,10 @@ describe.sequential("activity routes", () => {
     expect(mockActivityService.create).not.toHaveBeenCalled();
   });
 
-  it("requires company access before listing issues for another company's run", async () => {
+  it("requires domain access before listing issues for another domain's run", async () => {
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-2",
-      companyId: "company-2",
+      domainId: "domain-2",
     });
 
     const app = await createApp();

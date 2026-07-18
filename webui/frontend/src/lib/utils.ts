@@ -126,7 +126,7 @@ export function providerDisplayName(provider: string): string {
     cursor: "Cursor",
     jetbrains: "JetBrains AI",
   };
-  return map[provider.toLowerLifeAdmin()] ?? provider;
+  return map[provider.toLowerCase()] ?? provider;
 }
 
 export function billingTypeDisplayName(billingType: BillingType): string {
@@ -166,22 +166,22 @@ function coerceBillingType(value: unknown): BillingType | null {
   return null;
 }
 
-function readRunCostUsd(payload: Record<string, unknown> | null): number {
+function readRunFinanceUsd(payload: Record<string, unknown> | null): number {
   if (!payload) return 0;
-  for (const key of ["costUsd", "cost_usd", "total_cost_usd"] as const) {
+  for (const key of ["financeUsd", "finance_usd", "total_finance_usd"] as const) {
     const value = payload[key];
     if (typeof value === "number" && Number.isFinite(value)) return value;
   }
   return 0;
 }
 
-export function visibleRunCostUsd(
+export function visibleRunFinanceUsd(
   usage: Record<string, unknown> | null,
   result: Record<string, unknown> | null = null,
 ): number {
   const billingType = coerceBillingType(usage?.billingType) ?? coerceBillingType(result?.billingType);
   if (billingType === "subscription_included") return 0;
-  return readRunCostUsd(usage) || readRunCostUsd(result);
+  return readRunFinanceUsd(usage) || readRunFinanceUsd(result);
 }
 
 export function financeEventKindDisplayName(eventKind: FinanceEventKind): string {

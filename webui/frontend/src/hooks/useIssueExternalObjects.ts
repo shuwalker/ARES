@@ -15,13 +15,13 @@ import { instanceSettingsApi } from "../api/instanceSettings";
 export const EXTERNAL_OBJECT_SUMMARY_BATCH_SIZE = 500;
 
 export async function fetchIssueExternalObjectSummariesInBatches(
-  companyId: string,
+  domainId: string,
   issueIds: readonly string[],
 ) {
   const summaries: Record<string, ExternalObjectSummary> = {};
   for (let index = 0; index < issueIds.length; index += EXTERNAL_OBJECT_SUMMARY_BATCH_SIZE) {
     const batch = issueIds.slice(index, index + EXTERNAL_OBJECT_SUMMARY_BATCH_SIZE);
-    const response = await externalObjectsApi.getIssueSummaries(companyId, batch);
+    const response = await externalObjectsApi.getIssueSummaries(domainId, batch);
     Object.assign(summaries, response.summaries);
   }
   return { summaries };
@@ -201,7 +201,7 @@ export function useIssueExternalObjectSummary(issueId: string | null | undefined
 }
 
 export function useIssueExternalObjectSummaries(
-  companyId: string | null | undefined,
+  domainId: string | null | undefined,
   issueIds: readonly string[],
 ): {
   summaries: Map<string, ExternalObjectSummary>;
@@ -213,10 +213,10 @@ export function useIssueExternalObjectSummaries(
     () => [...new Set(issueIds.filter((issueId) => issueId.length > 0))].sort(),
     [issueIds],
   );
-  const enabled = externalObjectsFeature.isEnabled && Boolean(companyId) && normalizedIssueIds.length > 0;
+  const enabled = externalObjectsFeature.isEnabled && Boolean(domainId) && normalizedIssueIds.length > 0;
   const query = useQuery({
-    queryKey: queryKeys.externalObjects.issueSummaries(companyId ?? "__none__", normalizedIssueIds),
-    queryFn: () => fetchIssueExternalObjectSummariesInBatches(companyId!, normalizedIssueIds),
+    queryKey: queryKeys.externalObjects.issueSummaries(domainId ?? "__none__", normalizedIssueIds),
+    queryFn: () => fetchIssueExternalObjectSummariesInBatches(domainId!, normalizedIssueIds),
     enabled,
     staleTime: 60_000,
   });

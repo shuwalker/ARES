@@ -21,7 +21,7 @@ if (!embeddedPostgresSupport.supported) {
 describeEmbeddedPostgres("project icon persistence", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId!: string;
+  let domainId!: string;
   let prefixCounter = 0;
 
   beforeAll(async () => {
@@ -40,18 +40,18 @@ describeEmbeddedPostgres("project icon persistence", () => {
 
   async function seedDomain(): Promise<string> {
     prefixCounter += 1;
-    const [company] = await db
+    const [domain] = await db
       .insert(domains)
       .values({ name: "Icon Co", issuePrefix: `ICN${prefixCounter}` })
       .returning();
-    return company.id;
+    return domain.id;
   }
 
   it("persists and round-trips a project icon on create", async () => {
-    companyId = await seedDomain();
+    domainId = await seedDomain();
     const projects = projectService(db);
 
-    const created = await projects.create(companyId, { name: "Rocket", icon: "rocket" });
+    const created = await projects.create(domainId, { name: "Rocket", icon: "rocket" });
     expect(created.icon).toBe("rocket");
 
     const fetched = await projects.getById(created.id);
@@ -59,10 +59,10 @@ describeEmbeddedPostgres("project icon persistence", () => {
   });
 
   it("defaults icon to null when none is provided", async () => {
-    companyId = await seedDomain();
+    domainId = await seedDomain();
     const projects = projectService(db);
 
-    const created = await projects.create(companyId, { name: "Plain" });
+    const created = await projects.create(domainId, { name: "Plain" });
     expect(created.icon).toBeNull();
 
     const fetched = await projects.getById(created.id);
@@ -72,10 +72,10 @@ describeEmbeddedPostgres("project icon persistence", () => {
   // PAP-71: new projects must NOT auto-assign a color — they stay neutral gray
   // (color = null) unless an explicit color is supplied on create.
   it("defaults color to null when none is provided (no auto-assign)", async () => {
-    companyId = await seedDomain();
+    domainId = await seedDomain();
     const projects = projectService(db);
 
-    const created = await projects.create(companyId, { name: "Gray" });
+    const created = await projects.create(domainId, { name: "Gray" });
     expect(created.color).toBeNull();
 
     const fetched = await projects.getById(created.id);
@@ -83,10 +83,10 @@ describeEmbeddedPostgres("project icon persistence", () => {
   });
 
   it("still persists an explicit color when one is supplied", async () => {
-    companyId = await seedDomain();
+    domainId = await seedDomain();
     const projects = projectService(db);
 
-    const created = await projects.create(companyId, { name: "Blue", color: "#3b82f6" });
+    const created = await projects.create(domainId, { name: "Blue", color: "#3b82f6" });
     expect(created.color).toBe("#3b82f6");
 
     const fetched = await projects.getById(created.id);

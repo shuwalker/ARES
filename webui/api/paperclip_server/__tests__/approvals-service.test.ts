@@ -19,7 +19,7 @@ vi.mock("../services/hire-hook.js", () => ({
 
 type ApprovalRecord = {
   id: string;
-  companyId: string;
+  domainId: string;
   type: string;
   status: string;
   payload: Record<string, unknown>;
@@ -29,7 +29,7 @@ type ApprovalRecord = {
 function createApproval(status: string): ApprovalRecord {
   return {
     id: "approval-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     type: "hire_agent",
     status,
     payload: { agentId: "agent-1" },
@@ -128,7 +128,7 @@ describe("approvalService resolution idempotency", () => {
 
     expect(result.applied).toBe(true);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         adapterConfig: approved.payload.adapterConfig,
       }),
@@ -141,18 +141,18 @@ describe("approvalService.findOpenHireApprovalForAgent", () => {
     vi.clearAllMocks();
   });
 
-  it("returns the open hire approval the company/type/status/agentId filter yields", async () => {
+  it("returns the open hire approval the domain/type/status/agentId filter yields", async () => {
     const match = {
       ...createApproval("pending"),
       id: "approval-match",
       payload: { agentId: "agent-1" },
     };
-    // The company, type, open-status and payload->>'agentId' predicates run in
+    // The domain, type, open-status and payload->>'agentId' predicates run in
     // SQL, so the DB hands back only the matching row.
     const dbStub = createDbStub([[match]], []);
 
     const svc = approvalService(dbStub.db as any);
-    const result = await svc.findOpenHireApprovalForAgent("company-1", "agent-1");
+    const result = await svc.findOpenHireApprovalForAgent("domain-1", "agent-1");
 
     expect(result?.id).toBe("approval-match");
     expect(dbStub.selectWhere).toHaveBeenCalledTimes(1);
@@ -162,7 +162,7 @@ describe("approvalService.findOpenHireApprovalForAgent", () => {
     const dbStub = createDbStub([[]], []);
 
     const svc = approvalService(dbStub.db as any);
-    const result = await svc.findOpenHireApprovalForAgent("company-1", "agent-1");
+    const result = await svc.findOpenHireApprovalForAgent("domain-1", "agent-1");
 
     expect(result).toBeNull();
   });

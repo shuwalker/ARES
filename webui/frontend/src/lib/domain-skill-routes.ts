@@ -1,15 +1,15 @@
-import type { CompanySkill, CompanySkillDetail, CompanySkillListItem } from "@paperclipai/shared";
+import type { DomainSkill, DomainSkillDetail, DomainSkillListItem } from "@paperclipai/shared";
 
-export type CompanySkillRouteSubject = Pick<CompanySkill | CompanySkillDetail | CompanySkillListItem, "id" | "key" | "slug">;
+export type DomainSkillRouteSubject = Pick<DomainSkill | DomainSkillDetail | DomainSkillListItem, "id" | "key" | "slug">;
 
-export type ParsedCompanySkillRoute = {
+export type ParsedDomainSkillRoute = {
   skillToken: string | null;
   filePath: string;
   hasExplicitFilePath: boolean;
 };
 
-export type CompanySkillRouteResolution = {
-  skill: CompanySkillRouteSubject | null;
+export type DomainSkillRouteResolution = {
+  skill: DomainSkillRouteSubject | null;
   canonicalToken: string | null;
   shouldRedirect: boolean;
   ambiguous: boolean;
@@ -52,7 +52,7 @@ function decodeSkillRouteToken(tokenPath: string | undefined) {
   return token.length > 0 ? token : null;
 }
 
-export function parseSkillRoute(routePath: string | undefined): ParsedCompanySkillRoute {
+export function parseSkillRoute(routePath: string | undefined): ParsedDomainSkillRoute {
   const segments = (routePath ?? "").split("/").filter(Boolean);
   if (segments.length === 0) {
     return { skillToken: null, filePath: "SKILL.md", hasExplicitFilePath: false };
@@ -73,20 +73,20 @@ export function parseSkillRoute(routePath: string | undefined): ParsedCompanySki
   };
 }
 
-function shortSkillId(skill: CompanySkillRouteSubject) {
+function shortSkillId(skill: DomainSkillRouteSubject) {
   return skill.id.replace(/-/g, "").slice(0, 8);
 }
 
-function slugShortIdToken(skill: CompanySkillRouteSubject) {
+function slugShortIdToken(skill: DomainSkillRouteSubject) {
   const slug = skill.slug.trim();
   return `${slug || "skill"}-${shortSkillId(skill)}`;
 }
 
-function hasExactlyOneMatch(skills: CompanySkillRouteSubject[], predicate: (skill: CompanySkillRouteSubject) => boolean) {
+function hasExactlyOneMatch(skills: DomainSkillRouteSubject[], predicate: (skill: DomainSkillRouteSubject) => boolean) {
   return skills.filter(predicate).length === 1;
 }
 
-function isSafeKeyToken(skill: CompanySkillRouteSubject, skills: CompanySkillRouteSubject[]) {
+function isSafeKeyToken(skill: DomainSkillRouteSubject, skills: DomainSkillRouteSubject[]) {
   const key = skill.key.trim();
   if (!key || key.split("/").includes("files")) return false;
   return !skills.some((candidate) =>
@@ -100,8 +100,8 @@ function isSafeKeyToken(skill: CompanySkillRouteSubject, skills: CompanySkillRou
 }
 
 export function canonicalSkillRouteToken(
-  skill: CompanySkillRouteSubject,
-  skills: CompanySkillRouteSubject[] = [],
+  skill: DomainSkillRouteSubject,
+  skills: DomainSkillRouteSubject[] = [],
 ) {
   const slug = skill.slug.trim();
   if (slug && hasExactlyOneMatch(skills.length > 0 ? skills : [skill], (candidate) => candidate.slug === slug)) {
@@ -116,8 +116,8 @@ export function canonicalSkillRouteToken(
 }
 
 function uniqueMatch(
-  skills: CompanySkillRouteSubject[],
-  predicate: (skill: CompanySkillRouteSubject) => boolean,
+  skills: DomainSkillRouteSubject[],
+  predicate: (skill: DomainSkillRouteSubject) => boolean,
 ) {
   const matches = skills.filter(predicate);
   if (matches.length !== 1) return { skill: null, ambiguous: matches.length > 1 };
@@ -126,8 +126,8 @@ function uniqueMatch(
 
 export function resolveSkillRouteToken(
   token: string | null,
-  skills: CompanySkillRouteSubject[],
-): CompanySkillRouteResolution {
+  skills: DomainSkillRouteSubject[],
+): DomainSkillRouteResolution {
   if (!token) {
     return { skill: null, canonicalToken: null, shouldRedirect: false, ambiguous: false };
   }
@@ -176,8 +176,8 @@ export function resolveSkillRouteToken(
 }
 
 export function skillRoute(
-  skill: CompanySkillRouteSubject | string,
-  skillsOrFilePath: CompanySkillRouteSubject[] | string | null = [],
+  skill: DomainSkillRouteSubject | string,
+  skillsOrFilePath: DomainSkillRouteSubject[] | string | null = [],
   filePath?: string | null,
 ) {
   const skills = Array.isArray(skillsOrFilePath) ? skillsOrFilePath : [];
@@ -197,8 +197,8 @@ export function skillStudioNewRoute(forkFromSkillId?: string | null) {
 }
 
 export function withRouteSkill(
-  skills: CompanySkillRouteSubject[],
-  skill: CompanySkillRouteSubject,
+  skills: DomainSkillRouteSubject[],
+  skill: DomainSkillRouteSubject,
 ) {
   return skills.some((candidate) => candidate.id === skill.id) ? skills : [...skills, skill];
 }

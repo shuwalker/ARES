@@ -25,7 +25,7 @@ export function buildIssueBlockersResolvedWakeIdempotencyKey(input: {
 export async function findExistingIssueBlockersResolvedWake(
   db: Db,
   input: {
-    companyId: string;
+    domainId: string;
     idempotencyKey: string;
   },
 ) {
@@ -34,7 +34,7 @@ export async function findExistingIssueBlockersResolvedWake(
     .from(agentWakeupRequests)
     .where(
       and(
-        eq(agentWakeupRequests.companyId, input.companyId),
+        eq(agentWakeupRequests.domainId, input.domainId),
         eq(agentWakeupRequests.idempotencyKey, input.idempotencyKey),
         inArray(agentWakeupRequests.status, [...IDEMPOTENT_DEPENDENCY_WAKE_STATUSES]),
       ),
@@ -46,7 +46,7 @@ export async function findExistingIssueBlockersResolvedWake(
 export async function findExistingIssueBlockersResolvedWakeForAnyKey(
   db: Db,
   input: {
-    companyId: string;
+    domainId: string;
     idempotencyKeys: string[];
   },
 ) {
@@ -62,7 +62,7 @@ export async function findExistingIssueBlockersResolvedWakeForAnyKey(
     .from(agentWakeupRequests)
     .where(
       and(
-        eq(agentWakeupRequests.companyId, input.companyId),
+        eq(agentWakeupRequests.domainId, input.domainId),
         inArray(agentWakeupRequests.idempotencyKey, idempotencyKeys),
         inArray(agentWakeupRequests.status, [...IDEMPOTENT_DEPENDENCY_WAKE_STATUSES]),
       ),

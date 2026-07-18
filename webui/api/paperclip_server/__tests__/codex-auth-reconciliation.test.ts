@@ -7,7 +7,7 @@ import { reconcileCodexLocalManagedHomesOnStartup } from "../services/codex-auth
 
 type AgentRow = {
   id: string;
-  companyId: string;
+  domainId: string;
   adapterConfig: Record<string, unknown>;
 };
 
@@ -27,13 +27,13 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
   let sharedCodexHome: string;
   const savedEnv: Record<string, string | undefined> = {};
 
-  function managedAgentHome(companyId: string, agentId: string): string {
+  function managedAgentHome(domainId: string, agentId: string): string {
     return path.join(
       paperclipHome,
       "instances",
       "default",
       "domains",
-      companyId,
+      domainId,
       "agents",
       agentId,
       "codex-home",
@@ -64,9 +64,9 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
   });
 
   it("seeds a stranded managed home and is a no-op on the next boot", async () => {
-    const agentHome = managedAgentHome("company-1", "agent-7");
+    const agentHome = managedAgentHome("domain-1", "agent-7");
     const rows: AgentRow[] = [
-      { id: "agent-7", companyId: "company-1", adapterConfig: { env: { CODEX_HOME: agentHome, OPENAI_API_KEY: "" } } },
+      { id: "agent-7", domainId: "domain-1", adapterConfig: { env: { CODEX_HOME: agentHome, OPENAI_API_KEY: "" } } },
     ];
 
     const first = await reconcileCodexLocalManagedHomesOnStartup(makeDb(rows));
@@ -84,9 +84,9 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
 
   it("does not report a backfill when shared Codex auth is missing", async () => {
     await fs.rm(path.join(sharedCodexHome, "auth.json"), { force: true });
-    const agentHome = managedAgentHome("company-1", "agent-missing-source");
+    const agentHome = managedAgentHome("domain-1", "agent-missing-source");
     const rows: AgentRow[] = [
-      { id: "agent-missing-source", companyId: "company-1", adapterConfig: { env: { CODEX_HOME: agentHome } } },
+      { id: "agent-missing-source", domainId: "domain-1", adapterConfig: { env: { CODEX_HOME: agentHome } } },
     ];
 
     const summary = await reconcileCodexLocalManagedHomesOnStartup(makeDb(rows));
@@ -103,8 +103,8 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
     const external = path.join(root, "user-codex");
     await fs.mkdir(external, { recursive: true });
     const rows: AgentRow[] = [
-      { id: "ext", companyId: "company-1", adapterConfig: { env: { CODEX_HOME: external } } },
-      { id: "none", companyId: "company-1", adapterConfig: { env: {} } },
+      { id: "ext", domainId: "domain-1", adapterConfig: { env: { CODEX_HOME: external } } },
+      { id: "none", domainId: "domain-1", adapterConfig: { env: {} } },
     ];
 
     const summary = await reconcileCodexLocalManagedHomesOnStartup(makeDb(rows));
@@ -121,13 +121,13 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
   });
 
   it("does not write a secret-bound OPENAI_API_KEY placeholder as the API key", async () => {
-    const agentHome = managedAgentHome("company-2", "agent-9");
+    const agentHome = managedAgentHome("domain-2", "agent-9");
     // A secret binding must never be written verbatim into auth.json; the home
     // should fall back to the seeded subscription symlink instead.
     const rows: AgentRow[] = [
       {
         id: "agent-9",
-        companyId: "company-2",
+        domainId: "domain-2",
         adapterConfig: {
           env: {
             CODEX_HOME: agentHome,
@@ -147,7 +147,7 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
   });
 
   it("preserves a preexisting API-key auth.json when the key is secret-bound", async () => {
-    const agentHome = managedAgentHome("company-4", "agent-secret");
+    const agentHome = managedAgentHome("domain-4", "agent-secret");
     // Simulate an agent that previously ran with a RESOLVED secret API key:
     // execute-time seeding wrote a regular-file auth.json containing the key.
     await fs.mkdir(agentHome, { recursive: true });
@@ -159,7 +159,7 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
     const rows: AgentRow[] = [
       {
         id: "agent-secret",
-        companyId: "company-4",
+        domainId: "domain-4",
         adapterConfig: {
           env: {
             CODEX_HOME: agentHome,
@@ -183,11 +183,11 @@ describe("reconcileCodexLocalManagedHomesOnStartup", () => {
   });
 
   it("writes a plain OPENAI_API_KEY into the managed home", async () => {
-    const agentHome = managedAgentHome("company-3", "agent-5");
+    const agentHome = managedAgentHome("domain-3", "agent-5");
     const rows: AgentRow[] = [
       {
         id: "agent-5",
-        companyId: "company-3",
+        domainId: "domain-3",
         adapterConfig: { env: { CODEX_HOME: agentHome, OPENAI_API_KEY: "sk-plain-1" } },
       },
     ];

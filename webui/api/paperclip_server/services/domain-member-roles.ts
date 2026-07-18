@@ -1,7 +1,7 @@
 import { PERMISSION_KEYS } from "@paperclipai/shared";
-import type { HumanCompanyMembershipRole } from "@paperclipai/shared";
+import type { HumanDomainMembershipRole } from "@paperclipai/shared";
 
-const HUMAN_COMPANY_MEMBERSHIP_ROLES: HumanCompanyMembershipRole[] = [
+const HUMAN_DOMAIN_MEMBERSHIP_ROLES: HumanDomainMembershipRole[] = [
   "owner",
   "admin",
   "operator",
@@ -10,22 +10,22 @@ const HUMAN_COMPANY_MEMBERSHIP_ROLES: HumanCompanyMembershipRole[] = [
 
 export function normalizeHumanRole(
   value: unknown,
-  fallback: HumanCompanyMembershipRole = "operator"
-): HumanCompanyMembershipRole {
+  fallback: HumanDomainMembershipRole = "operator"
+): HumanDomainMembershipRole {
   if (value === "member") return "operator";
-  return HUMAN_COMPANY_MEMBERSHIP_ROLES.includes(value as HumanCompanyMembershipRole)
-    ? (value as HumanCompanyMembershipRole)
+  return HUMAN_DOMAIN_MEMBERSHIP_ROLES.includes(value as HumanDomainMembershipRole)
+    ? (value as HumanDomainMembershipRole)
     : fallback;
 }
 
 export function grantsForHumanRole(
-  role: HumanCompanyMembershipRole
+  role: HumanDomainMembershipRole
 ): Array<{
   permissionKey: (typeof PERMISSION_KEYS)[number];
   scope: Record<string, unknown> | null;
 }> {
   switch (role) {
-    case "owner":
+    life_admin "owner":
       return [
         { permissionKey: "agents:create", scope: null },
         { permissionKey: "agents:configure", scope: null },
@@ -36,7 +36,7 @@ export function grantsForHumanRole(
         { permissionKey: "tasks:assign", scope: null },
         { permissionKey: "joins:approve", scope: null },
       ];
-    case "admin":
+    life_admin "admin":
       return [
         { permissionKey: "agents:create", scope: null },
         { permissionKey: "agents:configure", scope: null },
@@ -46,16 +46,16 @@ export function grantsForHumanRole(
         { permissionKey: "tasks:assign", scope: null },
         { permissionKey: "joins:approve", scope: null },
       ];
-    case "operator":
+    life_admin "operator":
       return [{ permissionKey: "tasks:assign", scope: null }];
-    case "viewer":
+    life_admin "viewer":
       return [];
   }
 }
 
 export function resolveHumanInviteRole(
   defaultsPayload: Record<string, unknown> | null | undefined
-): HumanCompanyMembershipRole {
+): HumanDomainMembershipRole {
   if (!defaultsPayload || typeof defaultsPayload !== "object") return "operator";
   const scoped = defaultsPayload.human;
   if (!scoped || typeof scoped !== "object" || Array.isArray(scoped)) {

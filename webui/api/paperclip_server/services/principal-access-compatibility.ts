@@ -1,8 +1,8 @@
 import { and, eq, notInArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, companyMemberships, principalPermissionGrants } from "@paperclipai/db";
+import { agents, domainMemberships, principalPermissionGrants } from "@paperclipai/db";
 import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
-import { grantsForHumanRole, normalizeHumanRole } from "./company-member-roles.js";
+import { grantsForHumanRole, normalizeHumanRole } from "./domain-member-roles.js";
 
 type GrantInput = {
   permissionKey: PermissionKey;
@@ -17,7 +17,7 @@ export type PrincipalAccessCompatibilityBackfillStats = {
 export async function insertMissingPrincipalGrants(
   db: Db,
   input: {
-    companyId: string;
+    domainId: string;
     principalType: PrincipalType;
     principalId: string;
     grants: GrantInput[];
@@ -31,7 +31,7 @@ export async function insertMissingPrincipalGrants(
     .insert(principalPermissionGrants)
     .values(
       input.grants.map((grant) => ({
-        companyId: input.companyId,
+        domainId: input.domainId,
         principalType: input.principalType,
         principalId: input.principalId,
         permissionKey: grant.permissionKey,
@@ -43,7 +43,7 @@ export async function insertMissingPrincipalGrants(
     )
     .onConflictDoNothing({
       target: [
-        principalPermissionGrants.companyId,
+        principalPermissionGrants.domainId,
         principalPermissionGrants.principalType,
         principalPermissionGrants.principalId,
         principalPermissionGrants.permissionKey,
@@ -57,7 +57,7 @@ export async function insertMissingPrincipalGrants(
 export async function ensureHumanRoleDefaultGrants(
   db: Db,
   input: {
-    companyId: string;
+    domainId: string;
     principalId: string;
     membershipRole: string | null | undefined;
     grantedByUserId: string | null;
@@ -65,7 +65,7 @@ export async function ensureHumanRoleDefaultGrants(
 ): Promise<number> {
   const role = normalizeHumanRole(input.membershipRole, "operator");
   return insertMissingPrincipalGrants(db, {
-    companyId: input.companyId,
+    domainId: input.domainId,
     principalType: "user",
     principalId: input.principalId,
     grants: grantsForHumanRole(role),
@@ -79,7 +79,7 @@ export async function backfillPrincipalAccessCompatibility(
   const now = new Date();
   const nonTerminalAgents = await db
     .select({
-      companyId: agents.companyId,
+      domainId: agents.domainId,
       principalId: agents.id,
     })
     .from(agents)
@@ -87,10 +87,10 @@ export async function backfillPrincipalAccessCompatibility(
 
   const agentMembershipsInserted = nonTerminalAgents.length > 0
     ? await db
-      .insert(companyMemberships)
+      .insert(domainMemberships)
       .values(
         nonTerminalAgents.map((agent) => ({
-          companyId: agent.companyId,
+          domainId: agent.domainId,
           principalType: "agent",
           principalId: agent.principalId,
           status: "active",
@@ -101,33 +101,33 @@ export async function backfillPrincipalAccessCompatibility(
       )
       .onConflictDoNothing({
         target: [
-          companyMemberships.companyId,
-          companyMemberships.principalType,
-          companyMemberships.principalId,
+          domainMemberships.domainId,
+          domainMemberships.principalType,
+          domainMemberships.principalId,
         ],
       })
-      .returning({ id: companyMemberships.id })
+      .returning({ id: domainMemberships.id })
       .then((rows) => rows.length)
     : 0;
 
   const activeHumanMemberships = await db
     .select({
-      companyId: companyMemberships.companyId,
-      principalId: companyMemberships.principalId,
-      membershipRole: companyMemberships.membershipRole,
+      domainId: domainMemberships.domainId,
+      principalId: domainMemberships.principalId,
+      membershipRole: domainMemberships.membershipRole,
     })
-    .from(companyMemberships)
+    .from(domainMemberships)
     .where(
       and(
-        eq(companyMemberships.principalType, "user"),
-        eq(companyMemberships.status, "active"),
+        eq(domainMemberships.principalType, "user"),
+        eq(domainMemberships.status, "active"),
       ),
     );
 
   let humanGrantsInserted = 0;
   for (const membership of activeHumanMemberships) {
     humanGrantsInserted += await ensureHumanRoleDefaultGrants(db, {
-      companyId: membership.companyId,
+      domainId: membership.domainId,
       principalId: membership.principalId,
       membershipRole: membership.membershipRole,
       grantedByUserId: null,

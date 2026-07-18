@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  updateCompanyMemberWithPermissionsSchema,
+  updateDomainMemberWithPermissionsSchema,
   updateCurrentUserProfileSchema,
 } from "@paperclipai/shared";
 
@@ -24,7 +24,7 @@ describe("access validators", () => {
   });
 
   it("defaults omitted combined member grants to an empty list", () => {
-    const result = updateCompanyMemberWithPermissionsSchema.parse({
+    const result = updateDomainMemberWithPermissionsSchema.parse({
       membershipRole: "operator",
     });
 

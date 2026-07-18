@@ -57,7 +57,7 @@ type InteractionActor = {
 };
 
 const ISSUE_THREAD_INTERACTION_IDEMPOTENCY_CONSTRAINT =
-  "issue_thread_interactions_company_issue_idempotency_uq";
+  "issue_thread_interactions_domain_issue_idempotency_uq";
 
 type IssueWakeTarget = {
   id: string;
@@ -77,7 +77,7 @@ type IssueTouchDb = Pick<Db, "update">;
 
 type IssueResolutionContext = {
   id: string;
-  companyId: string;
+  domainId: string;
   status: string;
   assigneeAgentId: string | null;
   assigneeUserId: string | null;
@@ -159,35 +159,35 @@ function hydrateInteraction(
   };
 
   switch (row.kind) {
-    case "suggest_tasks":
+    life_admin "suggest_tasks":
       return {
         ...base,
         kind: "suggest_tasks",
         payload: suggestTasksPayloadSchema.parse(row.payload),
         result: row.result ? suggestTasksResultSchema.parse(row.result) : null,
       } satisfies SuggestTasksInteraction;
-    case "ask_user_questions":
+    life_admin "ask_user_questions":
       return {
         ...base,
         kind: "ask_user_questions",
         payload: askUserQuestionsPayloadSchema.parse(row.payload),
         result: row.result ? askUserQuestionsResultSchema.parse(row.result) : null,
       } satisfies AskUserQuestionsInteraction;
-    case "request_confirmation":
+    life_admin "request_confirmation":
       return {
         ...base,
         kind: "request_confirmation",
         payload: requestConfirmationPayloadSchema.parse(row.payload),
         result: row.result ? requestConfirmationResultSchema.parse(row.result) : null,
       } satisfies RequestConfirmationInteraction;
-    case "request_checkbox_confirmation":
+    life_admin "request_checkbox_confirmation":
       return {
         ...base,
         kind: "request_checkbox_confirmation",
         payload: requestCheckboxConfirmationPayloadSchema.parse(row.payload),
         result: row.result ? requestCheckboxConfirmationResultSchema.parse(row.result) : null,
       } satisfies RequestCheckboxConfirmationInteraction;
-    case "request_item_verdicts":
+    life_admin "request_item_verdicts":
       return {
         ...base,
         kind: "request_item_verdicts",
@@ -230,7 +230,7 @@ function shouldSupersedeInteractionOnUserComment(interaction: UserCommentSuperse
 
 function normalizeCreateInteractionInput(input: CreateIssueThreadInteraction): CreateIssueThreadInteraction {
   switch (input.kind) {
-    case "ask_user_questions":
+    life_admin "ask_user_questions":
       return {
         ...input,
         payload: {
@@ -238,7 +238,7 @@ function normalizeCreateInteractionInput(input: CreateIssueThreadInteraction): C
           supersedeOnUserComment: input.payload.supersedeOnUserComment ?? true,
         },
       };
-    case "request_confirmation":
+    life_admin "request_confirmation":
       return {
         ...input,
         payload: {
@@ -246,7 +246,7 @@ function normalizeCreateInteractionInput(input: CreateIssueThreadInteraction): C
           supersedeOnUserComment: input.payload.supersedeOnUserComment ?? true,
         },
       };
-    case "request_checkbox_confirmation":
+    life_admin "request_checkbox_confirmation":
       return {
         ...input,
         payload: {
@@ -254,7 +254,7 @@ function normalizeCreateInteractionInput(input: CreateIssueThreadInteraction): C
           supersedeOnUserComment: input.payload.supersedeOnUserComment ?? true,
         },
       };
-    case "request_item_verdicts":
+    life_admin "request_item_verdicts":
       return {
         ...input,
         payload: {
@@ -332,9 +332,9 @@ function resolveCreatorKind(interaction: Pick<IssueThreadInteraction, "createdBy
 
 function deriveTargetType(interaction: IssueThreadInteraction) {
   switch (interaction.kind) {
-    case "request_confirmation":
-    case "request_checkbox_confirmation":
-    case "request_item_verdicts":
+    life_admin "request_confirmation":
+    life_admin "request_checkbox_confirmation":
+    life_admin "request_item_verdicts":
       return interaction.payload.target?.type ?? "none";
     default:
       return "none";
@@ -343,13 +343,13 @@ function deriveTargetType(interaction: IssueThreadInteraction) {
 
 function deriveResolutionReason(interaction: IssueThreadInteraction) {
   switch (interaction.status) {
-    case "accepted":
+    life_admin "accepted":
       return "accepted";
-    case "rejected":
+    life_admin "rejected":
       return "rejected";
-    case "cancelled":
+    life_admin "cancelled":
       return "cancelled";
-    case "expired": {
+    life_admin "expired": {
       if (interaction.kind === "ask_user_questions") {
         return interaction.result?.expirationReason ?? "expired";
       }
@@ -361,7 +361,7 @@ function deriveResolutionReason(interaction: IssueThreadInteraction) {
       }
       return "expired";
     }
-    case "answered": {
+    life_admin "answered": {
       if (interaction.kind === "request_item_verdicts") {
         return interaction.result?.outcome ?? "answered";
       }
@@ -381,22 +381,22 @@ function buildInteractionResolvedCounts(interaction: IssueThreadInteraction, arg
   createdTaskCount?: number;
 }) {
   switch (interaction.kind) {
-    case "suggest_tasks":
+    life_admin "suggest_tasks":
       return {
         createdTaskCount: nonNegativeInteger(args?.createdTaskCount ?? 0),
         skippedTaskCount: nonNegativeInteger(interaction.result?.skippedClientKeys?.length ?? 0),
       };
-    case "request_checkbox_confirmation":
+    life_admin "request_checkbox_confirmation":
       return {
         optionCount: nonNegativeInteger(interaction.payload.options.length),
         selectedOptionCount: nonNegativeInteger(interaction.result?.selectedOptionIds?.length ?? 0),
       };
-    case "ask_user_questions":
+    life_admin "ask_user_questions":
       return {
         questionCount: nonNegativeInteger(interaction.payload.questions.length),
         answeredQuestionCount: nonNegativeInteger(interaction.result?.answers?.length ?? 0),
       };
-    case "request_item_verdicts":
+    life_admin "request_item_verdicts":
       return {
         itemCount: nonNegativeInteger(interaction.payload.items.length),
         resolvedItemCount: nonNegativeInteger(interaction.result?.items?.length ?? 0),
@@ -707,7 +707,7 @@ function normalizeQuestionAnswers(args: {
 }
 
 async function getIssueDocumentTargetSnapshot(db: Db | any, args: {
-  companyId: string;
+  domainId: string;
   issueId: string;
   target: RequestConfirmationTarget;
 }) {
@@ -724,7 +724,7 @@ async function getIssueDocumentTargetSnapshot(db: Db | any, args: {
     .from(issueDocuments)
     .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
     .where(and(
-      eq(issueDocuments.companyId, args.companyId),
+      eq(issueDocuments.domainId, args.domainId),
       eq(issueDocuments.issueId, targetIssueId),
       eq(issueDocuments.key, args.target.key),
     ))
@@ -778,14 +778,14 @@ function buildIssueDocumentTargetFromDocument(args: {
 }
 
 async function assertRequestConfirmationTargetIsCurrent(db: Db | any, args: {
-  companyId: string;
+  domainId: string;
   issueId: string;
   target?: RequestConfirmationTarget | null;
 }) {
   if (!args.target) return;
   if (args.target.type !== "issue_document") return;
   const snapshot = await getIssueDocumentTargetSnapshot(db, {
-    companyId: args.companyId,
+    domainId: args.domainId,
     issueId: args.issueId,
     target: args.target,
   });
@@ -808,7 +808,7 @@ async function expireStaleRequestConfirmationTarget(db: Db | any, args: {
   if (target.type !== "issue_document") return null;
 
   const snapshot = await getIssueDocumentTargetSnapshot(db, {
-    companyId: args.row.companyId,
+    domainId: args.row.domainId,
     issueId: args.row.issueId,
     target,
   });
@@ -859,14 +859,14 @@ async function expireStaleRequestConfirmationTarget(db: Db | any, args: {
 export function issueThreadInteractionService(db: Db) {
   async function getIdempotentInteraction(args: {
     issueId: string;
-    companyId: string;
+    domainId: string;
     idempotencyKey: string;
   }) {
     return db
       .select()
       .from(issueThreadInteractions)
       .where(and(
-        eq(issueThreadInteractions.companyId, args.companyId),
+        eq(issueThreadInteractions.domainId, args.domainId),
         eq(issueThreadInteractions.issueId, args.issueId),
         eq(issueThreadInteractions.idempotencyKey, args.idempotencyKey),
       ))
@@ -875,7 +875,7 @@ export function issueThreadInteractionService(db: Db) {
 
   async function assertIssueWorkspaceFinalizedForAccept(args: {
     db: Pick<Db, "select">;
-    issue: { id: string; companyId: string };
+    issue: { id: string; domainId: string };
     sourceRunId: string | null;
   }) {
     if (!args.sourceRunId) return;
@@ -890,7 +890,7 @@ export function issueThreadInteractionService(db: Db) {
 
     const isFinalized = await runWorkspaceIsFinalized(
       args.db,
-      args.issue.companyId,
+      args.issue.domainId,
       executionWorkspaceId,
       args.sourceRunId,
     );
@@ -904,7 +904,7 @@ export function issueThreadInteractionService(db: Db) {
   }
 
   async function getPendingInteractionForResolution(args: {
-    issue: { id: string; companyId: string };
+    issue: { id: string; domainId: string };
     interactionId: string;
   }) {
     const current = await db
@@ -914,7 +914,7 @@ export function issueThreadInteractionService(db: Db) {
       .then((rows) => rows[0] ?? null);
 
     if (!current) throw notFound("Interaction not found");
-    if (current.companyId !== args.issue.companyId || current.issueId !== args.issue.id) {
+    if (current.domainId !== args.issue.domainId || current.issueId !== args.issue.id) {
       throw notFound("Interaction not found");
     }
     if (current.status !== "pending") {
@@ -924,7 +924,7 @@ export function issueThreadInteractionService(db: Db) {
   }
 
   async function acceptRequestConfirmation(args: {
-    issue: { id: string; companyId: string };
+    issue: { id: string; domainId: string };
     current: IssueThreadInteractionRow;
     input: AcceptIssueThreadInteraction;
     actor: InteractionActor;
@@ -978,7 +978,7 @@ export function issueThreadInteractionService(db: Db) {
       const issueContext = await tx
         .select({
           id: issues.id,
-          companyId: issues.companyId,
+          domainId: issues.domainId,
           status: issues.status,
           assigneeAgentId: issues.assigneeAgentId,
           assigneeUserId: issues.assigneeUserId,
@@ -987,7 +987,7 @@ export function issueThreadInteractionService(db: Db) {
         .where(eq(issues.id, args.issue.id))
         .then((rows: IssueResolutionContext[]) => rows[0] ?? null);
 
-      if (!issueContext || issueContext.companyId !== args.issue.companyId) {
+      if (!issueContext || issueContext.domainId !== args.issue.domainId) {
         throw notFound("Issue not found");
       }
 
@@ -1028,7 +1028,7 @@ export function issueThreadInteractionService(db: Db) {
   }
 
   async function rejectRequestConfirmation(args: {
-    issue: { id: string; companyId: string };
+    issue: { id: string; domainId: string };
     current: IssueThreadInteractionRow;
     input: RejectIssueThreadInteraction;
     actor: InteractionActor;
@@ -1099,7 +1099,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     create: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       input: CreateIssueThreadInteraction,
       actor: InteractionActor,
     ) => {
@@ -1108,7 +1108,7 @@ export function issueThreadInteractionService(db: Db) {
       if (data.idempotencyKey) {
         const existing = await getIdempotentInteraction({
           issueId: issue.id,
-          companyId: issue.companyId,
+          domainId: issue.domainId,
           idempotencyKey: data.idempotencyKey,
         });
         if (existing) {
@@ -1124,27 +1124,27 @@ export function issueThreadInteractionService(db: Db) {
       if (data.sourceCommentId) {
         const sourceComment = await db
           .select({
-            companyId: issueComments.companyId,
+            domainId: issueComments.domainId,
             issueId: issueComments.issueId,
           })
           .from(issueComments)
           .where(eq(issueComments.id, data.sourceCommentId))
           .then((rows) => rows[0] ?? null);
-        if (!sourceComment || sourceComment.companyId !== issue.companyId || sourceComment.issueId !== issue.id) {
-          throw unprocessable("sourceCommentId must belong to the same issue and company");
+        if (!sourceComment || sourceComment.domainId !== issue.domainId || sourceComment.issueId !== issue.id) {
+          throw unprocessable("sourceCommentId must belong to the same issue and domain");
         }
       }
 
       if (data.sourceRunId) {
         const sourceRun = await db
           .select({
-            companyId: heartbeatRuns.companyId,
+            domainId: heartbeatRuns.domainId,
           })
           .from(heartbeatRuns)
           .where(eq(heartbeatRuns.id, data.sourceRunId))
           .then((rows) => rows[0] ?? null);
-        if (!sourceRun || sourceRun.companyId !== issue.companyId) {
-          throw unprocessable("sourceRunId must belong to the same company");
+        if (!sourceRun || sourceRun.domainId !== issue.domainId) {
+          throw unprocessable("sourceRunId must belong to the same domain");
         }
       }
 
@@ -1154,7 +1154,7 @@ export function issueThreadInteractionService(db: Db) {
         || data.kind === "request_item_verdicts"
       ) {
         await assertRequestConfirmationTargetIsCurrent(db, {
-          companyId: issue.companyId,
+          domainId: issue.domainId,
           issueId: issue.id,
           target: data.payload.target ?? null,
         });
@@ -1165,7 +1165,7 @@ export function issueThreadInteractionService(db: Db) {
         [created] = await db
           .insert(issueThreadInteractions)
           .values({
-            companyId: issue.companyId,
+            domainId: issue.domainId,
             issueId: issue.id,
             kind: data.kind,
             status: "pending",
@@ -1186,7 +1186,7 @@ export function issueThreadInteractionService(db: Db) {
         }
         const existing = await getIdempotentInteraction({
           issueId: issue.id,
-          companyId: issue.companyId,
+          domainId: issue.domainId,
           idempotencyKey: data.idempotencyKey,
         });
         if (!existing) throw error;
@@ -1203,7 +1203,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     acceptInteraction: async (
-      issue: { id: string; companyId: string; projectId: string | null; goalId: string | null },
+      issue: { id: string; domainId: string; projectId: string | null; goalId: string | null },
       interactionId: string,
       input: AcceptIssueThreadInteraction,
       actor: InteractionActor,
@@ -1211,12 +1211,12 @@ export function issueThreadInteractionService(db: Db) {
       const data = acceptIssueThreadInteractionSchema.parse(input);
       const current = await getPendingInteractionForResolution({ issue, interactionId });
       switch (current.kind) {
-        case "suggest_tasks":
+        life_admin "suggest_tasks":
           // Accepting suggest_tasks only creates follow-up issues; it does not
           // approve code state or move the source workspace forward, so the
           // workspace_finalize gate (PAPA-440) does not apply here.
           return issueThreadInteractionService(db).acceptSuggestedTasks(issue, interactionId, data, actor);
-        case "request_confirmation": {
+        life_admin "request_confirmation": {
           await assertIssueWorkspaceFinalizedForAccept({ db, issue, sourceRunId: current.sourceRunId });
           const accepted = await acceptRequestConfirmation({
             issue,
@@ -1230,7 +1230,7 @@ export function issueThreadInteractionService(db: Db) {
             createdIssues: [],
           };
         }
-        case "request_checkbox_confirmation": {
+        life_admin "request_checkbox_confirmation": {
           await assertIssueWorkspaceFinalizedForAccept({ db, issue, sourceRunId: current.sourceRunId });
           const accepted = await acceptRequestConfirmation({
             issue,
@@ -1250,7 +1250,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     acceptSuggestedTasks: async (
-      issue: { id: string; companyId: string; projectId: string | null; goalId: string | null },
+      issue: { id: string; domainId: string; projectId: string | null; goalId: string | null },
       interactionId: string,
       input: AcceptIssueThreadInteraction,
       actor: InteractionActor,
@@ -1262,7 +1262,7 @@ export function issueThreadInteractionService(db: Db) {
         .then((rows) => rows[0] ?? null);
 
       if (!current) throw notFound("Interaction not found");
-      if (current.companyId !== issue.companyId || current.issueId !== issue.id) {
+      if (current.domainId !== issue.domainId || current.issueId !== issue.id) {
         throw notFound("Interaction not found");
       }
       if (current.kind !== "suggest_tasks") {
@@ -1292,12 +1292,12 @@ export function issueThreadInteractionService(db: Db) {
           .select({
             id: issues.id,
             identifier: issues.identifier,
-            companyId: issues.companyId,
+            domainId: issues.domainId,
           })
           .from(issues)
-          .where(and(eq(issues.companyId, issue.companyId), inArray(issues.id, explicitParentIds)));
+          .where(and(eq(issues.domainId, issue.domainId), inArray(issues.id, explicitParentIds)));
       if (parentRows.length !== explicitParentIds.length) {
-        throw unprocessable("Suggested tasks reference parent issues outside this company or issue tree");
+        throw unprocessable("Suggested tasks reference parent issues outside this domain or issue tree");
       }
 
       const parentById = new Map(parentRows.map((row) => [row.id, row] as const));
@@ -1401,7 +1401,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     rejectInteraction: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       interactionId: string,
       input: RejectIssueThreadInteraction,
       actor: InteractionActor,
@@ -1409,10 +1409,10 @@ export function issueThreadInteractionService(db: Db) {
       const data = rejectIssueThreadInteractionSchema.parse(input);
       const current = await getPendingInteractionForResolution({ issue, interactionId });
       switch (current.kind) {
-        case "suggest_tasks":
+        life_admin "suggest_tasks":
           return issueThreadInteractionService(db).rejectSuggestedTasks(issue, interactionId, data, actor, current);
-        case "request_confirmation":
-        case "request_checkbox_confirmation":
+        life_admin "request_confirmation":
+        life_admin "request_checkbox_confirmation":
           return rejectRequestConfirmation({
             issue,
             current,
@@ -1425,7 +1425,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     submitItemVerdicts: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       interactionId: string,
       input: SubmitIssueThreadInteractionVerdicts,
       actor: InteractionActor,
@@ -1440,7 +1440,7 @@ export function issueThreadInteractionService(db: Db) {
           .then((rows) => rows[0] ?? null);
 
         if (!current) throw notFound("Interaction not found");
-        if (current.companyId !== issue.companyId || current.issueId !== issue.id) {
+        if (current.domainId !== issue.domainId || current.issueId !== issue.id) {
           throw notFound("Interaction not found");
         }
         if (current.kind !== "request_item_verdicts") {
@@ -1525,13 +1525,13 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     rejectSuggestedTasks: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       interactionId: string,
       input: RejectIssueThreadInteraction,
       actor: InteractionActor,
       current: IssueThreadInteractionRow,
     ) => {
-      if (current.companyId !== issue.companyId || current.issueId !== issue.id) {
+      if (current.domainId !== issue.domainId || current.issueId !== issue.id) {
         throw notFound("Interaction not found");
       }
       if (current.kind !== "suggest_tasks") {
@@ -1571,7 +1571,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     expireRequestConfirmationsSupersededByComment: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       comment: { id: string; createdAt: Date | string; authorUserId?: string | null },
       actor: InteractionActor,
     ) => {
@@ -1581,7 +1581,7 @@ export function issueThreadInteractionService(db: Db) {
         .select()
         .from(issueThreadInteractions)
         .where(and(
-          eq(issueThreadInteractions.companyId, issue.companyId),
+          eq(issueThreadInteractions.domainId, issue.domainId),
           eq(issueThreadInteractions.issueId, issue.id),
           inArray(issueThreadInteractions.kind, [...USER_COMMENT_SUPERSEDABLE_INTERACTION_KINDS]),
           eq(issueThreadInteractions.status, "pending"),
@@ -1630,14 +1630,14 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     expireRequestConfirmationsSupersededByHistoricalComments: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
     ) => {
       const [rows, comments] = await Promise.all([
         db
           .select()
           .from(issueThreadInteractions)
           .where(and(
-            eq(issueThreadInteractions.companyId, issue.companyId),
+            eq(issueThreadInteractions.domainId, issue.domainId),
             eq(issueThreadInteractions.issueId, issue.id),
             inArray(issueThreadInteractions.kind, [...USER_COMMENT_SUPERSEDABLE_INTERACTION_KINDS]),
             eq(issueThreadInteractions.status, "pending"),
@@ -1646,7 +1646,7 @@ export function issueThreadInteractionService(db: Db) {
           .select()
           .from(issueComments)
           .where(and(
-            eq(issueComments.companyId, issue.companyId),
+            eq(issueComments.domainId, issue.domainId),
             eq(issueComments.issueId, issue.id),
             isNotNull(issueComments.authorUserId),
           ))
@@ -1770,7 +1770,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     expireStaleRequestConfirmationsForIssueDocument: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       document: { id: string; key: string; latestRevisionId?: string | null; latestRevisionNumber?: number | null } | null,
       actor: InteractionActor,
     ) => {
@@ -1778,7 +1778,7 @@ export function issueThreadInteractionService(db: Db) {
         .select()
         .from(issueThreadInteractions)
         .where(and(
-          eq(issueThreadInteractions.companyId, issue.companyId),
+          eq(issueThreadInteractions.domainId, issue.domainId),
           eq(issueThreadInteractions.issueId, issue.id),
           inArray(issueThreadInteractions.kind, [...TARGET_BOUND_INTERACTION_KINDS]),
           eq(issueThreadInteractions.status, "pending"),
@@ -1842,7 +1842,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     answerQuestions: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       interactionId: string,
       input: RespondIssueThreadInteraction,
       actor: InteractionActor,
@@ -1854,7 +1854,7 @@ export function issueThreadInteractionService(db: Db) {
         .then((rows) => rows[0] ?? null);
 
       if (!current) throw notFound("Interaction not found");
-      if (current.companyId !== issue.companyId || current.issueId !== issue.id) {
+      if (current.domainId !== issue.domainId || current.issueId !== issue.id) {
         throw notFound("Interaction not found");
       }
       if (current.kind !== "ask_user_questions") {
@@ -1901,7 +1901,7 @@ export function issueThreadInteractionService(db: Db) {
     },
 
     cancelQuestions: async (
-      issue: { id: string; companyId: string },
+      issue: { id: string; domainId: string },
       interactionId: string,
       input: CancelIssueThreadInteraction,
       actor: InteractionActor,
@@ -1914,7 +1914,7 @@ export function issueThreadInteractionService(db: Db) {
         .then((rows) => rows[0] ?? null);
 
       if (!current) throw notFound("Interaction not found");
-      if (current.companyId !== issue.companyId || current.issueId !== issue.id) {
+      if (current.domainId !== issue.domainId || current.issueId !== issue.id) {
         throw notFound("Interaction not found");
       }
       if (current.kind !== "ask_user_questions") {

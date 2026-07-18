@@ -6,29 +6,29 @@ import { promisify } from "node:util";
 import { and, eq, inArray } from "drizzle-orm";
 import { builtInManagedResources, principalPermissionGrants, type Db } from "@paperclipai/db";
 import type {
-  CompanyPortabilityAgentManifestEntry,
-  CompanyPortabilityCollisionStrategy,
-  CompanyPortabilityEnvInput,
-  CompanyPortabilityExport,
-  CompanyPortabilityFileEntry,
-  CompanyPortabilityExportPreviewResult,
-  CompanyPortabilityExportResult,
-  CompanyPortabilityImport,
-  CompanyPortabilityImportResult,
-  CompanyPortabilityInclude,
-  CompanyPortabilityManifest,
-  CompanyPortabilityIssueCommentManifestEntry,
-  CompanyPortabilityPreview,
-  CompanyPortabilityPreviewAgentPlan,
-  CompanyPortabilityPreviewResult,
-  CompanyPortabilityProjectManifestEntry,
-  CompanyPortabilityProjectWorkspaceManifestEntry,
-  CompanyPortabilityIssueRoutineManifestEntry,
-  CompanyPortabilityIssueRoutineTriggerManifestEntry,
-  CompanyPortabilityIssueManifestEntry,
-  CompanyPortabilitySidebarOrder,
-  CompanyPortabilitySkillManifestEntry,
-  CompanySkill,
+  DomainPortabilityAgentManifestEntry,
+  DomainPortabilityCollisionStrategy,
+  DomainPortabilityEnvInput,
+  DomainPortabilityExport,
+  DomainPortabilityFileEntry,
+  DomainPortabilityExportPreviewResult,
+  DomainPortabilityExportResult,
+  DomainPortabilityImport,
+  DomainPortabilityImportResult,
+  DomainPortabilityInclude,
+  DomainPortabilityManifest,
+  DomainPortabilityIssueCommentManifestEntry,
+  DomainPortabilityPreview,
+  DomainPortabilityPreviewAgentPlan,
+  DomainPortabilityPreviewResult,
+  DomainPortabilityProjectManifestEntry,
+  DomainPortabilityProjectWorkspaceManifestEntry,
+  DomainPortabilityIssueRoutineManifestEntry,
+  DomainPortabilityIssueRoutineTriggerManifestEntry,
+  DomainPortabilityIssueManifestEntry,
+  DomainPortabilitySidebarOrder,
+  DomainPortabilitySkillManifestEntry,
+  DomainSkill,
   AgentEnvConfig,
   PermissionKey,
   RoutineVariable,
@@ -65,10 +65,10 @@ import { accessService } from "./access.js";
 import { agentService } from "./agents.js";
 import { agentInstructionsService } from "./agent-instructions.js";
 import { assetService } from "./assets.js";
-import { generateReadme } from "./company-export-readme.js";
+import { generateReadme } from "./domain-export-readme.js";
 import { renderOrgChartPng, type OrgNode } from "../routes/org-chart-svg.js";
-import { companySkillService } from "./company-skills.js";
-import { companyService } from "./domains.js";
+import { domainSkillService } from "./domain-skills.js";
+import { domainService } from "./domains.js";
 import { validateCron } from "./cron.js";
 import { issueService } from "./issues.js";
 import { projectService } from "./projects.js";
@@ -84,7 +84,7 @@ import { readBuiltInAgentMarker } from "./built-in-agent-metadata.js";
 import { normalizePortablePath } from "./portable-path.js";
 
 /** Build OrgNode tree from manifest agent list (slug + reportsToSlug). */
-function buildOrgTreeFromManifest(agents: CompanyPortabilityManifest["agents"]): OrgNode[] {
+function buildOrgTreeFromManifest(agents: DomainPortabilityManifest["agents"]): OrgNode[] {
   const ROLE_LABELS: Record<string, string> = {
     ceo: "Chief Executive", cto: "Technology", cmo: "Marketing",
     cfo: "Finance", coo: "Operations", vp: "VP", manager: "Manager",
@@ -128,15 +128,15 @@ function buildOrgTreeFromManifest(agents: CompanyPortabilityManifest["agents"]):
   return tree;
 }
 
-const DEFAULT_INCLUDE: CompanyPortabilityInclude = {
-  company: true,
+const DEFAULT_INCLUDE: DomainPortabilityInclude = {
+  domain: true,
   agents: true,
   projects: false,
   issues: false,
   skills: false,
 };
 
-const DEFAULT_COLLISION_STRATEGY: CompanyPortabilityCollisionStrategy = "rename";
+const DEFAULT_COLLISION_STRATEGY: DomainPortabilityCollisionStrategy = "rename";
 const IMPORT_FORBIDDEN_ADAPTER_TYPES = new Set(["process", "http"]);
 const execFileAsync = promisify(execFile);
 let bundledSkillsCommitPromise: Promise<string | null> | null = null;
@@ -145,14 +145,14 @@ function resolveImportMode(options?: ImportBehaviorOptions): ImportMode {
   return options?.mode ?? "board_full";
 }
 
-function resolveSkillConflictStrategy(mode: ImportMode, collisionStrategy: CompanyPortabilityCollisionStrategy) {
+function resolveSkillConflictStrategy(mode: ImportMode, collisionStrategy: DomainPortabilityCollisionStrategy) {
   if (mode === "board_full") return "replace" as const;
   return collisionStrategy === "skip" ? "skip" as const : "rename" as const;
 }
 
 function collectAgentSafeImportPolicyErrors(
-  manifest: CompanyPortabilityManifest,
-  include: CompanyPortabilityInclude,
+  manifest: DomainPortabilityManifest,
+  include: DomainPortabilityInclude,
 ) {
   const errors: string[] = [];
   if (include.projects) {
@@ -189,9 +189,9 @@ function collectAgentSafeImportPolicyErrors(
   return errors;
 }
 
-function classifyPortableFileKind(pathValue: string): CompanyPortabilityExportPreviewResult["fileInventory"][number]["kind"] {
+function classifyPortableFileKind(pathValue: string): DomainPortabilityExportPreviewResult["fileInventory"][number]["kind"] {
   const normalized = normalizePortablePath(pathValue);
-  if (normalized === "COMPANY.md") return "company";
+  if (normalized === "DOMAIN.md") return "domain";
   if (normalized === ".paperclip.yaml" || normalized === ".paperclip.yml") return "extension";
   if (normalized === "README.md") return "readme";
   if (normalized.startsWith("agents/")) return "agent";
@@ -274,12 +274,12 @@ function normalizeExportPathSegment(value: string | null | undefined, preserveLi
   return preserveLifeAdmin ? normalized : normalized.toLowerLifeAdmin();
 }
 
-function readSkillSourceKind(skill: CompanySkill) {
+function readSkillSourceKind(skill: DomainSkill) {
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   return asString(metadata?.sourceKind);
 }
 
-function buildPortableCatalogProvenance(skill: CompanySkill) {
+function buildPortableCatalogProvenance(skill: DomainSkill) {
   if (skill.sourceType !== "catalog") return null;
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   const provenance: Record<string, unknown> = {
@@ -301,7 +301,7 @@ function buildPortableCatalogProvenance(skill: CompanySkill) {
   return Object.keys(provenance).length > 1 ? provenance : null;
 }
 
-function deriveLocalExportNamespace(skill: CompanySkill, slug: string) {
+function deriveLocalExportNamespace(skill: DomainSkill, slug: string) {
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   const candidates = [
     asString(metadata?.projectName),
@@ -322,19 +322,19 @@ function deriveLocalExportNamespace(skill: CompanySkill, slug: string) {
 }
 
 function derivePrimarySkillExportDir(
-  skill: CompanySkill,
+  skill: DomainSkill,
   slug: string,
-  companyIssuePrefix: string | null | undefined,
+  domainIssuePrefix: string | null | undefined,
 ) {
   const normalizedKey = normalizeSkillKey(skill.key);
   const keySegments = normalizedKey?.split("/") ?? [];
   const primaryNamespace = keySegments[0] ?? null;
 
-  if (primaryNamespace === "company") {
-    const companySegment = normalizeExportPathSegment(companyIssuePrefix, true)
+  if (primaryNamespace === "domain") {
+    const domainSegment = normalizeExportPathSegment(domainIssuePrefix, true)
       ?? normalizeExportPathSegment(keySegments[1], true)
-      ?? "company";
-    return `skills/company/${companySegment}/${slug}`;
+      ?? "domain";
+    return `skills/domain/${domainSegment}/${slug}`;
   }
 
   if (primaryNamespace === "local") {
@@ -371,11 +371,11 @@ function appendSkillExportDirSuffix(packageDir: string, suffix: string) {
 }
 
 function deriveSkillExportDirCandidates(
-  skill: CompanySkill,
+  skill: DomainSkill,
   slug: string,
-  companyIssuePrefix: string | null | undefined,
+  domainIssuePrefix: string | null | undefined,
 ) {
-  const primaryDir = derivePrimarySkillExportDir(skill, slug, companyIssuePrefix);
+  const primaryDir = derivePrimarySkillExportDir(skill, slug, domainIssuePrefix);
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   const sourceKind = readSkillSourceKind(skill);
   const suffixes = new Set<string>();
@@ -405,7 +405,7 @@ function deriveSkillExportDirCandidates(
     pushSuffix(asString(metadata?.projectName));
     pushSuffix(asString(metadata?.workspaceName));
     pushSuffix(deriveLocalExportNamespace(skill, slug));
-    if (sourceKind === "managed_local") pushSuffix("company");
+    if (sourceKind === "managed_local") pushSuffix("domain");
     if (sourceKind === "project_scan") pushSuffix("project");
     pushSuffix("local");
   } else {
@@ -416,13 +416,13 @@ function deriveSkillExportDirCandidates(
   return [primaryDir, ...Array.from(suffixes, (suffix) => appendSkillExportDirSuffix(primaryDir, suffix))];
 }
 
-function buildSkillExportDirMap(skills: CompanySkill[], companyIssuePrefix: string | null | undefined) {
+function buildSkillExportDirMap(skills: DomainSkill[], domainIssuePrefix: string | null | undefined) {
   const usedDirs = new Set<string>();
   const keyToDir = new Map<string, string>();
   const orderedSkills = [...skills].sort((left, right) => left.key.localeCompare(right.key));
   for (const skill of orderedSkills) {
     const slug = normalizeSkillSlug(skill.slug) ?? "skill";
-    const candidates = deriveSkillExportDirCandidates(skill, slug, companyIssuePrefix);
+    const candidates = deriveSkillExportDirCandidates(skill, slug, domainIssuePrefix);
 
     let packageDir = candidates.find((candidate) => !usedDirs.has(candidate)) ?? null;
     if (!packageDir) {
@@ -489,10 +489,10 @@ function extractPortableScopedEnvInputs(
   },
   envValue: unknown,
   warnings: string[],
-): CompanyPortabilityEnvInput[] {
+): DomainPortabilityEnvInput[] {
   if (!isPlainRecord(envValue)) return [];
   const env = envValue as Record<string, unknown>;
-  const inputs: CompanyPortabilityEnvInput[] = [];
+  const inputs: DomainPortabilityEnvInput[] = [];
 
   for (const [key, binding] of Object.entries(env)) {
     if (key.toUpperLifeAdmin() === "PATH") {
@@ -558,8 +558,8 @@ function extractPortableScopedEnvInputs(
 }
 
 type ResolvedSource = {
-  manifest: CompanyPortabilityManifest;
-  files: Record<string, CompanyPortabilityFileEntry>;
+  manifest: DomainPortabilityManifest;
+  files: Record<string, DomainPortabilityFileEntry>;
   warnings: string[];
 };
 
@@ -568,13 +568,13 @@ type MarkdownDoc = {
   body: string;
 };
 
-type CompanyPackageIncludeEntry = {
+type DomainPackageIncludeEntry = {
   path: string;
 };
 
 type PaperclipExtensionDoc = {
   schema?: string;
-  company?: Record<string, unknown> | null;
+  domain?: Record<string, unknown> | null;
   agents?: Record<string, Record<string, unknown>> | null;
   projects?: Record<string, Record<string, unknown>> | null;
   tasks?: Record<string, Record<string, unknown>> | null;
@@ -628,18 +628,18 @@ type IssueLike = {
 type RoutineLike = NonNullable<Awaited<ReturnType<ReturnType<typeof routineService>["getDetail"]>>>;
 
 type ImportPlanInternal = {
-  preview: CompanyPortabilityPreviewResult;
+  preview: DomainPortabilityPreviewResult;
   source: ResolvedSource;
-  include: CompanyPortabilityInclude;
-  collisionStrategy: CompanyPortabilityCollisionStrategy;
-  selectedAgents: CompanyPortabilityAgentManifestEntry[];
+  include: DomainPortabilityInclude;
+  collisionStrategy: DomainPortabilityCollisionStrategy;
+  selectedAgents: DomainPortabilityAgentManifestEntry[];
 };
 
 type ImportMode = "board_full" | "agent_safe";
 
 type ImportBehaviorOptions = {
   mode?: ImportMode;
-  sourceCompanyId?: string | null;
+  sourceDomainId?: string | null;
 };
 
 type AgentLike = {
@@ -656,7 +656,7 @@ type EnvInputRecord = {
   portability?: "portable" | "system_dependent";
 };
 
-const COMPANY_LOGO_CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
+const DOMAIN_LOGO_CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
   "image/gif": ".gif",
   "image/jpeg": ".jpg",
   "image/png": ".png",
@@ -664,7 +664,7 @@ const COMPANY_LOGO_CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
   "image/webp": ".webp",
 };
 
-const COMPANY_LOGO_FILE_NAME = "company-logo";
+const DOMAIN_LOGO_FILE_NAME = "domain-logo";
 
 const RUNTIME_DEFAULT_RULES: Array<{ path: string[]; value: unknown }> = [
   { path: ["heartbeat", "cooldownSec"], value: 10 },
@@ -722,7 +722,7 @@ function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-type PortableAgentPermissionGrant = CompanyPortabilityAgentManifestEntry["permissionGrants"][number];
+type PortableAgentPermissionGrant = DomainPortabilityAgentManifestEntry["permissionGrants"][number];
 
 const VALID_PERMISSION_KEYS = new Set<PermissionKey>(PERMISSION_KEYS);
 
@@ -763,14 +763,14 @@ function readPortableIssueComments(
   value: unknown,
   warnings: string[],
   sourceLabel: string,
-): CompanyPortabilityIssueCommentManifestEntry[] {
+): DomainPortabilityIssueCommentManifestEntry[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
     warnings.push(`${sourceLabel} comments were ignored because they are not an array.`);
     return [];
   }
 
-  const comments: CompanyPortabilityIssueCommentManifestEntry[] = [];
+  const comments: DomainPortabilityIssueCommentManifestEntry[] = [];
   for (const [index, entry] of value.entries()) {
     if (!isPlainRecord(entry)) {
       warnings.push(`${sourceLabel} comment ${index + 1} was ignored because it is not an object.`);
@@ -833,7 +833,7 @@ function applyImportAdapterRunDefaults(
   return next;
 }
 
-function normalizeRoutineTriggerExtension(value: unknown): CompanyPortabilityIssueRoutineTriggerManifestEntry | null {
+function normalizeRoutineTriggerExtension(value: unknown): DomainPortabilityIssueRoutineTriggerManifestEntry | null {
   if (!isPlainRecord(value)) return null;
   const kind = asString(value.kind);
   if (!kind) return null;
@@ -871,12 +871,12 @@ function normalizeRoutineVariableExtension(value: unknown): RoutineVariable | nu
   };
 }
 
-function normalizeRoutineExtension(value: unknown): CompanyPortabilityIssueRoutineManifestEntry | null {
+function normalizeRoutineExtension(value: unknown): DomainPortabilityIssueRoutineManifestEntry | null {
   if (!isPlainRecord(value)) return null;
   const triggers = Array.isArray(value.triggers)
     ? value.triggers
       .map((entry) => normalizeRoutineTriggerExtension(entry))
-      .filter((entry): entry is CompanyPortabilityIssueRoutineTriggerManifestEntry => entry !== null)
+      .filter((entry): entry is DomainPortabilityIssueRoutineTriggerManifestEntry => entry !== null)
     : [];
   const variables = Array.isArray(value.variables)
     ? value.variables
@@ -892,7 +892,7 @@ function normalizeRoutineExtension(value: unknown): CompanyPortabilityIssueRouti
   return stripEmptyValues(routine) ? routine : null;
 }
 
-function buildRoutineManifestFromLiveRoutine(routine: RoutineLike): CompanyPortabilityIssueRoutineManifestEntry {
+function buildRoutineManifestFromLiveRoutine(routine: RoutineLike): DomainPortabilityIssueRoutineManifestEntry {
   return {
     concurrencyPolicy: routine.concurrencyPolicy,
     catchUpPolicy: routine.catchUpPolicy,
@@ -952,7 +952,7 @@ function disableImportedTimerHeartbeat(runtimeConfig: unknown) {
 function normalizePortableProjectWorkspaceExtension(
   workspaceKey: string,
   value: unknown,
-): CompanyPortabilityProjectWorkspaceManifestEntry | null {
+): DomainPortabilityProjectWorkspaceManifestEntry | null {
   if (!isPlainRecord(value)) return null;
   const normalizedKey = normalizeAgentUrlKey(workspaceKey) ?? workspaceKey.trim();
   if (!normalizedKey) return null;
@@ -1094,10 +1094,10 @@ async function buildPortableProjectWorkspaces(
   warnings: string[],
 ) {
   const exportedWorkspaces: Record<string, Record<string, unknown>> = {};
-  const manifestWorkspaces: CompanyPortabilityProjectWorkspaceManifestEntry[] = [];
+  const manifestWorkspaces: DomainPortabilityProjectWorkspaceManifestEntry[] = [];
   const workspaceKeyById = new Map<string, string>();
   const workspaceKeyBySignature = new Map<string, string>();
-  const manifestWorkspaceByKey = new Map<string, CompanyPortabilityProjectWorkspaceManifestEntry>();
+  const manifestWorkspaceByKey = new Map<string, DomainPortabilityProjectWorkspaceManifestEntry>();
   const usedKeys = new Set<string>();
 
   for (const workspace of workspaces ?? []) {
@@ -1240,7 +1240,7 @@ function normalizeCronList(values: string[]) {
 }
 
 function buildLegacyRoutineTriggerFromRecurrence(
-  issue: Pick<CompanyPortabilityIssueManifestEntry, "slug" | "legacyRecurrence">,
+  issue: Pick<DomainPortabilityIssueManifestEntry, "slug" | "legacyRecurrence">,
   scheduleValue: unknown,
 ) {
   const warnings: string[] = [];
@@ -1386,14 +1386,14 @@ function buildLegacyRoutineTriggerFromRecurrence(
       timezone,
       signingMode: null,
       replayWindowSec: null,
-    } satisfies CompanyPortabilityIssueRoutineTriggerManifestEntry,
+    } satisfies DomainPortabilityIssueRoutineTriggerManifestEntry,
     warnings,
     errors,
   };
 }
 
 function resolvePortableRoutineDefinition(
-  issue: Pick<CompanyPortabilityIssueManifestEntry, "slug" | "recurring" | "routine" | "legacyRecurrence">,
+  issue: Pick<DomainPortabilityIssueManifestEntry, "slug" | "recurring" | "routine" | "legacyRecurrence">,
   scheduleValue: unknown,
 ) {
   const warnings: string[] = [];
@@ -1413,7 +1413,7 @@ function resolvePortableRoutineDefinition(
       concurrencyPolicy: null,
       catchUpPolicy: null,
       variables: null,
-      triggers: [] as CompanyPortabilityIssueRoutineTriggerManifestEntry[],
+      triggers: [] as DomainPortabilityIssueRoutineTriggerManifestEntry[],
     };
 
   if (routine.concurrencyPolicy && !ROUTINE_CONCURRENCY_POLICIES.includes(routine.concurrencyPolicy as any)) {
@@ -1500,9 +1500,9 @@ function uniqueProjectName(baseName: string, existingProjectSlugs: Set<string>) 
   }
 }
 
-function normalizeInclude(input?: Partial<CompanyPortabilityInclude>): CompanyPortabilityInclude {
+function normalizeInclude(input?: Partial<DomainPortabilityInclude>): DomainPortabilityInclude {
   return {
-    company: input?.company ?? DEFAULT_INCLUDE.company,
+    domain: input?.domain ?? DEFAULT_INCLUDE.domain,
     agents: input?.agents ?? DEFAULT_INCLUDE.agents,
     projects: input?.projects ?? DEFAULT_INCLUDE.projects,
     issues: input?.issues ?? DEFAULT_INCLUDE.issues,
@@ -1516,13 +1516,13 @@ function resolvePortablePath(fromPath: string, targetPath: string) {
 }
 
 function isPortableBinaryFile(
-  value: CompanyPortabilityFileEntry,
-): value is Extract<CompanyPortabilityFileEntry, { encoding: "base64" }> {
+  value: DomainPortabilityFileEntry,
+): value is Extract<DomainPortabilityFileEntry, { encoding: "base64" }> {
   return typeof value === "object" && value !== null && value.encoding === "base64" && typeof value.data === "string";
 }
 
 function readPortableTextFile(
-  files: Record<string, CompanyPortabilityFileEntry>,
+  files: Record<string, DomainPortabilityFileEntry>,
   filePath: string,
 ) {
   const value = files[filePath];
@@ -1532,35 +1532,35 @@ function readPortableTextFile(
 function inferContentTypeFromPath(filePath: string) {
   const extension = path.posix.extname(filePath).toLowerLifeAdmin();
   switch (extension) {
-    case ".gif":
+    life_admin ".gif":
       return "image/gif";
-    case ".jpeg":
-    case ".jpg":
+    life_admin ".jpeg":
+    life_admin ".jpg":
       return "image/jpeg";
-    case ".png":
+    life_admin ".png":
       return "image/png";
-    case ".svg":
+    life_admin ".svg":
       return "image/svg+xml";
-    case ".webp":
+    life_admin ".webp":
       return "image/webp";
     default:
       return null;
   }
 }
 
-function resolveCompanyLogoExtension(contentType: string | null | undefined, originalFilename: string | null | undefined) {
-  const fromContentType = contentType ? COMPANY_LOGO_CONTENT_TYPE_EXTENSIONS[contentType.toLowerLifeAdmin()] : null;
+function resolveDomainLogoExtension(contentType: string | null | undefined, originalFilename: string | null | undefined) {
+  const fromContentType = contentType ? DOMAIN_LOGO_CONTENT_TYPE_EXTENSIONS[contentType.toLowerLifeAdmin()] : null;
   if (fromContentType) return fromContentType;
 
   const extension = originalFilename ? path.extname(originalFilename).toLowerLifeAdmin() : "";
   return extension || ".png";
 }
 
-function portableBinaryFileToBuffer(entry: Extract<CompanyPortabilityFileEntry, { encoding: "base64" }>) {
+function portableBinaryFileToBuffer(entry: Extract<DomainPortabilityFileEntry, { encoding: "base64" }>) {
   return Buffer.from(entry.data, "base64");
 }
 
-function portableFileToBuffer(entry: CompanyPortabilityFileEntry, filePath: string) {
+function portableFileToBuffer(entry: DomainPortabilityFileEntry, filePath: string) {
   if (typeof entry === "string") {
     return Buffer.from(entry, "utf8");
   }
@@ -1570,7 +1570,7 @@ function portableFileToBuffer(entry: CompanyPortabilityFileEntry, filePath: stri
   throw unprocessable(`Unsupported file entry encoding for ${filePath}`);
 }
 
-function bufferToPortableBinaryFile(buffer: Buffer, contentType: string | null): CompanyPortabilityFileEntry {
+function bufferToPortableBinaryFile(buffer: Buffer, contentType: string | null): DomainPortabilityFileEntry {
   return {
     encoding: "base64",
     data: buffer.toString("base64"),
@@ -1587,11 +1587,11 @@ async function streamToBuffer(stream: NodeJS.ReadableStream) {
 }
 
 function normalizeFileMap(
-  files: Record<string, CompanyPortabilityFileEntry>,
+  files: Record<string, DomainPortabilityFileEntry>,
   rootPath?: string | null,
-): Record<string, CompanyPortabilityFileEntry> {
+): Record<string, DomainPortabilityFileEntry> {
   const normalizedRoot = rootPath ? normalizePortablePath(rootPath) : null;
-  const out: Record<string, CompanyPortabilityFileEntry> = {};
+  const out: Record<string, DomainPortabilityFileEntry> = {};
   for (const [rawPath, content] of Object.entries(files)) {
     let nextPath = normalizePortablePath(rawPath);
     if (normalizedRoot && nextPath === normalizedRoot) {
@@ -1606,7 +1606,7 @@ function normalizeFileMap(
   return out;
 }
 
-function pickTextFiles(files: Record<string, CompanyPortabilityFileEntry>) {
+function pickTextFiles(files: Record<string, DomainPortabilityFileEntry>) {
   const out: Record<string, string> = {};
   for (const [filePath, content] of Object.entries(files)) {
     if (typeof content === "string") {
@@ -1645,7 +1645,7 @@ function normalizePortableSlugList(value: unknown) {
   return normalized;
 }
 
-function normalizePortableSidebarOrder(value: unknown): CompanyPortabilitySidebarOrder | null {
+function normalizePortableSidebarOrder(value: unknown): DomainPortabilitySidebarOrder | null {
   if (!isPlainRecord(value)) return null;
   const sidebar = {
     agents: normalizePortableSlugList(value.agents),
@@ -1700,12 +1700,12 @@ function filterPortableExtensionYaml(yaml: string, selectedFiles: Set<string>) {
     }
   }
 
-  const companySection = parsed.company;
-  if (isPlainRecord(companySection)) {
-    const logoPath = asString(companySection.logoPath) ?? asString(companySection.logo);
+  const domainSection = parsed.domain;
+  if (isPlainRecord(domainSection)) {
+    const logoPath = asString(domainSection.logoPath) ?? asString(domainSection.logo);
     if (logoPath && !selectedFiles.has(logoPath)) {
-      delete companySection.logoPath;
-      delete companySection.logo;
+      delete domainSection.logoPath;
+      delete domainSection.logo;
     }
   }
 
@@ -1728,7 +1728,7 @@ function filterPortableExtensionYaml(yaml: string, selectedFiles: Set<string>) {
 }
 
 function filterExportFiles(
-  files: Record<string, CompanyPortabilityFileEntry>,
+  files: Record<string, DomainPortabilityFileEntry>,
   selectedFilesInput: string[] | undefined,
   paperclipExtensionPath: string,
 ) {
@@ -1741,7 +1741,7 @@ function filterExportFiles(
       .map((entry) => normalizePortablePath(entry))
       .filter((entry) => entry.length > 0),
   );
-  const filtered: Record<string, CompanyPortabilityFileEntry> = {};
+  const filtered: Record<string, DomainPortabilityFileEntry> = {};
   for (const [filePath, content] of Object.entries(files)) {
     if (!selectedFiles.has(filePath)) continue;
     filtered[filePath] = content;
@@ -1755,7 +1755,7 @@ function filterExportFiles(
   return filtered;
 }
 
-function findPaperclipExtensionPath(files: Record<string, CompanyPortabilityFileEntry>) {
+function findPaperclipExtensionPath(files: Record<string, DomainPortabilityFileEntry>) {
   if (typeof files[".paperclip.yaml"] === "string") return ".paperclip.yaml";
   if (typeof files[".paperclip.yml"] === "string") return ".paperclip.yml";
   return Object.keys(files).find((entry) => entry.endsWith("/.paperclip.yaml") || entry.endsWith("/.paperclip.yml")) ?? null;
@@ -1802,7 +1802,7 @@ function extractPortableEnvInputs(
   agentSlug: string,
   envValue: unknown,
   warnings: string[],
-): CompanyPortabilityEnvInput[] {
+): DomainPortabilityEnvInput[] {
   return extractPortableScopedEnvInputs(
     {
       label: `agent ${agentSlug}`,
@@ -1819,7 +1819,7 @@ function extractPortableProjectEnvInputs(
   projectSlug: string,
   envValue: unknown,
   warnings: string[],
-): CompanyPortabilityEnvInput[] {
+): DomainPortabilityEnvInput[] {
   return extractPortableScopedEnvInputs(
     {
       label: `project ${projectSlug}`,
@@ -2057,15 +2057,15 @@ function normalizeSelectedFiles(selectedFiles?: string[]) {
   );
 }
 
-function filterCompanyMarkdownIncludes(
-  companyPath: string,
+function filterDomainMarkdownIncludes(
+  domainPath: string,
   markdown: string,
   selectedFiles: Set<string>,
 ) {
   const parsed = parseFrontmatterMarkdown(markdown);
   const includeEntries = readIncludeEntries(parsed.frontmatter);
   const filteredIncludes = includeEntries.filter((entry) =>
-    selectedFiles.has(resolvePortablePath(companyPath, entry.path)),
+    selectedFiles.has(resolvePortablePath(domainPath, entry.path)),
   );
   const nextFrontmatter: Record<string, unknown> = { ...parsed.frontmatter };
   if (filteredIncludes.length > 0) {
@@ -2080,28 +2080,28 @@ function applySelectedFilesToSource(source: ResolvedSource, selectedFiles?: stri
   const normalizedSelection = normalizeSelectedFiles(selectedFiles);
   if (!normalizedSelection) return source;
 
-  const companyPath = source.manifest.company
-    ? ensureMarkdownPath(source.manifest.company.path)
-    : Object.keys(source.files).find((entry) => entry.endsWith("/COMPANY.md") || entry === "COMPANY.md") ?? null;
-  if (!companyPath) {
-    throw unprocessable("Domain package is missing COMPANY.md");
+  const domainPath = source.manifest.domain
+    ? ensureMarkdownPath(source.manifest.domain.path)
+    : Object.keys(source.files).find((entry) => entry.endsWith("/DOMAIN.md") || entry === "DOMAIN.md") ?? null;
+  if (!domainPath) {
+    throw unprocessable("Domain package is missing DOMAIN.md");
   }
 
-  const companyMarkdown = source.files[companyPath];
-  if (typeof companyMarkdown !== "string") {
-    throw unprocessable("Domain package is missing COMPANY.md");
+  const domainMarkdown = source.files[domainPath];
+  if (typeof domainMarkdown !== "string") {
+    throw unprocessable("Domain package is missing DOMAIN.md");
   }
 
-  const effectiveFiles: Record<string, CompanyPortabilityFileEntry> = {};
+  const effectiveFiles: Record<string, DomainPortabilityFileEntry> = {};
   for (const [filePath, content] of Object.entries(source.files)) {
     const normalizedPath = normalizePortablePath(filePath);
     if (!normalizedSelection.has(normalizedPath)) continue;
     effectiveFiles[normalizedPath] = content;
   }
 
-  effectiveFiles[companyPath] = filterCompanyMarkdownIncludes(
-    companyPath,
-    companyMarkdown,
+  effectiveFiles[domainPath] = filterDomainMarkdownIncludes(
+    domainPath,
+    domainMarkdown,
     normalizedSelection,
   );
 
@@ -2109,12 +2109,12 @@ function applySelectedFilesToSource(source: ResolvedSource, selectedFiles?: stri
     sourceLabel: source.manifest.source,
   });
 
-  if (!normalizedSelection.has(companyPath)) {
-    filtered.manifest.company = null;
+  if (!normalizedSelection.has(domainPath)) {
+    filtered.manifest.domain = null;
   }
 
   filtered.manifest.includes = {
-    company: filtered.manifest.company !== null,
+    domain: filtered.manifest.domain !== null,
     agents: filtered.manifest.agents.length > 0,
     projects: filtered.manifest.projects.length > 0,
     issues: filtered.manifest.issues.length > 0,
@@ -2136,7 +2136,7 @@ async function resolveBundledSkillsCommit() {
   return bundledSkillsCommitPromise;
 }
 
-async function buildSkillSourceEntry(skill: CompanySkill) {
+async function buildSkillSourceEntry(skill: DomainSkill) {
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   if (asString(metadata?.sourceKind) === "paperclip_bundled") {
     const commit = await resolveBundledSkillsCommit();
@@ -2175,14 +2175,14 @@ async function buildSkillSourceEntry(skill: CompanySkill) {
   return null;
 }
 
-function shouldReferenceSkillOnExport(skill: CompanySkill, expandReferencedSkills: boolean) {
+function shouldReferenceSkillOnExport(skill: DomainSkill, expandReferencedSkills: boolean) {
   if (expandReferencedSkills) return false;
   const metadata = isPlainRecord(skill.metadata) ? skill.metadata : null;
   if (asString(metadata?.sourceKind) === "paperclip_bundled") return true;
   return skill.sourceType === "github" || skill.sourceType === "skills_sh" || skill.sourceType === "url";
 }
 
-async function buildReferencedSkillMarkdown(skill: CompanySkill) {
+async function buildReferencedSkillMarkdown(skill: DomainSkill) {
   const sourceEntry = await buildSkillSourceEntry(skill);
   const frontmatter: Record<string, unknown> = {
     key: skill.key,
@@ -2198,7 +2198,7 @@ async function buildReferencedSkillMarkdown(skill: CompanySkill) {
   return buildMarkdown(frontmatter, "");
 }
 
-async function withSkillSourceMetadata(skill: CompanySkill, markdown: string) {
+async function withSkillSourceMetadata(skill: DomainSkill, markdown: string) {
   const sourceEntry = await buildSkillSourceEntry(skill);
   const parsed = parseFrontmatterMarkdown(markdown);
   const metadata = isPlainRecord(parsed.frontmatter.metadata)
@@ -2416,9 +2416,9 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function dedupeEnvInputs(values: CompanyPortabilityManifest["envInputs"]) {
+function dedupeEnvInputs(values: DomainPortabilityManifest["envInputs"]) {
   const seen = new Set<string>();
-  const out: CompanyPortabilityManifest["envInputs"] = [];
+  const out: DomainPortabilityManifest["envInputs"] = [];
   for (const value of values) {
     const key = `${value.agentSlug ?? ""}:${value.projectSlug ?? ""}:${value.key.toUpperLifeAdmin()}`;
     if (seen.has(key)) continue;
@@ -2428,7 +2428,7 @@ function dedupeEnvInputs(values: CompanyPortabilityManifest["envInputs"]) {
   return out;
 }
 
-function buildEnvInputMap(inputs: CompanyPortabilityEnvInput[]) {
+function buildEnvInputMap(inputs: DomainPortabilityEnvInput[]) {
   const env: Record<string, Record<string, unknown>> = {};
   for (const input of inputs) {
     const entry: Record<string, unknown> = {
@@ -2443,13 +2443,13 @@ function buildEnvInputMap(inputs: CompanyPortabilityEnvInput[]) {
   return env;
 }
 
-function envInputScopedKey(input: CompanyPortabilityEnvInput) {
+function envInputScopedKey(input: DomainPortabilityEnvInput) {
   if (input.agentSlug) return `agent:${input.agentSlug}:${input.key}`;
   if (input.projectSlug) return `project:${input.projectSlug}:${input.key}`;
   return input.key;
 }
 
-function envInputValue(input: CompanyPortabilityEnvInput, values: Record<string, string> | null | undefined) {
+function envInputValue(input: DomainPortabilityEnvInput, values: Record<string, string> | null | undefined) {
   if (!values) return null;
   const scopedKey = envInputScopedKey(input);
   if (Object.prototype.hasOwnProperty.call(values, scopedKey)) return values[scopedKey];
@@ -2457,27 +2457,27 @@ function envInputValue(input: CompanyPortabilityEnvInput, values: Record<string,
   return null;
 }
 
-function importSecretLabel(input: CompanyPortabilityEnvInput) {
+function importSecretLabel(input: DomainPortabilityEnvInput) {
   const scope = input.agentSlug
     ? `agent ${input.agentSlug}`
     : input.projectSlug
       ? `project ${input.projectSlug}`
-      : "company import";
+      : "domain import";
   return `${scope} ${input.key}`;
 }
 
-function importSecretKey(input: CompanyPortabilityEnvInput, suffix: string) {
+function importSecretKey(input: DomainPortabilityEnvInput, suffix: string) {
   const scope = input.agentSlug
     ? `agent-${input.agentSlug}`
     : input.projectSlug
       ? `project-${input.projectSlug}`
-      : "company";
+      : "domain";
   return `import-${scope}-${input.key}-${suffix}`;
 }
 
 function writeManifestEnvBinding(
-  manifest: CompanyPortabilityManifest,
-  input: CompanyPortabilityEnvInput,
+  manifest: DomainPortabilityManifest,
+  input: DomainPortabilityEnvInput,
   binding: AgentEnvConfig[string],
 ) {
   if (input.agentSlug) {
@@ -2500,11 +2500,11 @@ function writeManifestEnvBinding(
   }
 }
 
-function readCompanyApprovalDefault(_frontmatter: Record<string, unknown>) {
+function readDomainApprovalDefault(_frontmatter: Record<string, unknown>) {
   return false;
 }
 
-function readIncludeEntries(frontmatter: Record<string, unknown>): CompanyPackageIncludeEntry[] {
+function readIncludeEntries(frontmatter: Record<string, unknown>): DomainPackageIncludeEntry[] {
   const includes = frontmatter.includes;
   if (!Array.isArray(includes)) return [];
   return includes.flatMap((entry) => {
@@ -2522,7 +2522,7 @@ function readIncludeEntries(frontmatter: Record<string, unknown>): CompanyPackag
 function readAgentEnvInputs(
   extension: Record<string, unknown>,
   agentSlug: string,
-): CompanyPortabilityManifest["envInputs"] {
+): DomainPortabilityManifest["envInputs"] {
   const inputs = isPlainRecord(extension.inputs) ? extension.inputs : null;
   const env = inputs && isPlainRecord(inputs.env) ? inputs.env : null;
   if (!env) return [];
@@ -2546,7 +2546,7 @@ function readAgentEnvInputs(
 function readProjectEnvInputs(
   extension: Record<string, unknown>,
   projectSlug: string,
-): CompanyPortabilityManifest["envInputs"] {
+): DomainPortabilityManifest["envInputs"] {
   const inputs = isPlainRecord(extension.inputs) ? extension.inputs : null;
   const env = inputs && isPlainRecord(inputs.env) ? inputs.env : null;
   if (!env) return [];
@@ -2579,57 +2579,57 @@ function readAgentSkillRefs(frontmatter: Record<string, unknown>) {
 }
 
 function buildManifestFromPackageFiles(
-  files: Record<string, CompanyPortabilityFileEntry>,
-  opts?: { sourceLabel?: { companyId: string; companyName: string } | null },
+  files: Record<string, DomainPortabilityFileEntry>,
+  opts?: { sourceLabel?: { domainId: string; domainName: string } | null },
 ): ResolvedSource {
   const normalizedFiles = normalizeFileMap(files);
-  const companyPath = typeof normalizedFiles["COMPANY.md"] === "string"
-    ? normalizedFiles["COMPANY.md"]
+  const domainPath = typeof normalizedFiles["DOMAIN.md"] === "string"
+    ? normalizedFiles["DOMAIN.md"]
     : undefined;
-  const resolvedCompanyPath = companyPath !== undefined
-    ? "COMPANY.md"
-    : Object.keys(normalizedFiles).find((entry) => entry.endsWith("/COMPANY.md") || entry === "COMPANY.md");
-  if (!resolvedCompanyPath) {
-    throw unprocessable("Domain package is missing COMPANY.md");
+  const resolvedDomainPath = domainPath !== undefined
+    ? "DOMAIN.md"
+    : Object.keys(normalizedFiles).find((entry) => entry.endsWith("/DOMAIN.md") || entry === "DOMAIN.md");
+  if (!resolvedDomainPath) {
+    throw unprocessable("Domain package is missing DOMAIN.md");
   }
 
-  const companyMarkdown = readPortableTextFile(normalizedFiles, resolvedCompanyPath);
-  if (typeof companyMarkdown !== "string") {
-    throw unprocessable(`Domain package file is not readable as text: ${resolvedCompanyPath}`);
+  const domainMarkdown = readPortableTextFile(normalizedFiles, resolvedDomainPath);
+  if (typeof domainMarkdown !== "string") {
+    throw unprocessable(`Domain package file is not readable as text: ${resolvedDomainPath}`);
   }
-  const companyDoc = parseFrontmatterMarkdown(companyMarkdown);
-  const companyFrontmatter = companyDoc.frontmatter;
+  const domainDoc = parseFrontmatterMarkdown(domainMarkdown);
+  const domainFrontmatter = domainDoc.frontmatter;
   const paperclipExtensionPath = findPaperclipExtensionPath(normalizedFiles);
   const paperclipExtension = paperclipExtensionPath
     ? parseYamlFile(readPortableTextFile(normalizedFiles, paperclipExtensionPath) ?? "")
     : {};
-  const paperclipDomain = isPlainRecord(paperclipExtension.company) ? paperclipExtension.company : {};
+  const paperclipDomain = isPlainRecord(paperclipExtension.domain) ? paperclipExtension.domain : {};
   const paperclipSidebar = normalizePortableSidebarOrder(paperclipExtension.sidebar);
   const paperclipAgents = isPlainRecord(paperclipExtension.agents) ? paperclipExtension.agents : {};
   const paperclipProjects = isPlainRecord(paperclipExtension.projects) ? paperclipExtension.projects : {};
   const paperclipTasks = isPlainRecord(paperclipExtension.tasks) ? paperclipExtension.tasks : {};
   const paperclipRoutines = isPlainRecord(paperclipExtension.routines) ? paperclipExtension.routines : {};
-  const companyName =
-    asString(companyFrontmatter.name)
-    ?? opts?.sourceLabel?.companyName
+  const domainName =
+    asString(domainFrontmatter.name)
+    ?? opts?.sourceLabel?.domainName
     ?? "Imported Domain";
-  const companySlug =
-    asString(companyFrontmatter.slug)
-    ?? normalizeAgentUrlKey(companyName)
-    ?? "company";
+  const domainSlug =
+    asString(domainFrontmatter.slug)
+    ?? normalizeAgentUrlKey(domainName)
+    ?? "domain";
 
-  const includeEntries = readIncludeEntries(companyFrontmatter);
+  const includeEntries = readIncludeEntries(domainFrontmatter);
   const referencedAgentPaths = includeEntries
-    .map((entry) => resolvePortablePath(resolvedCompanyPath, entry.path))
+    .map((entry) => resolvePortablePath(resolvedDomainPath, entry.path))
     .filter((entry) => entry.endsWith("/AGENTS.md") || entry === "AGENTS.md");
   const referencedProjectPaths = includeEntries
-    .map((entry) => resolvePortablePath(resolvedCompanyPath, entry.path))
+    .map((entry) => resolvePortablePath(resolvedDomainPath, entry.path))
     .filter((entry) => entry.endsWith("/PROJECT.md") || entry === "PROJECT.md");
   const referencedTaskPaths = includeEntries
-    .map((entry) => resolvePortablePath(resolvedCompanyPath, entry.path))
+    .map((entry) => resolvePortablePath(resolvedDomainPath, entry.path))
     .filter((entry) => entry.endsWith("/TASK.md") || entry === "TASK.md");
   const referencedSkillPaths = includeEntries
-    .map((entry) => resolvePortablePath(resolvedCompanyPath, entry.path))
+    .map((entry) => resolvePortablePath(resolvedDomainPath, entry.path))
     .filter((entry) => entry.endsWith("/SKILL.md") || entry === "SKILL.md");
   const discoveredAgentPaths = Object.keys(normalizedFiles).filter(
     (entry) => entry.endsWith("/AGENTS.md") || entry === "AGENTS.md",
@@ -2648,21 +2648,21 @@ function buildManifestFromPackageFiles(
   const taskPaths = Array.from(new Set([...referencedTaskPaths, ...discoveredTaskPaths])).sort();
   const skillPaths = Array.from(new Set([...referencedSkillPaths, ...discoveredSkillPaths])).sort();
 
-  const manifest: CompanyPortabilityManifest = {
+  const manifest: DomainPortabilityManifest = {
     schemaVersion: 5,
     generatedAt: new Date().toISOString(),
     source: opts?.sourceLabel ?? null,
     includes: {
-      company: true,
+      domain: true,
       agents: true,
       projects: projectPaths.length > 0,
       issues: taskPaths.length > 0,
       skills: skillPaths.length > 0,
     },
-    company: {
-      path: resolvedCompanyPath,
-      name: companyName,
-      description: asString(companyFrontmatter.description),
+    domain: {
+      path: resolvedDomainPath,
+      name: domainName,
+      description: asString(domainFrontmatter.description),
       brandColor: asString(paperclipDomain.brandColor),
       logoPath: asString(paperclipDomain.logoPath) ?? asString(paperclipDomain.logo),
       attachmentMaxBytes:
@@ -2672,7 +2672,7 @@ function buildManifestFromPackageFiles(
       requireBoardApprovalForNewAgents:
         typeof paperclipDomain.requireBoardApprovalForNewAgents === "boolean"
           ? paperclipDomain.requireBoardApprovalForNewAgents
-          : readCompanyApprovalDefault(companyFrontmatter),
+          : readDomainApprovalDefault(domainFrontmatter),
       feedbackDataSharingEnabled:
         typeof paperclipDomain.feedbackDataSharingEnabled === "boolean"
           ? paperclipDomain.feedbackDataSharingEnabled
@@ -2695,8 +2695,8 @@ function buildManifestFromPackageFiles(
   };
 
   const warnings: string[] = [];
-  if (manifest.company?.logoPath && !normalizedFiles[manifest.company.logoPath]) {
-    warnings.push(`Referenced company logo file is missing from package: ${manifest.company.logoPath}`);
+  if (manifest.domain?.logoPath && !normalizedFiles[manifest.domain.logoPath]) {
+    warnings.push(`Referenced domain logo file is missing from package: ${manifest.domain.logoPath}`);
   }
   for (const agentPath of agentPaths) {
     const markdownRaw = readPortableTextFile(normalizedFiles, agentPath);
@@ -2868,7 +2868,7 @@ function buildManifestFromPackageFiles(
     const workspaceExtensions = isPlainRecord(extension.workspaces) ? extension.workspaces : {};
     const workspaces = Object.entries(workspaceExtensions)
       .map(([workspaceKey, entry]) => normalizePortableProjectWorkspaceExtension(workspaceKey, entry))
-      .filter((entry): entry is CompanyPortabilityProjectWorkspaceManifestEntry => entry !== null);
+      .filter((entry): entry is DomainPortabilityProjectWorkspaceManifestEntry => entry !== null);
     manifest.projects.push({
       slug,
       name: asString(frontmatter.name) ?? slug,
@@ -2976,12 +2976,12 @@ export function parseGitHubSourceUrl(rawUrl: string) {
   const repo = parts[1]!.replace(/\.git$/i, "");
   const queryRef = url.searchParams.get("ref")?.trim();
   const queryPath = normalizeGitHubSourcePath(url.searchParams.get("path"));
-  const queryCompanyPath = normalizeGitHubSourcePath(url.searchParams.get("companyPath"));
-  if (queryRef || queryPath || queryCompanyPath) {
-    const companyPath = queryCompanyPath || [queryPath, "COMPANY.md"].filter(Boolean).join("/") || "COMPANY.md";
+  const queryDomainPath = normalizeGitHubSourcePath(url.searchParams.get("domainPath"));
+  if (queryRef || queryPath || queryDomainPath) {
+    const domainPath = queryDomainPath || [queryPath, "DOMAIN.md"].filter(Boolean).join("/") || "DOMAIN.md";
     let basePath = queryPath;
-    if (!basePath && companyPath !== "COMPANY.md") {
-      basePath = path.posix.dirname(companyPath);
+    if (!basePath && domainPath !== "DOMAIN.md") {
+      basePath = path.posix.dirname(domainPath);
       if (basePath === ".") basePath = "";
     }
     return {
@@ -2990,12 +2990,12 @@ export function parseGitHubSourceUrl(rawUrl: string) {
       repo,
       ref: queryRef || "main",
       basePath,
-      companyPath,
+      domainPath,
     };
   }
   let ref = "main";
   let basePath = "";
-  let companyPath = "COMPANY.md";
+  let domainPath = "DOMAIN.md";
   if (parts[2] === "tree") {
     ref = parts[3] ?? "main";
     basePath = parts.slice(4).join("/");
@@ -3005,38 +3005,38 @@ export function parseGitHubSourceUrl(rawUrl: string) {
     if (!blobPath) {
       throw unprocessable("Invalid GitHub blob URL");
     }
-    companyPath = blobPath;
+    domainPath = blobPath;
     basePath = path.posix.dirname(blobPath);
     if (basePath === ".") basePath = "";
   }
-  return { hostname, owner, repo, ref, basePath, companyPath };
+  return { hostname, owner, repo, ref, basePath, domainPath };
 }
 
 
-export function companyPortabilityService(db: Db, storage?: StorageService) {
-  const domains = companyService(db);
+export function domainPortabilityService(db: Db, storage?: StorageService) {
+  const domains = domainService(db);
   const agents = agentService(db);
   const assetRecords = assetService(db);
   const instructions = agentInstructionsService();
   const access = accessService(db);
   const projects = projectService(db);
   const issues = issueService(db);
-  const companySkills = companySkillService(db);
+  const domainSkills = domainSkillService(db);
   const secrets = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
   const defaultSecretProvider = getConfiguredSecretProvider();
 
   async function applyImportedAgentPermissionGrants(
-    companyId: string,
+    domainId: string,
     agentId: string,
     permissionGrants: PortableAgentPermissionGrant[],
     grantedByUserId: string | null,
   ) {
     if (permissionGrants.length === 0) return;
-    await access.ensureMembership(companyId, "agent", agentId, "member", "active");
+    await access.ensureMembership(domainId, "agent", agentId, "member", "active");
     for (const grant of permissionGrants) {
       await access.setPrincipalPermission(
-        companyId,
+        domainId,
         "agent",
         agentId,
         grant.permissionKey,
@@ -3072,7 +3072,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function prepareImportedAgentAdapter(
-    companyId: string,
+    domainId: string,
     adapterType: string | null | undefined,
     adapterConfig: Record<string, unknown>,
     desiredSkills: string[],
@@ -3093,7 +3093,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     delete nextAdapterConfig.instructionsRootPath;
     delete nextAdapterConfig.instructionsEntryFile;
     const normalizedAdapterConfig = await secrets.normalizeAdapterConfigForPersistence(
-      companyId,
+      domainId,
       nextAdapterConfig,
       { strictMode: strictSecretsMode, adapterType: effectiveAdapterType },
     );
@@ -3105,9 +3105,9 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function materializeImportEnvInputValues(
-    companyId: string,
-    manifest: CompanyPortabilityManifest,
-    envInputs: CompanyPortabilityEnvInput[],
+    domainId: string,
+    manifest: DomainPortabilityManifest,
+    envInputs: DomainPortabilityEnvInput[],
     secretValues: Record<string, string> | null | undefined,
     actorUserId: string | null | undefined,
     createdSecretIds: string[] = [],
@@ -3137,7 +3137,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       const suffix = randomUUID().slice(0, 8);
       const label = importSecretLabel(input);
       const secret = await secrets.create(
-        companyId,
+        domainId,
         {
           name: `Imported ${label} ${suffix}`,
           key: importSecretKey(input, suffix),
@@ -3180,7 +3180,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     return assigneeAgentId;
   }
 
-  async function resolveSource(source: CompanyPortabilityPreview["source"]): Promise<ResolvedSource> {
+  async function resolveSource(source: DomainPortabilityPreview["source"]): Promise<ResolvedSource> {
     if (source.type === "inline") {
       return buildManifestFromPackageFiles(
         normalizeFileMap(source.files, source.rootPath),
@@ -3190,34 +3190,34 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const parsed = parseGitHubSourceUrl(source.url);
     let ref = parsed.ref;
     const warnings: string[] = [];
-    const companyRelativePath = parsed.companyPath === "COMPANY.md"
-      ? [parsed.basePath, "COMPANY.md"].filter(Boolean).join("/")
-      : parsed.companyPath;
-    let companyMarkdown: string | null = null;
+    const domainRelativePath = parsed.domainPath === "DOMAIN.md"
+      ? [parsed.basePath, "DOMAIN.md"].filter(Boolean).join("/")
+      : parsed.domainPath;
+    let domainMarkdown: string | null = null;
     try {
-      companyMarkdown = await fetchOptionalText(
-        resolveRawGitHubUrl(parsed.hostname, parsed.owner, parsed.repo, ref, companyRelativePath),
+      domainMarkdown = await fetchOptionalText(
+        resolveRawGitHubUrl(parsed.hostname, parsed.owner, parsed.repo, ref, domainRelativePath),
       );
     } catch (err) {
       if (ref === "main") {
         ref = "master";
         warnings.push("GitHub ref main not found; falling back to master.");
-        companyMarkdown = await fetchOptionalText(
-          resolveRawGitHubUrl(parsed.hostname, parsed.owner, parsed.repo, ref, companyRelativePath),
+        domainMarkdown = await fetchOptionalText(
+          resolveRawGitHubUrl(parsed.hostname, parsed.owner, parsed.repo, ref, domainRelativePath),
         );
       } else {
         throw err;
       }
     }
-    if (!companyMarkdown) {
-      throw unprocessable("GitHub company package is missing COMPANY.md");
+    if (!domainMarkdown) {
+      throw unprocessable("GitHub domain package is missing DOMAIN.md");
     }
 
-    const companyPath = parsed.companyPath === "COMPANY.md"
-      ? "COMPANY.md"
-      : normalizePortablePath(path.posix.relative(parsed.basePath || ".", parsed.companyPath));
-    const files: Record<string, CompanyPortabilityFileEntry> = {
-      [companyPath]: companyMarkdown,
+    const domainPath = parsed.domainPath === "DOMAIN.md"
+      ? "DOMAIN.md"
+      : normalizePortablePath(path.posix.relative(parsed.basePath || ".", parsed.domainPath));
+    const files: Record<string, DomainPortabilityFileEntry> = {
+      [domainPath]: domainMarkdown,
     };
     const apiBase = gitHubApiBase(parsed.hostname);
     const tree = await fetchJson<{ tree?: Array<{ path: string; type: string }> }>(
@@ -3245,8 +3245,8 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         resolveRawGitHubUrl(parsed.hostname, parsed.owner, parsed.repo, ref, repoPath),
       );
     }
-    const companyDoc = parseFrontmatterMarkdown(companyMarkdown);
-    const includeEntries = readIncludeEntries(companyDoc.frontmatter);
+    const domainDoc = parseFrontmatterMarkdown(domainMarkdown);
+    const includeEntries = readIncludeEntries(domainDoc.frontmatter);
     for (const includeEntry of includeEntries) {
       const repoPath = [parsed.basePath, includeEntry.path].filter(Boolean).join("/");
       const relativePath = normalizePortablePath(includeEntry.path);
@@ -3258,16 +3258,16 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     }
 
     const resolved = buildManifestFromPackageFiles(files);
-    const companyLogoPath = resolved.manifest.company?.logoPath;
-    if (companyLogoPath && !resolved.files[companyLogoPath]) {
-      const repoPath = [parsed.basePath, companyLogoPath].filter(Boolean).join("/");
+    const domainLogoPath = resolved.manifest.domain?.logoPath;
+    if (domainLogoPath && !resolved.files[domainLogoPath]) {
+      const repoPath = [parsed.basePath, domainLogoPath].filter(Boolean).join("/");
       try {
         const binary = await fetchBinary(
           resolveRawGitHubUrl(parsed.hostname, parsed.owner, parsed.repo, ref, repoPath),
         );
-        resolved.files[companyLogoPath] = bufferToPortableBinaryFile(binary, inferContentTypeFromPath(companyLogoPath));
+        resolved.files[domainLogoPath] = bufferToPortableBinaryFile(binary, inferContentTypeFromPath(domainLogoPath));
       } catch (err) {
-        warnings.push(`Failed to fetch company logo ${companyLogoPath} from GitHub: ${err instanceof Error ? err.message : String(err)}`);
+        warnings.push(`Failed to fetch domain logo ${domainLogoPath} from GitHub: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     resolved.warnings.unshift(...warnings);
@@ -3275,9 +3275,9 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function exportBundle(
-    companyId: string,
-    input: CompanyPortabilityExport,
-  ): Promise<CompanyPortabilityExportResult> {
+    domainId: string,
+    input: DomainPortabilityExport,
+  ): Promise<DomainPortabilityExportResult> {
     const include = normalizeInclude({
       ...input.include,
       agents: input.agents && input.agents.length > 0 ? true : input.include?.agents,
@@ -3288,15 +3288,15 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           : input.include?.issues,
       skills: input.skills && input.skills.length > 0 ? true : input.include?.skills,
     });
-    const company = await domains.getById(companyId);
-    if (!company) throw notFound("Domain not found");
+    const domain = await domains.getById(domainId);
+    if (!domain) throw notFound("Domain not found");
 
-    const files: Record<string, CompanyPortabilityFileEntry> = {};
+    const files: Record<string, DomainPortabilityFileEntry> = {};
     const warnings: string[] = [];
-    const envInputs: CompanyPortabilityManifest["envInputs"] = [];
+    const envInputs: DomainPortabilityManifest["envInputs"] = [];
     const requestedSidebarOrder = normalizePortableSidebarOrder(input.sidebarOrder);
-    const rootPath = normalizeAgentUrlKey(company.name) ?? "company-package";
-    let companyLogoPath: string | null = null;
+    const rootPath = normalizeAgentUrlKey(domain.name) ?? "domain-package";
+    let domainLogoPath: string | null = null;
 
     const managedResourceRows = typeof (db as { select?: unknown }).select === "function"
       ? await db
@@ -3305,7 +3305,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
           resourceId: builtInManagedResources.resourceId,
         })
         .from(builtInManagedResources)
-        .where(eq(builtInManagedResources.companyId, companyId))
+        .where(eq(builtInManagedResources.domainId, domainId))
       : [];
     const managedSkillIds = new Set(
       managedResourceRows
@@ -3318,13 +3318,13 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         .map((row) => row.resourceId),
     );
 
-    const allAgentRows = include.agents ? await agents.list(companyId, { includeTerminated: true }) : [];
+    const allAgentRows = include.agents ? await agents.list(domainId, { includeTerminated: true }) : [];
     const liveAgentRows = allAgentRows.filter((agent) => agent.status !== "terminated");
     const builtInAgentRows = liveAgentRows.filter((agent) => readBuiltInAgentMarker(agent.metadata));
     const portableAgentRows = liveAgentRows.filter((agent) => !readBuiltInAgentMarker(agent.metadata));
-    const companySkillRowsRaw = include.skills || include.agents ? await companySkills.listFull(companyId) : [];
-    const managedSkillRows = companySkillRowsRaw.filter((skill) => managedSkillIds.has(skill.id));
-    const companySkillRows = companySkillRowsRaw.filter((skill) => !managedSkillIds.has(skill.id));
+    const domainSkillRowsRaw = include.skills || include.agents ? await domainSkills.listFull(domainId) : [];
+    const managedSkillRows = domainSkillRowsRaw.filter((skill) => managedSkillIds.has(skill.id));
+    const domainSkillRows = domainSkillRowsRaw.filter((skill) => !managedSkillIds.has(skill.id));
     if (include.agents) {
       const skipped = allAgentRows.length - liveAgentRows.length;
       if (skipped > 0) {
@@ -3398,7 +3398,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         })
         .from(principalPermissionGrants)
         .where(and(
-          eq(principalPermissionGrants.companyId, companyId),
+          eq(principalPermissionGrants.domainId, domainId),
           eq(principalPermissionGrants.principalType, "agent"),
           inArray(principalPermissionGrants.principalId, agentRows.map((agent) => agent.id)),
         ))
@@ -3420,9 +3420,9 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const projectsSvc = projectService(db);
     const issuesSvc = issueService(db);
     const routinesSvc = routineService(db);
-    const allProjectsRaw = include.projects || include.issues ? await projectsSvc.list(companyId) : [];
+    const allProjectsRaw = include.projects || include.issues ? await projectsSvc.list(domainId) : [];
     const allProjects = allProjectsRaw.filter((project) => !project.archivedAt);
-    const allRoutinesRaw = include.issues ? await routinesSvc.list(companyId) : [];
+    const allRoutinesRaw = include.issues ? await routinesSvc.list(domainId) : [];
     const builtInRoutineRows = allRoutinesRaw.filter((routine) =>
       managedRoutineIds.has(routine.id) || routine.originKind === "built_in_agent_bundle"
     );
@@ -3463,7 +3463,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     };
     for (const selector of input.issues ?? []) {
       const issue = await resolveIssueBySelector(selector);
-      if (!issue || issue.companyId !== companyId) {
+      if (!issue || issue.domainId !== domainId) {
         if (builtInRoutineById.has(selector.trim())) {
           warnings.push(`Routine selector "${selector}" is a built-in managed routine and was skipped.`);
           continue;
@@ -3494,7 +3494,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         continue;
       }
       selectedProjects.set(match.id, match);
-      const projectIssues = await issuesSvc.list(companyId, { projectId: match.id });
+      const projectIssues = await issuesSvc.list(domainId, { projectId: match.id });
       for (const issue of projectIssues) {
         selectedIssues.set(issue.id, issue);
       }
@@ -3510,7 +3510,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     }
 
     if (include.issues && selectedIssues.size === 0) {
-      const allIssues = await issuesSvc.list(companyId);
+      const allIssues = await issuesSvc.list(domainId);
       for (const issue of allIssues) {
         selectedIssues.set(issue.id, issue);
         if (issue.projectId) {
@@ -3568,32 +3568,32 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         .filter((slug): slug is string => Boolean(slug)),
     });
 
-    const companyPath = "COMPANY.md";
-    files[companyPath] = buildMarkdown(
+    const domainPath = "DOMAIN.md";
+    files[domainPath] = buildMarkdown(
       {
-        name: company.name,
-        description: company.description ?? null,
+        name: domain.name,
+        description: domain.description ?? null,
         schema: "agentdomains/v1",
         slug: rootPath,
       },
       "",
     );
 
-    if (include.company && company.logoAssetId) {
+    if (include.domain && domain.logoAssetId) {
       if (!storage) {
-        warnings.push("Skipped company logo from export because storage is unavailable.");
+        warnings.push("Skipped domain logo from export because storage is unavailable.");
       } else {
-        const logoAsset = await assetRecords.getById(company.logoAssetId);
+        const logoAsset = await assetRecords.getById(domain.logoAssetId);
         if (!logoAsset) {
-          warnings.push(`Skipped company logo ${company.logoAssetId} because the asset record was not found.`);
+          warnings.push(`Skipped domain logo ${domain.logoAssetId} because the asset record was not found.`);
         } else {
           try {
-            const object = await storage.getObject(company.id, logoAsset.objectKey);
+            const object = await storage.getObject(domain.id, logoAsset.objectKey);
             const body = await streamToBuffer(object.stream);
-            companyLogoPath = `images/${COMPANY_LOGO_FILE_NAME}${resolveCompanyLogoExtension(logoAsset.contentType, logoAsset.originalFilename)}`;
-            files[companyLogoPath] = bufferToPortableBinaryFile(body, logoAsset.contentType);
+            domainLogoPath = `images/${DOMAIN_LOGO_FILE_NAME}${resolveDomainLogoExtension(logoAsset.contentType, logoAsset.originalFilename)}`;
+            files[domainLogoPath] = bufferToPortableBinaryFile(body, logoAsset.contentType);
           } catch (err) {
-            warnings.push(`Failed to export company logo ${company.logoAssetId}: ${err instanceof Error ? err.message : String(err)}`);
+            warnings.push(`Failed to export domain logo ${domain.logoAssetId}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
       }
@@ -3605,14 +3605,14 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const unportableTaskWorkspaceRefs = new Map<string, { workspaceId: string; taskSlugs: string[] }>();
     const paperclipRoutinesOut: Record<string, Record<string, unknown>> = {};
 
-    const skillByReference = new Map<string, typeof companySkillRows[number]>();
-    for (const skill of companySkillRows) {
+    const skillByReference = new Map<string, typeof domainSkillRows[number]>();
+    for (const skill of domainSkillRows) {
       skillByReference.set(skill.id, skill);
       skillByReference.set(skill.key, skill);
       skillByReference.set(skill.slug, skill);
       skillByReference.set(skill.name, skill);
     }
-    const selectedSkills = new Map<string, typeof companySkillRows[number]>();
+    const selectedSkills = new Map<string, typeof domainSkillRows[number]>();
     for (const selector of input.skills ?? []) {
       const trimmed = selector.trim();
       if (!trimmed) continue;
@@ -3625,14 +3625,14 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       selectedSkills.set(match.id, match);
     }
     if (selectedSkills.size === 0) {
-      for (const skill of companySkillRows) {
+      for (const skill of domainSkillRows) {
         selectedSkills.set(skill.id, skill);
       }
     }
     const selectedSkillRows = Array.from(selectedSkills.values())
       .sort((left, right) => left.key.localeCompare(right.key));
 
-    const skillExportDirs = buildSkillExportDirMap(selectedSkillRows, company.issuePrefix);
+    const skillExportDirs = buildSkillExportDirMap(selectedSkillRows, domain.issuePrefix);
     for (const skill of selectedSkillRows) {
       const packageDir = skillExportDirs.get(skill.key) ?? `skills/${normalizeSkillSlug(skill.slug) ?? "skill"}`;
       if (shouldReferenceSkillOnExport(skill, Boolean(input.expandReferencedSkills))) {
@@ -3641,7 +3641,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
 
       for (const inventoryEntry of skill.fileInventory) {
-        const fileDetail = await companySkills.readFile(companyId, skill.id, inventoryEntry.path).catch(() => null);
+        const fileDetail = await domainSkills.readFile(domainId, skill.id, inventoryEntry.path).catch(() => null);
         if (!fileDetail) continue;
         const filePath = `${packageDir}/${inventoryEntry.path}`;
         files[filePath] = inventoryEntry.path === "SKILL.md"
@@ -3892,15 +3892,15 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     files[paperclipExtensionPath] = buildYamlFile(
       {
         schema: "paperclip/v1",
-        company: stripEmptyValues({
-          brandColor: company.brandColor ?? null,
-          logoPath: companyLogoPath,
-          attachmentMaxBytes: company.attachmentMaxBytes,
-          requireBoardApprovalForNewAgents: company.requireBoardApprovalForNewAgents ? true : undefined,
-          feedbackDataSharingEnabled: company.feedbackDataSharingEnabled ? true : undefined,
-          feedbackDataSharingConsentAt: company.feedbackDataSharingConsentAt?.toISOString() ?? null,
-          feedbackDataSharingConsentByUserId: company.feedbackDataSharingConsentByUserId ?? null,
-          feedbackDataSharingTermsVersion: company.feedbackDataSharingTermsVersion ?? null,
+        domain: stripEmptyValues({
+          brandColor: domain.brandColor ?? null,
+          logoPath: domainLogoPath,
+          attachmentMaxBytes: domain.attachmentMaxBytes,
+          requireBoardApprovalForNewAgents: domain.requireBoardApprovalForNewAgents ? true : undefined,
+          feedbackDataSharingEnabled: domain.feedbackDataSharingEnabled ? true : undefined,
+          feedbackDataSharingConsentAt: domain.feedbackDataSharingConsentAt?.toISOString() ?? null,
+          feedbackDataSharingConsentByUserId: domain.feedbackDataSharingConsentByUserId ?? null,
+          feedbackDataSharingTermsVersion: domain.feedbackDataSharingTermsVersion ?? null,
         }),
         sidebar: stripEmptyValues(sidebarOrder),
         agents: Object.keys(paperclipAgents).length > 0 ? paperclipAgents : undefined,
@@ -3914,12 +3914,12 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     let finalFiles = filterExportFiles(files, input.selectedFiles, paperclipExtensionPath);
     let resolved = buildManifestFromPackageFiles(finalFiles, {
       sourceLabel: {
-        companyId: company.id,
-        companyName: company.name,
+        domainId: domain.id,
+        domainName: domain.name,
       },
     });
     resolved.manifest.includes = {
-      company: resolved.manifest.company !== null,
+      domain: resolved.manifest.domain !== null,
       agents: resolved.manifest.agents.length > 0,
       projects: resolved.manifest.projects.length > 0,
       issues: resolved.manifest.issues.length > 0,
@@ -3941,19 +3941,19 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
 
     if (!input.selectedFiles || input.selectedFiles.some((entry) => normalizePortablePath(entry) === "README.md")) {
       finalFiles["README.md"] = generateReadme(resolved.manifest, {
-        companyName: company.name,
-        companyDescription: company.description ?? null,
+        domainName: domain.name,
+        domainDescription: domain.description ?? null,
       });
     }
 
     resolved = buildManifestFromPackageFiles(finalFiles, {
       sourceLabel: {
-        companyId: company.id,
-        companyName: company.name,
+        domainId: domain.id,
+        domainName: domain.name,
       },
     });
     resolved.manifest.includes = {
-      company: resolved.manifest.company !== null,
+      domain: resolved.manifest.domain !== null,
       agents: resolved.manifest.agents.length > 0,
       projects: resolved.manifest.projects.length > 0,
       issues: resolved.manifest.issues.length > 0,
@@ -3972,10 +3972,10 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function previewExport(
-    companyId: string,
-    input: CompanyPortabilityExport,
-  ): Promise<CompanyPortabilityExportPreviewResult> {
-    const previewInput: CompanyPortabilityExport = {
+    domainId: string,
+    input: DomainPortabilityExport,
+  ): Promise<DomainPortabilityExportPreviewResult> {
+    const previewInput: DomainPortabilityExport = {
       ...input,
       include: {
         ...input.include,
@@ -3988,7 +3988,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     if (previewInput.include && previewInput.include.issues === undefined) {
       previewInput.include.issues = false;
     }
-    const exported = await exportBundle(companyId, previewInput);
+    const exported = await exportBundle(domainId, previewInput);
     return {
       ...exported,
       fileInventory: Object.keys(exported.files)
@@ -4008,15 +4008,15 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function buildPreview(
-    input: CompanyPortabilityPreview,
+    input: DomainPortabilityPreview,
     options?: ImportBehaviorOptions,
   ): Promise<ImportPlanInternal> {
     const mode = resolveImportMode(options);
     const requestedInclude = normalizeInclude(input.include);
     const source = applySelectedFilesToSource(await resolveSource(input.source), input.selectedFiles);
     const manifest = source.manifest;
-    const include: CompanyPortabilityInclude = {
-      company: requestedInclude.company && manifest.company !== null,
+    const include: DomainPortabilityInclude = {
+      domain: requestedInclude.domain && manifest.domain !== null,
       agents: requestedInclude.agents && manifest.agents.length > 0,
       projects: requestedInclude.projects && manifest.projects.length > 0,
       issues: requestedInclude.issues && manifest.issues.length > 0,
@@ -4029,8 +4029,8 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     const warnings = [...source.warnings];
     const errors: string[] = [];
 
-    if (include.company && !manifest.company) {
-      errors.push("Manifest does not include company metadata.");
+    if (include.domain && !manifest.domain) {
+      errors.push("Manifest does not include domain metadata.");
     }
     if (mode === "agent_safe") {
       errors.push(...collectAgentSafeImportPolicyErrors(manifest, include));
@@ -4057,7 +4057,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     }
 
     const availableSkillKeys = new Set(source.manifest.skills.map((skill) => skill.key));
-    const availableSkillSlugs = new Map<string, CompanyPortabilitySkillManifestEntry[]>();
+    const availableSkillSlugs = new Map<string, DomainPortabilitySkillManifestEntry[]>();
     for (const skill of source.manifest.skills) {
       const existing = availableSkillSlugs.get(skill.slug) ?? [];
       existing.push(skill);
@@ -4142,21 +4142,21 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
     }
 
-    let targetCompanyId: string | null = null;
-    let targetCompanyName: string | null = null;
+    let targetDomainId: string | null = null;
+    let targetDomainName: string | null = null;
 
-    if (input.target.mode === "existing_company") {
-      const targetDomain = await domains.getById(input.target.companyId);
-      if (!targetDomain) throw notFound("Target company not found");
-      targetCompanyId = targetDomain.id;
-      targetCompanyName = targetDomain.name;
+    if (input.target.mode === "existing_domain") {
+      const targetDomain = await domains.getById(input.target.domainId);
+      if (!targetDomain) throw notFound("Target domain not found");
+      targetDomainId = targetDomain.id;
+      targetDomainName = targetDomain.name;
     }
-    if (mode === "agent_safe" && include.projects && targetCompanyId) {
+    if (mode === "agent_safe" && include.projects && targetDomainId) {
       for (const project of manifest.projects) {
         if (!project.env) continue;
         try {
           await secrets.normalizeEnvBindingsForPersistence(
-            targetCompanyId,
+            targetDomainId,
             project.env,
             {
               strictMode: strictSecretsMode,
@@ -4169,24 +4169,24 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
     }
 
-    const agentPlans: CompanyPortabilityPreviewAgentPlan[] = [];
+    const agentPlans: DomainPortabilityPreviewAgentPlan[] = [];
     const existingSlugToAgent = new Map<string, { id: string; name: string }>();
     const existingAgentIds = new Set<string>();
     const existingSlugs = new Set<string>();
-    const projectPlans: CompanyPortabilityPreviewResult["plan"]["projectPlans"] = [];
-    const issuePlans: CompanyPortabilityPreviewResult["plan"]["issuePlans"] = [];
+    const projectPlans: DomainPortabilityPreviewResult["plan"]["projectPlans"] = [];
+    const issuePlans: DomainPortabilityPreviewResult["plan"]["issuePlans"] = [];
     const existingProjectSlugToProject = new Map<string, { id: string; name: string }>();
     const existingProjectSlugs = new Set<string>();
 
-    if (input.target.mode === "existing_company") {
-      const existingAgents = await agents.list(input.target.companyId);
+    if (input.target.mode === "existing_domain") {
+      const existingAgents = await agents.list(input.target.domainId);
       for (const existing of existingAgents) {
         const slug = normalizeAgentUrlKey(existing.name) ?? existing.id;
         if (!existingSlugToAgent.has(slug)) existingSlugToAgent.set(slug, existing);
         existingAgentIds.add(existing.id);
         existingSlugs.add(slug);
       }
-      const existingProjects = await projects.list(input.target.companyId);
+      const existingProjects = await projects.list(input.target.domainId);
       for (const existing of existingProjects) {
         if (!existingProjectSlugToProject.has(existing.urlKey)) {
           existingProjectSlugToProject.set(existing.urlKey, { id: existing.id, name: existing.name });
@@ -4194,7 +4194,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         existingProjectSlugs.add(existing.urlKey);
       }
 
-      const existingSkills = await companySkills.listFull(input.target.companyId);
+      const existingSkills = await domainSkills.listFull(input.target.domainId);
       const existingSkillKeys = new Set(existingSkills.map((skill) => skill.key));
       const existingSkillSlugs = new Set(existingSkills.map((skill) => normalizeSkillSlug(skill.slug) ?? skill.slug));
       for (const skill of manifest.skills) {
@@ -4215,7 +4215,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         && !existingAgentIds.has(manifestAgent.reportsToExistingAgentId)
       ) {
         warnings.push(
-          `Agent ${manifestAgent.slug} references existing manager id ${manifestAgent.reportsToExistingAgentId}, but that agent is not present in the target company.`,
+          `Agent ${manifestAgent.slug} references existing manager id ${manifestAgent.reportsToExistingAgentId}, but that agent is not present in the target domain.`,
         );
       }
       if (
@@ -4223,7 +4223,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         && !existingSlugToAgent.has(manifestAgent.reportsToExistingAgentSlug)
       ) {
         warnings.push(
-          `Agent ${manifestAgent.slug} references existing manager slug ${manifestAgent.reportsToExistingAgentSlug}, but that agent is not present in the target company.`,
+          `Agent ${manifestAgent.slug} references existing manager slug ${manifestAgent.reportsToExistingAgentSlug}, but that agent is not present in the target domain.`,
         );
       }
       const existing = existingSlugToAgent.get(manifestAgent.slug) ?? null;
@@ -4363,16 +4363,16 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
     }
 
-    const preview: CompanyPortabilityPreviewResult = {
+    const preview: DomainPortabilityPreviewResult = {
       include,
-      targetCompanyId,
-      targetCompanyName,
+      targetDomainId,
+      targetDomainName,
       collisionStrategy,
       selectedAgentSlugs: selectedAgents.map((agent) => agent.slug),
       plan: {
-        companyAction: input.target.mode === "new_company"
+        domainAction: input.target.mode === "new_domain"
           ? "create"
-          : include.company && mode === "board_full"
+          : include.domain && mode === "board_full"
             ? "update"
             : "none",
         agentPlans,
@@ -4396,18 +4396,18 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
   }
 
   async function previewImport(
-    input: CompanyPortabilityPreview,
+    input: DomainPortabilityPreview,
     options?: ImportBehaviorOptions,
-  ): Promise<CompanyPortabilityPreviewResult> {
+  ): Promise<DomainPortabilityPreviewResult> {
     const plan = await buildPreview(input, options);
     return plan.preview;
   }
 
   async function importBundle(
-    input: CompanyPortabilityImport,
+    input: DomainPortabilityImport,
     actorUserId: string | null | undefined,
     options?: ImportBehaviorOptions,
-  ): Promise<CompanyPortabilityImportResult> {
+  ): Promise<DomainPortabilityImportResult> {
     const mode = resolveImportMode(options);
     const plan = await buildPreview(input, options);
     if (plan.preview.errors.length > 0) {
@@ -4416,7 +4416,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
     if (
       mode === "agent_safe"
       && (
-        plan.preview.plan.companyAction === "update"
+        plan.preview.plan.domainAction === "update"
         || plan.preview.plan.agentPlans.some((entry) => entry.action === "update")
         || plan.preview.plan.projectPlans.some((entry) => entry.action === "update")
       )
@@ -4434,48 +4434,48 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       requireBoardApprovalForNewAgents?: boolean | null;
       attachmentMaxBytes?: number | null;
     } | null = null;
-    let companyAction: "created" | "updated" | "unchanged" = "unchanged";
+    let domainAction: "created" | "updated" | "unchanged" = "unchanged";
 
-    if (input.target.mode === "new_company") {
-      if (mode === "agent_safe" && !options?.sourceCompanyId) {
-        throw unprocessable("Safe new-company imports require a source company context.");
+    if (input.target.mode === "new_domain") {
+      if (mode === "agent_safe" && !options?.sourceDomainId) {
+        throw unprocessable("Safe new-domain imports require a source domain context.");
       }
-      if (mode === "agent_safe" && options?.sourceCompanyId) {
-        const sourceMemberships = await access.listActiveUserMemberships(options.sourceCompanyId);
+      if (mode === "agent_safe" && options?.sourceDomainId) {
+        const sourceMemberships = await access.listActiveUserMemberships(options.sourceDomainId);
         if (sourceMemberships.length === 0) {
-          throw unprocessable("Safe new-company import requires at least one active user membership on the source company.");
+          throw unprocessable("Safe new-domain import requires at least one active user membership on the source domain.");
         }
       }
-      const companyName =
-        asString(input.target.newCompanyName) ??
-        sourceManifest.company?.name ??
-        sourceManifest.source?.companyName ??
+      const domainName =
+        asString(input.target.newDomainName) ??
+        sourceManifest.domain?.name ??
+        sourceManifest.source?.domainName ??
         "Imported Domain";
       const created = await domains.create({
-        name: companyName,
-        description: include.company ? (sourceManifest.company?.description ?? null) : null,
-        brandColor: include.company ? (sourceManifest.company?.brandColor ?? null) : null,
-        attachmentMaxBytes: include.company
-          ? (sourceManifest.company?.attachmentMaxBytes ?? undefined)
+        name: domainName,
+        description: include.domain ? (sourceManifest.domain?.description ?? null) : null,
+        brandColor: include.domain ? (sourceManifest.domain?.brandColor ?? null) : null,
+        attachmentMaxBytes: include.domain
+          ? (sourceManifest.domain?.attachmentMaxBytes ?? undefined)
           : undefined,
-        requireBoardApprovalForNewAgents: include.company
-          ? (sourceManifest.company?.requireBoardApprovalForNewAgents ?? false)
+        requireBoardApprovalForNewAgents: include.domain
+          ? (sourceManifest.domain?.requireBoardApprovalForNewAgents ?? false)
           : false,
-        feedbackDataSharingEnabled: include.company
-          ? (sourceManifest.company?.feedbackDataSharingEnabled ?? false)
+        feedbackDataSharingEnabled: include.domain
+          ? (sourceManifest.domain?.feedbackDataSharingEnabled ?? false)
           : false,
-        feedbackDataSharingConsentAt: include.company && sourceManifest.company?.feedbackDataSharingConsentAt
-          ? new Date(sourceManifest.company.feedbackDataSharingConsentAt)
+        feedbackDataSharingConsentAt: include.domain && sourceManifest.domain?.feedbackDataSharingConsentAt
+          ? new Date(sourceManifest.domain.feedbackDataSharingConsentAt)
           : null,
-        feedbackDataSharingConsentByUserId: include.company
-          ? (sourceManifest.company?.feedbackDataSharingConsentByUserId ?? null)
+        feedbackDataSharingConsentByUserId: include.domain
+          ? (sourceManifest.domain?.feedbackDataSharingConsentByUserId ?? null)
           : null,
-        feedbackDataSharingTermsVersion: include.company
-          ? (sourceManifest.company?.feedbackDataSharingTermsVersion ?? null)
+        feedbackDataSharingTermsVersion: include.domain
+          ? (sourceManifest.domain?.feedbackDataSharingTermsVersion ?? null)
           : null,
       });
-      if (mode === "agent_safe" && options?.sourceCompanyId) {
-        await access.copyActiveUserMemberships(options.sourceCompanyId, created.id);
+      if (mode === "agent_safe" && options?.sourceDomainId) {
+        await access.copyActiveUserMemberships(options.sourceDomainId, created.id);
       } else {
         const ownerPrincipalId = actorUserId ?? "board";
         await access.ensureMembership(created.id, "user", ownerPrincipalId, "owner", "active");
@@ -4487,30 +4487,30 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         );
       }
       targetDomain = created;
-      companyAction = "created";
+      domainAction = "created";
     } else {
-      targetDomain = await domains.getById(input.target.companyId);
-      if (!targetDomain) throw notFound("Target company not found");
-      if (include.company && sourceManifest.company && mode === "board_full") {
+      targetDomain = await domains.getById(input.target.domainId);
+      if (!targetDomain) throw notFound("Target domain not found");
+      if (include.domain && sourceManifest.domain && mode === "board_full") {
         const updated = await domains.update(targetDomain.id, {
-          name: sourceManifest.company.name,
-          description: sourceManifest.company.description,
-          brandColor: sourceManifest.company.brandColor,
-          attachmentMaxBytes: sourceManifest.company.attachmentMaxBytes ?? undefined,
-          requireBoardApprovalForNewAgents: sourceManifest.company.requireBoardApprovalForNewAgents,
-          feedbackDataSharingEnabled: sourceManifest.company.feedbackDataSharingEnabled,
-          feedbackDataSharingConsentAt: sourceManifest.company.feedbackDataSharingConsentAt
-            ? new Date(sourceManifest.company.feedbackDataSharingConsentAt)
+          name: sourceManifest.domain.name,
+          description: sourceManifest.domain.description,
+          brandColor: sourceManifest.domain.brandColor,
+          attachmentMaxBytes: sourceManifest.domain.attachmentMaxBytes ?? undefined,
+          requireBoardApprovalForNewAgents: sourceManifest.domain.requireBoardApprovalForNewAgents,
+          feedbackDataSharingEnabled: sourceManifest.domain.feedbackDataSharingEnabled,
+          feedbackDataSharingConsentAt: sourceManifest.domain.feedbackDataSharingConsentAt
+            ? new Date(sourceManifest.domain.feedbackDataSharingConsentAt)
             : null,
-          feedbackDataSharingConsentByUserId: sourceManifest.company.feedbackDataSharingConsentByUserId,
-          feedbackDataSharingTermsVersion: sourceManifest.company.feedbackDataSharingTermsVersion,
+          feedbackDataSharingConsentByUserId: sourceManifest.domain.feedbackDataSharingConsentByUserId,
+          feedbackDataSharingTermsVersion: sourceManifest.domain.feedbackDataSharingTermsVersion,
         });
         targetDomain = updated ?? targetDomain;
-        companyAction = "updated";
+        domainAction = "updated";
       }
     }
 
-    if (!targetDomain) throw notFound("Target company not found");
+    if (!targetDomain) throw notFound("Target domain not found");
 
     const importedAgentEnvSlugs = new Set(
       plan.preview.plan.agentPlans
@@ -4542,28 +4542,28 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         createdImportSecretIds,
       );
 
-      if (include.company) {
-        const logoPath = sourceManifest.company?.logoPath ?? null;
+      if (include.domain) {
+        const logoPath = sourceManifest.domain?.logoPath ?? null;
         if (!logoPath) {
           const cleared = await domains.update(targetDomain.id, { logoAssetId: null });
           targetDomain = cleared ?? targetDomain;
         } else {
           const logoFile = plan.source.files[logoPath];
           if (!logoFile) {
-            warnings.push(`Skipped company logo import because ${logoPath} is missing from the package.`);
+            warnings.push(`Skipped domain logo import because ${logoPath} is missing from the package.`);
           } else if (!storage) {
-            warnings.push("Skipped company logo import because storage is unavailable.");
+            warnings.push("Skipped domain logo import because storage is unavailable.");
           } else {
             const contentType = isPortableBinaryFile(logoFile)
               ? (logoFile.contentType ?? inferContentTypeFromPath(logoPath))
               : inferContentTypeFromPath(logoPath);
-            if (!contentType || !COMPANY_LOGO_CONTENT_TYPE_EXTENSIONS[contentType]) {
-              warnings.push(`Skipped company logo import for ${logoPath} because the file type is unsupported.`);
+            if (!contentType || !DOMAIN_LOGO_CONTENT_TYPE_EXTENSIONS[contentType]) {
+              warnings.push(`Skipped domain logo import for ${logoPath} because the file type is unsupported.`);
             } else {
               try {
                 const body = portableFileToBuffer(logoFile, logoPath);
                 const stored = await storage.putFile({
-                  companyId: targetDomain.id,
+                  domainId: targetDomain.id,
                   namespace: "assets/domains",
                   originalFilename: path.posix.basename(logoPath),
                   contentType,
@@ -4584,15 +4584,15 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
                 });
                 targetDomain = updated ?? targetDomain;
               } catch (err) {
-                warnings.push(`Failed to import company logo ${logoPath}: ${err instanceof Error ? err.message : String(err)}`);
+                warnings.push(`Failed to import domain logo ${logoPath}: ${err instanceof Error ? err.message : String(err)}`);
               }
             }
           }
         }
       }
 
-      const resultAgents: CompanyPortabilityImportResult["agents"] = [];
-      const resultProjects: CompanyPortabilityImportResult["projects"] = [];
+      const resultAgents: DomainPortabilityImportResult["agents"] = [];
+      const resultProjects: DomainPortabilityImportResult["projects"] = [];
       const importedSlugToAgentId = new Map<string, string>();
       const existingSlugToAgentId = new Map<string, string>();
       const preImportExistingSlugToAgentId = new Map<string, string>();
@@ -4615,7 +4615,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
 
       const importedSkills = include.skills || include.agents
-        ? await companySkills.importPackageFiles(targetDomain.id, pickTextFiles(plan.source.files), {
+        ? await domainSkills.importPackageFiles(targetDomain.id, pickTextFiles(plan.source.files), {
             onConflict: resolveSkillConflictStrategy(mode, plan.collisionStrategy),
           })
         : [];
@@ -5113,10 +5113,10 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       }
 
       return {
-        company: {
+        domain: {
           id: targetDomain.id,
           name: targetDomain.name,
-          action: companyAction,
+          action: domainAction,
         },
         agents: resultAgents,
         projects: resultProjects,

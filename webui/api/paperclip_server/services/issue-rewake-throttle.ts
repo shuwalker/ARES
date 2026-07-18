@@ -7,7 +7,7 @@
  * `in_progress`. When each of those runs ends without changing any
  * issue-visible state, every wake pays a full adapter session for zero new
  * information (the Phase 4 interruption-recovery smoke paid 25 sessions and
- * 2.4x cost for one recovery this way).
+ * 2.4x finance for one recovery this way).
  *
  * This module decides when such a wake should be skipped: once an issue has
  * accumulated a streak of consecutive succeeded-but-no-issue-progress runs by

@@ -36,20 +36,20 @@ describeEmbeddedPostgres("heartbeat list", () => {
   });
 
   it("returns runs even when the linked db schema lacks processGroupId", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -61,7 +61,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       status: "running",
@@ -81,7 +81,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
     });
 
     try {
-      const runs = await heartbeatService(db).list(companyId, agentId, 5);
+      const runs = await heartbeatService(db).list(domainId, agentId, 5);
       expect(runs).toHaveLength(1);
       expect(runs[0]?.id).toBe(runId);
       expect(runs[0]?.processGroupId ?? null).toBeNull();
@@ -102,20 +102,20 @@ describeEmbeddedPostgres("heartbeat list", () => {
   });
 
   it("returns small result json payloads unchanged from getRun", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -127,7 +127,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       status: "succeeded",
@@ -146,21 +146,21 @@ describeEmbeddedPostgres("heartbeat list", () => {
   });
 
   it("returns summary list rows without heavy run detail fields", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -172,7 +172,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       status: "failed",
@@ -199,12 +199,12 @@ describeEmbeddedPostgres("heartbeat list", () => {
       },
     });
 
-    const runs = await heartbeatService(db).list(companyId, undefined, 5, { summary: true });
+    const runs = await heartbeatService(db).list(domainId, undefined, 5, { summary: true });
 
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       status: "failed",
       error: "Failed after doing useful work",
@@ -225,7 +225,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
   });
 
   it("bounds oversized legacy result json payloads on getRun", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const oversizedStdout = Array.from({ length: 8_000 }, (_, index) =>
@@ -236,15 +236,15 @@ describeEmbeddedPostgres("heartbeat list", () => {
     ).join("|");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -256,7 +256,7 @@ describeEmbeddedPostgres("heartbeat list", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       status: "succeeded",

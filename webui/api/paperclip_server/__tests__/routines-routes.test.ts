@@ -2,7 +2,7 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const companyId = "22222222-2222-4222-8222-222222222222";
+const domainId = "22222222-2222-4222-8222-222222222222";
 const agentId = "11111111-1111-4111-8111-111111111111";
 const routineId = "33333333-3333-4333-8333-333333333333";
 const projectId = "44444444-4444-4444-8444-444444444444";
@@ -11,7 +11,7 @@ const revisionId = "77777777-7777-4777-8777-777777777777";
 
 const routine = {
   id: routineId,
-  companyId,
+  domainId,
   projectId,
   goalId: null,
   parentIssueId: null,
@@ -37,7 +37,7 @@ const routine = {
 
 const revision = {
   id: revisionId,
-  companyId,
+  domainId,
   routineId,
   revisionNumber: 1,
   title: "Daily routine",
@@ -46,7 +46,7 @@ const revision = {
     version: 1,
     routine: {
       id: routineId,
-      companyId,
+      domainId,
       projectId,
       goalId: null,
       parentIssueId: null,
@@ -74,7 +74,7 @@ const pausedRoutine = {
 };
 const trigger = {
   id: "66666666-6666-4666-8666-666666666666",
-  companyId,
+  domainId,
   routineId,
   kind: "schedule",
   label: "weekday",
@@ -218,7 +218,7 @@ describe("routine routes", () => {
     mockLogActivity.mockResolvedValue(undefined);
     mockRoutineService.getDescriptionDocument.mockResolvedValue({
       id: "99999999-9999-4999-8999-999999999999",
-      companyId,
+      domainId,
       routineId,
       key: "description",
       title: "Routine description",
@@ -237,7 +237,7 @@ describe("routine routes", () => {
     mockAnnotationService.getThreadForRoutineDocument.mockResolvedValue(null);
     const annotationThread = {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      companyId,
+      domainId,
       issueId: null,
       routineId,
       documentId: "99999999-9999-4999-8999-999999999999",
@@ -269,7 +269,7 @@ describe("routine routes", () => {
       updatedAt: new Date("2026-03-20T00:00:00.000Z"),
       comments: [{
         id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        companyId,
+        domainId,
         threadId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         issueId: null,
         routineId,
@@ -287,7 +287,7 @@ describe("routine routes", () => {
     mockAnnotationService.createRoutineThread.mockResolvedValue(annotationThread);
     mockAnnotationService.addRoutineComment.mockResolvedValue({
       id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-      companyId,
+      domainId,
       threadId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       issueId: null,
       routineId,
@@ -314,15 +314,15 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
-      .get(`/api/domains/${companyId}/routines`)
+      .get(`/api/domains/${domainId}/routines`)
       .query({ projectId });
 
     expect(res.status).toBe(200);
-    expect(mockRoutineService.list).toHaveBeenCalledWith(companyId, { projectId });
+    expect(mockRoutineService.list).toHaveBeenCalledWith(domainId, { projectId });
   });
 
   it("lists routine revisions for a board member in newest-first service order", async () => {
@@ -331,7 +331,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app).get(`/api/routines/${routineId}/revisions`);
@@ -347,7 +347,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const selector = {
@@ -421,13 +421,13 @@ describe("routine routes", () => {
     }));
   });
 
-  it("blocks routine revision reads across company scope", async () => {
+  it("blocks routine revision reads across domain scope", async () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["99999999-9999-4999-8999-999999999999"],
+      domainIds: ["99999999-9999-4999-8999-999999999999"],
     });
 
     const res = await request(app).get(`/api/routines/${routineId}/revisions`);
@@ -440,7 +440,7 @@ describe("routine routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: otherAgentId,
-      companyId,
+      domainId,
     });
 
     const res = await request(app).get(`/api/routines/${routineId}/revisions`);
@@ -453,7 +453,7 @@ describe("routine routes", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
+      domainId,
       runId: "88888888-8888-4888-8888-888888888888",
     });
 
@@ -478,11 +478,11 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/routines`)
+      .post(`/api/domains/${domainId}/routines`)
       .send({
         projectId,
         title: "Daily routine",
@@ -500,7 +500,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
@@ -521,7 +521,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
@@ -541,7 +541,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
@@ -563,7 +563,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
@@ -583,7 +583,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
@@ -602,7 +602,7 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
@@ -625,11 +625,11 @@ describe("routine routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [companyId],
+      domainIds: [domainId],
     });
 
     const res = await request(app)
-      .post(`/api/domains/${companyId}/routines`)
+      .post(`/api/domains/${domainId}/routines`)
       .send({
         projectId,
         title: "Daily routine",
@@ -637,7 +637,7 @@ describe("routine routes", () => {
       });
 
     expect(res.status).toBe(201);
-    expect(mockRoutineService.create).toHaveBeenCalledWith(companyId, expect.objectContaining({
+    expect(mockRoutineService.create).toHaveBeenCalledWith(domainId, expect.objectContaining({
       projectId,
       title: "Daily routine",
       assigneeAgentId: agentId,

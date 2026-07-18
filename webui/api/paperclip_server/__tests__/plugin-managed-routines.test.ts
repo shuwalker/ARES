@@ -129,13 +129,13 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
     await tempDb?.cleanup();
   });
 
-  async function seedCompanyAndPlugin(pluginManifest = manifest()) {
-    const companyId = randomUUID();
+  async function seedDomainAndPlugin(pluginManifest = manifest()) {
+    const domainId = randomUUID();
     const pluginId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: issuePrefix(companyId),
+      issuePrefix: issuePrefix(domainId),
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(plugins).values({
@@ -152,15 +152,15 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
     const services = buildHostServices(db, pluginId, pluginManifest.id, createEventBusStub(), undefined, {
       manifest: pluginManifest,
     });
-    return { companyId, pluginId, pluginManifest, services };
+    return { domainId, pluginId, pluginManifest, services };
   }
 
   it("resolves routine agent and project refs by stable managed keys", async () => {
-    const { companyId, services } = await seedCompanyAndPlugin();
-    const agent = await services.agents.managedReconcile({ companyId, agentKey: "wiki-maintainer" });
-    const project = await services.projects.reconcileManaged({ companyId, projectKey: "operations" });
+    const { domainId, services } = await seedDomainAndPlugin();
+    const agent = await services.agents.managedReconcile({ domainId, agentKey: "wiki-maintainer" });
+    const project = await services.projects.reconcileManaged({ domainId, projectKey: "operations" });
 
-    const created = await services.routines.managedReconcile({ companyId, routineKey: "nightly-lint" });
+    const created = await services.routines.managedReconcile({ domainId, routineKey: "nightly-lint" });
 
     expect(created.status).toBe("created");
     expect(created.routine).toMatchObject({
@@ -183,9 +183,9 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
   });
 
   it("returns missing refs until the operator repairs them and preserves routine edits on reconcile", async () => {
-    const { companyId, services } = await seedCompanyAndPlugin();
+    const { domainId, services } = await seedDomainAndPlugin();
 
-    const missing = await services.routines.managedReconcile({ companyId, routineKey: "nightly-lint" });
+    const missing = await services.routines.managedReconcile({ domainId, routineKey: "nightly-lint" });
     expect(missing.status).toBe("missing_refs");
     expect(missing.missingRefs).toEqual([
       expect.objectContaining({ resourceKind: "agent", resourceKey: "wiki-maintainer" }),
@@ -193,7 +193,7 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
     ]);
 
     const [agent] = await db.insert(agents).values({
-      companyId,
+      domainId,
       name: "Operator-selected maintainer",
       role: "engineer",
       status: "idle",
@@ -203,13 +203,13 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
       permissions: {},
     }).returning();
     const [project] = await db.insert(projects).values({
-      companyId,
+      domainId,
       name: "Operator-selected project",
       status: "in_progress",
     }).returning();
 
     const repaired = await services.routines.managedReconcile({
-      companyId,
+      domainId,
       routineKey: "nightly-lint",
       assigneeAgentId: agent.id,
       projectId: project.id,
@@ -225,16 +225,16 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
       .set({ title: "Operator renamed lint", updatedAt: new Date() })
       .where(eq(routines.id, repaired.routineId!));
 
-    const reconciled = await services.routines.managedReconcile({ companyId, routineKey: "nightly-lint" });
+    const reconciled = await services.routines.managedReconcile({ domainId, routineKey: "nightly-lint" });
     expect(reconciled.status).toBe("resolved");
     expect(reconciled.routine?.title).toBe("Operator renamed lint");
   });
 
   it("creates routine operation issues with plugin visibility and managed project scoping", async () => {
-    const { companyId, services } = await seedCompanyAndPlugin();
-    const agent = await services.agents.managedReconcile({ companyId, agentKey: "wiki-maintainer" });
-    const project = await services.projects.reconcileManaged({ companyId, projectKey: "operations" });
-    const routine = await services.routines.managedReconcile({ companyId, routineKey: "nightly-lint" });
+    const { domainId, services } = await seedDomainAndPlugin();
+    const agent = await services.agents.managedReconcile({ domainId, agentKey: "wiki-maintainer" });
+    const project = await services.projects.reconcileManaged({ domainId, projectKey: "operations" });
+    const routine = await services.routines.managedReconcile({ domainId, routineKey: "nightly-lint" });
     const wakeup = vi.fn(async () => ({ id: randomUUID() }));
     const routinesSvc = routineService(db, { heartbeat: { wakeup } });
 

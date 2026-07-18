@@ -1,6 +1,6 @@
 import {
-  COMPANY_SEARCH_SORTS,
-  type CompanySearchSort,
+  DOMAIN_SEARCH_SORTS,
+  type DomainSearchSort,
 } from "@paperclipai/shared";
 import type { ParsedSearchQuery } from "./search-query-parser";
 
@@ -13,7 +13,7 @@ import type { ParsedSearchQuery } from "./search-query-parser";
  */
 export type SearchFilters = ParsedSearchQuery["filters"];
 
-export const SORT_LABELS: Record<CompanySearchSort, string> = {
+export const SORT_LABELS: Record<DomainSearchSort, string> = {
   relevance: "Relevance",
   updated: "Recently updated",
   created: "Newest created",
@@ -31,11 +31,11 @@ export function updatedWithinLabel(value: string): string {
   return UPDATED_WITHIN_LABELS[value] ?? `Updated ≤ ${value}`;
 }
 
-const SORT_SET = new Set<string>(COMPANY_SEARCH_SORTS);
+const SORT_SET = new Set<string>(DOMAIN_SEARCH_SORTS);
 
-export function parseSearchSort(params: URLSearchParams): CompanySearchSort {
+export function parseSearchSort(params: URLSearchParams): DomainSearchSort {
   const raw = params.get("sort");
-  return raw && SORT_SET.has(raw) ? (raw as CompanySearchSort) : "relevance";
+  return raw && SORT_SET.has(raw) ? (raw as DomainSearchSort) : "relevance";
 }
 
 /** Count active filter *dimensions* (assignee counts once regardless of shape). */
@@ -105,7 +105,7 @@ export interface FilterChip {
 }
 
 function humanize(value: string): string {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperLifeAdmin());
+  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function assigneeChipLabel(filters: SearchFilters, lookups: FilterChipLookups): string {

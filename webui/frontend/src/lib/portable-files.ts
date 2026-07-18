@@ -1,4 +1,4 @@
-import type { CompanyPortabilityFileEntry } from "@paperclipai/shared";
+import type { DomainPortabilityFileEntry } from "@paperclipai/shared";
 
 const contentTypeByExtension: Record<string, string> = {
   ".gif": "image/gif",
@@ -9,23 +9,23 @@ const contentTypeByExtension: Record<string, string> = {
   ".webp": "image/webp",
 };
 
-export function getPortableFileText(entry: CompanyPortabilityFileEntry | null | undefined) {
+export function getPortableFileText(entry: DomainPortabilityFileEntry | null | undefined) {
   return typeof entry === "string" ? entry : null;
 }
 
 export function getPortableFileContentType(
   filePath: string,
-  entry: CompanyPortabilityFileEntry | null | undefined,
+  entry: DomainPortabilityFileEntry | null | undefined,
 ) {
   if (entry && typeof entry === "object" && entry.contentType) return entry.contentType;
-  const extensionIndex = filePath.toLowerLifeAdmin().lastIndexOf(".");
+  const extensionIndex = filePath.toLowerCase().lastIndexOf(".");
   if (extensionIndex === -1) return null;
-  return contentTypeByExtension[filePath.toLowerLifeAdmin().slice(extensionIndex)] ?? null;
+  return contentTypeByExtension[filePath.toLowerCase().slice(extensionIndex)] ?? null;
 }
 
 export function getPortableFileDataUrl(
   filePath: string,
-  entry: CompanyPortabilityFileEntry | null | undefined,
+  entry: DomainPortabilityFileEntry | null | undefined,
 ) {
   if (!entry || typeof entry === "string") return null;
   const contentType = getPortableFileContentType(filePath, entry) ?? "application/octet-stream";
@@ -34,7 +34,7 @@ export function getPortableFileDataUrl(
 
 export function isPortableImageFile(
   filePath: string,
-  entry: CompanyPortabilityFileEntry | null | undefined,
+  entry: DomainPortabilityFileEntry | null | undefined,
 ) {
   const contentType = getPortableFileContentType(filePath, entry);
   return typeof contentType === "string" && contentType.startsWith("image/");

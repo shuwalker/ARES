@@ -5,8 +5,8 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   domains,
-  companySkills,
-  costEvents,
+  domainSkills,
+  financeEvents,
   documentRevisions,
   documents,
   feedbackExports,
@@ -74,7 +74,7 @@ type PendingFeedbackExportRow = typeof feedbackExports.$inferSelect;
 
 type IssueFeedbackContext = {
   id: string;
-  companyId: string;
+  domainId: string;
   projectId: string | null;
   identifier: string | null;
   title: string;
@@ -203,7 +203,7 @@ function normalizeSkillReference(value: string) {
 }
 
 function matchesSkillReference(
-  skill: typeof companySkills.$inferSelect,
+  skill: typeof domainSkills.$inferSelect,
   reference: string,
 ) {
   const normalized = normalizeSkillReference(reference);
@@ -379,7 +379,7 @@ function captureStatusFromFiles(files: FeedbackTraceBundleFile[]): FeedbackTrace
 }
 
 async function buildCodexTraceFiles(input: {
-  companyId: string;
+  domainId: string;
   sessionId: string | null;
   state: ReturnType<typeof createFeedbackRedactionState>;
   notes: string[];
@@ -393,7 +393,7 @@ async function buildCodexTraceFiles(input: {
   const managedRoot = path.join(
     resolvePaperclipInstanceRoot(),
     "domains",
-    input.companyId,
+    input.domainId,
     "codex-home",
     "sessions",
   );
@@ -748,7 +748,7 @@ function mapTraceRow(row: FeedbackTraceRow, includePayload: boolean): FeedbackTr
   const targetSummary = asRecord(row.targetSummary) as unknown as FeedbackTraceTargetSummary | null;
   return {
     id: row.id,
-    companyId: row.companyId,
+    domainId: row.domainId,
     feedbackVoteId: row.feedbackVoteId,
     issueId: row.issueId,
     projectId: row.projectId ?? null,
@@ -797,7 +797,7 @@ async function resolveFeedbackTarget(
       .select({
         id: issueComments.id,
         issueId: issueComments.issueId,
-        companyId: issueComments.companyId,
+        domainId: issueComments.domainId,
         authorAgentId: issueComments.authorAgentId,
         authorUserId: issueComments.authorUserId,
         authorType: issueComments.authorType,
@@ -812,7 +812,7 @@ async function resolveFeedbackTarget(
       .where(eq(issueComments.id, targetId))
       .then((rows) => rows[0] ?? null);
 
-    if (!targetComment || targetComment.issueId !== issue.id || targetComment.companyId !== issue.companyId) {
+    if (!targetComment || targetComment.issueId !== issue.id || targetComment.domainId !== issue.domainId) {
       throw notFound("Feedback target not found");
     }
     if (targetComment.deletedAt) {
@@ -861,7 +861,7 @@ async function resolveFeedbackTarget(
     const targetRevision = await db
       .select({
         id: documentRevisions.id,
-        companyId: documentRevisions.companyId,
+        domainId: documentRevisions.domainId,
         documentId: documentRevisions.documentId,
         revisionNumber: documentRevisions.revisionNumber,
         body: documentRevisions.body,
@@ -879,7 +879,7 @@ async function resolveFeedbackTarget(
       .where(eq(documentRevisions.id, targetId))
       .then((rows) => rows.find((row) => row.issueId === issue.id) ?? null);
 
-    if (!targetRevision || targetRevision.companyId !== issue.companyId) {
+    if (!targetRevision || targetRevision.domainId !== issue.domainId) {
       throw notFound("Feedback target not found");
     }
     if (!targetRevision.createdByAgentId) {
@@ -942,7 +942,7 @@ async function listIssueContextItems(
       })
       .from(issueComments)
       .where(and(
-        eq(issueComments.companyId, issue.companyId),
+        eq(issueComments.domainId, issue.domainId),
         eq(issueComments.issueId, issue.id),
         isNull(issueComments.deletedAt),
       )),
@@ -962,7 +962,7 @@ async function listIssueContextItems(
       .from(documentRevisions)
       .innerJoin(documents, eq(documentRevisions.documentId, documents.id))
       .innerJoin(issueDocuments, eq(issueDocuments.documentId, documents.id))
-      .where(and(eq(documentRevisions.companyId, issue.companyId), eq(issueDocuments.issueId, issue.id))),
+      .where(and(eq(documentRevisions.domainId, issue.domainId), eq(issueDocuments.issueId, issue.id))),
   ]);
 
   const issuePath = buildIssuePath(issue.identifier);
@@ -1082,7 +1082,7 @@ async function buildIssueContext(
 
 async function buildAgentContext(
   db: Pick<Db, "select">,
-  companyId: string,
+  domainId: string,
   authorAgentId: string | null,
   createdByRunId: string | null,
   state: ReturnType<typeof createFeedbackRedactionState>,
@@ -1095,7 +1095,7 @@ async function buildAgentContext(
   const agent = await db
     .select({
       id: agents.id,
-      companyId: agents.companyId,
+      domainId: agents.domainId,
       name: agents.name,
       role: agents.role,
       title: agents.title,
@@ -1108,7 +1108,7 @@ async function buildAgentContext(
     .where(eq(agents.id, authorAgentId))
     .then((rows) => rows[0] ?? null);
 
-  if (!agent || agent.companyId !== companyId) {
+  if (!agent || agent.domainId !== domainId) {
     state.notes.add("author_agent_unavailable");
     return null;
   }
@@ -1120,8 +1120,8 @@ async function buildAgentContext(
     ? []
     : await db
       .select()
-      .from(companySkills)
-      .where(eq(companySkills.companyId, companyId));
+      .from(domainSkills)
+      .where(eq(domainSkills.domainId, domainId));
   const matchedSkills = availableSkills
     .filter((skill) => desiredSkillRefs.some((reference) => matchesSkillReference(skill, reference)))
     .slice(0, MAX_SKILLS);
@@ -1137,7 +1137,7 @@ async function buildAgentContext(
     ? await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
+        domainId: heartbeatRuns.domainId,
         agentId: heartbeatRuns.agentId,
         invocationSource: heartbeatRuns.invocationSource,
         status: heartbeatRuns.status,
@@ -1155,17 +1155,17 @@ async function buildAgentContext(
   const runFinances = run
     ? await db
       .select({
-        provider: costEvents.provider,
-        biller: costEvents.biller,
-        billingType: costEvents.billingType,
-        model: costEvents.model,
-        inputTokens: costEvents.inputTokens,
-        cachedInputTokens: costEvents.cachedInputTokens,
-        outputTokens: costEvents.outputTokens,
-        costCents: costEvents.costCents,
+        provider: financeEvents.provider,
+        biller: financeEvents.biller,
+        billingType: financeEvents.billingType,
+        model: financeEvents.model,
+        inputTokens: financeEvents.inputTokens,
+        cachedInputTokens: financeEvents.cachedInputTokens,
+        outputTokens: financeEvents.outputTokens,
+        financeCents: financeEvents.financeCents,
       })
-      .from(costEvents)
-      .where(and(eq(costEvents.companyId, companyId), eq(costEvents.heartbeatRunId, run.id)))
+      .from(financeEvents)
+      .where(and(eq(financeEvents.domainId, domainId), eq(financeEvents.heartbeatRunId, run.id)))
     : [];
 
   const usage = asRecord(run?.usageJson) ?? {};
@@ -1195,7 +1195,7 @@ async function buildAgentContext(
           inputTokens: asNumber(usage.inputTokens) ?? asNumber(usage.rawInputTokens),
           cachedInputTokens: asNumber(usage.cachedInputTokens) ?? asNumber(usage.rawCachedInputTokens),
           outputTokens: asNumber(usage.outputTokens) ?? asNumber(usage.rawOutputTokens),
-          costUsd: asNumber(usage.costUsd),
+          financeUsd: asNumber(usage.financeUsd),
           usageSource: asString(usage.usageSource),
           sessionReused: asBoolean(usage.sessionReused),
           taskSessionReused: asBoolean(usage.taskSessionReused),
@@ -1205,7 +1205,7 @@ async function buildAgentContext(
         },
       }, state, "bundle.agentContext.runtime.sourceRun", 400)
       : null,
-    costSummary: runFinances.length > 0
+    financeSummary: runFinances.length > 0
       ? {
         providers: uniqueNonEmpty(runFinances.map((row) => row.provider)),
         billers: uniqueNonEmpty(runFinances.map((row) => row.biller)),
@@ -1214,14 +1214,14 @@ async function buildAgentContext(
         inputTokens: runFinances.reduce((sum, row) => sum + row.inputTokens, 0),
         cachedInputTokens: runFinances.reduce((sum, row) => sum + row.cachedInputTokens, 0),
         outputTokens: runFinances.reduce((sum, row) => sum + row.outputTokens, 0),
-        costCents: runFinances.reduce((sum, row) => sum + row.costCents, 0),
+        financeCents: runFinances.reduce((sum, row) => sum + row.financeCents, 0),
       }
       : null,
   };
 
   const instructionsBundle = await instructionsSvc.getBundle({
     id: agent.id,
-    companyId: agent.companyId,
+    domainId: agent.domainId,
     name: agent.name,
     adapterConfig: agent.adapterConfig,
   }).catch(() => null);
@@ -1236,7 +1236,7 @@ async function buildAgentContext(
     if (readableEntryPath) {
       const entryFile = await instructionsSvc.readFile({
         id: agent.id,
-        companyId: agent.companyId,
+        domainId: agent.domainId,
         name: agent.name,
         adapterConfig: agent.adapterConfig,
       }, readableEntryPath).catch(() => null);
@@ -1422,7 +1422,7 @@ async function buildPayloadArtifacts(
   const exportId = buildExportId(input.voteId, input.now);
   const [issueContext, agentContext] = await Promise.all([
     buildIssueContext(db, input.issue, input.target, state),
-    buildAgentContext(db, input.issue.companyId, input.target.authorAgentId, input.target.createdByRunId, state),
+    buildAgentContext(db, input.issue.domainId, input.target.authorAgentId, input.target.createdByRunId, state),
   ]);
 
   const payloadSnapshot = {
@@ -1471,7 +1471,7 @@ async function buildFeedbackTraceBundleFromRow(
     const run = await db
       .select({
         id: heartbeatRuns.id,
-        companyId: heartbeatRuns.companyId,
+        domainId: heartbeatRuns.domainId,
         agentId: heartbeatRuns.agentId,
         invocationSource: heartbeatRuns.invocationSource,
         status: heartbeatRuns.status,
@@ -1501,7 +1501,7 @@ async function buildFeedbackTraceBundleFromRow(
       .where(eq(heartbeatRuns.id, sourceRunId))
       .then((rows) => rows[0] ?? null);
 
-    if (!run || run.companyId !== row.companyId) {
+    if (!run || run.domainId !== row.domainId) {
       appendNote(notes, "source_run_unavailable");
     } else {
       adapterType = run.adapterType;
@@ -1520,7 +1520,7 @@ async function buildFeedbackTraceBundleFromRow(
       paperclipRun = sanitizeFeedbackValue(
         {
           id: run.id,
-          companyId: run.companyId,
+          domainId: run.domainId,
           agentId: run.agentId,
           agentName: run.agentName,
           agentRole: run.agentRole,
@@ -1584,7 +1584,7 @@ async function buildFeedbackTraceBundleFromRow(
 
       if (run.adapterType === "codex_local") {
         const adapter = await buildCodexTraceFiles({
-          companyId: row.companyId,
+          domainId: row.domainId,
           sessionId: run.sessionIdAfter ?? run.sessionIdBefore,
           state,
           notes,
@@ -1631,7 +1631,7 @@ async function buildFeedbackTraceBundleFromRow(
     {
       traceId: trace.id,
       exportId: trace.exportId,
-      companyId: trace.companyId,
+      domainId: trace.domainId,
       feedbackVoteId: trace.feedbackVoteId,
       issueId: trace.issueId,
       issueIdentifier: trace.issueIdentifier,
@@ -1669,7 +1669,7 @@ async function buildFeedbackTraceBundleFromRow(
   const bundle: FeedbackTraceBundle = {
     traceId: trace.id,
     exportId: trace.exportId,
-    companyId: trace.companyId,
+    domainId: trace.domainId,
     issueId: trace.issueId,
     issueIdentifier: trace.issueIdentifier,
     adapterType,
@@ -1708,7 +1708,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
         .where(and(eq(feedbackVotes.issueId, issueId), eq(feedbackVotes.authorUserId, authorUserId))),
 
     listFeedbackTraces: async (input: {
-      companyId: string;
+      domainId: string;
       issueId?: string;
       projectId?: string;
       targetType?: FeedbackTargetType;
@@ -1719,7 +1719,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       sharedOnly?: boolean;
       includePayload?: boolean;
     }) => {
-      const filters = [eq(feedbackExports.companyId, input.companyId)];
+      const filters = [eq(feedbackExports.domainId, input.domainId)];
       if (input.issueId) filters.push(eq(feedbackExports.issueId, input.issueId));
       if (input.projectId) filters.push(eq(feedbackExports.projectId, input.projectId));
       if (input.targetType) filters.push(eq(feedbackExports.targetType, input.targetType));
@@ -1772,7 +1772,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
     },
 
     flushPendingFeedbackTraces: async (input?: {
-      companyId?: string;
+      domainId?: string;
       traceId?: string;
       limit?: number;
       now?: Date;
@@ -1780,8 +1780,8 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       const shareClient = options.shareClient;
       if (!shareClient) {
         const filters = [eq(feedbackExports.status, "pending")];
-        if (input?.companyId) {
-          filters.push(eq(feedbackExports.companyId, input.companyId));
+        if (input?.domainId) {
+          filters.push(eq(feedbackExports.domainId, input.domainId));
         }
         if (input?.traceId) {
           filters.push(eq(feedbackExports.id, input.traceId));
@@ -1822,8 +1822,8 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
       const filters = [
         or(eq(feedbackExports.status, "pending"), eq(feedbackExports.status, "failed")),
       ];
-      if (input?.companyId) {
-        filters.push(eq(feedbackExports.companyId, input.companyId));
+      if (input?.domainId) {
+        filters.push(eq(feedbackExports.domainId, input.domainId));
       }
       if (input?.traceId) {
         filters.push(eq(feedbackExports.id, input.traceId));
@@ -1900,7 +1900,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
         const issue = await tx
           .select({
             id: issues.id,
-            companyId: issues.companyId,
+            domainId: issues.domainId,
             projectId: issues.projectId,
             identifier: issues.identifier,
             title: issues.title,
@@ -1919,7 +1919,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
             feedbackDataSharingTermsVersion: domains.feedbackDataSharingTermsVersion,
           })
           .from(domains)
-          .where(eq(domains.id, issue.companyId))
+          .where(eq(domains.id, issue.domainId))
           .then((rows) => rows[0] ?? null);
         if (!existingDomain) throw notFound("Domain not found");
 
@@ -1942,7 +1942,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
               feedbackDataSharingTermsVersion: consentVersion,
               updatedAt: now,
             })
-            .where(eq(domains.id, issue.companyId));
+            .where(eq(domains.id, issue.domainId));
         }
 
         const existingInstanceSettings = await tx
@@ -1998,7 +1998,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
         const [savedVote] = await tx
           .insert(feedbackVotes)
           .values({
-            companyId: issue.companyId,
+            domainId: issue.domainId,
             issueId: issue.id,
             targetType: input.targetType,
             targetId: input.targetId,
@@ -2013,7 +2013,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
           })
           .onConflictDoUpdate({
             target: [
-              feedbackVotes.companyId,
+              feedbackVotes.domainId,
               feedbackVotes.targetType,
               feedbackVotes.targetId,
               feedbackVotes.authorUserId,
@@ -2053,7 +2053,7 @@ export function feedbackService(db: Db, options: FeedbackServiceOptions = {}) {
         const [savedTrace] = await tx
           .insert(feedbackExports)
           .values({
-            companyId: issue.companyId,
+            domainId: issue.domainId,
             feedbackVoteId: savedVote.id,
             issueId: issue.id,
             projectId: issue.projectId,

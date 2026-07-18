@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveJoinRequestAgentManagerId } from "../routes/access.js";
 
 describe("resolveJoinRequestAgentManagerId", () => {
-  it("returns null when no CEO exists in the company agent list", () => {
+  it("returns null when no CEO exists in the domain agent list", () => {
     const managerId = resolveJoinRequestAgentManagerId([
       { id: "a1", role: "cto", reportsTo: null },
       { id: "a2", role: "engineer", reportsTo: "a1" },

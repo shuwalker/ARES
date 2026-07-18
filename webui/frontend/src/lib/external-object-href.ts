@@ -28,5 +28,5 @@ export function normalizeExternalObjectHref(value: string | null | undefined): s
 
   const scheme = url.protocol === "https:" ? "https" : "http";
   const path = url.pathname || "/";
-  return `${scheme}://${url.host.toLowerLifeAdmin()}${path}`;
+  return `${scheme}://${url.host.toLowerCase()}${path}`;
 }

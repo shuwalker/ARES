@@ -1,6 +1,6 @@
 export { healthRoutes } from "./health.js";
-export { companyRoutes } from "./domains.js";
-export { companySkillRoutes } from "./company-skills.js";
+export { domainRoutes } from "./domains.js";
+export { domainSkillRoutes } from "./domain-skills.js";
 export { builtInAgentRoutes } from "./built-in-agents.js";
 export { teamsCatalogRoutes } from "./teams-catalog.js";
 export { agentRoutes } from "./agents.js";
@@ -12,7 +12,7 @@ export { routineRoutes } from "./routines.js";
 export { goalRoutes } from "./goals.js";
 export { approvalRoutes } from "./approvals.js";
 export { secretRoutes } from "./secrets.js";
-export { costRoutes } from "./finances.js";
+export { financeRoutes } from "./finances.js";
 export { activityRoutes } from "./activity.js";
 export { dashboardRoutes } from "./dashboard.js";
 export { attentionRoutes } from "./attention.js";

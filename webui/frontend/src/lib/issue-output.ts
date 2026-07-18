@@ -137,11 +137,11 @@ const DOCUMENT_LIKE_FILENAME_EXTENSIONS = [
 ];
 
 export function normalizeOutputContentType(contentType: string | null | undefined): string {
-  return (contentType ?? "").toLowerLifeAdmin().split(";")[0]?.trim() ?? "";
+  return (contentType ?? "").toLowerCase().split(";")[0]?.trim() ?? "";
 }
 
 function hasDocumentLikeFilename(originalFilename: string | null | undefined): boolean {
-  const filename = (originalFilename ?? "").trim().toLowerLifeAdmin();
+  const filename = (originalFilename ?? "").trim().toLowerCase();
   if (!filename) return false;
   return DOCUMENT_LIKE_FILENAME_EXTENSIONS.some((extension) => filename.endsWith(extension));
 }
@@ -185,7 +185,7 @@ export function getOutputFileGlyph(contentType: string | null | undefined): Outp
   if (type.startsWith("video/")) {
     const subtype = type.slice("video/".length);
     if (subtype === "quicktime") return { label: "MOV", tone: "video" };
-    return { label: (subtype || "vid").toUpperLifeAdmin().slice(0, 4), tone: "video" };
+    return { label: (subtype || "vid").toUpperCase().slice(0, 4), tone: "video" };
   }
   if (type === "application/pdf") return { label: "PDF", tone: "pdf" };
   if (isZipContentType(type)) {
@@ -218,7 +218,7 @@ export function isVideoLikeOutput(
   if (type.startsWith("video/")) return true;
   if (!GENERIC_BINARY_CONTENT_TYPES.has(type)) return false;
 
-  const filename = (originalFilename ?? "").trim().toLowerLifeAdmin();
+  const filename = (originalFilename ?? "").trim().toLowerCase();
   return VIDEO_FILENAME_EXTENSIONS.some((extension) => filename.endsWith(extension));
 }
 

@@ -6,7 +6,7 @@ import type {
   WorkflowCaseEvent,
   WorkflowCaseIssueLinkWithIssue,
   WorkflowStage,
-} from "../api/pipelines";
+} from "../api/workflows";
 import { assigneeValueFromSelection } from "./assignees";
 
 export const INTERNAL_FIELD_KEYS = new Set([
@@ -34,7 +34,7 @@ interface WorkflowCaseTreeNode {
   terminalKind?: string | null;
   createdAt?: Date | string;
   updatedAt?: Date | string;
-  pipeline?: { id: string; key?: string; name?: string } | null;
+  workflow?: { id: string; key?: string; name?: string } | null;
   stage?: { id: string; key: string; name: string; kind: string } | null;
   rollup?: { total?: number | null } | null;
   childGroups?: Array<{ cases?: WorkflowCaseTreeNode[] | null }> | null;
@@ -70,12 +70,12 @@ function humanizeKey(key: string) {
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/^./, (char) => char.toUpperLifeAdmin());
+    .replace(/^./, (char) => char.toUpperCase());
 }
 
 export function humanizeWorkflowItemStatus(status: string | null | undefined) {
   if (!status) return "Open";
-  const normalized = status.trim().toLowerLifeAdmin();
+  const normalized = status.trim().toLowerCase();
   if (!normalized) return "Open";
   const labels: Record<string, string> = {
     open: "Open",
@@ -148,7 +148,7 @@ function sourceIssueAssigneeValue(issue: WorkflowConversationAssigneeIssue | nul
   return assigneeValueFromSelection(issue) || assigneeValueFromSelection({ assigneeAgentId: issue.createdByAgentId });
 }
 
-export function pipelineConversationStarterAssigneeValue(input: {
+export function workflowConversationStarterAssigneeValue(input: {
   conversationIssue?: WorkflowConversationAssigneeIssue | null;
   conversationSource?: WorkflowCaseDetail["conversationSource"] | null;
   issueLinks?: WorkflowCaseIssueLinkWithIssue[] | null;
@@ -175,14 +175,14 @@ export function pipelineConversationStarterAssigneeValue(input: {
 }
 
 function treeNodeToChildRow(node: WorkflowCaseTreeNode): WorkflowChildRow | null {
-  const pipelineId = node.pipeline?.id;
+  const workflowId = node.workflow?.id;
   const stage = node.stage;
-  if (!pipelineId || !stage) return null;
+  if (!workflowId || !stage) return null;
 
   return {
     case: {
       id: node.id,
-      pipelineId,
+      workflowId,
       stageId: stage.id,
       caseKey: node.caseKey ?? null,
       title: node.title,
@@ -197,7 +197,7 @@ function treeNodeToChildRow(node: WorkflowCaseTreeNode): WorkflowChildRow | null
     },
     stage: {
       id: stage.id,
-      pipelineId,
+      workflowId,
       key: stage.key,
       name: stage.name,
       kind: stage.kind,
@@ -210,7 +210,7 @@ export function normalizeWorkflowChildRows(value: unknown): WorkflowChildRow[] {
   if (Array.isArray(value)) {
     return value.filter((row): row is WorkflowChildRow => {
       const candidate = row as Partial<WorkflowChildRow>;
-      return Boolean(candidate.case?.id && candidate.case.pipelineId && candidate.stage?.id);
+      return Boolean(candidate.case?.id && candidate.case.workflowId && candidate.stage?.id);
     });
   }
 
@@ -285,7 +285,7 @@ function stageName(event: WorkflowCaseEvent, stages: StageLookup, side: "from" |
 }
 
 function readDecision(payload: Record<string, unknown>) {
-  return readString(payload.decision)?.toLowerLifeAdmin() ?? null;
+  return readString(payload.decision)?.toLowerCase() ?? null;
 }
 
 function actorName(event: WorkflowCaseEvent) {
@@ -303,7 +303,7 @@ function movementReason(payload: Record<string, unknown>) {
 }
 
 function movementClass(event: WorkflowCaseEvent, payload: Record<string, unknown>) {
-  const raw = readString(payload.transitionClass)?.toLowerLifeAdmin();
+  const raw = readString(payload.transitionClass)?.toLowerCase();
   if (raw === "auto" || raw === "automatic") return "automatic";
   if (event.actorType === "system" && readString(payload.reason) === "children_terminal") return "automatic";
   if (raw === "manual") return "manual";
@@ -317,7 +317,7 @@ function automationIssueLabel(event: WorkflowCaseEvent) {
 }
 
 function humanizeReason(reason: string) {
-  return humanizeKey(reason).replace(/^./, (char) => char.toLowerLifeAdmin());
+  return humanizeKey(reason).replace(/^./, (char) => char.toLowerCase());
 }
 
 export function formatWorkflowItemEvent(event: WorkflowCaseEvent, stages?: StageLookup) {

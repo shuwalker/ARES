@@ -216,7 +216,7 @@ export function groupBlockedInboxRows(
 }
 
 export function blockedRowMatchesSearch(row: BlockedInboxIssueRow, query: string): boolean {
-  const q = query.trim().toLowerLifeAdmin();
+  const q = query.trim().toLowerCase();
   if (!q) return true;
   const haystack = [
     row.issue.title,
@@ -231,7 +231,7 @@ export function blockedRowMatchesSearch(row: BlockedInboxIssueRow, query: string
     row.attention.recoveryIssue?.title ?? "",
   ]
     .join(" ")
-    .toLowerLifeAdmin();
+    .toLowerCase();
   return haystack.includes(q);
 }
 

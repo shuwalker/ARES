@@ -7,8 +7,8 @@ import {
   agentRuntimeState,
   agentWakeupRequests,
   domains,
-  companyMemberships,
-  companySkills,
+  domainMemberships,
+  domainSkills,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -88,8 +88,8 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     await db.delete(agentRuntimeState);
     await db.delete(issues);
     await db.delete(agents);
-    await db.delete(companySkills);
-    await db.delete(companyMemberships);
+    await db.delete(domainSkills);
+    await db.delete(domainMemberships);
     await db.delete(domains);
   });
 
@@ -98,18 +98,18 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
   });
 
   async function seedDomain() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const ownerUserId = `owner-${randomUUID()}`;
     const agentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `R${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `R${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       defaultResponsibleUserId: ownerUserId,
     });
-    await db.insert(companyMemberships).values({
-      companyId,
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: ownerUserId,
       membershipRole: "owner",
@@ -117,7 +117,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -127,17 +127,17 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
       permissions: {},
     });
 
-    return { companyId, ownerUserId, agentId };
+    return { domainId, ownerUserId, agentId };
   }
 
   it("uses the issue responsible user for comment, mention, and dependency wakes", async () => {
-    const { companyId, agentId } = await seedDomain();
+    const { domainId, agentId } = await seedDomain();
     const issueResponsibleUserId = `issue-owner-${randomUUID()}`;
     const commenterUserId = `commenter-${randomUUID()}`;
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Issue-owned work",
       status: "todo",
       assigneeAgentId: agentId,
@@ -175,7 +175,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     expect(completed?.responsibleUserId).toBe(triggeringUserId);
   });
 
-  it("falls back to the company default for system-originated runs without an issue", async () => {
+  it("falls back to the domain default for system-originated runs without an issue", async () => {
     const { agentId, ownerUserId } = await seedDomain();
     const run = await heartbeat.wakeup(agentId, {
       source: "automation",
@@ -192,12 +192,12 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
   });
 
   it("does not use an issue creator as an implicit responsible user for automated issue runs", async () => {
-    const { companyId, agentId, ownerUserId } = await seedDomain();
+    const { domainId, agentId, ownerUserId } = await seedDomain();
     const creatorUserId = `creator-${randomUUID()}`;
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Creator is not credential owner",
       status: "todo",
       assigneeAgentId: agentId,
@@ -220,17 +220,17 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
   });
 
   it("fails automated issue dispatch instead of falling back to the issue creator when no default exists", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Creator-only",
-      issuePrefix: `C${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `C${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -241,7 +241,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Creator-only issue",
       status: "todo",
       assigneeAgentId: agentId,
@@ -264,21 +264,21 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     const runs = await db
       .select()
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agentId)));
+      .where(and(eq(heartbeatRuns.domainId, domainId), eq(heartbeatRuns.agentId, agentId)));
     expect(runs).toHaveLength(0);
   });
 
   it("fails dispatch before creating a run when no responsible user can be resolved", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Ownerless",
-      issuePrefix: `O${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `O${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -300,7 +300,7 @@ describeEmbeddedPostgres("heartbeat responsible-user invariant", () => {
     const runs = await db
       .select()
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agentId)));
+      .where(and(eq(heartbeatRuns.domainId, domainId), eq(heartbeatRuns.agentId, agentId)));
     expect(runs).toHaveLength(0);
   });
 });

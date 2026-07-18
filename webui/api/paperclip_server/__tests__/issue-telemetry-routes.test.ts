@@ -17,7 +17,7 @@ const mockTrackAgentTaskCompleted = vi.hoisted(() => vi.fn());
 const mockGetTelemetryClient = vi.hoisted(() => vi.fn());
 const mockDbSelectWhere = vi.hoisted(() => vi.fn(() => ({
   then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-    Promise.resolve([{ companyId: "company-1", permissions: null }]).then(onFulfilled, onRejected),
+    Promise.resolve([{ domainId: "domain-1", permissions: null }]).then(onFulfilled, onRejected),
 })));
 const mockDbSelectFrom = vi.hoisted(() => vi.fn(() => ({ where: mockDbSelectWhere })));
 const mockDbSelect = vi.hoisted(() => vi.fn(() => ({ from: mockDbSelectFrom })));
@@ -36,8 +36,8 @@ function registerModuleMocks() {
   }));
 
   vi.doMock("../services/index.js", () => ({
-    companyService: () => ({
-      getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+    domainService: () => ({
+      getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
     }),
     accessService: () => ({
       canUser: vi.fn(),
@@ -50,7 +50,7 @@ function registerModuleMocks() {
       hasPermission: vi.fn(),
     }),
     agentService: () => mockAgentService,
-    companySkillService: () => ({
+    domainSkillService: () => ({
       completeTestRunForIssue: vi.fn(async () => null),
     }),
     documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
@@ -99,7 +99,7 @@ function registerModuleMocks() {
 function makeIssue(status: "todo" | "done") {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
+    domainId: "domain-1",
     status,
     assigneeAgentId: "agent-1",
     assigneeUserId: null,
@@ -148,14 +148,14 @@ describe("issue telemetry routes", () => {
     mockDbSelectFrom.mockImplementation(() => ({ where: mockDbSelectWhere }));
     mockDbSelectWhere.mockImplementation(() => ({
       then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-        Promise.resolve([{ companyId: "company-1", permissions: null }]).then(onFulfilled, onRejected),
+        Promise.resolve([{ domainId: "domain-1", permissions: null }]).then(onFulfilled, onRejected),
     }));
   });
 
   it("emits task-completed telemetry with the agent role, adapter type, and model", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
       adapterType: "codex_local",
       adapterConfig: { model: "claude-sonnet-4-6" },
@@ -164,7 +164,7 @@ describe("issue telemetry routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: null,
     });
     const res = await request(app)
@@ -186,7 +186,7 @@ describe("issue telemetry routes", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });

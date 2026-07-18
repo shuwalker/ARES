@@ -13,30 +13,30 @@ import {
   labels,
   projects,
 } from "@paperclipai/db";
-import { companySearchQuerySchema, COMPANY_SEARCH_MAX_QUERY_LENGTH } from "@paperclipai/shared";
+import { domainSearchQuerySchema, DOMAIN_SEARCH_MAX_QUERY_LENGTH } from "@paperclipai/shared";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import {
-  COMPANY_SEARCH_BRANCH_FETCH_LIMIT,
-  companySearchBranchFetchLimit,
-  companySearchService,
-} from "../services/company-search.js";
+  DOMAIN_SEARCH_BRANCH_FETCH_LIMIT,
+  domainSearchBranchFetchLimit,
+  domainSearchService,
+} from "../services/domain-search.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres company search tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres domain search tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
-describe("company search query validation", () => {
+describe("domain search query validation", () => {
   it("truncates long text queries but rejects invalid filters, sort, and pagination", () => {
-    const parsed = companySearchQuerySchema.parse({
-      q: "x".repeat(COMPANY_SEARCH_MAX_QUERY_LENGTH + 50),
+    const parsed = domainSearchQuerySchema.parse({
+      q: "x".repeat(DOMAIN_SEARCH_MAX_QUERY_LENGTH + 50),
       limit: "50",
       offset: "200",
       scope: "all",
@@ -46,39 +46,39 @@ describe("company search query validation", () => {
       updatedWithin: "7d",
     });
 
-    expect(parsed.q).toHaveLength(COMPANY_SEARCH_MAX_QUERY_LENGTH);
+    expect(parsed.q).toHaveLength(DOMAIN_SEARCH_MAX_QUERY_LENGTH);
     expect(parsed.status).toEqual(["todo", "blocked"]);
     expect(parsed.priority).toEqual(["critical", "low"]);
     expect(parsed.sort).toBe("priority");
     expect(parsed.updatedWithin).toBe("7d");
-    expect(() => companySearchQuerySchema.parse({ q: "needle", limit: "500" })).toThrow();
-    expect(() => companySearchQuerySchema.parse({ q: "needle", offset: "9000" })).toThrow();
-    expect(() => companySearchQuerySchema.parse({ q: "needle", scope: "not-a-scope" })).toThrow();
-    expect(() => companySearchQuerySchema.parse({ q: "needle", status: "not-a-status" })).toThrow();
-    expect(() => companySearchQuerySchema.parse({ q: "needle", priority: "urgent" })).toThrow();
-    expect(() => companySearchQuerySchema.parse({ q: "needle", sort: "oldest" })).toThrow();
-    expect(() => companySearchQuerySchema.parse({ q: "needle", updatedWithin: "forever" })).toThrow();
-    expect(() => companySearchQuerySchema.parse({ q: "needle", projectId: "not-a-uuid" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", limit: "500" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", offset: "9000" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", scope: "not-a-scope" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", status: "not-a-status" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", priority: "urgent" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", sort: "oldest" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", updatedWithin: "forever" })).toThrow();
+    expect(() => domainSearchQuerySchema.parse({ q: "needle", projectId: "not-a-uuid" })).toThrow();
   });
 
   it("includes offset in the internal per-branch fetch window", () => {
-    const lowOffset = companySearchQuerySchema.parse({ q: "needle", limit: "50", offset: "0" });
-    const highOffset = companySearchQuerySchema.parse({ q: "needle", limit: "50", offset: "200" });
+    const lowOffset = domainSearchQuerySchema.parse({ q: "needle", limit: "50", offset: "0" });
+    const highOffset = domainSearchQuerySchema.parse({ q: "needle", limit: "50", offset: "200" });
 
-    expect(companySearchBranchFetchLimit(lowOffset.limit, lowOffset.offset)).toBe(51);
-    expect(companySearchBranchFetchLimit(highOffset.limit, highOffset.offset)).toBe(COMPANY_SEARCH_BRANCH_FETCH_LIMIT);
+    expect(domainSearchBranchFetchLimit(lowOffset.limit, lowOffset.offset)).toBe(51);
+    expect(domainSearchBranchFetchLimit(highOffset.limit, highOffset.offset)).toBe(DOMAIN_SEARCH_BRANCH_FETCH_LIMIT);
   });
 });
 
-describeEmbeddedPostgres("companySearchService", () => {
+describeEmbeddedPostgres("domainSearchService", () => {
   let db!: ReturnType<typeof createDb>;
-  let svc!: ReturnType<typeof companySearchService>;
+  let svc!: ReturnType<typeof domainSearchService>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
   beforeAll(async () => {
-    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-company-search-");
+    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-domain-search-");
     db = createDb(tempDb.connectionString);
-    svc = companySearchService(db);
+    svc = domainSearchService(db);
     await db.execute(sql.raw("CREATE EXTENSION IF NOT EXISTS pg_trgm"));
   }, 20_000);
 
@@ -99,21 +99,21 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   async function createDomain(name = "Paperclip") {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name,
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    return companyId;
+    return domainId;
   }
 
-  async function createIssue(companyId: string, values: Partial<typeof issues.$inferInsert> = {}) {
+  async function createIssue(domainId: string, values: Partial<typeof issues.$inferInsert> = {}) {
     const id = values.id ?? randomUUID();
     await db.insert(issues).values({
       id,
-      companyId,
+      domainId,
       title: values.title ?? "Search target",
       description: values.description ?? null,
       status: values.status ?? "todo",
@@ -125,11 +125,11 @@ describeEmbeddedPostgres("companySearchService", () => {
     return id;
   }
 
-  async function createAgent(companyId: string, values: Partial<typeof agents.$inferInsert> = {}) {
+  async function createAgent(domainId: string, values: Partial<typeof agents.$inferInsert> = {}) {
     const id = values.id ?? randomUUID();
     await db.insert(agents).values({
       id,
-      companyId,
+      domainId,
       name: values.name ?? "Search agent",
       role: values.role ?? "engineer",
       title: values.title ?? null,
@@ -139,11 +139,11 @@ describeEmbeddedPostgres("companySearchService", () => {
     return id;
   }
 
-  async function createProject(companyId: string, values: Partial<typeof projects.$inferInsert> = {}) {
+  async function createProject(domainId: string, values: Partial<typeof projects.$inferInsert> = {}) {
     const id = values.id ?? randomUUID();
     await db.insert(projects).values({
       id,
-      companyId,
+      domainId,
       name: values.name ?? "Search project",
       description: values.description ?? null,
       ...values,
@@ -151,11 +151,11 @@ describeEmbeddedPostgres("companySearchService", () => {
     return id;
   }
 
-  async function createLabel(companyId: string, values: Partial<typeof labels.$inferInsert> = {}) {
+  async function createLabel(domainId: string, values: Partial<typeof labels.$inferInsert> = {}) {
     const id = values.id ?? randomUUID();
     await db.insert(labels).values({
       id,
-      companyId,
+      domainId,
       name: values.name ?? "Search label",
       color: values.color ?? "blue",
       ...values,
@@ -164,49 +164,49 @@ describeEmbeddedPostgres("companySearchService", () => {
   }
 
   it("ranks exact issue identifiers before weaker title matches", async () => {
-    const companyId = await createDomain();
-    const exactId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const exactId = await createIssue(domainId, {
       identifier: "TST-42",
       title: "Backend endpoint",
     });
-    await createIssue(companyId, {
+    await createIssue(domainId, {
       identifier: "TST-43",
       title: "TST-42 mentioned in title only",
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "TST-42" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "TST-42" }));
 
     expect(result.results[0]?.id).toBe(exactId);
     expect(result.results[0]?.matchedFields).toContain("identifier");
   });
 
   it("ranks phrase and all-token issue matches before partial scattered-token matches", async () => {
-    const companyId = await createDomain();
+    const domainId = await createDomain();
     const base = new Date("2026-01-01T00:00:00.000Z").getTime();
-    const partialTokenId = await createIssue(companyId, {
+    const partialTokenId = await createIssue(domainId, {
       identifier: "TST-50",
       title: "Alpha-only deployment",
       updatedAt: new Date(base + 3_000),
     });
-    const allTokenId = await createIssue(companyId, {
+    const allTokenId = await createIssue(domainId, {
       identifier: "TST-51",
       title: "Alpha rollout beta",
       updatedAt: new Date(base + 2_000),
     });
-    const phraseId = await createIssue(companyId, {
+    const phraseId = await createIssue(domainId, {
       identifier: "TST-52",
       title: "Alpha beta deployment",
       updatedAt: new Date(base + 1_000),
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "alpha beta", scope: "issues" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "alpha beta", scope: "issues" }));
 
     expect(result.results.map((row) => row.id)).toEqual([phraseId, allTokenId, partialTokenId]);
   });
 
   it("matches multiple tokens across the same issue thread and returns comment snippets", async () => {
-    const companyId = await createDomain();
-    const issueId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const issueId = await createIssue(domainId, {
       identifier: "TST-7",
       title: "Checkout semantics",
       description: "Atomic ownership is enforced here.",
@@ -214,12 +214,12 @@ describeEmbeddedPostgres("companySearchService", () => {
     const commentId = randomUUID();
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
+      domainId,
       issueId,
       body: "The ranking snippet should explain why this thread matched.",
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "checkout snippet" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "checkout snippet" }));
     const match = result.results.find((item) => item.id === issueId);
 
     expect(match).toBeTruthy();
@@ -231,27 +231,27 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("searches issue documents and returns document metadata for snippets", async () => {
-    const companyId = await createDomain();
-    const issueId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const issueId = await createIssue(domainId, {
       identifier: "TST-8",
       title: "Adapter manager",
     });
     const documentId = randomUUID();
     await db.insert(documents).values({
       id: documentId,
-      companyId,
+      domainId,
       title: "Hermes Parser Plan",
       latestBody: "The external adapter parser should be discovered from the plugin package.",
       format: "markdown",
     });
     await db.insert(issueDocuments).values({
-      companyId,
+      domainId,
       issueId,
       documentId,
       key: "plan",
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "Hermes parser", scope: "documents" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "Hermes parser", scope: "documents" }));
 
     expect(result.results).toHaveLength(1);
     expect(result.results[0]?.id).toBe(issueId);
@@ -264,29 +264,29 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("searches artifact projections through the artifacts scope", async () => {
-    const companyId = await createDomain();
-    const agentId = await createAgent(companyId, { name: "Artifact Writer" });
-    const issueId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const agentId = await createAgent(domainId, { name: "Artifact Writer" });
+    const issueId = await createIssue(domainId, {
       identifier: "TST-88",
       title: "Produce artifact",
     });
     const documentId = randomUUID();
     await db.insert(documents).values({
       id: documentId,
-      companyId,
+      domainId,
       title: "Launch Artifact Brief",
       latestBody: "The searchable artifact body mentions a comet-tail preview.",
       format: "markdown",
       createdByAgentId: agentId,
     });
     await db.insert(issueDocuments).values({
-      companyId,
+      domainId,
       issueId,
       documentId,
       key: "brief",
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "comet-tail", scope: "artifacts" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "comet-tail", scope: "artifacts" }));
 
     expect(result.results).toHaveLength(1);
     expect(result.results[0]).toMatchObject({
@@ -303,9 +303,9 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("does not pass high-offset search fetch windows through to artifact query validation", async () => {
-    const companyId = await createDomain();
+    const domainId = await createDomain();
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({
       q: "artifact",
       scope: "artifacts",
       limit: "50",
@@ -317,12 +317,12 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("applies issue filters before sorting and pagination", async () => {
-    const companyId = await createDomain();
-    const agentId = await createAgent(companyId, { name: "Needle engineer" });
-    const projectId = await createProject(companyId, { name: "Needle project" });
-    const labelId = await createLabel(companyId, { name: "Needle label" });
+    const domainId = await createDomain();
+    const agentId = await createAgent(domainId, { name: "Needle engineer" });
+    const projectId = await createProject(domainId, { name: "Needle project" });
+    const labelId = await createLabel(domainId, { name: "Needle label" });
     const base = new Date("2026-01-01T00:00:00.000Z").getTime();
-    const newestMatch = await createIssue(companyId, {
+    const newestMatch = await createIssue(domainId, {
       identifier: "TST-30",
       title: "Needle newest",
       status: "todo",
@@ -331,7 +331,7 @@ describeEmbeddedPostgres("companySearchService", () => {
       projectId,
       updatedAt: new Date(base + 3_000),
     });
-    const olderMatch = await createIssue(companyId, {
+    const olderMatch = await createIssue(domainId, {
       identifier: "TST-31",
       title: "Needle older",
       status: "todo",
@@ -340,7 +340,7 @@ describeEmbeddedPostgres("companySearchService", () => {
       projectId,
       updatedAt: new Date(base + 2_000),
     });
-    const statusDecoy = await createIssue(companyId, {
+    const statusDecoy = await createIssue(domainId, {
       identifier: "TST-32",
       title: "Needle done",
       status: "done",
@@ -350,12 +350,12 @@ describeEmbeddedPostgres("companySearchService", () => {
       updatedAt: new Date(base + 4_000),
     });
     await db.insert(issueLabels).values([
-      { companyId, issueId: newestMatch, labelId },
-      { companyId, issueId: olderMatch, labelId },
-      { companyId, issueId: statusDecoy, labelId },
+      { domainId, issueId: newestMatch, labelId },
+      { domainId, issueId: olderMatch, labelId },
+      { domainId, issueId: statusDecoy, labelId },
     ]);
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({
       q: "needle",
       status: "todo",
       priority: "high",
@@ -378,24 +378,24 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("returns issue rows for filter-only searches", async () => {
-    const companyId = await createDomain();
-    const agentId = await createAgent(companyId, { name: "Filter owner" });
-    const matchingIssue = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const agentId = await createAgent(domainId, { name: "Filter owner" });
+    const matchingIssue = await createIssue(domainId, {
       identifier: "TST-34",
       title: "Filtered task",
       status: "todo",
       assigneeAgentId: agentId,
     });
-    await createIssue(companyId, {
+    await createIssue(domainId, {
       identifier: "TST-35",
       title: "Filtered decoy",
       status: "done",
       assigneeAgentId: agentId,
     });
-    await createAgent(companyId, { name: "Todo" });
-    await createProject(companyId, { name: "Todo" });
+    await createAgent(domainId, { name: "Todo" });
+    await createProject(domainId, { name: "Todo" });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({
       q: "",
       status: "todo",
       assigneeAgentId: agentId,
@@ -409,11 +409,11 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("returns zero-result loosen data and suppresses agent/project rows while issue filters are active", async () => {
-    const companyId = await createDomain();
-    await createAgent(companyId, { name: "Needle agent", capabilities: "Needle capabilities" });
-    await createProject(companyId, { name: "Needle project", description: "Needle roadmap" });
+    const domainId = await createDomain();
+    await createAgent(domainId, { name: "Needle agent", capabilities: "Needle capabilities" });
+    await createProject(domainId, { name: "Needle project", description: "Needle roadmap" });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "needle", status: "todo" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "needle", status: "todo" }));
 
     expect(result.results).toEqual([]);
     expect(result.countsByType.agent).toBe(0);
@@ -427,13 +427,13 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("does not leak hidden issue-backed artifacts", async () => {
-    const companyId = await createDomain();
-    const agentId = await createAgent(companyId, { name: "Artifact Writer" });
-    const visibleIssueId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const agentId = await createAgent(domainId, { name: "Artifact Writer" });
+    const visibleIssueId = await createIssue(domainId, {
       identifier: "TST-33",
       title: "Visible artifact holder",
     });
-    const hiddenIssueId = await createIssue(companyId, {
+    const hiddenIssueId = await createIssue(domainId, {
       identifier: "TST-34",
       title: "Hidden artifact holder",
       hiddenAt: new Date(),
@@ -443,7 +443,7 @@ describeEmbeddedPostgres("companySearchService", () => {
     await db.insert(documents).values([
       {
         id: visibleDocumentId,
-        companyId,
+        domainId,
         title: "Visible Artifact",
         latestBody: "Searchable artifact body",
         format: "markdown",
@@ -451,7 +451,7 @@ describeEmbeddedPostgres("companySearchService", () => {
       },
       {
         id: hiddenDocumentId,
-        companyId,
+        domainId,
         title: "Hidden Artifact",
         latestBody: "Searchable artifact body",
         format: "markdown",
@@ -459,120 +459,120 @@ describeEmbeddedPostgres("companySearchService", () => {
       },
     ]);
     await db.insert(issueDocuments).values([
-      { companyId, issueId: visibleIssueId, documentId: visibleDocumentId, key: "visible" },
-      { companyId, issueId: hiddenIssueId, documentId: hiddenDocumentId, key: "hidden" },
+      { domainId, issueId: visibleIssueId, documentId: visibleDocumentId, key: "visible" },
+      { domainId, issueId: hiddenIssueId, documentId: hiddenDocumentId, key: "hidden" },
     ]);
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "artifact", scope: "artifacts" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "artifact", scope: "artifacts" }));
 
     expect(result.results.map((row) => row.artifact?.issueId)).toEqual([visibleIssueId]);
     expect(result.countsByType.artifact).toBe(1);
   });
 
   it("excludes hidden issues and other domains' data", async () => {
-    const companyId = await createDomain("Visible Co");
-    const otherCompanyId = await createDomain("Other Co");
-    const visibleId = await createIssue(companyId, {
+    const domainId = await createDomain("Visible Co");
+    const otherDomainId = await createDomain("Other Co");
+    const visibleId = await createIssue(domainId, {
       identifier: "VIS-1",
       title: "Visible needle",
     });
-    await createIssue(companyId, {
+    await createIssue(domainId, {
       identifier: "HID-1",
       title: "Hidden needle",
       hiddenAt: new Date(),
     });
-    await createIssue(companyId, {
+    await createIssue(domainId, {
       identifier: "HAR-1",
       title: "Harness needle",
       harnessKind: "skill_test",
     });
-    await createIssue(otherCompanyId, {
+    await createIssue(otherDomainId, {
       identifier: "OTH-1",
-      title: "Other company needle",
+      title: "Other domain needle",
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "needle" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "needle" }));
 
     expect(result.results.map((item) => item.id)).toEqual([visibleId]);
   });
 
   it("treats bare SQL wildcard characters as literals instead of match-all queries", async () => {
-    const companyId = await createDomain();
-    const issueId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const issueId = await createIssue(domainId, {
       identifier: "TST-20",
       title: "Plain issue target",
       description: "Plain issue description",
     });
     await db.insert(issueComments).values({
-      companyId,
+      domainId,
       issueId,
       body: "Plain comment body",
     });
     const documentId = randomUUID();
     await db.insert(documents).values({
       id: documentId,
-      companyId,
+      domainId,
       title: "Plain document",
       latestBody: "Plain document body",
       format: "markdown",
     });
     await db.insert(issueDocuments).values({
-      companyId,
+      domainId,
       issueId,
       documentId,
       key: "plain",
     });
-    await createAgent(companyId, {
+    await createAgent(domainId, {
       name: "Plain Agent",
       role: "engineer",
       capabilities: "Plain agent capabilities",
     });
-    await createProject(companyId, {
+    await createProject(domainId, {
       name: "Plain Project",
       description: "Plain project description",
     });
 
     for (const q of ["%", "_", "\\"]) {
-      const result = await svc.search(companyId, companySearchQuerySchema.parse({ q }));
+      const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q }));
       expect(result.results, `q=${q}`).toEqual([]);
     }
   });
 
   it("matches percent characters literally across issue, comment, document, agent, and project results", async () => {
-    const companyId = await createDomain();
-    const issueMatchId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const issueMatchId = await createIssue(domainId, {
       identifier: "TST-21",
       title: "Release 100% checklist",
     });
-    const issueDecoyId = await createIssue(companyId, {
+    const issueDecoyId = await createIssue(domainId, {
       identifier: "TST-22",
       title: "Release 1000 checklist",
     });
-    const commentMatchId = await createIssue(companyId, {
+    const commentMatchId = await createIssue(domainId, {
       identifier: "TST-23",
       title: "Comment literal holder",
     });
-    const commentDecoyId = await createIssue(companyId, {
+    const commentDecoyId = await createIssue(domainId, {
       identifier: "TST-24",
       title: "Comment decoy holder",
     });
     await db.insert(issueComments).values([
       {
-        companyId,
+        domainId,
         issueId: commentMatchId,
         body: "QA is 100% confident in this result.",
       },
       {
-        companyId,
+        domainId,
         issueId: commentDecoyId,
         body: "QA is 1000 confident in this result.",
       },
     ]);
-    const documentMatchIssueId = await createIssue(companyId, {
+    const documentMatchIssueId = await createIssue(domainId, {
       identifier: "TST-25",
       title: "Document literal holder",
     });
-    const documentDecoyIssueId = await createIssue(companyId, {
+    const documentDecoyIssueId = await createIssue(domainId, {
       identifier: "TST-26",
       title: "Document decoy holder",
     });
@@ -581,14 +581,14 @@ describeEmbeddedPostgres("companySearchService", () => {
     await db.insert(documents).values([
       {
         id: documentMatchId,
-        companyId,
+        domainId,
         title: "Literal rollout",
         latestBody: "Ship 100% complete adapter support.",
         format: "markdown",
       },
       {
         id: documentDecoyId,
-        companyId,
+        domainId,
         title: "Decoy rollout",
         latestBody: "Ship 1000 complete adapter support.",
         format: "markdown",
@@ -596,34 +596,34 @@ describeEmbeddedPostgres("companySearchService", () => {
     ]);
     await db.insert(issueDocuments).values([
       {
-        companyId,
+        domainId,
         issueId: documentMatchIssueId,
         documentId: documentMatchId,
         key: "literal",
       },
       {
-        companyId,
+        domainId,
         issueId: documentDecoyIssueId,
         documentId: documentDecoyId,
         key: "decoy",
       },
     ]);
-    const agentMatchId = await createAgent(companyId, {
+    const agentMatchId = await createAgent(domainId, {
       name: "100% Specialist",
       role: "engineer",
     });
-    const agentDecoyId = await createAgent(companyId, {
+    const agentDecoyId = await createAgent(domainId, {
       name: "1000 Specialist",
       role: "engineer",
     });
-    const projectMatchId = await createProject(companyId, {
+    const projectMatchId = await createProject(domainId, {
       name: "100% Launch Plan",
     });
-    const projectDecoyId = await createProject(companyId, {
+    const projectDecoyId = await createProject(domainId, {
       name: "1000 Launch Plan",
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "100%" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "100%" }));
     const ids = result.results.map((row) => row.id);
 
     expect(ids).toEqual(expect.arrayContaining([
@@ -643,20 +643,20 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("applies offset after merging cross-type result ranking", async () => {
-    const companyId = await createDomain();
+    const domainId = await createDomain();
     const base = new Date("2026-01-01T00:00:00.000Z").getTime();
     const agentIds = await Promise.all([
-      createAgent(companyId, { name: "Needle agent 1", updatedAt: new Date(base + 6_000) }),
-      createAgent(companyId, { name: "Needle agent 2", updatedAt: new Date(base + 5_000) }),
-      createAgent(companyId, { name: "Needle agent 3", updatedAt: new Date(base + 4_000) }),
+      createAgent(domainId, { name: "Needle agent 1", updatedAt: new Date(base + 6_000) }),
+      createAgent(domainId, { name: "Needle agent 2", updatedAt: new Date(base + 5_000) }),
+      createAgent(domainId, { name: "Needle agent 3", updatedAt: new Date(base + 4_000) }),
     ]);
     const projectIds = await Promise.all([
-      createProject(companyId, { name: "Needle project 1", updatedAt: new Date(base + 3_000) }),
-      createProject(companyId, { name: "Needle project 2", updatedAt: new Date(base + 2_000) }),
-      createProject(companyId, { name: "Needle project 3", updatedAt: new Date(base + 1_000) }),
+      createProject(domainId, { name: "Needle project 1", updatedAt: new Date(base + 3_000) }),
+      createProject(domainId, { name: "Needle project 2", updatedAt: new Date(base + 2_000) }),
+      createProject(domainId, { name: "Needle project 3", updatedAt: new Date(base + 1_000) }),
     ]);
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "needle", limit: "2", offset: "2" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "needle", limit: "2", offset: "2" }));
 
     expect(result.results.map((row) => row.id)).toEqual([agentIds[2], projectIds[0]]);
     expect(result.countsByType).toEqual({ issue: 0, comment: 0, document: 0, artifact: 0, agent: 3, project: 3 });
@@ -664,18 +664,18 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("escapes underscore and backslash characters in issue phrase and token patterns", async () => {
-    const companyId = await createDomain();
-    const literalId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const literalId = await createIssue(domainId, {
       identifier: "TST-27",
       title: "Literal foo_bar path c:\\tmp",
     });
-    const decoyId = await createIssue(companyId, {
+    const decoyId = await createIssue(domainId, {
       identifier: "TST-28",
       title: "Decoy fooXbar path c:tmp",
     });
 
     for (const q of ["foo_bar", "c:\\tmp"]) {
-      const result = await svc.search(companyId, companySearchQuerySchema.parse({ q, scope: "issues" }));
+      const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q, scope: "issues" }));
       const ids = result.results.map((row) => row.id);
       expect(ids, `q=${q}`).toContain(literalId);
       expect(ids, `q=${q}`).not.toContain(decoyId);
@@ -683,29 +683,29 @@ describeEmbeddedPostgres("companySearchService", () => {
   });
 
   it("uses pg_trgm for conservative fuzzy title matches", async () => {
-    const companyId = await createDomain();
-    const issueId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const issueId = await createIssue(domainId, {
       identifier: "TST-9",
       title: "Onboarding wizard polish",
     });
 
-    const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: "onbordng wizard" }));
+    const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: "onbordng wizard" }));
 
     expect(result.results[0]?.id).toBe(issueId);
     expect(result.results[0]?.matchedFields).toContain("title");
   });
 
   it("matches transposition typos against multi-word titles", async () => {
-    const companyId = await createDomain();
-    const searchIssueId = await createIssue(companyId, {
+    const domainId = await createDomain();
+    const searchIssueId = await createIssue(domainId, {
       identifier: "TST-10",
       title: "Improve search performance",
     });
-    const mobileIssueId = await createIssue(companyId, {
+    const mobileIssueId = await createIssue(domainId, {
       identifier: "TST-11",
       title: "Polish mobile navigation",
     });
-    const otherIssueId = await createIssue(companyId, {
+    const otherIssueId = await createIssue(domainId, {
       identifier: "TST-12",
       title: "Refactor billing reports",
     });
@@ -717,7 +717,7 @@ describeEmbeddedPostgres("companySearchService", () => {
     ];
 
     for (const { query, expectedId, rejected } of transpositionLifeAdmin) {
-      const result = await svc.search(companyId, companySearchQuerySchema.parse({ q: query }));
+      const result = await svc.search(domainId, domainSearchQuerySchema.parse({ q: query }));
       const ids = result.results.map((row) => row.id);
       expect(ids, `query=${query}`).toContain(expectedId);
       expect(ids, `query=${query} should not match unrelated issue`).not.toContain(rejected);

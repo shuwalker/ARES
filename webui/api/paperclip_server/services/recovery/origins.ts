@@ -23,7 +23,7 @@ export function isStrandedIssueRecoveryOriginKind(originKind: string | null | un
 }
 
 export function buildIssueGraphLivenessIncidentKey(input: {
-  companyId: string;
+  domainId: string;
   issueId: string;
   state: string;
   blockerIssueId?: string | null;
@@ -31,7 +31,7 @@ export function buildIssueGraphLivenessIncidentKey(input: {
 }) {
   return [
     RECOVERY_KEY_PREFIXES.issueGraphLivenessIncident,
-    input.companyId,
+    input.domainId,
     input.issueId,
     input.state,
     input.blockerIssueId ?? input.participantAgentId ?? "none",
@@ -42,19 +42,19 @@ export function parseIssueGraphLivenessIncidentKey(incidentKey: string | null | 
   if (!incidentKey) return null;
   const parts = incidentKey.split(":");
   if (parts.length !== 5 || parts[0] !== RECOVERY_KEY_PREFIXES.issueGraphLivenessIncident) return null;
-  const [, companyId, issueId, state, leafIssueId] = parts;
-  if (!companyId || !issueId || !state || !leafIssueId) return null;
-  return { companyId, issueId, state, leafIssueId };
+  const [, domainId, issueId, state, leafIssueId] = parts;
+  if (!domainId || !issueId || !state || !leafIssueId) return null;
+  return { domainId, issueId, state, leafIssueId };
 }
 
 export function buildIssueGraphLivenessLeafKey(input: {
-  companyId: string;
+  domainId: string;
   state: string;
   leafIssueId: string;
 }) {
   return [
     RECOVERY_KEY_PREFIXES.issueGraphLivenessLeaf,
-    input.companyId,
+    input.domainId,
     input.state,
     input.leafIssueId,
   ].join(":");

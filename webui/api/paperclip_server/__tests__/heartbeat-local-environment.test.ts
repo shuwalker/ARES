@@ -76,7 +76,7 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
         "heartbeat_runs",
         "agent_wakeup_requests",
         "agent_runtime_state",
-        "company_skills",
+        "domain_skills",
         "agents",
         "domains"
       RESTART IDENTITY CASCADE
@@ -88,12 +88,12 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
   });
 
   it("runs work through the default Local environment lease", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -102,7 +102,7 @@ describeEmbeddedPostgres("heartbeat local environment lifecycle", () => {
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "ProcessAgent",
       role: "engineer",
       status: "idle",

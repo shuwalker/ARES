@@ -1,5 +1,5 @@
 import {
-  COMPANY_SEARCH_UPDATED_WITHIN_OPTIONS,
+  DOMAIN_SEARCH_UPDATED_WITHIN_OPTIONS,
   ISSUE_PRIORITIES,
   ISSUE_STATUSES,
   isUuidLike,
@@ -7,7 +7,7 @@ import {
   type IssuePriority,
   type IssueStatus,
 } from "@paperclipai/shared";
-import type { CompanySearchParams } from "@/api/search";
+import type { DomainSearchParams } from "@/api/search";
 
 const SEARCH_FILTER_PARAM_KEYS = [
   "status",
@@ -60,7 +60,7 @@ export interface SearchQueryParserContext {
 export interface ParsedSearchQuery {
   query: string;
   filters: Pick<
-    CompanySearchParams,
+    DomainSearchParams,
     | "status"
     | "priority"
     | "assigneeAgentId"
@@ -128,9 +128,9 @@ function currentTokenBounds(input: string): { start: number; end: number; token:
 
 export function searchOperatorSuggestions(input: string, limit = 5): SearchOperatorSuggestion[] {
   const { token } = currentTokenBounds(input);
-  const normalized = token.toLowerLifeAdmin();
+  const normalized = token.toLowerCase();
   const candidates = normalized.length > 0
-    ? SEARCH_OPERATOR_SUGGESTIONS.filter((suggestion) => suggestion.token.toLowerLifeAdmin().startsWith(normalized))
+    ? SEARCH_OPERATOR_SUGGESTIONS.filter((suggestion) => suggestion.token.toLowerCase().startsWith(normalized))
     : SEARCH_OPERATOR_SUGGESTIONS;
   return candidates.slice(0, limit);
 }
@@ -143,7 +143,7 @@ export function applySearchOperatorSuggestion(input: string, token: string): str
 }
 
 function normalizedLookup(value: string) {
-  return normalizeAgentUrlKey(value) ?? value.trim().toLowerLifeAdmin();
+  return normalizeAgentUrlKey(value) ?? value.trim().toLowerCase();
 }
 
 function findByNameOrId<T extends { id: string; name: string; urlKey?: string | null }>(
@@ -196,7 +196,7 @@ export function parseSearchQuery(input: string, context: SearchQueryParserContex
       continue;
     }
 
-    const key = match[1]!.toLowerLifeAdmin();
+    const key = match[1]!.toLowerCase();
     const rawValue = match[2]!;
     const value = stripValueQuotes(rawValue).trim();
     if (!value) {
@@ -227,7 +227,7 @@ export function parseSearchQuery(input: string, context: SearchQueryParserContex
     }
 
     if (key === "assignee") {
-      if (value.toLowerLifeAdmin() === "me") {
+      if (value.toLowerCase() === "me") {
         if (context.currentAgentId) {
           filters.assigneeAgentId = context.currentAgentId;
           pills.push({ key: "assignee", value: "me", label: "assignee:me" });
@@ -356,7 +356,7 @@ export function readSearchFiltersFromParams(search: URLSearchParams): ParsedSear
   if (assigneeUserId) filters.assigneeUserId = assigneeUserId;
   if (projectId && isUuidLike(projectId)) filters.projectId = projectId;
   if (labelId && isUuidLike(labelId)) filters.labelId = labelId;
-  if (updatedWithin && (/^[1-9]\d{0,2}(h|d|w|m)$/.test(updatedWithin) || (COMPANY_SEARCH_UPDATED_WITHIN_OPTIONS as readonly string[]).includes(updatedWithin))) {
+  if (updatedWithin && (/^[1-9]\d{0,2}(h|d|w|m)$/.test(updatedWithin) || (DOMAIN_SEARCH_UPDATED_WITHIN_OPTIONS as readonly string[]).includes(updatedWithin))) {
     filters.updatedWithin = updatedWithin;
   }
   if (updatedAfter && !Number.isNaN(new Date(updatedAfter).getTime())) filters.updatedAfter = updatedAfter;

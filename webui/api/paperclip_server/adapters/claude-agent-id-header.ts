@@ -8,7 +8,7 @@ const AGENT_ID_HEADER = "X-Anthropic-Agent-Id";
  * Wraps the claude_local execute so every request the spawned Claude Code makes
  * carries `X-Anthropic-Agent-Id: <agentId>` via ANTHROPIC_CUSTOM_HEADERS. A proxy
  * such as better-ccflare reads that header to attribute requests per agent for
- * downstream cost/token telemetry.
+ * downstream finance/token telemetry.
  *
  * The header is merged into `config.env` — the env the adapter actually forwards
  * into the spawned process — not `agent.adapterConfig.env`, which is resolved

@@ -6,12 +6,12 @@ vi.unmock("http");
 vi.unmock("node:http");
 
 const agentId = "11111111-1111-4111-8111-111111111111";
-const companyId = "22222222-2222-4222-8222-222222222222";
+const domainId = "22222222-2222-4222-8222-222222222222";
 const keyId = "33333333-3333-4333-8333-333333333333";
 
 const baseAgent = {
   id: agentId,
-  companyId,
+  domainId,
   name: "Builder",
   urlKey: "builder",
   role: "engineer",
@@ -37,7 +37,7 @@ const baseAgent = {
 const baseKey = {
   id: keyId,
   agentId,
-  companyId,
+  domainId,
   name: "exploit",
   createdAt: new Date("2026-04-11T00:00:00.000Z"),
   revokedAt: null,
@@ -99,7 +99,7 @@ const mockAgentInstructionsService = vi.hoisted(() => ({
   materializeManagedBundle: vi.fn(),
 }));
 
-const mockCompanySkillService = vi.hoisted(() => ({
+const mockDomainSkillService = vi.hoisted(() => ({
   listRuntimeSkillEntries: vi.fn(),
   resolveRequestedSkillKeys: vi.fn(),
 }));
@@ -131,15 +131,15 @@ vi.mock("../routes/authz.js", async () => {
     }
   }
 
-  function assertCompanyAccess(req: Express.Request, expectedCompanyId: string) {
+  function assertDomainAccess(req: Express.Request, expectedDomainId: string) {
     assertAuthenticated(req);
-    if (req.actor.type === "agent" && req.actor.companyId !== expectedCompanyId) {
-      throw forbidden("Agent key cannot access another company");
+    if (req.actor.type === "agent" && req.actor.domainId !== expectedDomainId) {
+      throw forbidden("Agent key cannot access another domain");
     }
     if (req.actor.type === "board" && req.actor.source !== "local_implicit") {
-      const allowedDomains = req.actor.companyIds ?? [];
-      if (!allowedDomains.includes(expectedCompanyId)) {
-        throw forbidden("User does not have access to this company");
+      const allowedDomains = req.actor.domainIds ?? [];
+      if (!allowedDomains.includes(expectedDomainId)) {
+        throw forbidden("User does not have access to this domain");
       }
     }
   }
@@ -171,7 +171,7 @@ vi.mock("../routes/authz.js", async () => {
   return {
     assertAuthenticated,
     assertBoard,
-    assertCompanyAccess,
+    assertDomainAccess,
     assertInstanceAdmin,
     getActorInfo,
   };
@@ -182,8 +182,8 @@ vi.mock("../services/index.js", () => ({
   agentInstructionsService: () => mockAgentInstructionsService,
   accessService: () => mockAccessService,
   approvalService: () => mockApprovalService,
-  builtInAgentService: () => ({ ensureCompanyDefaultAgentGrants: vi.fn() }),
-  companySkillService: () => mockCompanySkillService,
+  builtInAgentService: () => ({ ensureDomainDefaultAgentGrants: vi.fn() }),
+  domainSkillService: () => mockDomainSkillService,
   budgetService: () => mockBudgetService,
   heartbeatService: () => mockHeartbeatService,
   issueApprovalService: () => mockIssueApprovalService,
@@ -222,7 +222,7 @@ async function createApp(actor: Record<string, unknown>) {
   app.use((req, _res, next) => {
     (req as any).actor = {
       ...actor,
-      companyIds: Array.isArray(actor.companyIds) ? [...actor.companyIds] : actor.companyIds,
+      domainIds: Array.isArray(actor.domainIds) ? [...actor.domainIds] : actor.domainIds,
     };
     next();
   });
@@ -269,7 +269,7 @@ function resetMockDefaults() {
   for (const mock of Object.values(mockIssueService)) mock.mockReset();
   for (const mock of Object.values(mockSecretService)) mock.mockReset();
   for (const mock of Object.values(mockAgentInstructionsService)) mock.mockReset();
-  for (const mock of Object.values(mockCompanySkillService)) mock.mockReset();
+  for (const mock of Object.values(mockDomainSkillService)) mock.mockReset();
   mockLogActivity.mockReset();
   mockGetTelemetryClient.mockReset();
   mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
@@ -322,11 +322,11 @@ describe.sequential("agent cross-tenant route authorization", () => {
     resetMockDefaults();
   });
 
-  it("enforces company boundaries before mutating or reading agent keys", async () => {
+  it("enforces domain boundaries before mutating or reading agent keys", async () => {
     const crossTenantActor = {
       type: "board",
       userId: "mallory",
-      companyIds: [],
+      domainIds: [],
       source: "session",
       isInstanceAdmin: false,
     };
@@ -369,7 +369,7 @@ describe.sequential("agent cross-tenant route authorization", () => {
       const res = await deniedLifeAdmin.request(app);
 
       expect(res.status, `${deniedLifeAdmin.label}: ${JSON.stringify(res.body)}`).toBe(403);
-      expect(res.body.error).toContain("User does not have access to this company");
+      expect(res.body.error).toContain("User does not have access to this domain");
       expect(mockAgentService.getById).toHaveBeenCalledWith(agentId);
       for (const mock of deniedLifeAdmin.untouched) {
         expect(mock).not.toHaveBeenCalled();
@@ -383,7 +383,7 @@ describe.sequential("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "session",
       isInstanceAdmin: false,
     });
@@ -400,7 +400,7 @@ describe.sequential("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId,
-      companyId,
+      domainId,
       runId: "run-1",
     });
 
@@ -431,7 +431,7 @@ describe.sequential("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "local_implicit",
       isInstanceAdmin: true,
     });
@@ -449,7 +449,7 @@ describe.sequential("agent cross-tenant route authorization", () => {
     });
     expect(mockAgentService.clearError).toHaveBeenCalledWith(agentId);
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId,
+      domainId,
       actorType: "user",
       actorId: "board-user",
       action: "agent.error_cleared",
@@ -471,7 +471,7 @@ describe.sequential("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "local_implicit",
       isInstanceAdmin: true,
     });
@@ -495,7 +495,7 @@ describe.sequential("agent cross-tenant route authorization", () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: [companyId],
+      domainIds: [domainId],
       source: "local_implicit",
       isInstanceAdmin: true,
     });

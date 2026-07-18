@@ -21,7 +21,7 @@ vi.mock("node:child_process", () => ({ spawn: mockSpawn }));
 
 vi.mock("../routes/authz.js", () => ({
   getActorInfo: () => ({ actorId: "user-1", agentId: null, runId: null }),
-  assertCompanyAccess: () => {},
+  assertDomainAccess: () => {},
 }));
 
 async function createApp(deploymentMode: "local_trusted" | "authenticated" = "local_trusted") {
@@ -43,7 +43,7 @@ describe("POST /api/board/chat/stream feature flag guard (PAP-137)", () => {
 
     const res = await request(app)
       .post("/api/board/chat/stream")
-      .send({ companyId: "company-1", message: "hello" });
+      .send({ domainId: "domain-1", message: "hello" });
 
     expect(res.status).toBe(403);
     expect(res.body).toEqual({
@@ -61,7 +61,7 @@ describe("POST /api/board/chat/stream feature flag guard (PAP-137)", () => {
 
     const res = await request(app)
       .post("/api/board/chat/stream")
-      .send({ companyId: "company-1", message: "hello" });
+      .send({ domainId: "domain-1", message: "hello" });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe("DEPLOYMENT_MODE_UNSUPPORTED");
@@ -77,7 +77,7 @@ describe("POST /api/board/chat/stream feature flag guard (PAP-137)", () => {
     const res = await request(app).post("/api/board/chat/stream").send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: "companyId and message are required" });
+    expect(res.body).toEqual({ error: "domainId and message are required" });
   });
 });
 
@@ -108,7 +108,7 @@ describe("board-chat client disconnect", () => {
 
     const req = request(app)
       .post("/api/board/chat/stream")
-      .send({ companyId: "company-1", message: "hello" });
+      .send({ domainId: "domain-1", message: "hello" });
     // Start the request without awaiting the (never-ending) SSE response.
     const pending = req.then(
       () => undefined,

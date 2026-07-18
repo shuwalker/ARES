@@ -13,7 +13,7 @@ import {
   agentWakeupRequests,
   agents,
   domains,
-  companySkills,
+  domainSkills,
   createDb,
   documentRevisions,
   documents,
@@ -155,7 +155,7 @@ function readAdapterWorkspace(input: unknown) {
 }
 
 async function seedRunTarget(db: Db, repoRoot: string) {
-  const companyId = randomUUID();
+  const domainId = randomUUID();
   const projectId = randomUUID();
   const projectWorkspaceId = randomUUID();
   const issueId = randomUUID();
@@ -165,9 +165,9 @@ async function seedRunTarget(db: Db, repoRoot: string) {
     enableIsolatedWorkspaces: true,
   });
   await db.insert(domains).values({
-    id: companyId,
+    id: domainId,
     name: "Acme",
-    issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+    issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
     status: "active",
     defaultResponsibleUserId: "responsible-user",
     createdAt: new Date(),
@@ -175,7 +175,7 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(projects).values({
     id: projectId,
-    companyId,
+    domainId,
     name: "Workspace Finalize Branch Guard",
     status: "active",
     createdAt: new Date(),
@@ -183,7 +183,7 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(projectWorkspaces).values({
     id: projectWorkspaceId,
-    companyId,
+    domainId,
     projectId,
     name: "Primary",
     cwd: repoRoot,
@@ -193,7 +193,7 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(agents).values({
     id: agentId,
-    companyId,
+    domainId,
     name: "CodexCoder",
     role: "engineer",
     status: "idle",
@@ -211,7 +211,7 @@ async function seedRunTarget(db: Db, repoRoot: string) {
   });
   await db.insert(issues).values({
     id: issueId,
-    companyId,
+    domainId,
     projectId,
     projectWorkspaceId,
     title: "Publish without drifting managed workspace",
@@ -227,7 +227,7 @@ async function seedRunTarget(db: Db, repoRoot: string) {
     updatedAt: new Date(),
   });
 
-  return { companyId, projectId, projectWorkspaceId, issueId, agentId };
+  return { domainId, projectId, projectWorkspaceId, issueId, agentId };
 }
 
 async function wakeIssue(heartbeat: Heartbeat, agentId: string, issueId: string) {
@@ -306,7 +306,7 @@ describeEmbeddedPostgres("heartbeat workspace finalization branch guard", () => 
     await db.delete(agents);
     await db.delete(executionWorkspaces);
     await db.delete(environments);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(domains);
   });
 

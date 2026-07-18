@@ -5,10 +5,10 @@ type IssueTreeControlService = ReturnType<typeof issueTreeControlService>;
 
 export async function isAutomaticRecoverySuppressedByPauseHold(
   db: Db,
-  companyId: string,
+  domainId: string,
   issueId: string,
   treeControlSvc: IssueTreeControlService = issueTreeControlService(db),
 ) {
-  const activePauseHold = await treeControlSvc.getActivePauseHoldGate(companyId, issueId);
+  const activePauseHold = await treeControlSvc.getActivePauseHoldGate(domainId, issueId);
   return Boolean(activePauseHold);
 }

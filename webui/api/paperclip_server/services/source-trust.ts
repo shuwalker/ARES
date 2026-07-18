@@ -21,7 +21,7 @@ export type SourceTrustActor = {
 
 export type SourceTrustIssueContext = {
   id: string;
-  companyId: string;
+  domainId: string;
   projectId?: string | null;
   executionPolicy?: unknown;
 };
@@ -104,31 +104,31 @@ export async function resolveActorSourceTrustForIssue(input: {
   const [agent, project, run] = await Promise.all([
     input.db
       .select({
-        companyId: agents.companyId,
+        domainId: agents.domainId,
         permissions: agents.permissions,
       })
       .from(agents)
-      .where(and(eq(agents.id, input.actor.agentId), eq(agents.companyId, input.issue.companyId)))
+      .where(and(eq(agents.id, input.actor.agentId), eq(agents.domainId, input.issue.domainId)))
       .then((rows) => rows[0] ?? null),
     input.issue.projectId
       ? input.db
           .select({
-            companyId: projects.companyId,
+            domainId: projects.domainId,
             executionWorkspacePolicy: projects.executionWorkspacePolicy,
           })
           .from(projects)
-          .where(and(eq(projects.id, input.issue.projectId), eq(projects.companyId, input.issue.companyId)))
+          .where(and(eq(projects.id, input.issue.projectId), eq(projects.domainId, input.issue.domainId)))
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
     input.actor.runId
       ? input.db
           .select({
-            companyId: heartbeatRuns.companyId,
+            domainId: heartbeatRuns.domainId,
             agentId: heartbeatRuns.agentId,
             contextSnapshot: heartbeatRuns.contextSnapshot,
           })
           .from(heartbeatRuns)
-          .where(and(eq(heartbeatRuns.id, input.actor.runId), eq(heartbeatRuns.companyId, input.issue.companyId)))
+          .where(and(eq(heartbeatRuns.id, input.actor.runId), eq(heartbeatRuns.domainId, input.issue.domainId)))
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
   ]);
@@ -146,16 +146,16 @@ export async function resolveActorSourceTrustForIssue(input: {
   const runExecutionPolicy = readObject(runContext?.executionPolicy);
 
   const resolution = resolveCoreTrustPreset({
-    companyId: input.issue.companyId,
+    domainId: input.issue.domainId,
     agent,
     project,
     issue: {
-      companyId: input.issue.companyId,
+      domainId: input.issue.domainId,
       executionPolicy: input.issue.executionPolicy,
     },
     run: run
       ? {
-          companyId: run.companyId,
+          domainId: run.domainId,
           executionPolicy: runExecutionPolicy,
         }
       : null,

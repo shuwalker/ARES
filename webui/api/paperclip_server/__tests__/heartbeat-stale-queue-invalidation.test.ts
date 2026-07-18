@@ -5,7 +5,7 @@ import {
   agents,
   agentWakeupRequests,
   domains,
-  costEvents,
+  financeEvents,
   createDb,
   documentRevisions,
   documents,
@@ -62,7 +62,7 @@ async function ensureIssueRelationsTable(db: ReturnType<typeof createDb>) {
   await db.execute(sql.raw(`
     CREATE TABLE IF NOT EXISTS "issue_relations" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "company_id" uuid NOT NULL,
+      "domain_id" uuid NOT NULL,
       "issue_id" uuid NOT NULL,
       "related_issue_id" uuid NOT NULL,
       "type" text NOT NULL,
@@ -88,7 +88,7 @@ async function cleanupHeartbeatInvalidationFixture(db: ReturnType<typeof createD
     try {
       await db.execute(sql.raw(`
         TRUNCATE TABLE
-          "company_skills",
+          "domain_skills",
           "issue_comments",
           "issue_documents",
           "document_revisions",
@@ -97,7 +97,7 @@ async function cleanupHeartbeatInvalidationFixture(db: ReturnType<typeof createD
           "issue_tree_holds",
           "issues",
           "heartbeat_run_events",
-          "cost_events",
+          "finance_events",
           "activity_log",
           "heartbeat_runs",
           "agent_wakeup_requests",
@@ -130,7 +130,7 @@ type SeedOptions = {
 };
 
 type SeedResult = {
-  companyId: string;
+  domainId: string;
   agentId: string;
 };
 
@@ -183,19 +183,19 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     await tempDb?.cleanup();
   });
 
-  async function seedCompanyAndAgent(opts: SeedOptions = {}): Promise<SeedResult> {
-    const companyId = randomUUID();
+  async function seedDomainAndAgent(opts: SeedOptions = {}): Promise<SeedResult> {
+    const domainId = randomUUID();
     const agentId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       defaultResponsibleUserId: "responsible-user",
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: opts.agentName ?? "ClaudeCoder",
       role: opts.agentRole ?? "engineer",
       status: "active",
@@ -210,11 +210,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       },
       permissions: {},
     });
-    return { companyId, agentId };
+    return { domainId, agentId };
   }
 
   async function seedQueuedRun(input: {
-    companyId: string;
+    domainId: string;
     agentId: string;
     issueId: string;
     wakeReason: string;
@@ -226,7 +226,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const runId = randomUUID();
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId: input.companyId,
+      domainId: input.domainId,
       agentId: input.agentId,
       source: input.invocationSource ?? "assignment",
       triggerDetail: "system",
@@ -236,7 +236,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId: input.companyId,
+      domainId: input.domainId,
       agentId: input.agentId,
       invocationSource: input.invocationSource ?? "assignment",
       triggerDetail: "system",
@@ -257,7 +257,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   }
 
   async function seedContinuationSummary(input: {
-    companyId: string;
+    domainId: string;
     issueId: string;
     agentId: string;
     body: string;
@@ -266,7 +266,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const revisionId = randomUUID();
     await db.insert(documents).values({
       id: documentId,
-      companyId: input.companyId,
+      domainId: input.domainId,
       title: "Continuation Summary",
       format: "markdown",
       latestBody: input.body,
@@ -277,7 +277,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId: input.companyId,
+      domainId: input.domainId,
       documentId,
       revisionNumber: 1,
       title: "Continuation Summary",
@@ -286,7 +286,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       createdByAgentId: input.agentId,
     });
     await db.insert(issueDocuments).values({
-      companyId: input.companyId,
+      domainId: input.domainId,
       issueId: input.issueId,
       documentId,
       key: ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
@@ -294,7 +294,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   }
 
   it("skips generic timer wakes with no actionable assigned work before adapter execution", async () => {
-    const { agentId } = await seedCompanyAndAgent({
+    const { agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         enabled: true,
         skipTimerWhenNoActionableWork: true,
@@ -332,7 +332,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("rate-limits skipped generic timer wakes by advancing the timer baseline", async () => {
-    const { agentId } = await seedCompanyAndAgent({
+    const { agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         enabled: true,
         intervalSec: 60,
@@ -368,7 +368,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("allows generic timer wakes when the agent has assigned todo work", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         enabled: true,
         skipTimerWhenNoActionableWork: true,
@@ -376,7 +376,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(issues).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       title: "Assigned work",
       status: "todo",
       priority: "high",
@@ -395,7 +395,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("allows legacy generic timer wakes by default when no skip policy is set", async () => {
-    const { agentId } = await seedCompanyAndAgent({
+    const { agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         enabled: true,
       },
@@ -412,7 +412,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("allows explicit proactive generic timer wakes without assigned issue work", async () => {
-    const { agentId } = await seedCompanyAndAgent({
+    const { agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         enabled: true,
         skipTimerWhenNoActionableWork: false,
@@ -430,14 +430,14 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("skips wakes before queueing when per-agent daily run cap is reached", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         maxDailyRuns: 1,
       },
     });
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -478,7 +478,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("treats zero daily run cap as a hard stop", async () => {
-    const { agentId } = await seedCompanyAndAgent({
+    const { agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         maxDailyRuns: 0,
       },
@@ -514,14 +514,14 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("counts started cancelled runs toward the per-agent daily run cap", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         maxDailyRuns: 1,
       },
     });
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -562,7 +562,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("coalesces same-issue wakes before enforcing the daily run cap", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         maxDailyRuns: 1,
       },
@@ -572,7 +572,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const queuedRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -584,7 +584,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId,
       source: "on_demand",
       triggerDetail: "manual",
@@ -594,7 +594,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: queuedRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -604,7 +604,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Queued issue work",
       status: "in_progress",
       priority: "high",
@@ -645,14 +645,14 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     );
   });
 
-  it("skips wakes before queueing when per-agent daily cost cap is reached", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+  it("skips wakes before queueing when per-agent daily finance cap is reached", async () => {
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
-        maxDailyCostCents: 75,
+        maxDailyFinanceCents: 75,
       },
     });
-    await db.insert(costEvents).values({
-      companyId,
+    await db.insert(financeEvents).values({
+      domainId,
       agentId,
       provider: "test",
       biller: "test",
@@ -660,7 +660,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       model: "test-model",
       inputTokens: 100,
       outputTokens: 50,
-      costCents: 75,
+      financeCents: 75,
       occurredAt: new Date(),
     });
 
@@ -683,7 +683,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
 
     expect(wakeup).toMatchObject({
       status: "skipped",
-      reason: "heartbeat.daily_cost_limit",
+      reason: "heartbeat.daily_finance_limit",
     });
     expect(wakeup?.payload).toMatchObject({
       heartbeatSkip: {
@@ -693,10 +693,10 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
   });
 
-  it("treats zero daily cost cap as a hard stop", async () => {
-    const { agentId } = await seedCompanyAndAgent({
+  it("treats zero daily finance cap as a hard stop", async () => {
+    const { agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
-        maxDailyCostCents: 0,
+        maxDailyFinanceCents: 0,
       },
     });
 
@@ -719,7 +719,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
 
     expect(wakeup).toMatchObject({
       status: "skipped",
-      reason: "heartbeat.daily_cost_limit",
+      reason: "heartbeat.daily_finance_limit",
     });
     expect(wakeup?.payload).toMatchObject({
       heartbeatSkip: {
@@ -729,17 +729,17 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
   });
 
-  it("skips already queued runs before adapter execution when the daily cost cap is reached", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+  it("skips already queued runs before adapter execution when the daily finance cap is reached", async () => {
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
-        maxDailyCostCents: 75,
+        maxDailyFinanceCents: 75,
       },
     });
     const wakeupRequestId = randomUUID();
     const runId = randomUUID();
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId,
       source: "on_demand",
       triggerDetail: "manual",
@@ -749,7 +749,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -761,8 +761,8 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       .update(agentWakeupRequests)
       .set({ runId })
       .where(eq(agentWakeupRequests.id, wakeupRequestId));
-    await db.insert(costEvents).values({
-      companyId,
+    await db.insert(financeEvents).values({
+      domainId,
       agentId,
       provider: "test",
       biller: "test",
@@ -770,7 +770,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
       model: "test-model",
       inputTokens: 100,
       outputTokens: 50,
-      costCents: 75,
+      financeCents: 75,
       occurredAt: new Date(),
     });
 
@@ -796,10 +796,10 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
 
     expect(run).toMatchObject({
       status: "cancelled",
-      errorCode: "heartbeat.daily_cost_limit",
+      errorCode: "heartbeat.daily_finance_limit",
     });
     expect(run?.resultJson).toMatchObject({
-      stopReason: "heartbeat.daily_cost_limit",
+      stopReason: "heartbeat.daily_finance_limit",
       observed: 75,
       limit: 75,
     });
@@ -810,7 +810,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("skips already queued issue runs at the daily run cap and releases the execution lock", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         maxDailyRuns: 1,
       },
@@ -820,7 +820,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const queuedRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -832,7 +832,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId,
       source: "on_demand",
       triggerDetail: "manual",
@@ -842,7 +842,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: queuedRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -852,7 +852,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Queued issue work",
       status: "in_progress",
       priority: "high",
@@ -893,7 +893,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("promotes deferred issue wakes when a queued holder is cancelled by the daily run cap", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({
+    const { domainId, agentId } = await seedDomainAndAgent({
       heartbeatConfig: {
         maxDailyRuns: 1,
       },
@@ -905,7 +905,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const deferredWakeupId = randomUUID();
     await db.insert(agents).values({
       id: peerAgentId,
-      companyId,
+      domainId,
       name: "PeerAgent",
       role: "engineer",
       status: "active",
@@ -921,7 +921,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -933,7 +933,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId,
       source: "on_demand",
       triggerDetail: "manual",
@@ -943,7 +943,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: queuedRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "on_demand",
       triggerDetail: "manual",
@@ -953,7 +953,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Queued issue work",
       status: "in_progress",
       priority: "high",
@@ -962,7 +962,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(agentWakeupRequests).values({
       id: deferredWakeupId,
-      companyId,
+      domainId,
       agentId: peerAgentId,
       source: "comment",
       triggerDetail: "mention",
@@ -1006,11 +1006,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("cancels queued runs when the issue assignee changes before the run starts", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent({ agentName: "OriginalCoder" });
+    const { domainId, agentId } = await seedDomainAndAgent({ agentName: "OriginalCoder" });
     const replacementAgentId = randomUUID();
     await db.insert(agents).values({
       id: replacementAgentId,
-      companyId,
+      domainId,
       name: "ReplacementCoder",
       role: "engineer",
       status: "active",
@@ -1028,7 +1028,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Reassigned task",
       status: "in_progress",
       priority: "high",
@@ -1036,7 +1036,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
 
     const { runId, wakeupRequestId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: "issue_assigned",
@@ -1079,11 +1079,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("cancels queued runs when the issue reaches a terminal status before the run starts", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Already-completed task",
       status: "done",
       priority: "medium",
@@ -1091,7 +1091,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
 
     const { runId, wakeupRequestId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: "issue_assigned",
@@ -1128,11 +1128,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("cancels queued max-turn continuations when the issue is no longer in_progress before the run starts", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Parked max-turn continuation",
       status: "blocked",
       priority: "medium",
@@ -1140,7 +1140,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
 
     const { runId, wakeupRequestId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: MAX_TURN_CONTINUATION_WAKE_REASON,
@@ -1188,13 +1188,13 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("cancels queued max-turn continuations when another continuation owns the issue lock", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const issueId = randomUUID();
     const lockOwnerRunId = randomUUID();
 
     await db.insert(heartbeatRuns).values({
       id: lockOwnerRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "automation",
       triggerDetail: "system",
@@ -1211,7 +1211,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Duplicate max-turn continuation",
       status: "in_progress",
       priority: "medium",
@@ -1222,7 +1222,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
 
     const { runId, wakeupRequestId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: MAX_TURN_CONTINUATION_WAKE_REASON,
@@ -1276,11 +1276,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("cancels queued in_review runs when the current participant changes before the run starts", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const otherAgentId = randomUUID();
     await db.insert(agents).values({
       id: otherAgentId,
-      companyId,
+      domainId,
       name: "ReviewerAgent",
       role: "qa",
       status: "active",
@@ -1293,7 +1293,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "In-review task now owned by reviewer",
       status: "in_review",
       priority: "medium",
@@ -1313,7 +1313,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
 
     const { runId, wakeupRequestId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: "issue_assigned",
@@ -1356,11 +1356,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("still runs comment-driven wakes on in_review issues even when the agent is no longer the current participant", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const otherAgentId = randomUUID();
     await db.insert(agents).values({
       id: otherAgentId,
-      companyId,
+      domainId,
       name: "ReviewerAgent",
       role: "qa",
       status: "active",
@@ -1374,7 +1374,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     const commentId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "In-review task with comment feedback",
       status: "in_review",
       priority: "medium",
@@ -1394,14 +1394,14 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
     await db.insert(issueComments).values({
       id: commentId,
-      companyId,
+      domainId,
       issueId,
       authorAgentId: otherAgentId,
       body: "Review feedback comment",
     });
 
     const { runId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: "issue_commented",
@@ -1434,11 +1434,11 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("baseline: runs queued runs when the issue is in_progress with the same assignee", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Still actionable",
       status: "in_progress",
       priority: "medium",
@@ -1446,7 +1446,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
 
     const { runId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: "issue_assigned",
@@ -1474,18 +1474,18 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
   });
 
   it("cancels queued continuation recovery when the continuation summary parks executor work for review", async () => {
-    const { companyId, agentId } = await seedCompanyAndAgent();
+    const { domainId, agentId } = await seedDomainAndAgent();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Implementation parked for review",
       status: "in_progress",
       priority: "medium",
       assigneeAgentId: agentId,
     });
     await seedContinuationSummary({
-      companyId,
+      domainId,
       issueId,
       agentId,
       body: [
@@ -1498,7 +1498,7 @@ describeEmbeddedPostgres("heartbeat stale queued-run invalidation", () => {
     });
 
     const { runId, wakeupRequestId } = await seedQueuedRun({
-      companyId,
+      domainId,
       agentId,
       issueId,
       wakeReason: "issue_continuation_needed",

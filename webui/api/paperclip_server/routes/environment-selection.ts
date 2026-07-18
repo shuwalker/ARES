@@ -9,7 +9,7 @@ export async function assertEnvironmentSelectionForDomain(
       config: Record<string, unknown> | null;
     } | null>;
   },
-  _companyId: string,
+  _domainId: string,
   environmentId: string | null | undefined,
   options?: {
     allowedDrivers?: string[];

@@ -29,7 +29,7 @@ function humanizeLabel(value: string): string {
   return value
     .replace(/[_-]+/g, " ")
     .trim()
-    .replace(/\b\w/g, (char) => char.toUpperLifeAdmin());
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function stripWrappedShell(command: string): string {
@@ -70,7 +70,7 @@ function parseStructuredToolResult(result: string | undefined) {
   for (let index = 0; index < bodyStartIndex; index += 1) {
     const match = lines[index]?.match(/^([a-z_]+):\s*(.+)$/i);
     if (match) {
-      metadata.set(match[1].toLowerLifeAdmin(), compactWhitespace(match[2]));
+      metadata.set(match[1].toLowerCase(), compactWhitespace(match[2]));
     }
   }
 
@@ -265,14 +265,14 @@ export function parseSystemActivity(text: string): TranscriptActivity | null {
   const match = text.match(/^item (started|completed):\s*([a-z0-9_-]+)(?:\s+\(id=([^)]+)\))?$/i);
   if (!match) return null;
   return {
-    status: match[1].toLowerLifeAdmin() === "started" ? "running" : "completed",
+    status: match[1].toLowerCase() === "started" ? "running" : "completed",
     name: humanizeLabel(match[2] ?? "Activity"),
     activityId: match[3] || undefined,
   };
 }
 
 export function shouldHideNiceModeStderr(text: string): boolean {
-  const normalized = compactWhitespace(text).toLowerLifeAdmin();
+  const normalized = compactWhitespace(text).toLowerCase();
   return normalized.startsWith("[paperclip] skipping saved session resume");
 }
 

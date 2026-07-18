@@ -94,7 +94,7 @@ describe("plugin-worker-manager stderr failure context", () => {
 
       await expect(handle.call("environmentExecute", {
         driverKey: "e2b",
-        companyId: "company-1",
+        domainId: "domain-1",
         environmentId: "environment-1",
         config: {},
         lease: { providerLeaseId: "lease-1" },
@@ -127,7 +127,7 @@ describe("plugin-worker-manager stderr failure context", () => {
 
       await expect(handle.call("environmentExecute", {
         driverKey: "e2b",
-        companyId: "company-1",
+        domainId: "domain-1",
         environmentId: "environment-1",
         config: {},
         lease: { providerLeaseId: "lease-1" },
@@ -165,7 +165,7 @@ describe("plugin-worker-manager stderr failure context", () => {
         "environmentExecute" as keyof HostToWorkerMethods,
         {
           driverKey: "e2b",
-          companyId: "company-1",
+          domainId: "domain-1",
           environmentId: "environment-1",
           config: {},
           lease: { providerLeaseId: "lease-1" },
@@ -188,11 +188,11 @@ describe("plugin-worker-manager stderr failure context", () => {
 
   it("passes performAction invocation scope to nested worker host calls", async () => {
     const domainsGet = vi.fn(async (
-      params: { companyId: string },
-      context?: { invocationScope?: { companyId?: string | null } | null },
+      params: { domainId: string },
+      context?: { invocationScope?: { domainId?: string | null } | null },
     ) => ({
-      id: params.companyId,
-      scopedCompanyId: context?.invocationScope?.companyId ?? null,
+      id: params.domainId,
+      scopedDomainId: context?.invocationScope?.domainId ?? null,
     }));
     const handle = createPluginWorkerHandle("test.plugin", {
       entrypointPath: INVOCATION_SCOPE_WORKER_ENTRYPOINT,
@@ -215,23 +215,23 @@ describe("plugin-worker-manager stderr failure context", () => {
         key: "probe",
         params: {
           mode: "echo",
-          requestedCompanyId: "company-a",
+          requestedDomainId: "domain-a",
         },
         actorContext: {
           type: "agent",
           userId: null,
           agentId: "agent-1",
           runId: "run-1",
-          companyId: "company-a",
+          domainId: "domain-a",
         },
         renderEnvironment: null,
       })).resolves.toEqual({
-        id: "company-a",
-        scopedCompanyId: "company-a",
+        id: "domain-a",
+        scopedDomainId: "domain-a",
       });
       expect(domainsGet).toHaveBeenCalledWith(
-        { companyId: "company-a" },
-        { invocationScope: { companyId: "company-a" } },
+        { domainId: "domain-a" },
+        { invocationScope: { domainId: "domain-a" } },
       );
     } finally {
       await handle.stop().catch(() => undefined);
@@ -239,7 +239,7 @@ describe("plugin-worker-manager stderr failure context", () => {
   });
 
   it("passes echoed invocation scope to worker-to-host handlers", async () => {
-    const domainsGet = vi.fn(async () => ({ id: "company-1" }));
+    const domainsGet = vi.fn(async () => ({ id: "domain-1" }));
     const handle = createPluginWorkerHandle("test.plugin", {
       entrypointPath: INVOCATION_SCOPE_WORKER_ENTRYPOINT,
       manifest: TEST_MANIFEST,
@@ -259,16 +259,16 @@ describe("plugin-worker-manager stderr failure context", () => {
 
       await expect(handle.call("getData", {
         key: "probe",
-        companyId: "company-1",
+        domainId: "domain-1",
         params: {
           mode: "echo",
-          requestedCompanyId: "company-1",
+          requestedDomainId: "domain-1",
         },
-      } as HostToWorkerMethods["getData"][0])).resolves.toEqual({ id: "company-1" });
+      } as HostToWorkerMethods["getData"][0])).resolves.toEqual({ id: "domain-1" });
 
       expect(domainsGet).toHaveBeenCalledWith(
-        { companyId: "company-1" },
-        { invocationScope: { companyId: "company-1" } },
+        { domainId: "domain-1" },
+        { invocationScope: { domainId: "domain-1" } },
       );
     } finally {
       await handle.stop().catch(() => undefined);
@@ -282,7 +282,7 @@ describe("plugin-worker-manager stderr failure context", () => {
       services: {
         domains: {
           list: vi.fn(async () => []),
-          get: vi.fn(async (params: { companyId: string }) => ({ id: params.companyId })),
+          get: vi.fn(async (params: { domainId: string }) => ({ id: params.domainId })),
         },
       } as unknown as HostServices,
     });
@@ -304,14 +304,14 @@ describe("plugin-worker-manager stderr failure context", () => {
       await expect(handle.call("performAction", {
         key: "probe",
         params: {
-          requestedCompanyId: "company-b",
+          requestedDomainId: "domain-b",
         },
         actorContext: {
           type: "agent",
           userId: null,
           agentId: "agent-1",
           runId: "run-1",
-          companyId: "company-a",
+          domainId: "domain-a",
         },
         renderEnvironment: null,
       })).rejects.toMatchObject({
@@ -324,7 +324,7 @@ describe("plugin-worker-manager stderr failure context", () => {
   });
 
   it("rejects nested worker host calls that forge an unknown invocation id", async () => {
-    const domainsGet = vi.fn(async (params: { companyId: string }) => ({ id: params.companyId }));
+    const domainsGet = vi.fn(async (params: { domainId: string }) => ({ id: params.domainId }));
     const handlers = createHostClientHandlers({
       pluginId: "test.plugin",
       capabilities: ["domains.read"],
@@ -353,14 +353,14 @@ describe("plugin-worker-manager stderr failure context", () => {
         key: "probe",
         params: {
           mode: "unknown",
-          requestedCompanyId: "company-a",
+          requestedDomainId: "domain-a",
         },
         actorContext: {
           type: "agent",
           userId: null,
           agentId: "agent-1",
           runId: "run-1",
-          companyId: "company-a",
+          domainId: "domain-a",
         },
         renderEnvironment: null,
       })).rejects.toMatchObject({
@@ -373,8 +373,8 @@ describe("plugin-worker-manager stderr failure context", () => {
     }
   });
 
-  it("rejects missing or unknown invocation ids while a company invocation is active", async () => {
-    const domainsGet = vi.fn(async () => ({ id: "company-2" }));
+  it("rejects missing or unknown invocation ids while a domain invocation is active", async () => {
+    const domainsGet = vi.fn(async () => ({ id: "domain-2" }));
     const hostHandlers = createHostClientHandlers({
       pluginId: "test.plugin",
       capabilities: ["domains.read"],
@@ -402,10 +402,10 @@ describe("plugin-worker-manager stderr failure context", () => {
       for (const mode of ["omit", "unknown"]) {
         await expect(handle.call("getData", {
           key: "probe",
-          companyId: "company-1",
+          domainId: "domain-1",
           params: {
             mode,
-            requestedCompanyId: "company-2",
+            requestedDomainId: "domain-2",
           },
         } as HostToWorkerMethods["getData"][0])).rejects.toMatchObject({
           code: PLUGIN_RPC_ERROR_CODES.INVOCATION_SCOPE_DENIED,

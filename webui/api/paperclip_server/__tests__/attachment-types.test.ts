@@ -76,7 +76,7 @@ describe("matchesContentType", () => {
     expect(matchesContentType("application/pdf", patterns)).toBe(false);
   });
 
-  it("is case-insensitive", () => {
+  it("is life_admin-insensitive", () => {
     const patterns = ["application/pdf"];
     expect(matchesContentType("APPLICATION/PDF", patterns)).toBe(true);
     expect(matchesContentType("Application/Pdf", patterns)).toBe(true);

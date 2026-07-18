@@ -9,13 +9,13 @@ import {
   domains,
   agents,
   activityLog,
-  costEvents,
+  financeEvents,
   financeEvents,
   heartbeatRuns,
   issues,
   projects,
 } from "@paperclipai/db";
-import { costService } from "../services/finances.ts";
+import { financeService } from "../services/finances.ts";
 import { financeService } from "../services/finance.ts";
 import {
   getEmbeddedPostgresTestSupport,
@@ -48,7 +48,7 @@ function makeDb(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const mockCompanyService = vi.hoisted(() => ({
+const mockDomainService = vi.hoisted(() => ({
   getById: vi.fn(),
   update: vi.fn(),
 }));
@@ -65,7 +65,7 @@ const mockHeartbeatService = vi.hoisted(() => ({
 }));
 const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockFetchAllQuotaWindows = vi.hoisted(() => vi.fn());
-const mockCostService = vi.hoisted(() => ({
+const mockFinanceService = vi.hoisted(() => ({
   createEvent: vi.fn(),
   summary: vi.fn().mockResolvedValue({ spendCents: 0 }),
   byAgent: vi.fn().mockResolvedValue([]),
@@ -76,7 +76,7 @@ const mockCostService = vi.hoisted(() => ({
     issueId: "issue-1",
     issueCount: 1,
     includeDescendants: true,
-    costCents: 0,
+    financeCents: 0,
     inputTokens: 0,
     cachedInputTokens: 0,
     outputTokens: 0,
@@ -95,7 +95,7 @@ const mockFinanceService = vi.hoisted(() => ({
 }));
 const mockBudgetService = vi.hoisted(() => ({
   overview: vi.fn().mockResolvedValue({
-    companyId: "company-1",
+    domainId: "domain-1",
     policies: [],
     activeIncidents: [],
     pausedAgentCount: 0,
@@ -113,9 +113,9 @@ function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
     accessService: () => mockAccessService,
     budgetService: () => mockBudgetService,
-    costService: () => mockCostService,
     financeService: () => mockFinanceService,
-    companyService: () => mockCompanyService,
+    financeService: () => mockFinanceService,
+    domainService: () => mockDomainService,
     agentService: () => mockAgentService,
     issueService: () => mockIssueService,
     heartbeatService: () => mockHeartbeatService,
@@ -128,7 +128,7 @@ function registerModuleMocks() {
 }
 
 async function createApp() {
-  const [{ costRoutes }, { errorHandler }] = await Promise.all([
+  const [{ financeRoutes }, { errorHandler }] = await Promise.all([
     vi.importActual<typeof import("../routes/finances.js")>("../routes/finances.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
   ]);
@@ -138,13 +138,13 @@ async function createApp() {
     req.actor = { type: "board", userId: "board-user", source: "local_implicit" };
     next();
   });
-  app.use("/api", costRoutes(makeDb() as any));
+  app.use("/api", financeRoutes(makeDb() as any));
   app.use(errorHandler);
   return app;
 }
 
 async function createAppWithActor(actor: any) {
-  const [{ costRoutes }, { errorHandler }] = await Promise.all([
+  const [{ financeRoutes }, { errorHandler }] = await Promise.all([
     vi.importActual<typeof import("../routes/finances.js")>("../routes/finances.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
   ]);
@@ -154,14 +154,14 @@ async function createAppWithActor(actor: any) {
     req.actor = actor;
     next();
   });
-  app.use("/api", costRoutes(makeDb() as any));
+  app.use("/api", financeRoutes(makeDb() as any));
   app.use(errorHandler);
   return app;
 }
 
-async function loadCostParsers() {
-  const { parseCostDateRange, parseCostLimit } = await import("../routes/finances.js");
-  return { parseCostDateRange, parseCostLimit };
+async function loadFinanceParsers() {
+  const { parseFinanceDateRange, parseFinanceLimit } = await import("../routes/finances.js");
+  return { parseFinanceDateRange, parseFinanceLimit };
 }
 
 beforeEach(() => {
@@ -175,47 +175,47 @@ beforeEach(() => {
   mockAccessService.decide.mockReset();
   mockAccessService.decide.mockResolvedValue({
     allowed: true,
-    action: "company_scope:read",
+    action: "domain_scope:read",
     reason: "allow_test",
     explanation: "Allowed by test mock.",
   });
-  mockCompanyService.update.mockResolvedValue({
-    id: "company-1",
+  mockDomainService.update.mockResolvedValue({
+    id: "domain-1",
     name: "Paperclip",
     budgetMonthlyCents: 100,
     spentMonthlyCents: 0,
   });
   mockAgentService.getById.mockResolvedValue({
     id: "agent-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     name: "Budget Agent",
     budgetMonthlyCents: 100,
     spentMonthlyCents: 0,
   });
   mockAgentService.update.mockResolvedValue({
     id: "agent-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     name: "Budget Agent",
     budgetMonthlyCents: 100,
     spentMonthlyCents: 0,
   });
   mockIssueService.getById.mockResolvedValue({
     id: "issue-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     identifier: "PC1A2-1",
   });
   mockIssueService.getByIdentifier.mockResolvedValue({
     id: "issue-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     identifier: "PC1A2-1",
   });
   mockBudgetService.upsertPolicy.mockResolvedValue(undefined);
 });
 
-describe("cost routes", () => {
+describe("finance routes", () => {
   it("accepts valid ISO date strings", async () => {
-    const { parseCostDateRange } = await loadCostParsers();
-    expect(parseCostDateRange({
+    const { parseFinanceDateRange } = await loadFinanceParsers();
+    expect(parseFinanceDateRange({
       from: "2026-01-01T00:00:00.000Z",
       to: "2026-01-31T23:59:59.999Z",
     })).toEqual({
@@ -225,19 +225,19 @@ describe("cost routes", () => {
   });
 
   it("returns 400 for an invalid 'from' date string", async () => {
-    const { parseCostDateRange } = await loadCostParsers();
-    expect(() => parseCostDateRange({ from: "not-a-date" })).toThrow(/invalid 'from' date/i);
+    const { parseFinanceDateRange } = await loadFinanceParsers();
+    expect(() => parseFinanceDateRange({ from: "not-a-date" })).toThrow(/invalid 'from' date/i);
   });
 
   it("returns 400 for an invalid 'to' date string", async () => {
-    const { parseCostDateRange } = await loadCostParsers();
-    expect(() => parseCostDateRange({ to: "banana" })).toThrow(/invalid 'to' date/i);
+    const { parseFinanceDateRange } = await loadFinanceParsers();
+    expect(() => parseFinanceDateRange({ to: "banana" })).toThrow(/invalid 'to' date/i);
   });
 
   it("returns finance summary rows for valid requests", async () => {
     const app = await createApp();
     const res = await request(app)
-      .get("/api/domains/company-1/finances/finance-summary")
+      .get("/api/domains/domain-1/finances/finance-summary")
       .query({ from: "2026-02-01T00:00:00.000Z", to: "2026-02-28T23:59:59.999Z" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -249,20 +249,20 @@ describe("cost routes", () => {
     });
   });
 
-  it("returns issue subtree cost summaries for issue refs", async () => {
+  it("returns issue subtree finance summaries for issue refs", async () => {
     const app = await createApp();
-    const res = await request(app).get("/api/issues/pc1a2-1/cost-summary");
+    const res = await request(app).get("/api/issues/pc1a2-1/finance-summary");
 
     expect(res.status).toBe(200);
     expect(mockIssueService.getByIdentifier).toHaveBeenCalledWith("PC1A2-1");
-    expect(mockCostService.issueTreeSummary).toHaveBeenCalledWith("company-1", "issue-1", {
+    expect(mockFinanceService.issueTreeSummary).toHaveBeenCalledWith("domain-1", "issue-1", {
       excludeRoot: false,
     });
     expect(res.body).toEqual({
       issueId: "issue-1",
       issueCount: 1,
       includeDescendants: true,
-      costCents: 0,
+      financeCents: 0,
       inputTokens: 0,
       cachedInputTokens: 0,
       outputTokens: 0,
@@ -272,39 +272,39 @@ describe("cost routes", () => {
   });
 
   it("returns 400 for invalid finance event list limits", async () => {
-    const { parseCostLimit } = await loadCostParsers();
-    expect(() => parseCostLimit({ limit: "0" })).toThrow(/invalid 'limit'/i);
+    const { parseFinanceLimit } = await loadFinanceParsers();
+    expect(() => parseFinanceLimit({ limit: "0" })).toThrow(/invalid 'limit'/i);
   });
 
   it("accepts valid finance event list limits", async () => {
-    const { parseCostLimit } = await loadCostParsers();
-    expect(parseCostLimit({ limit: "25" })).toBe(25);
+    const { parseFinanceLimit } = await loadFinanceParsers();
+    expect(parseFinanceLimit({ limit: "25" })).toBe(25);
   });
 
-  it("rejects company budget updates for board users outside the company", async () => {
+  it("rejects domain budget updates for board users outside the domain", async () => {
     const app = await createAppWithActor({
       type: "board",
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-2"],
+      domainIds: ["domain-2"],
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1/budgets")
+      .patch("/api/domains/domain-1/budgets")
       .send({ budgetMonthlyCents: 2500 });
 
     expect(res.status).toBe(403);
-    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(mockDomainService.update).not.toHaveBeenCalled();
   });
 
-  it("rejects agent budget updates for board users outside the agent company", async () => {
+  it("rejects agent budget updates for board users outside the agent domain", async () => {
     const app = await createAppWithActor({
       type: "board",
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-2"],
+      domainIds: ["domain-2"],
     });
 
     const res = await request(app)
@@ -319,7 +319,7 @@ describe("cost routes", () => {
     const app = await createAppWithActor({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     });
 
@@ -334,11 +334,11 @@ describe("cost routes", () => {
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
-  it("rejects agent budget updates from another same-company agent without changing the budget policy", async () => {
+  it("rejects agent budget updates from another same-domain agent without changing the budget policy", async () => {
     const app = await createAppWithActor({
       type: "agent",
       agentId: "agent-2",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-2",
     });
 
@@ -356,7 +356,7 @@ describe("cost routes", () => {
   it("allows authorized board users to update an agent budget and budget policy", async () => {
     mockAgentService.update.mockResolvedValueOnce({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Budget Agent",
       budgetMonthlyCents: 2500,
       spentMonthlyCents: 0,
@@ -366,8 +366,8 @@ describe("cost routes", () => {
       userId: "board-user",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", status: "active", membershipRole: "admin" }],
     });
 
     const res = await request(app)
@@ -377,7 +377,7 @@ describe("cost routes", () => {
     expect(res.status).toBe(200);
     expect(mockAgentService.update).toHaveBeenCalledWith("agent-1", { budgetMonthlyCents: 2500 });
     expect(mockBudgetService.upsertPolicy).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       {
         scopeType: "agent",
         scopeId: "agent-1",
@@ -389,7 +389,7 @@ describe("cost routes", () => {
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
+        domainId: "domain-1",
         actorType: "user",
         actorId: "board-user",
         agentId: null,
@@ -405,22 +405,22 @@ describe("cost routes", () => {
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
-describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
+describeEmbeddedPostgres("finance and finance aggregate overflow handling", () => {
   let db!: ReturnType<typeof createDb>;
-  let finances!: ReturnType<typeof costService>;
+  let finances!: ReturnType<typeof financeService>;
   let finance!: ReturnType<typeof financeService>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-finances-service-");
     db = createDb(tempDb.connectionString);
-    finances = costService(db);
+    finances = financeService(db);
     finance = financeService(db);
   }, 20_000);
 
   afterEach(async () => {
     await db.delete(financeEvents);
-    await db.delete(costEvents);
+    await db.delete(financeEvents);
     await db.delete(activityLog);
     await db.delete(heartbeatRuns);
     await db.delete(issues);
@@ -434,18 +434,18 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
   });
 
   it("persists unpriced token usage without inflating monthly spend", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CLI Agent",
       role: "engineer",
       status: "active",
@@ -455,41 +455,41 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       permissions: {},
     });
 
-    const event = await finances.createEvent(companyId, {
+    const event = await finances.createEvent(domainId, {
       agentId,
       provider: "openai",
       biller: "chatgpt",
       billingType: "subscription_included",
-      costStatus: "unpriced",
+      financeStatus: "unpriced",
       model: "gpt-5.6-terra",
       inputTokens: 2_732_577,
       cachedInputTokens: 2_632_998,
       outputTokens: 32_644,
-      costCents: 0,
+      financeCents: 0,
       occurredAt: new Date("2026-07-13T14:22:54.000Z"),
     });
 
-    expect(event.costStatus).toBe("unpriced");
+    expect(event.financeStatus).toBe("unpriced");
     expect(event.inputTokens).toBe(2_732_577);
     const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
     expect(agent?.spentMonthlyCents).toBe(0);
   });
 
-  it("aggregates cost event sums above int32 without raising Postgres integer overflow", async () => {
-    const companyId = randomUUID();
+  it("aggregates finance event sums above int32 without raising Postgres integer overflow", async () => {
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const projectId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
-      name: "Cost Agent",
+      domainId,
+      name: "Finance Agent",
       role: "engineer",
       status: "active",
       adapterType: "codex_local",
@@ -499,14 +499,14 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Overflow Project",
       status: "active",
     });
 
-    await db.insert(costEvents).values([
+    await db.insert(financeEvents).values([
       {
-        companyId,
+        domainId,
         agentId,
         projectId,
         provider: "openai",
@@ -516,11 +516,11 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         inputTokens: 2_000_000_000,
         cachedInputTokens: 0,
         outputTokens: 200_000_000,
-        costCents: 2_000_000_000,
+        financeCents: 2_000_000_000,
         occurredAt: new Date("2026-04-10T00:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         agentId,
         projectId,
         provider: "openai",
@@ -530,7 +530,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         inputTokens: 2_000_000_000,
         cachedInputTokens: 10,
         outputTokens: 200_000_000,
-        costCents: 2_000_000_000,
+        financeCents: 2_000_000_000,
         occurredAt: new Date("2026-04-11T00:00:00.000Z"),
       },
     ]);
@@ -540,18 +540,18 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       to: new Date("2026-04-15T23:59:59.999Z"),
     };
 
-    const [byAgentRow] = await finances.byAgent(companyId, range);
-    const [byProjectRow] = await finances.byProject(companyId, range);
-    const [byAgentModelRow] = await finances.byAgentModel(companyId, range);
+    const [byAgentRow] = await finances.byAgent(domainId, range);
+    const [byProjectRow] = await finances.byProject(domainId, range);
+    const [byAgentModelRow] = await finances.byAgentModel(domainId, range);
 
-    expect(byAgentRow?.costCents).toBe(4_000_000_000);
+    expect(byAgentRow?.financeCents).toBe(4_000_000_000);
     expect(byAgentRow?.inputTokens).toBe(4_000_000_000);
-    expect(byProjectRow?.costCents).toBe(4_000_000_000);
-    expect(byAgentModelRow?.costCents).toBe(4_000_000_000);
+    expect(byProjectRow?.financeCents).toBe(4_000_000_000);
+    expect(byAgentModelRow?.financeCents).toBe(4_000_000_000);
   });
 
   it("aggregates issue finances across recursive descendants only", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const rootIssueId = randomUUID();
     const childIssueId = randomUUID();
@@ -560,15 +560,15 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     const siblingIssueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
-      name: "Cost Agent",
+      domainId,
+      name: "Finance Agent",
       role: "engineer",
       status: "active",
       adapterType: "codex_local",
@@ -579,7 +579,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
+        domainId,
         title: "Root",
         status: "in_progress",
         priority: "medium",
@@ -588,7 +588,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: childIssueId,
-        companyId,
+        domainId,
         parentId: rootIssueId,
         title: "Child",
         status: "done",
@@ -598,7 +598,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: grandchildIssueId,
-        companyId,
+        domainId,
         parentId: childIssueId,
         title: "Grandchild",
         status: "done",
@@ -608,7 +608,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: harnessIssueId,
-        companyId,
+        domainId,
         parentId: rootIssueId,
         title: "Hidden skill test harness",
         status: "done",
@@ -620,7 +620,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: siblingIssueId,
-        companyId,
+        domainId,
         title: "Sibling",
         status: "done",
         priority: "medium",
@@ -628,9 +628,9 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         identifier: "TST-4",
       },
     ]);
-    await db.insert(costEvents).values([
+    await db.insert(financeEvents).values([
       {
-        companyId,
+        domainId,
         agentId,
         issueId: rootIssueId,
         provider: "openai",
@@ -640,11 +640,11 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         inputTokens: 10,
         cachedInputTokens: 1,
         outputTokens: 2,
-        costCents: 100,
+        financeCents: 100,
         occurredAt: new Date("2026-04-10T00:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         agentId,
         issueId: childIssueId,
         provider: "openai",
@@ -654,11 +654,11 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         inputTokens: 20,
         cachedInputTokens: 2,
         outputTokens: 4,
-        costCents: 200,
+        financeCents: 200,
         occurredAt: new Date("2026-04-10T00:01:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         agentId,
         issueId: grandchildIssueId,
         provider: "openai",
@@ -668,11 +668,11 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         inputTokens: 30,
         cachedInputTokens: 3,
         outputTokens: 6,
-        costCents: 300,
+        financeCents: 300,
         occurredAt: new Date("2026-04-10T00:02:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         agentId,
         issueId: siblingIssueId,
         provider: "openai",
@@ -682,18 +682,18 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         inputTokens: 40,
         cachedInputTokens: 4,
         outputTokens: 8,
-        costCents: 400,
+        financeCents: 400,
         occurredAt: new Date("2026-04-10T00:03:00.000Z"),
       },
     ]);
 
-    const summary = await finances.issueTreeSummary(companyId, rootIssueId);
+    const summary = await finances.issueTreeSummary(domainId, rootIssueId);
 
     expect(summary).toEqual({
       issueId: rootIssueId,
       issueCount: 3,
       includeDescendants: true,
-      costCents: 600,
+      financeCents: 600,
       inputTokens: 60,
       cachedInputTokens: 6,
       outputTokens: 12,
@@ -703,7 +703,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
   });
 
   it("aggregates run wall-clock duration across the recursive issue tree", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const rootIssueId = randomUUID();
     const childIssueId = randomUUID();
@@ -712,14 +712,14 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     const siblingIssueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Run Agent",
       role: "engineer",
       status: "active",
@@ -731,7 +731,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
+        domainId,
         title: "Root",
         status: "in_progress",
         priority: "medium",
@@ -740,7 +740,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: childIssueId,
-        companyId,
+        domainId,
         parentId: rootIssueId,
         title: "Child",
         status: "in_progress",
@@ -750,7 +750,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: grandchildIssueId,
-        companyId,
+        domainId,
         parentId: childIssueId,
         title: "Grandchild",
         status: "done",
@@ -760,7 +760,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: siblingIssueId,
-        companyId,
+        domainId,
         title: "Sibling",
         status: "done",
         priority: "medium",
@@ -769,7 +769,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       },
       {
         id: harnessIssueId,
-        companyId,
+        domainId,
         parentId: rootIssueId,
         title: "Harness child",
         status: "done",
@@ -792,7 +792,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 60s run linked to root via contextSnapshot.issueId
       {
         id: linkedViaContextRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -803,7 +803,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 120s run linked to child via activity_log
       {
         id: linkedViaActivityRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -813,7 +813,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 30s run linked to grandchild
       {
         id: grandchildRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -824,7 +824,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // 45s harness run under root - should be excluded from visible issue tree rollups
       {
         id: harnessRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -835,7 +835,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // sibling run NOT under root – should be excluded
       {
         id: siblingRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "on_demand",
         status: "completed",
@@ -846,7 +846,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       // Still-running run on child (no finishedAt) – should contribute (now - startedAt)
       {
         id: livePartialRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "on_demand",
         status: "running",
@@ -856,7 +856,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     ]);
 
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       runId: linkedViaActivityRunId,
       actorType: "agent",
       actorId: agentId,
@@ -867,7 +867,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       details: {},
     });
 
-    const summary = await finances.issueTreeSummary(companyId, rootIssueId);
+    const summary = await finances.issueTreeSummary(domainId, rootIssueId);
 
     expect(summary.issueCount).toBe(3);
     // 3 finished runs in tree (root, child via activity, grandchild) + 1 live run
@@ -879,7 +879,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
 
     // excludeRoot drops the root issue's own runs (the 60s contextSnapshot run)
     // while keeping the child + grandchild runs and any live child run.
-    const descendantsOnly = await finances.issueTreeSummary(companyId, rootIssueId, {
+    const descendantsOnly = await finances.issueTreeSummary(domainId, rootIssueId, {
       excludeRoot: true,
     });
     expect(descendantsOnly.issueCount).toBe(2);
@@ -890,18 +890,18 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
   });
 
   it("aggregates finance event sums above int32 without raising Postgres integer overflow", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(financeEvents).values([
       {
-        companyId,
+        domainId,
         biller: "openai",
         eventKind: "invoice",
         amountCents: 2_000_000_000,
@@ -911,7 +911,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
         occurredAt: new Date("2026-04-10T00:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         biller: "openai",
         eventKind: "invoice",
         amountCents: 2_000_000_000,
@@ -927,8 +927,8 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
       to: new Date("2026-04-15T23:59:59.999Z"),
     };
 
-    const summary = await finance.summary(companyId, range);
-    const [byKindRow] = await finance.byKind(companyId, range);
+    const summary = await finance.summary(domainId, range);
+    const [byKindRow] = await finance.byKind(domainId, range);
 
     expect(summary.debitCents).toBe(4_000_000_000);
     expect(summary.estimatedDebitCents).toBe(2_000_000_000);

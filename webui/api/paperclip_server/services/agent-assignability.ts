@@ -18,7 +18,7 @@ type AgentAssignmentConflictReason =
   | "assignee_unknown_status"
   | "ancestor_terminated"
   | "ancestor_missing"
-  | "ancestor_cross_company"
+  | "ancestor_cross_domain"
   | "ancestor_cycle"
   | "ancestor_depth_exceeded";
 
@@ -44,7 +44,7 @@ function assignmentMessage(kind: AgentAssignmentKind, reason: AgentAssignmentCon
 }
 
 function conflictDetails(input: {
-  companyId: string;
+  domainId: string;
   assigneeAgentId: string;
   reason: AgentAssignmentConflictReason;
   chain: AssignabilityAgent[];
@@ -54,13 +54,13 @@ function conflictDetails(input: {
   return {
     code: "agent_not_assignable",
     reason: input.reason,
-    companyId: input.companyId,
+    domainId: input.domainId,
     assigneeAgentId: input.assigneeAgentId,
     invalidAncestorAgentId: input.invalidAncestorAgentId ?? null,
     missingAncestorAgentId: input.missingAncestorAgentId ?? null,
     ancestorChain: input.chain.map((agent) => ({
       id: agent.id,
-      companyId: agent.companyId,
+      domainId: agent.domainId,
       status: agent.status,
       reportsTo: agent.reportsTo,
     })),
@@ -71,7 +71,7 @@ async function getAgent(db: Db, agentId: string): Promise<AssignabilityAgent | n
   return db
     .select({
       id: agents.id,
-      companyId: agents.companyId,
+      domainId: agents.domainId,
       name: agents.name,
       status: agents.status,
       reportsTo: agents.reportsTo,
@@ -81,17 +81,17 @@ async function getAgent(db: Db, agentId: string): Promise<AssignabilityAgent | n
     .then((rows) => rows[0] ?? null);
 }
 
-async function listCompanyAgents(db: Db, companyId: string): Promise<AssignabilityAgent[]> {
+async function listDomainAgents(db: Db, domainId: string): Promise<AssignabilityAgent[]> {
   return db
     .select({
       id: agents.id,
-      companyId: agents.companyId,
+      domainId: agents.domainId,
       name: agents.name,
       status: agents.status,
       reportsTo: agents.reportsTo,
     })
     .from(agents)
-    .where(eq(agents.companyId, companyId));
+    .where(eq(agents.domainId, domainId));
 }
 
 function assignmentReasonFromHealth(health: AgentOrgChainHealth): AgentAssignmentConflictReason {
@@ -103,7 +103,7 @@ function assignmentReasonFromHealth(health: AgentOrgChainHealth): AgentAssignmen
 
 export async function assertAssignableAgent(
   db: Db,
-  companyId: string,
+  domainId: string,
   agentId: string | null | undefined,
   options: { kind?: AgentAssignmentKind } = {},
 ) {
@@ -111,15 +111,15 @@ export async function assertAssignableAgent(
   const kind = options.kind ?? "work";
   const assignee = await getAgent(db, agentId);
   if (!assignee) throw notFound("Assignee agent not found");
-  if (assignee.companyId !== companyId) {
-    throw unprocessable("Assignee must belong to same company");
+  if (assignee.domainId !== domainId) {
+    throw unprocessable("Assignee must belong to same domain");
   }
 
-  const companyAgents = await listCompanyAgents(db, companyId);
-  const eligibility = getAgentWorkEligibility({ agent: assignee, agents: companyAgents });
+  const domainAgents = await listDomainAgents(db, domainId);
+  const eligibility = getAgentWorkEligibility({ agent: assignee, agents: domainAgents });
   const chain = eligibility.orgChainHealth.fullChain.map((entry) => ({
     id: entry.id,
-    companyId: entry.companyId,
+    domainId: entry.domainId,
     name: entry.name,
     status: entry.status,
     reportsTo: entry.reportsTo,
@@ -129,7 +129,7 @@ export async function assertAssignableAgent(
 
   if (eligibility.assignabilityReason === "pending_approval") {
     throw conflict(assignmentMessage(kind, "pending_approval"), conflictDetails({
-      companyId,
+      domainId,
       assigneeAgentId: agentId,
       reason: "pending_approval",
       chain,
@@ -137,7 +137,7 @@ export async function assertAssignableAgent(
   }
   if (eligibility.assignabilityReason === "terminated") {
     throw conflict(assignmentMessage(kind, "assignee_terminated"), conflictDetails({
-      companyId,
+      domainId,
       assigneeAgentId: agentId,
       reason: "assignee_terminated",
       chain,
@@ -145,7 +145,7 @@ export async function assertAssignableAgent(
   }
   if (eligibility.assignabilityReason === "unknown_status") {
     throw conflict(assignmentMessage(kind, "assignee_unknown_status"), conflictDetails({
-      companyId,
+      domainId,
       assigneeAgentId: agentId,
       reason: "assignee_unknown_status",
       chain,
@@ -155,7 +155,7 @@ export async function assertAssignableAgent(
   const reason = assignmentReasonFromHealth(eligibility.orgChainHealth);
   const firstInvalidAncestor = eligibility.orgChainHealth.firstInvalidAncestor;
   throw conflict(assignmentMessage(kind, reason), conflictDetails({
-    companyId,
+    domainId,
     assigneeAgentId: agentId,
     reason,
     chain,

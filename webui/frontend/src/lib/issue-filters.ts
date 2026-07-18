@@ -87,7 +87,7 @@ export const issueQuickFilterPresets = [
 ];
 
 export function issueFilterLabel(value: string): string {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperLifeAdmin());
+  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export function issueFilterArraysEqual(a: string[], b: string[]): boolean {

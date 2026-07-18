@@ -404,7 +404,7 @@ export function createPluginWorkerHandle(
   let nextRestartAt: number | null = null;
 
   // Track open stream channels so we can emit synthetic close on crash.
-  // Maps channel → companyId.
+  // Maps channel → domainId.
   const openStreamChannels = new Map<string, string>();
 
   // Shutdown coordination
@@ -510,22 +510,22 @@ export function createPluginWorkerHandle(
   ): PluginInvocationScope | null {
     if (!isRecord(params)) return null;
 
-    const directCompanyId = readNonEmptyString(params.companyId);
-    if (directCompanyId) return { companyId: directCompanyId };
+    const directDomainId = readNonEmptyString(params.domainId);
+    if (directDomainId) return { domainId: directDomainId };
 
     if (method === "performAction" && isRecord(params.actorContext)) {
-      const companyId = readNonEmptyString(params.actorContext.companyId);
-      return companyId ? { companyId } : null;
+      const domainId = readNonEmptyString(params.actorContext.domainId);
+      return domainId ? { domainId } : null;
     }
 
     if (method === "executeTool" && isRecord(params.runContext)) {
-      const companyId = readNonEmptyString(params.runContext.companyId);
-      return companyId ? { companyId } : null;
+      const domainId = readNonEmptyString(params.runContext.domainId);
+      return domainId ? { domainId } : null;
     }
 
     if (method === "onEvent" && isRecord(params.event)) {
-      const companyId = readNonEmptyString(params.event.companyId);
-      return companyId ? { companyId } : null;
+      const domainId = readNonEmptyString(params.event.domainId);
+      return domainId ? { domainId } : null;
     }
 
     return null;
@@ -620,7 +620,7 @@ export function createPluginWorkerHandle(
   /**
    * Handle a JSON-RPC notification from the worker (fire-and-forget).
    *
-   * The `log` notification is the primary case — worker `ctx.logger` calls
+   * The `log` notification is the primary life_admin — worker `ctx.logger` calls
    * arrive here. We append structured plugin context (pluginId, timestamp,
    * level) so that every log entry is queryable per the spec (§26.1).
    */
@@ -665,20 +665,20 @@ export function createPluginWorkerHandle(
       notification.method === "streams.close"
     ) {
       const params = (notification.params ?? {}) as Record<string, unknown>;
-      const companyId = String(params.companyId ?? "");
+      const domainId = String(params.domainId ?? "");
       const context = contextForWorkerMessage(notification);
       if (context.invalidInvocationScope) {
         log.warn(
-          { method: notification.method, companyId },
+          { method: notification.method, domainId },
           "dropping plugin stream notification with invalid invocation scope",
         );
         return;
       }
-      const allowedCompanyId = context.invocationScope?.companyId;
-      if (allowedCompanyId && companyId !== allowedCompanyId) {
+      const allowedDomainId = context.invocationScope?.domainId;
+      if (allowedDomainId && domainId !== allowedDomainId) {
         log.warn(
-          { method: notification.method, companyId, allowedCompanyId },
-          "dropping plugin stream notification outside invocation company scope",
+          { method: notification.method, domainId, allowedDomainId },
+          "dropping plugin stream notification outside invocation domain scope",
         );
         return;
       }
@@ -686,7 +686,7 @@ export function createPluginWorkerHandle(
       // Track open channels so we can emit synthetic close on crash
       if (notification.method === "streams.open") {
         const ch = String(params.channel ?? "");
-        if (ch) openStreamChannels.set(ch, companyId);
+        if (ch) openStreamChannels.set(ch, domainId);
       } else if (notification.method === "streams.close") {
         openStreamChannels.delete(String(params.channel ?? ""));
       }
@@ -806,9 +806,9 @@ export function createPluginWorkerHandle(
     // Emit synthetic close for any orphaned stream channels so SSE clients
     // are notified instead of hanging indefinitely.
     if (openStreamChannels.size > 0 && options.onStreamNotification) {
-      for (const [channel, companyId] of openStreamChannels) {
+      for (const [channel, domainId] of openStreamChannels) {
         try {
-          options.onStreamNotification("streams.close", { channel, companyId });
+          options.onStreamNotification("streams.close", { channel, domainId });
         } catch {
           // Best-effort cleanup — don't let it interfere with exit handling
         }

@@ -25,7 +25,7 @@ import {
   startRuntimeServicesForWorkspaceControl,
   stopRuntimeServicesForExecutionWorkspace,
 } from "../services/workspace-runtime.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertDomainAccess, getActorInfo } from "./authz.js";
 import { logger } from "../middleware/logger.js";
 import {
   assertNoAgentHostWorkspaceCommandMutation,
@@ -50,32 +50,32 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
     pluginWorkerManager: opts.pluginWorkerManager,
   });
 
-  async function assertExecutionWorkspaceReadAllowed(req: Request, res: Response, companyId: string) {
+  async function assertExecutionWorkspaceReadAllowed(req: Request, res: Response, domainId: string) {
     const decision = await access.decide({
       actor: req.actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Execution workspaces are outside this actor's authorization boundary" });
     return false;
   }
 
-  async function assertRuntimeManageAllowed(req: Request, res: Response, companyId: string) {
+  async function assertRuntimeManageAllowed(req: Request, res: Response, domainId: string) {
     const decision = await access.decide({
       actor: req.actor,
       action: "runtime:manage",
-      resource: { type: "company", companyId },
+      resource: { type: "domain", domainId },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Runtime service control is outside this actor's authorization boundary" });
     return false;
   }
 
-  router.get("/domains/:companyId/execution-workspaces", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertExecutionWorkspaceReadAllowed(req, res, companyId))) return;
+  router.get("/domains/:domainId/execution-workspaces", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertExecutionWorkspaceReadAllowed(req, res, domainId))) return;
     const filters = {
       projectId: req.query.projectId as string | undefined,
       projectWorkspaceId: req.query.projectWorkspaceId as string | undefined,
@@ -84,15 +84,15 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       reuseEligible: req.query.reuseEligible === "true",
     };
     const workspaces = req.query.summary === "true"
-      ? await svc.listSummaries(companyId, filters)
-      : await svc.list(companyId, filters);
+      ? await svc.listSummaries(domainId, filters)
+      : await svc.list(domainId, filters);
     res.json(workspaces);
   });
 
-  router.get("/domains/:companyId/workspace-overview", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertExecutionWorkspaceReadAllowed(req, res, companyId))) return;
+  router.get("/domains/:domainId/workspace-overview", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertExecutionWorkspaceReadAllowed(req, res, domainId))) return;
 
     const parsed = workspaceOverviewQuerySchema.safeParse(req.query);
     if (!parsed.success) {
@@ -103,7 +103,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       return;
     }
 
-    const overview = await svc.listOverview(companyId, parsed.data);
+    const overview = await svc.listOverview(domainId, parsed.data);
     res.json(overview);
   });
 
@@ -114,8 +114,8 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       res.status(404).json({ error: "Execution workspace not found" });
       return;
     }
-    assertCompanyAccess(req, workspace.companyId);
-    if (!(await assertExecutionWorkspaceReadAllowed(req, res, workspace.companyId))) return;
+    assertDomainAccess(req, workspace.domainId);
+    if (!(await assertExecutionWorkspaceReadAllowed(req, res, workspace.domainId))) return;
     res.json(workspace);
   });
 
@@ -126,8 +126,8 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       res.status(404).json({ error: "Execution workspace not found" });
       return;
     }
-    assertCompanyAccess(req, workspace.companyId);
-    if (!(await assertExecutionWorkspaceReadAllowed(req, res, workspace.companyId))) return;
+    assertDomainAccess(req, workspace.domainId);
+    if (!(await assertExecutionWorkspaceReadAllowed(req, res, workspace.domainId))) return;
     const readiness = await svc.getCloseReadiness(id);
     if (!readiness) {
       res.status(404).json({ error: "Execution workspace not found" });
@@ -143,8 +143,8 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       res.status(404).json({ error: "Execution workspace not found" });
       return;
     }
-    assertCompanyAccess(req, workspace.companyId);
-    if (!(await assertExecutionWorkspaceReadAllowed(req, res, workspace.companyId))) return;
+    assertDomainAccess(req, workspace.domainId);
+    if (!(await assertExecutionWorkspaceReadAllowed(req, res, workspace.domainId))) return;
     const operations = await workspaceOperationsSvc.listForExecutionWorkspace(id);
     res.json(operations);
   });
@@ -162,11 +162,11 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       res.status(404).json({ error: "Execution workspace not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
-    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId))) return;
+    assertDomainAccess(req, existing.domainId);
+    if (!(await assertRuntimeManageAllowed(req, res, existing.domainId))) return;
 
     await assertCanManageExecutionWorkspaceRuntimeServices(db, req, {
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       executionWorkspaceId: existing.id,
       sourceIssueId: existing.sourceIssueId,
     });
@@ -191,7 +191,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
           .where(
             and(
               eq(projectWorkspaces.id, existing.projectWorkspaceId),
-              eq(projectWorkspaces.companyId, existing.companyId),
+              eq(projectWorkspaces.domainId, existing.domainId),
             ),
           )
           .then((rows) => rows[0] ?? null)
@@ -208,7 +208,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
           .where(
             and(
               eq(projects.id, existing.projectId),
-              eq(projects.companyId, existing.companyId),
+              eq(projects.domainId, existing.domainId),
             ),
           )
           .then((rows) => parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy))
@@ -266,7 +266,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
 
     const actor = getActorInfo(req);
     const recorder = workspaceOperationsSvc.createRecorder({
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       executionWorkspaceId: existing.id,
     });
     let runtimeServiceCount = existing.runtimeServices?.length ?? 0;
@@ -326,7 +326,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
             agent: {
               id: actor.agentId ?? null,
               name: actor.actorType === "user" ? "Board" : "Agent",
-              companyId: existing.companyId,
+              domainId: existing.domainId,
             },
             recorder,
           });
@@ -343,7 +343,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
             actor: {
               id: actor.agentId ?? null,
               name: actor.actorType === "user" ? "Board" : "Agent",
-              companyId: existing.companyId,
+              domainId: existing.domainId,
             },
             issue: existing.sourceIssueId
               ? {
@@ -395,7 +395,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
             actor: {
               id: actor.agentId ?? null,
               name: actor.actorType === "user" ? "Board" : "Agent",
-              companyId: existing.companyId,
+              domainId: existing.domainId,
             },
             issue: existing.sourceIssueId
               ? {
@@ -469,7 +469,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
     }
 
     await logActivity(db, {
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -503,9 +503,9 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       res.status(404).json({ error: "Execution workspace not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    assertDomainAccess(req, existing.domainId);
     assertBoard(req);
-    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId))) return;
+    if (!(await assertRuntimeManageAllowed(req, res, existing.domainId))) return;
 
     const actor = getActorInfo(req);
     const result = await svc.reconcileExecutionWorkspaceBranch(id, {
@@ -520,7 +520,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
     });
 
     await logActivity(db, {
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,
@@ -595,8 +595,8 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       res.status(404).json({ error: "Execution workspace not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
-    if (!(await assertRuntimeManageAllowed(req, res, existing.companyId))) return;
+    assertDomainAccess(req, existing.domainId);
+    if (!(await assertRuntimeManageAllowed(req, res, existing.domainId))) return;
     assertNoAgentHostWorkspaceCommandMutation(
       req,
       collectExecutionWorkspaceCommandPaths({
@@ -660,7 +660,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
       workspace = archivedWorkspace;
 
       await environmentRuntime.destroyReusableSandboxLeases({
-        companyId: existing.companyId,
+        domainId: existing.domainId,
         executionWorkspaceId: existing.id,
         failureReason: "execution_workspace_closed",
       });
@@ -674,7 +674,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
           })
           .where(
             and(
-              eq(issues.companyId, existing.companyId),
+              eq(issues.domainId, existing.domainId),
               eq(issues.executionWorkspaceId, existing.id),
             ),
           );
@@ -696,7 +696,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
             .where(
                 and(
                   eq(projectWorkspaces.id, existing.projectWorkspaceId),
-                  eq(projectWorkspaces.companyId, existing.companyId),
+                  eq(projectWorkspaces.domainId, existing.domainId),
                 ),
               )
               .then((rows) => rows[0] ?? null)
@@ -707,7 +707,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
                 executionWorkspacePolicy: projects.executionWorkspacePolicy,
               })
               .from(projects)
-              .where(and(eq(projects.id, existing.projectId), eq(projects.companyId, existing.companyId)))
+              .where(and(eq(projects.id, existing.projectId), eq(projects.domainId, existing.domainId)))
               .then((rows) => parseProjectExecutionWorkspacePolicy(rows[0]?.executionWorkspacePolicy))
           : null;
         const cleanupResult = await cleanupExecutionWorkspaceArtifacts({
@@ -716,7 +716,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
           teardownCommand: configForCleanup?.teardownCommand ?? projectPolicy?.workspaceStrategy?.teardownCommand ?? null,
           cleanupCommand: configForCleanup?.cleanupCommand ?? null,
           recorder: workspaceOperationsSvc.createRecorder({
-            companyId: existing.companyId,
+            domainId: existing.domainId,
             executionWorkspaceId: existing.id,
           }),
         });
@@ -754,7 +754,7 @@ export function executionWorkspaceRoutes(db: Db, opts: { pluginWorkerManager?: P
     }
     const actor = getActorInfo(req);
     await logActivity(db, {
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       actorType: actor.actorType,
       actorId: actor.actorId,
       agentId: actor.agentId,

@@ -4,7 +4,7 @@ import {
   activityLog,
   agents,
   domains,
-  companyMemberships,
+  domainMemberships,
   createDb,
   invites,
   principalPermissionGrants,
@@ -56,7 +56,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
     await db.delete(principalPermissionGrants);
     await db.delete(invites);
     await db.delete(agents);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(domains);
   });
 
@@ -64,13 +64,13 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
     await tempDb?.cleanup();
   });
 
-  it("rejects grant writes for principals outside the requested company", async () => {
+  it("rejects grant writes for principals outside the requested domain", async () => {
     const targetDomain = await createDomain(db, "PAX");
     const otherDomain = await createDomain(db, "PAY");
     const otherAgent = await db
       .insert(agents)
       .values({
-        companyId: otherDomain.id,
+        domainId: otherDomain.id,
         name: "Other agent",
         role: "engineer",
         adapterType: "process",
@@ -83,7 +83,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
 
     await expect(
       services.authorization.setGrants({
-        companyId: targetDomain.id,
+        domainId: targetDomain.id,
         principalType: "agent",
         principalId: otherAgent.id,
         grants: [{ permissionKey: "tasks:assign" }],
@@ -96,11 +96,11 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
   });
 
   it("redacts invite token hashes and sensitive defaults from plugin invite reads", async () => {
-    const company = await createDomain(db, "PAZ");
+    const domain = await createDomain(db, "PAZ");
     const services = buildHostServices(db, pluginId, "permissions-extension", createEventBusStub());
 
     const created = await services.access.createInvite({
-      companyId: company.id,
+      domainId: domain.id,
       allowedJoinTypes: "human",
       defaultsPayload: {
         human: { role: "operator", apiKey: "secret-value" },
@@ -115,7 +115,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
       secret: "***REDACTED***",
     });
 
-    const listed = await services.access.listInvites({ companyId: company.id });
+    const listed = await services.access.listInvites({ domainId: domain.id });
     expect(listed.invites).toHaveLength(1);
     expect("token" in listed.invites[0]!).toBe(false);
     expect("tokenHash" in listed.invites[0]!).toBe(false);
@@ -123,11 +123,11 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
   });
 
   it("filters authorization audit entries by allow or deny decision details", async () => {
-    const company = await createDomain(db, "PAU");
+    const domain = await createDomain(db, "PAU");
     const services = buildHostServices(db, pluginId, "permissions-extension", createEventBusStub());
     await db.insert(activityLog).values([
       {
-        companyId: company.id,
+        domainId: domain.id,
         actorType: "agent",
         actorId: "agent-1",
         action: "authorization.assignment_preview",
@@ -137,7 +137,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
         createdAt: new Date("2026-01-02T00:00:00Z"),
       },
       {
-        companyId: company.id,
+        domainId: domain.id,
         actorType: "agent",
         actorId: "agent-1",
         action: "authorization.assignment_preview",
@@ -150,13 +150,13 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
 
     const [allowed, denied] = await Promise.all([
       services.authorization.searchAudit({
-        companyId: company.id,
+        domainId: domain.id,
         action: "authorization.assignment_preview",
         decision: "allow",
         limit: 1,
       }),
       services.authorization.searchAudit({
-        companyId: company.id,
+        domainId: domain.id,
         action: "authorization.assignment_preview",
         decision: "deny",
       }),
@@ -171,12 +171,12 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
   });
 
   it("uses persisted agent policy for plugin assignment preview and explanation", async () => {
-    const company = await createDomain(db, "PAP");
+    const domain = await createDomain(db, "PAP");
     const [actorAgent, targetAgent] = await db
       .insert(agents)
       .values([
         {
-          companyId: company.id,
+          domainId: domain.id,
           name: "Actor agent",
           role: "engineer",
           adapterType: "process",
@@ -184,7 +184,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
           permissions: {},
         },
         {
-          companyId: company.id,
+          domainId: domain.id,
           name: "Protected target",
           role: "engineer",
           adapterType: "process",
@@ -193,8 +193,8 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
         },
       ])
       .returning();
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent!.id,
       status: "active",
@@ -203,7 +203,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
 
     const services = buildHostServices(db, pluginId, "permissions-extension", createEventBusStub());
     const updatedPolicy = await services.authorization.updatePolicy({
-      companyId: company.id,
+      domainId: domain.id,
       resourceType: "agent",
       resourceId: targetAgent!.id,
       policy: {
@@ -219,11 +219,11 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
       },
     });
     const input = {
-      companyId: company.id,
+      domainId: domain.id,
       actor: {
         type: "agent" as const,
         agentId: actorAgent!.id,
-        companyId: company.id,
+        domainId: domain.id,
         source: "agent_key" as const,
       },
       target: { assigneeAgentId: targetAgent!.id },
@@ -244,11 +244,11 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
     expect(explanation).toMatchObject(preview);
 
     const injectedBoardPreview = await services.authorization.previewAssignment({
-      companyId: company.id,
+      domainId: domain.id,
       actor: {
         type: "board",
         userId: "operator",
-        companyIds: [company.id],
+        domainIds: [domain.id],
         source: "local_implicit",
         isInstanceAdmin: true,
       } as any,
@@ -262,11 +262,11 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
   });
 
   it("sanitizes plugin authorization policy updates and records audit activity", async () => {
-    const company = await createDomain(db, "PAS");
+    const domain = await createDomain(db, "PAS");
     const targetAgent = await db
       .insert(agents)
       .values({
-        companyId: company.id,
+        domainId: domain.id,
         name: "Policy target",
         role: "engineer",
         adapterType: "process",
@@ -278,7 +278,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
     const services = buildHostServices(db, pluginId, "permissions-extension", createEventBusStub());
 
     const updatedPolicy = await services.authorization.updatePolicy({
-      companyId: company.id,
+      domainId: domain.id,
       resourceType: "agent",
       resourceId: targetAgent.id,
       policy: {
@@ -303,7 +303,7 @@ describeEmbeddedPostgres("plugin access and authorization host services", () => 
     const rows = await db.select().from(activityLog);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      companyId: company.id,
+      domainId: domain.id,
       actorType: "plugin",
       actorId: pluginId,
       action: "authorization.policy_updated_by_plugin",

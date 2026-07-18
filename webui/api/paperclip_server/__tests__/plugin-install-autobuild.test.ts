@@ -155,7 +155,7 @@ async function createInstallApp(db: ReturnType<typeof createDb>) {
       userId: "admin-1",
       source: "session",
       isInstanceAdmin: true,
-      companyIds: [],
+      domainIds: [],
     } as typeof req.actor;
     next();
   });

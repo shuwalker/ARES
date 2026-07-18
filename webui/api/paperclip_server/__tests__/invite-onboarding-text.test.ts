@@ -19,8 +19,8 @@ describe("buildInviteOnboardingTextDocument", () => {
     const req = buildReq("localhost:3100");
     const invite = {
       id: "invite-1",
-      companyId: "company-1",
-      inviteType: "company_join",
+      domainId: "domain-1",
+      inviteType: "domain_join",
       allowedJoinTypes: "agent",
       tokenHash: "hash",
       defaultsPayload: null,
@@ -87,8 +87,8 @@ describe("buildInviteOnboardingTextDocument", () => {
     const req = buildReq("localhost:3100");
     const invite = {
       id: "invite-2",
-      companyId: "company-1",
-      inviteType: "company_join",
+      domainId: "domain-1",
+      inviteType: "domain_join",
       allowedJoinTypes: "both",
       tokenHash: "hash",
       defaultsPayload: null,
@@ -116,8 +116,8 @@ describe("buildInviteOnboardingTextDocument", () => {
     const req = buildReq("localhost:3100");
     const invite = {
       id: "invite-3",
-      companyId: "company-1",
-      inviteType: "company_join",
+      domainId: "domain-1",
+      inviteType: "domain_join",
       allowedJoinTypes: "agent",
       tokenHash: "hash",
       defaultsPayload: {
@@ -179,8 +179,8 @@ describe("buildInviteOnboardingTextDocument", () => {
       const req = buildReq("paperclip.example.test:3103");
       const invite = {
         id: "invite-4",
-        companyId: "company-1",
-        inviteType: "company_join",
+        domainId: "domain-1",
+        inviteType: "domain_join",
         allowedJoinTypes: "agent",
         tokenHash: "hash",
         defaultsPayload: null,

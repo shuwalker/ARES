@@ -29,7 +29,7 @@ type BundleMode = "managed" | "external";
 
 type AgentLike = {
   id: string;
-  companyId: string;
+  domainId: string;
   name: string;
   adapterConfig: unknown;
 };
@@ -52,7 +52,7 @@ type AgentInstructionsFileDetail = AgentInstructionsFileSummary & {
 
 type AgentInstructionsBundle = {
   agentId: string;
-  companyId: string;
+  domainId: string;
   mode: BundleMode | null;
   rootPath: string | null;
   managedRootPath: string;
@@ -134,7 +134,7 @@ function resolveManagedInstructionsRoot(agent: AgentLike): string {
   return path.resolve(
     resolvePaperclipInstanceRoot(),
     "domains",
-    agent.companyId,
+    agent.domainId,
     "agents",
     agent.id,
     "instructions",
@@ -347,7 +347,7 @@ function toBundle(agent: AgentLike, state: BundleState, files: AgentInstructions
   nextFiles.sort((left, right) => left.path.localeCompare(right.path));
   return {
     agentId: agent.id,
-    companyId: agent.companyId,
+    domainId: agent.domainId,
     mode: state.mode,
     rootPath: state.rootPath,
     managedRootPath: resolveManagedInstructionsRoot(agent),

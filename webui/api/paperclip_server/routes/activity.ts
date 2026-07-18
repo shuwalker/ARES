@@ -4,7 +4,7 @@ import type { Db } from "@paperclipai/db";
 import { normalizeIssueIdentifier } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { activityService, normalizeActivityLimit } from "../services/activity.js";
-import { assertAuthenticated, assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertAuthenticated, assertBoard, assertDomainAccess } from "./authz.js";
 import { accessService, heartbeatService, issueService } from "../services/index.js";
 import { sanitizeRecord } from "../redaction.js";
 
@@ -25,20 +25,20 @@ export function activityRoutes(db: Db) {
   const heartbeat = heartbeatService(db);
   const issueSvc = issueService(db);
 
-  async function assertCompanyScopeReadAllowed(req: Parameters<typeof assertCompanyAccess>[0], res: any, companyId: string) {
+  async function assertDomainScopeReadAllowed(req: Parameters<typeof assertDomainAccess>[0], res: any, domainId: string) {
     const decision = await access.decide({
       actor: req.actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId },
     });
     if (decision.allowed) return true;
     res.status(403).json({ error: "Activity is outside this actor's authorization boundary" });
     return false;
   }
 
-  async function assertIssueReadAllowed(req: Parameters<typeof assertCompanyAccess>[0], res: any, issue: {
+  async function assertIssueReadAllowed(req: Parameters<typeof assertDomainAccess>[0], res: any, issue: {
     id: string;
-    companyId: string;
+    domainId: string;
     projectId: string | null;
     parentId: string | null;
     assigneeAgentId: string | null;
@@ -50,7 +50,7 @@ export function activityRoutes(db: Db) {
       action: "issue:read",
       resource: {
         type: "issue",
-        companyId: issue.companyId,
+        domainId: issue.domainId,
         issueId: issue.id,
         projectId: issue.projectId,
         parentIssueId: issue.parentId,
@@ -72,13 +72,13 @@ export function activityRoutes(db: Db) {
     return issueSvc.getById(rawId);
   }
 
-  router.get("/domains/:companyId/activity", async (req, res) => {
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    if (!(await assertCompanyScopeReadAllowed(req, res, companyId))) return;
+  router.get("/domains/:domainId/activity", async (req, res) => {
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
+    if (!(await assertDomainScopeReadAllowed(req, res, domainId))) return;
 
     const filters = {
-      companyId,
+      domainId,
       agentId: req.query.agentId as string | undefined,
       entityType: req.query.entityType as string | undefined,
       entityId: req.query.entityId as string | undefined,
@@ -88,12 +88,12 @@ export function activityRoutes(db: Db) {
     res.json(result);
   });
 
-  router.post("/domains/:companyId/activity", validate(createActivitySchema), async (req, res) => {
+  router.post("/domains/:domainId/activity", validate(createActivitySchema), async (req, res) => {
     assertBoard(req);
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     const event = await svc.create({
-      companyId,
+      domainId,
       ...req.body,
       details: req.body.details ? sanitizeRecord(req.body.details) : null,
     });
@@ -107,7 +107,7 @@ export function activityRoutes(db: Db) {
       res.status(404).json({ error: "Issue not found" });
       return;
     }
-    assertCompanyAccess(req, issue.companyId);
+    assertDomainAccess(req, issue.domainId);
     if (!(await assertIssueReadAllowed(req, res, issue))) return;
     const result = await svc.forIssue(issue.id);
     res.json(result);
@@ -120,9 +120,9 @@ export function activityRoutes(db: Db) {
       res.status(404).json({ error: "Issue not found" });
       return;
     }
-    assertCompanyAccess(req, issue.companyId);
+    assertDomainAccess(req, issue.domainId);
     if (!(await assertIssueReadAllowed(req, res, issue))) return;
-    const result = await svc.runsForIssue(issue.companyId, issue.id);
+    const result = await svc.runsForIssue(issue.domainId, issue.id);
     res.json(result);
   });
 
@@ -134,8 +134,8 @@ export function activityRoutes(db: Db) {
       res.json([]);
       return;
     }
-    assertCompanyAccess(req, run.companyId);
-    if (!(await assertCompanyScopeReadAllowed(req, res, run.companyId))) return;
+    assertDomainAccess(req, run.domainId);
+    if (!(await assertDomainScopeReadAllowed(req, res, run.domainId))) return;
     const result = await svc.issuesForRun(runId);
     res.json(result);
   });

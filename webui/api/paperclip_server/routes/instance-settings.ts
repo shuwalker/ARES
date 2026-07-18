@@ -48,11 +48,11 @@ export function instanceSettingsRoutes(db: Db) {
       }
       const updated = await svc.update(req.body);
       const actor = getActorInfo(req);
-      const companyIds = await svc.listCompanyIds();
+      const domainIds = await svc.listDomainIds();
       await Promise.all(
-        companyIds.map((companyId) =>
+        domainIds.map((domainId) =>
           logActivity(db, {
-            companyId,
+            domainId,
             actorType: actor.actorType,
             actorId: actor.actorId,
             agentId: actor.agentId,
@@ -85,11 +85,11 @@ export function instanceSettingsRoutes(db: Db) {
       assertCanManageInstanceSettings(req);
       const updated = await svc.updateGeneral(req.body);
       const actor = getActorInfo(req);
-      const companyIds = await svc.listCompanyIds();
+      const domainIds = await svc.listDomainIds();
       await Promise.all(
-        companyIds.map((companyId) =>
+        domainIds.map((domainId) =>
           logActivity(db, {
-            companyId,
+            domainId,
             actorType: actor.actorType,
             actorId: actor.actorId,
             agentId: actor.agentId,
@@ -123,11 +123,11 @@ export function instanceSettingsRoutes(db: Db) {
       assertCanManageInstanceSettings(req);
       const updated = await svc.updateExperimental(req.body);
       const actor = getActorInfo(req);
-      const companyIds = await svc.listCompanyIds();
+      const domainIds = await svc.listDomainIds();
       await Promise.all(
-        companyIds.map((companyId) =>
+        domainIds.map((domainId) =>
           logActivity(db, {
-            companyId,
+            domainId,
             actorType: actor.actorType,
             actorId: actor.actorId,
             agentId: actor.agentId,
@@ -168,11 +168,11 @@ export function instanceSettingsRoutes(db: Db) {
         force: true,
         lookbackHours: req.body.lookbackHours,
       });
-      const companyIds = await svc.listCompanyIds();
+      const domainIds = await svc.listDomainIds();
       await Promise.all(
-        companyIds.map((companyId) =>
+        domainIds.map((domainId) =>
           logActivity(db, {
-            companyId,
+            domainId,
             actorType: actor.actorType,
             actorId: actor.actorId,
             agentId: actor.agentId,

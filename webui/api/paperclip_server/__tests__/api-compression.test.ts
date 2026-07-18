@@ -23,7 +23,7 @@ afterEach(async () => {
 function issueListFixture(count: number) {
   return Array.from({ length: count }, (_, index) => ({
     id: `issue-${index}`,
-    companyId: "company-1",
+    domainId: "domain-1",
     identifier: `PAP-${index + 1}`,
     title: `Synthetic issue list row ${index}`,
     description: "repeatable payload used to prove API compression on the hot issue-list response",
@@ -77,7 +77,7 @@ async function requestRaw(app: express.Express, path: string, headers: Record<st
 function buildApp() {
   const app = express();
   app.use("/api", apiCompression());
-  app.get("/api/domains/:companyId/issues", (_req, res) => {
+  app.get("/api/domains/:domainId/issues", (_req, res) => {
     res.json(issueListFixture(500));
   });
   app.get("/api/small", (_req, res) => {
@@ -131,8 +131,8 @@ function buildApp() {
 
 describe("API compression middleware", () => {
   it("compresses the hot 500-item issue-list response with gzip when the client supports it", async () => {
-    const uncompressed = await requestRaw(buildApp(), "/api/domains/company-1/issues?limit=500");
-    const compressed = await requestRaw(buildApp(), "/api/domains/company-1/issues?limit=500", {
+    const uncompressed = await requestRaw(buildApp(), "/api/domains/domain-1/issues?limit=500");
+    const compressed = await requestRaw(buildApp(), "/api/domains/domain-1/issues?limit=500", {
       "accept-encoding": "gzip",
     });
 
@@ -145,7 +145,7 @@ describe("API compression middleware", () => {
   });
 
   it("uses deflate when that is the supported content encoding", async () => {
-    const res = await requestRaw(buildApp(), "/api/domains/company-1/issues?limit=500", {
+    const res = await requestRaw(buildApp(), "/api/domains/domain-1/issues?limit=500", {
       "accept-encoding": "deflate",
     });
 

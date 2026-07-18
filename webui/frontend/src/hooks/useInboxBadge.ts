@@ -50,29 +50,29 @@ export function useDismissedInboxAlerts() {
   return { dismissed, dismiss };
 }
 
-export function useInboxDismissals(companyId: string | null | undefined) {
+export function useInboxDismissals(domainId: string | null | undefined) {
   const queryClient = useQueryClient();
-  const queryKey = companyId
-    ? queryKeys.inboxDismissals(companyId)
+  const queryKey = domainId
+    ? queryKeys.inboxDismissals(domainId)
     : ["inbox-dismissals", "__disabled__"] as const;
 
   const { data: dismissals = [] } = useQuery({
     queryKey,
-    queryFn: () => inboxDismissalsApi.list(companyId!),
-    enabled: !!companyId,
+    queryFn: () => inboxDismissalsApi.list(domainId!),
+    enabled: !!domainId,
   });
 
   const dismissMutation = useMutation({
-    mutationFn: ({ itemKey }: { itemKey: string }) => inboxDismissalsApi.dismiss(companyId!, itemKey),
+    mutationFn: ({ itemKey }: { itemKey: string }) => inboxDismissalsApi.dismiss(domainId!, itemKey),
     onMutate: async ({ itemKey }) => {
-      if (!companyId) return { previous: [] as typeof dismissals };
+      if (!domainId) return { previous: [] as typeof dismissals };
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<typeof dismissals>(queryKey) ?? [];
       const now = new Date();
       queryClient.setQueryData(queryKey, [
         {
           id: `optimistic:${itemKey}`,
-          companyId,
+          domainId,
           userId: "me",
           itemKey,
           dismissedAt: now,
@@ -88,28 +88,28 @@ export function useInboxDismissals(companyId: string | null | undefined) {
       queryClient.setQueryData(queryKey, context.previous);
     },
     onSettled: () => {
-      if (!companyId) return;
+      if (!domainId) return;
       invalidateDismissalConsumers();
     },
   });
 
   function invalidateDismissalConsumers() {
-    if (!companyId) return;
+    if (!domainId) return;
     queryClient.invalidateQueries({ queryKey });
-    queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(domainId) });
     // The attention feed derives its rows from server-side dismissals, so any
     // dismiss/snooze/restore must re-pull it to keep the queue and curtains in sync.
-    queryClient.invalidateQueries({ queryKey: queryKeys.attention(companyId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.attention(domainId) });
   }
 
   const snoozeMutation = useMutation({
     mutationFn: ({ itemKey, snoozedUntil }: { itemKey: string; snoozedUntil: string }) =>
-      inboxDismissalsApi.snooze(companyId!, itemKey, snoozedUntil),
+      inboxDismissalsApi.snooze(domainId!, itemKey, snoozedUntil),
     onSettled: invalidateDismissalConsumers,
   });
 
   const restoreMutation = useMutation({
-    mutationFn: ({ itemKey }: { itemKey: string }) => inboxDismissalsApi.restore(companyId!, itemKey),
+    mutationFn: ({ itemKey }: { itemKey: string }) => inboxDismissalsApi.restore(domainId!, itemKey),
     onSettled: invalidateDismissalConsumers,
   });
 
@@ -173,25 +173,25 @@ export function useReadInboxItems() {
   return { readItems, markRead, markUnread };
 }
 
-export function useInboxBadge(companyId: string | null | undefined) {
+export function useInboxBadge(domainId: string | null | undefined) {
   const { dismissed: dismissedAlerts } = useDismissedInboxAlerts();
-  const { dismissedAtByKey } = useInboxDismissals(companyId);
+  const { dismissedAtByKey } = useInboxDismissals(domainId);
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
   });
 
   const { data: approvals = [] } = useQuery({
-    queryKey: queryKeys.approvals.list(companyId!),
-    queryFn: () => approvalsApi.list(companyId!),
-    enabled: !!companyId,
+    queryKey: queryKeys.approvals.list(domainId!),
+    queryFn: () => approvalsApi.list(domainId!),
+    enabled: !!domainId,
   });
 
   const { data: joinRequests = [] } = useQuery({
-    queryKey: queryKeys.access.joinRequests(companyId!),
+    queryKey: queryKeys.access.joinRequests(domainId!),
     queryFn: async () => {
       try {
-        return await accessApi.listJoinRequests(companyId!, "pending_approval");
+        return await accessApi.listJoinRequests(domainId!, "pending_approval");
       } catch (err) {
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           return [];
@@ -199,41 +199,41 @@ export function useInboxBadge(companyId: string | null | undefined) {
         throw err;
       }
     },
-    enabled: !!companyId,
+    enabled: !!domainId,
     retry: false,
   });
 
-  const dashboardQueryKey = queryKeys.dashboard(companyId!);
+  const dashboardQueryKey = queryKeys.dashboard(domainId!);
   const sharedDashboard = useSharedPollingQuery({
-    companyId,
+    domainId,
     resourceKey: "dashboard",
     queryKey: dashboardQueryKey,
-    enabled: !!companyId,
+    enabled: !!domainId,
   });
   const { data: dashboard, dataUpdatedAt: dashboardUpdatedAt } = useQuery({
     queryKey: dashboardQueryKey,
-    queryFn: () => dashboardApi.summary(companyId!),
-    enabled: !!companyId,
+    queryFn: () => dashboardApi.summary(domainId!),
+    enabled: !!domainId,
   });
   usePublishSharedQueryData(sharedDashboard, dashboard, dashboardUpdatedAt);
 
-  const mineIssuesQueryKey = queryKeys.issues.listMineByMe(companyId!);
+  const mineIssuesQueryKey = queryKeys.issues.listMineByMe(domainId!);
   const sharedMineIssues = useSharedPollingQuery({
-    companyId,
+    domainId,
     resourceKey: "inbox-badge:mine-issues",
     queryKey: mineIssuesQueryKey,
-    enabled: !!companyId,
+    enabled: !!domainId,
   });
   const { data: mineIssuesRaw = [], dataUpdatedAt: mineIssuesUpdatedAt } = useQuery({
     queryKey: mineIssuesQueryKey,
     queryFn: () =>
-      issuesApi.list(companyId!, {
+      issuesApi.list(domainId!, {
         touchedByUserId: "me",
         inboxArchivedByUserId: "me",
         status: INBOX_ISSUE_STATUSES,
         limit: INBOX_BADGE_ISSUE_LIMIT,
       }),
-    enabled: !!companyId,
+    enabled: !!domainId,
     refetchOnWindowFocus: false,
     staleTime: INBOX_BADGE_HOT_PATH_STALE_MS,
   });
@@ -243,9 +243,9 @@ export function useInboxBadge(companyId: string | null | undefined) {
   const currentUserId = session?.user.id ?? session?.session.userId ?? null;
 
   const { data: heartbeatRuns = [] } = useQuery({
-    queryKey: [...queryKeys.heartbeats(companyId!), "limit", INBOX_BADGE_HEARTBEAT_RUN_LIMIT],
-    queryFn: () => heartbeatsApi.list(companyId!, undefined, INBOX_BADGE_HEARTBEAT_RUN_LIMIT, { summary: true }),
-    enabled: !!companyId,
+    queryKey: [...queryKeys.heartbeats(domainId!), "limit", INBOX_BADGE_HEARTBEAT_RUN_LIMIT],
+    queryFn: () => heartbeatsApi.list(domainId!, undefined, INBOX_BADGE_HEARTBEAT_RUN_LIMIT, { summary: true }),
+    enabled: !!domainId,
     refetchOnWindowFocus: false,
     staleTime: INBOX_BADGE_HOT_PATH_STALE_MS,
   });

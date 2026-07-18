@@ -1,5 +1,5 @@
 import type { Agent } from "@paperclipai/shared";
-import type { CompanyUserProfile } from "./domain-members";
+import type { DomainUserProfile } from "./domain-members";
 
 type ActivityDetails = Record<string, unknown> | null | undefined;
 
@@ -17,7 +17,7 @@ type ActivityIssueReference = {
 
 interface ActivityFormatOptions {
   agentMap?: Map<string, Agent>;
-  userProfileMap?: Map<string, CompanyUserProfile>;
+  userProfileMap?: Map<string, DomainUserProfile>;
   currentUserId?: string | null;
 }
 
@@ -75,13 +75,13 @@ const ACTIVITY_ROW_VERBS: Record<string, string> = {
   "goal.created": "created",
   "goal.updated": "updated",
   "goal.deleted": "deleted",
-  "cost.reported": "reported cost for",
-  "cost.recorded": "recorded cost for",
-  "company.created": "created company",
-  "company.updated": "updated company",
-  "company.archived": "archived",
-  "company.reactivated": "reactivated",
-  "company.budget_updated": "updated budget for",
+  "finance.reported": "reported finance for",
+  "finance.recorded": "recorded finance for",
+  "domain.created": "created domain",
+  "domain.updated": "updated domain",
+  "domain.archived": "archived",
+  "domain.reactivated": "reactivated",
+  "domain.budget_updated": "updated budget for",
 };
 
 const ISSUE_ACTIVITY_LABELS: Record<string, string> = {

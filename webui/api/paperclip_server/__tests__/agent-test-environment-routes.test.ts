@@ -17,8 +17,8 @@ const mockAccessService = vi.hoisted(() => ({
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
-  resolveAdapterConfigForRuntime: vi.fn(async (_companyId: string, config: Record<string, unknown>) => ({ config })),
+  normalizeAdapterConfigForPersistence: vi.fn(async (_domainId: string, config: Record<string, unknown>) => config),
+  resolveAdapterConfigForRuntime: vi.fn(async (_domainId: string, config: Record<string, unknown>) => ({ config })),
 }));
 
 const mockEnvironmentService = vi.hoisted(() => ({
@@ -45,8 +45,8 @@ vi.mock("../services/index.js", () => ({
   agentInstructionsService: () => ({}),
   accessService: () => mockAccessService,
   approvalService: () => ({}),
-  builtInAgentService: () => ({ ensureCompanyDefaultAgentGrants: vi.fn() }),
-  companySkillService: () => ({
+  builtInAgentService: () => ({ ensureDomainDefaultAgentGrants: vi.fn() }),
+  domainSkillService: () => ({
     listRuntimeSkillEntries: vi.fn(async () => []),
     resolveRequestedSkillKeys: vi.fn(async () => []),
   }),
@@ -102,7 +102,7 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -129,7 +129,7 @@ describe("agent test-environment route", () => {
     });
     mockEnvironmentService.getById.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Sandbox QA",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
@@ -181,7 +181,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/adapters/external_test/test-environment")
+      .post("/api/domains/domain-1/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "11111111-1111-4111-8111-111111111111",
@@ -218,7 +218,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/adapters/external_test/test-environment")
+      .post("/api/domains/domain-1/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "22222222-2222-4222-8222-222222222222",
@@ -263,7 +263,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/adapters/external_test/test-environment")
+      .post("/api/domains/domain-1/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "11111111-1111-4111-8111-111111111111",
@@ -324,7 +324,7 @@ describe("agent test-environment route", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/adapters/external_test/test-environment")
+      .post("/api/domains/domain-1/adapters/external_test/test-environment")
       .send({
         adapterConfig: {},
         environmentId: "11111111-1111-4111-8111-111111111111",

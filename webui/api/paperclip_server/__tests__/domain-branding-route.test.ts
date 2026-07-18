@@ -2,7 +2,7 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockCompanyService = vi.hoisted(() => ({
+const mockDomainService = vi.hoisted(() => ({
   list: vi.fn(),
   stats: vi.fn(),
   getById: vi.fn(),
@@ -24,14 +24,14 @@ const mockBudgetService = vi.hoisted(() => ({
   upsertPolicy: vi.fn(),
 }));
 
-const mockCompanyPortabilityService = vi.hoisted(() => ({
+const mockDomainPortabilityService = vi.hoisted(() => ({
   exportBundle: vi.fn(),
   previewExport: vi.fn(),
   previewImport: vi.fn(),
   importBundle: vi.fn(),
 }));
 
-const mockCompanyArtifactsService = vi.hoisted(() => ({
+const mockDomainArtifactsService = vi.hoisted(() => ({
   list: vi.fn(),
 }));
 
@@ -47,9 +47,9 @@ vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
   budgetService: () => mockBudgetService,
-  companyArtifactsService: () => mockCompanyArtifactsService,
-  companyPortabilityService: () => mockCompanyPortabilityService,
-  companyService: () => mockCompanyService,
+  domainArtifactsService: () => mockDomainArtifactsService,
+  domainPortabilityService: () => mockDomainPortabilityService,
+  domainService: () => mockDomainService,
   feedbackService: () => mockFeedbackService,
   logActivity: mockLogActivity,
 }));
@@ -57,7 +57,7 @@ vi.mock("../services/index.js", () => ({
 function createDomain() {
   const now = new Date("2026-03-19T02:00:00.000Z");
   return {
-    id: "company-1",
+    id: "domain-1",
     name: "Paperclip",
     description: null,
     status: "active",
@@ -75,7 +75,7 @@ function createDomain() {
 }
 
 async function createApp(actor: Record<string, unknown>) {
-  const [{ companyRoutes }, { errorHandler }] = await Promise.all([
+  const [{ domainRoutes }, { errorHandler }] = await Promise.all([
     vi.importActual<typeof import("../routes/domains.js")>("../routes/domains.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
   ]);
@@ -85,12 +85,12 @@ async function createApp(actor: Record<string, unknown>) {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api/domains", companyRoutes({} as any));
+  app.use("/api/domains", domainRoutes({} as any));
   app.use(errorHandler);
   return app;
 }
 
-describe("PATCH /api/domains/:companyId/branding", () => {
+describe("PATCH /api/domains/:domainId/branding", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../routes/domains.js");
@@ -102,87 +102,87 @@ describe("PATCH /api/domains/:companyId/branding", () => {
   it("rejects non-CEO agent callers", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
     });
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1/branding")
+      .patch("/api/domains/domain-1/branding")
       .send({ logoAssetId: "11111111-1111-4111-8111-111111111111" });
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Only CEO agents");
-    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(mockDomainService.update).not.toHaveBeenCalled();
   });
 
   it("rejects non-CEO agent callers before validating branding body shape", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
     });
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1/branding")
+      .patch("/api/domains/domain-1/branding")
       .send({ status: "archived" });
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Only CEO agents");
-    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(mockDomainService.update).not.toHaveBeenCalled();
   });
 
   it("allows CEO agent callers to update branding fields", async () => {
-    const company = createDomain();
+    const domain = createDomain();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "ceo",
     });
-    mockCompanyService.update.mockResolvedValue(company);
+    mockDomainService.update.mockResolvedValue(domain);
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1/branding")
+      .patch("/api/domains/domain-1/branding")
       .send({
         logoAssetId: "11111111-1111-4111-8111-111111111111",
         brandColor: "#123456",
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.logoAssetId).toBe(company.logoAssetId);
-    expect(mockCompanyService.update).toHaveBeenCalledWith("company-1", {
+    expect(res.body.logoAssetId).toBe(domain.logoAssetId);
+    expect(mockDomainService.update).toHaveBeenCalledWith("domain-1", {
       logoAssetId: "11111111-1111-4111-8111-111111111111",
       brandColor: "#123456",
     });
     expect(mockLogActivity).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        companyId: "company-1",
+        domainId: "domain-1",
         actorType: "agent",
         actorId: "agent-1",
         agentId: "agent-1",
         runId: "run-1",
-        action: "company.branding_updated",
+        action: "domain.branding_updated",
         details: {
           logoAssetId: "11111111-1111-4111-8111-111111111111",
           brandColor: "#123456",
@@ -192,9 +192,9 @@ describe("PATCH /api/domains/:companyId/branding", () => {
   });
 
   it("allows board callers to update branding fields", async () => {
-    const company = createDomain();
-    mockCompanyService.update.mockResolvedValue({
-      ...company,
+    const domain = createDomain();
+    mockDomainService.update.mockResolvedValue({
+      ...domain,
       brandColor: null,
       logoAssetId: null,
       logoUrl: null,
@@ -206,7 +206,7 @@ describe("PATCH /api/domains/:companyId/branding", () => {
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1/branding")
+      .patch("/api/domains/domain-1/branding")
       .send({ brandColor: null, logoAssetId: null });
 
     expect(res.status).toBe(200);
@@ -222,7 +222,7 @@ describe("PATCH /api/domains/:companyId/branding", () => {
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1/branding")
+      .patch("/api/domains/domain-1/branding")
       .send({
         logoAssetId: "11111111-1111-4111-8111-111111111111",
         status: "archived",
@@ -230,11 +230,11 @@ describe("PATCH /api/domains/:companyId/branding", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Validation error");
-    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(mockDomainService.update).not.toHaveBeenCalled();
   });
 });
 
-describe("PATCH /api/domains/:companyId", () => {
+describe("PATCH /api/domains/:domainId", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../routes/domains.js");
@@ -243,79 +243,79 @@ describe("PATCH /api/domains/:companyId", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects non-CEO agent callers before loading the company or validating settings body shape", async () => {
+  it("rejects non-CEO agent callers before loading the domain or validating settings body shape", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "engineer",
     });
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1")
+      .patch("/api/domains/domain-1")
       .send({ status: "archived" });
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Only CEO agents");
-    expect(mockCompanyService.getById).not.toHaveBeenCalled();
-    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(mockDomainService.getById).not.toHaveBeenCalled();
+    expect(mockDomainService.update).not.toHaveBeenCalled();
   });
 
   it("allows CEO agent callers to update only branding fields through the general settings route", async () => {
-    const company = createDomain();
+    const domain = createDomain();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "ceo",
     });
-    mockCompanyService.getById.mockResolvedValue(company);
-    mockCompanyService.update.mockResolvedValue({
-      ...company,
+    mockDomainService.getById.mockResolvedValue(domain);
+    mockDomainService.update.mockResolvedValue({
+      ...domain,
       name: "New Name",
     });
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1")
+      .patch("/api/domains/domain-1")
       .send({ name: "New Name" });
 
     expect(res.status).toBe(200);
-    expect(mockCompanyService.update).toHaveBeenCalledWith("company-1", { name: "New Name" }, expect.objectContaining({
+    expect(mockDomainService.update).toHaveBeenCalledWith("domain-1", { name: "New Name" }, expect.objectContaining({
       actorType: "agent",
       actorId: "agent-1",
     }));
   });
 
   it("rejects CEO agent attempts to update lifecycle, budget, consent, or prefix fields", async () => {
-    const company = createDomain();
+    const domain = createDomain();
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       role: "ceo",
     });
-    mockCompanyService.getById.mockResolvedValue(company);
+    mockDomainService.getById.mockResolvedValue(domain);
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1")
+      .patch("/api/domains/domain-1")
       .send({
         status: "archived",
         budgetMonthlyCents: 1000,
@@ -327,15 +327,15 @@ describe("PATCH /api/domains/:companyId", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Validation error");
-    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(mockDomainService.update).not.toHaveBeenCalled();
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
-  it("keeps full company settings updates board-only", async () => {
-    const company = createDomain();
-    mockCompanyService.getById.mockResolvedValue(company);
-    mockCompanyService.update.mockResolvedValue({
-      ...company,
+  it("keeps full domain settings updates board-only", async () => {
+    const domain = createDomain();
+    mockDomainService.getById.mockResolvedValue(domain);
+    mockDomainService.update.mockResolvedValue({
+      ...domain,
       status: "paused",
     });
     const app = await createApp({
@@ -345,11 +345,11 @@ describe("PATCH /api/domains/:companyId", () => {
     });
 
     const res = await request(app)
-      .patch("/api/domains/company-1")
+      .patch("/api/domains/domain-1")
       .send({ status: "paused" });
 
     expect(res.status).toBe(200);
-    expect(mockCompanyService.update).toHaveBeenCalledWith("company-1", { status: "paused" }, expect.objectContaining({
+    expect(mockDomainService.update).toHaveBeenCalledWith("domain-1", { status: "paused" }, expect.objectContaining({
       actorType: "user",
       actorId: "user-1",
     }));

@@ -123,7 +123,7 @@ describe("codex execute", () => {
       "instances",
       "default",
       "domains",
-      "company-1",
+      "domain-1",
       "codex-home",
     );
     await fs.mkdir(workspace, { recursive: true });
@@ -149,7 +149,7 @@ describe("codex execute", () => {
         runId: "run-default",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -180,7 +180,7 @@ describe("codex execute", () => {
       expect(result.errorMessage).toBeNull();
       expect(result.usage).toEqual({ inputTokens: 1, cachedInputTokens: 0, outputTokens: 1 });
       expect(result.usageBasis).toBe("per_run");
-      expect(result.costUsd).toBeNull();
+      expect(result.financeUsd).toBeNull();
 
       const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
       expect(capture.codexHome).toBe(managedCodexHome);
@@ -191,7 +191,7 @@ describe("codex execute", () => {
       expect(await fs.realpath(managedAuth)).toBe(await fs.realpath(path.join(sharedCodexHome, "auth.json")));
       expect((await fs.lstat(managedConfig)).isFile()).toBe(true);
       expect(await fs.readFile(managedConfig, "utf8")).toBe('model = "codex-mini-latest"\n');
-      await expect(fs.lstat(path.join(sharedCodexHome, "domains", "company-1"))).rejects.toThrow();
+      await expect(fs.lstat(path.join(sharedCodexHome, "domains", "domain-1"))).rejects.toThrow();
       expect(logs).toContainEqual(
         expect.objectContaining({
           stream: "stdout",
@@ -231,7 +231,7 @@ describe("codex execute", () => {
         runId: "run-notes",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -294,7 +294,7 @@ describe("codex execute", () => {
         runId: "run-meta",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -361,7 +361,7 @@ describe("codex execute", () => {
         runId: "run-sandbox-auth",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -430,7 +430,7 @@ describe("codex execute", () => {
         runId: "run-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -542,7 +542,7 @@ describe("codex execute", () => {
         runId: "run-transient-error",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -596,7 +596,7 @@ describe("codex execute", () => {
         runId: "run-usage-limit",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -658,7 +658,7 @@ describe("codex execute", () => {
         runId: "run-fallback",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -735,7 +735,7 @@ describe("codex execute", () => {
         runId: "run-stage-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -805,7 +805,7 @@ describe("codex execute", () => {
         runId: "run-stage-wake-executor",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -892,7 +892,7 @@ describe("codex execute", () => {
         runId: "run-issue-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -997,7 +997,7 @@ describe("codex execute", () => {
         runId: "run-resume-wake",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1099,7 +1099,7 @@ describe("codex execute", () => {
       "instances",
       "worktree-1",
       "domains",
-      "company-1",
+      "domain-1",
       "codex-home",
     );
     const homeSkill = path.join(isolatedCodexHome, "skills", "paperclip");
@@ -1126,7 +1126,7 @@ describe("codex execute", () => {
         runId: "run-1",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },
@@ -1168,7 +1168,7 @@ describe("codex execute", () => {
           "PAPERCLIP_AGENT_ID",
           "PAPERCLIP_API_KEY",
           "PAPERCLIP_API_URL",
-          "PAPERCLIP_COMPANY_ID",
+          "PAPERCLIP_DOMAIN_ID",
           "PAPERCLIP_RUN_ID",
         ]),
       );
@@ -1237,7 +1237,7 @@ describe("codex execute", () => {
         runId: "run-2",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Codex Coder",
           adapterType: "codex_local",
           adapterConfig: { engine: "cli" },

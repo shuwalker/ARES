@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { activityLog, agents, domains, companyMemberships, createDb, heartbeatRuns, issues, principalPermissionGrants } from "@paperclipai/db";
+import { activityLog, agents, domains, domainMemberships, createDb, heartbeatRuns, issues, principalPermissionGrants } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -42,7 +42,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.delete(activityLog);
     await db.delete(agents);
     await db.delete(principalPermissionGrants);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(domains);
   });
 
@@ -51,7 +51,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   function createApp(
-    companyId: string,
+    domainId: string,
     opts: Parameters<typeof issueRoutes>[2] = {},
   ) {
     const app = express();
@@ -61,8 +61,8 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       (req as any).actor = {
         type: "board",
         userId,
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active", principalId: userId }],
+        domainIds: [domainId],
+        memberships: [{ domainId, membershipRole: "owner", status: "active", principalId: userId }],
         source: "cloud_tenant",
         isInstanceAdmin: false,
       };
@@ -78,9 +78,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     return `P${randomUUID().replace(/-/g, "").slice(0, 4).toUpperLifeAdmin()}`;
   }
 
-  async function seedCloudTenantMember(companyId: string, userId = "cloud-user-1") {
-    await db.insert(companyMemberships).values({
-      companyId,
+  async function seedCloudTenantMember(domainId: string, userId = "cloud-user-1") {
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -88,7 +88,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       updatedAt: new Date(),
     });
     await ensureHumanRoleDefaultGrants(db, {
-      companyId,
+      domainId,
       principalId: userId,
       membershipRole: "owner",
       grantedByUserId: null,
@@ -96,21 +96,21 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   }
 
   it("returns only unassigned issues for assigneeAgentId=null", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const assigneeAgentId = randomUUID();
     const assignedIssueId = randomUUID();
     const unassignedIssueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(agents).values({
       id: assigneeAgentId,
-      companyId,
+      domainId,
       name: "Assignee",
       role: "engineer",
       status: "active",
@@ -122,7 +122,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(issues).values([
       {
         id: assignedIssueId,
-        companyId,
+        domainId,
         title: "Assigned issue",
         status: "todo",
         priority: "medium",
@@ -130,7 +130,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: unassignedIssueId,
-        companyId,
+        domainId,
         title: "Unassigned issue",
         status: "todo",
         priority: "medium",
@@ -138,9 +138,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const res = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ status: "todo", assigneeAgentId: "null", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -148,21 +148,21 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("returns compact issue list rows with recovery chips but without detail-only fields", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const ownerAgentId = randomUUID();
     const issueId = randomUUID();
     const sourceRunId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(agents).values({
       id: ownerAgentId,
-      companyId,
+      domainId,
       name: "Recovery owner",
       role: "engineer",
       status: "active",
@@ -173,7 +173,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Compact issue",
       description: "This long detail belongs on the issue detail endpoint, not the board list.",
       status: "todo",
@@ -181,7 +181,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       billingCode: "product",
     });
     const recoveryAction = await issueRecoveryActionService(db).upsertSourceScoped({
-      companyId,
+      domainId,
       sourceIssueId: issueId,
       kind: "missing_disposition",
       ownerType: "agent",
@@ -193,7 +193,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       wakePolicy: { type: "wake_owner" },
     });
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       actorType: "system",
       actorId: "system",
       action: "issue.successful_run_handoff_required",
@@ -207,9 +207,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     });
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const res = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ view: "compact", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -218,7 +218,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0]).toMatchObject({
       id: issueId,
-      companyId,
+      domainId,
       title: "Compact issue",
       description: "This long detail belongs on the issue detail endpoint, not the board list.",
       status: "todo",
@@ -243,33 +243,33 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("returns 304 for unchanged compact issue list ETags", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Cached compact issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const first = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ view: "compact", limit: "20" });
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.headers.etag).toBeTruthy();
 
     const second = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ view: "compact", limit: "20" })
       .set("If-None-Match", first.headers.etag);
 
@@ -278,26 +278,26 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("coalesces simultaneous identical compact issue-list requests into one service computation", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
     let computeCount = 0;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Coalesced issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp(domainId, {
       issueListDiagnostics: {
         async onComputeStart() {
           computeCount += 1;
@@ -307,7 +307,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     const responses = await Promise.all(Array.from({ length: 10 }, () =>
       request(app)
-        .get(`/api/domains/${companyId}/issues`)
+        .get(`/api/domains/${domainId}/issues`)
         .query({ view: "compact", limit: "20" })
     ));
 
@@ -320,27 +320,27 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("keeps compact issue-list cache keys separated by board user identity", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
     let computeCount = 0;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId, "cloud-user-1");
-    await seedCloudTenantMember(companyId, "cloud-user-2");
+    await seedCloudTenantMember(domainId, "cloud-user-1");
+    await seedCloudTenantMember(domainId, "cloud-user-2");
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Separated issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp(domainId, {
       issueListDiagnostics: {
         async onComputeStart() {
           computeCount += 1;
@@ -350,11 +350,11 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     const [first, second] = await Promise.all([
       request(app)
-        .get(`/api/domains/${companyId}/issues`)
+        .get(`/api/domains/${domainId}/issues`)
         .set("X-Test-User-Id", "cloud-user-1")
         .query({ view: "compact", limit: "20" }),
       request(app)
-        .get(`/api/domains/${companyId}/issues`)
+        .get(`/api/domains/${domainId}/issues`)
         .set("X-Test-User-Id", "cloud-user-2")
         .query({ view: "compact", limit: "20" }),
     ]);
@@ -367,26 +367,26 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("serves repeated compact issue-list requests from the short server cache", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
     let computeCount = 0;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Cached issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp(domainId, {
       issueListDiagnostics: {
         onComputeStart() {
           computeCount += 1;
@@ -394,10 +394,10 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     });
     const first = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ view: "compact", limit: "20" });
     const second = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ view: "compact", limit: "20" });
 
     expect(first.status, JSON.stringify(first.body)).toBe(200);
@@ -408,28 +408,28 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("bounds compact issue-list server cache entries", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Bounded cache issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     for (let index = 0; index < ISSUE_LIST_SERVER_CACHE_MAX_ENTRIES + 5; index += 1) {
       const res = await request(app)
-        .get(`/api/domains/${companyId}/issues`)
+        .get(`/api/domains/${domainId}/issues`)
         .query({ view: "compact", limit: "20", q: `cache-key-${index}` });
       expect(res.status, JSON.stringify(res.body)).toBe(200);
     }
@@ -438,26 +438,26 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("logs request_storm_detected for identical in-flight compact issue-list fanout without query values", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
     const stormEvents: unknown[] = [];
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Storm issue",
       status: "todo",
       priority: "medium",
     });
 
-    const app = createApp(companyId, {
+    const app = createApp(domainId, {
       issueListDiagnostics: {
         async onComputeStart() {
           await new Promise((resolve) => setTimeout(resolve, 50));
@@ -469,7 +469,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     const responses = await Promise.all(Array.from({ length: 5 }, () =>
       request(app)
-        .get(`/api/domains/${companyId}/issues`)
+        .get(`/api/domains/${domainId}/issues`)
         .set("Referer", "http://localhost:3100/issues?q=do-not-log-this")
         .set("X-Paperclip-Tab-Visible", "visible")
         .query({ view: "compact", limit: "20", q: "do-not-log-this" })
@@ -479,8 +479,8 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     expect(stormEvents).toHaveLength(1);
     expect(stormEvents[0]).toMatchObject({
       event: "request_storm_detected",
-      route: "GET /api/domains/:companyId/issues",
-      companyId,
+      route: "GET /api/domains/:domainId/issues",
+      domainId,
       visibilityHint: "visible",
       referer: "/issues",
     });
@@ -491,23 +491,23 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("keeps UUID assignee filtering behavior unchanged", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const assigneeAgentId = randomUUID();
     const otherAgentId = randomUUID();
     const assignedIssueId = randomUUID();
     const otherIssueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(agents).values([
       {
         id: assigneeAgentId,
-        companyId,
+        domainId,
         name: "Assignee",
         role: "engineer",
         status: "active",
@@ -518,7 +518,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: otherAgentId,
-        companyId,
+        domainId,
         name: "Other",
         role: "engineer",
         status: "active",
@@ -531,7 +531,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(issues).values([
       {
         id: assignedIssueId,
-        companyId,
+        domainId,
         title: "Assigned issue",
         status: "todo",
         priority: "medium",
@@ -539,7 +539,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: otherIssueId,
-        companyId,
+        domainId,
         title: "Other issue",
         status: "todo",
         priority: "medium",
@@ -547,9 +547,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const res = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ status: "todo", assigneeAgentId, limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -557,18 +557,18 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("returns 422 for malformed assigneeAgentId filters", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const res = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ status: "todo", assigneeAgentId: "bad", limit: "20" });
 
     expect(res.status).toBe(422);
@@ -578,39 +578,39 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("returns opt-in live descendant counts for offscreen live descendants only", async () => {
-    const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
+    const domainId = randomUUID();
+    const otherDomainId = randomUUID();
     const agentId = randomUUID();
     const otherAgentId = randomUUID();
     const rootIssueId = randomUUID();
     const childIssueId = randomUUID();
     const grandchildIssueId = randomUUID();
     const hiddenChildIssueId = randomUUID();
-    const crossCompanyChildIssueId = randomUUID();
+    const crossDomainChildIssueId = randomUUID();
     const rootRunId = randomUUID();
     const grandchildRunId = randomUUID();
     const hiddenRunId = randomUUID();
-    const crossCompanyRunId = randomUUID();
+    const crossDomainRunId = randomUUID();
 
     await db.insert(domains).values([
       {
-        id: companyId,
+        id: domainId,
         name: "Paperclip",
         issuePrefix: uniqueIssuePrefix(),
         requireBoardApprovalForNewAgents: false,
       },
       {
-        id: otherCompanyId,
+        id: otherDomainId,
         name: "Other Domain",
         issuePrefix: uniqueIssuePrefix(),
         requireBoardApprovalForNewAgents: false,
       },
     ]);
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(agents).values([
       {
         id: agentId,
-        companyId,
+        domainId,
         name: "Assignee",
         role: "engineer",
         status: "active",
@@ -621,7 +621,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: otherAgentId,
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         name: "Other",
         role: "engineer",
         status: "active",
@@ -634,37 +634,37 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: rootRunId,
-        companyId,
+        domainId,
         agentId,
         status: "running",
         contextSnapshot: { issueId: rootIssueId },
       },
       {
         id: grandchildRunId,
-        companyId,
+        domainId,
         agentId,
         status: "queued",
         contextSnapshot: { issueId: grandchildIssueId },
       },
       {
         id: hiddenRunId,
-        companyId,
+        domainId,
         agentId,
         status: "running",
         contextSnapshot: { issueId: hiddenChildIssueId },
       },
       {
-        id: crossCompanyRunId,
-        companyId: otherCompanyId,
+        id: crossDomainRunId,
+        domainId: otherDomainId,
         agentId: otherAgentId,
         status: "running",
-        contextSnapshot: { issueId: crossCompanyChildIssueId },
+        contextSnapshot: { issueId: crossDomainChildIssueId },
       },
     ]);
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
+        domainId,
         title: "Blocked parent",
         status: "blocked",
         priority: "critical",
@@ -673,7 +673,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: childIssueId,
-        companyId,
+        domainId,
         title: "Offscreen child",
         status: "todo",
         priority: "medium",
@@ -682,7 +682,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: grandchildIssueId,
-        companyId,
+        domainId,
         title: "Offscreen live grandchild",
         status: "todo",
         priority: "medium",
@@ -692,7 +692,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: hiddenChildIssueId,
-        companyId,
+        domainId,
         title: "Hidden live child",
         status: "todo",
         priority: "medium",
@@ -702,20 +702,20 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
         assigneeAgentId: agentId,
       },
       {
-        id: crossCompanyChildIssueId,
-        companyId: otherCompanyId,
-        title: "Cross-company live child",
+        id: crossDomainChildIssueId,
+        domainId: otherDomainId,
+        title: "Cross-domain live child",
         status: "todo",
         priority: "medium",
         parentId: rootIssueId,
-        executionRunId: crossCompanyRunId,
+        executionRunId: crossDomainRunId,
         assigneeAgentId: otherAgentId,
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const withoutSummary = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ status: "blocked", limit: "20" });
 
     expect(withoutSummary.status, JSON.stringify(withoutSummary.body)).toBe(200);
@@ -724,7 +724,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     expect(withoutSummary.body[0].liveDescendantCount).toBeUndefined();
 
     const withSummary = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ status: "blocked", includeLiveDescendantSummary: "true", limit: "20" });
 
     expect(withSummary.status, JSON.stringify(withSummary.body)).toBe(200);
@@ -736,22 +736,22 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
   });
 
   it("does not recurse forever when live descendant summaries encounter a parent cycle", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const parentIssueId = randomUUID();
     const childIssueId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: uniqueIssuePrefix(),
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Assignee",
       role: "engineer",
       status: "active",
@@ -762,7 +762,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       status: "running",
       contextSnapshot: { issueId: childIssueId },
@@ -770,7 +770,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
     await db.insert(issues).values([
       {
         id: parentIssueId,
-        companyId,
+        domainId,
         title: "Cycle parent",
         status: "blocked",
         priority: "medium",
@@ -779,7 +779,7 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
       {
         id: childIssueId,
-        companyId,
+        domainId,
         title: "Cycle live child",
         status: "in_progress",
         priority: "medium",
@@ -789,9 +789,9 @@ describeEmbeddedPostgres("issue list routes assigneeAgentId filter", () => {
       },
     ]);
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const res = await request(app)
-      .get(`/api/domains/${companyId}/issues`)
+      .get(`/api/domains/${domainId}/issues`)
       .query({ status: "blocked", includeLiveDescendantSummary: "true", limit: "20" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);

@@ -4,11 +4,11 @@ import { queryKeys } from "./queryKeys";
 
 export type InboxIssueCacheSnapshot = Array<readonly [QueryKey, Issue[] | undefined]>;
 
-function inboxIssueQueryPrefixes(companyId: string) {
+function inboxIssueQueryPrefixes(domainId: string) {
   return [
-    queryKeys.issues.listMineByMe(companyId),
-    queryKeys.issues.listTouchedByMe(companyId),
-    queryKeys.issues.listUnreadTouchedByMe(companyId),
+    queryKeys.issues.listMineByMe(domainId),
+    queryKeys.issues.listTouchedByMe(domainId),
+    queryKeys.issues.listUnreadTouchedByMe(domainId),
   ] as const;
 }
 
@@ -26,9 +26,9 @@ function resolveRestoreIndex(currentData: Issue[], previousData: Issue[], previo
   return Math.min(previousIndex, currentData.length);
 }
 
-export async function cancelInboxIssueQueries(queryClient: QueryClient, companyId: string) {
+export async function cancelInboxIssueQueries(queryClient: QueryClient, domainId: string) {
   await Promise.all(
-    inboxIssueQueryPrefixes(companyId).map((queryKey) =>
+    inboxIssueQueryPrefixes(domainId).map((queryKey) =>
       queryClient.cancelQueries({ queryKey }),
     ),
   );
@@ -36,19 +36,19 @@ export async function cancelInboxIssueQueries(queryClient: QueryClient, companyI
 
 export function snapshotInboxIssueCaches(
   queryClient: QueryClient,
-  companyId: string,
+  domainId: string,
 ): InboxIssueCacheSnapshot {
-  return inboxIssueQueryPrefixes(companyId).flatMap((queryKey) =>
+  return inboxIssueQueryPrefixes(domainId).flatMap((queryKey) =>
     queryClient.getQueriesData<Issue[]>({ queryKey }),
   );
 }
 
 export function removeIssueFromInboxCaches(
   queryClient: QueryClient,
-  companyId: string,
+  domainId: string,
   issueId: string,
 ) {
-  for (const queryKey of inboxIssueQueryPrefixes(companyId)) {
+  for (const queryKey of inboxIssueQueryPrefixes(domainId)) {
     queryClient.setQueriesData<Issue[]>(
       { queryKey },
       (cached) => cached?.filter((issue) => issue.id !== issueId),
@@ -78,9 +78,9 @@ export function restoreIssueToInboxCaches(
   }
 }
 
-export function invalidateInboxIssueQueries(queryClient: QueryClient, companyId: string) {
-  for (const queryKey of inboxIssueQueryPrefixes(companyId)) {
+export function invalidateInboxIssueQueries(queryClient: QueryClient, domainId: string) {
+  for (const queryKey of inboxIssueQueryPrefixes(domainId)) {
     queryClient.invalidateQueries({ queryKey });
   }
-  queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(companyId) });
+  queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(domainId) });
 }

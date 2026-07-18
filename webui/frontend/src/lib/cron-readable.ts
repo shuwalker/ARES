@@ -68,7 +68,7 @@ export function describeCron(expression: string | null | undefined): string | nu
     }
     if (dom === "*") {
       const dowText = describeDayOfWeek(dow);
-      if (dowText) return `${dowText[0].toUpperLifeAdmin()}${dowText.slice(1)} at ${time}`;
+      if (dowText) return `${dowText[0].toUpperCase()}${dowText.slice(1)} at ${time}`;
     }
     if (/^\d+$/.test(dom) && (dow === "*" || dow === "?")) {
       return `Day ${dom} of every month at ${time}`;

@@ -4,7 +4,7 @@ import { ZodError } from "zod";
 import { HttpError } from "../errors.js";
 import { trackErrorHandlerCrash } from "@paperclipai/shared/telemetry";
 import { getTelemetryClient } from "../telemetry.js";
-import { COMPANY_IMPORT_API_PATH } from "../routes/company-import-paths.js";
+import { DOMAIN_IMPORT_API_PATH } from "../routes/domain-import-paths.js";
 import { logger } from "./logger.js";
 import {
   recordResponsibleUserDenialOnActiveRun,
@@ -54,7 +54,7 @@ function recordResponsibleUserDenialFromHttpError(
   void recordResponsibleUserDenialOnActiveRun(db, {
     runId: req.actor.runId ?? null,
     agentId: req.actor.agentId ?? null,
-    companyId: req.actor.companyId ?? null,
+    domainId: req.actor.domainId ?? null,
     code: details?.code,
   }).catch((recordErr) => {
     logger.warn(
@@ -125,5 +125,5 @@ export function errorHandler(
 function shouldExposeTrustedCloudTenantImportError(req: Request) {
   return req.actor?.source === "cloud_tenant"
     && req.method === "POST"
-    && req.originalUrl.split("?")[0] === COMPANY_IMPORT_API_PATH;
+    && req.originalUrl.split("?")[0] === DOMAIN_IMPORT_API_PATH;
 }

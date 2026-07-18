@@ -34,7 +34,7 @@ function createDbStub() {
     { id: "user-2", name: null, email: "alex@example.com", image: null },
   ];
 
-  const isCompanyMembershipsTable = (table: unknown) =>
+  const isDomainMembershipsTable = (table: unknown) =>
     !!table &&
     typeof table === "object" &&
     "membershipRole" in table &&
@@ -51,7 +51,7 @@ function createDbStub() {
     select() {
       return {
         from(table: unknown) {
-          if (isCompanyMembershipsTable(table)) {
+          if (isDomainMembershipsTable(table)) {
             const query = {
               where() {
                 return query;
@@ -96,7 +96,7 @@ function createApp(actor: Express.Request["actor"]) {
   return app;
 }
 
-describe("GET /domains/:companyId/user-directory", () => {
+describe("GET /domains/:domainId/user-directory", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -107,11 +107,11 @@ describe("GET /domains/:companyId/user-directory", () => {
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", membershipRole: "operator", status: "active" }],
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", membershipRole: "operator", status: "active" }],
     });
 
-    const res = await request(app).get("/api/domains/company-1/user-directory");
+    const res = await request(app).get("/api/domains/domain-1/user-directory");
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({

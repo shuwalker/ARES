@@ -39,7 +39,7 @@ vi.mock("../services/index.js", () => ({
 function createApp(actor: Record<string, unknown> = {
   type: "board",
   userId: "local-board",
-  companyIds: ["company-1"],
+  domainIds: ["domain-1"],
   source: "session",
   isInstanceAdmin: false,
 }) {
@@ -59,7 +59,7 @@ describe.sequential("execution workspace routes", () => {
     vi.clearAllMocks();
     mockAccessService.decide.mockResolvedValue({
       allowed: true,
-      action: "company_scope:read",
+      action: "domain_scope:read",
       reason: "allow_test",
       explanation: "Allowed by test mock.",
     });
@@ -87,7 +87,7 @@ describe.sequential("execution workspace routes", () => {
 
   it("uses summary mode for lightweight workspace lookups", async () => {
     const res = await request(createApp())
-      .get("/api/domains/company-1/execution-workspaces?summary=true&reuseEligible=true");
+      .get("/api/domains/domain-1/execution-workspaces?summary=true&reuseEligible=true");
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
@@ -98,7 +98,7 @@ describe.sequential("execution workspace routes", () => {
         projectWorkspaceId: null,
       },
     ]);
-    expect(mockExecutionWorkspaceService.listSummaries).toHaveBeenCalledWith("company-1", {
+    expect(mockExecutionWorkspaceService.listSummaries).toHaveBeenCalledWith("domain-1", {
       projectId: undefined,
       projectWorkspaceId: undefined,
       issueId: undefined,
@@ -110,7 +110,7 @@ describe.sequential("execution workspace routes", () => {
 
   it("delegates bounded workspace overview queries", async () => {
     const res = await request(createApp())
-      .get("/api/domains/company-1/workspace-overview?status=active,idle&limit=25&offset=10");
+      .get("/api/domains/domain-1/workspace-overview?status=active,idle&limit=25&offset=10");
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -121,7 +121,7 @@ describe.sequential("execution workspace routes", () => {
       hasMore: false,
       nextOffset: null,
     });
-    expect(mockExecutionWorkspaceService.listOverview).toHaveBeenCalledWith("company-1", {
+    expect(mockExecutionWorkspaceService.listOverview).toHaveBeenCalledWith("domain-1", {
       status: ["active", "idle"],
       limit: 25,
       offset: 10,
@@ -130,7 +130,7 @@ describe.sequential("execution workspace routes", () => {
 
   it("rejects invalid workspace overview pagination", async () => {
     const res = await request(createApp())
-      .get("/api/domains/company-1/workspace-overview?limit=1000");
+      .get("/api/domains/domain-1/workspace-overview?limit=1000");
 
     expect(res.status).toBe(422);
     expect(mockExecutionWorkspaceService.listOverview).not.toHaveBeenCalled();
@@ -143,14 +143,14 @@ describe.sequential("execution workspace routes", () => {
   ])("rejects agent actors for %s branch reconciliation", async (_mode, body) => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       sourceIssueId: "issue-1",
     });
 
     const res = await request(createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_jwt",
       runId: "run-1",
     }))
@@ -165,13 +165,13 @@ describe.sequential("execution workspace routes", () => {
   it("logs branch reconciliation activity after the service operation succeeds", async () => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       sourceIssueId: "issue-1",
     });
     mockExecutionWorkspaceService.reconcileExecutionWorkspaceBranch.mockResolvedValue({
       workspace: {
         id: "workspace-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         sourceIssueId: "issue-1",
         branchName: "feature/current",
       },
@@ -231,13 +231,13 @@ describe.sequential("execution workspace routes", () => {
   it("accepts quarantine_restore, logs the rescue ref, and wakes the restored source issue", async () => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       sourceIssueId: "issue-1",
     });
     mockExecutionWorkspaceService.reconcileExecutionWorkspaceBranch.mockResolvedValue({
       workspace: {
         id: "workspace-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         sourceIssueId: "issue-1",
         branchName: "feature/recorded",
       },
@@ -267,7 +267,7 @@ describe.sequential("execution workspace routes", () => {
       },
       restoredSourceIssue: {
         id: "issue-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         status: "todo",
         assigneeAgentId: "agent-1",
       },
@@ -329,13 +329,13 @@ describe.sequential("execution workspace routes", () => {
   it("wakes a restored in_review agent participant after quarantine_restore", async () => {
     mockExecutionWorkspaceService.getById.mockResolvedValue({
       id: "workspace-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       sourceIssueId: "issue-1",
     });
     mockExecutionWorkspaceService.reconcileExecutionWorkspaceBranch.mockResolvedValue({
       workspace: {
         id: "workspace-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         sourceIssueId: "issue-1",
         branchName: "feature/recorded",
       },
@@ -359,7 +359,7 @@ describe.sequential("execution workspace routes", () => {
       rescueRef: null,
       restoredSourceIssue: {
         id: "issue-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         status: "in_review",
         assigneeAgentId: "reviewer-agent-1",
       },

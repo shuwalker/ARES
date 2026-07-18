@@ -32,21 +32,21 @@ vi.mock("../services/index.js", () => ({
   }),
   agentService: () => ({
     getById: vi.fn(async () => null),
-    resolveByReference: vi.fn(async (_companyId: string, reference: string) => ({
+    resolveByReference: vi.fn(async (_domainId: string, reference: string) => ({
       ambiguous: false,
       agent: {
         id: reference,
-        companyId: "company-1",
+        domainId: "domain-1",
         status: "active",
         orgChainHealth: { status: "healthy" },
       },
     })),
   }),
-  companySkillService: () => ({
+  domainSkillService: () => ({
     completeTestRunForIssue: vi.fn(async () => null),
   }),
-  companyService: () => ({
-    getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+  domainService: () => ({
+    getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
   }),
   documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
   documentService: () => ({
@@ -60,7 +60,7 @@ vi.mock("../services/index.js", () => ({
   }),
   goalService: () => ({
     getById: vi.fn(async () => null),
-    getDefaultCompanyGoal: vi.fn(async () => null),
+    getDefaultDomainGoal: vi.fn(async () => null),
   }),
   heartbeatService: () => ({
     wakeup: mockWakeup,
@@ -75,7 +75,7 @@ vi.mock("../services/index.js", () => ({
         feedbackDataSharingPreference: "prompt",
       },
     })),
-    listCompanyIds: vi.fn(async () => ["company-1"]),
+    listDomainIds: vi.fn(async () => ["domain-1"]),
   }),
   issueApprovalService: () => ({}),
   issueRecoveryActionService: () => ({
@@ -125,7 +125,7 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -145,7 +145,7 @@ function makeIssue(input: {
 }) {
   return {
     id: input.id,
-    companyId: "company-1",
+    domainId: "domain-1",
     identifier: input.id === "child-1" ? "PAP-3701" : "PAP-3700",
     title: input.title,
     description: null,
@@ -176,7 +176,7 @@ describe("assigned backlog creation contract", () => {
       status: "blocked",
       assigneeAgentId,
     }));
-    mockIssueService.create.mockImplementation(async (_companyId: string, data: Record<string, unknown>) =>
+    mockIssueService.create.mockImplementation(async (_domainId: string, data: Record<string, unknown>) =>
       makeIssue({
         id: "issue-1",
         title: String(data.title),
@@ -200,7 +200,7 @@ describe("assigned backlog creation contract", () => {
 
   it("does not silently create a top-level assigned issue as backlog when status is omitted", async () => {
     const res = await request(await createApp())
-      .post("/api/domains/company-1/issues")
+      .post("/api/domains/domain-1/issues")
       .send({
         title: "Assigned executable work",
         assigneeAgentId,
@@ -214,7 +214,7 @@ describe("assigned backlog creation contract", () => {
     }
 
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         title: "Assigned executable work",
         assigneeAgentId,
@@ -302,7 +302,7 @@ describe("assigned backlog creation contract", () => {
 
   it("preserves deliberate assigned backlog as parked work without assignment wakeup", async () => {
     const res = await request(await createApp())
-      .post("/api/domains/company-1/issues")
+      .post("/api/domains/domain-1/issues")
       .send({
         title: "Parked assigned work",
         assigneeAgentId,
@@ -311,7 +311,7 @@ describe("assigned backlog creation contract", () => {
 
     expect(res.status).toBe(201);
     expect(mockIssueService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         title: "Parked assigned work",
         assigneeAgentId,

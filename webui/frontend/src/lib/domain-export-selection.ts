@@ -1,11 +1,11 @@
-import type { CompanyPortabilityIssueManifestEntry } from "@paperclipai/shared";
+import type { DomainPortabilityIssueManifestEntry } from "@paperclipai/shared";
 
 function isTaskPath(filePath: string): boolean {
   return /(?:^|\/)tasks\//.test(filePath);
 }
 
 function buildRecurringTaskPrefixes(
-  issues: Array<Pick<CompanyPortabilityIssueManifestEntry, "path" | "recurring">>,
+  issues: Array<Pick<DomainPortabilityIssueManifestEntry, "path" | "recurring">>,
 ): Set<string> {
   const prefixes = new Set<string>();
 
@@ -35,7 +35,7 @@ function isRecurringTaskFile(filePath: string, recurringTaskPrefixes: Set<string
 
 export function buildInitialExportCheckedFiles(
   filePaths: string[],
-  issues: Array<Pick<CompanyPortabilityIssueManifestEntry, "path" | "recurring">>,
+  issues: Array<Pick<DomainPortabilityIssueManifestEntry, "path" | "recurring">>,
   previousCheckedFiles: Set<string>,
 ): Set<string> {
   const next = new Set<string>();

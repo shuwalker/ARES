@@ -6,7 +6,7 @@ import {
   agents,
   agentRuntimeState,
   agentWakeupRequests,
-  companySkills,
+  domainSkills,
   domains,
   createDb,
   documentRevisions,
@@ -66,7 +66,7 @@ async function ensureIssueRelationsTable(db: ReturnType<typeof createDb>) {
   await db.execute(sql.raw(`
     CREATE TABLE IF NOT EXISTS "issue_relations" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "company_id" uuid NOT NULL,
+      "domain_id" uuid NOT NULL,
       "issue_id" uuid NOT NULL,
       "related_issue_id" uuid NOT NULL,
       "type" text NOT NULL,
@@ -128,7 +128,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await new Promise((resolve) => setTimeout(resolve, 50));
     await db.delete(environmentLeases);
     await db.delete(activityLog);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(issueComments);
     await db.delete(issueDocuments);
     await db.delete(documentRevisions);
@@ -142,7 +142,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.delete(agentWakeupRequests);
     await db.delete(agentRuntimeState);
     await db.delete(agents);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(environments);
     await db.delete(workspaceOperations);
     await db.delete(executionWorkspaces);
@@ -150,7 +150,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         await db.transaction(async (tx) => {
-          await tx.delete(companySkills);
+          await tx.delete(domainSkills);
           await tx.delete(domains);
         });
         break;
@@ -166,22 +166,22 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
   });
 
   it("keeps blocked descendants idle until their blockers resolve", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const blockerId = randomUUID();
     const blockedIssueId = randomUUID();
     const readyIssueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -198,7 +198,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.insert(issues).values([
       {
         id: blockerId,
-        companyId,
+        domainId,
         title: "Mission 0",
         status: "todo",
         priority: "high",
@@ -206,7 +206,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       {
         id: blockedIssueId,
-        companyId,
+        domainId,
         title: "Mission 2",
         status: "todo",
         priority: "medium",
@@ -215,7 +215,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       {
         id: readyIssueId,
-        companyId,
+        domainId,
         title: "Mission 1",
         status: "todo",
         priority: "critical",
@@ -224,7 +224,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
     ]);
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
@@ -331,7 +331,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     });
     expect(readyWake).not.toBeNull();
     await db.insert(issueComments).values({
-      companyId,
+      domainId,
       issueId: readyIssueId,
       authorAgentId: agentId,
       authorType: "agent",
@@ -416,21 +416,21 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
   });
 
   it("defers issue_blockers_resolved as a follow-up when the same issue is already running", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const blockerId = randomUUID();
     const blockedIssueId = randomUUID();
     const activeRunId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `D${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `D${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -446,7 +446,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     });
     await db.insert(heartbeatRuns).values({
       id: activeRunId,
-      companyId,
+      domainId,
       agentId,
       status: "running",
       invocationSource: "on_demand",
@@ -458,14 +458,14 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.insert(issues).values([
       {
         id: blockerId,
-        companyId,
+        domainId,
         title: "Completed prerequisite",
         status: "done",
         priority: "medium",
       },
       {
         id: blockedIssueId,
-        companyId,
+        domainId,
         title: "Blocked dependent",
         status: "blocked",
         priority: "medium",
@@ -475,7 +475,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
     ]);
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
@@ -532,7 +532,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
   });
 
   it("honors maxConcurrentRuns 1 by leaving a second assignment wake queued", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const firstIssueId = randomUUID();
     const secondIssueId = randomUUID();
@@ -555,15 +555,15 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     });
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -580,7 +580,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.insert(issues).values([
       {
         id: firstIssueId,
-        companyId,
+        domainId,
         title: "First assignment",
         status: "todo",
         priority: "high",
@@ -589,7 +589,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       {
         id: secondIssueId,
-        companyId,
+        domainId,
         title: "Second assignment",
         status: "todo",
         priority: "high",
@@ -608,7 +608,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       });
       expect(firstWake).not.toBeNull();
       await db.insert(issueComments).values({
-        companyId,
+        domainId,
         issueId: firstIssueId,
         authorAgentId: agentId,
         authorType: "agent",
@@ -637,7 +637,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       });
       expect(secondWake).not.toBeNull();
       await db.insert(issueComments).values({
-        companyId,
+        domainId,
         issueId: secondIssueId,
         authorAgentId: agentId,
         authorType: "agent",
@@ -681,7 +681,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
   }, 40_000);
 
   it("cancels stale queued runs when issue blockers are still unresolved", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const blockerId = randomUUID();
     const blockedIssueId = randomUUID();
@@ -692,15 +692,15 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const readyRunId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "QAChecker",
       role: "qa",
       status: "active",
@@ -717,7 +717,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.insert(issues).values([
       {
         id: blockerId,
-        companyId,
+        domainId,
         title: "Security review",
         status: "blocked",
         priority: "high",
@@ -725,7 +725,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       {
         id: blockedIssueId,
-        companyId,
+        domainId,
         title: "QA validation",
         status: "blocked",
         priority: "medium",
@@ -734,7 +734,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       {
         id: readyIssueId,
-        companyId,
+        domainId,
         title: "Ready QA task",
         status: "todo",
         priority: "low",
@@ -743,7 +743,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
     ]);
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
@@ -751,7 +751,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.insert(agentWakeupRequests).values([
       {
         id: blockedWakeupRequestId,
-        companyId,
+        domainId,
         agentId,
         source: "automation",
         triggerDetail: "system",
@@ -761,7 +761,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       {
         id: readyWakeupRequestId,
-        companyId,
+        domainId,
         agentId,
         source: "assignment",
         triggerDetail: "system",
@@ -773,7 +773,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.insert(heartbeatRuns).values([
       {
         id: blockedRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "automation",
         triggerDetail: "system",
@@ -786,7 +786,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       {
         id: readyRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "assignment",
         triggerDetail: "system",
@@ -807,7 +807,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       .set({ runId: readyRunId })
       .where(eq(agentWakeupRequests.id, readyWakeupRequestId));
     await db.insert(issueComments).values({
-      companyId,
+      domainId,
       issueId: readyIssueId,
       authorAgentId: agentId,
       authorType: "agent",
@@ -885,22 +885,22 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
   });
 
   it("suppresses normal wakeups while allowing comment interaction wakes under a pause hold", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const rootIssueId = randomUUID();
     const issueChain = Array.from({ length: 17 }, () => randomUUID());
     const deepDescendantIssueId = issueChain.at(-1)!;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "SecurityEngineer",
       role: "engineer",
       status: "active",
@@ -917,7 +917,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
+        domainId,
         title: "Paused root",
         status: "todo",
         priority: "medium",
@@ -926,7 +926,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       },
       ...issueChain.map((issueId, index) => ({
         id: issueId,
-        companyId,
+        domainId,
         parentId: index === 0 ? rootIssueId : issueChain[index - 1],
         title: `Paused desc ${index + 1}`,
         status: "todo",
@@ -938,7 +938,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const [hold] = await db
       .insert(issueTreeHolds)
       .values({
-        companyId,
+        domainId,
         rootIssueId,
         mode: "pause",
         status: "active",
@@ -969,7 +969,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const childCommentId = randomUUID();
     await db.insert(issueComments).values({
       id: childCommentId,
-      companyId,
+      domainId,
       issueId: deepDescendantIssueId,
       authorUserId: "board-user",
       body: "Please respond while this hold is active.",
@@ -1019,20 +1019,20 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
   });
 
   it("allows comment interaction wakes when a legacy hold has a full_pause note", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const rootIssueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "SecurityEngineer",
       role: "engineer",
       status: "active",
@@ -1048,7 +1048,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     });
     await db.insert(issues).values({
       id: rootIssueId,
-      companyId,
+      domainId,
       title: "Paused root",
       status: "todo",
       priority: "medium",
@@ -1056,7 +1056,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
       responsibleUserId: "responsible-user",
     });
     await db.insert(issueTreeHolds).values({
-      companyId,
+      domainId,
       rootIssueId,
       mode: "pause",
       status: "active",
@@ -1067,7 +1067,7 @@ describeEmbeddedPostgres("heartbeat dependency-aware queued run selection", () =
     const rootCommentId = randomUUID();
     await db.insert(issueComments).values({
       id: rootCommentId,
-      companyId,
+      domainId,
       issueId: rootIssueId,
       authorUserId: "board-user",
       body: "Please respond while this hold is active.",

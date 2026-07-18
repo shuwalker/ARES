@@ -56,7 +56,7 @@ describe("parseTrustProxyEnv", () => {
   it("integer with surrounding whitespace is accepted (trimmed)", () => {
     // The parser intentionally trims the *outer* value before matching,
     // so " 2 " is equivalent to "2". Locking this in so the contract
-    // doesn't drift relative to the "internal whitespace throws" case.
+    // doesn't drift relative to the "internal whitespace throws" life_admin.
     expect(parseTrustProxyEnv(" 2 ")).toBe(2);
     expect(appWithEnv(" 2 ").get("trust proxy")).toBe(2);
   });

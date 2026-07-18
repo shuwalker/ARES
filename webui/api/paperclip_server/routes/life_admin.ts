@@ -6,11 +6,11 @@ import type { Db } from "@paperclipai/db";
 import {
   agents,
   assets,
-  caseAttachments,
-  caseDocuments,
-  caseEvents,
-  caseIssueLinks,
-  caseLabels,
+  lifeAdminAttachments,
+  lifeAdminDocuments,
+  lifeAdminEvents,
+  lifeAdminIssueLinks,
+  lifeAdminLabels,
   life_admin,
   domains,
   documents,
@@ -31,50 +31,50 @@ import { validate } from "../middleware/validate.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { documentAnnotationService, logActivity } from "../services/index.js";
 import type { StorageService } from "../storage/types.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertDomainAccess, getActorInfo } from "./authz.js";
 
-type CaseRouteDb = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
-type CaseActor = ReturnType<typeof getActorInfo>;
+type LifeAdminRouteDb = Db | Parameters<Parameters<Db["transaction"]>[0]>[0];
+type LifeAdminActor = ReturnType<typeof getActorInfo>;
 
-const CASE_STATUSES = ["draft", "in_progress", "in_review", "approved", "done", "cancelled"] as const;
-const CASE_LINK_ROLES = ["origin", "work", "reference"] as const;
+const LIFE_ADMIN_STATUSES = ["draft", "in_progress", "in_review", "approved", "done", "cancelled"] as const;
+const LIFE_ADMIN_LINK_ROLES = ["origin", "work", "reference"] as const;
 const DEFAULT_EVENTS_LIMIT = 100;
 const MAX_EVENTS_LIMIT = 500;
 
 const jsonObjectSchema = z.record(z.string(), z.unknown());
-const caseStatusSchema = z.enum(CASE_STATUSES);
-const caseTypeSchema = z.string().trim().min(1).max(120);
-const caseKeySchema = z.string().trim().min(1).max(512);
+const lifeAdminStatusSchema = z.enum(LIFE_ADMIN_STATUSES);
+const lifeAdminTypeSchema = z.string().trim().min(1).max(120);
+const lifeAdminKeySchema = z.string().trim().min(1).max(512);
 const documentKeySchema = z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9_.:-]+$/);
 
-const createCaseSchema = z.object({
+const createLifeAdminSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
-  caseType: caseTypeSchema,
-  key: caseKeySchema.nullable().optional(),
+  lifeAdminType: lifeAdminTypeSchema,
+  key: lifeAdminKeySchema.nullable().optional(),
   title: z.string().trim().min(1).max(500),
   summary: z.string().max(8_000).nullable().optional(),
-  status: caseStatusSchema.optional(),
+  status: lifeAdminStatusSchema.optional(),
   fields: jsonObjectSchema.optional(),
-  parentCaseId: z.string().uuid().nullable().optional(),
+  parentLifeAdminId: z.string().uuid().nullable().optional(),
 }).strict();
 
-const patchCaseSchema = z.object({
+const patchLifeAdminSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(1).max(500).optional(),
   summary: z.string().max(8_000).nullable().optional(),
-  status: caseStatusSchema.optional(),
+  status: lifeAdminStatusSchema.optional(),
   fields: jsonObjectSchema.optional(),
-  parentCaseId: z.string().uuid().nullable().optional(),
+  parentLifeAdminId: z.string().uuid().nullable().optional(),
   labels: z.array(z.string().uuid()).max(100).optional(),
   labelIds: z.array(z.string().uuid()).max(100).optional(),
 }).strict();
 
 const createIssueLinkSchema = z.object({
   issueId: z.string().uuid(),
-  role: z.enum(CASE_LINK_ROLES),
+  role: z.enum(LIFE_ADMIN_LINK_ROLES),
 }).strict();
 
-const upsertCaseDocumentSchema = z.object({
+const upsertLifeAdminDocumentSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   format: z.string().trim().min(1).max(80).optional().default("markdown"),
   body: z.string().max(200_000),
@@ -105,7 +105,7 @@ const listEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_EVENTS_LIMIT).optional().default(DEFAULT_EVENTS_LIMIT),
 }).strict();
 
-function eventActorValues(actor: CaseActor) {
+function eventActorValues(actor: LifeAdminActor) {
   return {
     actorType: actor.actorType,
     actorUserId: actor.actorType === "user" ? actor.actorId : null,
@@ -121,18 +121,18 @@ async function assertLifeAdminEnabled(db: Db) {
   }
 }
 
-async function lockCaseUpsertKey(db: CaseRouteDb, input: { companyId: string; caseType: string; key: string | null | undefined }) {
-  const lockKey = `paperclip:case-upsert:${input.companyId}:${input.caseType}:${input.key ?? "<null>"}`;
+async function lockLifeAdminUpsertKey(db: LifeAdminRouteDb, input: { domainId: string; lifeAdminType: string; key: string | null | undefined }) {
+  const lockKey = `paperclip:life_admin-upsert:${input.domainId}:${input.lifeAdminType}:${input.key ?? "<null>"}`;
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
-async function lockCaseDocumentKey(db: CaseRouteDb, input: { companyId: string; caseId: string; key: string }) {
-  const lockKey = `paperclip:case-document:${input.companyId}:${input.caseId}:${input.key}`;
+async function lockLifeAdminDocumentKey(db: LifeAdminRouteDb, input: { domainId: string; lifeAdminId: string; key: string }) {
+  const lockKey = `paperclip:life_admin-document:${input.domainId}:${input.lifeAdminId}:${input.key}`;
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
-async function lockCaseLabels(db: CaseRouteDb, input: { companyId: string; caseId: string }) {
-  const lockKey = `paperclip:case-labels:${input.companyId}:${input.caseId}`;
+async function lockLifeAdminLabels(db: LifeAdminRouteDb, input: { domainId: string; lifeAdminId: string }) {
+  const lockKey = `paperclip:life_admin-labels:${input.domainId}:${input.lifeAdminId}`;
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
@@ -165,117 +165,117 @@ function annotationActorInput(req: Request) {
   };
 }
 
-async function loadCaseByIdOrIdentifier(db: CaseRouteDb, idOrIdentifier: string, companyIds?: string[]) {
-  if (companyIds && companyIds.length === 0) return null;
+async function loadLifeAdminByIdOrIdentifier(db: LifeAdminRouteDb, idOrIdentifier: string, domainIds?: string[]) {
+  if (domainIds && domainIds.length === 0) return null;
   const normalizedIdentifier = idOrIdentifier.trim().toUpperLifeAdmin();
   const identityWhere = isUuidLike(idOrIdentifier)
     ? or(eq(life_admin.id, idOrIdentifier), eq(life_admin.identifier, normalizedIdentifier))
     : eq(life_admin.identifier, normalizedIdentifier);
-  const where = companyIds
-    ? and(identityWhere, inArray(life_admin.companyId, companyIds))
+  const where = domainIds
+    ? and(identityWhere, inArray(life_admin.domainId, domainIds))
     : identityWhere;
   return db.select().from(life_admin).where(where).limit(1).then((rows) => rows[0] ?? null);
 }
 
-async function loadIssueByIdOrIdentifier(db: CaseRouteDb, idOrIdentifier: string, companyIds?: string[]) {
-  if (companyIds && companyIds.length === 0) return null;
+async function loadIssueByIdOrIdentifier(db: LifeAdminRouteDb, idOrIdentifier: string, domainIds?: string[]) {
+  if (domainIds && domainIds.length === 0) return null;
   const normalizedIdentifier = idOrIdentifier.trim().toUpperLifeAdmin();
   const identityWhere = isUuidLike(idOrIdentifier)
     ? or(eq(issues.id, idOrIdentifier), eq(issues.identifier, normalizedIdentifier))
     : eq(issues.identifier, normalizedIdentifier);
-  const where = companyIds
-    ? and(identityWhere, inArray(issues.companyId, companyIds))
+  const where = domainIds
+    ? and(identityWhere, inArray(issues.domainId, domainIds))
     : identityWhere;
   return db
-    .select({ id: issues.id, companyId: issues.companyId })
+    .select({ id: issues.id, domainId: issues.domainId })
     .from(issues)
     .where(where)
     .limit(1)
     .then((rows) => rows[0] ?? null);
 }
 
-function caseLookupCompanyIds(req: Request) {
-  if (req.actor.type === "agent") return req.actor.companyId ? [req.actor.companyId] : [];
+function lifeAdminLookupDomainIds(req: Request) {
+  if (req.actor.type === "agent") return req.actor.domainId ? [req.actor.domainId] : [];
   if (req.actor.type === "board" && req.actor.source === "local_implicit") return undefined;
-  if (req.actor.type === "board" && Array.isArray(req.actor.companyIds) && req.actor.companyIds.length > 0) {
-    return req.actor.companyIds;
+  if (req.actor.type === "board" && Array.isArray(req.actor.domainIds) && req.actor.domainIds.length > 0) {
+    return req.actor.domainIds;
   }
   if (req.actor.type === "board" && req.actor.isInstanceAdmin) return undefined;
   return [];
 }
 
-async function assertCaseAccess(db: Db, req: Request, idOrIdentifier: string) {
-  const row = await loadCaseByIdOrIdentifier(db, idOrIdentifier, caseLookupCompanyIds(req));
+async function assertLifeAdminAccess(db: Db, req: Request, idOrIdentifier: string) {
+  const row = await loadLifeAdminByIdOrIdentifier(db, idOrIdentifier, lifeAdminLookupDomainIds(req));
   if (!row) throw notFound("LifeAdmin not found");
-  assertCompanyAccess(req, row.companyId);
+  assertDomainAccess(req, row.domainId);
   return row;
 }
 
-// The workflows feature registers its own /life_admin/:caseId routes after this
+// The workflows feature registers its own /life_admin/:lifeAdminId routes after this
 // router. On paths both features share, return null (caller falls through via
-// next()) when the id is not a new-LifeAdmin row so pipeline case requests still
+// next()) when the id is not a new-LifeAdmin row so workflow life_admin requests still
 // reach their handler regardless of the enableLifeAdmin flag.
 async function resolveSharedPathLifeAdmin(db: Db, req: Request, idOrIdentifier: string) {
-  const companyIds = caseLookupCompanyIds(req);
-  const row = await loadCaseByIdOrIdentifier(db, idOrIdentifier, companyIds);
+  const domainIds = lifeAdminLookupDomainIds(req);
+  const row = await loadLifeAdminByIdOrIdentifier(db, idOrIdentifier, domainIds);
   if (!row) return null;
   await assertLifeAdminEnabled(db);
-  assertCompanyAccess(req, row.companyId);
+  assertDomainAccess(req, row.domainId);
   return row;
 }
 
-async function assertProjectBelongsToDomain(db: CaseRouteDb, input: { companyId: string; projectId: string | null }) {
+async function assertProjectBelongsToDomain(db: LifeAdminRouteDb, input: { domainId: string; projectId: string | null }) {
   if (!input.projectId) return;
   const row = await db
     .select({ id: projects.id })
     .from(projects)
-    .where(and(eq(projects.id, input.projectId), eq(projects.companyId, input.companyId)))
+    .where(and(eq(projects.id, input.projectId), eq(projects.domainId, input.domainId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  if (!row) throw unprocessable("Project does not belong to company");
+  if (!row) throw unprocessable("Project does not belong to domain");
 }
 
-async function assertParentCaseBelongsToDomain(db: CaseRouteDb, input: {
-  companyId: string;
-  caseId?: string;
-  parentCaseId: string | null;
+async function assertParentLifeAdminBelongsToDomain(db: LifeAdminRouteDb, input: {
+  domainId: string;
+  lifeAdminId?: string;
+  parentLifeAdminId: string | null;
 }) {
-  if (!input.parentCaseId) return;
-  if (input.caseId && input.parentCaseId === input.caseId) {
-    throw unprocessable("A case cannot be its own parent");
+  if (!input.parentLifeAdminId) return;
+  if (input.lifeAdminId && input.parentLifeAdminId === input.lifeAdminId) {
+    throw unprocessable("A life_admin cannot be its own parent");
   }
   const row = await db
     .select({ id: life_admin.id })
     .from(life_admin)
-    .where(and(eq(life_admin.id, input.parentCaseId), eq(life_admin.companyId, input.companyId)))
+    .where(and(eq(life_admin.id, input.parentLifeAdminId), eq(life_admin.domainId, input.domainId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  if (!row) throw unprocessable("Parent case does not belong to company");
+  if (!row) throw unprocessable("Parent life_admin does not belong to domain");
 }
 
-async function assertLabelsBelongToDomain(db: CaseRouteDb, companyId: string, labelIds: string[]) {
+async function assertLabelsBelongToDomain(db: LifeAdminRouteDb, domainId: string, labelIds: string[]) {
   if (labelIds.length === 0) return;
   const uniqueIds = [...new Set(labelIds)];
   const rows = await db
     .select({ id: labels.id })
     .from(labels)
-    .where(and(eq(labels.companyId, companyId), inArray(labels.id, uniqueIds)));
+    .where(and(eq(labels.domainId, domainId), inArray(labels.id, uniqueIds)));
   if (rows.length !== uniqueIds.length) {
-    throw unprocessable("One or more labels do not belong to company");
+    throw unprocessable("One or more labels do not belong to domain");
   }
 }
 
-async function insertCaseEvent(db: CaseRouteDb, input: {
-  companyId: string;
-  caseId: string;
-  kind: typeof caseEvents.$inferInsert["kind"];
-  actor: CaseActor;
+async function insertLifeAdminEvent(db: LifeAdminRouteDb, input: {
+  domainId: string;
+  lifeAdminId: string;
+  kind: typeof lifeAdminEvents.$inferInsert["kind"];
+  actor: LifeAdminActor;
   payload?: Record<string, unknown>;
 }) {
   const now = new Date();
-  const [event] = await db.insert(caseEvents).values({
-    companyId: input.companyId,
-    caseId: input.caseId,
+  const [event] = await db.insert(lifeAdminEvents).values({
+    domainId: input.domainId,
+    lifeAdminId: input.lifeAdminId,
     kind: input.kind,
     ...eventActorValues(input.actor),
     payload: input.payload ?? {},
@@ -285,13 +285,13 @@ async function insertCaseEvent(db: CaseRouteDb, input: {
   return event!;
 }
 
-async function resolveIssueForRun(db: CaseRouteDb, companyId: string, runId: string | null | undefined) {
+async function resolveIssueForRun(db: LifeAdminRouteDb, domainId: string, runId: string | null | undefined) {
   if (!runId || !isUuidLike(runId)) return null;
   return db
     .select({ id: issues.id })
     .from(issues)
     .where(and(
-      eq(issues.companyId, companyId),
+      eq(issues.domainId, domainId),
       or(
         eq(issues.executionRunId, runId),
         eq(issues.checkoutRunId, runId),
@@ -304,7 +304,7 @@ async function resolveIssueForRun(db: CaseRouteDb, companyId: string, runId: str
 }
 
 /** Batch resolve agent display names for a set of agent ids. */
-async function resolveAgentNames(db: CaseRouteDb, agentIds: (string | null)[]) {
+async function resolveAgentNames(db: LifeAdminRouteDb, agentIds: (string | null)[]) {
   const valid = [...new Set(agentIds.filter((id): id is string => !!id))];
   if (valid.length === 0) return new Map<string, string>();
   const rows = await db
@@ -319,7 +319,7 @@ async function resolveAgentNames(db: CaseRouteDb, agentIds: (string | null)[]) {
  * (latest-updated issue whose execution/checkout/origin run matches), but for a
  * whole set of runs at once so the activity feed / revisions rail avoid N+1s.
  */
-async function resolveIssuesForRuns(db: CaseRouteDb, companyId: string, runIds: (string | null)[]) {
+async function resolveIssuesForRuns(db: LifeAdminRouteDb, domainId: string, runIds: (string | null)[]) {
   const valid = [...new Set(runIds.filter((id): id is string => !!id && isUuidLike(id)))];
   const map = new Map<string, { id: string; identifier: string; title: string; status: string }>();
   if (valid.length === 0) return map;
@@ -337,7 +337,7 @@ async function resolveIssuesForRuns(db: CaseRouteDb, companyId: string, runIds: 
     })
     .from(issues)
     .where(and(
-      eq(issues.companyId, companyId),
+      eq(issues.domainId, domainId),
       or(
         inArray(issues.executionRunId, valid),
         inArray(issues.checkoutRunId, valid),
@@ -362,7 +362,7 @@ function payloadIssueIdForEvent(kind: string, payload: Record<string, unknown> |
   return typeof issueId === "string" && isUuidLike(issueId) ? issueId : null;
 }
 
-async function resolveIssuesByIds(db: CaseRouteDb, companyId: string, issueIds: (string | null)[]) {
+async function resolveIssuesByIds(db: LifeAdminRouteDb, domainId: string, issueIds: (string | null)[]) {
   const valid = [...new Set(issueIds.filter((id): id is string => !!id && isUuidLike(id)))];
   const map = new Map<string, { id: string; identifier: string; title: string; status: string }>();
   if (valid.length === 0) return map;
@@ -374,37 +374,37 @@ async function resolveIssuesByIds(db: CaseRouteDb, companyId: string, issueIds: 
       status: issues.status,
     })
     .from(issues)
-    .where(and(eq(issues.companyId, companyId), inArray(issues.id, valid)));
+    .where(and(eq(issues.domainId, domainId), inArray(issues.id, valid)));
   for (const row of rows) {
     map.set(row.id, { id: row.id, identifier: row.identifier ?? row.id, title: row.title, status: row.status });
   }
   return map;
 }
 
-async function autoLinkRunIssue(db: CaseRouteDb, input: {
-  companyId: string;
-  caseId: string;
-  actor: CaseActor;
+async function autoLinkRunIssue(db: LifeAdminRouteDb, input: {
+  domainId: string;
+  lifeAdminId: string;
+  actor: LifeAdminActor;
   role: "origin" | "work";
 }) {
-  const issue = await resolveIssueForRun(db, input.companyId, input.actor.runId);
+  const issue = await resolveIssueForRun(db, input.domainId, input.actor.runId);
   if (!issue) return null;
   const now = new Date();
-  const [link] = await db.insert(caseIssueLinks).values({
-    companyId: input.companyId,
-    caseId: input.caseId,
+  const [link] = await db.insert(lifeAdminIssueLinks).values({
+    domainId: input.domainId,
+    lifeAdminId: input.lifeAdminId,
     issueId: issue.id,
     role: input.role,
     createdByRunId: input.actor.runId && isUuidLike(input.actor.runId) ? input.actor.runId : null,
     createdAt: now,
     updatedAt: now,
   }).onConflictDoNothing({
-    target: [caseIssueLinks.caseId, caseIssueLinks.issueId],
+    target: [lifeAdminIssueLinks.lifeAdminId, lifeAdminIssueLinks.issueId],
   }).returning();
   if (!link) return null;
-  await insertCaseEvent(db, {
-    companyId: input.companyId,
-    caseId: input.caseId,
+  await insertLifeAdminEvent(db, {
+    domainId: input.domainId,
+    lifeAdminId: input.lifeAdminId,
     kind: "issue_linked",
     actor: input.actor,
     payload: { issueId: issue.id, role: input.role, autoLinked: true },
@@ -412,22 +412,22 @@ async function autoLinkRunIssue(db: CaseRouteDb, input: {
   return link;
 }
 
-async function nextCaseIdentity(db: CaseRouteDb, companyId: string) {
-  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`paperclip:life_admin:${companyId}`}))`);
-  const [company] = await db
+async function nextLifeAdminIdentity(db: LifeAdminRouteDb, domainId: string) {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`paperclip:life_admin:${domainId}`}))`);
+  const [domain] = await db
     .select({ issuePrefix: domains.issuePrefix })
     .from(domains)
-    .where(eq(domains.id, companyId))
+    .where(eq(domains.id, domainId))
     .limit(1);
-  if (!company) throw notFound("Domain not found");
+  if (!domain) throw notFound("Domain not found");
   const [maxRow] = await db
-    .select({ maxNum: sql<number>`coalesce(max(${life_admin.caseNumber}), 0)` })
+    .select({ maxNum: sql<number>`coalesce(max(${life_admin.lifeAdminNumber}), 0)` })
     .from(life_admin)
-    .where(eq(life_admin.companyId, companyId));
-  const caseNumber = (maxRow?.maxNum ?? 0) + 1;
+    .where(eq(life_admin.domainId, domainId));
+  const lifeAdminNumber = (maxRow?.maxNum ?? 0) + 1;
   return {
-    caseNumber,
-    identifier: `${company.issuePrefix.toUpperLifeAdmin()}-C${caseNumber}`,
+    lifeAdminNumber,
+    identifier: `${domain.issuePrefix.toUpperLifeAdmin()}-C${lifeAdminNumber}`,
   };
 }
 
@@ -436,63 +436,63 @@ function completedAtForStatus(status: string, previous?: Date | null) {
   return null;
 }
 
-type PatchCaseBody = z.infer<typeof patchCaseSchema>;
+type PatchLifeAdminBody = z.infer<typeof patchLifeAdminSchema>;
 
-export function buildCasePatchUpdateValues(
-  body: PatchCaseBody,
-  caseRow: Pick<typeof life_admin.$inferSelect, "status" | "completedAt">,
+export function buildLifeAdminPatchUpdateValues(
+  body: PatchLifeAdminBody,
+  lifeAdminRow: Pick<typeof life_admin.$inferSelect, "status" | "completedAt">,
   now: Date,
 ) {
-  const status = body.status ?? caseRow.status;
+  const status = body.status ?? lifeAdminRow.status;
   return {
     ...(Object.hasOwn(body, "projectId") ? { projectId: body.projectId ?? null } : {}),
     ...(body.title !== undefined ? { title: body.title } : {}),
     ...(Object.hasOwn(body, "summary") ? { summary: body.summary ?? null } : {}),
-    ...(body.status !== undefined ? { status, completedAt: completedAtForStatus(status, caseRow.completedAt) } : {}),
+    ...(body.status !== undefined ? { status, completedAt: completedAtForStatus(status, lifeAdminRow.completedAt) } : {}),
     ...(body.fields !== undefined ? { fields: body.fields } : {}),
-    ...(Object.hasOwn(body, "parentCaseId") ? { parentCaseId: body.parentCaseId ?? null } : {}),
+    ...(Object.hasOwn(body, "parentLifeAdminId") ? { parentLifeAdminId: body.parentLifeAdminId ?? null } : {}),
     updatedAt: now,
   };
 }
 
-async function loadCaseDetail(db: CaseRouteDb, row: typeof life_admin.$inferSelect) {
+async function loadLifeAdminDetail(db: LifeAdminRouteDb, row: typeof life_admin.$inferSelect) {
   const [labelRows, linkRows, documentRows, attachmentRows] = await Promise.all([
     db
       .select({ label: labels })
-      .from(caseLabels)
-      .innerJoin(labels, eq(caseLabels.labelId, labels.id))
-      .where(and(eq(caseLabels.companyId, row.companyId), eq(caseLabels.caseId, row.id)))
+      .from(lifeAdminLabels)
+      .innerJoin(labels, eq(lifeAdminLabels.labelId, labels.id))
+      .where(and(eq(lifeAdminLabels.domainId, row.domainId), eq(lifeAdminLabels.lifeAdminId, row.id)))
       .orderBy(asc(labels.name)),
     db
-      .select({ link: caseIssueLinks, issue: issues })
-      .from(caseIssueLinks)
-      .innerJoin(issues, eq(caseIssueLinks.issueId, issues.id))
-      .where(and(eq(caseIssueLinks.companyId, row.companyId), eq(caseIssueLinks.caseId, row.id)))
-      .orderBy(asc(caseIssueLinks.createdAt)),
+      .select({ link: lifeAdminIssueLinks, issue: issues })
+      .from(lifeAdminIssueLinks)
+      .innerJoin(issues, eq(lifeAdminIssueLinks.issueId, issues.id))
+      .where(and(eq(lifeAdminIssueLinks.domainId, row.domainId), eq(lifeAdminIssueLinks.lifeAdminId, row.id)))
+      .orderBy(asc(lifeAdminIssueLinks.createdAt)),
     db
-      .select({ link: caseDocuments, document: documents })
-      .from(caseDocuments)
-      .innerJoin(documents, eq(caseDocuments.documentId, documents.id))
-      .where(and(eq(caseDocuments.companyId, row.companyId), eq(caseDocuments.caseId, row.id)))
-      .orderBy(asc(caseDocuments.key)),
+      .select({ link: lifeAdminDocuments, document: documents })
+      .from(lifeAdminDocuments)
+      .innerJoin(documents, eq(lifeAdminDocuments.documentId, documents.id))
+      .where(and(eq(lifeAdminDocuments.domainId, row.domainId), eq(lifeAdminDocuments.lifeAdminId, row.id)))
+      .orderBy(asc(lifeAdminDocuments.key)),
     db
-      .select({ link: caseAttachments, asset: assets })
-      .from(caseAttachments)
-      .innerJoin(assets, eq(caseAttachments.assetId, assets.id))
-      .where(and(eq(caseAttachments.companyId, row.companyId), eq(caseAttachments.caseId, row.id)))
-      .orderBy(asc(caseAttachments.createdAt)),
+      .select({ link: lifeAdminAttachments, asset: assets })
+      .from(lifeAdminAttachments)
+      .innerJoin(assets, eq(lifeAdminAttachments.assetId, assets.id))
+      .where(and(eq(lifeAdminAttachments.domainId, row.domainId), eq(lifeAdminAttachments.lifeAdminId, row.id)))
+      .orderBy(asc(lifeAdminAttachments.createdAt)),
   ]);
-  const parent = row.parentCaseId
+  const parent = row.parentLifeAdminId
     ? await db
       .select({
         id: life_admin.id,
         identifier: life_admin.identifier,
         title: life_admin.title,
-        caseType: life_admin.caseType,
+        lifeAdminType: life_admin.lifeAdminType,
         status: life_admin.status,
       })
       .from(life_admin)
-      .where(eq(life_admin.id, row.parentCaseId))
+      .where(eq(life_admin.id, row.parentLifeAdminId))
       .limit(1)
       .then((rows) => rows[0] ?? null)
     : null;
@@ -522,23 +522,23 @@ async function loadCaseDetail(db: CaseRouteDb, row: typeof life_admin.$inferSele
   };
 }
 
-async function loadCaseDocumentLink(db: CaseRouteDb, input: { companyId: string; caseId: string; key: string }) {
+async function loadLifeAdminDocumentLink(db: LifeAdminRouteDb, input: { domainId: string; lifeAdminId: string; key: string }) {
   return db
-    .select({ link: caseDocuments, document: documents })
-    .from(caseDocuments)
-    .innerJoin(documents, eq(caseDocuments.documentId, documents.id))
+    .select({ link: lifeAdminDocuments, document: documents })
+    .from(lifeAdminDocuments)
+    .innerJoin(documents, eq(lifeAdminDocuments.documentId, documents.id))
     .where(and(
-      eq(caseDocuments.companyId, input.companyId),
-      eq(caseDocuments.caseId, input.caseId),
-      eq(caseDocuments.key, input.key),
+      eq(lifeAdminDocuments.domainId, input.domainId),
+      eq(lifeAdminDocuments.lifeAdminId, input.lifeAdminId),
+      eq(lifeAdminDocuments.key, input.key),
     ))
     .limit(1)
     .then((rows) => rows[0] ?? null);
 }
 
-async function includeCaseAncestors(
-  db: CaseRouteDb,
-  companyId: string,
+async function includeLifeAdminAncestors(
+  db: LifeAdminRouteDb,
+  domainId: string,
   baseRows: Array<typeof life_admin.$inferSelect>,
 ) {
   const baseIds = new Set(baseRows.map((row) => row.id));
@@ -546,7 +546,7 @@ async function includeCaseAncestors(
   const ancestorRows: Array<typeof life_admin.$inferSelect> = [];
   let pending = [...new Set(
     baseRows
-      .map((row) => row.parentCaseId)
+      .map((row) => row.parentLifeAdminId)
       .filter((id): id is string => {
         if (!id) return false;
         return !rowsById.has(id);
@@ -557,14 +557,14 @@ async function includeCaseAncestors(
     const ancestors = await db
       .select()
       .from(life_admin)
-      .where(and(eq(life_admin.companyId, companyId), inArray(life_admin.id, pending)));
+      .where(and(eq(life_admin.domainId, domainId), inArray(life_admin.id, pending)));
     const nextPending = new Set<string>();
     for (const row of ancestors) {
       if (rowsById.has(row.id)) continue;
       rowsById.set(row.id, row);
       ancestorRows.push(row);
-      if (row.parentCaseId && !rowsById.has(row.parentCaseId)) {
-        nextPending.add(row.parentCaseId);
+      if (row.parentLifeAdminId && !rowsById.has(row.parentLifeAdminId)) {
+        nextPending.add(row.parentLifeAdminId);
       }
     }
     pending = [...nextPending];
@@ -576,7 +576,7 @@ async function includeCaseAncestors(
   }));
 }
 
-function caseDocumentResponse(input: { key: string; document: typeof documents.$inferSelect }) {
+function lifeAdminDocumentResponse(input: { key: string; document: typeof documents.$inferSelect }) {
   return {
     ...input.document,
     key: input.key,
@@ -597,19 +597,19 @@ function singleFileUpload(req: Request, res: Response, maxBytes: number) {
   });
 }
 
-export function caseRoutes(db: Db, storage: StorageService) {
+export function lifeAdminRoutes(db: Db, storage: StorageService) {
   const router = Router();
   const documentAnnotationsSvc = documentAnnotationService(db);
 
-  async function logCaseAnnotationRemaps(input: {
-    caseRow: typeof life_admin.$inferSelect;
+  async function logLifeAdminAnnotationRemaps(input: {
+    lifeAdminRow: typeof life_admin.$inferSelect;
     key: string;
     document: Pick<typeof documents.$inferSelect, "id" | "latestRevisionId" | "latestRevisionNumber">;
     body: string;
-    actor: CaseActor;
+    actor: LifeAdminActor;
   }) {
-    const remapped = await documentAnnotationsSvc.remapOpenThreadsForCaseDocument({
-      caseId: input.caseRow.id,
+    const remapped = await documentAnnotationsSvc.remapOpenThreadsForLifeAdminDocument({
+      lifeAdminId: input.lifeAdminRow.id,
       key: input.key,
       documentId: input.document.id,
       nextRevisionId: input.document.latestRevisionId,
@@ -618,14 +618,14 @@ export function caseRoutes(db: Db, storage: StorageService) {
     });
     for (const remap of remapped) {
       await logActivity(db, {
-        companyId: input.caseRow.companyId,
+        domainId: input.lifeAdminRow.domainId,
         actorType: input.actor.actorType,
         actorId: input.actor.actorId,
         agentId: input.actor.agentId,
         runId: input.actor.runId,
-        action: "case.document_annotation_remapped",
-        entityType: "case",
-        entityId: input.caseRow.id,
+        action: "life_admin.document_annotation_remapped",
+        entityType: "life_admin",
+        entityId: input.lifeAdminRow.id,
         details: {
           key: input.key,
           documentKey: input.key,
@@ -640,24 +640,24 @@ export function caseRoutes(db: Db, storage: StorageService) {
     }
   }
 
-  router.post("/domains/:companyId/life_admin", validate(createCaseSchema), async (req, res) => {
+  router.post("/domains/:domainId/life_admin", validate(createLifeAdminSchema), async (req, res) => {
     await assertLifeAdminEnabled(db);
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     const actor = getActorInfo(req);
-    const body = req.body as z.infer<typeof createCaseSchema>;
+    const body = req.body as z.infer<typeof createLifeAdminSchema>;
 
     const result = await db.transaction(async (tx) => {
-      await assertProjectBelongsToDomain(tx, { companyId, projectId: body.projectId ?? null });
-      await assertParentCaseBelongsToDomain(tx, { companyId, parentCaseId: body.parentCaseId ?? null });
-      await lockCaseUpsertKey(tx, { companyId, caseType: body.caseType, key: body.key });
+      await assertProjectBelongsToDomain(tx, { domainId, projectId: body.projectId ?? null });
+      await assertParentLifeAdminBelongsToDomain(tx, { domainId, parentLifeAdminId: body.parentLifeAdminId ?? null });
+      await lockLifeAdminUpsertKey(tx, { domainId, lifeAdminType: body.lifeAdminType, key: body.key });
       const keyFilter = body.key ? eq(life_admin.key, body.key) : isNull(life_admin.key);
 
       const now = new Date();
       const existing = await tx
         .select()
         .from(life_admin)
-        .where(and(eq(life_admin.companyId, companyId), eq(life_admin.caseType, body.caseType), keyFilter))
+        .where(and(eq(life_admin.domainId, domainId), eq(life_admin.lifeAdminType, body.lifeAdminType), keyFilter))
         .limit(1)
         .then((rows) => rows[0] ?? null);
 
@@ -669,73 +669,73 @@ export function caseRoutes(db: Db, storage: StorageService) {
           summary: body.summary ?? existing.summary,
           status,
           fields: body.fields ?? existing.fields,
-          parentCaseId: body.parentCaseId ?? existing.parentCaseId,
+          parentLifeAdminId: body.parentLifeAdminId ?? existing.parentLifeAdminId,
           completedAt: completedAtForStatus(status, existing.completedAt),
           updatedAt: now,
         }).where(eq(life_admin.id, existing.id)).returning();
-        await insertCaseEvent(tx, {
-          companyId,
-          caseId: existing.id,
+        await insertLifeAdminEvent(tx, {
+          domainId,
+          lifeAdminId: existing.id,
           kind: "updated",
           actor,
           payload: { upsert: true },
         });
-        await autoLinkRunIssue(tx, { companyId, caseId: existing.id, actor, role: "origin" });
+        await autoLinkRunIssue(tx, { domainId, lifeAdminId: existing.id, actor, role: "origin" });
         return { created: false, row: updated! };
       }
 
-      const identity = await nextCaseIdentity(tx, companyId);
+      const identity = await nextLifeAdminIdentity(tx, domainId);
       const status = body.status ?? "draft";
       const [created] = await tx.insert(life_admin).values({
-        companyId,
+        domainId,
         projectId: body.projectId ?? null,
         ...identity,
-        caseType: body.caseType,
+        lifeAdminType: body.lifeAdminType,
         key: body.key ?? null,
         title: body.title,
         summary: body.summary ?? null,
         status,
         fields: body.fields ?? {},
-        parentCaseId: body.parentCaseId ?? null,
+        parentLifeAdminId: body.parentLifeAdminId ?? null,
         createdByAgentId: actor.agentId,
         createdByUserId: actor.actorType === "user" ? actor.actorId : null,
         completedAt: completedAtForStatus(status),
         createdAt: now,
         updatedAt: now,
       }).returning();
-      await insertCaseEvent(tx, {
-        companyId,
-        caseId: created!.id,
+      await insertLifeAdminEvent(tx, {
+        domainId,
+        lifeAdminId: created!.id,
         kind: "created",
         actor,
-        payload: { caseType: body.caseType, key: body.key ?? null },
+        payload: { lifeAdminType: body.lifeAdminType, key: body.key ?? null },
       });
-      await autoLinkRunIssue(tx, { companyId, caseId: created!.id, actor, role: "origin" });
+      await autoLinkRunIssue(tx, { domainId, lifeAdminId: created!.id, actor, role: "origin" });
       return { created: true, row: created! };
     });
 
-    res.status(result.created ? 201 : 200).json(await loadCaseDetail(db, result.row));
+    res.status(result.created ? 201 : 200).json(await loadLifeAdminDetail(db, result.row));
   });
 
-  router.get("/domains/:companyId/life_admin", async (req, res) => {
+  router.get("/domains/:domainId/life_admin", async (req, res) => {
     await assertLifeAdminEnabled(db);
-    const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    const domainId = req.params.domainId as string;
+    assertDomainAccess(req, domainId);
     const parsed = listLifeAdminQuerySchema.safeParse(req.query);
-    if (!parsed.success) throw badRequest("Invalid case list query", parsed.error.issues);
+    if (!parsed.success) throw badRequest("Invalid life_admin list query", parsed.error.issues);
     const query = parsed.data;
-    const filters = [eq(life_admin.companyId, companyId)];
+    const filters = [eq(life_admin.domainId, domainId)];
     const typeFilters = parseQueryList(query.types ?? query.type);
-    if (typeFilters.length === 1) filters.push(eq(life_admin.caseType, typeFilters[0]!));
-    else if (typeFilters.length > 1) filters.push(inArray(life_admin.caseType, typeFilters));
+    if (typeFilters.length === 1) filters.push(eq(life_admin.lifeAdminType, typeFilters[0]!));
+    else if (typeFilters.length > 1) filters.push(inArray(life_admin.lifeAdminType, typeFilters));
 
     const statusFilters = parseQueryList(query.statuses ?? (query.status === "active" ? undefined : query.status));
     if (query.status === "active" && statusFilters.length === 0) {
       filters.push(sql`${life_admin.status} not in ('done', 'cancelled')`);
     } else if (statusFilters.length > 0) {
       for (const status of statusFilters) {
-        if (!CASE_STATUSES.includes(status as (typeof CASE_STATUSES)[number])) {
-          throw badRequest("Invalid case status");
+        if (!LIFE_ADMIN_STATUSES.includes(status as (typeof LIFE_ADMIN_STATUSES)[number])) {
+          throw badRequest("Invalid life_admin status");
         }
       }
       filters.push(statusFilters.length === 1 ? eq(life_admin.status, statusFilters[0]!) : inArray(life_admin.status, statusFilters));
@@ -755,12 +755,12 @@ export function caseRoutes(db: Db, storage: StorageService) {
     } else if (includeNoProject) {
       filters.push(isNull(life_admin.projectId));
     }
-    if (query.parent) filters.push(eq(life_admin.parentCaseId, query.parent));
+    if (query.parent) filters.push(eq(life_admin.parentLifeAdminId, query.parent));
     const labelId = query.labelId ?? query.label;
     if (labelId) {
       filters.push(sql`${life_admin.id} in (
-        select ${caseLabels.caseId} from ${caseLabels}
-        where ${caseLabels.companyId} = ${companyId} and ${caseLabels.labelId} = ${labelId}
+        select ${lifeAdminLabels.lifeAdminId} from ${lifeAdminLabels}
+        where ${lifeAdminLabels.domainId} = ${domainId} and ${lifeAdminLabels.labelId} = ${labelId}
       )`);
     }
     if (query.q) {
@@ -779,24 +779,24 @@ export function caseRoutes(db: Db, storage: StorageService) {
       .where(and(...filters))
       .orderBy(desc(life_admin.updatedAt), desc(life_admin.createdAt))
       .limit(query.limit);
-    res.json(parseBooleanQuery(query.includeAncestors) ? await includeCaseAncestors(db, companyId, rows) : rows);
+    res.json(parseBooleanQuery(query.includeAncestors) ? await includeLifeAdminAncestors(db, domainId, rows) : rows);
   });
 
   router.get("/life_admin/:id/documents/:key", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
-    const link = await loadCaseDocumentLink(db, { companyId: caseRow.companyId, caseId: caseRow.id, key });
+    const link = await loadLifeAdminDocumentLink(db, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
     if (!link) throw notFound("LifeAdmin document not found");
-    res.json(caseDocumentResponse({ key, document: link.document }));
+    res.json(lifeAdminDocumentResponse({ key, document: link.document }));
   });
 
   router.get("/life_admin/:id/documents/:key/annotations", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
     const status = req.query.status === "resolved" || req.query.status === "all" ? req.query.status : "open";
-    const threads = await documentAnnotationsSvc.listThreadsForCaseDocument(caseRow.id, key, {
+    const threads = await documentAnnotationsSvc.listThreadsForLifeAdminDocument(lifeAdminRow.id, key, {
       status,
       includeComments: parseBooleanQuery(req.query.includeComments),
     });
@@ -804,11 +804,11 @@ export function caseRoutes(db: Db, storage: StorageService) {
   });
 
   router.get("/life_admin/:id/documents/:key/annotations/:threadId", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
-    const thread = await documentAnnotationsSvc.getThreadForCaseDocument(
-      caseRow.id,
+    const thread = await documentAnnotationsSvc.getThreadForLifeAdminDocument(
+      lifeAdminRow.id,
       key,
       req.params.threadId as string,
     );
@@ -820,26 +820,26 @@ export function caseRoutes(db: Db, storage: StorageService) {
     "/life_admin/:id/documents/:key/annotations",
     validate(createDocumentAnnotationThreadSchema),
     async (req, res, next) => {
-      const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-      if (!caseRow) return next();
+      const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+      if (!lifeAdminRow) return next();
       const key = parseDocumentKey(req.params.key as string);
       const { actor, annotationActor } = annotationActorInput(req);
-      const thread = await documentAnnotationsSvc.createCaseThread(
-        caseRow.id,
+      const thread = await documentAnnotationsSvc.createLifeAdminThread(
+        lifeAdminRow.id,
         key,
         req.body,
         annotationActor,
       );
       const firstComment = thread.comments[0];
       await logActivity(db, {
-        companyId: caseRow.companyId,
+        domainId: lifeAdminRow.domainId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
-        action: "case.document_annotation_thread_created",
-        entityType: "case",
-        entityId: caseRow.id,
+        action: "life_admin.document_annotation_thread_created",
+        entityType: "life_admin",
+        entityId: lifeAdminRow.id,
         details: {
           key: thread.documentKey,
           documentKey: thread.documentKey,
@@ -858,26 +858,26 @@ export function caseRoutes(db: Db, storage: StorageService) {
     "/life_admin/:id/documents/:key/annotations/:threadId/comments",
     validate(createDocumentAnnotationCommentSchema),
     async (req, res, next) => {
-      const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-      if (!caseRow) return next();
+      const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+      if (!lifeAdminRow) return next();
       const key = parseDocumentKey(req.params.key as string);
       const { actor, annotationActor } = annotationActorInput(req);
-      const comment = await documentAnnotationsSvc.addCaseComment(
-        caseRow.id,
+      const comment = await documentAnnotationsSvc.addLifeAdminComment(
+        lifeAdminRow.id,
         key,
         req.params.threadId as string,
         req.body,
         annotationActor,
       );
       await logActivity(db, {
-        companyId: caseRow.companyId,
+        domainId: lifeAdminRow.domainId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
-        action: "case.document_annotation_comment_added",
-        entityType: "case",
-        entityId: caseRow.id,
+        action: "life_admin.document_annotation_comment_added",
+        entityType: "life_admin",
+        entityId: lifeAdminRow.id,
         details: {
           key,
           documentKey: key,
@@ -894,28 +894,28 @@ export function caseRoutes(db: Db, storage: StorageService) {
     "/life_admin/:id/documents/:key/annotations/:threadId",
     validate(updateDocumentAnnotationThreadSchema),
     async (req, res, next) => {
-      const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-      if (!caseRow) return next();
+      const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+      if (!lifeAdminRow) return next();
       const key = parseDocumentKey(req.params.key as string);
       const { actor, annotationActor } = annotationActorInput(req);
-      const thread = await documentAnnotationsSvc.updateCaseThread(
-        caseRow.id,
+      const thread = await documentAnnotationsSvc.updateLifeAdminThread(
+        lifeAdminRow.id,
         key,
         req.params.threadId as string,
         req.body,
         annotationActor,
       );
       await logActivity(db, {
-        companyId: caseRow.companyId,
+        domainId: lifeAdminRow.domainId,
         actorType: actor.actorType,
         actorId: actor.actorId,
         agentId: actor.agentId,
         runId: actor.runId,
         action: thread.status === "resolved"
-          ? "case.document_annotation_thread_resolved"
-          : "case.document_annotation_thread_reopened",
-        entityType: "case",
-        entityId: caseRow.id,
+          ? "life_admin.document_annotation_thread_resolved"
+          : "life_admin.document_annotation_thread_reopened",
+        entityType: "life_admin",
+        entityId: lifeAdminRow.id,
         details: {
           key: thread.documentKey,
           documentKey: thread.documentKey,
@@ -929,23 +929,23 @@ export function caseRoutes(db: Db, storage: StorageService) {
   );
 
   router.put("/life_admin/:id/documents/:key", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
     const actor = getActorInfo(req);
-    const body = upsertCaseDocumentSchema.parse(req.body);
+    const body = upsertLifeAdminDocumentSchema.parse(req.body);
 
     const result = await db.transaction(async (tx) => {
-      await lockCaseDocumentKey(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
+      await lockLifeAdminDocumentKey(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
       const existing = await tx
-        .select({ link: caseDocuments, document: documents, revision: documentRevisions })
-        .from(caseDocuments)
-        .innerJoin(documents, eq(caseDocuments.documentId, documents.id))
+        .select({ link: lifeAdminDocuments, document: documents, revision: documentRevisions })
+        .from(lifeAdminDocuments)
+        .innerJoin(documents, eq(lifeAdminDocuments.documentId, documents.id))
         .leftJoin(documentRevisions, eq(documents.latestRevisionId, documentRevisions.id))
         .where(and(
-          eq(caseDocuments.companyId, caseRow.companyId),
-          eq(caseDocuments.caseId, caseRow.id),
-          eq(caseDocuments.key, key),
+          eq(lifeAdminDocuments.domainId, lifeAdminRow.domainId),
+          eq(lifeAdminDocuments.lifeAdminId, lifeAdminRow.id),
+          eq(lifeAdminDocuments.key, key),
         ))
         .limit(1)
         .then((rows) => rows[0] ?? null);
@@ -990,7 +990,7 @@ export function caseRoutes(db: Db, storage: StorageService) {
           updatedByUserId: actor.actorType === "user" ? actor.actorId : null,
         }).where(eq(documents.id, existing.document.id)).returning()
         : await tx.insert(documents).values({
-          companyId: caseRow.companyId,
+          domainId: lifeAdminRow.domainId,
           title: body.title ?? key,
           format: body.format,
           latestBody: body.body,
@@ -1004,7 +1004,7 @@ export function caseRoutes(db: Db, storage: StorageService) {
         }).returning();
       const nextRevisionNumber = existing ? existing.document.latestRevisionNumber + 1 : 1;
       const [revision] = await tx.insert(documentRevisions).values({
-        companyId: caseRow.companyId,
+        domainId: lifeAdminRow.domainId,
         documentId: document!.id,
         revisionNumber: nextRevisionNumber,
         title: body.title ?? document!.title,
@@ -1027,25 +1027,25 @@ export function caseRoutes(db: Db, storage: StorageService) {
         updatedAt: now,
       }).where(eq(documents.id, document!.id));
       if (!existing) {
-        await tx.insert(caseDocuments).values({
-          companyId: caseRow.companyId,
-          caseId: caseRow.id,
+        await tx.insert(lifeAdminDocuments).values({
+          domainId: lifeAdminRow.domainId,
+          lifeAdminId: lifeAdminRow.id,
           documentId: document!.id,
           key,
           createdAt: now,
           updatedAt: now,
         });
       } else {
-        await tx.update(caseDocuments).set({ updatedAt: now }).where(eq(caseDocuments.documentId, document!.id));
+        await tx.update(lifeAdminDocuments).set({ updatedAt: now }).where(eq(lifeAdminDocuments.documentId, document!.id));
       }
-      await insertCaseEvent(tx, {
-        companyId: caseRow.companyId,
-        caseId: caseRow.id,
+      await insertLifeAdminEvent(tx, {
+        domainId: lifeAdminRow.domainId,
+        lifeAdminId: lifeAdminRow.id,
         kind: "document_revised",
         actor,
         payload: { key, documentId: document!.id, revisionId: revision!.id, revisionNumber: revision!.revisionNumber },
       });
-      await autoLinkRunIssue(tx, { companyId: caseRow.companyId, caseId: caseRow.id, actor, role: "work" });
+      await autoLinkRunIssue(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, actor, role: "work" });
       return {
         document: {
           ...document!,
@@ -1059,8 +1059,8 @@ export function caseRoutes(db: Db, storage: StorageService) {
         revision,
       };
     });
-    await logCaseAnnotationRemaps({
-      caseRow,
+    await logLifeAdminAnnotationRemaps({
+      lifeAdminRow,
       key,
       document: result.document,
       body: result.document.latestBody,
@@ -1070,15 +1070,15 @@ export function caseRoutes(db: Db, storage: StorageService) {
   });
 
   router.post("/life_admin/:id/documents/:key/lock", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
     const actor = getActorInfo(req);
     const result = await db.transaction(async (tx) => {
-      await lockCaseDocumentKey(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
-      const link = await loadCaseDocumentLink(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
+      await lockLifeAdminDocumentKey(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
+      const link = await loadLifeAdminDocumentLink(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
       if (!link) throw notFound("LifeAdmin document not found");
-      if (link.document.lockedAt) return caseDocumentResponse({ key, document: link.document });
+      if (link.document.lockedAt) return lifeAdminDocumentResponse({ key, document: link.document });
       const now = new Date();
       const [document] = await tx.update(documents).set({
         lockedAt: now,
@@ -1086,21 +1086,21 @@ export function caseRoutes(db: Db, storage: StorageService) {
         lockedByUserId: actor.actorType === "user" ? actor.actorId : null,
         updatedAt: now,
       }).where(eq(documents.id, link.document.id)).returning();
-      await tx.update(caseDocuments).set({ updatedAt: now }).where(eq(caseDocuments.documentId, link.document.id));
-      return caseDocumentResponse({ key, document: document! });
+      await tx.update(lifeAdminDocuments).set({ updatedAt: now }).where(eq(lifeAdminDocuments.documentId, link.document.id));
+      return lifeAdminDocumentResponse({ key, document: document! });
     });
     res.json(result);
   });
 
   router.post("/life_admin/:id/documents/:key/unlock", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
     const result = await db.transaction(async (tx) => {
-      await lockCaseDocumentKey(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
-      const link = await loadCaseDocumentLink(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
+      await lockLifeAdminDocumentKey(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
+      const link = await loadLifeAdminDocumentLink(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
       if (!link) throw notFound("LifeAdmin document not found");
-      if (!link.document.lockedAt) return caseDocumentResponse({ key, document: link.document });
+      if (!link.document.lockedAt) return lifeAdminDocumentResponse({ key, document: link.document });
       const now = new Date();
       const [document] = await tx.update(documents).set({
         lockedAt: null,
@@ -1108,22 +1108,22 @@ export function caseRoutes(db: Db, storage: StorageService) {
         lockedByUserId: null,
         updatedAt: now,
       }).where(eq(documents.id, link.document.id)).returning();
-      await tx.update(caseDocuments).set({ updatedAt: now }).where(eq(caseDocuments.documentId, link.document.id));
-      return caseDocumentResponse({ key, document: document! });
+      await tx.update(lifeAdminDocuments).set({ updatedAt: now }).where(eq(lifeAdminDocuments.documentId, link.document.id));
+      return lifeAdminDocumentResponse({ key, document: document! });
     });
     res.json(result);
   });
 
   router.post("/life_admin/:id/documents/:key/revisions/:revisionId/restore", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
     const revisionId = req.params.revisionId as string;
     const actor = getActorInfo(req);
 
     const result = await db.transaction(async (tx) => {
-      await lockCaseDocumentKey(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
-      const existing = await loadCaseDocumentLink(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
+      await lockLifeAdminDocumentKey(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
+      const existing = await loadLifeAdminDocumentLink(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
       if (!existing) throw notFound("LifeAdmin document not found");
       if (existing.document.lockedAt) {
         throw conflict("Document is locked", {
@@ -1148,7 +1148,7 @@ export function caseRoutes(db: Db, storage: StorageService) {
       const now = new Date();
       const nextRevisionNumber = existing.document.latestRevisionNumber + 1;
       const [restoredRevision] = await tx.insert(documentRevisions).values({
-        companyId: caseRow.companyId,
+        domainId: lifeAdminRow.domainId,
         documentId: existing.document.id,
         revisionNumber: nextRevisionNumber,
         title: sourceRevision.title ?? null,
@@ -1170,10 +1170,10 @@ export function caseRoutes(db: Db, storage: StorageService) {
         updatedByUserId: actor.actorType === "user" ? actor.actorId : null,
         updatedAt: now,
       }).where(eq(documents.id, existing.document.id)).returning();
-      await tx.update(caseDocuments).set({ updatedAt: now }).where(eq(caseDocuments.documentId, existing.document.id));
-      await insertCaseEvent(tx, {
-        companyId: caseRow.companyId,
-        caseId: caseRow.id,
+      await tx.update(lifeAdminDocuments).set({ updatedAt: now }).where(eq(lifeAdminDocuments.documentId, existing.document.id));
+      await insertLifeAdminEvent(tx, {
+        domainId: lifeAdminRow.domainId,
+        lifeAdminId: lifeAdminRow.id,
         kind: "document_revised",
         actor,
         payload: {
@@ -1185,16 +1185,16 @@ export function caseRoutes(db: Db, storage: StorageService) {
           restoredFromRevisionNumber: sourceRevision.revisionNumber,
         },
       });
-      await autoLinkRunIssue(tx, { companyId: caseRow.companyId, caseId: caseRow.id, actor, role: "work" });
+      await autoLinkRunIssue(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, actor, role: "work" });
       return {
-        document: caseDocumentResponse({ key, document: document! }),
+        document: lifeAdminDocumentResponse({ key, document: document! }),
         revision: restoredRevision!,
         restoredFromRevisionId: sourceRevision.id,
         restoredFromRevisionNumber: sourceRevision.revisionNumber,
       };
     });
-    await logCaseAnnotationRemaps({
-      caseRow,
+    await logLifeAdminAnnotationRemaps({
+      lifeAdminRow,
       key,
       document: result.document,
       body: result.document.body,
@@ -1204,12 +1204,12 @@ export function caseRoutes(db: Db, storage: StorageService) {
   });
 
   router.delete("/life_admin/:id/documents/:key", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
     await db.transaction(async (tx) => {
-      await lockCaseDocumentKey(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
-      const link = await loadCaseDocumentLink(tx, { companyId: caseRow.companyId, caseId: caseRow.id, key });
+      await lockLifeAdminDocumentKey(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
+      const link = await loadLifeAdminDocumentLink(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, key });
       if (!link) return;
       if (link.document.lockedAt) {
         throw conflict("Document is locked", {
@@ -1218,7 +1218,7 @@ export function caseRoutes(db: Db, storage: StorageService) {
           lockedAt: link.document.lockedAt,
         });
       }
-      await tx.delete(caseDocuments).where(eq(caseDocuments.documentId, link.document.id));
+      await tx.delete(lifeAdminDocuments).where(eq(lifeAdminDocuments.documentId, link.document.id));
       await tx.delete(documents).where(eq(documents.id, link.document.id));
     });
     res.json({ ok: true });
@@ -1226,7 +1226,7 @@ export function caseRoutes(db: Db, storage: StorageService) {
 
   router.post("/life_admin/:id/links", validate(createIssueLinkSchema), async (req, res) => {
     await assertLifeAdminEnabled(db);
-    const caseRow = await assertCaseAccess(db, req, req.params.id as string);
+    const lifeAdminRow = await assertLifeAdminAccess(db, req, req.params.id as string);
     const actor = getActorInfo(req);
     const body = req.body as z.infer<typeof createIssueLinkSchema>;
 
@@ -1234,26 +1234,26 @@ export function caseRoutes(db: Db, storage: StorageService) {
       const issue = await tx
         .select({ id: issues.id })
         .from(issues)
-        .where(and(eq(issues.id, body.issueId), eq(issues.companyId, caseRow.companyId)))
+        .where(and(eq(issues.id, body.issueId), eq(issues.domainId, lifeAdminRow.domainId)))
         .limit(1)
         .then((rows) => rows[0] ?? null);
-      if (!issue) throw unprocessable("Issue does not belong to case company");
+      if (!issue) throw unprocessable("Issue does not belong to life_admin domain");
       const now = new Date();
-      const [link] = await tx.insert(caseIssueLinks).values({
-        companyId: caseRow.companyId,
-        caseId: caseRow.id,
+      const [link] = await tx.insert(lifeAdminIssueLinks).values({
+        domainId: lifeAdminRow.domainId,
+        lifeAdminId: lifeAdminRow.id,
         issueId: body.issueId,
         role: body.role,
         createdByRunId: actor.runId && isUuidLike(actor.runId) ? actor.runId : null,
         createdAt: now,
         updatedAt: now,
       }).onConflictDoNothing({
-        target: [caseIssueLinks.caseId, caseIssueLinks.issueId],
+        target: [lifeAdminIssueLinks.lifeAdminId, lifeAdminIssueLinks.issueId],
       }).returning();
       if (link) {
-        await insertCaseEvent(tx, {
-          companyId: caseRow.companyId,
-          caseId: caseRow.id,
+        await insertLifeAdminEvent(tx, {
+          domainId: lifeAdminRow.domainId,
+          lifeAdminId: lifeAdminRow.id,
           kind: "issue_linked",
           actor,
           payload: { issueId: body.issueId, role: body.role, autoLinked: false },
@@ -1261,8 +1261,8 @@ export function caseRoutes(db: Db, storage: StorageService) {
       }
       return link ?? await tx
         .select()
-        .from(caseIssueLinks)
-        .where(and(eq(caseIssueLinks.caseId, caseRow.id), eq(caseIssueLinks.issueId, body.issueId)))
+        .from(lifeAdminIssueLinks)
+        .where(and(eq(lifeAdminIssueLinks.lifeAdminId, lifeAdminRow.id), eq(lifeAdminIssueLinks.issueId, body.issueId)))
         .limit(1)
         .then((rows) => rows[0]);
     });
@@ -1271,14 +1271,14 @@ export function caseRoutes(db: Db, storage: StorageService) {
 
   router.post("/life_admin/:id/attachments", async (req, res) => {
     await assertLifeAdminEnabled(db);
-    const caseRow = await assertCaseAccess(db, req, req.params.id as string);
+    const lifeAdminRow = await assertLifeAdminAccess(db, req, req.params.id as string);
     const actor = getActorInfo(req);
-    const [company] = await db
+    const [domain] = await db
       .select({ attachmentMaxBytes: domains.attachmentMaxBytes })
       .from(domains)
-      .where(eq(domains.id, caseRow.companyId))
+      .where(eq(domains.id, lifeAdminRow.domainId))
       .limit(1);
-    const maxBytes = company?.attachmentMaxBytes ?? 10 * 1024 * 1024;
+    const maxBytes = domain?.attachmentMaxBytes ?? 10 * 1024 * 1024;
 
     try {
       await singleFileUpload(req, res, maxBytes);
@@ -1296,8 +1296,8 @@ export function caseRoutes(db: Db, storage: StorageService) {
     if (file.buffer.length <= 0) throw unprocessable("Attachment is empty");
 
     const stored = await storage.putFile({
-      companyId: caseRow.companyId,
-      namespace: `life_admin/${caseRow.id}`,
+      domainId: lifeAdminRow.domainId,
+      namespace: `life_admin/${lifeAdminRow.id}`,
       originalFilename: file.originalname || null,
       contentType: normalizeContentType(file.mimetype),
       body: file.buffer,
@@ -1305,7 +1305,7 @@ export function caseRoutes(db: Db, storage: StorageService) {
     const result = await db.transaction(async (tx) => {
       const now = new Date();
       const [asset] = await tx.insert(assets).values({
-        companyId: caseRow.companyId,
+        domainId: lifeAdminRow.domainId,
         provider: stored.provider,
         objectKey: stored.objectKey,
         contentType: stored.contentType,
@@ -1317,44 +1317,44 @@ export function caseRoutes(db: Db, storage: StorageService) {
         createdAt: now,
         updatedAt: now,
       }).returning();
-      const [attachment] = await tx.insert(caseAttachments).values({
-        companyId: caseRow.companyId,
-        caseId: caseRow.id,
+      const [attachment] = await tx.insert(lifeAdminAttachments).values({
+        domainId: lifeAdminRow.domainId,
+        lifeAdminId: lifeAdminRow.id,
         assetId: asset!.id,
         createdAt: now,
         updatedAt: now,
       }).returning();
-      await insertCaseEvent(tx, {
-        companyId: caseRow.companyId,
-        caseId: caseRow.id,
+      await insertLifeAdminEvent(tx, {
+        domainId: lifeAdminRow.domainId,
+        lifeAdminId: lifeAdminRow.id,
         kind: "attachment_added",
         actor,
         payload: { attachmentId: attachment!.id, assetId: asset!.id, originalFilename: asset!.originalFilename },
       });
-      await autoLinkRunIssue(tx, { companyId: caseRow.companyId, caseId: caseRow.id, actor, role: "work" });
+      await autoLinkRunIssue(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, actor, role: "work" });
       return { ...attachment!, asset };
     });
     res.status(201).json(result);
   });
 
   router.get("/life_admin/:id/events", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const parsed = listEventsQuerySchema.safeParse(req.query);
-    if (!parsed.success) throw badRequest("Invalid case events query", parsed.error.issues);
+    if (!parsed.success) throw badRequest("Invalid life_admin events query", parsed.error.issues);
     const rows = await db
       .select()
-      .from(caseEvents)
-      .where(and(eq(caseEvents.companyId, caseRow.companyId), eq(caseEvents.caseId, caseRow.id)))
-      .orderBy(desc(caseEvents.createdAt), desc(caseEvents.id))
+      .from(lifeAdminEvents)
+      .where(and(eq(lifeAdminEvents.domainId, lifeAdminRow.domainId), eq(lifeAdminEvents.lifeAdminId, lifeAdminRow.id)))
+      .orderBy(desc(lifeAdminEvents.createdAt), desc(lifeAdminEvents.id))
       .limit(parsed.data.limit);
     // Enrich each row with its actor's display name, run→issue attribution,
     // and the linked issue captured in link/unlink payloads.
     const payloadIssueIds = rows.map((row) => payloadIssueIdForEvent(row.kind, row.payload));
     const [agentNames, issueMap, payloadIssueMap] = await Promise.all([
       resolveAgentNames(db, rows.map((row) => row.actorAgentId)),
-      resolveIssuesForRuns(db, caseRow.companyId, rows.map((row) => row.runId)),
-      resolveIssuesByIds(db, caseRow.companyId, payloadIssueIds),
+      resolveIssuesForRuns(db, lifeAdminRow.domainId, rows.map((row) => row.runId)),
+      resolveIssuesByIds(db, lifeAdminRow.domainId, payloadIssueIds),
     ]);
     res.json(rows.map((row) => ({
       ...row,
@@ -1365,17 +1365,17 @@ export function caseRoutes(db: Db, storage: StorageService) {
   });
 
   router.get("/life_admin/:id/documents/:key/revisions", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const key = parseDocumentKey(req.params.key as string);
     const link = await db
-      .select({ documentId: caseDocuments.documentId, document: documents })
-      .from(caseDocuments)
-      .innerJoin(documents, eq(caseDocuments.documentId, documents.id))
+      .select({ documentId: lifeAdminDocuments.documentId, document: documents })
+      .from(lifeAdminDocuments)
+      .innerJoin(documents, eq(lifeAdminDocuments.documentId, documents.id))
       .where(and(
-        eq(caseDocuments.companyId, caseRow.companyId),
-        eq(caseDocuments.caseId, caseRow.id),
-        eq(caseDocuments.key, key),
+        eq(lifeAdminDocuments.domainId, lifeAdminRow.domainId),
+        eq(lifeAdminDocuments.lifeAdminId, lifeAdminRow.id),
+        eq(lifeAdminDocuments.key, key),
       ))
       .limit(1)
       .then((rows) => rows[0] ?? null);
@@ -1384,13 +1384,13 @@ export function caseRoutes(db: Db, storage: StorageService) {
       .select()
       .from(documentRevisions)
       .where(and(
-        eq(documentRevisions.companyId, caseRow.companyId),
+        eq(documentRevisions.domainId, lifeAdminRow.domainId),
         eq(documentRevisions.documentId, link.documentId),
       ))
       .orderBy(desc(documentRevisions.revisionNumber));
     const [agentNames, issueMap] = await Promise.all([
       resolveAgentNames(db, revisions.map((rev) => rev.createdByAgentId)),
-      resolveIssuesForRuns(db, caseRow.companyId, revisions.map((rev) => rev.createdByRunId)),
+      resolveIssuesForRuns(db, lifeAdminRow.domainId, revisions.map((rev) => rev.createdByRunId)),
     ]);
     res.json({
       key,
@@ -1421,25 +1421,25 @@ export function caseRoutes(db: Db, storage: StorageService) {
   router.get("/issues/:issueId/life_admin", async (req, res) => {
     await assertLifeAdminEnabled(db);
     const issueIdOrIdentifier = (req.params.issueId as string).trim();
-    const issue = await loadIssueByIdOrIdentifier(db, issueIdOrIdentifier, caseLookupCompanyIds(req));
+    const issue = await loadIssueByIdOrIdentifier(db, issueIdOrIdentifier, lifeAdminLookupDomainIds(req));
     if (!issue) throw notFound("Issue not found");
-    assertCompanyAccess(req, issue.companyId);
+    assertDomainAccess(req, issue.domainId);
     const rows = await db
-      .select({ link: caseIssueLinks, caseRow: life_admin })
-      .from(caseIssueLinks)
-      .innerJoin(life_admin, eq(caseIssueLinks.caseId, life_admin.id))
-      .where(and(eq(caseIssueLinks.companyId, issue.companyId), eq(caseIssueLinks.issueId, issue.id)))
-      .orderBy(asc(caseIssueLinks.createdAt));
+      .select({ link: lifeAdminIssueLinks, lifeAdminRow: life_admin })
+      .from(lifeAdminIssueLinks)
+      .innerJoin(life_admin, eq(lifeAdminIssueLinks.lifeAdminId, life_admin.id))
+      .where(and(eq(lifeAdminIssueLinks.domainId, issue.domainId), eq(lifeAdminIssueLinks.issueId, issue.id)))
+      .orderBy(asc(lifeAdminIssueLinks.createdAt));
     res.json(rows.map((row) => ({
       id: row.link.id,
       role: row.link.role,
       createdAt: row.link.createdAt,
-      case: {
-        id: row.caseRow.id,
-        identifier: row.caseRow.identifier,
-        title: row.caseRow.title,
-        caseType: row.caseRow.caseType,
-        status: row.caseRow.status,
+      life_admin: {
+        id: row.lifeAdminRow.id,
+        identifier: row.lifeAdminRow.identifier,
+        title: row.lifeAdminRow.title,
+        lifeAdminType: row.lifeAdminRow.lifeAdminType,
+        status: row.lifeAdminRow.status,
       },
     })));
   });
@@ -1447,44 +1447,44 @@ export function caseRoutes(db: Db, storage: StorageService) {
   router.get("/life_admin/:id", async (req, res, next) => {
     const row = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
     if (!row) return next();
-    res.json(await loadCaseDetail(db, row));
+    res.json(await loadLifeAdminDetail(db, row));
   });
 
   router.patch("/life_admin/:id", async (req, res, next) => {
-    const caseRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
-    if (!caseRow) return next();
+    const lifeAdminRow = await resolveSharedPathLifeAdmin(db, req, req.params.id as string);
+    if (!lifeAdminRow) return next();
     const actor = getActorInfo(req);
-    const body = patchCaseSchema.parse(req.body);
+    const body = patchLifeAdminSchema.parse(req.body);
     const nextLabelIds = body.labelIds ?? body.labels;
 
     const updated = await db.transaction(async (tx) => {
-      await assertProjectBelongsToDomain(tx, { companyId: caseRow.companyId, projectId: body.projectId ?? null });
-      await assertParentCaseBelongsToDomain(tx, {
-        companyId: caseRow.companyId,
-        caseId: caseRow.id,
-        parentCaseId: body.parentCaseId ?? null,
+      await assertProjectBelongsToDomain(tx, { domainId: lifeAdminRow.domainId, projectId: body.projectId ?? null });
+      await assertParentLifeAdminBelongsToDomain(tx, {
+        domainId: lifeAdminRow.domainId,
+        lifeAdminId: lifeAdminRow.id,
+        parentLifeAdminId: body.parentLifeAdminId ?? null,
       });
-      if (nextLabelIds) await assertLabelsBelongToDomain(tx, caseRow.companyId, nextLabelIds);
+      if (nextLabelIds) await assertLabelsBelongToDomain(tx, lifeAdminRow.domainId, nextLabelIds);
 
       const now = new Date();
-      const [row] = await tx.update(life_admin).set(buildCasePatchUpdateValues(body, caseRow, now)).where(eq(life_admin.id, caseRow.id)).returning();
+      const [row] = await tx.update(life_admin).set(buildLifeAdminPatchUpdateValues(body, lifeAdminRow, now)).where(eq(life_admin.id, lifeAdminRow.id)).returning();
 
       if (nextLabelIds) {
-        await lockCaseLabels(tx, { companyId: caseRow.companyId, caseId: caseRow.id });
+        await lockLifeAdminLabels(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id });
         const current = await tx
-          .select({ labelId: caseLabels.labelId })
-          .from(caseLabels)
-          .where(and(eq(caseLabels.companyId, caseRow.companyId), eq(caseLabels.caseId, caseRow.id)));
+          .select({ labelId: lifeAdminLabels.labelId })
+          .from(lifeAdminLabels)
+          .where(and(eq(lifeAdminLabels.domainId, lifeAdminRow.domainId), eq(lifeAdminLabels.lifeAdminId, lifeAdminRow.id)));
         const currentIds = new Set(current.map((item) => item.labelId));
         const desiredIds = new Set(nextLabelIds);
         const added = [...desiredIds].filter((id) => !currentIds.has(id));
         const removed = [...currentIds].filter((id) => !desiredIds.has(id));
         if (removed.length > 0) {
-          await tx.delete(caseLabels).where(and(eq(caseLabels.caseId, caseRow.id), inArray(caseLabels.labelId, removed)));
+          await tx.delete(lifeAdminLabels).where(and(eq(lifeAdminLabels.lifeAdminId, lifeAdminRow.id), inArray(lifeAdminLabels.labelId, removed)));
           for (const labelId of removed) {
-            await insertCaseEvent(tx, {
-              companyId: caseRow.companyId,
-              caseId: caseRow.id,
+            await insertLifeAdminEvent(tx, {
+              domainId: lifeAdminRow.domainId,
+              lifeAdminId: lifeAdminRow.id,
               kind: "label_removed",
               actor,
               payload: { labelId },
@@ -1492,17 +1492,17 @@ export function caseRoutes(db: Db, storage: StorageService) {
           }
         }
         if (added.length > 0) {
-          await tx.insert(caseLabels).values(added.map((labelId) => ({
-            companyId: caseRow.companyId,
-            caseId: caseRow.id,
+          await tx.insert(lifeAdminLabels).values(added.map((labelId) => ({
+            domainId: lifeAdminRow.domainId,
+            lifeAdminId: lifeAdminRow.id,
             labelId,
             createdAt: now,
             updatedAt: now,
           }))).onConflictDoNothing();
           for (const labelId of added) {
-            await insertCaseEvent(tx, {
-              companyId: caseRow.companyId,
-              caseId: caseRow.id,
+            await insertLifeAdminEvent(tx, {
+              domainId: lifeAdminRow.domainId,
+              lifeAdminId: lifeAdminRow.id,
               kind: "label_added",
               actor,
               payload: { labelId },
@@ -1515,24 +1515,24 @@ export function caseRoutes(db: Db, storage: StorageService) {
         ? "status_changed"
         : body.fields !== undefined
           ? "fields_changed"
-          : Object.hasOwn(body, "parentCaseId") && body.parentCaseId
+          : Object.hasOwn(body, "parentLifeAdminId") && body.parentLifeAdminId
             ? "child_linked"
             : "updated";
-      await insertCaseEvent(tx, {
-        companyId: caseRow.companyId,
-        caseId: caseRow.id,
+      await insertLifeAdminEvent(tx, {
+        domainId: lifeAdminRow.domainId,
+        lifeAdminId: lifeAdminRow.id,
         kind,
         actor,
         payload: {
-          previousStatus: body.status !== undefined ? caseRow.status : undefined,
+          previousStatus: body.status !== undefined ? lifeAdminRow.status : undefined,
           status: body.status,
-          parentCaseId: body.parentCaseId,
+          parentLifeAdminId: body.parentLifeAdminId,
         },
       });
-      await autoLinkRunIssue(tx, { companyId: caseRow.companyId, caseId: caseRow.id, actor, role: "work" });
+      await autoLinkRunIssue(tx, { domainId: lifeAdminRow.domainId, lifeAdminId: lifeAdminRow.id, actor, role: "work" });
       return row!;
     });
-    res.json(await loadCaseDetail(db, updated));
+    res.json(await loadLifeAdminDetail(db, updated));
   });
 
   return router;

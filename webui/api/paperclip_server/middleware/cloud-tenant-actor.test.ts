@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Request } from "express";
 import type { Db } from "@paperclipai/db";
-import { authUsers, domains, companyMemberships, instanceUserRoles } from "@paperclipai/db";
+import { authUsers, domains, domainMemberships, instanceUserRoles } from "@paperclipai/db";
 import { resolveCloudTenantActor } from "./auth.js";
 
 // Minimal fake Drizzle Db: records every table passed to .insert() / .delete() and
 // supports the chained call shapes used by resolveCloudTenantActor (values /
 // onConflictDo* / returning().then() / delete().where()). The chain is awaitable so
 // directly-awaited statements resolve.
-function createFakeDb(membershipRow = { companyId: "company-x", membershipRole: "owner", status: "active" }) {
+function createFakeDb(membershipRow = { domainId: "domain-x", membershipRole: "owner", status: "active" }) {
   const insertedTables: unknown[] = [];
   const deletedTables: unknown[] = [];
   const chain: Record<string, unknown> = {};
@@ -61,12 +61,12 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
     expect(insertedTables).not.toContain(instanceUserRoles);
   });
 
-  it("is scoped to exactly the one company from its stack", async () => {
+  it("is scoped to exactly the one domain from its stack", async () => {
     const { db } = createFakeDb();
     const actor = await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
-    expect(actor!.companyIds).toHaveLength(1);
+    expect(actor!.domainIds).toHaveLength(1);
     expect(actor!.memberships).toHaveLength(1);
-    expect(actor?.memberships?.[0]?.companyId).toBe(actor?.companyIds?.[0]);
+    expect(actor?.memberships?.[0]?.domainId).toBe(actor?.domainIds?.[0]);
     expect(actor?.memberships?.[0]?.membershipRole).toBe("owner");
     expect(actor!.source).toBe("cloud_tenant");
   });
@@ -78,12 +78,12 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
     expect(deletedTables).toContain(instanceUserRoles);
   });
 
-  it("still upserts the user, company, and membership", async () => {
+  it("still upserts the user, domain, and membership", async () => {
     const { db, insertedTables } = createFakeDb();
     await resolveCloudTenantActor(db, fakeReq(VALID_HEADERS));
     expect(insertedTables).toContain(authUsers);
     expect(insertedTables).toContain(domains);
-    expect(insertedTables).toContain(companyMemberships);
+    expect(insertedTables).toContain(domainMemberships);
   });
 
   it("returns null when the server token is unset", async () => {
@@ -94,7 +94,7 @@ describe("resolveCloudTenantActor (shared-pool hardening)", () => {
   });
 
   it("maps a non-owner stack role through to the membership without elevating", async () => {
-    const { db } = createFakeDb({ companyId: "company-y", membershipRole: "member", status: "active" });
+    const { db } = createFakeDb({ domainId: "domain-y", membershipRole: "member", status: "active" });
     const actor = await resolveCloudTenantActor(
       db,
       fakeReq({ ...VALID_HEADERS, "x-paperclip-cloud-stack-role": "member" }),

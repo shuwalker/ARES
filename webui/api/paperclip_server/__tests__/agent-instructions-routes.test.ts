@@ -9,7 +9,7 @@ const mockAgentService = vi.hoisted(() => ({
 }));
 
 const mockBuiltInAgentService = vi.hoisted(() => ({
-  ensureCompanyDefaultAgentGrants: vi.fn(),
+  ensureDomainDefaultAgentGrants: vi.fn(),
 }));
 
 const mockAgentInstructionsService = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ const mockAccessService = vi.hoisted(() => ({
 
 const mockSecretService = vi.hoisted(() => ({
   resolveAdapterConfigForRuntime: vi.fn(),
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
+  normalizeAdapterConfigForPersistence: vi.fn(async (_domainId: string, config: Record<string, unknown>) => config),
 }));
 const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
@@ -47,7 +47,7 @@ vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
   approvalService: () => ({}),
   builtInAgentService: () => mockBuiltInAgentService,
-  companySkillService: () => ({ listRuntimeSkillEntries: vi.fn() }),
+  domainSkillService: () => ({ listRuntimeSkillEntries: vi.fn() }),
   budgetService: () => ({}),
   environmentService: () => mockEnvironmentService,
   heartbeatService: () => ({}),
@@ -79,7 +79,7 @@ function registerModuleMocks() {
     accessService: () => mockAccessService,
     approvalService: () => ({}),
     builtInAgentService: () => mockBuiltInAgentService,
-    companySkillService: () => ({ listRuntimeSkillEntries: vi.fn() }),
+    domainSkillService: () => ({ listRuntimeSkillEntries: vi.fn() }),
     budgetService: () => ({}),
     heartbeatService: () => ({}),
     issueApprovalService: () => ({}),
@@ -108,7 +108,7 @@ function boardActor() {
   return {
     type: "board",
     userId: "local-board",
-    companyIds: ["company-1"],
+    domainIds: ["domain-1"],
     source: "local_implicit",
     isInstanceAdmin: false,
   };
@@ -160,7 +160,7 @@ async function requestApp(
 function makeAgent() {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
+    domainId: "domain-1",
     name: "Agent",
     role: "engineer",
     title: "Engineer",
@@ -199,7 +199,7 @@ describe("agent instructions bundle routes", () => {
     vi.doUnmock("../middleware/index.js");
     registerModuleMocks();
     vi.clearAllMocks();
-    mockBuiltInAgentService.ensureCompanyDefaultAgentGrants.mockResolvedValue(0);
+    mockBuiltInAgentService.ensureDomainDefaultAgentGrants.mockResolvedValue(0);
     mockSyncInstructionsBundleConfigFromFilePath.mockImplementation((_agent, config) => config);
     mockFindServerAdapter.mockImplementation((_type: string) => ({ type: _type }));
     mockAccessService.decide.mockResolvedValue({
@@ -214,7 +214,7 @@ describe("agent instructions bundle routes", () => {
     }));
     mockAgentInstructionsService.getBundle.mockResolvedValue({
       agentId: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       mode: "managed",
       rootPath: "/tmp/agent-1",
       managedRootPath: "/tmp/agent-1",
@@ -272,7 +272,7 @@ describe("agent instructions bundle routes", () => {
     const res = await requestApp(
       await createApp(),
       (baseUrl) => request(baseUrl)
-        .get("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle?companyId=company-1"),
+        .get("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle?domainId=domain-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -307,7 +307,7 @@ describe("agent instructions bundle routes", () => {
       await createApp({
         type: "agent",
         agentId: "agent-reader",
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
       }),
       (baseUrl) => request(baseUrl)
@@ -320,7 +320,7 @@ describe("agent instructions bundle routes", () => {
       action: "agent_config:read",
       resource: {
         type: "agent",
-        companyId: "company-1",
+        domainId: "domain-1",
         agentId: "11111111-1111-4111-8111-111111111111",
       },
     }));
@@ -332,7 +332,7 @@ describe("agent instructions bundle routes", () => {
       await createApp({
         type: "agent",
         agentId: "11111111-1111-4111-8111-111111111111",
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
       }),
       (baseUrl) => request(baseUrl)
@@ -366,7 +366,7 @@ describe("agent instructions bundle routes", () => {
       await createApp({
         type: "agent",
         agentId: "coach-agent",
-        companyId: "company-1",
+        domainId: "domain-1",
         source: "agent_key",
       }),
       (baseUrl) => request(baseUrl)
@@ -379,7 +379,7 @@ describe("agent instructions bundle routes", () => {
       action: "agent_config:read",
       resource: {
         type: "agent",
-        companyId: "company-1",
+        domainId: "domain-1",
         agentId: "11111111-1111-4111-8111-111111111111",
       },
     }));
@@ -391,7 +391,7 @@ describe("agent instructions bundle routes", () => {
 
   it("writes a bundle file and persists compatibility config", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .put("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle/file?companyId=company-1")
+      .put("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle/file?domainId=domain-1")
       .send({
         path: "AGENTS.md",
         content: "# Updated Agent\n",
@@ -433,7 +433,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111?domainId=domain-1")
       .send({
         adapterType: "claude_local",
         adapterConfig: {
@@ -460,7 +460,7 @@ describe("agent instructions bundle routes", () => {
 
   it("preserves paperclip skill-sync selections when switching adapters", async () => {
     // Desired skills live inside the per-adapter config under
-    // `paperclipSkillSync`, yet they are adapter-agnostic company-level
+    // `paperclipSkillSync`, yet they are adapter-agnostic domain-level
     // selections. Switching adapter type must not silently wipe them — the
     // server carries them over from the existing config the same way it
     // preserves env/cwd and the instructions bundle.
@@ -474,7 +474,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111?domainId=domain-1")
       .send({
         adapterType: "codex_local",
         replaceAdapterConfig: true,
@@ -511,7 +511,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111?domainId=domain-1")
       .send({
         adapterConfig: {
           command: "codex --profile engineer",
@@ -549,7 +549,7 @@ describe("agent instructions bundle routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .patch("/api/agents/11111111-1111-4111-8111-111111111111?companyId=company-1")
+      .patch("/api/agents/11111111-1111-4111-8111-111111111111?domainId=domain-1")
       .send({
         replaceAdapterConfig: true,
         adapterConfig: {

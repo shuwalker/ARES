@@ -4,10 +4,10 @@ import { assets } from "@paperclipai/db";
 
 export function assetService(db: Db) {
   return {
-    create: (companyId: string, data: Omit<typeof assets.$inferInsert, "companyId">) =>
+    create: (domainId: string, data: Omit<typeof assets.$inferInsert, "domainId">) =>
       db
         .insert(assets)
-        .values({ ...data, companyId })
+        .values({ ...data, domainId })
         .returning()
         .then((rows) => rows[0]),
 

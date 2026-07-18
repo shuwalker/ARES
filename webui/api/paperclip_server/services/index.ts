@@ -1,8 +1,8 @@
-export { companyService } from "./domains.js";
-export { companyArtifactsService } from "./company-artifacts.js";
-export { companySearchService } from "./company-search.js";
+export { domainService } from "./domains.js";
+export { domainArtifactsService } from "./domain-artifacts.js";
+export { domainSearchService } from "./domain-search.js";
 export { feedbackService } from "./feedback.js";
-export { companySkillService } from "./company-skills.js";
+export { domainSkillService } from "./domain-skills.js";
 export { agentService, deduplicateAgentName } from "./agents.js";
 export {
   builtInAgentService,
@@ -71,7 +71,7 @@ export { approvalService } from "./approvals.js";
 export { budgetService } from "./budgets.js";
 export { secretService } from "./secrets.js";
 export { routineService } from "./routines.js";
-export { costService } from "./finances.js";
+export { financeService } from "./finances.js";
 export { financeService } from "./finance.js";
 export { heartbeatService, resolveHeartbeatSchedulingSuppression } from "./heartbeat.js";
 export {
@@ -102,7 +102,7 @@ export { boardAuthService } from "./board-auth.js";
 export { instanceSettingsService } from "./instance-settings.js";
 export { bootstrapExecutionPolicyFromEnv } from "./execution-policy-bootstrap.js";
 export { cloudUpstreamService, reconcileCloudUpstreamRunsOnStartup } from "./cloud-upstreams.js";
-export { companyPortabilityService } from "./company-portability.js";
+export { domainPortabilityService } from "./domain-portability.js";
 export { teamsCatalogService } from "./teams-catalog.js";
 export { environmentService } from "./environments.js";
 export {
@@ -129,7 +129,7 @@ export { workspaceFileResourceService } from "./workspace-file-resources.js";
 export { workProductService } from "./work-products.js";
 export { logActivity, type LogActivityInput } from "./activity-log.js";
 export { notifyHireApproved, type NotifyHireApprovedInput } from "./hire-hook.js";
-export { publishLiveEvent, subscribeCompanyLiveEvents } from "./live-events.js";
+export { publishLiveEvent, subscribeDomainLiveEvents } from "./live-events.js";
 export {
   reconcileCodexLocalManagedHomesOnStartup,
   type CodexAuthReconciliationSummary,

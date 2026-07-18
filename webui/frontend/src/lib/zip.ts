@@ -1,4 +1,4 @@
-import type { CompanyPortabilityFileEntry } from "@paperclipai/shared";
+import type { DomainPortabilityFileEntry } from "@paperclipai/shared";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -103,7 +103,7 @@ function inferBinaryContentType(pathValue: string) {
   const normalized = normalizeArchivePath(pathValue);
   const extensionIndex = normalized.lastIndexOf(".");
   if (extensionIndex === -1) return null;
-  return binaryContentTypeByExtension[normalized.slice(extensionIndex).toLowerLifeAdmin()] ?? null;
+  return binaryContentTypeByExtension[normalized.slice(extensionIndex).toLowerCase()] ?? null;
 }
 
 function bytesToBase64(bytes: Uint8Array) {
@@ -121,7 +121,7 @@ function base64ToBytes(base64: string) {
   return bytes;
 }
 
-function bytesToPortableFileEntry(pathValue: string, bytes: Uint8Array): CompanyPortabilityFileEntry {
+function bytesToPortableFileEntry(pathValue: string, bytes: Uint8Array): DomainPortabilityFileEntry {
   const contentType = inferBinaryContentType(pathValue);
   if (!contentType) return textDecoder.decode(bytes);
   return {
@@ -131,7 +131,7 @@ function bytesToPortableFileEntry(pathValue: string, bytes: Uint8Array): Company
   };
 }
 
-function portableFileEntryToBytes(entry: CompanyPortabilityFileEntry): Uint8Array {
+function portableFileEntryToBytes(entry: DomainPortabilityFileEntry): Uint8Array {
   if (typeof entry === "string") return textEncoder.encode(entry);
   return base64ToBytes(entry.data);
 }
@@ -152,10 +152,10 @@ async function inflateZipEntry(compressionMethod: number, bytes: Uint8Array) {
 
 export async function readZipArchive(source: ArrayBuffer | Uint8Array): Promise<{
   rootPath: string | null;
-  files: Record<string, CompanyPortabilityFileEntry>;
+  files: Record<string, DomainPortabilityFileEntry>;
 }> {
   const bytes = source instanceof Uint8Array ? source : new Uint8Array(source);
-  const entries: Array<{ path: string; body: CompanyPortabilityFileEntry }> = [];
+  const entries: Array<{ path: string; body: DomainPortabilityFileEntry }> = [];
   let offset = 0;
 
   while (offset + 4 <= bytes.length) {
@@ -201,7 +201,7 @@ export async function readZipArchive(source: ArrayBuffer | Uint8Array): Promise<
   }
 
   const rootPath = sharedArchiveRoot(entries.map((entry) => entry.path));
-  const files: Record<string, CompanyPortabilityFileEntry> = {};
+  const files: Record<string, DomainPortabilityFileEntry> = {};
   for (const entry of entries) {
     const normalizedPath =
       rootPath && entry.path.startsWith(`${rootPath}/`)
@@ -214,7 +214,7 @@ export async function readZipArchive(source: ArrayBuffer | Uint8Array): Promise<
   return { rootPath, files };
 }
 
-export function createZipArchive(files: Record<string, CompanyPortabilityFileEntry>, rootPath: string): Uint8Array {
+export function createZipArchive(files: Record<string, DomainPortabilityFileEntry>, rootPath: string): Uint8Array {
   const normalizedRoot = normalizeArchivePath(rootPath);
   const localChunks: Uint8Array[] = [];
   const centralChunks: Uint8Array[] = [];

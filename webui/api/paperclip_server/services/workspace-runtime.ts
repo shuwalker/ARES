@@ -64,7 +64,7 @@ export interface ExecutionWorkspaceIssueRef {
 export interface ExecutionWorkspaceAgentRef {
   id: string | null;
   name: string;
-  companyId: string;
+  domainId: string;
 }
 
 export interface RealizedExecutionWorkspace extends ExecutionWorkspaceInput {
@@ -91,7 +91,7 @@ export class WorkspaceRuntimeValidationFailure extends Error {
 
 export interface RuntimeServiceRef {
   id: string;
-  companyId: string;
+  domainId: string;
   projectId: string | null;
   projectWorkspaceId: string | null;
   executionWorkspaceId: string | null;
@@ -352,7 +352,7 @@ function stableRuntimeServiceId(input: {
 function toRuntimeServiceRef(record: RuntimeServiceRecord, overrides?: Partial<RuntimeServiceRef>): RuntimeServiceRef {
   return {
     id: record.id,
-    companyId: record.companyId,
+    domainId: record.domainId,
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
@@ -773,13 +773,13 @@ function formatIssueReference(issueId: string | null | undefined, identifier: st
   return `[${identifier}](/${match[1]}/issues/${identifier})`;
 }
 
-async function readIssueCompanyId(db: Db, issueId: string | null | undefined): Promise<string | null> {
+async function readIssueDomainId(db: Db, issueId: string | null | undefined): Promise<string | null> {
   if (!issueId) return null;
   return db
-    .select({ companyId: issues.companyId })
+    .select({ domainId: issues.domainId })
     .from(issues)
     .where(eq(issues.id, issueId))
-    .then((rows) => rows[0]?.companyId ?? null);
+    .then((rows) => rows[0]?.domainId ?? null);
 }
 
 async function findGitWorktreeBranchContention(input: {
@@ -790,10 +790,10 @@ async function findGitWorktreeBranchContention(input: {
   actualBranchName: string | null;
 }): Promise<GitWorktreeBranchContention | null> {
   if (!input.db) return null;
-  const companyId = await readIssueCompanyId(input.db, input.sourceIssue?.id);
-  if (!companyId) return null;
+  const domainId = await readIssueDomainId(input.db, input.sourceIssue?.id);
+  if (!domainId) return null;
   return executionWorkspaceService(input.db).findGitWorktreeContention({
-    companyId,
+    domainId,
     worktreePath: input.worktreePath,
     liveBranchName: input.actualBranchName,
     excludingExecutionWorkspaceId: input.executionWorkspaceId,
@@ -816,12 +816,12 @@ async function findActiveRuntimeServiceBlockingDirtyQuarantine(input: {
     : null;
   const serviceScopeCondition = inheritedProjectWorkspaceId
     ? and(
-        eq(workspaceRuntimeServices.companyId, input.workspace.companyId),
+        eq(workspaceRuntimeServices.domainId, input.workspace.domainId),
         eq(workspaceRuntimeServices.projectWorkspaceId, inheritedProjectWorkspaceId),
         eq(workspaceRuntimeServices.scopeType, "project_workspace"),
       )
     : and(
-        eq(workspaceRuntimeServices.companyId, input.workspace.companyId),
+        eq(workspaceRuntimeServices.domainId, input.workspace.domainId),
         eq(workspaceRuntimeServices.executionWorkspaceId, input.workspace.id),
       );
 
@@ -1156,7 +1156,7 @@ function formatDirtyQuarantineAuditComment(input: {
 
 async function writeDirtyQuarantineAuditComments(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   evidence: GitWorktreeBranchIncoherenceEvidence;
   sourceIssue: ExecutionWorkspaceIssueRef | null;
   rescueBranch: string;
@@ -1179,7 +1179,7 @@ async function writeDirtyQuarantineAuditComments(input: {
     const [sourceComment] = await input.db
       .insert(issueComments)
       .values({
-        companyId: input.companyId,
+        domainId: input.domainId,
         issueId: input.evidence.sourceIssueId,
         authorAgentId: null,
         authorUserId: null,
@@ -1200,7 +1200,7 @@ async function writeDirtyQuarantineAuditComments(input: {
     const [claimantComment] = await input.db
       .insert(issueComments)
       .values({
-        companyId: input.companyId,
+        domainId: input.domainId,
         issueId: claimantIssueId,
         authorAgentId: null,
         authorUserId: null,
@@ -1221,7 +1221,7 @@ async function writeDirtyQuarantineAuditComments(input: {
 
 async function logDirtyQuarantineActivity(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   evidence: GitWorktreeBranchIncoherenceEvidence;
   rescueBranch: string;
   rescueCommitSha: string;
@@ -1231,13 +1231,13 @@ async function logDirtyQuarantineActivity(input: {
   claimantAuditCommentId: string | null;
 }) {
   await logActivity(input.db, {
-    companyId: input.companyId,
+    domainId: input.domainId,
     actorType: "system",
     actorId: "workspace_runtime",
     runId: input.heartbeatRunId,
     action: "execution_workspace.dirty_worktree_quarantined",
     entityType: input.evidence.executionWorkspaceId ? "execution_workspace" : "issue",
-    entityId: input.evidence.executionWorkspaceId ?? input.evidence.sourceIssueId ?? input.companyId,
+    entityId: input.evidence.executionWorkspaceId ?? input.evidence.sourceIssueId ?? input.domainId,
     details: {
       reason: GIT_WORKTREE_BRANCH_INCOHERENCE_REASON,
       sourceIssueId: input.evidence.sourceIssueId,
@@ -1313,10 +1313,10 @@ async function quarantineDirtyWorktreeBranchIncoherence(input: {
   phase?: "worktree_prepare" | "workspace_finalize";
   recorder?: WorkspaceOperationRecorder | null;
 }): Promise<DirtyQuarantineRepairResult> {
-  const companyId = await readIssueCompanyId(input.db, input.evidence.sourceIssueId);
-  if (!companyId) {
+  const domainId = await readIssueDomainId(input.db, input.evidence.sourceIssueId);
+  if (!domainId) {
     input.evidence.safeRepair.eligible = false;
-    input.evidence.safeRepair.reason = "dirty quarantine repair requires a source issue company for audit";
+    input.evidence.safeRepair.reason = "dirty quarantine repair requires a source issue domain for audit";
     throw branchIncoherenceValidationFailure(input.evidence);
   }
 
@@ -1454,7 +1454,7 @@ async function quarantineDirtyWorktreeBranchIncoherence(input: {
 
     const comments = await writeDirtyQuarantineAuditComments({
       db: input.db,
-      companyId,
+      domainId,
       evidence: input.evidence,
       sourceIssue: input.sourceIssue,
       rescueBranch,
@@ -1464,7 +1464,7 @@ async function quarantineDirtyWorktreeBranchIncoherence(input: {
     });
     await logDirtyQuarantineActivity({
       db: input.db,
-      companyId,
+      domainId,
       evidence: input.evidence,
       rescueBranch,
       rescueCommitSha,
@@ -1553,7 +1553,7 @@ async function recordForwardBranchReconcileOperation(input: {
 
 async function logForwardBranchReconcileActivity(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   executionWorkspaceId: string;
   sourceIssueId: string | null;
   runId: string | null;
@@ -1569,7 +1569,7 @@ async function logForwardBranchReconcileActivity(input: {
   recoveryActionId: string | null;
 }) {
   await logActivity(input.db, {
-    companyId: input.companyId,
+    domainId: input.domainId,
     actorType: "system",
     actorId: "workspace_runtime",
     runId: input.runId,
@@ -1621,7 +1621,7 @@ export async function reconcilePendingForwardBranchAfterPersistence(input: {
   );
   await logForwardBranchReconcileActivity({
     db: input.db,
-    companyId: result.workspace.companyId,
+    domainId: result.workspace.domainId,
     executionWorkspaceId: result.workspace.id,
     sourceIssueId: result.workspace.sourceIssueId,
     runId: input.heartbeatRunId ?? null,
@@ -1773,7 +1773,7 @@ export async function ensureGitWorktreeBranchCoherent(input: {
         );
         await logForwardBranchReconcileActivity({
           db: input.db,
-          companyId: result.workspace.companyId,
+          domainId: result.workspace.domainId,
           executionWorkspaceId: result.workspace.id,
           sourceIssueId: result.workspace.sourceIssueId ?? evidence.sourceIssueId ?? null,
           runId: input.heartbeatRunId ?? null,
@@ -2362,7 +2362,7 @@ function buildWorkspaceCommandEnv(input: {
   env.PAPERCLIP_PROJECT_WORKSPACE_ID = input.base.workspaceId ?? "";
   env.PAPERCLIP_AGENT_ID = input.agent.id ?? "";
   env.PAPERCLIP_AGENT_NAME = input.agent.name;
-  env.PAPERCLIP_COMPANY_ID = input.agent.companyId;
+  env.PAPERCLIP_DOMAIN_ID = input.agent.domainId;
   env.PAPERCLIP_ISSUE_ID = input.issue?.id ?? "";
   env.PAPERCLIP_ISSUE_IDENTIFIER = input.issue?.identifier ?? "";
   env.PAPERCLIP_ISSUE_TITLE = input.issue?.title ?? "";
@@ -3625,7 +3625,7 @@ async function isRuntimeServiceUrlHealthy(
 function toPersistedWorkspaceRuntimeService(record: RuntimeServiceRecord): typeof workspaceRuntimeServices.$inferInsert {
   return {
     id: record.id,
-    companyId: record.companyId,
+    domainId: record.domainId,
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
@@ -3692,7 +3692,7 @@ async function persistRuntimeServiceRecord(db: Db | undefined, record: RuntimeSe
 
 async function findStoppedRuntimeServiceReuseCandidate(input: {
   db?: Db;
-  companyId: string;
+  domainId: string;
   reuseKey: string | null;
 }): Promise<StoppedRuntimeServiceReuseCandidate | null> {
   if (!input.db || !input.reuseKey) return null;
@@ -3704,7 +3704,7 @@ async function findStoppedRuntimeServiceReuseCandidate(input: {
     .from(workspaceRuntimeServices)
     .where(
       and(
-        eq(workspaceRuntimeServices.companyId, input.companyId),
+        eq(workspaceRuntimeServices.domainId, input.domainId),
         eq(workspaceRuntimeServices.reuseKey, input.reuseKey),
         eq(workspaceRuntimeServices.provider, "local_process"),
         eq(workspaceRuntimeServices.status, "stopped"),
@@ -3763,7 +3763,7 @@ export function normalizeAdapterManagedRuntimeServices(input: {
         providerRef: report.providerRef ?? null,
         reuseKey: report.reuseKey ?? null,
       }),
-      companyId: input.agent.companyId,
+      domainId: input.agent.domainId,
       projectId: report.projectId ?? input.workspace.projectId,
       projectWorkspaceId: report.projectWorkspaceId ?? input.workspace.workspaceId,
       executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -3833,7 +3833,7 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
   const identityPort = identity.identityPort;
   const stoppedReuseCandidate = await findStoppedRuntimeServiceReuseCandidate({
     db: input.db,
-    companyId: input.agent.companyId,
+    domainId: input.agent.domainId,
     reuseKey: input.reuseKey,
   });
   let reusableStoppedPort: number | null = null;
@@ -3910,7 +3910,7 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
       return {
         record: {
           id: adoptedRecord.runtimeServiceId ?? randomUUID(),
-          companyId: input.agent.companyId,
+          domainId: input.agent.domainId,
           projectId: input.workspace.projectId,
           projectWorkspaceId: input.workspace.workspaceId,
           executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -3999,7 +3999,7 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
   const nowIso = new Date().toISOString();
   const record: RuntimeServiceRecord = {
     id: stoppedReuseCandidate?.id ?? randomUUID(),
-    companyId: input.agent.companyId,
+    domainId: input.agent.domainId,
     projectId: input.workspace.projectId,
     projectWorkspaceId: input.workspace.workspaceId,
     executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -4501,7 +4501,7 @@ export async function startRuntimeServicesForWorkspaceControl(
           .where(
             and(
               eq(executionWorkspaces.id, input.executionWorkspaceId),
-              eq(executionWorkspaces.companyId, input.actor.companyId),
+              eq(executionWorkspaces.domainId, input.actor.domainId),
             ),
           )
           .for("update");
@@ -4515,7 +4515,7 @@ export async function startRuntimeServicesForWorkspaceControl(
           .where(
             and(
               eq(projectWorkspaces.id, input.workspace.workspaceId),
-              eq(projectWorkspaces.companyId, input.actor.companyId),
+              eq(projectWorkspaces.domainId, input.actor.domainId),
             ),
           )
           .for("update");
@@ -4664,7 +4664,7 @@ export async function stopRuntimeServicesForProjectWorkspace(input: {
 
 export async function listWorkspaceRuntimeServicesForProjectWorkspaces(
   db: Db,
-  companyId: string,
+  domainId: string,
   projectWorkspaceIds: string[],
 ) {
   if (projectWorkspaceIds.length === 0) return new Map<string, typeof workspaceRuntimeServices.$inferSelect[]>();
@@ -4673,7 +4673,7 @@ export async function listWorkspaceRuntimeServicesForProjectWorkspaces(
     .from(workspaceRuntimeServices)
     .where(
       and(
-        eq(workspaceRuntimeServices.companyId, companyId),
+        eq(workspaceRuntimeServices.domainId, domainId),
         inArray(workspaceRuntimeServices.projectWorkspaceId, projectWorkspaceIds),
         eq(workspaceRuntimeServices.scopeType, "project_workspace"),
       ),
@@ -4742,7 +4742,7 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
       } else {
         const record: RuntimeServiceRecord = {
           id: row.id,
-          companyId: row.companyId,
+          domainId: row.domainId,
           projectId: row.projectId ?? null,
           projectWorkspaceId: row.projectWorkspaceId ?? null,
           executionWorkspaceId: row.executionWorkspaceId ?? null,
@@ -4827,7 +4827,7 @@ export async function restartDesiredRuntimeServicesOnStartup(db: Db) {
     try {
       const refs = await startRuntimeServicesForWorkspaceControl({
         db,
-        actor: { id: null, name: "Paperclip", companyId: row.companyId },
+        actor: { id: null, name: "Paperclip", domainId: row.domainId },
         issue: null,
         workspace: {
           baseCwd: row.cwd,
@@ -4875,7 +4875,7 @@ export async function restartDesiredRuntimeServicesOnStartup(db: Db) {
     try {
       const refs = await startRuntimeServicesForWorkspaceControl({
         db,
-        actor: { id: null, name: "Paperclip", companyId: row.companyId },
+        actor: { id: null, name: "Paperclip", domainId: row.domainId },
         issue: row.sourceIssueId
           ? {
               id: row.sourceIssueId,
@@ -4942,7 +4942,7 @@ export async function persistAdapterManagedRuntimeServices(input: {
       .insert(workspaceRuntimeServices)
       .values({
         id: ref.id,
-        companyId: ref.companyId,
+        domainId: ref.domainId,
         projectId: ref.projectId,
         projectWorkspaceId: ref.projectWorkspaceId,
         executionWorkspaceId: ref.executionWorkspaceId,

@@ -18,7 +18,7 @@ const mockProjectService = vi.hoisted(() => ({
 }));
 
 const mockInstanceSettingsService = vi.hoisted(() => ({
-  listCompanyIds: vi.fn(),
+  listDomainIds: vi.fn(),
 }));
 
 const mockEnvironmentService = vi.hoisted(() => ({
@@ -51,7 +51,7 @@ const mockExecutionWorkspaceService = vi.hoisted(() => ({
 const mockSecretService = vi.hoisted(() => ({
   create: vi.fn(),
   normalizeEnvBindingsForPersistence: vi.fn(),
-  listBindingCompanyIdsForTarget: vi.fn(),
+  listBindingDomainIdsForTarget: vi.fn(),
   resolveSecretValueForEphemeralAccess: vi.fn(),
   syncEnvBindingsForTarget: vi.fn(),
   syncSecretRefsForTarget: vi.fn(),
@@ -124,7 +124,7 @@ function createEnvironment(overrides: Record<string, unknown> = {}) {
 function createTemplate(overrides: Record<string, unknown> = {}) {
   return {
     id: "template-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     environmentId: "env-1",
     provider: "daytona",
     templateKind: "snapshot",
@@ -147,7 +147,7 @@ function createTemplate(overrides: Record<string, unknown> = {}) {
 function createSession(overrides: Record<string, unknown> = {}) {
   return {
     id: "session-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     environmentId: "env-1",
     templateId: "template-1",
     promotedTemplateId: null,
@@ -170,7 +170,7 @@ function createSession(overrides: Record<string, unknown> = {}) {
     },
     connectionSecretRef: null,
     metadata: {
-      setupRpcCompanyId: "company-1",
+      setupRpcDomainId: "domain-1",
       safeLabel: "setup",
       connectUrl: "https://203.0.113.10/setup",
     },
@@ -201,7 +201,7 @@ function boardActor(overrides: Record<string, unknown> = {}) {
     type: "board",
     userId: "user-1",
     source: "session",
-    companyIds: ["company-1"],
+    domainIds: ["domain-1"],
     isInstanceAdmin: true,
     ...overrides,
   };
@@ -211,7 +211,7 @@ function agentActor() {
   return {
     type: "agent",
     agentId: "agent-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     source: "agent_key",
     runId: "run-1",
   };
@@ -229,7 +229,7 @@ describe("environment customImage setup routes", () => {
   beforeEach(() => {
     mockIssueService.clearExecutionWorkspaceEnvironmentSelection.mockReset();
     mockProjectService.clearExecutionWorkspaceEnvironmentSelection.mockReset();
-    mockInstanceSettingsService.listCompanyIds.mockReset();
+    mockInstanceSettingsService.listDomainIds.mockReset();
     Object.values(mockEnvironmentService).forEach((mock) => mock.mockReset());
     Object.values(mockEnvironmentCustomImageService).forEach((mock) => mock.mockReset());
     mockExecutionWorkspaceService.clearEnvironmentSelection.mockReset();
@@ -238,7 +238,7 @@ describe("environment customImage setup routes", () => {
     environmentCustomImageTerminalSessionStore.clear();
     environmentCustomImageTerminalConnectionRegistry.clear();
 
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1"]);
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-1"]);
     mockEnvironmentService.getById.mockResolvedValue(createEnvironment());
     mockEnvironmentCustomImageService.getOverview.mockResolvedValue({
       activeTemplate: null,
@@ -293,7 +293,7 @@ describe("environment customImage setup routes", () => {
 
   it("starts a setup session, returns the live payload, and logs redacted details", async () => {
     const res = await request(createApp(boardActor()))
-      .post("/api/environments/env-1/custom-image-setup-sessions?companyId=company-1")
+      .post("/api/environments/env-1/custom-image-setup-sessions?domainId=domain-1")
       .send({ ttlSeconds: 3600 });
 
     expect(res.status).toBe(201);
@@ -306,7 +306,7 @@ describe("environment customImage setup routes", () => {
         userId: "user-1",
         agentId: null,
       },
-      secretContextCompanyId: "company-1",
+      secretContextDomainId: "domain-1",
     });
     const activity = loggedActivityJson();
     expect(activity).not.toContain("203.0.113.10");
@@ -394,7 +394,7 @@ describe("environment customImage setup routes", () => {
 
   it("denies terminal token minting to non-admin board users before connection payload refresh", async () => {
     const res = await request(createApp(boardActor({
-      companyIds: ["company-2"],
+      domainIds: ["domain-2"],
       isInstanceAdmin: false,
     })))
       .post("/api/environment-custom-image-setup-sessions/session-1/terminal-session-token")
@@ -523,7 +523,7 @@ describe("environment customImage setup routes", () => {
   it("denies agent API key actors before customImage state or payloads are read", async () => {
     const app = createApp(agentActor());
     const start = await request(app)
-      .post("/api/environments/env-1/custom-image-setup-sessions?companyId=company-1")
+      .post("/api/environments/env-1/custom-image-setup-sessions?domainId=domain-1")
       .send({});
     const status = await request(app)
       .get("/api/environment-custom-image-setup-sessions/session-1");
@@ -539,7 +539,7 @@ describe("environment customImage setup routes", () => {
     mockEnvironmentCustomImageService.getSessionById.mockResolvedValue(createSession());
 
     const res = await request(createApp(boardActor({
-      companyIds: ["company-2"],
+      domainIds: ["domain-2"],
       isInstanceAdmin: false,
     })))
       .get("/api/environment-custom-image-setup-sessions/session-1");
@@ -549,11 +549,11 @@ describe("environment customImage setup routes", () => {
     expect(mockEnvironmentCustomImageService.refreshSetupSession).not.toHaveBeenCalled();
   });
 
-  it("denies single-company fallback when the board actor is not a member", async () => {
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-2"]);
+  it("denies single-domain fallback when the board actor is not a member", async () => {
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-2"]);
 
     const res = await request(createApp(boardActor({
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       isInstanceAdmin: false,
     })))
       .post("/api/environments/env-1/custom-image-setup-sessions")
@@ -567,7 +567,7 @@ describe("environment customImage setup routes", () => {
     mockEnvironmentCustomImageService.getSessionById.mockResolvedValue(createSession());
     const terminal = environmentCustomImageTerminalSessionStore.create({
       setupSessionId: "session-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       environmentId: "env-1",
       provider: "daytona",
       ssh: { username: "token-secret", host: "203.0.113.10", port: 2222 },
@@ -616,13 +616,13 @@ describe("environment customImage setup routes", () => {
     expect(loggedActivityJson()).not.toContain("lease-secret");
   });
 
-  it("rolls back and disables active templates through company-scoped routes", async () => {
+  it("rolls back and disables active templates through domain-scoped routes", async () => {
     const app = createApp(boardActor());
     const rollback = await request(app)
-      .post("/api/environments/env-1/custom-image-template/rollback?companyId=company-1")
+      .post("/api/environments/env-1/custom-image-template/rollback?domainId=domain-1")
       .send({});
     const disable = await request(app)
-      .delete("/api/environments/env-1/custom-image-template?companyId=company-1&deleteProviderTemplate=true");
+      .delete("/api/environments/env-1/custom-image-template?domainId=domain-1&deleteProviderTemplate=true");
 
     expect(rollback.status).toBe(200);
     expect(disable.status).toBe(200);

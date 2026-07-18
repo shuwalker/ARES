@@ -8,7 +8,7 @@ import { parseGeminiStdoutLine } from "@paperclipai/adapter-gemini-local/ui";
 import { printGeminiStreamEvent } from "@paperclipai/adapter-gemini-local/cli";
 
 describe("gemini_local parser", () => {
-  it("extracts session, summary, usage, cost, and terminal error message from v0.38 stream-json output", () => {
+  it("extracts session, summary, usage, finance, and terminal error message from v0.38 stream-json output", () => {
     const stdout = [
       JSON.stringify({ type: "system", subtype: "init", session_id: "gemini-session-1", model: "gemini-2.5-pro" }),
       JSON.stringify({
@@ -25,7 +25,7 @@ describe("gemini_local parser", () => {
           cached_input_tokens: 3,
           output_tokens: 7,
         },
-        total_cost_usd: 0.00123,
+        total_finance_usd: 0.00123,
       }),
       JSON.stringify({ type: "error", message: "model access denied" }),
     ].join("\n");
@@ -38,7 +38,7 @@ describe("gemini_local parser", () => {
       cachedInputTokens: 3,
       outputTokens: 7,
     });
-    expect(parsed.costUsd).toBeCloseTo(0.00123, 6);
+    expect(parsed.financeUsd).toBeCloseTo(0.00123, 6);
     expect(parsed.errorMessage).toBe("model access denied");
   });
 
@@ -130,7 +130,7 @@ describe("gemini_local ui stdout parser", () => {
             output_tokens: 5,
             cached_input_tokens: 2,
           },
-          total_cost_usd: 0.00042,
+          total_finance_usd: 0.00042,
         }),
         ts,
       ),
@@ -142,7 +142,7 @@ describe("gemini_local ui stdout parser", () => {
         inputTokens: 10,
         outputTokens: 5,
         cachedTokens: 2,
-        costUsd: 0.00042,
+        financeUsd: 0.00042,
         subtype: "success",
         isError: false,
         errors: [],
@@ -182,7 +182,7 @@ describe("gemini_local cli formatter", () => {
             output_tokens: 5,
             cached_input_tokens: 2,
           },
-          total_cost_usd: 0.00042,
+          total_finance_usd: 0.00042,
         }),
         false,
       );
@@ -197,7 +197,7 @@ describe("gemini_local cli formatter", () => {
 
     expect(joined).toContain("Gemini init");
     expect(joined).toContain("assistant: hello");
-    expect(joined).toContain("tokens: in=10 out=5 cached=2 cost=$0.000420");
+    expect(joined).toContain("tokens: in=10 out=5 cached=2 finance=$0.000420");
     expect(joined).toContain("error: boom");
   });
 });

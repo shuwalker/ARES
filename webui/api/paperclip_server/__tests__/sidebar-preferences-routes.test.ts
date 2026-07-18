@@ -3,8 +3,8 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSidebarPreferenceService = vi.hoisted(() => ({
-  getCompanyOrder: vi.fn(),
-  upsertCompanyOrder: vi.fn(),
+  getDomainOrder: vi.fn(),
+  upsertDomainOrder: vi.fn(),
   getProjectOrder: vi.fn(),
   upsertProjectOrder: vi.fn(),
 }));
@@ -47,11 +47,11 @@ describe("sidebar preference routes", () => {
     vi.doUnmock("../middleware/index.js");
     registerModuleMocks();
     vi.clearAllMocks();
-    mockSidebarPreferenceService.getCompanyOrder.mockResolvedValue({
+    mockSidebarPreferenceService.getDomainOrder.mockResolvedValue({
       orderedIds: ORDERED_IDS,
       updatedAt: null,
     });
-    mockSidebarPreferenceService.upsertCompanyOrder.mockResolvedValue({
+    mockSidebarPreferenceService.upsertDomainOrder.mockResolvedValue({
       orderedIds: ORDERED_IDS,
       updatedAt: null,
     });
@@ -65,13 +65,13 @@ describe("sidebar preference routes", () => {
     });
   });
 
-  it("returns company rail order for board users", async () => {
+  it("returns domain rail order for board users", async () => {
     const app = await createApp({
       type: "board",
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
     });
 
     const res = await request(app).get("/api/sidebar-preferences/me");
@@ -81,16 +81,16 @@ describe("sidebar preference routes", () => {
       orderedIds: ORDERED_IDS,
       updatedAt: null,
     });
-    expect(mockSidebarPreferenceService.getCompanyOrder).toHaveBeenCalledWith("user-1");
+    expect(mockSidebarPreferenceService.getDomainOrder).toHaveBeenCalledWith("user-1");
   });
 
-  it("updates company rail order for board users", async () => {
+  it("updates domain rail order for board users", async () => {
     const app = await createApp({
       type: "board",
       userId: "user-1",
       source: "local_implicit",
       isInstanceAdmin: true,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
     });
 
     const res = await request(app)
@@ -98,7 +98,7 @@ describe("sidebar preference routes", () => {
       .send({ orderedIds: ORDERED_IDS });
 
     expect(res.status).toBe(200);
-    expect(mockSidebarPreferenceService.upsertCompanyOrder).toHaveBeenCalledWith("user-1", ORDERED_IDS);
+    expect(mockSidebarPreferenceService.upsertDomainOrder).toHaveBeenCalledWith("user-1", ORDERED_IDS);
   });
 
   it("returns project order for domains the board user can access", async () => {
@@ -107,35 +107,35 @@ describe("sidebar preference routes", () => {
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
     });
 
-    const res = await request(app).get("/api/domains/company-1/sidebar-preferences/me");
+    const res = await request(app).get("/api/domains/domain-1/sidebar-preferences/me");
 
     expect(res.status).toBe(200);
-    expect(mockSidebarPreferenceService.getProjectOrder).toHaveBeenCalledWith("company-1", "user-1");
+    expect(mockSidebarPreferenceService.getProjectOrder).toHaveBeenCalledWith("domain-1", "user-1");
   });
 
-  it("logs project order updates for company-scoped writes", async () => {
+  it("logs project order updates for domain-scoped writes", async () => {
     const app = await createApp({
       type: "board",
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       runId: "run-1",
     });
 
     const res = await request(app)
-      .put("/api/domains/company-1/sidebar-preferences/me")
+      .put("/api/domains/domain-1/sidebar-preferences/me")
       .send({ orderedIds: ORDERED_IDS });
 
     expect(res.status).toBe(200);
-    expect(mockSidebarPreferenceService.upsertProjectOrder).toHaveBeenCalledWith("company-1", "user-1", ORDERED_IDS);
+    expect(mockSidebarPreferenceService.upsertProjectOrder).toHaveBeenCalledWith("domain-1", "user-1", ORDERED_IDS);
     expect(mockLogActivity).toHaveBeenCalledWith(
       {} as never,
       expect.objectContaining({
-        companyId: "company-1",
+        domainId: "domain-1",
         action: "sidebar_preferences.project_order_updated",
         details: expect.objectContaining({
           userId: "user-1",
@@ -145,16 +145,16 @@ describe("sidebar preference routes", () => {
     );
   });
 
-  it("rejects company-scoped reads when the board user lacks company access", async () => {
+  it("rejects domain-scoped reads when the board user lacks domain access", async () => {
     const app = await createApp({
       type: "board",
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-2"],
+      domainIds: ["domain-2"],
     });
 
-    const res = await request(app).get("/api/domains/company-1/sidebar-preferences/me");
+    const res = await request(app).get("/api/domains/domain-1/sidebar-preferences/me");
 
     expect(res.status).toBe(403);
     expect(mockSidebarPreferenceService.getProjectOrder).not.toHaveBeenCalled();
@@ -164,13 +164,13 @@ describe("sidebar preference routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
     });
 
     const res = await request(app).get("/api/sidebar-preferences/me");
 
     expect(res.status).toBe(403);
-    expect(mockSidebarPreferenceService.getCompanyOrder).not.toHaveBeenCalled();
+    expect(mockSidebarPreferenceService.getDomainOrder).not.toHaveBeenCalled();
   });
 });

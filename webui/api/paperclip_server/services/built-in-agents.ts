@@ -8,7 +8,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents, builtInManagedResources, domains, issueThreadInteractions, issues, routines, routineTriggers } from "@paperclipai/db";
 import { syncRoutineVariablesWithTemplate } from "@paperclipai/shared";
-import type { Agent, Approval, CompanySkill, PermissionKey, Routine, RoutineTrigger, RoutineVariable } from "@paperclipai/shared";
+import type { Agent, Approval, DomainSkill, PermissionKey, Routine, RoutineTrigger, RoutineVariable } from "@paperclipai/shared";
 import { conflict, HttpError, notFound, unprocessable } from "../errors.js";
 import { logActivity } from "./activity-log.js";
 import { agentInstructionsService } from "./agent-instructions.js";
@@ -18,7 +18,7 @@ import {
   readBuiltInAgentMarker,
   withBuiltInAgentMarker,
 } from "./built-in-agent-metadata.js";
-import { companySkillService } from "./company-skills.js";
+import { domainSkillService } from "./domain-skills.js";
 import { routineService } from "./routines.js";
 import { accessService } from "./access.js";
 
@@ -252,9 +252,9 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
     key: "briefs",
     displayName: "Briefs Agent",
     featureKeys: ["briefs"],
-    shortPurpose: "Prepares concise operational briefs for the board and agent company.",
+    shortPurpose: "Prepares concise operational briefs for the board and agent domain.",
     defaultInstructions:
-      "You are Paperclip's built-in Briefs agent. Produce concise, sourced operational briefs that help the board understand current company work, risks, and next actions.",
+      "You are Paperclip's built-in Briefs agent. Produce concise, sourced operational briefs that help the board understand current domain work, risks, and next actions.",
     defaultRole: "general",
     allowedAdapterTypes: ["codex_local", "claude_local", "gemini_local", "opencode_local", "process"],
     defaultBudgetMonthlyCents: 0,
@@ -263,7 +263,7 @@ const DEFINITIONS = validateBuiltInAgentDefinitions([
     key: "learning",
     displayName: "Learning Agent",
     featureKeys: ["learning"],
-    shortPurpose: "Maintains reusable company learning from completed work and recurring patterns.",
+    shortPurpose: "Maintains reusable domain learning from completed work and recurring patterns.",
     defaultInstructions:
       "You are Paperclip's built-in Learning agent. Extract durable lessons from completed work, preserve useful patterns, and keep learning artifacts grounded in source context.",
     defaultRole: "general",
@@ -648,24 +648,24 @@ export function builtInAgentService(db: Db) {
   const accessSvc = accessService(db);
   const approvalSvc = approvalService(db);
   const instructionsSvc = agentInstructionsService();
-  const skillSvc = companySkillService(db);
+  const skillSvc = domainSkillService(db);
   const routineSvc = routineService(db);
 
-  async function findSingleRootManager(companyId: string) {
+  async function findSingleRootManager(domainId: string) {
     const roots = await db
       .select()
       .from(agents)
-      .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
+      .where(and(eq(agents.domainId, domainId), ne(agents.status, "terminated")));
     const nonBuiltInRoots = roots.filter((agent) => !readBuiltInAgentMarker(agent.metadata) && !agent.reportsTo);
     return nonBuiltInRoots.length === 1 ? nonBuiltInRoots[0]!.id : null;
   }
 
-  async function ensureAgentDefaultGrants(companyId: string, agentId: string, grantKeys: PermissionKey[]) {
+  async function ensureAgentDefaultGrants(domainId: string, agentId: string, grantKeys: PermissionKey[]) {
     if (grantKeys.length === 0) return 0;
-    await accessSvc.ensureMembership(companyId, "agent", agentId, "member", "active");
+    await accessSvc.ensureMembership(domainId, "agent", agentId, "member", "active");
     let ensured = 0;
     for (const permissionKey of grantKeys) {
-      await accessSvc.setPrincipalPermission(companyId, "agent", agentId, permissionKey, true, null);
+      await accessSvc.setPrincipalPermission(domainId, "agent", agentId, permissionKey, true, null);
       ensured += 1;
     }
     return ensured;
@@ -674,17 +674,17 @@ export function builtInAgentService(db: Db) {
   async function ensureBuiltInAgentDefaultGrants(agent: Agent, definition: BuiltInAgentDefinition) {
     if (agent.status === "pending_approval" || agent.status === "terminated") return 0;
     return ensureAgentDefaultGrants(
-      agent.companyId,
+      agent.domainId,
       agent.id,
       BUILT_IN_AGENT_DEFAULT_GRANTS[definition.key] ?? [],
     );
   }
 
-  async function ensureRootAgentDefaultChangeGrants(companyId: string) {
+  async function ensureRootAgentDefaultChangeGrants(domainId: string) {
     const rows = await db
       .select()
       .from(agents)
-      .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
+      .where(and(eq(agents.domainId, domainId), ne(agents.status, "terminated")));
     const rootCeoRows = rows.filter((agent) =>
       !readBuiltInAgentMarker(agent.metadata) &&
       !agent.reportsTo &&
@@ -692,20 +692,20 @@ export function builtInAgentService(db: Db) {
       agent.status !== "pending_approval"
     );
     if (rootCeoRows.length !== 1) return 0;
-    return ensureAgentDefaultGrants(companyId, rootCeoRows[0]!.id, ROOT_AGENT_DEFAULT_CHANGE_GRANTS);
+    return ensureAgentDefaultGrants(domainId, rootCeoRows[0]!.id, ROOT_AGENT_DEFAULT_CHANGE_GRANTS);
   }
 
-  async function ensureCompanyDefaultAgentGrants(companyId: string) {
-    let ensured = await ensureRootAgentDefaultChangeGrants(companyId);
+  async function ensureDomainDefaultAgentGrants(domainId: string) {
+    let ensured = await ensureRootAgentDefaultChangeGrants(domainId);
     for (const definition of DEFINITIONS) {
-      const agent = await findSingleAgent(companyId, definition);
+      const agent = await findSingleAgent(domainId, definition);
       if (!agent) continue;
       ensured += await ensureBuiltInAgentDefaultGrants(agent as Agent, definition);
     }
     return ensured;
   }
 
-  async function defaultProvisionInput(companyId: string, definition: BuiltInAgentDefinition, input: BuiltInAgentProvisionInput) {
+  async function defaultProvisionInput(domainId: string, definition: BuiltInAgentDefinition, input: BuiltInAgentProvisionInput) {
     if (input.adapterType || input.adapterConfig) return input;
     if (!definition.bundle) return input;
     const rows = await db
@@ -714,7 +714,7 @@ export function builtInAgentService(db: Db) {
         adapterConfig: agents.adapterConfig,
       })
       .from(agents)
-      .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
+      .where(and(eq(agents.domainId, domainId), ne(agents.status, "terminated")));
     const candidate = rows.find((row) =>
       definition.allowedAdapterTypes?.includes(row.adapterType)
       && hasCompleteAdapterConfig(row.adapterType, row.adapterConfig)
@@ -728,7 +728,7 @@ export function builtInAgentService(db: Db) {
   }
 
   async function getManagedResourceBinding(
-    companyId: string,
+    domainId: string,
     bundleKey: string,
     resourceKind: BuiltInManagedResourceKind,
     resourceKey: string,
@@ -737,7 +737,7 @@ export function builtInAgentService(db: Db) {
       .select()
       .from(builtInManagedResources)
       .where(and(
-        eq(builtInManagedResources.companyId, companyId),
+        eq(builtInManagedResources.domainId, domainId),
         eq(builtInManagedResources.bundleKey, bundleKey),
         eq(builtInManagedResources.resourceKind, resourceKind),
         eq(builtInManagedResources.resourceKey, resourceKey),
@@ -746,7 +746,7 @@ export function builtInAgentService(db: Db) {
   }
 
   async function upsertManagedResourceBinding(input: {
-    companyId: string;
+    domainId: string;
     bundleKey: string;
     resourceKind: BuiltInManagedResourceKind;
     resourceKey: string;
@@ -761,7 +761,7 @@ export function builtInAgentService(db: Db) {
       .values(input)
       .onConflictDoUpdate({
         target: [
-          builtInManagedResources.companyId,
+          builtInManagedResources.domainId,
           builtInManagedResources.bundleKey,
           builtInManagedResources.resourceKind,
           builtInManagedResources.resourceKey,
@@ -793,7 +793,7 @@ export function builtInAgentService(db: Db) {
   async function materializeInstructions(agent: Agent, definition: BuiltInAgentDefinition, mode: "reconcile" | "reset") {
     const bundle = definition.bundle!;
     const stock = stockHash(bundle.instructions.files);
-    const binding = await getManagedResourceBinding(agent.companyId, definition.key, "instructions", "AGENTS.md");
+    const binding = await getManagedResourceBinding(agent.domainId, definition.key, "instructions", "AGENTS.md");
     const currentFiles = await currentInstructionFiles(agent, bundle);
     const currentHash = Object.values(currentFiles).some((value) => value === null) ? null : stockHash(currentFiles);
     const currentState = stockState({
@@ -814,7 +814,7 @@ export function builtInAgentService(db: Db) {
     if (!shouldWrite) {
       if (!binding && currentHash === stock) {
         await upsertManagedResourceBinding({
-          companyId: agent.companyId,
+          domainId: agent.domainId,
           bundleKey: definition.key,
           resourceKind: "instructions",
           resourceKey: "AGENTS.md",
@@ -843,7 +843,7 @@ export function builtInAgentService(db: Db) {
     });
     if (!updated) throw notFound("Built-in agent not found");
     await upsertManagedResourceBinding({
-      companyId: agent.companyId,
+      domainId: agent.domainId,
       bundleKey: definition.key,
       resourceKind: "instructions",
       resourceKey: "AGENTS.md",
@@ -866,7 +866,7 @@ export function builtInAgentService(db: Db) {
     });
   }
 
-  async function getCurrentSkillFiles(companyId: string, skill: CompanySkill | null, bundle: BuiltInAgentBundleDefinition) {
+  async function getCurrentSkillFiles(domainId: string, skill: DomainSkill | null, bundle: BuiltInAgentBundleDefinition) {
     const currentFiles: Record<string, string | null> = {};
     const stockFiles = bundle.skill.files;
     for (const packagePath of Object.keys(stockFiles)) {
@@ -880,7 +880,7 @@ export function builtInAgentService(db: Db) {
         continue;
       }
       try {
-        currentFiles[packagePath] = (await skillSvc.readFile(companyId, skill.id, relativePath))?.content ?? null;
+        currentFiles[packagePath] = (await skillSvc.readFile(domainId, skill.id, relativePath))?.content ?? null;
       } catch {
         currentFiles[packagePath] = null;
       }
@@ -888,16 +888,16 @@ export function builtInAgentService(db: Db) {
     return currentFiles;
   }
 
-  async function importBundledSkill(companyId: string, definition: BuiltInAgentDefinition) {
-    const results = await skillSvc.importPackageFiles(companyId, definition.bundle!.skill.files, { onConflict: "replace" });
+  async function importBundledSkill(domainId: string, definition: BuiltInAgentDefinition) {
+    const results = await skillSvc.importPackageFiles(domainId, definition.bundle!.skill.files, { onConflict: "replace" });
     const imported = results.find((result) => result.skill.key === definition.bundle!.skill.canonicalKey)?.skill
       ?? results[0]?.skill
-      ?? await skillSvc.getByKey(companyId, definition.bundle!.skill.canonicalKey);
+      ?? await skillSvc.getByKey(domainId, definition.bundle!.skill.canonicalKey);
     if (!imported) throw notFound("Built-in bundled skill was not imported");
     return imported;
   }
 
-  async function syncBundledSkillToAgent(agent: Agent, skill: CompanySkill) {
+  async function syncBundledSkillToAgent(agent: Agent, skill: DomainSkill) {
     const desired = readPaperclipSkillSyncPreference(agent.adapterConfig as Record<string, unknown>).desiredSkillEntries;
     const nextDesired = [
       ...desired.filter((entry) => entry.key !== skill.key),
@@ -915,11 +915,11 @@ export function builtInAgentService(db: Db) {
   async function materializeSkill(agent: Agent, definition: BuiltInAgentDefinition, mode: "reconcile" | "reset") {
     const bundle = definition.bundle!;
     const stock = stockHash(bundle.skill.files);
-    const binding = await getManagedResourceBinding(agent.companyId, definition.key, "skill", bundle.skill.skillKey);
-    const boundSkill = binding ? await skillSvc.getById(agent.companyId, binding.resourceId) : null;
-    const existingByKey = await skillSvc.getByKey(agent.companyId, bundle.skill.canonicalKey);
+    const binding = await getManagedResourceBinding(agent.domainId, definition.key, "skill", bundle.skill.skillKey);
+    const boundSkill = binding ? await skillSvc.getById(agent.domainId, binding.resourceId) : null;
+    const existingByKey = await skillSvc.getByKey(agent.domainId, bundle.skill.canonicalKey);
     const skill = boundSkill ?? existingByKey;
-    const currentFiles = await getCurrentSkillFiles(agent.companyId, skill, bundle);
+    const currentFiles = await getCurrentSkillFiles(agent.domainId, skill, bundle);
     const currentHash = skill && Object.values(currentFiles).every((value) => value !== null)
       ? stockHash(currentFiles)
       : null;
@@ -938,9 +938,9 @@ export function builtInAgentService(db: Db) {
       mode === "reset"
       || currentState.stockStatus === "missing"
       || currentState.stockStatus === "stock_update_available";
-    const nextSkill = shouldWrite ? await importBundledSkill(agent.companyId, definition) : skill!;
+    const nextSkill = shouldWrite ? await importBundledSkill(agent.domainId, definition) : skill!;
     await upsertManagedResourceBinding({
-      companyId: agent.companyId,
+      domainId: agent.domainId,
       bundleKey: definition.key,
       resourceKind: "skill",
       resourceKey: bundle.skill.skillKey,
@@ -1026,19 +1026,19 @@ export function builtInAgentService(db: Db) {
     });
   }
 
-  async function getRoutineByBinding(companyId: string, definition: BuiltInAgentDefinition) {
-    const binding = await getManagedResourceBinding(companyId, definition.key, "routine", definition.bundle!.routine.routineKey);
+  async function getRoutineByBinding(domainId: string, definition: BuiltInAgentDefinition) {
+    const binding = await getManagedResourceBinding(domainId, definition.key, "routine", definition.bundle!.routine.routineKey);
     const routine = binding
       ? await db
         .select()
         .from(routines)
-        .where(and(eq(routines.companyId, companyId), eq(routines.id, binding.resourceId)))
+        .where(and(eq(routines.domainId, domainId), eq(routines.id, binding.resourceId)))
         .then((rows) => rows[0] as Routine | undefined ?? null)
       : await db
         .select()
         .from(routines)
         .where(and(
-          eq(routines.companyId, companyId),
+          eq(routines.domainId, domainId),
           eq(routines.originKind, "built_in_agent_bundle"),
           eq(routines.originId, `${definition.key}:${definition.bundle!.routine.routineKey}`),
         ))
@@ -1071,7 +1071,7 @@ export function builtInAgentService(db: Db) {
       .from(issueThreadInteractions)
       .innerJoin(issues, eq(issueThreadInteractions.issueId, issues.id))
       .where(and(
-        eq(issueThreadInteractions.companyId, agent.companyId),
+        eq(issueThreadInteractions.domainId, agent.domainId),
         eq(issueThreadInteractions.createdByAgentId, agent.id),
         eq(issueThreadInteractions.kind, "request_confirmation"),
         eq(issueThreadInteractions.status, "pending"),
@@ -1099,15 +1099,15 @@ export function builtInAgentService(db: Db) {
     };
   }
 
-  async function requireBundleRoutine(companyId: string, key: string, routineKey: string) {
+  async function requireBundleRoutine(domainId: string, key: string, routineKey: string) {
     const definition = requireBuiltInAgentDefinition(key);
     if (!definition.bundle || definition.bundle.routine.routineKey !== routineKey) {
       throw notFound("Built-in routine not found");
     }
-    await ensureDomain(companyId);
-    const agent = await findSingleAgent(companyId, definition);
+    await ensureDomain(domainId);
+    const agent = await findSingleAgent(domainId, definition);
     if (!agent) throw notFound("Built-in agent is not provisioned");
-    const current = await getRoutineByBinding(companyId, definition);
+    const current = await getRoutineByBinding(domainId, definition);
     if (!current.routine) throw notFound("Built-in routine not found");
     const schedule = current.triggers.find((trigger) => trigger.kind === "schedule") ?? null;
     return { definition, agent, routine: current.routine, triggers: current.triggers, schedule };
@@ -1134,7 +1134,7 @@ export function builtInAgentService(db: Db) {
         catchUpPolicy: routine.catchUpPolicy,
         variables: routine.variables,
       }, actor)
-      : await routineSvc.create(agent.companyId, {
+      : await routineSvc.create(agent.domainId, {
         title: routine.title,
         description: routine.description,
         assigneeAgentId: agent.id,
@@ -1178,7 +1178,7 @@ export function builtInAgentService(db: Db) {
       }, actor);
     }
     await logActivity(db, {
-      companyId: agent.companyId,
+      domainId: agent.domainId,
       actorType: "system",
       actorId: "built-in-bundles",
       action: mode === "reset" ? "built_in_agent.routine_reset" : "built_in_agent.routine_reconciled",
@@ -1196,7 +1196,7 @@ export function builtInAgentService(db: Db) {
   async function materializeRoutine(agent: Agent, definition: BuiltInAgentDefinition, mode: "reconcile" | "reset") {
     const bundle = definition.bundle!;
     const stock = routineDefaultsHash(bundle.routine, bundle.routine.triggers);
-    const { binding, routine, triggers } = await getRoutineByBinding(agent.companyId, definition);
+    const { binding, routine, triggers } = await getRoutineByBinding(agent.domainId, definition);
     const currentHash = routine ? routineDefaultsHash({
       title: routine.title,
       description: routine.description ?? "",
@@ -1222,7 +1222,7 @@ export function builtInAgentService(db: Db) {
       ? await createOrResetRoutine(agent, definition, routine, mode)
       : routine!;
     await upsertManagedResourceBinding({
-      companyId: agent.companyId,
+      domainId: agent.domainId,
       bundleKey: definition.key,
       resourceKind: "routine",
       resourceKey: bundle.routine.routineKey,
@@ -1235,7 +1235,7 @@ export function builtInAgentService(db: Db) {
         triggerCount: bundle.routine.triggers.length,
       },
     });
-    const next = await getRoutineByBinding(agent.companyId, definition);
+    const next = await getRoutineByBinding(agent.domainId, definition);
     return withRoutineControls(stockState({
       resourceKind: "routine",
       resourceKey: bundle.routine.routineKey,
@@ -1251,20 +1251,20 @@ export function builtInAgentService(db: Db) {
     });
   }
 
-  async function bundleResourceStates(companyId: string, definition: BuiltInAgentDefinition, agent: Agent | null) {
+  async function bundleResourceStates(domainId: string, definition: BuiltInAgentDefinition, agent: Agent | null) {
     if (!definition.bundle || !agent) return [];
     const bundle = definition.bundle;
     const [instructionBinding, skillBinding, routineBinding] = await Promise.all([
-      getManagedResourceBinding(companyId, definition.key, "instructions", "AGENTS.md"),
-      getManagedResourceBinding(companyId, definition.key, "skill", bundle.skill.skillKey),
-      getManagedResourceBinding(companyId, definition.key, "routine", bundle.routine.routineKey),
+      getManagedResourceBinding(domainId, definition.key, "instructions", "AGENTS.md"),
+      getManagedResourceBinding(domainId, definition.key, "skill", bundle.skill.skillKey),
+      getManagedResourceBinding(domainId, definition.key, "routine", bundle.routine.routineKey),
     ]);
     const instructionFiles = await currentInstructionFiles(agent, bundle);
     const skill = skillBinding
-      ? await skillSvc.getById(companyId, skillBinding.resourceId)
-      : await skillSvc.getByKey(companyId, bundle.skill.canonicalKey);
-    const skillFiles = await getCurrentSkillFiles(companyId, skill, bundle);
-    const { routine, triggers } = await getRoutineByBinding(companyId, definition);
+      ? await skillSvc.getById(domainId, skillBinding.resourceId)
+      : await skillSvc.getByKey(domainId, bundle.skill.canonicalKey);
+    const skillFiles = await getCurrentSkillFiles(domainId, skill, bundle);
+    const { routine, triggers } = await getRoutineByBinding(domainId, definition);
     const proposal = await pendingUpdateProposal(agent);
     const instructionHash = Object.values(instructionFiles).every((value) => value !== null)
       ? stockHash(instructionFiles)
@@ -1321,7 +1321,7 @@ export function builtInAgentService(db: Db) {
   ) {
     if (!definition.bundle) return [];
     const selected = new Set(resources ?? ["instructions", "skill", "routine"]);
-    const existingStates = await bundleResourceStates(agent.companyId, definition, agent);
+    const existingStates = await bundleResourceStates(agent.domainId, definition, agent);
     const byKind = new Map(existingStates.map((state) => [state.resourceKind, state]));
     const instruction = selected.has("instructions")
       ? await materializeInstructions(agent, definition, mode)
@@ -1339,31 +1339,31 @@ export function builtInAgentService(db: Db) {
     return [instruction, skill, routine];
   }
 
-  async function ensureDomain(companyId: string) {
-    const company = await db
+  async function ensureDomain(domainId: string) {
+    const domain = await db
       .select({
         id: domains.id,
         requireBoardApprovalForNewAgents: domains.requireBoardApprovalForNewAgents,
       })
       .from(domains)
-      .where(eq(domains.id, companyId))
+      .where(eq(domains.id, domainId))
       .then((rows) => rows[0] ?? null);
-    if (!company) throw notFound("Domain not found");
-    return company;
+    if (!domain) throw notFound("Domain not found");
+    return domain;
   }
 
-  async function findMarkedRows(companyId: string, key: string) {
+  async function findMarkedRows(domainId: string, key: string) {
     const rows = await db
       .select()
       .from(agents)
-      .where(and(eq(agents.companyId, companyId), ne(agents.status, "terminated")));
+      .where(and(eq(agents.domainId, domainId), ne(agents.status, "terminated")));
     return rows
       .filter((row) => rowIsBuiltInAgent(row, key))
       .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id));
   }
 
-  async function findSingleAgent(companyId: string, definition: BuiltInAgentDefinition) {
-    const markedRows = await findMarkedRows(companyId, definition.key);
+  async function findSingleAgent(domainId: string, definition: BuiltInAgentDefinition) {
+    const markedRows = await findMarkedRows(domainId, definition.key);
     if (markedRows.length > 1) {
       throw conflict(`Multiple built-in agents found for ${definition.key}`, {
         code: "built_in_agent_duplicate_instance",
@@ -1387,20 +1387,20 @@ export function builtInAgentService(db: Db) {
       agentId: agent?.id ?? null,
       agent,
       pauseReason: agent?.pauseReason ?? null,
-      resources: resources ?? await bundleResourceStates(agent?.companyId ?? "", definition, agent),
+      resources: resources ?? await bundleResourceStates(agent?.domainId ?? "", definition, agent),
     };
   }
 
-  async function get(companyId: string, key: string) {
+  async function get(domainId: string, key: string) {
     const definition = requireBuiltInAgentDefinition(key);
-    await ensureDomain(companyId);
-    return state(definition, await findSingleAgent(companyId, definition));
+    await ensureDomain(domainId);
+    return state(definition, await findSingleAgent(domainId, definition));
   }
 
-  async function ensure(companyId: string, key: string, input: BuiltInAgentProvisionInput = {}) {
+  async function ensure(domainId: string, key: string, input: BuiltInAgentProvisionInput = {}) {
     const definition = requireBuiltInAgentDefinition(key);
-    await ensureDomain(companyId);
-    const existing = await findSingleAgent(companyId, definition);
+    await ensureDomain(domainId);
+    const existing = await findSingleAgent(domainId, definition);
     const existingPendingApproval = existing?.status === "pending_approval";
     const preserveExistingAdapter = Boolean(
       existing
@@ -1411,7 +1411,7 @@ export function builtInAgentService(db: Db) {
     );
     const resolvedInput = existingPendingApproval || preserveExistingAdapter
       ? input
-      : await defaultProvisionInput(companyId, definition, input);
+      : await defaultProvisionInput(domainId, definition, input);
     if (existing) {
       const patch: Partial<typeof agents.$inferInsert> = {
         metadata: builtInMetadata(definition, existing.metadata),
@@ -1433,7 +1433,7 @@ export function builtInAgentService(db: Db) {
         && definition.defaultManager === "single_root_agent"
         && !existing.reportsTo
       ) {
-        const reportsTo = await findSingleRootManager(companyId);
+        const reportsTo = await findSingleRootManager(domainId);
         if (reportsTo) patch.reportsTo = reportsTo;
       }
       const updated = await agentSvc.update(existing.id, patch, {
@@ -1450,9 +1450,9 @@ export function builtInAgentService(db: Db) {
     }
 
     const reportsTo = definition.defaultManager === "single_root_agent"
-      ? await findSingleRootManager(companyId)
+      ? await findSingleRootManager(domainId)
       : null;
-    const created = await agentSvc.create(companyId, {
+    const created = await agentSvc.create(domainId, {
       ...definitionPatch(definition, resolvedInput),
       status: definition.defaultStatus ?? "idle",
       pauseReason: definition.defaultStatus === "paused" ? "Built-in Reflection Coach is disabled until explicitly configured." : null,
@@ -1466,7 +1466,7 @@ export function builtInAgentService(db: Db) {
     }, { allowBuiltInAgentMetadata: true }) as Agent;
 
     await logActivity(db, {
-      companyId,
+      domainId,
       actorType: "system",
       actorId: "built-in-agents",
       action: "built_in_agent.provisioned",
@@ -1485,18 +1485,18 @@ export function builtInAgentService(db: Db) {
   }
 
   async function provision(
-    companyId: string,
+    domainId: string,
     key: string,
     input: BuiltInAgentProvisionInput = {},
     actor: BuiltInAgentProvisionActor = {},
   ): Promise<BuiltInAgentProvisionResult> {
     const definition = requireBuiltInAgentDefinition(key);
-    const company = await ensureDomain(companyId);
-    if (!company.requireBoardApprovalForNewAgents) {
-      return { state: await ensure(companyId, key, input), approval: null };
+    const domain = await ensureDomain(domainId);
+    if (!domain.requireBoardApprovalForNewAgents) {
+      return { state: await ensure(domainId, key, input), approval: null };
     }
 
-    const existing = await findSingleAgent(companyId, definition);
+    const existing = await findSingleAgent(domainId, definition);
     if (existing) {
       if (existing.status === "pending_approval") {
         if (hasProvisionSetupInput(input)) {
@@ -1506,7 +1506,7 @@ export function builtInAgentService(db: Db) {
             agentId: existing.id,
           });
         }
-        const approval = await approvalSvc.findOpenHireApprovalForAgent(companyId, existing.id);
+        const approval = await approvalSvc.findOpenHireApprovalForAgent(domainId, existing.id);
         return {
           state: await state(definition, existing),
           approval: approval as Approval | null,
@@ -1525,9 +1525,9 @@ export function builtInAgentService(db: Db) {
     }
 
     const reportsTo = definition.defaultManager === "single_root_agent"
-      ? await findSingleRootManager(companyId)
+      ? await findSingleRootManager(domainId)
       : null;
-    const pending = await agentSvc.create(companyId, {
+    const pending = await agentSvc.create(domainId, {
       ...definitionPatch(definition, input),
       status: "pending_approval",
       reportsTo,
@@ -1538,7 +1538,7 @@ export function builtInAgentService(db: Db) {
       lastHeartbeatAt: null,
     }, { allowBuiltInAgentMetadata: true }) as Agent;
 
-    const approval = await approvalSvc.create(companyId, {
+    const approval = await approvalSvc.create(domainId, {
       type: "hire_agent",
       requestedByAgentId: actor.requestedByAgentId ?? null,
       requestedByUserId: actor.requestedByUserId ?? null,
@@ -1569,15 +1569,15 @@ export function builtInAgentService(db: Db) {
     return { state: await state(definition, pending), approval };
   }
 
-  async function list(companyId: string) {
-    await ensureDomain(companyId);
-    return Promise.all(DEFINITIONS.map(async (definition) => state(definition, await findSingleAgent(companyId, definition))));
+  async function list(domainId: string) {
+    await ensureDomain(domainId);
+    return Promise.all(DEFINITIONS.map(async (definition) => state(definition, await findSingleAgent(domainId, definition))));
   }
 
-  async function reconcileDefinitionDefaults(companyId: string, key: string) {
+  async function reconcileDefinitionDefaults(domainId: string, key: string) {
     const definition = requireBuiltInAgentDefinition(key);
-    await ensureDomain(companyId);
-    const existing = await findSingleAgent(companyId, definition);
+    await ensureDomain(domainId);
+    const existing = await findSingleAgent(domainId, definition);
     if (!existing) return state(definition, null);
     const patch = {
       name: definition.displayName,
@@ -1596,12 +1596,12 @@ export function builtInAgentService(db: Db) {
     return state(definition, updated as Agent);
   }
 
-  async function reset(companyId: string, key: string, input: { resources?: Array<"agent" | "instructions" | "skill" | "routine"> } = {}) {
+  async function reset(domainId: string, key: string, input: { resources?: Array<"agent" | "instructions" | "skill" | "routine"> } = {}) {
     const definition = requireBuiltInAgentDefinition(key);
     const resetAgentDefaults = !input.resources || input.resources.includes("agent");
     const current = resetAgentDefaults
-      ? await reconcileDefinitionDefaults(companyId, key)
-      : await get(companyId, key);
+      ? await reconcileDefinitionDefaults(domainId, key)
+      : await get(domainId, key);
     if (!current.agent || !definition.bundle) return current;
     const selectedBundleResources = input.resources?.filter(
       (resource): resource is "instructions" | "skill" | "routine" => resource !== "agent",
@@ -1616,13 +1616,13 @@ export function builtInAgentService(db: Db) {
   }
 
   async function setRoutineSchedule(
-    companyId: string,
+    domainId: string,
     key: string,
     routineKey: string,
     enabled: boolean,
     actor: { agentId?: string | null; userId?: string | null; runId?: string | null } = {},
   ) {
-    const { definition, agent, routine, schedule } = await requireBundleRoutine(companyId, key, routineKey);
+    const { definition, agent, routine, schedule } = await requireBundleRoutine(domainId, key, routineKey);
     if (!schedule) throw notFound("Built-in routine schedule not found");
     if (enabled) {
       await ensureBuiltInAgentAssignable(agent);
@@ -1636,18 +1636,18 @@ export function builtInAgentService(db: Db) {
   }
 
   async function runRoutine(
-    companyId: string,
+    domainId: string,
     key: string,
     routineKey: string,
     actor: { agentId?: string | null; userId?: string | null; runId?: string | null } = {},
   ) {
-    const { agent, routine } = await requireBundleRoutine(companyId, key, routineKey);
+    const { agent, routine } = await requireBundleRoutine(domainId, key, routineKey);
     await ensureBuiltInAgentAssignable(agent);
     return routineSvc.runRoutine(routine.id, { source: "manual" }, actor);
   }
 
-  async function requireBuiltInAgent(companyId: string, key: string): Promise<RequiredBuiltInAgent> {
-    const current = await get(companyId, key);
+  async function requireBuiltInAgent(domainId: string, key: string): Promise<RequiredBuiltInAgent> {
+    const current = await get(domainId, key);
     if (!current.agent) throw builtInAgentNotConfiguredError(current);
     if (current.status === "ready") {
       return { definition: current.definition, agent: current.agent, warning: null };
@@ -1668,20 +1668,20 @@ export function builtInAgentService(db: Db) {
     throw builtInAgentNotConfiguredError(current);
   }
 
-  async function autoProvisionBundledAgents(companyId: string) {
-    const company = await ensureDomain(companyId);
+  async function autoProvisionBundledAgents(domainId: string) {
+    const domain = await ensureDomain(domainId);
     let autoEnsured = 0;
     let pendingApprovals = 0;
     for (const definition of DEFINITIONS.filter((entry) => entry.bundle)) {
-      if (company.requireBoardApprovalForNewAgents) {
-        const result = await provision(companyId, definition.key);
+      if (domain.requireBoardApprovalForNewAgents) {
+        const result = await provision(domainId, definition.key);
         if (result.approval) pendingApprovals += 1;
       } else {
-        await ensure(companyId, definition.key);
+        await ensure(domainId, definition.key);
       }
       autoEnsured += 1;
     }
-    const defaultGrantsEnsured = await ensureCompanyDefaultAgentGrants(companyId);
+    const defaultGrantsEnsured = await ensureDomainDefaultAgentGrants(domainId);
     return { autoEnsured, pendingApprovals, defaultGrantsEnsured };
   }
 
@@ -1693,42 +1693,42 @@ export function builtInAgentService(db: Db) {
     list,
     reset,
     enableRoutineSchedule: (
-      companyId: string,
+      domainId: string,
       key: string,
       routineKey: string,
       actor?: { agentId?: string | null; userId?: string | null; runId?: string | null },
-    ) => setRoutineSchedule(companyId, key, routineKey, true, actor),
+    ) => setRoutineSchedule(domainId, key, routineKey, true, actor),
     disableRoutineSchedule: (
-      companyId: string,
+      domainId: string,
       key: string,
       routineKey: string,
       actor?: { agentId?: string | null; userId?: string | null; runId?: string | null },
-    ) => setRoutineSchedule(companyId, key, routineKey, false, actor),
+    ) => setRoutineSchedule(domainId, key, routineKey, false, actor),
     runRoutine,
     requireBuiltInAgent,
     autoProvisionBundledAgents,
-    ensureCompanyDefaultAgentGrants,
+    ensureDomainDefaultAgentGrants,
     reconcileDefinitionDefaults,
   };
 }
 
 export async function reconcileBuiltInAgentsOnStartup(db: Db) {
   const svc = builtInAgentService(db);
-  const companyRows = await db
+  const domainRows = await db
     .select({ id: domains.id })
     .from(domains);
   let autoEnsured = 0;
   let pendingApprovals = 0;
   let defaultGrantsEnsured = 0;
-  for (const company of companyRows) {
-    const result = await svc.autoProvisionBundledAgents(company.id);
+  for (const domain of domainRows) {
+    const result = await svc.autoProvisionBundledAgents(domain.id);
     autoEnsured += result.autoEnsured;
     pendingApprovals += result.pendingApprovals;
     defaultGrantsEnsured += result.defaultGrantsEnsured;
   }
   const rows = await db
     .select({
-      companyId: agents.companyId,
+      domainId: agents.domainId,
       metadata: agents.metadata,
       status: agents.status,
     })
@@ -1748,13 +1748,13 @@ export async function reconcileBuiltInAgentsOnStartup(db: Db) {
       unknown += 1;
       continue;
     }
-    const instanceKey = `${row.companyId}:${marker.key}`;
+    const instanceKey = `${row.domainId}:${marker.key}`;
     if (seen.has(instanceKey)) {
       duplicates += 1;
       continue;
     }
     seen.add(instanceKey);
-    await svc.reconcileDefinitionDefaults(row.companyId, marker.key);
+    await svc.reconcileDefinitionDefaults(row.domainId, marker.key);
     reconciled += 1;
   }
 

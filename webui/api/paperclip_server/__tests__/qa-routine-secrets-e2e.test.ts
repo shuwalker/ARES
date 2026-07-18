@@ -6,10 +6,10 @@
 //    even when the executing agent has zero direct bindings for that secret.
 // 2. Precedence: agent < project < routine for a shared key.
 // 3. `secret_access_events` records routine consumption but NEVER the resolved value.
-// 4. Restoring an older revision re-syncs `company_secret_bindings` to the snapshot env.
+// 4. Restoring an older revision re-syncs `domain_secret_bindings` to the snapshot env.
 // 5. Legacy fallback: a routine_run with null `routine_revision_id` still resolves
 //    the routine's current env (matches the explicit acceptance criterion).
-// 6. Disabled / missing / cross-company secret bindings fail clearly without
+// 6. Disabled / missing / cross-domain secret bindings fail clearly without
 //    echoing the value.
 
 import { randomUUID } from "node:crypto";
@@ -21,9 +21,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   agents,
   domains,
-  companySecretBindings,
-  companySecrets,
-  companySecretVersions,
+  domainSecretBindings,
+  domainSecrets,
+  domainSecretVersions,
   createDb,
   documentRevisions,
   documents,
@@ -62,14 +62,14 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
 
   afterEach(async () => {
     await db.delete(secretAccessEvents);
-    await db.delete(companySecretBindings);
+    await db.delete(domainSecretBindings);
     await db.delete(routineRuns);
     await db.delete(routineDocuments);
     await db.delete(routines);
     await db.delete(documents);
     await db.delete(documentRevisions);
-    await db.delete(companySecretVersions);
-    await db.delete(companySecrets);
+    await db.delete(domainSecretVersions);
+    await db.delete(domainSecrets);
     await db.delete(projects);
     await db.delete(agents);
     await db.delete(domains);
@@ -83,11 +83,11 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
   });
 
   async function seed() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const executorAgentId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "QA Co",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -97,7 +97,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     // whole point of routine env (the secret rides with the routine, not the agent).
     await db.insert(agents).values({
       id: executorAgentId,
-      companyId,
+      domainId,
       name: "Executor",
       role: "engineer",
       status: "active",
@@ -106,7 +106,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
       runtimeConfig: {},
       permissions: {},
     });
-    return { companyId, executorAgentId };
+    return { domainId, executorAgentId };
   }
 
   const ROUTINE_VALUE = "super-sekret-routine-value";
@@ -114,18 +114,18 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
   const AGENT_VALUE = "agent-base-value";
 
   it("resolves routine env for an executing agent that has no direct binding, with routine winning precedence and zero value in access events", async () => {
-    const { companyId, executorAgentId } = await seed();
+    const { domainId, executorAgentId } = await seed();
     const secrets = secretService(db);
     const routines = routineService(db, { heartbeat: { wakeup: async () => null } });
 
-    const secret = await secrets.create(companyId, {
+    const secret = await secrets.create(domainId, {
       name: `routine-api-${randomUUID()}`,
       provider: "local_encrypted",
       value: ROUTINE_VALUE,
     });
 
     const routine = await routines.create(
-      companyId,
+      domainId,
       {
         projectId: null,
         goalId: null,
@@ -148,8 +148,8 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     // Verify binding is owned by the routine, not the executing agent.
     const bindings = await db
       .select()
-      .from(companySecretBindings)
-      .where(eq(companySecretBindings.targetId, routine.id));
+      .from(domainSecretBindings)
+      .where(eq(domainSecretBindings.targetId, routine.id));
     expect(bindings).toMatchObject([
       { targetType: "routine", secretId: secret.id, configPath: "env.ROUTINE_API_KEY" },
     ]);
@@ -160,7 +160,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     // heartbeat_run rows just for FK validity. The routine consumer fields are
     // what this test cares about.
     const result = await resolveExecutionRunAdapterConfig({
-      companyId,
+      domainId,
       agentId: executorAgentId,
       issueId: null,
       heartbeatRunId: null,
@@ -199,26 +199,26 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     expect(JSON.stringify(events[0])).not.toContain(ROUTINE_VALUE);
   });
 
-  it("rejects routine env that references a secret from a different company", async () => {
-    const { companyId } = await seed();
-    const { companyId: otherCompanyId } = await seed();
+  it("rejects routine env that references a secret from a different domain", async () => {
+    const { domainId } = await seed();
+    const { domainId: otherDomainId } = await seed();
     const secrets = secretService(db);
     const routines = routineService(db, { heartbeat: { wakeup: async () => null } });
 
-    const foreignSecret = await secrets.create(otherCompanyId, {
+    const foreignSecret = await secrets.create(otherDomainId, {
       name: `foreign-${randomUUID()}`,
       provider: "local_encrypted",
-      value: "cross-company-leak-bait",
+      value: "cross-domain-leak-bait",
     });
 
     await expect(
       routines.create(
-        companyId,
+        domainId,
         {
           projectId: null,
           goalId: null,
           parentIssueId: null,
-          title: "cross company",
+          title: "cross domain",
           description: null,
           assigneeAgentId: null,
           priority: "medium",
@@ -231,22 +231,22 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
         },
         {},
       ),
-    ).rejects.toThrow(/same company/i);
+    ).rejects.toThrow(/same domain/i);
   });
 
   it("surfaces a clear, value-free error when a routine secret is missing/deleted at resolution time", async () => {
-    const { companyId, executorAgentId } = await seed();
+    const { domainId, executorAgentId } = await seed();
     const secrets = secretService(db);
     const routines = routineService(db, { heartbeat: { wakeup: async () => null } });
 
-    const secret = await secrets.create(companyId, {
+    const secret = await secrets.create(domainId, {
       name: `to-be-deleted-${randomUUID()}`,
       provider: "local_encrypted",
       value: "doomed-secret-value",
     });
 
     const routine = await routines.create(
-      companyId,
+      domainId,
       {
         projectId: null,
         goalId: null,
@@ -272,7 +272,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     let caught: unknown = null;
     try {
       await resolveExecutionRunAdapterConfig({
-        companyId,
+        domainId,
         agentId: executorAgentId,
         issueId: null,
         heartbeatRunId: null,
@@ -291,24 +291,24 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     expect(message).not.toContain("doomed-secret-value");
   });
 
-  it("restoring an older revision re-syncs company_secret_bindings to the snapshot env", async () => {
-    const { companyId, executorAgentId } = await seed();
+  it("restoring an older revision re-syncs domain_secret_bindings to the snapshot env", async () => {
+    const { domainId, executorAgentId } = await seed();
     const secrets = secretService(db);
     const routines = routineService(db, { heartbeat: { wakeup: async () => null } });
 
-    const secretA = await secrets.create(companyId, {
+    const secretA = await secrets.create(domainId, {
       name: `a-${randomUUID()}`,
       provider: "local_encrypted",
       value: "val-a",
     });
-    const secretB = await secrets.create(companyId, {
+    const secretB = await secrets.create(domainId, {
       name: `b-${randomUUID()}`,
       provider: "local_encrypted",
       value: "val-b",
     });
 
     const routine = await routines.create(
-      companyId,
+      domainId,
       {
         projectId: null,
         goalId: null,
@@ -341,33 +341,33 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
 
     let bindings = await db
       .select()
-      .from(companySecretBindings)
-      .where(eq(companySecretBindings.targetId, routine.id));
+      .from(domainSecretBindings)
+      .where(eq(domainSecretBindings.targetId, routine.id));
     expect(bindings.map((b) => b.configPath).sort()).toEqual(["env.ALPHA", "env.BETA"]);
 
     await routines.restoreRevision(routine.id, rev1Id, {});
 
     bindings = await db
       .select()
-      .from(companySecretBindings)
-      .where(eq(companySecretBindings.targetId, routine.id));
+      .from(domainSecretBindings)
+      .where(eq(domainSecretBindings.targetId, routine.id));
     expect(bindings.map((b) => b.configPath)).toEqual(["env.ALPHA"]);
     expect(bindings[0]?.secretId).toBe(secretA.id);
   });
 
   it("legacy run with null routine_revision_id falls back to the routine's current env (still resolves)", async () => {
-    const { companyId, executorAgentId } = await seed();
+    const { domainId, executorAgentId } = await seed();
     const secrets = secretService(db);
     const routines = routineService(db, { heartbeat: { wakeup: async () => null } });
 
-    const secret = await secrets.create(companyId, {
+    const secret = await secrets.create(domainId, {
       name: `legacy-${randomUUID()}`,
       provider: "local_encrypted",
       value: "legacy-value",
     });
 
     const routine = await routines.create(
-      companyId,
+      domainId,
       {
         projectId: null,
         goalId: null,
@@ -392,7 +392,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     // resolution layer directly with routine.env to mirror that behavior.
     await db.insert(routineRuns).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       routineId: routine.id,
       triggerId: null,
       source: "manual",
@@ -403,7 +403,7 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
     });
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId,
+      domainId,
       agentId: executorAgentId,
       issueId: null,
       heartbeatRunId: null,
@@ -418,12 +418,12 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
   });
 
   it("routines created with null env (no Secrets tab interaction) still resolve normally with empty env", async () => {
-    const { companyId, executorAgentId } = await seed();
+    const { domainId, executorAgentId } = await seed();
     const secrets = secretService(db);
     const routines = routineService(db, { heartbeat: { wakeup: async () => null } });
 
     const routine = await routines.create(
-      companyId,
+      domainId,
       {
         projectId: null,
         goalId: null,
@@ -443,12 +443,12 @@ describeEmbedded("PAP-9522 QA: routine secrets end-to-end", () => {
 
     const bindings = await db
       .select()
-      .from(companySecretBindings)
-      .where(eq(companySecretBindings.targetId, routine.id));
+      .from(domainSecretBindings)
+      .where(eq(domainSecretBindings.targetId, routine.id));
     expect(bindings).toHaveLength(0);
 
     const result = await resolveExecutionRunAdapterConfig({
-      companyId,
+      domainId,
       agentId: executorAgentId,
       issueId: null,
       heartbeatRunId: null,

@@ -14,8 +14,8 @@ import {
 import {
   agents,
   domains,
-  companySecretVersions,
-  companySecrets,
+  domainSecretVersions,
+  domainSecrets,
   createDb,
   environmentLeases,
   environments,
@@ -72,8 +72,8 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     await db.delete(heartbeatRuns);
     await db.delete(agents);
     await db.delete(environments);
-    await db.delete(companySecretVersions);
-    await db.delete(companySecrets);
+    await db.delete(domainSecretVersions);
+    await db.delete(domainSecrets);
     await db.delete(domains);
   });
 
@@ -85,7 +85,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     driver: string;
     config: Record<string, unknown>;
   }) {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const environmentId = randomUUID();
     const runId = randomUUID();
@@ -93,7 +93,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     let config = input.config;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: now,
@@ -101,7 +101,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Contract Agent",
       role: "engineer",
       status: "active",
@@ -113,13 +113,13 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
       updatedAt: now,
     });
     if (typeof config.privateKey === "string" && config.privateKey.length > 0) {
-      const secret = await secretService(db).create(companyId, {
+      const secret = await secretService(db).create(domainId, {
         name: `environment-contract-private-key-${randomUUID()}`,
         provider: "local_encrypted",
         value: config.privateKey,
       });
       await secretService(db).createBinding({
-        companyId,
+        domainId,
         secretId: secret.id,
         targetType: "environment",
         targetId: environmentId,
@@ -157,7 +157,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     }
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -166,12 +166,12 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     });
 
     return {
-      companyId,
+      domainId,
       issueId: null,
       runId,
       environment: {
         id: resolvedEnvironmentId,
-        companyId,
+        domainId,
         name: `${input.driver} contract`,
         description: null,
         driver: input.driver,
@@ -188,13 +188,13 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
     const cleanup = await testLifeAdmin.setup?.();
     try {
       const runtime = environmentRuntimeService(db);
-      const { companyId, environment, issueId, runId } = await seedEnvironment({
+      const { domainId, environment, issueId, runId } = await seedEnvironment({
         driver: testLifeAdmin.driver,
         config: testLifeAdmin.config,
       });
 
       const acquired = await runtime.acquireRunLease({
-        companyId,
+        domainId,
         environment,
         issueId,
         heartbeatRunId: runId,
@@ -202,7 +202,7 @@ describeEmbeddedPostgres("environment runtime driver contract", () => {
       });
 
       expect(acquired.environment.id).toBe(environment.id);
-      expect(acquired.lease.companyId).toBe(companyId);
+      expect(acquired.lease.domainId).toBe(domainId);
       expect(acquired.lease.environmentId).toBe(environment.id);
       expect(acquired.lease.issueId).toBeNull();
       expect(acquired.lease.heartbeatRunId).toBe(runId);

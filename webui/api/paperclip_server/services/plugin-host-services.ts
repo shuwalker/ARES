@@ -4,7 +4,7 @@ import {
   agentTaskSessions as agentTaskSessionsTable,
   agents as agentsTable,
   budgetIncidents,
-  costEvents,
+  financeEvents,
   heartbeatRuns,
   invites,
   issues as issuesTable,
@@ -28,7 +28,7 @@ import type {
 } from "@paperclipai/plugin-sdk";
 import type { CreateIssueThreadInteraction, InviteJoinType, IssueDocumentSummary, PermissionKey, PrincipalType } from "@paperclipai/shared";
 import { pluginOperationIssueOriginKind } from "@paperclipai/shared";
-import { companyService } from "./domains.js";
+import { domainService } from "./domains.js";
 import { agentService } from "./agents.js";
 import { projectService } from "./projects.js";
 import { executionWorkspaceService } from "./execution-workspaces.js";
@@ -39,7 +39,7 @@ import { documentService } from "./documents.js";
 import { heartbeatService } from "./heartbeat.js";
 import { budgetService } from "./budgets.js";
 import { issueApprovalService } from "./issue-approvals.js";
-import { subscribeCompanyLiveEvents } from "./live-events.js";
+import { subscribeDomainLiveEvents } from "./live-events.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import { pluginRegistryService } from "./plugin-registry.js";
@@ -405,13 +405,13 @@ interface BufferedLogEntry {
   db: Db;
   pluginId: string;
   /**
-   * Owning tenant for `plugin_logs.company_id` — populated when the caller
-   * attributes the log/metric to a specific company so the row participates
+   * Owning tenant for `plugin_logs.domain_id` — populated when the caller
+   * attributes the log/metric to a specific domain so the row participates
    * in the `ON DELETE CASCADE` from `domains`. `null` means instance-scope
    * (cron jobs / public webhooks without a tenant); those rows survive
-   * company deletes but are still attributable.
+   * domain deletes but are still attributable.
    */
-  companyId: string | null;
+  domainId: string | null;
   level: string;
   message: string;
   meta: Record<string, unknown> | null;
@@ -444,7 +444,7 @@ export async function flushPluginLogBuffer(): Promise<void> {
   for (const [dbInstance, group] of byDb) {
     const values = group.map((e) => ({
       pluginId: e.pluginId,
-      companyId: e.companyId,
+      domainId: e.domainId,
       level: e.level,
       message: e.message,
       meta: e.meta,
@@ -499,19 +499,19 @@ export function buildHostServices(
   const stateStore = pluginStateStore(db);
   const pluginDb = pluginDatabaseService(db);
   const secretsHandler = createPluginSecretsHandler({ db, pluginId });
-  const domains = companyService(db);
+  const domains = domainService(db);
   const agents = agentService(db);
   const managedAgents = pluginManagedAgentService(db, {
     pluginId,
     pluginKey,
     manifest: options.manifest,
-    instructionTemplateVariables: async (companyId) => {
+    instructionTemplateVariables: async (domainId) => {
       const variables: Record<string, string | null | undefined> = {};
       for (const declaration of options.manifest?.localFolders ?? []) {
         const status = await inspectPluginLocalFolder({
           folderKey: declaration.folderKey,
           declaration,
-          storedConfig: await getStoredLocalFolderConfig(companyId, declaration.folderKey),
+          storedConfig: await getStoredLocalFolderConfig(domainId, declaration.folderKey),
         });
         const prefix = `localFolders.${declaration.folderKey}`;
         variables[`${prefix}.path`] = status.realPath ?? status.path ?? null;
@@ -549,9 +549,9 @@ export function buildHostServices(
   const activeSubscriptions = new Set<{ unsubscribe: () => void; timer: ReturnType<typeof setTimeout> }>();
   let disposed = false;
 
-  const ensureCompanyId = (companyId?: string) => {
-    if (!companyId) throw new Error("companyId is required for this operation");
-    return companyId;
+  const ensureDomainId = (domainId?: string) => {
+    if (!domainId) throw new Error("domainId is required for this operation");
+    return domainId;
   };
 
   const parseWindowValue = (value: unknown): number | null => {
@@ -587,32 +587,32 @@ export function buildHostServices(
 
   /**
    * Plugins are instance-wide in the current runtime. Domain IDs are still
-   * required for company-scoped data access, but there is no per-company
+   * required for domain-scoped data access, but there is no per-domain
    * availability gate to enforce here.
    */
-  const ensurePluginAvailableForDomain = async (_companyId: string) => {};
+  const ensurePluginAvailableForDomain = async (_domainId: string) => {};
 
   const getLocalFolderDeclaration = (folderKey: string) =>
     requireLocalFolderDeclaration(options.manifest?.localFolders, folderKey);
 
-  const getStoredLocalFolderConfig = async (companyId: string, folderKey: string) => {
-    ensureCompanyId(companyId);
-    await ensurePluginAvailableForDomain(companyId);
-    const settings = await registry.getCompanySettings(pluginId, companyId);
+  const getStoredLocalFolderConfig = async (domainId: string, folderKey: string) => {
+    ensureDomainId(domainId);
+    await ensurePluginAvailableForDomain(domainId);
+    const settings = await registry.getDomainSettings(pluginId, domainId);
     return getStoredLocalFolders(settings?.settingsJson)[folderKey] ?? null;
   };
 
-  const inspectStoredLocalFolder = async (companyId: string, folderKey: string) =>
+  const inspectStoredLocalFolder = async (domainId: string, folderKey: string) =>
     inspectPluginLocalFolder({
       folderKey,
       declaration: getLocalFolderDeclaration(folderKey),
-      storedConfig: await getStoredLocalFolderConfig(companyId, folderKey),
+      storedConfig: await getStoredLocalFolderConfig(domainId, folderKey),
     });
 
-  const inDomain = <T extends { companyId: string | null | undefined }>(
+  const inDomain = <T extends { domainId: string | null | undefined }>(
     record: T | null | undefined,
-    companyId: string,
-  ): record is T => Boolean(record && record.companyId === companyId);
+    domainId: string,
+  ): record is T => Boolean(record && record.domainId === domainId);
 
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
@@ -631,7 +631,7 @@ export function buildHostServices(
     workspace: NonNullable<Awaited<ReturnType<typeof executionWorkspaces.getById>>>,
   ): PluginExecutionWorkspaceMetadata => ({
     id: workspace.id,
-    companyId: workspace.companyId,
+    domainId: workspace.domainId,
     projectId: workspace.projectId,
     projectWorkspaceId: workspace.projectWorkspaceId,
     path: workspace.cwd ?? workspace.providerRef,
@@ -643,12 +643,12 @@ export function buildHostServices(
     providerMetadata: readProviderMetadata(workspace.metadata),
   });
 
-  const requireInDomain = <T extends { companyId: string | null | undefined }>(
+  const requireInDomain = <T extends { domainId: string | null | undefined }>(
     entityName: string,
     record: T | null | undefined,
-    companyId: string,
+    domainId: string,
   ): T => {
-    if (!inDomain(record, companyId)) {
+    if (!inDomain(record, domainId)) {
       throw new Error(`${entityName} not found`);
     }
     return record;
@@ -692,7 +692,7 @@ export function buildHostServices(
   };
 
   const logPluginActivity = async (input: {
-    companyId: string;
+    domainId: string;
     action: string;
     entityType: string;
     entityId: string;
@@ -700,7 +700,7 @@ export function buildHostServices(
     actor?: { actorAgentId?: string | null; actorUserId?: string | null; actorRunId?: string | null };
   }) => {
     await logActivity(db, {
-      companyId: input.companyId,
+      domainId: input.domainId,
       actorType: "plugin",
       actorId: pluginId,
       agentId: input.actor?.actorAgentId ?? null,
@@ -712,7 +712,7 @@ export function buildHostServices(
     });
   };
 
-  const collectIssueSubtreeIds = async (companyId: string, rootIssueId: string) => {
+  const collectIssueSubtreeIds = async (domainId: string, rootIssueId: string) => {
     const seen = new Set<string>([rootIssueId]);
     let frontier = [rootIssueId];
 
@@ -720,7 +720,7 @@ export function buildHostServices(
       const children = await db
         .select({ id: issuesTable.id })
         .from(issuesTable)
-        .where(and(eq(issuesTable.companyId, companyId), inArray(issuesTable.parentId, frontier)));
+        .where(and(eq(issuesTable.domainId, domainId), inArray(issuesTable.parentId, frontier)));
       frontier = children.map((child) => child.id).filter((id) => !seen.has(id));
       for (const id of frontier) seen.add(id);
     }
@@ -729,7 +729,7 @@ export function buildHostServices(
   };
 
   const getIssueRunSummaries = async (
-    companyId: string,
+    domainId: string,
     issueIds: string[],
     options: { activeOnly?: boolean } = {},
   ) => {
@@ -752,7 +752,7 @@ export function buildHostServices(
         createdAt: heartbeatRuns.createdAt,
       })
       .from(heartbeatRuns)
-      .where(and(eq(heartbeatRuns.companyId, companyId), inArray(issueIdExpr, issueIds), statusCondition))
+      .where(and(eq(heartbeatRuns.domainId, domainId), inArray(issueIdExpr, issueIds), statusCondition))
       .orderBy(desc(heartbeatRuns.createdAt))
       .limit(100);
 
@@ -766,14 +766,14 @@ export function buildHostServices(
 
   const setBlockedByWithActivity = async (params: {
     issueId: string;
-    companyId: string;
+    domainId: string;
     blockedByIssueIds: string[];
     mutation: "set" | "add" | "remove";
     actorAgentId?: string | null;
     actorUserId?: string | null;
     actorRunId?: string | null;
   }) => {
-    const existing = requireInDomain("Issue", await issues.getById(params.issueId), params.companyId);
+    const existing = requireInDomain("Issue", await issues.getById(params.issueId), params.domainId);
     const previous = await issues.getRelationSummaries(params.issueId);
     await issues.update(params.issueId, {
       blockedByIssueIds: params.blockedByIssueIds,
@@ -782,7 +782,7 @@ export function buildHostServices(
     } as any);
     const relations = await issues.getRelationSummaries(params.issueId);
     await logPluginActivity({
-      companyId: params.companyId,
+      domainId: params.domainId,
       action: "issue.relations.updated",
       entityType: "issue",
       entityId: params.issueId,
@@ -801,18 +801,18 @@ export function buildHostServices(
     return relations;
   };
 
-  const getIssueCostSummary = async (
-    companyId: string,
+  const getIssueFinanceSummary = async (
+    domainId: string,
     issueIds: string[],
     billingCode?: string | null,
   ) => {
     const scopeConditions = [
-      issueIds.length > 0 ? inArray(costEvents.issueId, issueIds) : undefined,
-      billingCode ? eq(costEvents.billingCode, billingCode) : undefined,
+      issueIds.length > 0 ? inArray(financeEvents.issueId, issueIds) : undefined,
+      billingCode ? eq(financeEvents.billingCode, billingCode) : undefined,
     ].filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
     if (scopeConditions.length === 0) {
       return {
-        costCents: 0,
+        financeCents: 0,
         inputTokens: 0,
         cachedInputTokens: 0,
         outputTokens: 0,
@@ -822,16 +822,16 @@ export function buildHostServices(
     const scopeCondition = scopeConditions.length === 1 ? scopeConditions[0]! : and(...scopeConditions);
     const [row] = await db
       .select({
-        costCents: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
-        inputTokens: sql<number>`coalesce(sum(${costEvents.inputTokens}), 0)::double precision`,
-        cachedInputTokens: sql<number>`coalesce(sum(${costEvents.cachedInputTokens}), 0)::double precision`,
-        outputTokens: sql<number>`coalesce(sum(${costEvents.outputTokens}), 0)::double precision`,
+        financeCents: sql<number>`coalesce(sum(${financeEvents.financeCents}), 0)::double precision`,
+        inputTokens: sql<number>`coalesce(sum(${financeEvents.inputTokens}), 0)::double precision`,
+        cachedInputTokens: sql<number>`coalesce(sum(${financeEvents.cachedInputTokens}), 0)::double precision`,
+        outputTokens: sql<number>`coalesce(sum(${financeEvents.outputTokens}), 0)::double precision`,
       })
-      .from(costEvents)
-      .where(and(eq(costEvents.companyId, companyId), scopeCondition));
+      .from(financeEvents)
+      .where(and(eq(financeEvents.domainId, domainId), scopeCondition));
 
     return {
-      costCents: Number(row?.costCents ?? 0),
+      financeCents: Number(row?.financeCents ?? 0),
       inputTokens: Number(row?.inputTokens ?? 0),
       cachedInputTokens: Number(row?.cachedInputTokens ?? 0),
       outputTokens: Number(row?.outputTokens ?? 0),
@@ -839,7 +839,7 @@ export function buildHostServices(
     };
   };
 
-  const getOpenBudgetIncidents = async (companyId: string) => {
+  const getOpenBudgetIncidents = async (domainId: string) => {
     const rows = await db
       .select({
         id: budgetIncidents.id,
@@ -855,7 +855,7 @@ export function buildHostServices(
         createdAt: budgetIncidents.createdAt,
       })
       .from(budgetIncidents)
-      .where(and(eq(budgetIncidents.companyId, companyId), eq(budgetIncidents.status, "open")))
+      .where(and(eq(budgetIncidents.domainId, domainId), eq(budgetIncidents.status, "open")))
       .orderBy(desc(budgetIncidents.createdAt));
 
     return rows.map((row) => ({
@@ -868,7 +868,7 @@ export function buildHostServices(
   const INVITE_TOKEN_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_SUFFIX_LENGTH = 8;
   const INVITE_TOKEN_MAX_RETRIES = 5;
-  const COMPANY_INVITE_TTL_MS = 72 * 60 * 60 * 1000;
+  const DOMAIN_INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 
   const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -920,13 +920,13 @@ export function buildHostServices(
   const inviteStateWhereClause = (state: unknown) => {
     const now = new Date();
     switch (state) {
-      case "active":
+      life_admin "active":
         return and(isNull(invites.revokedAt), isNull(invites.acceptedAt), gt(invites.expiresAt, now));
-      case "accepted":
+      life_admin "accepted":
         return isNotNull(invites.acceptedAt);
-      case "expired":
+      life_admin "expired":
         return and(isNull(invites.revokedAt), isNull(invites.acceptedAt), lte(invites.expiresAt, now));
-      case "revoked":
+      life_admin "revoked":
         return isNotNull(invites.revokedAt);
       default:
         return undefined;
@@ -959,11 +959,11 @@ export function buildHostServices(
     scope: grant.scope && typeof grant.scope === "object" ? sanitizeRecord(grant.scope) : grant.scope ?? null,
   });
 
-  const loadPluginMember = async (companyId: string, memberId: string) => {
-    const member = await access.getMemberById(companyId, memberId);
+  const loadPluginMember = async (domainId: string, memberId: string) => {
+    const member = await access.getMemberById(domainId, memberId);
     if (!member) return null;
     const grants = await access.listPrincipalGrants(
-      companyId,
+      domainId,
       member.principalType as PrincipalType,
       member.principalId,
     );
@@ -978,49 +978,49 @@ export function buildHostServices(
   const pluginAssignmentActor = (actor: {
     type: "agent" | "board";
     agentId?: string | null;
-    companyId?: string | null;
+    domainId?: string | null;
     userId?: string | null;
-    companyIds?: string[];
+    domainIds?: string[];
   }): AuthorizationActor => {
     if (actor.type === "agent") {
       return {
         type: "agent",
         agentId: actor.agentId ?? null,
-        companyId: actor.companyId ?? null,
+        domainId: actor.domainId ?? null,
         source: "agent_key",
       };
     }
     return {
       type: "board",
       userId: actor.userId ?? null,
-      companyIds: Array.isArray(actor.companyIds) ? actor.companyIds : [],
+      domainIds: Array.isArray(actor.domainIds) ? actor.domainIds : [],
       source: "session",
     };
   };
 
-  const policyPathForResource = (resourceType: "company" | "agent" | "project" | "issue") => {
+  const policyPathForResource = (resourceType: "domain" | "agent" | "project" | "issue") => {
     switch (resourceType) {
-      case "agent":
+      life_admin "agent":
         return { table: "agent" as const };
-      case "project":
+      life_admin "project":
         return { table: "project" as const };
-      case "issue":
+      life_admin "issue":
         return { table: "issue" as const };
-      case "company":
-        return { table: "company" as const };
+      life_admin "domain":
+        return { table: "domain" as const };
     }
   };
 
-  const readAuthorizationPolicy = async (companyId: string, resourceType: "company" | "agent" | "project" | "issue", resourceId: string) => {
+  const readAuthorizationPolicy = async (domainId: string, resourceType: "domain" | "agent" | "project" | "issue", resourceId: string) => {
     const pathInfo = policyPathForResource(resourceType);
     if (pathInfo.table === "agent") {
       const agent = await agents.getById(resourceId);
-      if (!inDomain(agent, companyId)) return null;
+      if (!inDomain(agent, domainId)) return null;
       const permissions = agent.permissions && typeof agent.permissions === "object" ? agent.permissions as Record<string, unknown> : {};
       return {
         resourceType,
         resourceId,
-        companyId,
+        domainId,
         policy: permissions.authorizationPolicy && typeof permissions.authorizationPolicy === "object"
           ? sanitizeRecord(permissions.authorizationPolicy as Record<string, unknown>)
           : null,
@@ -1029,35 +1029,35 @@ export function buildHostServices(
     }
     if (pathInfo.table === "project") {
       const project = await projects.getById(resourceId);
-      if (!inDomain(project, companyId)) return null;
+      if (!inDomain(project, domainId)) return null;
       const policy = project.executionWorkspacePolicy && typeof project.executionWorkspacePolicy === "object"
         ? (project.executionWorkspacePolicy as unknown as Record<string, unknown>).authorizationPolicy
         : null;
       return {
         resourceType,
         resourceId,
-        companyId,
+        domainId,
         policy: policy && typeof policy === "object" ? sanitizeRecord(policy as Record<string, unknown>) : null,
         updatedAt: project.updatedAt,
       };
     }
     if (pathInfo.table === "issue") {
       const issue = await issues.getById(resourceId);
-      if (!inDomain(issue, companyId)) return null;
+      if (!inDomain(issue, domainId)) return null;
       const policy = issue.executionPolicy && typeof issue.executionPolicy === "object"
         ? (issue.executionPolicy as Record<string, unknown>).authorizationPolicy
         : null;
       return {
         resourceType,
         resourceId,
-        companyId,
+        domainId,
         policy: policy && typeof policy === "object" ? sanitizeRecord(policy as Record<string, unknown>) : null,
         updatedAt: issue.updatedAt,
       };
     }
-    const company = await domains.getById(resourceId);
-    if (!company || company.id !== companyId) return null;
-    return { resourceType, resourceId, companyId, policy: null, updatedAt: company.updatedAt };
+    const domain = await domains.getById(resourceId);
+    if (!domain || domain.id !== domainId) return null;
+    return { resourceType, resourceId, domainId, policy: null, updatedAt: domain.updatedAt };
   };
 
   return {
@@ -1074,10 +1074,10 @@ export function buildHostServices(
       },
 
       async configure(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const declaration = getLocalFolderDeclaration(params.folderKey);
-        const existing = await registry.getCompanySettings(pluginId, companyId);
+        const existing = await registry.getDomainSettings(pluginId, domainId);
         const existingConfig = getStoredLocalFolders(existing?.settingsJson)[params.folderKey] ?? null;
         await preparePluginLocalFolder({
           folderKey: params.folderKey,
@@ -1102,7 +1102,7 @@ export function buildHostServices(
           requiredDirectories: status.requiredDirectories,
           requiredFiles: status.requiredFiles,
         });
-        await registry.upsertCompanySettings(pluginId, companyId, {
+        await registry.upsertDomainSettings(pluginId, domainId, {
           enabled: existing?.enabled ?? true,
           settingsJson: nextSettings,
           lastError: status.healthy ? null : status.problems.map((item: { message: string }) => item.message).join("; "),
@@ -1111,11 +1111,11 @@ export function buildHostServices(
       },
 
       async status(params) {
-        return inspectStoredLocalFolder(params.companyId, params.folderKey);
+        return inspectStoredLocalFolder(params.domainId, params.folderKey);
       },
 
       async list(params) {
-        const status = await inspectStoredLocalFolder(params.companyId, params.folderKey);
+        const status = await inspectStoredLocalFolder(params.domainId, params.folderKey);
         assertConfiguredLocalFolder(status);
         const listing = await listPluginLocalFolderEntries(status.realPath!, {
           relativePath: params.relativePath,
@@ -1126,30 +1126,30 @@ export function buildHostServices(
       },
 
       async readText(params) {
-        const status = await inspectStoredLocalFolder(params.companyId, params.folderKey);
+        const status = await inspectStoredLocalFolder(params.domainId, params.folderKey);
         assertConfiguredLocalFolder(status);
         return readPluginLocalFolderText(status.realPath!, params.relativePath);
       },
 
       async writeTextAtomic(params) {
-        const companyId = ensureCompanyId(params.companyId);
+        const domainId = ensureDomainId(params.domainId);
         await preparePluginLocalFolder({
           folderKey: params.folderKey,
           declaration: getLocalFolderDeclaration(params.folderKey),
-          storedConfig: await getStoredLocalFolderConfig(companyId, params.folderKey),
+          storedConfig: await getStoredLocalFolderConfig(domainId, params.folderKey),
         });
-        const status = await inspectStoredLocalFolder(companyId, params.folderKey);
+        const status = await inspectStoredLocalFolder(domainId, params.folderKey);
         assertWritableConfiguredLocalFolder(status);
         await writePluginLocalFolderTextAtomic(status.realPath!, params.relativePath, params.contents);
-        return inspectStoredLocalFolder(companyId, params.folderKey);
+        return inspectStoredLocalFolder(domainId, params.folderKey);
       },
 
       async deleteFile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        const status = await inspectStoredLocalFolder(companyId, params.folderKey);
+        const domainId = ensureDomainId(params.domainId);
+        const status = await inspectStoredLocalFolder(domainId, params.folderKey);
         assertWritableConfiguredLocalFolder(status);
         await deletePluginLocalFolderFile(status.realPath!, params.relativePath, params.folderKey);
-        return inspectStoredLocalFolder(companyId, params.folderKey);
+        return inspectStoredLocalFolder(domainId, params.folderKey);
       },
     },
 
@@ -1200,10 +1200,10 @@ export function buildHostServices(
 
     events: {
       async emit(params) {
-        if (params.companyId) {
-          await ensurePluginAvailableForDomain(params.companyId);
+        if (params.domainId) {
+          await ensurePluginAvailableForDomain(params.domainId);
         }
-        await scopedBus.emit(params.name, params.companyId, params.payload);
+        await scopedBus.emit(params.name, params.domainId, params.payload);
       },
       async subscribe(params: { eventPattern: string; filter?: Record<string, unknown> | null }) {
         const handler = async (event: import("@paperclipai/plugin-sdk").PluginEvent) => {
@@ -1245,10 +1245,10 @@ export function buildHostServices(
 
     activity: {
       async log(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         await logActivity(db, {
-          companyId,
+          domainId,
           actorType: "plugin",
           actorId: pluginId,
           action: params.message,
@@ -1271,7 +1271,7 @@ export function buildHostServices(
         _logBuffer.push({
           db,
           pluginId,
-          companyId: params.companyId ?? null,
+          domainId: params.domainId ?? null,
           level: "metric",
           message: safeName,
           meta: sanitiseMeta({ value: params.value, tags: params.tags ?? null }),
@@ -1289,7 +1289,7 @@ export function buildHostServices(
         const eventName = String(params.eventName ?? "").trim();
         if (!TELEMETRY_EVENT_NAME_REGEX.test(eventName)) {
           throw new Error(
-            'Plugin telemetry event names must be lowercase slugs using letters, numbers, "_" or "-".',
+            'Plugin telemetry event names must be lowerlife_admin slugs using letters, numbers, "_" or "-".',
           );
         }
         const telemetryClient = getTelemetryClient();
@@ -1320,7 +1320,7 @@ export function buildHostServices(
         _logBuffer.push({
           db,
           pluginId,
-          companyId: params.companyId ?? null,
+          domainId: params.domainId ?? null,
           level: level ?? "info",
           message: safeMessage,
           meta: safeMeta,
@@ -1338,28 +1338,28 @@ export function buildHostServices(
         return applyWindow((await domains.list()) as Domain[], params);
       },
       async get(params) {
-        await ensurePluginAvailableForDomain(params.companyId);
-        return (await domains.getById(params.companyId)) as Domain;
+        await ensurePluginAvailableForDomain(params.domainId);
+        return (await domains.getById(params.domainId)) as Domain;
       },
     },
 
     projects: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return applyWindow((await projects.list(companyId)) as Project[], params);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return applyWindow((await projects.list(domainId)) as Project[], params);
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const project = await projects.getById(params.projectId);
-        return (inDomain(project, companyId) ? project : null) as Project | null;
+        return (inDomain(project, domainId) ? project : null) as Project | null;
       },
       async listWorkspaces(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const project = await projects.getById(params.projectId);
-        if (!inDomain(project, companyId)) return [];
+        if (!inDomain(project, domainId)) return [];
         const rows = await projects.listWorkspaces(params.projectId);
         return rows.map((row) => {
           const path = sanitizeWorkspacePath(row.cwd);
@@ -1379,10 +1379,10 @@ export function buildHostServices(
         });
       },
       async getPrimaryWorkspace(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const project = await projects.getById(params.projectId);
-        if (!inDomain(project, companyId)) return null;
+        if (!inDomain(project, domainId)) return null;
         const row = project.primaryWorkspace;
         const path = sanitizeWorkspacePath(project.codebase.effectiveLocalFolder);
         const name = sanitizeWorkspaceName(row?.name ?? project.name, path);
@@ -1401,14 +1401,14 @@ export function buildHostServices(
       },
 
       async getWorkspaceForIssue(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const issue = await issues.getById(params.issueId);
-        if (!inDomain(issue, companyId)) return null;
+        if (!inDomain(issue, domainId)) return null;
         const projectId = (issue as Record<string, unknown>).projectId as string | null;
         if (!projectId) return null;
         const project = await projects.getById(projectId);
-        if (!inDomain(project, companyId)) return null;
+        if (!inDomain(project, domainId)) return null;
         const row = project.primaryWorkspace;
         const path = sanitizeWorkspacePath(project.codebase.effectiveLocalFolder);
         const name = sanitizeWorkspaceName(row?.name ?? project.name, path);
@@ -1426,10 +1426,10 @@ export function buildHostServices(
         };
       },
       async getManaged(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         return projects.resolveManagedProject({
-          companyId,
+          domainId,
           pluginId,
           pluginKey,
           projectKey: params.projectKey,
@@ -1437,20 +1437,20 @@ export function buildHostServices(
         });
       },
       async reconcileManaged(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         return projects.resolveManagedProject({
-          companyId,
+          domainId,
           pluginId,
           pluginKey,
           projectKey: params.projectKey,
         });
       },
       async resetManaged(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         return projects.resolveManagedProject({
-          companyId,
+          domainId,
           pluginId,
           pluginKey,
           projectKey: params.projectKey,
@@ -1461,10 +1461,10 @@ export function buildHostServices(
 
     executionWorkspaces: {
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const workspace = await executionWorkspaces.getById(params.workspaceId);
-        if (inDomain(workspace, companyId)) {
+        if (inDomain(workspace, domainId)) {
           return toPluginExecutionWorkspaceMetadata(workspace);
         }
         return null;
@@ -1473,37 +1473,37 @@ export function buildHostServices(
 
     routines: {
       async managedGet(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedRoutines.get(params.routineKey, companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedRoutines.get(params.routineKey, domainId);
       },
       async managedReconcile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedRoutines.reconcile(params.routineKey, companyId, {
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedRoutines.reconcile(params.routineKey, domainId, {
           assigneeAgentId: params.assigneeAgentId,
           projectId: params.projectId,
         });
       },
       async managedReset(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedRoutines.reset(params.routineKey, companyId, {
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedRoutines.reset(params.routineKey, domainId, {
           assigneeAgentId: params.assigneeAgentId,
           projectId: params.projectId,
         });
       },
       async managedUpdate(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedRoutines.update(params.routineKey, companyId, {
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedRoutines.update(params.routineKey, domainId, {
           status: params.status,
         });
       },
       async managedRun(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedRoutines.run(params.routineKey, companyId, {
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedRoutines.run(params.routineKey, domainId, {
           assigneeAgentId: params.assigneeAgentId,
           projectId: params.projectId,
         });
@@ -1512,45 +1512,45 @@ export function buildHostServices(
 
     skills: {
       async managedGet(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedSkills.get(params.skillKey, companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedSkills.get(params.skillKey, domainId);
       },
       async managedReconcile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedSkills.reconcile(params.skillKey, companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedSkills.reconcile(params.skillKey, domainId);
       },
       async managedReset(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedSkills.reset(params.skillKey, companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedSkills.reset(params.skillKey, domainId);
       },
     },
 
     issues: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         assertReadableOriginFilter(params.originKind);
-        return applyWindow((await issues.list(companyId, params as any)) as Issue[], params);
+        return applyWindow((await issues.list(domainId, params as any)) as Issue[], params);
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const issue = await issues.getById(params.issueId);
-        return (inDomain(issue, companyId) ? issue : null) as Issue | null;
+        return (inDomain(issue, domainId) ? issue : null) as Issue | null;
       },
       async create(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const { actorAgentId, actorUserId, actorRunId, originKind, surfaceVisibility, ...issueInput } = params;
         const normalizedOriginKind = normalizePluginOriginKind(
           surfaceVisibility === "plugin_operation" && !originKind
             ? pluginOperationIssueOriginKind(pluginKey)
             : originKind,
         );
-        const issue = (await issues.create(companyId, {
+        const issue = (await issues.create(domainId, {
           ...(issueInput as any),
           originKind: normalizedOriginKind,
           originId: params.originId ?? null,
@@ -1561,7 +1561,7 @@ export function buildHostServices(
           trustExplicitResponsibleUserId: true,
         })) as Issue;
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "issue.created",
           entityType: "issue",
           entityId: issue.id,
@@ -1578,9 +1578,9 @@ export function buildHostServices(
         return issue;
       },
       async update(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const existing = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const existing = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const patch = { ...(params.patch as Record<string, unknown>) };
         const actorAgentId = typeof patch.actorAgentId === "string" ? patch.actorAgentId : null;
         const actorUserId = typeof patch.actorUserId === "string" ? patch.actorUserId : null;
@@ -1597,7 +1597,7 @@ export function buildHostServices(
           actorUserId,
         })) as Issue;
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "issue.updated",
           entityType: "issue",
           entityId: updated.id,
@@ -1615,16 +1615,16 @@ export function buildHostServices(
         return updated;
       },
       async getRelations(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         return await issues.getRelationSummaries(params.issueId);
       },
       async setBlockedBy(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         return setBlockedByWithActivity({
-          companyId,
+          domainId,
           issueId: params.issueId,
           blockedByIssueIds: params.blockedByIssueIds,
           mutation: "set",
@@ -1634,9 +1634,9 @@ export function buildHostServices(
         });
       },
       async addBlockers(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const previous = await issues.getRelationSummaries(params.issueId);
         const nextBlockedByIssueIds = [
           ...new Set([
@@ -1645,7 +1645,7 @@ export function buildHostServices(
           ]),
         ];
         return setBlockedByWithActivity({
-          companyId,
+          domainId,
           issueId: params.issueId,
           blockedByIssueIds: nextBlockedByIssueIds,
           mutation: "add",
@@ -1655,16 +1655,16 @@ export function buildHostServices(
         });
       },
       async removeBlockers(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const previous = await issues.getRelationSummaries(params.issueId);
         const removals = new Set(params.blockerIssueIds);
         const nextBlockedByIssueIds = previous.blockedBy
           .map((relation) => relation.id)
           .filter((issueId) => !removals.has(issueId));
         return setBlockedByWithActivity({
-          companyId,
+          domainId,
           issueId: params.issueId,
           blockedByIssueIds: nextBlockedByIssueIds,
           mutation: "remove",
@@ -1674,9 +1674,9 @@ export function buildHostServices(
         });
       },
       async assertCheckoutOwner(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const ownership = await issues.assertCheckoutOwner(
           params.issueId,
           params.actorAgentId,
@@ -1684,7 +1684,7 @@ export function buildHostServices(
         );
         if (ownership.adoptedFromRunId) {
           await logPluginActivity({
-            companyId,
+            domainId,
             action: "issue.checkout_lock_adopted",
             entityType: "issue",
             entityId: params.issueId,
@@ -1708,17 +1708,17 @@ export function buildHostServices(
         };
       },
       async getSubtree(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const rootIssue = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const rootIssue = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const includeRoot = params.includeRoot !== false;
-        const subtreeIssueIds = await collectIssueSubtreeIds(companyId, rootIssue.id);
+        const subtreeIssueIds = await collectIssueSubtreeIds(domainId, rootIssue.id);
         const issueIds = includeRoot ? subtreeIssueIds : subtreeIssueIds.filter((issueId) => issueId !== rootIssue.id);
         const issueRows = issueIds.length > 0
           ? await db
             .select()
             .from(issuesTable)
-            .where(and(eq(issuesTable.companyId, companyId), inArray(issuesTable.id, issueIds)))
+            .where(and(eq(issuesTable.domainId, domainId), inArray(issuesTable.id, issueIds)))
           : [];
         const issuesById = new Map(issueRows.map((issue) => [issue.id, issue as Issue]));
         const outputIssues = issueIds
@@ -1749,7 +1749,7 @@ export function buildHostServices(
             )
             : Promise.resolve(null),
           params.includeActiveRuns
-            ? getIssueRunSummaries(companyId, issueIds, { activeOnly: true })
+            ? getIssueRunSummaries(domainId, issueIds, { activeOnly: true })
             : Promise.resolve(null),
           params.includeAssignees && assigneeAgentIds.length > 0
             ? db
@@ -1761,7 +1761,7 @@ export function buildHostServices(
                 status: agentsTable.status,
               })
               .from(agentsTable)
-              .where(and(eq(agentsTable.companyId, companyId), inArray(agentsTable.id, assigneeAgentIds)))
+              .where(and(eq(agentsTable.domainId, domainId), inArray(agentsTable.id, assigneeAgentIds)))
             : Promise.resolve(params.includeAssignees ? [] : null),
         ]);
 
@@ -1774,7 +1774,7 @@ export function buildHostServices(
 
         return {
           rootIssueId: rootIssue.id,
-          companyId,
+          domainId,
           issueIds,
           issues: outputIssues,
           ...(relationPairs ? { relations: Object.fromEntries(relationPairs) } : {}),
@@ -1791,9 +1791,9 @@ export function buildHostServices(
         };
       },
       async requestWakeup(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const issue = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const issue = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         if (!issue.assigneeAgentId) {
           throw new Error("Issue has no assigned agent to wake");
         }
@@ -1805,7 +1805,7 @@ export function buildHostServices(
         if (unresolvedBlockers.length > 0) {
           throw new Error("Issue is blocked by unresolved blockers");
         }
-        const budgetBlock = await budgets.getInvocationBlock(companyId, issue.assigneeAgentId, {
+        const budgetBlock = await budgets.getInvocationBlock(domainId, issue.assigneeAgentId, {
           issueId: issue.id,
           projectId: issue.projectId,
         });
@@ -1837,7 +1837,7 @@ export function buildHostServices(
           },
         });
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "issue.assignment_wakeup_requested",
           entityType: "issue",
           entityId: issue.id,
@@ -1857,11 +1857,11 @@ export function buildHostServices(
         return { queued: Boolean(run), runId: run?.id ?? null };
       },
       async requestWakeups(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const results = [];
         for (const issueId of [...new Set(params.issueIds)]) {
-          const issue = requireInDomain("Issue", await issues.getById(issueId), companyId);
+          const issue = requireInDomain("Issue", await issues.getById(issueId), domainId);
           if (!issue.assigneeAgentId) {
             throw new Error("Issue has no assigned agent to wake");
           }
@@ -1873,7 +1873,7 @@ export function buildHostServices(
           if (unresolvedBlockers.length > 0) {
             throw new Error("Issue is blocked by unresolved blockers");
           }
-          const budgetBlock = await budgets.getInvocationBlock(companyId, issue.assigneeAgentId, {
+          const budgetBlock = await budgets.getInvocationBlock(domainId, issue.assigneeAgentId, {
             issueId: issue.id,
             projectId: issue.projectId,
           });
@@ -1905,7 +1905,7 @@ export function buildHostServices(
             },
           });
           await logPluginActivity({
-            companyId,
+            domainId,
             action: "issue.assignment_wakeup_requested",
             entityType: "issue",
             entityId: issue.id,
@@ -1927,11 +1927,11 @@ export function buildHostServices(
         return results;
       },
       async getOrchestrationSummary(params): Promise<PluginIssueOrchestrationSummary> {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const rootIssue = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const rootIssue = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const subtreeIssueIds = params.includeSubtree
-          ? await collectIssueSubtreeIds(companyId, rootIssue.id)
+          ? await collectIssueSubtreeIds(domainId, rootIssue.id)
           : [rootIssue.id];
         const relationPairs = await Promise.all(
           subtreeIssueIds.map(async (issueId) => [issueId, await issues.getRelationSummaries(issueId)] as const),
@@ -1955,9 +1955,9 @@ export function buildHostServices(
           )
         ).flat();
         const [runs, financesSummary, openBudgetIncidents] = await Promise.all([
-          getIssueRunSummaries(companyId, subtreeIssueIds),
-          getIssueCostSummary(companyId, subtreeIssueIds, params.billingCode ?? rootIssue.billingCode ?? null),
-          getOpenBudgetIncidents(companyId),
+          getIssueRunSummaries(domainId, subtreeIssueIds),
+          getIssueFinanceSummary(domainId, subtreeIssueIds, params.billingCode ?? rootIssue.billingCode ?? null),
+          getOpenBudgetIncidents(domainId),
         ]);
         const issueRows = await db
           .select({
@@ -1966,13 +1966,13 @@ export function buildHostServices(
             projectId: issuesTable.projectId,
           })
           .from(issuesTable)
-          .where(and(eq(issuesTable.companyId, companyId), inArray(issuesTable.id, subtreeIssueIds)));
+          .where(and(eq(issuesTable.domainId, domainId), inArray(issuesTable.id, subtreeIssueIds)));
         const invocationBlocks = (
           await Promise.all(
             issueRows
               .filter((issueRow) => issueRow.assigneeAgentId)
               .map(async (issueRow) => {
-                const block = await budgets.getInvocationBlock(companyId, issueRow.assigneeAgentId!, {
+                const block = await budgets.getInvocationBlock(domainId, issueRow.assigneeAgentId!, {
                   issueId: issueRow.id,
                   projectId: issueRow.projectId,
                 });
@@ -1991,7 +1991,7 @@ export function buildHostServices(
         ).filter((block): block is NonNullable<typeof block> => block !== null);
         return {
           issueId: rootIssue.id,
-          companyId,
+          domainId,
           subtreeIssueIds,
           relations: Object.fromEntries(relationPairs),
           approvals: approvalRows,
@@ -2002,22 +2002,22 @@ export function buildHostServices(
         };
       },
       async listComments(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        if (!inDomain(await issues.getById(params.issueId), companyId)) return [];
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        if (!inDomain(await issues.getById(params.issueId), domainId)) return [];
         return (await issues.listComments(params.issueId)) as IssueComment[];
       },
       async createComment(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const issue = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const issue = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const comment = (await issues.addComment(
           params.issueId,
           params.body,
           { agentId: params.authorAgentId },
         )) as IssueComment;
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "issue.comment.created",
           entityType: "issue",
           entityId: issue.id,
@@ -2031,14 +2031,14 @@ export function buildHostServices(
         return comment;
       },
       async createInteraction(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const issue = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const issue = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const interaction = await issueThreadInteractionService(db).create(issue, params.interaction as CreateIssueThreadInteraction, {
           agentId: params.authorAgentId ?? null,
         });
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "issue.thread_interaction_created",
           entityType: "issue",
           entityId: issue.id,
@@ -2057,23 +2057,23 @@ export function buildHostServices(
 
     issueDocuments: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const rows = await documents.listIssueDocuments(params.issueId);
         return rows as any;
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const doc = await documents.getIssueDocumentByKey(params.issueId, params.key);
         return (doc ?? null) as any;
       },
       async upsert(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const issue = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const issue = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         const result = await documents.upsertIssueDocument({
           issueId: params.issueId,
           key: params.key,
@@ -2083,7 +2083,7 @@ export function buildHostServices(
           changeSummary: params.changeSummary ?? null,
         });
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "issue.document_upserted",
           entityType: "issue",
           entityId: issue.id,
@@ -2097,12 +2097,12 @@ export function buildHostServices(
         return result.document as any;
       },
       async delete(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const issue = requireInDomain("Issue", await issues.getById(params.issueId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const issue = requireInDomain("Issue", await issues.getById(params.issueId), domainId);
         await documents.deleteIssueDocument(params.issueId, params.key);
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "issue.document_deleted",
           entityType: "issue",
           entityId: issue.id,
@@ -2116,39 +2116,39 @@ export function buildHostServices(
 
     agents: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const rows = await agents.list(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const rows = await agents.list(domainId);
         return applyWindow(
           rows.filter((agent) => !params.status || agent.status === params.status) as Agent[],
           params,
         );
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const agent = await agents.getById(params.agentId);
-        return (inDomain(agent, companyId) ? agent : null) as Agent | null;
+        return (inDomain(agent, domainId) ? agent : null) as Agent | null;
       },
       async pause(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const agent = await agents.getById(params.agentId);
-        requireInDomain("Agent", agent, companyId);
+        requireInDomain("Agent", agent, domainId);
         return (await agents.pause(params.agentId)) as Agent;
       },
       async resume(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const agent = await agents.getById(params.agentId);
-        requireInDomain("Agent", agent, companyId);
+        requireInDomain("Agent", agent, domainId);
         return (await agents.resume(params.agentId)) as Agent;
       },
       async invoke(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const agent = await agents.getById(params.agentId);
-        requireInDomain("Agent", agent, companyId);
+        requireInDomain("Agent", agent, domainId);
         const run = await heartbeat.wakeup(params.agentId, {
           source: "automation",
           triggerDetail: "system",
@@ -2161,27 +2161,27 @@ export function buildHostServices(
         return { runId: run.id };
       },
       async managedGet(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedAgents.get(params.agentKey, companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedAgents.get(params.agentKey, domainId);
       },
       async managedReconcile(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedAgents.reconcile(params.agentKey, companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedAgents.reconcile(params.agentKey, domainId);
       },
       async managedReset(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return managedAgents.reset(params.agentKey, companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return managedAgents.reset(params.agentKey, domainId);
       },
     },
 
     goals: {
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const rows = await goals.list(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const rows = await goals.list(domainId);
         return applyWindow(
           rows.filter((goal) =>
             (!params.level || goal.level === params.level) &&
@@ -2191,15 +2191,15 @@ export function buildHostServices(
         );
       },
       async get(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const goal = await goals.getById(params.goalId);
-        return (inDomain(goal, companyId) ? goal : null) as Goal | null;
+        return (inDomain(goal, domainId) ? goal : null) as Goal | null;
       },
       async create(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return (await goals.create(companyId, {
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return (await goals.create(domainId, {
           title: params.title,
           description: params.description,
           level: params.level as any,
@@ -2209,23 +2209,23 @@ export function buildHostServices(
         })) as Goal;
       },
       async update(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        requireInDomain("Goal", await goals.getById(params.goalId), companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        requireInDomain("Goal", await goals.getById(params.goalId), domainId);
         return (await goals.update(params.goalId, params.patch as any)) as Goal;
       },
     },
 
     access: {
       async listMembers(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const rows = await access.listMembers(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const rows = await access.listMembers(domainId);
         const visibleRows = params.includeArchived ? rows : rows.filter((row) => row.status !== "archived");
         const grants = await db
           .select()
           .from(principalPermissionGrants)
-          .where(eq(principalPermissionGrants.companyId, companyId));
+          .where(eq(principalPermissionGrants.domainId, domainId));
         const grantsByPrincipal = new Map<string, typeof grants>();
         for (const grant of grants) {
           const key = `${grant.principalType}:${grant.principalId}`;
@@ -2241,36 +2241,36 @@ export function buildHostServices(
         }));
       },
       async getMember(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return loadPluginMember(companyId, params.memberId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return loadPluginMember(domainId, params.memberId);
       },
       async updateMember(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        const updated = await access.updateMember(companyId, params.memberId, params.patch);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        const updated = await access.updateMember(domainId, params.memberId, params.patch);
         if (!updated) throw new Error("Member not found");
         await logPluginActivity({
-          companyId,
-          action: "company_member.updated_by_plugin",
-          entityType: "company_membership",
+          domainId,
+          action: "domain_member.updated_by_plugin",
+          entityType: "domain_membership",
           entityId: params.memberId,
           details: {
             patch: sanitizeRecord(params.patch as Record<string, unknown>),
           },
         });
-        return (await loadPluginMember(companyId, params.memberId))!;
+        return (await loadPluginMember(domainId, params.memberId))!;
       },
       async listInvites(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const limit = Math.min(Math.max(Number(params.limit ?? 20), 1), 100);
         const offset = Math.max(Number(params.offset ?? 0), 0);
         const stateClause = inviteStateWhereClause(params.state);
         const rows = await db
           .select()
           .from(invites)
-          .where(stateClause ? and(eq(invites.companyId, companyId), stateClause) : eq(invites.companyId, companyId))
+          .where(stateClause ? and(eq(invites.domainId, domainId), stateClause) : eq(invites.domainId, domainId))
           .orderBy(desc(invites.createdAt))
           .limit(limit + 1)
           .offset(offset);
@@ -2281,19 +2281,19 @@ export function buildHostServices(
         };
       },
       async createInvite(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const normalizedAgentMessage = typeof params.agentMessage === "string"
           ? params.agentMessage.trim() || null
           : null;
         const allowedJoinTypes = params.allowedJoinTypes ?? "both";
         const humanRole = allowedJoinTypes === "agent" ? null : params.humanRole ?? "operator";
         const insertValues = {
-          companyId,
-          inviteType: "company_join" as const,
+          domainId,
+          inviteType: "domain_join" as const,
           allowedJoinTypes,
           defaultsPayload: mergeInviteDefaults(params.defaultsPayload ?? null, normalizedAgentMessage, humanRole),
-          expiresAt: new Date(Date.now() + COMPANY_INVITE_TTL_MS),
+          expiresAt: new Date(Date.now() + DOMAIN_INVITE_TTL_MS),
           invitedByUserId: null,
         };
         let token: string | null = null;
@@ -2317,7 +2317,7 @@ export function buildHostServices(
         }
         if (!token || !created) throw new Error("Failed to generate a unique invite token");
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "invite.created_by_plugin",
           entityType: "invite",
           entityId: created.id,
@@ -2330,12 +2330,12 @@ export function buildHostServices(
         return { ...redactInvite(created), token };
       },
       async revokeInvite(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const invite = await db
           .select()
           .from(invites)
-          .where(and(eq(invites.id, params.inviteId), eq(invites.companyId, companyId)))
+          .where(and(eq(invites.id, params.inviteId), eq(invites.domainId, domainId)))
           .then((rows) => rows[0] ?? null);
         if (!invite) throw new Error("Invite not found");
         if (invite.acceptedAt) throw new Error("Invite already consumed");
@@ -2347,7 +2347,7 @@ export function buildHostServices(
           .returning()
           .then((rows) => rows[0] ?? invite);
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "invite.revoked_by_plugin",
           entityType: "invite",
           entityId: invite.id,
@@ -2358,10 +2358,10 @@ export function buildHostServices(
 
     authorization: {
       async listGrants(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const conditions = [
-          eq(principalPermissionGrants.companyId, companyId),
+          eq(principalPermissionGrants.domainId, domainId),
           params.principalType ? eq(principalPermissionGrants.principalType, params.principalType) : undefined,
           params.principalId ? eq(principalPermissionGrants.principalId, params.principalId) : undefined,
         ].filter((condition): condition is NonNullable<typeof condition> => Boolean(condition));
@@ -2373,19 +2373,19 @@ export function buildHostServices(
         return rows.map(redactGrant);
       },
       async setGrants(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         if (params.principalType !== "agent" && params.principalType !== "user") {
           throw new Error("principalType must be 'agent' or 'user'");
         }
         if (params.principalType === "agent") {
-          requireInDomain("Agent", await agents.getById(params.principalId), companyId);
+          requireInDomain("Agent", await agents.getById(params.principalId), domainId);
         } else {
-          const membership = await access.getMembership(companyId, params.principalType as PrincipalType, params.principalId);
-          if (!membership) throw new Error("Principal is not a member of this company");
+          const membership = await access.getMembership(domainId, params.principalType as PrincipalType, params.principalId);
+          if (!membership) throw new Error("Principal is not a member of this domain");
         }
         await access.setPrincipalGrants(
-          companyId,
+          domainId,
           params.principalType as PrincipalType,
           params.principalId,
           params.grants.map((grant) => ({
@@ -2395,28 +2395,28 @@ export function buildHostServices(
           params.grantedByUserId ?? null,
         );
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "authorization.grants_updated_by_plugin",
           entityType: "principal_permission_grants",
           entityId: `${params.principalType}:${params.principalId}`,
           details: { grantCount: params.grants.length },
         });
         return access
-          .listPrincipalGrants(companyId, params.principalType as PrincipalType, params.principalId)
+          .listPrincipalGrants(domainId, params.principalType as PrincipalType, params.principalId)
           .then((rows) => rows.map(redactGrant));
       },
       async policySummary(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const [members, grants] = await Promise.all([
-          access.listMembers(companyId),
+          access.listMembers(domainId),
           db
             .select({ id: principalPermissionGrants.id })
             .from(principalPermissionGrants)
-            .where(eq(principalPermissionGrants.companyId, companyId)),
+            .where(eq(principalPermissionGrants.domainId, domainId)),
         ]);
         return {
-          companyId,
+          domainId,
           permissionsMode: "simple" as const,
           memberCount: members.length,
           activeMemberCount: members.filter((member) => member.status === "active").length,
@@ -2425,16 +2425,16 @@ export function buildHostServices(
         };
       },
       async getPolicy(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
-        return readAuthorizationPolicy(companyId, params.resourceType, params.resourceId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
+        return readAuthorizationPolicy(domainId, params.resourceType, params.resourceId);
       },
       async updatePolicy(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const policy = params.policy ? sanitizeRecord(params.policy) : null;
         if (params.resourceType === "agent") {
-          const agent = requireInDomain("Agent", await agents.getById(params.resourceId), companyId);
+          const agent = requireInDomain("Agent", await agents.getById(params.resourceId), domainId);
           const permissions = agent.permissions && typeof agent.permissions === "object"
             ? { ...(agent.permissions as Record<string, unknown>) }
             : {};
@@ -2445,7 +2445,7 @@ export function buildHostServices(
             .set({ permissions, updatedAt: new Date() })
             .where(eq(agentsTable.id, agent.id));
         } else if (params.resourceType === "project") {
-          const project = requireInDomain("Project", await projects.getById(params.resourceId), companyId);
+          const project = requireInDomain("Project", await projects.getById(params.resourceId), domainId);
           const executionWorkspacePolicy = project.executionWorkspacePolicy && typeof project.executionWorkspacePolicy === "object"
             ? { ...(project.executionWorkspacePolicy as unknown as Record<string, unknown>) }
             : {};
@@ -2456,7 +2456,7 @@ export function buildHostServices(
             .set({ executionWorkspacePolicy, updatedAt: new Date() })
             .where(eq(projectsTable.id, project.id));
         } else if (params.resourceType === "issue") {
-          const issue = requireInDomain("Issue", await issues.getById(params.resourceId), companyId);
+          const issue = requireInDomain("Issue", await issues.getById(params.resourceId), domainId);
           const executionPolicy = issue.executionPolicy && typeof issue.executionPolicy === "object"
             ? { ...(issue.executionPolicy as Record<string, unknown>) }
             : {};
@@ -2467,28 +2467,28 @@ export function buildHostServices(
             .set({ executionPolicy, updatedAt: new Date() })
             .where(eq(issuesTable.id, issue.id));
         } else {
-          const company = await domains.getById(params.resourceId);
-          if (!company || company.id !== companyId) throw new Error("Domain not found");
+          const domain = await domains.getById(params.resourceId);
+          if (!domain || domain.id !== domainId) throw new Error("Domain not found");
           throw new Error("Domain authorization policy updates are not supported by the current core schema");
         }
         await logPluginActivity({
-          companyId,
+          domainId,
           action: "authorization.policy_updated_by_plugin",
           entityType: params.resourceType,
           entityId: params.resourceId,
           details: { hasPolicy: Boolean(policy) },
         });
-        const updated = await readAuthorizationPolicy(companyId, params.resourceType, params.resourceId);
+        const updated = await readAuthorizationPolicy(domainId, params.resourceType, params.resourceId);
         if (!updated) throw new Error("Policy resource not found");
         return updated;
       },
       async previewAssignment(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         return authorization.decide({
           actor: pluginAssignmentActor(params.actor),
           action: "tasks:assign",
-          resource: { type: "issue", companyId, ...params.target },
+          resource: { type: "issue", domainId, ...params.target },
           scope: {
             issueId: params.target.issueId ?? null,
             projectId: params.target.projectId ?? null,
@@ -2499,12 +2499,12 @@ export function buildHostServices(
         });
       },
       async explainAssignment(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         return authorization.decide({
           actor: pluginAssignmentActor(params.actor),
           action: "tasks:assign",
-          resource: { type: "issue", companyId, ...params.target },
+          resource: { type: "issue", domainId, ...params.target },
           scope: {
             issueId: params.target.issueId ?? null,
             projectId: params.target.projectId ?? null,
@@ -2515,15 +2515,15 @@ export function buildHostServices(
         });
       },
       async searchAudit(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const limit = Math.min(Math.max(Number(params.limit ?? 50), 1), 100);
         const offset = Math.max(Number(params.offset ?? 0), 0);
         const decisionFilter = typeof params.decision === "string" && params.decision.trim()
           ? params.decision.trim().toLowerLifeAdmin()
           : null;
         const conditions = [
-          eq(activityLog.companyId, companyId),
+          eq(activityLog.domainId, domainId),
           params.action ? eq(activityLog.action, params.action) : undefined,
           params.actorType ? eq(activityLog.actorType, params.actorType) : undefined,
           params.actorId ? eq(activityLog.actorId, params.actorId) : undefined,
@@ -2549,16 +2549,16 @@ export function buildHostServices(
 
     agentSessions: {
       async create(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const agent = await agents.getById(params.agentId);
-        requireInDomain("Agent", agent, companyId);
+        requireInDomain("Agent", agent, domainId);
         const taskKey = params.taskKey ?? `plugin:${pluginKey}:session:${randomUUID()}`;
 
         const row = await db
           .insert(agentTaskSessionsTable)
           .values({
-            companyId,
+            domainId,
             agentId: params.agentId,
             adapterType: agent!.adapterType,
             taskKey,
@@ -2573,22 +2573,22 @@ export function buildHostServices(
         return {
           sessionId: row!.id,
           agentId: params.agentId,
-          companyId,
+          domainId,
           status: "active" as const,
           createdAt: row!.createdAt.toISOString(),
         };
       },
 
       async list(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const rows = await db
           .select()
           .from(agentTaskSessionsTable)
           .where(
             and(
               eq(agentTaskSessionsTable.agentId, params.agentId),
-              eq(agentTaskSessionsTable.companyId, companyId),
+              eq(agentTaskSessionsTable.domainId, domainId),
               like(agentTaskSessionsTable.taskKey, `plugin:${pluginKey}:session:%`),
             ),
           )
@@ -2597,7 +2597,7 @@ export function buildHostServices(
         return rows.map((row) => ({
           sessionId: row.id,
           agentId: row.agentId,
-          companyId: row.companyId,
+          domainId: row.domainId,
           status: "active" as const,
           createdAt: row.createdAt.toISOString(),
         }));
@@ -2608,8 +2608,8 @@ export function buildHostServices(
           throw new Error("Host services have been disposed");
         }
 
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
 
         // Verify session exists and belongs to this plugin
         const session = await db
@@ -2618,7 +2618,7 @@ export function buildHostServices(
           .where(
             and(
               eq(agentTaskSessionsTable.id, params.sessionId),
-              eq(agentTaskSessionsTable.companyId, companyId),
+              eq(agentTaskSessionsTable.domainId, domainId),
               like(agentTaskSessionsTable.taskKey, `plugin:${pluginKey}:session:%`),
             ),
           )
@@ -2652,7 +2652,7 @@ export function buildHostServices(
             activeSubscriptions.delete(entry);
           };
 
-          const unsubscribe = subscribeCompanyLiveEvents(companyId, (event) => {
+          const unsubscribe = subscribeDomainLiveEvents(domainId, (event) => {
             const payload = event.payload as Record<string, unknown> | undefined;
             if (!payload || payload.runId !== run.id) return;
 
@@ -2711,14 +2711,14 @@ export function buildHostServices(
       },
 
       async close(params) {
-        const companyId = ensureCompanyId(params.companyId);
-        await ensurePluginAvailableForDomain(companyId);
+        const domainId = ensureDomainId(params.domainId);
+        await ensurePluginAvailableForDomain(domainId);
         const deleted = await db
           .delete(agentTaskSessionsTable)
           .where(
             and(
               eq(agentTaskSessionsTable.id, params.sessionId),
-              eq(agentTaskSessionsTable.companyId, companyId),
+              eq(agentTaskSessionsTable.domainId, domainId),
               like(agentTaskSessionsTable.taskKey, `plugin:${pluginKey}:session:%`),
             ),
           )

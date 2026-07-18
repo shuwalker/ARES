@@ -1,7 +1,7 @@
 import type { WorkflowCaseLiveness } from "@paperclipai/shared";
 
 /**
- * Visual tone for a pipeline item liveness banner. Each tone maps to a palette
+ * Visual tone for a workflow item liveness banner. Each tone maps to a palette
  * in {@link ../components/WorkflowLivenessBanner}:
  * - `blocked`    → amber, "automation paused, waiting on a named blocker"
  * - `permission` → purple, "a permission grant is missing before this can run"
@@ -28,7 +28,7 @@ export interface LivenessBannerView {
   blockerLink: LivenessBannerLink | null;
   /** Secondary link to the linked automation/work task, when one is known. */
   automationLink: LivenessBannerLink | null;
-  /** Permission key the configured responsible is missing (e.g. `pipelines:write`). */
+  /** Permission key the configured responsible is missing (e.g. `workflows:write`). */
   permissionKey: string | null;
   /** Whether a retry call-to-action should render. */
   showRetry: boolean;
@@ -53,9 +53,9 @@ const NO_ACTION_PATH_BODY =
   "Re-run the stage to nudge it, or use the ⋯ menu to move it by hand.";
 
 /**
- * The `pipelines:write` permission key is the only permission the Phase 2
+ * The `workflows:write` permission key is the only permission the Phase 2
  * preflight blocks on today. The fingerprint encodes it as the final two
- * colon-separated segments (`...:pipelines:write`).
+ * colon-separated segments (`...:workflows:write`).
  */
 function permissionKeyFromFingerprint(fingerprint: string | null | undefined): string | null {
   if (!fingerprint) return null;
@@ -140,7 +140,7 @@ export function deriveWorkflowLivenessBanner(
         body: liveness.message,
         blockerLink: null,
         automationLink: automationLinkFromLiveness(liveness),
-        permissionKey: permissionKeyFromFingerprint(liveness.automation?.fingerprint) ?? "pipelines:write",
+        permissionKey: permissionKeyFromFingerprint(liveness.automation?.fingerprint) ?? "workflows:write",
         showRetry: false,
         retryKind: null,
         retryLabel: "",

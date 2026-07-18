@@ -12,25 +12,25 @@ import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
 import { privateHostnameGuard, resolvePrivateHostnameAllowSet } from "./middleware/private-hostname-guard.js";
 import { applyTrustProxy, parseTrustProxyEnv } from "./middleware/trust-proxy.js";
 import { healthRoutes } from "./routes/health.js";
-import { companyRoutes } from "./routes/domains.js";
-import { companySkillRoutes } from "./routes/company-skills.js";
+import { domainRoutes } from "./routes/domains.js";
+import { domainSkillRoutes } from "./routes/domain-skills.js";
 import { builtInAgentRoutes } from "./routes/built-in-agents.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
 import { agentRoutes } from "./routes/agents.js";
 import { projectRoutes } from "./routes/projects.js";
 import { issueRoutes } from "./routes/issues.js";
 import { issueTreeControlRoutes } from "./routes/issue-tree-control.js";
-import { caseRoutes } from "./routes/life_admin.js";
+import { lifeAdminRoutes } from "./routes/life_admin.js";
 import { fileResourceRoutes } from "./routes/file-resources.js";
 import { routineRoutes } from "./routes/routines.js";
-import { pipelineRoutes } from "./routes/workflows.js";
+import { workflowRoutes } from "./routes/workflows.js";
 import { environmentRoutes } from "./routes/environments.js";
 import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
 import { goalRoutes } from "./routes/goals.js";
 import { boardChatRoutes } from "./routes/board-chat.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { secretRoutes } from "./routes/secrets.js";
-import { costRoutes } from "./routes/finances.js";
+import { financeRoutes } from "./routes/finances.js";
 import { activityRoutes } from "./routes/activity.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { attentionRoutes } from "./routes/attention.js";
@@ -72,7 +72,7 @@ import { createHostClientHandlers } from "@paperclipai/plugin-sdk";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 import { createCachedViteHtmlRenderer } from "./vite-html-renderer.js";
 import { DEFAULT_JSON_BODY_LIMIT, PORTABLE_JSON_BODY_LIMIT } from "./http/body-limits.js";
-import { COMPANY_IMPORT_API_PATH } from "./routes/company-import-paths.js";
+import { DOMAIN_IMPORT_API_PATH } from "./routes/domain-import-paths.js";
 import { apiCompression } from "./middleware/api-compression.js";
 
 type UiMode = "none" | "static" | "vite-dev";
@@ -140,7 +140,7 @@ export async function createApp(
     storageService: StorageService;
     feedbackExportService?: {
       flushPendingFeedbackTraces(input?: {
-        companyId?: string;
+        domainId?: string;
         traceId?: string;
         limit?: number;
         now?: Date;
@@ -153,7 +153,7 @@ export async function createApp(
     allowedHostnames: string[];
     bindHost: string;
     authReady: boolean;
-    companyDeletionEnabled: boolean;
+    domainDeletionEnabled: boolean;
     instanceId?: string;
     hostVersion?: string;
     localPluginDir?: string;
@@ -174,7 +174,7 @@ export async function createApp(
   // when the server may be reachable without a known reverse proxy in front.
   applyTrustProxy(app, parseTrustProxyEnv(process.env.TRUST_PROXY));
 
-  app.use(COMPANY_IMPORT_API_PATH, express.json({
+  app.use(DOMAIN_IMPORT_API_PATH, express.json({
     limit: PORTABLE_JSON_BODY_LIMIT,
     verify: captureRawBody,
   }));
@@ -223,14 +223,14 @@ export async function createApp(
       deploymentMode: opts.deploymentMode,
       deploymentExposure: opts.deploymentExposure,
       authReady: opts.authReady,
-      companyDeletionEnabled: opts.companyDeletionEnabled,
+      domainDeletionEnabled: opts.domainDeletionEnabled,
       databaseBackupHealth: opts.databaseBackupHealth,
     }),
   );
   api.use(openApiRoutes());
-  api.use("/domains", companyRoutes(db, opts.storageService));
+  api.use("/domains", domainRoutes(db, opts.storageService));
   api.use(llmRoutes(db));
-  api.use(companySkillRoutes(db));
+  api.use(domainSkillRoutes(db));
   api.use(builtInAgentRoutes(db));
   api.use(teamsCatalogRoutes(db));
   api.use(agentRoutes(db, { pluginWorkerManager: workerManager }));
@@ -240,18 +240,18 @@ export async function createApp(
     feedbackExportService: opts.feedbackExportService,
     pluginWorkerManager: workerManager,
   }));
-  api.use(caseRoutes(db, opts.storageService));
+  api.use(lifeAdminRoutes(db, opts.storageService));
   api.use(issueTreeControlRoutes(db));
   api.use(fileResourceRoutes(db));
   api.use(routineRoutes(db, { pluginWorkerManager: workerManager }));
-  api.use(pipelineRoutes(db));
+  api.use(workflowRoutes(db));
   api.use(environmentRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(executionWorkspaceRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(goalRoutes(db));
   api.use(boardChatRoutes(db, { deploymentMode: opts.deploymentMode }));
   api.use(approvalRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(secretRoutes(db));
-  api.use(costRoutes(db, { pluginWorkerManager: workerManager }));
+  api.use(financeRoutes(db, { pluginWorkerManager: workerManager }));
   api.use(activityRoutes(db));
   api.use(dashboardRoutes(db));
   api.use(attentionRoutes(db));

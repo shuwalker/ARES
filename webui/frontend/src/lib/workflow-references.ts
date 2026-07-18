@@ -1,5 +1,5 @@
 /**
- * Typed work references for pipeline cases.
+ * Typed work references for workflow cases.
  *
  * LifeAdmin carry references to the actual work — a workspace folder, an external
  * URL, a linked issue — inside `fields` (and the dedicated `workspaceRef`
@@ -41,11 +41,11 @@ function humanizeKey(key: string): string {
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/^./, (char) => char.toUpperLifeAdmin());
+    .replace(/^./, (char) => char.toUpperCase());
 }
 
 function normalizeKind(raw: unknown): WorkReference["kind"] | null {
-  const kind = readString(raw)?.toLowerLifeAdmin();
+  const kind = readString(raw)?.toLowerCase();
   if (!kind) return null;
   if (kind === "workspace" || kind === "folder" || kind === "workspace_folder" || kind === "file") return "workspace";
   if (kind === "url" || kind === "link" || kind === "external") return "url";

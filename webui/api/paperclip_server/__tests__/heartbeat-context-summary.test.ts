@@ -241,23 +241,23 @@ describe("summarizeHeartbeatRunContextSnapshot", () => {
 });
 
 describe("summarizeHeartbeatRunListResultJson", () => {
-  it("keeps only summary fields and parses numeric cost aliases", () => {
+  it("keeps only summary fields and parses numeric finance aliases", () => {
     expect(
       summarizeHeartbeatRunListResultJson({
         summary: "Completed the task",
         result: "Updated three files",
         message: "",
         error: null,
-        totalCostUsd: "1.25",
-        costUsd: "0.75",
-        costUsdCamel: "0.5",
+        totalFinanceUsd: "1.25",
+        financeUsd: "0.75",
+        financeUsdCamel: "0.5",
       }),
     ).toEqual({
       summary: "Completed the task",
       result: "Updated three files",
-      total_cost_usd: 1.25,
-      cost_usd: 0.75,
-      costUsd: 0.5,
+      total_finance_usd: 1.25,
+      finance_usd: 0.75,
+      financeUsd: 0.5,
     });
   });
 
@@ -268,7 +268,7 @@ describe("summarizeHeartbeatRunListResultJson", () => {
         result: null,
         message: undefined,
         error: "   ",
-        totalCostUsd: "abc",
+        totalFinanceUsd: "abc",
       }),
     ).toBeNull();
   });

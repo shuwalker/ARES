@@ -4,7 +4,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { domains, companySkills, createDb } from "@paperclipai/db";
+import { domains, domainSkills, createDb } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -73,11 +73,11 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres company skill catalog service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres domain skill catalog service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
-describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
+describeEmbeddedPostgres("domainSkillService.installFromCatalog", () => {
   let db!: ReturnType<typeof createDb>;
   let svc!: Awaited<ReturnType<typeof createService>>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
@@ -85,24 +85,24 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   const cleanupDirs = new Set<string>();
 
   async function createService() {
-    const { companySkillService } = await import("../services/company-skills.js");
-    return companySkillService(db);
+    const { domainSkillService } = await import("../services/domain-skills.js");
+    return domainSkillService(db);
   }
 
   async function createDomain() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    return companyId;
+    return domainId;
   }
 
   beforeAll(async () => {
     oldPaperclipHome = process.env.PAPERCLIP_HOME;
-    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-company-skills-catalog-");
+    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-domain-skills-catalog-");
     db = createDb(tempDb.connectionString);
     svc = await createService();
   }, 20_000);
@@ -131,7 +131,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   afterEach(async () => {
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(domains);
     await Promise.all(Array.from(cleanupDirs, (dir) => fs.rm(dir, { recursive: true, force: true })));
     cleanupDirs.clear();
@@ -144,16 +144,16 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
     await tempDb?.cleanup();
   });
 
-  it("creates a company skill with catalog provenance and materialized files", async () => {
-    const companyId = await createDomain();
+  it("creates a domain skill with catalog provenance and materialized files", async () => {
+    const domainId = await createDomain();
 
-    const result = await svc.installFromCatalog(companyId, {
+    const result = await svc.installFromCatalog(domainId, {
       catalogSkillId: sampleCatalogSkill.id,
     });
 
     expect(result.action).toBe("created");
     expect(result.skill).toMatchObject({
-      companyId,
+      domainId,
       key: sampleCatalogSkill.key,
       slug: sampleCatalogSkill.slug,
       sourceType: "catalog",
@@ -175,7 +175,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
     });
     await expect(fs.readFile(path.join(result.skill.sourceLocator!, "SKILL.md"), "utf8")).resolves.toBe(sampleSkillMarkdown);
     await expect(fs.readFile(path.join(result.skill.sourceLocator!, "references/checklist.md"), "utf8")).resolves.toBe(sampleReferenceMarkdown);
-    const listed = await svc.list(companyId);
+    const listed = await svc.list(domainId);
     expect(listed.find((skill) => skill.id === result.skill.id)).toMatchObject({
       catalogKind: "bundled",
       originHash: sampleCatalogSkill.contentHash,
@@ -204,19 +204,19 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       const content = filePath === "SKILL.md" ? sampleSkillMarkdown : sampleReferenceMarkdown;
       await fs.writeFile(targetPath, content, "utf8");
     });
-    const companyId = await createDomain();
+    const domainId = await createDomain();
 
-    const result = await svc.installFromCatalog(companyId, {
+    const result = await svc.installFromCatalog(domainId, {
       catalogSkillId: assetCatalogSkill.id,
     });
 
     await expect(fs.readFile(path.join(result.skill.sourceLocator!, "assets/logo.png"))).resolves.toEqual(sampleAssetBytes);
-    await expect(svc.installUpdate(companyId, result.skill.id)).resolves.toMatchObject({
+    await expect(svc.installUpdate(domainId, result.skill.id)).resolves.toMatchObject({
       metadata: expect.objectContaining({
         updateHoldReason: null,
       }),
     });
-    await expect(svc.resetSkill(companyId, result.skill.id)).resolves.toMatchObject({
+    await expect(svc.resetSkill(domainId, result.skill.id)).resolves.toMatchObject({
       metadata: expect.objectContaining({
         updateHoldReason: null,
       }),
@@ -244,9 +244,9 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       const content = filePath === "SKILL.md" ? sampleSkillMarkdown : sampleReferenceMarkdown;
       await fs.writeFile(targetPath, content, "utf8");
     });
-    const companyId = await createDomain();
+    const domainId = await createDomain();
 
-    const result = await svc.installFromCatalog(companyId, {
+    const result = await svc.installFromCatalog(domainId, {
       catalogSkillId: scriptCatalogSkill.id,
     });
 
@@ -265,7 +265,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("restores portable catalog provenance when importing packaged skills", async () => {
-    const companyId = await createDomain();
+    const domainId = await createDomain();
     const importedFiles = {
       "skills/paperclipai/bundled/software-development/review/SKILL.md": [
         "---",
@@ -302,11 +302,11 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       "skills/paperclipai/bundled/software-development/review/references/checklist.md": sampleReferenceMarkdown,
     };
 
-    const [result] = await svc.importPackageFiles(companyId, importedFiles, { onConflict: "replace" });
+    const [result] = await svc.importPackageFiles(domainId, importedFiles, { onConflict: "replace" });
 
     expect(result?.action).toBe("created");
     expect(result?.skill).toMatchObject({
-      companyId,
+      domainId,
       key: sampleCatalogSkill.key,
       slug: "review",
       sourceType: "catalog",
@@ -335,10 +335,10 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("returns unchanged for an already-current catalog skill", async () => {
-    const companyId = await createDomain();
-    await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const domainId = await createDomain();
+    await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
 
-    const result = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const result = await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
 
     expect(result.action).toBe("unchanged");
     expect(result.skill.metadata).toEqual(expect.objectContaining({
@@ -348,17 +348,17 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
     }));
     const rows = await db
       .select()
-      .from(companySkills)
-      .where(and(eq(companySkills.companyId, companyId), eq(companySkills.key, sampleCatalogSkill.key)));
+      .from(domainSkills)
+      .where(and(eq(domainSkills.domainId, domainId), eq(domainSkills.key, sampleCatalogSkill.key)));
     expect(rows).toHaveLength(1);
   });
 
   it("detects installed catalog drift during update checks", async () => {
-    const companyId = await createDomain();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const domainId = await createDomain();
+    const installed = await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
     await fs.writeFile(path.join(installed.skill.sourceLocator!, "SKILL.md"), `${sampleSkillMarkdown}\nTampered\n`, "utf8");
 
-    const status = await svc.updateStatus(companyId, installed.skill.id);
+    const status = await svc.updateStatus(domainId, installed.skill.id);
 
     expect(status).toMatchObject({
       supported: true,
@@ -370,14 +370,14 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("returns unsupported update status when the catalog entry is no longer shipped", async () => {
-    const companyId = await createDomain();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const domainId = await createDomain();
+    const installed = await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
     mockCatalogService.resolveCatalogSkillReference.mockReturnValue({
       skill: null,
       ambiguous: false,
     });
 
-    const status = await svc.updateStatus(companyId, installed.skill.id);
+    const status = await svc.updateStatus(domainId, installed.skill.id);
 
     expect(status).toMatchObject({
       supported: false,
@@ -389,14 +389,14 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("clears stale local modification hold status when catalog files are restored", async () => {
-    const companyId = await createDomain();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const domainId = await createDomain();
+    const installed = await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
     const skillPath = path.join(installed.skill.sourceLocator!, "SKILL.md");
     await fs.writeFile(skillPath, `${sampleSkillMarkdown}\nTampered\n`, "utf8");
-    await svc.auditSkill(companyId, installed.skill.id);
+    await svc.auditSkill(domainId, installed.skill.id);
     await fs.writeFile(skillPath, sampleSkillMarkdown, "utf8");
 
-    const status = await svc.updateStatus(companyId, installed.skill.id);
+    const status = await svc.updateStatus(domainId, installed.skill.id);
 
     expect(status).toMatchObject({
       updateHoldReason: null,
@@ -406,11 +406,11 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("reports hard-stop audit findings for idempotent catalog reinstall drift", async () => {
-    const companyId = await createDomain();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const domainId = await createDomain();
+    const installed = await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
     await fs.rm(path.join(installed.skill.sourceLocator!, "SKILL.md"));
 
-    await expect(svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id })).rejects.toMatchObject({
+    await expect(svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id })).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining("hard-stop audit findings"),
       details: expect.objectContaining({
@@ -428,16 +428,16 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("resets a modified catalog skill back to the pinned origin when forced", async () => {
-    const companyId = await createDomain();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const domainId = await createDomain();
+    const installed = await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
     await fs.writeFile(path.join(installed.skill.sourceLocator!, "SKILL.md"), `${sampleSkillMarkdown}\nTampered\n`, "utf8");
 
-    await expect(svc.resetSkill(companyId, installed.skill.id)).rejects.toMatchObject({
+    await expect(svc.resetSkill(domainId, installed.skill.id)).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining("local modifications"),
     });
 
-    const reset = await svc.resetSkill(companyId, installed.skill.id, { force: true });
+    const reset = await svc.resetSkill(domainId, installed.skill.id, { force: true });
 
     expect(reset?.metadata).toMatchObject({
       installedHash: sampleCatalogSkill.contentHash,
@@ -449,8 +449,8 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
   });
 
   it("rejects force when audit finds a hard-stop remote execution pattern", async () => {
-    const companyId = await createDomain();
-    const installed = await svc.installFromCatalog(companyId, { catalogSkillId: sampleCatalogSkill.id });
+    const domainId = await createDomain();
+    const installed = await svc.installFromCatalog(domainId, { catalogSkillId: sampleCatalogSkill.id });
     await fs.writeFile(path.join(installed.skill.sourceLocator!, "SKILL.md"), [
       "---",
       "name: review",
@@ -460,20 +460,20 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       "",
     ].join("\n"), "utf8");
 
-    await expect(svc.installUpdate(companyId, installed.skill.id, { force: true })).rejects.toMatchObject({
+    await expect(svc.installUpdate(domainId, installed.skill.id, { force: true })).rejects.toMatchObject({
       status: 422,
       message: expect.stringContaining("hard-stop audit"),
     });
   });
 
   it("rejects duplicate slug conflicts", async () => {
-    const companyId = await createDomain();
+    const domainId = await createDomain();
     const skillDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-existing-skill-"));
     cleanupDirs.add(skillDir);
     await fs.writeFile(path.join(skillDir, "SKILL.md"), "# Existing\n", "utf8");
-    await db.insert(companySkills).values({
-      companyId,
-      key: `company/${companyId}/review`,
+    await db.insert(domainSkills).values({
+      domainId,
+      key: `domain/${domainId}/review`,
       slug: "review",
       name: "Existing Review",
       description: null,
@@ -486,7 +486,7 @@ describeEmbeddedPostgres("companySkillService.installFromCatalog", () => {
       metadata: { sourceKind: "local_path" },
     });
 
-    await expect(svc.installFromCatalog(companyId, {
+    await expect(svc.installFromCatalog(domainId, {
       catalogSkillId: sampleCatalogSkill.id,
     })).rejects.toMatchObject({
       status: 409,

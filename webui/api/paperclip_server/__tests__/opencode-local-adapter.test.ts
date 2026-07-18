@@ -4,7 +4,7 @@ import { parseOpenCodeStdoutLine } from "@paperclipai/adapter-opencode-local/ui"
 import { printOpenCodeStreamEvent } from "@paperclipai/adapter-opencode-local/cli";
 
 describe("opencode_local parser", () => {
-  it("extracts session, summary, usage, cost, and terminal error message", () => {
+  it("extracts session, summary, usage, finance, and terminal error message", () => {
     const stdout = [
       JSON.stringify({ type: "step_start", sessionID: "ses_123" }),
       JSON.stringify({ type: "text", part: { type: "text", text: "hello" } }),
@@ -12,7 +12,7 @@ describe("opencode_local parser", () => {
         type: "step_finish",
         part: {
           reason: "tool-calls",
-          cost: 0.001,
+          finance: 0.001,
           tokens: {
             input: 100,
             output: 40,
@@ -24,7 +24,7 @@ describe("opencode_local parser", () => {
         type: "step_finish",
         part: {
           reason: "stop",
-          cost: 0.002,
+          finance: 0.002,
           tokens: {
             input: 50,
             output: 25,
@@ -43,7 +43,7 @@ describe("opencode_local parser", () => {
       cachedInputTokens: 30,
       outputTokens: 65,
     });
-    expect(parsed.costUsd).toBeCloseTo(0.003, 6);
+    expect(parsed.financeUsd).toBeCloseTo(0.003, 6);
     expect(parsed.errorMessage).toBe("model access denied");
   });
 });
@@ -124,7 +124,7 @@ describe("opencode_local ui stdout parser", () => {
           type: "step_finish",
           part: {
             reason: "stop",
-            cost: 0.00042,
+            finance: 0.00042,
             tokens: {
               input: 10,
               output: 5,
@@ -142,7 +142,7 @@ describe("opencode_local ui stdout parser", () => {
         inputTokens: 10,
         outputTokens: 5,
         cachedTokens: 2,
-        costUsd: 0.00042,
+        financeUsd: 0.00042,
         subtype: "stop",
         isError: false,
         errors: [],
@@ -192,7 +192,7 @@ describe("opencode_local cli formatter", () => {
           type: "step_finish",
           part: {
             reason: "stop",
-            cost: 0.00042,
+            finance: 0.00042,
             tokens: {
               input: 10,
               output: 5,
@@ -215,7 +215,7 @@ describe("opencode_local cli formatter", () => {
           "tool_result status=completed exit=0",
           "AGENTS.md",
           "step finished: reason=stop",
-          "tokens: in=10 out=5 cached=2 cost=$0.000420",
+          "tokens: in=10 out=5 cached=2 finance=$0.000420",
         ]),
       );
     } finally {

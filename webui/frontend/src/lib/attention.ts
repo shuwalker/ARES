@@ -379,14 +379,14 @@ export function saveAttentionSortOrder(order: AttentionSortOrder) {
   }
 }
 
-function getAttentionFiltersStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${ATTENTION_FILTERS_KEY_PREFIX}:${companyId}`;
+function getAttentionFiltersStorageKey(domainId: string | null | undefined): string | null {
+  if (!domainId) return null;
+  return `${ATTENTION_FILTERS_KEY_PREFIX}:${domainId}`;
 }
 
-function getAttentionCollapsedGroupsStorageKey(companyId: string | null | undefined): string | null {
-  if (!companyId) return null;
-  return `${ATTENTION_COLLAPSED_GROUPS_KEY_PREFIX}:${companyId}`;
+function getAttentionCollapsedGroupsStorageKey(domainId: string | null | undefined): string | null {
+  if (!domainId) return null;
+  return `${ATTENTION_COLLAPSED_GROUPS_KEY_PREFIX}:${domainId}`;
 }
 
 function normalizeStringArray(value: unknown): string[] {
@@ -396,8 +396,8 @@ function normalizeStringArray(value: unknown): string[] {
 
 const ALL_SEVERITIES: AttentionSeverity[] = ["critical", "high", "medium", "low"];
 
-export function loadAttentionFilters(companyId: string | null | undefined): AttentionFilterState {
-  const storageKey = getAttentionFiltersStorageKey(companyId);
+export function loadAttentionFilters(domainId: string | null | undefined): AttentionFilterState {
+  const storageKey = getAttentionFiltersStorageKey(domainId);
   if (!storageKey) return { ...defaultAttentionFilterState };
   try {
     const raw = localStorage.getItem(storageKey);
@@ -417,10 +417,10 @@ export function loadAttentionFilters(companyId: string | null | undefined): Atte
 }
 
 export function saveAttentionFilters(
-  companyId: string | null | undefined,
+  domainId: string | null | undefined,
   filters: AttentionFilterState,
 ) {
-  const storageKey = getAttentionFiltersStorageKey(companyId);
+  const storageKey = getAttentionFiltersStorageKey(domainId);
   if (!storageKey) return;
   try {
     localStorage.setItem(storageKey, JSON.stringify(filters));
@@ -429,8 +429,8 @@ export function saveAttentionFilters(
   }
 }
 
-export function loadCollapsedAttentionGroupKeys(companyId: string | null | undefined): Set<string> {
-  const storageKey = getAttentionCollapsedGroupsStorageKey(companyId);
+export function loadCollapsedAttentionGroupKeys(domainId: string | null | undefined): Set<string> {
+  const storageKey = getAttentionCollapsedGroupsStorageKey(domainId);
   if (!storageKey) return new Set();
   try {
     const raw = localStorage.getItem(storageKey);
@@ -443,10 +443,10 @@ export function loadCollapsedAttentionGroupKeys(companyId: string | null | undef
 }
 
 export function saveCollapsedAttentionGroupKeys(
-  companyId: string | null | undefined,
+  domainId: string | null | undefined,
   groupKeys: ReadonlySet<string>,
 ) {
-  const storageKey = getAttentionCollapsedGroupsStorageKey(companyId);
+  const storageKey = getAttentionCollapsedGroupsStorageKey(domainId);
   if (!storageKey) return;
   try {
     localStorage.setItem(storageKey, JSON.stringify([...groupKeys]));
@@ -543,7 +543,7 @@ export interface AttentionRenderPlan {
  * Allocate a bounded render budget across the queue in document order — active
  * groups first, then the open curtains (PAP-13784). The feed is uncapped, so
  * the page renders only `limit` rows and grows the budget as the user scrolls;
- * collapsed groups and closed curtains cost nothing.
+ * collapsed groups and closed curtains finance nothing.
  */
 export function planAttentionRenderRows(options: {
   groups: AttentionGroup[];

@@ -91,7 +91,7 @@ describe("gemini execute", () => {
         runId: "run-1",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Gemini Coder",
           adapterType: "gemini_local",
           adapterConfig: { engine: "cli" },
@@ -138,7 +138,7 @@ describe("gemini execute", () => {
           "PAPERCLIP_AGENT_ID",
           "PAPERCLIP_API_KEY",
           "PAPERCLIP_API_URL",
-          "PAPERCLIP_COMPANY_ID",
+          "PAPERCLIP_DOMAIN_ID",
           "PAPERCLIP_RUN_ID",
         ]),
       );
@@ -171,7 +171,7 @@ describe("gemini execute", () => {
     try {
       await execute({
         runId: "run-yolo",
-        agent: { id: "a1", companyId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
+        agent: { id: "a1", domainId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: {
           engine: "cli",
@@ -223,7 +223,7 @@ describe("gemini execute", () => {
     try {
       const result = await execute({
         runId: "run-turn-limit",
-        agent: { id: "a1", companyId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
+        agent: { id: "a1", domainId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: {
           engine: "cli",
@@ -265,7 +265,7 @@ describe("gemini execute", () => {
     try {
       const result = await execute({
         runId: "run-exit-53",
-        agent: { id: "a1", companyId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
+        agent: { id: "a1", domainId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: {
           engine: "cli",
@@ -315,7 +315,7 @@ describe("gemini execute", () => {
     try {
       const result = await execute({
         runId: "run-turn-limit-text",
-        agent: { id: "a1", companyId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
+        agent: { id: "a1", domainId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: { engine: "cli" } },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: {
           engine: "cli",
@@ -357,7 +357,7 @@ describe("gemini execute", () => {
         runId: "run-resume",
         agent: {
           id: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           name: "Gemini Coder",
           adapterType: "gemini_local",
           adapterConfig: { engine: "cli" },

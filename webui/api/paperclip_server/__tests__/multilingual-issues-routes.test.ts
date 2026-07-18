@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { domains, companyMemberships, createDb } from "@paperclipai/db";
+import { domains, domainMemberships, createDb } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -24,7 +24,7 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let app!: ReturnType<typeof createApp>;
-  let companyId!: string;
+  let domainId!: string;
 
   const title = "验证中文任务";
   const description = [
@@ -53,17 +53,17 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-multilingual-issues-");
     db = createDb(tempDb.connectionString);
-    companyId = randomUUID();
-    app = createApp(companyId);
+    domainId = randomUUID();
+    app = createApp(domainId);
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Multilingual tenant",
       issuePrefix: "LNG",
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companyMemberships).values({
-      companyId,
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: "cloud-user-1",
       status: "active",
@@ -90,18 +90,18 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
     };
   }
 
-  function createApp(companyId: string) {
+  function createApp(domainId: string) {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).actor = {
         type: "board",
         userId: "cloud-user-1",
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+        domainIds: [domainId],
+        memberships: [{ domainId, membershipRole: "owner", status: "active" }],
         source: "cloud_tenant",
         // cloud_tenant actors are never instance admins — reads flow through
-        // the active company membership seeded in beforeAll.
+        // the active domain membership seeded in beforeAll.
         isInstanceAdmin: false,
       };
       next();
@@ -113,7 +113,7 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
 
   it("creates an issue with multilingual title and description", async () => {
     const createRes = await request(app)
-      .post(`/api/domains/${companyId}/issues`)
+      .post(`/api/domains/${domainId}/issues`)
       .send({
         title,
         description,
@@ -139,7 +139,7 @@ describeEmbeddedPostgres("multilingual issue routes", () => {
   });
 
   it("finds the issue by Chinese search text", async () => {
-    const searchRes = await request(app).get(`/api/domains/${companyId}/issues`).query({ q: "中文" });
+    const searchRes = await request(app).get(`/api/domains/${domainId}/issues`).query({ q: "中文" });
     expect(searchRes.status, JSON.stringify(searchRes.body)).toBe(200);
     expect(searchRes.body.map((issue: { identifier: string }) => issue.identifier)).toContain("LNG-1");
   });

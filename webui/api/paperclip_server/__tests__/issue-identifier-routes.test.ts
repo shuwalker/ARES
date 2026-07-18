@@ -3,7 +3,7 @@ import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { domains, companyMemberships, createDb, issues } from "@paperclipai/db";
+import { domains, domainMemberships, createDb, issues } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -34,18 +34,18 @@ describeEmbeddedPostgres("issue identifier routes", () => {
     await tempDb?.cleanup();
   });
 
-  function createApp(companyId: string) {
+  function createApp(domainId: string) {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       (req as any).actor = {
         type: "board",
         userId: "cloud-user-1",
-        companyIds: [companyId],
-        memberships: [{ companyId, membershipRole: "owner", status: "active" }],
+        domainIds: [domainId],
+        memberships: [{ domainId, membershipRole: "owner", status: "active" }],
         source: "cloud_tenant",
         // cloud_tenant actors are never instance admins — access flows through
-        // company-scoped membership grants, seeded per test company below.
+        // domain-scoped membership grants, seeded per test domain below.
         isInstanceAdmin: false,
       };
       next();
@@ -55,9 +55,9 @@ describeEmbeddedPostgres("issue identifier routes", () => {
     return app;
   }
 
-  async function seedCloudTenantMember(companyId: string) {
-    await db.insert(companyMemberships).values({
-      companyId,
+  async function seedCloudTenantMember(domainId: string) {
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: "cloud-user-1",
       status: "active",
@@ -65,7 +65,7 @@ describeEmbeddedPostgres("issue identifier routes", () => {
       updatedAt: new Date(),
     });
     await ensureHumanRoleDefaultGrants(db, {
-      companyId,
+      domainId,
       principalId: "cloud-user-1",
       membershipRole: "owner",
       grantedByUserId: null,
@@ -73,19 +73,19 @@ describeEmbeddedPostgres("issue identifier routes", () => {
   }
 
   it("resolves alphanumeric Cloud tenant issue identifiers for detail reads and updates", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Cloud tenant",
       issuePrefix: "PC1A2",
       requireBoardApprovalForNewAgents: false,
     });
-    await seedCloudTenantMember(companyId);
+    await seedCloudTenantMember(domainId);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       issueNumber: 7,
       identifier: "PC1A2-7",
       title: "Tenant identifier route",
@@ -94,13 +94,13 @@ describeEmbeddedPostgres("issue identifier routes", () => {
       createdByUserId: "cloud-user-1",
     });
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
     const read = await request(app).get("/api/issues/pc1a2-7");
 
     expect(read.status, JSON.stringify(read.body)).toBe(200);
     expect(read.body).toMatchObject({
       id: issueId,
-      companyId,
+      domainId,
       identifier: "PC1A2-7",
     });
 
@@ -111,7 +111,7 @@ describeEmbeddedPostgres("issue identifier routes", () => {
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
     expect(updated.body).toMatchObject({
       id: issueId,
-      companyId,
+      domainId,
       identifier: "PC1A2-7",
       priority: "high",
     });

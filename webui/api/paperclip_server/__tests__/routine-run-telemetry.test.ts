@@ -75,21 +75,21 @@ describeEmbeddedPostgres("routine run telemetry", () => {
   });
 
   async function seedFixture() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const projectId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
       defaultResponsibleUserId: "responsible-user",
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -101,7 +101,7 @@ describeEmbeddedPostgres("routine run telemetry", () => {
 
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Routines",
       status: "in_progress",
     });
@@ -117,7 +117,7 @@ describeEmbeddedPostgres("routine run telemetry", () => {
           const queuedRunId = randomUUID();
           await db.insert(heartbeatRuns).values({
             id: queuedRunId,
-            companyId,
+            domainId,
             agentId: wakeupAgentId,
             invocationSource: wakeupOpts.source ?? "assignment",
             triggerDetail: wakeupOpts.triggerDetail ?? null,
@@ -137,7 +137,7 @@ describeEmbeddedPostgres("routine run telemetry", () => {
     });
 
     const routine = await svc.create(
-      companyId,
+      domainId,
       {
         projectId,
         goalId: null,

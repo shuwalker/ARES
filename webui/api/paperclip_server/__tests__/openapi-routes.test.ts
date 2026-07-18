@@ -23,7 +23,7 @@ const apiPrefixes: Record<string, string> = {
   "built-in-agents.ts": "/api",
   "cloud-upstreams.ts": "/api",
   "domains.ts": "/api/domains",
-  "company-skills.ts": "/api",
+  "domain-skills.ts": "/api",
   "finances.ts": "/api",
   "dashboard.ts": "/api",
   "environments.ts": "/api",
@@ -108,7 +108,7 @@ function loadActualRoutes() {
       routes.add(`${method} ${normalizeExpressPath(resolveMountedPath(file, prefix, routePath))}`);
     }
 
-    if (file === "domains.ts" && source.includes("router.post(COMPANY_IMPORT_ROUTE_PATH")) {
+    if (file === "domains.ts" && source.includes("router.post(DOMAIN_IMPORT_ROUTE_PATH")) {
       routes.add("POST /api/domains/import");
     }
   }
@@ -139,7 +139,7 @@ describe("openapi routes", () => {
     expect(res.body.openapi).toBe("3.0.0");
     expect(res.body.info.title).toBe("Paperclip API");
     expect(res.body.paths["/api/openapi.json"].get.summary).toBe("Get the generated OpenAPI document");
-    expect(res.body.paths["/api/domains/{companyId}/agents"].get.summary).toBe("List agents in a company");
+    expect(res.body.paths["/api/domains/{domainId}/agents"].get.summary).toBe("List agents in a domain");
     expect(res.body.paths["/api/agents/{id}/keys"].post.summary).toBe("Create an agent API key");
     expect(res.body.components.securitySchemes).toMatchObject({
       BoardSessionAuth: { type: "apiKey", in: "cookie" },
@@ -196,8 +196,8 @@ describe("openapi routes", () => {
     expect(spec.paths["/api/execution-workspaces/{id}/reconcile-branch"].post["x-paperclip-authorization"]).toEqual({
       actor: "board",
     });
-    expect(spec.paths["/api/domains/{companyId}/cost-events"].post.responses["201"]).toBeDefined();
-    expect(spec.paths["/api/domains/{companyId}/cost-events"].post.responses["403"]).toBeDefined();
+    expect(spec.paths["/api/domains/{domainId}/finance-events"].post.responses["201"]).toBeDefined();
+    expect(spec.paths["/api/domains/{domainId}/finance-events"].post.responses["403"]).toBeDefined();
     expect(spec.paths["/api/instance/database-backups"].post.responses["201"]).toBeDefined();
     expect(spec.paths["/api/invites/{token}/accept"].post.responses["202"]).toBeDefined();
     expect(spec.paths["/api/board-api-keys"].post.responses["201"]).toBeDefined();

@@ -370,7 +370,7 @@ export function instanceSettingsService(db: Db, options: InstanceSettingsService
       return toInstanceSettings(updated ?? current);
     },
 
-    listCompanyIds: async (): Promise<string[]> =>
+    listDomainIds: async (): Promise<string[]> =>
       db
         .select({ id: domains.id })
         .from(domains)

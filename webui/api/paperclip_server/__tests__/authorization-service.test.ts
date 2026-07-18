@@ -4,7 +4,7 @@ import {
   agents,
   authUsers,
   domains,
-  companyMemberships,
+  domainMemberships,
   createDb,
   instanceUserRoles,
   issueComments,
@@ -35,13 +35,13 @@ async function createDomain(db: ReturnType<typeof createDb>, label: string) {
 
 async function createAgent(
   db: ReturnType<typeof createDb>,
-  companyId: string,
+  domainId: string,
   input: { role?: string; reportsTo?: string | null; permissions?: Record<string, unknown> } = {},
 ) {
   return db
     .insert(agents)
     .values({
-      companyId,
+      domainId,
       name: `Agent ${randomUUID()}`,
       role: input.role ?? "engineer",
       reportsTo: input.reportsTo ?? null,
@@ -54,11 +54,11 @@ async function createAgent(
     .then((rows) => rows[0]!);
 }
 
-async function createProject(db: ReturnType<typeof createDb>, companyId: string, label: string) {
+async function createProject(db: ReturnType<typeof createDb>, domainId: string, label: string) {
   return db
     .insert(projects)
     .values({
-      companyId,
+      domainId,
       name: `Project ${label} ${randomUUID()}`,
     })
     .returning()
@@ -67,7 +67,7 @@ async function createProject(db: ReturnType<typeof createDb>, companyId: string,
 
 async function createIssue(
   db: ReturnType<typeof createDb>,
-  companyId: string,
+  domainId: string,
   input: {
     id?: string;
     title?: string;
@@ -82,7 +82,7 @@ async function createIssue(
     .insert(issues)
     .values({
       id: input.id ?? randomUUID(),
-      companyId,
+      domainId,
       title: input.title ?? `Issue ${randomUUID()}`,
       status: "todo",
       priority: "medium",
@@ -98,20 +98,20 @@ async function createIssue(
 
 async function grantAgentPermission(
   db: ReturnType<typeof createDb>,
-  companyId: string,
+  domainId: string,
   agentId: string,
   permissionKey: PermissionKey,
   scope: Record<string, unknown> | null = null,
 ) {
-  await db.insert(companyMemberships).values({
-    companyId,
+  await db.insert(domainMemberships).values({
+    domainId,
     principalType: "agent",
     principalId: agentId,
     status: "active",
     membershipRole: "member",
   });
   await db.insert(principalPermissionGrants).values({
-    companyId,
+    domainId,
     principalType: "agent",
     principalId: agentId,
     permissionKey,
@@ -139,20 +139,20 @@ async function createUser(
 
 async function grantUserPermission(
   db: ReturnType<typeof createDb>,
-  companyId: string,
+  domainId: string,
   userId: string,
   permissionKey: PermissionKey,
   scope: Record<string, unknown> | null = null,
 ) {
-  await db.insert(companyMemberships).values({
-    companyId,
+  await db.insert(domainMemberships).values({
+    domainId,
     principalType: "user",
     principalId: userId,
     status: "active",
     membershipRole: "operator",
   });
   await db.insert(principalPermissionGrants).values({
-    companyId,
+    domainId,
     principalType: "user",
     principalId: userId,
     permissionKey,
@@ -173,7 +173,7 @@ describeEmbeddedPostgres("authorization service", () => {
   afterEach(async () => {
     await db.delete(issueComments);
     await db.delete(principalPermissionGrants);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(instanceUserRoles);
     await db.delete(issues);
     await db.delete(agents);
@@ -187,17 +187,17 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows active user role grants and explains the grant source", async () => {
-    const company = await createDomain(db, "UserGrant");
+    const domain = await createDomain(db, "UserGrant");
     const userId = `user-${randomUUID()}`;
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "operator",
     });
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       permissionKey: "tasks:assign",
@@ -205,7 +205,7 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const decision = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       action: "tasks:assign",
@@ -225,15 +225,15 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows suggest grants to read peer agent configuration", async () => {
-    const company = await createDomain(db, "AgentReadGrant");
-    const actorAgent = await createAgent(db, company.id);
-    const targetAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, actorAgent.id, "agents:suggest-changes");
+    const domain = await createDomain(db, "AgentReadGrant");
+    const actorAgent = await createAgent(db, domain.id);
+    const targetAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, actorAgent.id, "agents:suggest-changes");
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: domain.id, source: "agent_key" },
       action: "agent_config:read",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
     });
 
     expect(decision).toMatchObject({
@@ -248,17 +248,17 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("falls back to the direct config-read grant decision when a suggest read grant is scoped away", async () => {
-    const company = await createDomain(db, "AgentReadScopedSuggestGrant");
-    const actorAgent = await createAgent(db, company.id);
-    const targetAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, actorAgent.id, "agents:suggest-changes", {
+    const domain = await createDomain(db, "AgentReadScopedSuggestGrant");
+    const actorAgent = await createAgent(db, domain.id);
+    const targetAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, actorAgent.id, "agents:suggest-changes", {
       projectId: randomUUID(),
     });
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: domain.id, source: "agent_key" },
       action: "agent_config:read",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
     });
 
     expect(decision).toMatchObject({
@@ -269,15 +269,15 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("enforces direct or consented suggest grants for agent configuration changes", async () => {
-    const company = await createDomain(db, "AgentChangeGrant");
-    const directAgent = await createAgent(db, company.id);
-    const suggestAgent = await createAgent(db, company.id);
-    const noGrantAgent = await createAgent(db, company.id);
-    const targetAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, directAgent.id, "agents:configure");
-    await grantAgentPermission(db, company.id, suggestAgent.id, "agents:suggest-changes");
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    const domain = await createDomain(db, "AgentChangeGrant");
+    const directAgent = await createAgent(db, domain.id);
+    const suggestAgent = await createAgent(db, domain.id);
+    const noGrantAgent = await createAgent(db, domain.id);
+    const targetAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, directAgent.id, "agents:configure");
+    await grantAgentPermission(db, domain.id, suggestAgent.id, "agents:suggest-changes");
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "agent",
       principalId: noGrantAgent.id,
       status: "active",
@@ -286,9 +286,9 @@ describeEmbeddedPostgres("authorization service", () => {
 
     const authz = authorizationService(db);
     await expect(authz.decide({
-      actor: { type: "agent", agentId: directAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: directAgent.id, domainId: domain.id, source: "agent_key" },
       action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
       scope: { requiresChangeGrant: true },
     })).resolves.toMatchObject({
       allowed: true,
@@ -297,9 +297,9 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: suggestAgent.id, domainId: domain.id, source: "agent_key" },
       action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
       scope: { requiresChangeGrant: true },
     })).resolves.toMatchObject({
       allowed: false,
@@ -308,9 +308,9 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: suggestAgent.id, domainId: domain.id, source: "agent_key" },
       action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
       scope: { requiresChangeGrant: true, consentedChange: true },
     })).resolves.toMatchObject({
       allowed: true,
@@ -319,9 +319,9 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     await expect(authz.decide({
-      actor: { type: "agent", agentId: noGrantAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: noGrantAgent.id, domainId: domain.id, source: "agent_key" },
       action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
       scope: { requiresChangeGrant: true },
     })).resolves.toMatchObject({
       allowed: false,
@@ -330,14 +330,14 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("enforces direct or consented suggest grants for skill configuration changes", async () => {
-    const company = await createDomain(db, "SkillChangeGrant");
-    const directAgent = await createAgent(db, company.id);
-    const suggestAgent = await createAgent(db, company.id);
-    const noGrantAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, directAgent.id, "skills:create");
-    await grantAgentPermission(db, company.id, suggestAgent.id, "skills:suggest-changes");
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    const domain = await createDomain(db, "SkillChangeGrant");
+    const directAgent = await createAgent(db, domain.id);
+    const suggestAgent = await createAgent(db, domain.id);
+    const noGrantAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, directAgent.id, "skills:create");
+    await grantAgentPermission(db, domain.id, suggestAgent.id, "skills:suggest-changes");
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "agent",
       principalId: noGrantAgent.id,
       status: "active",
@@ -346,9 +346,9 @@ describeEmbeddedPostgres("authorization service", () => {
 
     const authz = authorizationService(db);
     await expect(authz.decide({
-      actor: { type: "agent", agentId: directAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: directAgent.id, domainId: domain.id, source: "agent_key" },
       action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({
       allowed: true,
       reason: "allow_direct_change",
@@ -356,9 +356,9 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: suggestAgent.id, domainId: domain.id, source: "agent_key" },
       action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({
       allowed: false,
       reason: "deny_missing_consent",
@@ -366,9 +366,9 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     await expect(authz.decide({
-      actor: { type: "agent", agentId: suggestAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: suggestAgent.id, domainId: domain.id, source: "agent_key" },
       action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
       scope: { consentedChange: true },
     })).resolves.toMatchObject({
       allowed: true,
@@ -377,39 +377,39 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     await expect(authz.decide({
-      actor: { type: "agent", agentId: noGrantAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: noGrantAgent.id, domainId: domain.id, source: "agent_key" },
       action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({
       allowed: false,
       reason: "deny_no_grant",
     });
   });
 
-  it("denies cross-company agent decisions before grant evaluation", async () => {
+  it("denies cross-domain agent decisions before grant evaluation", async () => {
     const sourceDomain = await createDomain(db, "Source");
     const targetDomain = await createDomain(db, "Target");
     const actorAgent = await createAgent(db, sourceDomain.id);
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: sourceDomain.id, source: "agent_jwt" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: sourceDomain.id, source: "agent_jwt" },
       action: "tasks:assign",
-      resource: { type: "company", companyId: targetDomain.id },
+      resource: { type: "domain", domainId: targetDomain.id },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      reason: "deny_company_boundary",
+      reason: "deny_domain_boundary",
     });
-    expect(decision.explanation).toContain("Agent key cannot access another company");
+    expect(decision.explanation).toContain("Agent key cannot access another domain");
   });
 
-  it("allows simple-mode task assignment between same-company agents without explicit grants", async () => {
-    const company = await createDomain(db, "AssignmentDefault");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const targetAgent = await createAgent(db, company.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+  it("allows simple-mode task assignment between same-domain agents without explicit grants", async () => {
+    const domain = await createDomain(db, "AssignmentDefault");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const targetAgent = await createAgent(db, domain.id, { role: "engineer" });
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       status: "active",
@@ -417,23 +417,23 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: domain.id, source: "agent_key" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
     expect(decision).toMatchObject({
       allowed: true,
-      reason: "allow_simple_company_member",
+      reason: "allow_simple_domain_member",
     });
     expect(decision.explanation).toContain("simple mode");
   });
 
   it("denies delegated protected assignment when the responsible user lacks matching authority", async () => {
-    const company = await createDomain(db, "ResponsibleUserDenied");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const ceoAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "ResponsibleUserDenied");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const ceoAgent = await createAgent(db, domain.id, {
       role: "ceo",
       permissions: {
         authorizationPolicy: {
@@ -442,9 +442,9 @@ describeEmbeddedPostgres("authorization service", () => {
       },
     });
     const responsibleUserId = await createUser(db);
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign");
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign");
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
@@ -455,12 +455,12 @@ describeEmbeddedPostgres("authorization service", () => {
       actor: {
         type: "agent",
         agentId: actorAgent.id,
-        companyId: company.id,
+        domainId: domain.id,
         onBehalfOfUserId: responsibleUserId,
         source: "agent_jwt",
       },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: ceoAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: ceoAgent.id },
       scope: { assigneeAgentId: ceoAgent.id },
     });
 
@@ -471,15 +471,15 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows active non-viewer responsible users to authorize assigned agent issue mutations", async () => {
-    const company = await createDomain(db, "ResponsibleUserIssueMutation");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const issue = await createIssue(db, company.id, {
+    const domain = await createDomain(db, "ResponsibleUserIssueMutation");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const issue = await createIssue(db, domain.id, {
       title: "Assigned issue mutation",
       assigneeAgentId: actorAgent.id,
     });
     const responsibleUserId = await createUser(db);
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
@@ -490,14 +490,14 @@ describeEmbeddedPostgres("authorization service", () => {
       actor: {
         type: "agent",
         agentId: actorAgent.id,
-        companyId: company.id,
+        domainId: domain.id,
         onBehalfOfUserId: responsibleUserId,
         source: "agent_jwt",
       },
       action: "issue:mutate",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: issue.id,
         assigneeAgentId: actorAgent.id,
       },
@@ -508,15 +508,15 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("keeps responsible-user issue mutations denied for viewer memberships", async () => {
-    const company = await createDomain(db, "ResponsibleUserIssueViewerDenied");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const issue = await createIssue(db, company.id, {
+    const domain = await createDomain(db, "ResponsibleUserIssueViewerDenied");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const issue = await createIssue(db, domain.id, {
       title: "Assigned viewer-denied mutation",
       assigneeAgentId: actorAgent.id,
     });
     const responsibleUserId = await createUser(db);
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: responsibleUserId,
       status: "active",
@@ -527,14 +527,14 @@ describeEmbeddedPostgres("authorization service", () => {
       actor: {
         type: "agent",
         agentId: actorAgent.id,
-        companyId: company.id,
+        domainId: domain.id,
         onBehalfOfUserId: responsibleUserId,
         source: "agent_jwt",
       },
       action: "issue:mutate",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: issue.id,
         assigneeAgentId: actorAgent.id,
       },
@@ -546,20 +546,20 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("fails closed when the responsible user is unavailable", async () => {
-    const company = await createDomain(db, "ResponsibleUserUnavailable");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const targetAgent = await createAgent(db, company.id, { role: "engineer" });
+    const domain = await createDomain(db, "ResponsibleUserUnavailable");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const targetAgent = await createAgent(db, domain.id, { role: "engineer" });
 
     const decision = await authorizationService(db).decide({
       actor: {
         type: "agent",
         agentId: actorAgent.id,
-        companyId: company.id,
+        domainId: domain.id,
         onBehalfOfUserId: `missing-${randomUUID()}`,
         source: "agent_jwt",
       },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
@@ -570,9 +570,9 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows delegated protected assignment when both agent and responsible user are authorized", async () => {
-    const company = await createDomain(db, "ResponsibleUserAllowed");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const ceoAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "ResponsibleUserAllowed");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const ceoAgent = await createAgent(db, domain.id, {
       role: "ceo",
       permissions: {
         authorizationPolicy: {
@@ -581,19 +581,19 @@ describeEmbeddedPostgres("authorization service", () => {
       },
     });
     const responsibleUserId = await createUser(db);
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign");
-    await grantUserPermission(db, company.id, responsibleUserId, "tasks:assign");
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign");
+    await grantUserPermission(db, domain.id, responsibleUserId, "tasks:assign");
 
     const decision = await authorizationService(db).decide({
       actor: {
         type: "agent",
         agentId: actorAgent.id,
-        companyId: company.id,
+        domainId: domain.id,
         onBehalfOfUserId: responsibleUserId,
         source: "agent_jwt",
       },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: ceoAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: ceoAgent.id },
       scope: { assigneeAgentId: ceoAgent.id },
     });
 
@@ -604,11 +604,11 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("limits low-trust issue reads to the configured project and root issue boundary", async () => {
-    const company = await createDomain(db, "LowTrustIssueReads");
-    const project = await createProject(db, company.id, "Allowed");
-    const otherProject = await createProject(db, company.id, "Denied");
+    const domain = await createDomain(db, "LowTrustIssueReads");
+    const project = await createProject(db, domain.id, "Allowed");
+    const otherProject = await createProject(db, domain.id, "Denied");
     const rootIssueId = randomUUID();
-    const actorAgent = await createAgent(db, company.id, {
+    const actorAgent = await createAgent(db, domain.id, {
       permissions: {
         trustPreset: LOW_TRUST_REVIEW_PRESET,
         authorizationPolicy: {
@@ -620,27 +620,27 @@ describeEmbeddedPostgres("authorization service", () => {
         },
       },
     });
-    const rootIssue = await createIssue(db, company.id, {
+    const rootIssue = await createIssue(db, domain.id, {
       id: rootIssueId,
       projectId: project.id,
       assigneeAgentId: actorAgent.id,
     });
-    const childIssue = await createIssue(db, company.id, {
+    const childIssue = await createIssue(db, domain.id, {
       projectId: project.id,
       parentId: rootIssue.id,
     });
-    const unrelatedIssue = await createIssue(db, company.id, {
+    const unrelatedIssue = await createIssue(db, domain.id, {
       projectId: otherProject.id,
     });
 
     const authorization = authorizationService(db);
-    const actor = { type: "agent" as const, agentId: actorAgent.id, companyId: company.id, source: "agent_key" as const };
+    const actor = { type: "agent" as const, agentId: actorAgent.id, domainId: domain.id, source: "agent_key" as const };
     const rootDecision = await authorization.decide({
       actor,
       action: "issue:read",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: rootIssue.id,
         projectId: rootIssue.projectId,
         parentIssueId: rootIssue.parentId,
@@ -653,7 +653,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "issue:read",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: childIssue.id,
         projectId: childIssue.projectId,
         parentIssueId: childIssue.parentId,
@@ -665,7 +665,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "issue:read",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: unrelatedIssue.id,
         projectId: unrelatedIssue.projectId,
         parentIssueId: unrelatedIssue.parentId,
@@ -678,13 +678,13 @@ describeEmbeddedPostgres("authorization service", () => {
     expect(unrelatedDecision).toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
   });
 
-  it("blocks low-trust project, agent, company-wide, and outside-boundary assignment access", async () => {
-    const company = await createDomain(db, "LowTrustOtherResources");
-    const project = await createProject(db, company.id, "Allowed");
-    const otherProject = await createProject(db, company.id, "Denied");
-    const collaborator = await createAgent(db, company.id);
-    const higherTrustAgent = await createAgent(db, company.id, { role: "cto" });
-    const actorAgent = await createAgent(db, company.id, {
+  it("blocks low-trust project, agent, domain-wide, and outside-boundary assignment access", async () => {
+    const domain = await createDomain(db, "LowTrustOtherResources");
+    const project = await createProject(db, domain.id, "Allowed");
+    const otherProject = await createProject(db, domain.id, "Denied");
+    const collaborator = await createAgent(db, domain.id);
+    const higherTrustAgent = await createAgent(db, domain.id, { role: "cto" });
+    const actorAgent = await createAgent(db, domain.id, {
       permissions: {
         trustPreset: LOW_TRUST_REVIEW_PRESET,
         authorizationPolicy: {
@@ -698,39 +698,39 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const authorization = authorizationService(db);
-    const actor = { type: "agent" as const, agentId: actorAgent.id, companyId: company.id, source: "agent_key" as const };
+    const actor = { type: "agent" as const, agentId: actorAgent.id, domainId: domain.id, source: "agent_key" as const };
 
     await expect(authorization.decide({
       actor,
       action: "project:read",
-      resource: { type: "project", companyId: company.id, projectId: project.id },
+      resource: { type: "project", domainId: domain.id, projectId: project.id },
     })).resolves.toMatchObject({ allowed: true, reason: "allow_low_trust_boundary" });
     await expect(authorization.decide({
       actor,
       action: "project:read",
-      resource: { type: "project", companyId: company.id, projectId: otherProject.id },
+      resource: { type: "project", domainId: domain.id, projectId: otherProject.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
     await expect(authorization.decide({
       actor,
       action: "agent:read",
-      resource: { type: "agent", companyId: company.id, agentId: collaborator.id },
+      resource: { type: "agent", domainId: domain.id, agentId: collaborator.id },
     })).resolves.toMatchObject({ allowed: true, reason: "allow_low_trust_boundary" });
     await expect(authorization.decide({
       actor,
       action: "agent:read",
-      resource: { type: "agent", companyId: company.id, agentId: higherTrustAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: higherTrustAgent.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
     await expect(authorization.decide({
       actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId: company.id },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
     await expect(authorization.decide({
       actor,
       action: "tasks:assign",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         projectId: project.id,
         assigneeAgentId: higherTrustAgent.id,
       },
@@ -739,26 +739,26 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("blocks low-trust configuration actions before evaluating explicit change grants", async () => {
-    const company = await createDomain(db, "LowTrustConfigGrants");
-    const project = await createProject(db, company.id, "Allowed");
-    const targetAgent = await createAgent(db, company.id);
-    const actorAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "LowTrustConfigGrants");
+    const project = await createProject(db, domain.id, "Allowed");
+    const targetAgent = await createAgent(db, domain.id);
+    const actorAgent = await createAgent(db, domain.id, {
       role: "ceo",
       permissions: {
         trustPreset: LOW_TRUST_REVIEW_PRESET,
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: company.id,
+            domainId: domain.id,
             projectIds: [project.id],
             allowedAgentIds: [targetAgent.id],
           },
         },
       },
     });
-    await grantAgentPermission(db, company.id, actorAgent.id, "agents:configure");
+    await grantAgentPermission(db, domain.id, actorAgent.id, "agents:configure");
     await db.insert(principalPermissionGrants).values({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       permissionKey: "skills:create",
@@ -766,45 +766,45 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const authz = authorizationService(db);
-    const actor = { type: "agent" as const, agentId: actorAgent.id, companyId: company.id, source: "agent_key" as const };
+    const actor = { type: "agent" as const, agentId: actorAgent.id, domainId: domain.id, source: "agent_key" as const };
 
     await expect(authz.decide({
       actor,
       action: "agent:read",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
     })).resolves.toMatchObject({ allowed: true, reason: "allow_low_trust_boundary" });
 
     await expect(authz.decide({
       actor,
       action: "agent_config:read",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
 
     await expect(authz.decide({
       actor,
       action: "agent_config:read",
-      resource: { type: "agent", companyId: company.id, agentId: actorAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: actorAgent.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
 
     await expect(authz.decide({
       actor,
       action: "agent_config:update",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
       scope: { requiresChangeGrant: true, consentedChange: true },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
 
     await expect(authz.decide({
       actor,
       action: "skill_config:update",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
       scope: { consentedChange: true },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
   });
 
   it("denies simple-mode assignment when the target agent requires protected-assignment approval", async () => {
-    const company = await createDomain(db, "ProtectedAssignment");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const targetAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "ProtectedAssignment");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const targetAgent = await createAgent(db, domain.id, {
       role: "engineer",
       permissions: {
         authorizationPolicy: {
@@ -822,9 +822,9 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: domain.id, source: "agent_key" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
@@ -836,9 +836,9 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("requires an explicit grant before assigning to a private target agent", async () => {
-    const company = await createDomain(db, "PrivateAssignment");
-    const actorAgent = await createAgent(db, company.id, { role: "engineer" });
-    const targetAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "PrivateAssignment");
+    const actorAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const targetAgent = await createAgent(db, domain.id, {
       role: "engineer",
       permissions: {
         authorizationPolicy: {
@@ -847,7 +847,7 @@ describeEmbeddedPostgres("authorization service", () => {
             hiddenFromDefaultDirectory: true,
           },
           assignmentPolicy: {
-            mode: "company_default",
+            mode: "domain_default",
             protectedAgentRequiresApproval: false,
           },
           protectedAgent: {
@@ -859,20 +859,20 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const denied = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: domain.id, source: "agent_key" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign_scope", {
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign_scope", {
       assigneeAgentId: targetAgent.id,
     });
 
     const allowed = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: domain.id, source: "agent_key" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
@@ -888,12 +888,12 @@ describeEmbeddedPostgres("authorization service", () => {
     });
   });
 
-  it("allows simple-mode task assignment for active same-company board operators without explicit grants", async () => {
-    const company = await createDomain(db, "BoardAssignmentDefault");
+  it("allows simple-mode task assignment for active same-domain board operators without explicit grants", async () => {
+    const domain = await createDomain(db, "BoardAssignmentDefault");
     const userId = `user-${randomUUID()}`;
-    const targetAgent = await createAgent(db, company.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    const targetAgent = await createAgent(db, domain.id, { role: "engineer" });
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -903,24 +903,24 @@ describeEmbeddedPostgres("authorization service", () => {
     const decision = await authorizationService(db).decide({
       actor: { type: "board", userId, source: "session" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
     expect(decision).toMatchObject({
       allowed: true,
-      reason: "allow_simple_company_member",
+      reason: "allow_simple_domain_member",
     });
   });
 
-  it("allows null-mapped visibility actions for active same-company board members", async () => {
-    const company = await createDomain(db, "BoardVisibility");
+  it("allows null-mapped visibility actions for active same-domain board members", async () => {
+    const domain = await createDomain(db, "BoardVisibility");
     const userId = `user-${randomUUID()}`;
-    const project = await createProject(db, company.id, "Visible");
-    const targetAgent = await createAgent(db, company.id, { role: "engineer" });
-    const issue = await createIssue(db, company.id, { projectId: project.id });
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    const project = await createProject(db, domain.id, "Visible");
+    const targetAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const issue = await createIssue(db, domain.id, { projectId: project.id });
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -933,40 +933,40 @@ describeEmbeddedPostgres("authorization service", () => {
     await expect(authorization.decide({
       actor,
       action: "agent:read",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
     await expect(authorization.decide({
       actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId: company.id },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId: domain.id },
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
     await expect(authorization.decide({
       actor,
       action: "project:read",
-      resource: { type: "project", companyId: company.id, projectId: project.id },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+      resource: { type: "project", domainId: domain.id, projectId: project.id },
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
     await expect(authorization.decide({
       actor,
       action: "issue:read",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: issue.id,
         projectId: issue.projectId,
         parentIssueId: issue.parentId,
         status: issue.status,
       },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
     await expect(authorization.decide({
       actor,
       action: "runtime:manage",
-      resource: { type: "company", companyId: company.id },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+      resource: { type: "domain", domainId: domain.id },
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
     await expect(authorization.decide({
       actor,
       action: "secrets:read",
-      resource: { type: "company", companyId: company.id },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+      resource: { type: "domain", domainId: domain.id },
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
   });
 
   it("denies null-mapped visibility actions for board users without an active membership", async () => {
@@ -975,15 +975,15 @@ describeEmbeddedPostgres("authorization service", () => {
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, otherDomain.id, { role: "engineer" });
     const inactiveUserId = `user-${randomUUID()}`;
-    await db.insert(companyMemberships).values({
-      companyId: memberDomain.id,
+    await db.insert(domainMemberships).values({
+      domainId: memberDomain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
       membershipRole: "member",
     });
-    await db.insert(companyMemberships).values({
-      companyId: otherDomain.id,
+    await db.insert(domainMemberships).values({
+      domainId: otherDomain.id,
       principalType: "user",
       principalId: inactiveUserId,
       status: "removed",
@@ -995,21 +995,21 @@ describeEmbeddedPostgres("authorization service", () => {
     await expect(authorization.decide({
       actor: { type: "board", userId, source: "session" },
       action: "agent:read",
-      resource: { type: "agent", companyId: otherDomain.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: otherDomain.id, agentId: targetAgent.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_missing_membership" });
     await expect(authorization.decide({
       actor: { type: "board", userId: inactiveUserId, source: "session" },
-      action: "company_scope:read",
-      resource: { type: "company", companyId: otherDomain.id },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId: otherDomain.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_missing_membership" });
   });
 
   it("keeps denying self-gated null-mapped actions for board members", async () => {
-    const company = await createDomain(db, "BoardWakeDenied");
+    const domain = await createDomain(db, "BoardWakeDenied");
     const userId = `user-${randomUUID()}`;
-    const targetAgent = await createAgent(db, company.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    const targetAgent = await createAgent(db, domain.id, { role: "engineer" });
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -1021,16 +1021,16 @@ describeEmbeddedPostgres("authorization service", () => {
     await expect(authorization.decide({
       actor: { type: "board", userId, source: "session" },
       action: "agent:wake",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
     })).resolves.toMatchObject({
       allowed: false,
       reason: "deny_unsupported_action",
     });
-    const issue = await createIssue(db, company.id, { title: "Wake denied issue" });
+    const issue = await createIssue(db, domain.id, { title: "Wake denied issue" });
     await expect(authorization.decide({
       actor: { type: "board", userId, source: "session" },
       action: "issue:mutate",
-      resource: { type: "issue", companyId: company.id, issueId: issue.id },
+      resource: { type: "issue", domainId: domain.id, issueId: issue.id },
     })).resolves.toMatchObject({
       allowed: false,
       reason: "deny_unsupported_action",
@@ -1038,34 +1038,34 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows mentioned agents to read and comment on assigned issues without granting issue mutation", async () => {
-    const company = await createDomain(db, "MentionCommentAuth");
-    const allowedProject = await createProject(db, company.id, "MentionAllowed");
-    const targetProject = await createProject(db, company.id, "MentionTarget");
-    const ownerAgent = await createAgent(db, company.id, { role: "engineer" });
-    const mentionedAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "MentionCommentAuth");
+    const allowedProject = await createProject(db, domain.id, "MentionAllowed");
+    const targetProject = await createProject(db, domain.id, "MentionTarget");
+    const ownerAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const mentionedAgent = await createAgent(db, domain.id, {
       role: "engineer",
       permissions: {
         trustPreset: LOW_TRUST_REVIEW_PRESET,
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: company.id,
+            domainId: domain.id,
             projectIds: [allowedProject.id],
           },
         },
       },
     });
-    const issue = await createIssue(db, company.id, {
+    const issue = await createIssue(db, domain.id, {
       title: "Mention-scoped comment target",
       projectId: targetProject.id,
       assigneeAgentId: ownerAgent.id,
     });
 
     const authorization = authorizationService(db);
-    const actor = { type: "agent", agentId: mentionedAgent.id, companyId: company.id, source: "agent_key" } as const;
+    const actor = { type: "agent", agentId: mentionedAgent.id, domainId: domain.id, source: "agent_key" } as const;
     const resource = {
       type: "issue",
-      companyId: company.id,
+      domainId: domain.id,
       issueId: issue.id,
       projectId: issue.projectId,
       assigneeAgentId: ownerAgent.id,
@@ -1079,7 +1079,7 @@ describeEmbeddedPostgres("authorization service", () => {
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
 
     const deletedMention = await db.insert(issueComments).values({
-      companyId: company.id,
+      domainId: domain.id,
       issueId: issue.id,
       body: `[@Mentioned Agent](agent://${mentionedAgent.id}) this deleted comment should not count`,
       deletedAt: new Date(),
@@ -1093,7 +1093,7 @@ describeEmbeddedPostgres("authorization service", () => {
     })).resolves.toMatchObject({ allowed: false, reason: "deny_low_trust_boundary" });
 
     await db.insert(issueComments).values({
-      companyId: company.id,
+      domainId: domain.id,
       issueId: issue.id,
       body: `[@Mentioned Agent](agent://${mentionedAgent.id}) please respond here`,
       authorAgentId: ownerAgent.id,
@@ -1123,30 +1123,30 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows a mentioned non-assignee to comment when the mention author is the issue assignee", async () => {
-    const company = await createDomain(db, "MentionCommentAssigneeGrant");
-    const allowedProject = await createProject(db, company.id, "MentionAssigneeAllowed");
-    const targetProject = await createProject(db, company.id, "MentionAssigneeTarget");
-    const assigneeAgent = await createAgent(db, company.id, { role: "coach" });
-    const mentionedAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "MentionCommentAssigneeGrant");
+    const allowedProject = await createProject(db, domain.id, "MentionAssigneeAllowed");
+    const targetProject = await createProject(db, domain.id, "MentionAssigneeTarget");
+    const assigneeAgent = await createAgent(db, domain.id, { role: "coach" });
+    const mentionedAgent = await createAgent(db, domain.id, {
       role: "qa",
       permissions: {
         trustPreset: LOW_TRUST_REVIEW_PRESET,
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: company.id,
+            domainId: domain.id,
             projectIds: [allowedProject.id],
           },
         },
       },
     });
-    const issue = await createIssue(db, company.id, {
+    const issue = await createIssue(db, domain.id, {
       title: "Assignee-authored mention reply target",
       projectId: targetProject.id,
       assigneeAgentId: assigneeAgent.id,
     });
     await db.insert(issueComments).values({
-      companyId: company.id,
+      domainId: domain.id,
       issueId: issue.id,
       authorAgentId: assigneeAgent.id,
       authorType: "agent",
@@ -1154,11 +1154,11 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     await expect(authorizationService(db).decide({
-      actor: { type: "agent", agentId: mentionedAgent.id, companyId: company.id, source: "agent_key" },
+      actor: { type: "agent", agentId: mentionedAgent.id, domainId: domain.id, source: "agent_key" },
       action: "issue:comment",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: issue.id,
         projectId: issue.projectId,
         assigneeAgentId: assigneeAgent.id,
@@ -1171,35 +1171,35 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("does not grant mention-scoped issue access from self-authored or unauthorized-author comments", async () => {
-    const company = await createDomain(db, "MentionCommentDenied");
-    const allowedProject = await createProject(db, company.id, "MentionDeniedAllowed");
-    const targetProject = await createProject(db, company.id, "MentionDeniedTarget");
-    const ownerAgent = await createAgent(db, company.id, { role: "engineer" });
-    const mentionedAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "MentionCommentDenied");
+    const allowedProject = await createProject(db, domain.id, "MentionDeniedAllowed");
+    const targetProject = await createProject(db, domain.id, "MentionDeniedTarget");
+    const ownerAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const mentionedAgent = await createAgent(db, domain.id, {
       role: "engineer",
       permissions: {
         trustPreset: LOW_TRUST_REVIEW_PRESET,
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: company.id,
+            domainId: domain.id,
             projectIds: [allowedProject.id],
           },
         },
       },
     });
-    const unrelatedAgent = await createAgent(db, company.id, { role: "engineer" });
-    const issue = await createIssue(db, company.id, {
+    const unrelatedAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const issue = await createIssue(db, domain.id, {
       title: "Mention-scoped comment denial target",
       projectId: targetProject.id,
       assigneeAgentId: ownerAgent.id,
     });
 
     const authorization = authorizationService(db);
-    const actor = { type: "agent", agentId: mentionedAgent.id, companyId: company.id, source: "agent_key" } as const;
+    const actor = { type: "agent", agentId: mentionedAgent.id, domainId: domain.id, source: "agent_key" } as const;
     const resource = {
       type: "issue",
-      companyId: company.id,
+      domainId: domain.id,
       issueId: issue.id,
       projectId: issue.projectId,
       assigneeAgentId: ownerAgent.id,
@@ -1208,13 +1208,13 @@ describeEmbeddedPostgres("authorization service", () => {
 
     await db.insert(issueComments).values([
       {
-        companyId: company.id,
+        domainId: domain.id,
         issueId: issue.id,
         body: `Self mention [@Mentioned Agent](agent://${mentionedAgent.id})`,
         authorAgentId: mentionedAgent.id,
       },
       {
-        companyId: company.id,
+        domainId: domain.id,
         issueId: issue.id,
         body: `Unauthorized mention [@Mentioned Agent](agent://${mentionedAgent.id})`,
         authorAgentId: unrelatedAgent.id,
@@ -1234,47 +1234,47 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows active board-user comments to create mention-scoped issue grants", async () => {
-    const company = await createDomain(db, "MentionCommentBoardGrant");
-    const allowedProject = await createProject(db, company.id, "MentionBoardAllowed");
-    const targetProject = await createProject(db, company.id, "MentionBoardTarget");
-    const ownerAgent = await createAgent(db, company.id, { role: "engineer" });
-    const mentionedAgent = await createAgent(db, company.id, {
+    const domain = await createDomain(db, "MentionCommentBoardGrant");
+    const allowedProject = await createProject(db, domain.id, "MentionBoardAllowed");
+    const targetProject = await createProject(db, domain.id, "MentionBoardTarget");
+    const ownerAgent = await createAgent(db, domain.id, { role: "engineer" });
+    const mentionedAgent = await createAgent(db, domain.id, {
       role: "engineer",
       permissions: {
         trustPreset: LOW_TRUST_REVIEW_PRESET,
         authorizationPolicy: {
           trustBoundary: {
             mode: LOW_TRUST_REVIEW_PRESET,
-            companyId: company.id,
+            domainId: domain.id,
             projectIds: [allowedProject.id],
           },
         },
       },
     });
-    const issue = await createIssue(db, company.id, {
+    const issue = await createIssue(db, domain.id, {
       title: "Mention-scoped board grant target",
       projectId: targetProject.id,
       assigneeAgentId: ownerAgent.id,
     });
     const boardUserId = `user-${randomUUID()}`;
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: boardUserId,
       status: "active",
       membershipRole: "member",
     });
     await db.insert(issueComments).values({
-      companyId: company.id,
+      domainId: domain.id,
       issueId: issue.id,
       body: `Board mention [@Mentioned Agent](agent://${mentionedAgent.id})`,
       authorUserId: boardUserId,
     });
 
-    const actor = { type: "agent", agentId: mentionedAgent.id, companyId: company.id, source: "agent_key" } as const;
+    const actor = { type: "agent", agentId: mentionedAgent.id, domainId: domain.id, source: "agent_key" } as const;
     const resource = {
       type: "issue",
-      companyId: company.id,
+      domainId: domain.id,
       issueId: issue.id,
       projectId: issue.projectId,
       assigneeAgentId: ownerAgent.id,
@@ -1292,11 +1292,11 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("limits viewer members to read-only visibility actions", async () => {
-    const company = await createDomain(db, "BoardViewerVisibility");
+    const domain = await createDomain(db, "BoardViewerVisibility");
     const userId = `user-${randomUUID()}`;
-    const targetAgent = await createAgent(db, company.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    const targetAgent = await createAgent(db, domain.id, { role: "engineer" });
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -1309,31 +1309,31 @@ describeEmbeddedPostgres("authorization service", () => {
     await expect(authorization.decide({
       actor,
       action: "agent:read",
-      resource: { type: "agent", companyId: company.id, agentId: targetAgent.id },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+      resource: { type: "agent", domainId: domain.id, agentId: targetAgent.id },
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
     await expect(authorization.decide({
       actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId: company.id },
-    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_company_member" });
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId: domain.id },
+    })).resolves.toMatchObject({ allowed: true, reason: "allow_simple_domain_member" });
     await expect(authorization.decide({
       actor,
       action: "runtime:manage",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_missing_grant" });
     await expect(authorization.decide({
       actor,
       action: "secrets:read",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({ allowed: false, reason: "deny_missing_grant" });
   });
 
   it("denies legacy board assignment context for viewers", async () => {
-    const company = await createDomain(db, "BoardViewerAssignment");
+    const domain = await createDomain(db, "BoardViewerAssignment");
     const userId = `user-${randomUUID()}`;
-    const targetAgent = await createAgent(db, company.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: company.id,
+    const targetAgent = await createAgent(db, domain.id, { role: "engineer" });
+    await db.insert(domainMemberships).values({
+      domainId: domain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -1341,9 +1341,9 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "board", userId, companyIds: [company.id], source: "session" },
+      actor: { type: "board", userId, domainIds: [domain.id], source: "session" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: company.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: domain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
@@ -1358,8 +1358,8 @@ describeEmbeddedPostgres("authorization service", () => {
     const otherDomain = await createDomain(db, "CloudTenantOther");
     const userId = `user-${randomUUID()}`;
     const targetAgent = await createAgent(db, otherDomain.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: tenantDomain.id,
+    await db.insert(domainMemberships).values({
+      domainId: tenantDomain.id,
       principalType: "user",
       principalId: userId,
       status: "active",
@@ -1372,12 +1372,12 @@ describeEmbeddedPostgres("authorization service", () => {
       actor: {
         type: "board",
         userId,
-        companyIds: [tenantDomain.id],
+        domainIds: [tenantDomain.id],
         isInstanceAdmin: false,
         source: "cloud_tenant",
       },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: otherDomain.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: otherDomain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
@@ -1387,21 +1387,21 @@ describeEmbeddedPostgres("authorization service", () => {
     // Control: the instanceUserRoles lookup still elevates non-cloud_tenant
     // board actors, so the carve-out is scoped to the tenant contract only.
     const sessionDecision = await authorizationService(db).decide({
-      actor: { type: "board", userId, companyIds: [tenantDomain.id], source: "session" },
+      actor: { type: "board", userId, domainIds: [tenantDomain.id], source: "session" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: otherDomain.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: otherDomain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
     expect(sessionDecision).toMatchObject({ allowed: true, reason: "allow_instance_admin" });
   });
 
-  it("denies simple-mode assignment to a target agent from another company", async () => {
+  it("denies simple-mode assignment to a target agent from another domain", async () => {
     const sourceDomain = await createDomain(db, "AssignmentSource");
     const targetDomain = await createDomain(db, "AssignmentTarget");
     const actorAgent = await createAgent(db, sourceDomain.id, { role: "engineer" });
     const targetAgent = await createAgent(db, targetDomain.id, { role: "engineer" });
-    await db.insert(companyMemberships).values({
-      companyId: sourceDomain.id,
+    await db.insert(domainMemberships).values({
+      domainId: sourceDomain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       status: "active",
@@ -1409,26 +1409,26 @@ describeEmbeddedPostgres("authorization service", () => {
     });
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: sourceDomain.id, source: "agent_key" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: sourceDomain.id, source: "agent_key" },
       action: "tasks:assign",
-      resource: { type: "issue", companyId: sourceDomain.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: sourceDomain.id, assigneeAgentId: targetAgent.id },
       scope: { assigneeAgentId: targetAgent.id },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      reason: "deny_company_boundary",
+      reason: "deny_domain_boundary",
     });
   });
 
   it("preserves legacy CEO agent creator authority", async () => {
-    const company = await createDomain(db, "Legacy");
-    const actorAgent = await createAgent(db, company.id, { role: "ceo" });
+    const domain = await createDomain(db, "Legacy");
+    const actorAgent = await createAgent(db, domain.id, { role: "ceo" });
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: company.id, source: "agent_jwt" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: domain.id, source: "agent_jwt" },
       action: "agents:create",
-      resource: { type: "company", companyId: company.id },
+      resource: { type: "domain", domainId: domain.id },
     });
 
     expect(decision).toMatchObject({
@@ -1437,37 +1437,37 @@ describeEmbeddedPostgres("authorization service", () => {
     });
   });
 
-  it("denies active-checkout management outside the CEO caller company scope", async () => {
+  it("denies active-checkout management outside the CEO caller domain scope", async () => {
     const sourceDomain = await createDomain(db, "CheckoutSource");
     const targetDomain = await createDomain(db, "CheckoutTarget");
     const actorAgent = await createAgent(db, sourceDomain.id, { role: "ceo" });
     const targetAgent = await createAgent(db, targetDomain.id, { role: "engineer" });
 
     const decision = await authorizationService(db).decide({
-      actor: { type: "agent", agentId: actorAgent.id, companyId: sourceDomain.id, source: "agent_jwt" },
+      actor: { type: "agent", agentId: actorAgent.id, domainId: sourceDomain.id, source: "agent_jwt" },
       action: "tasks:manage_active_checkouts",
-      resource: { type: "issue", companyId: targetDomain.id, assigneeAgentId: targetAgent.id },
+      resource: { type: "issue", domainId: targetDomain.id, assigneeAgentId: targetAgent.id },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      reason: "deny_company_boundary",
+      reason: "deny_domain_boundary",
     });
-    expect(decision.explanation).toContain("another company");
+    expect(decision.explanation).toContain("another domain");
   });
 
   it("allows scoped assignment inside a granted project and denies other projects", async () => {
-    const company = await createDomain(db, "ProjectScope");
-    const project = await createProject(db, company.id, "Allowed");
-    const otherProject = await createProject(db, company.id, "Denied");
-    const actorAgent = await createAgent(db, company.id);
-    const targetAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign_scope", {
+    const domain = await createDomain(db, "ProjectScope");
+    const project = await createProject(db, domain.id, "Allowed");
+    const otherProject = await createProject(db, domain.id, "Denied");
+    const actorAgent = await createAgent(db, domain.id);
+    const targetAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign_scope", {
       projectIds: [project.id],
     });
 
     const allowed = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1475,7 +1475,7 @@ describeEmbeddedPostgres("authorization service", () => {
       scope: { projectId: project.id, assigneeAgentId: targetAgent.id },
     });
     const denied = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1495,15 +1495,15 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("treats unknown grant scope metadata as unconstrained", async () => {
-    const company = await createDomain(db, "UnknownScopeMetadata");
-    const actorAgent = await createAgent(db, company.id);
-    const targetAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign_scope", {
+    const domain = await createDomain(db, "UnknownScopeMetadata");
+    const actorAgent = await createAgent(db, domain.id);
+    const targetAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign_scope", {
       note: "CEO-approved",
     });
 
     const decision = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1518,18 +1518,18 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows scoped assignment to agents inside a managed subtree only", async () => {
-    const company = await createDomain(db, "SubtreeScope");
-    const actorAgent = await createAgent(db, company.id);
-    const managerAgent = await createAgent(db, company.id);
-    const childAgent = await createAgent(db, company.id, { reportsTo: managerAgent.id });
-    const grandchildAgent = await createAgent(db, company.id, { reportsTo: childAgent.id });
-    const outsideAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign_scope", {
+    const domain = await createDomain(db, "SubtreeScope");
+    const actorAgent = await createAgent(db, domain.id);
+    const managerAgent = await createAgent(db, domain.id);
+    const childAgent = await createAgent(db, domain.id, { reportsTo: managerAgent.id });
+    const grandchildAgent = await createAgent(db, domain.id, { reportsTo: childAgent.id });
+    const outsideAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign_scope", {
       managedSubtreeAgentIds: [managerAgent.id],
     });
 
     const allowed = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1537,7 +1537,7 @@ describeEmbeddedPostgres("authorization service", () => {
       scope: { assigneeAgentId: grandchildAgent.id },
     });
     const denied = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1554,16 +1554,16 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("allows scoped assignment to an explicit target-agent allowlist only", async () => {
-    const company = await createDomain(db, "AllowlistScope");
-    const actorAgent = await createAgent(db, company.id);
-    const allowedTarget = await createAgent(db, company.id);
-    const deniedTarget = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign_scope", {
+    const domain = await createDomain(db, "AllowlistScope");
+    const actorAgent = await createAgent(db, domain.id);
+    const allowedTarget = await createAgent(db, domain.id);
+    const deniedTarget = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign_scope", {
       assigneeAgentIds: [allowedTarget.id],
     });
 
     const allowed = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1571,7 +1571,7 @@ describeEmbeddedPostgres("authorization service", () => {
       scope: { assigneeAgentId: allowedTarget.id },
     });
     const denied = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1584,13 +1584,13 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("preserves unscoped tasks:assign compatibility for assignment decisions", async () => {
-    const company = await createDomain(db, "BroadAssign");
-    const actorAgent = await createAgent(db, company.id);
-    const targetAgent = await createAgent(db, company.id);
-    await grantAgentPermission(db, company.id, actorAgent.id, "tasks:assign");
+    const domain = await createDomain(db, "BroadAssign");
+    const actorAgent = await createAgent(db, domain.id);
+    const targetAgent = await createAgent(db, domain.id);
+    await grantAgentPermission(db, domain.id, actorAgent.id, "tasks:assign");
 
     const decision = await authorizationService(db).decidePrincipalGrant({
-      companyId: company.id,
+      domainId: domain.id,
       principalType: "agent",
       principalId: actorAgent.id,
       action: "tasks:assign",
@@ -1604,23 +1604,23 @@ describeEmbeddedPostgres("authorization service", () => {
     });
   });
 
-  it("scopes task bridge keys away from company-wide reads and unrelated issue writes", async () => {
-    const company = await createDomain(db, "TaskBridge");
-    const bridgeAgent = await createAgent(db, company.id);
-    const targetAgent = await createAgent(db, company.id);
-    const project = await createProject(db, company.id, "Bridge");
-    const parentIssue = await createIssue(db, company.id, { projectId: project.id });
-    const assignedIssue = await createIssue(db, company.id, { assigneeAgentId: bridgeAgent.id });
+  it("scopes task bridge keys away from domain-wide reads and unrelated issue writes", async () => {
+    const domain = await createDomain(db, "TaskBridge");
+    const bridgeAgent = await createAgent(db, domain.id);
+    const targetAgent = await createAgent(db, domain.id);
+    const project = await createProject(db, domain.id, "Bridge");
+    const parentIssue = await createIssue(db, domain.id, { projectId: project.id });
+    const assignedIssue = await createIssue(db, domain.id, { assigneeAgentId: bridgeAgent.id });
     const keyId = randomUUID();
-    const bridgeCreatedIssue = await createIssue(db, company.id, {
+    const bridgeCreatedIssue = await createIssue(db, domain.id, {
       originKind: "task_bridge",
       originId: keyId,
     });
-    const unrelatedIssue = await createIssue(db, company.id);
+    const unrelatedIssue = await createIssue(db, domain.id);
     const actor = {
       type: "agent" as const,
       agentId: bridgeAgent.id,
-      companyId: company.id,
+      domainId: domain.id,
       source: "agent_key" as const,
       keyId,
       keyScope: {
@@ -1633,8 +1633,8 @@ describeEmbeddedPostgres("authorization service", () => {
 
     await expect(authz.decide({
       actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId: company.id },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({
       allowed: false,
       reason: "deny_scope",
@@ -1645,7 +1645,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "tasks:assign",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         parentIssueId: parentIssue.id,
         assigneeAgentId: targetAgent.id,
       },
@@ -1658,7 +1658,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "tasks:assign",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         projectId: project.id,
         assigneeUserId: randomUUID(),
       },
@@ -1672,7 +1672,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "issue:comment",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: assignedIssue.id,
       },
     })).resolves.toMatchObject({
@@ -1684,7 +1684,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "issue:mutate",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: bridgeCreatedIssue.id,
       },
     })).resolves.toMatchObject({
@@ -1696,7 +1696,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "issue:mutate",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: unrelatedIssue.id,
       },
     })).resolves.toMatchObject({
@@ -1709,7 +1709,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "agent_config:read",
       resource: {
         type: "agent",
-        companyId: company.id,
+        domainId: domain.id,
         agentId: bridgeAgent.id,
       },
     })).resolves.toMatchObject({
@@ -1719,14 +1719,14 @@ describeEmbeddedPostgres("authorization service", () => {
   });
 
   it("scopes skill-test keys to their own issue only", async () => {
-    const company = await createDomain(db, "SkillTest");
-    const skillTestAgent = await createAgent(db, company.id);
-    const ownIssue = await createIssue(db, company.id, { assigneeAgentId: skillTestAgent.id });
-    const otherIssue = await createIssue(db, company.id);
+    const domain = await createDomain(db, "SkillTest");
+    const skillTestAgent = await createAgent(db, domain.id);
+    const ownIssue = await createIssue(db, domain.id, { assigneeAgentId: skillTestAgent.id });
+    const otherIssue = await createIssue(db, domain.id);
     const actor = {
       type: "agent" as const,
       agentId: skillTestAgent.id,
-      companyId: company.id,
+      domainId: domain.id,
       source: "agent_key" as const,
       keyScope: {
         kind: "skill_test" as const,
@@ -1741,7 +1741,7 @@ describeEmbeddedPostgres("authorization service", () => {
         action,
         resource: {
           type: "issue",
-          companyId: company.id,
+          domainId: domain.id,
           issueId: ownIssue.id,
         },
       })).resolves.toMatchObject({
@@ -1754,7 +1754,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "issue:mutate",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         issueId: otherIssue.id,
       },
     })).resolves.toMatchObject({
@@ -1764,8 +1764,8 @@ describeEmbeddedPostgres("authorization service", () => {
 
     await expect(authz.decide({
       actor,
-      action: "company_scope:read",
-      resource: { type: "company", companyId: company.id },
+      action: "domain_scope:read",
+      resource: { type: "domain", domainId: domain.id },
     })).resolves.toMatchObject({
       allowed: false,
       reason: "deny_scope",
@@ -1776,7 +1776,7 @@ describeEmbeddedPostgres("authorization service", () => {
       action: "tasks:assign",
       resource: {
         type: "issue",
-        companyId: company.id,
+        domainId: domain.id,
         parentIssueId: ownIssue.id,
         assigneeAgentId: skillTestAgent.id,
       },

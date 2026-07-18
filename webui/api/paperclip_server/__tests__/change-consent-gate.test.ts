@@ -43,7 +43,7 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
   });
 
   async function seedGateFixture() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const coachId = randomUUID();
     const sourceRunId = randomUUID();
     const proposalIssueId = randomUUID();
@@ -51,14 +51,14 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     const targetKey = skillChangeTargetKey(skillId);
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix: "PAP",
       defaultResponsibleUserId: "board-user",
     });
     await db.insert(agents).values({
       id: coachId,
-      companyId,
+      domainId,
       name: "Reflection Coach",
       role: "general",
       adapterType: "codex_local",
@@ -68,13 +68,13 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: sourceRunId,
-      companyId,
+      domainId,
       agentId: coachId,
       status: "succeeded",
     });
     await db.insert(issues).values({
       id: proposalIssueId,
-      companyId,
+      domainId,
       title: "Review Reflection Coach proposal",
       status: "in_review",
       priority: "medium",
@@ -83,14 +83,14 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
       createdByAgentId: coachId,
     });
 
-    return { companyId, coachId, sourceRunId, proposalIssueId, skillId, targetKey };
+    return { domainId, coachId, sourceRunId, proposalIssueId, skillId, targetKey };
   }
 
   it("rejects Reflection Coach skill mutation without an accepted bound interaction", async () => {
-    const { companyId, coachId, targetKey } = await seedGateFixture();
+    const { domainId, coachId, targetKey } = await seedGateFixture();
 
     await expect(changeConsentGateService(db).assertConsented({
-      companyId,
+      domainId,
       actorAgentId: coachId,
       actorRunId: randomUUID(),
       targetKeys: [targetKey],
@@ -101,10 +101,10 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
   });
 
   it("rejects accepted interactions from the same run as the apply mutation", async () => {
-    const { companyId, coachId, sourceRunId, proposalIssueId, targetKey } = await seedGateFixture();
+    const { domainId, coachId, sourceRunId, proposalIssueId, targetKey } = await seedGateFixture();
     await db.insert(issueThreadInteractions).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       issueId: proposalIssueId,
       kind: "request_confirmation",
       status: "accepted",
@@ -123,7 +123,7 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     });
 
     await expect(changeConsentGateService(db).assertConsented({
-      companyId,
+      domainId,
       actorAgentId: coachId,
       actorRunId: sourceRunId,
       targetKeys: [targetKey],
@@ -134,11 +134,11 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
   });
 
   it("allows a previous-run accepted interaction with a displayed diff for the bound target", async () => {
-    const { companyId, coachId, sourceRunId, proposalIssueId, targetKey } = await seedGateFixture();
+    const { domainId, coachId, sourceRunId, proposalIssueId, targetKey } = await seedGateFixture();
     const interactionId = randomUUID();
     await db.insert(issueThreadInteractions).values({
       id: interactionId,
-      companyId,
+      domainId,
       issueId: proposalIssueId,
       kind: "request_confirmation",
       status: "accepted",
@@ -158,7 +158,7 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     const actorRunId = randomUUID();
 
     await expect(changeConsentGateService(db).assertConsented({
-      companyId,
+      domainId,
       actorAgentId: coachId,
       actorRunId,
       targetKeys: [targetKey],
@@ -178,10 +178,10 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
   });
 
   it("rejects reusing an accepted interaction after it is consumed by a mutation", async () => {
-    const { companyId, coachId, sourceRunId, proposalIssueId, targetKey } = await seedGateFixture();
+    const { domainId, coachId, sourceRunId, proposalIssueId, targetKey } = await seedGateFixture();
     await db.insert(issueThreadInteractions).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       issueId: proposalIssueId,
       kind: "request_confirmation",
       status: "accepted",
@@ -200,14 +200,14 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     });
 
     await expect(changeConsentGateService(db).assertConsented({
-      companyId,
+      domainId,
       actorAgentId: coachId,
       actorRunId: randomUUID(),
       targetKeys: [targetKey],
     })).resolves.toBe(true);
 
     await expect(changeConsentGateService(db).assertConsented({
-      companyId,
+      domainId,
       actorAgentId: coachId,
       actorRunId: randomUUID(),
       targetKeys: [targetKey],
@@ -218,10 +218,10 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
   });
 
   it("allows legacy Reflection Coach target keys for durable accepted interactions", async () => {
-    const { companyId, coachId, sourceRunId, proposalIssueId, skillId, targetKey } = await seedGateFixture();
+    const { domainId, coachId, sourceRunId, proposalIssueId, skillId, targetKey } = await seedGateFixture();
     await db.insert(issueThreadInteractions).values({
       id: randomUUID(),
-      companyId,
+      domainId,
       issueId: proposalIssueId,
       kind: "request_confirmation",
       status: "accepted",
@@ -232,7 +232,7 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
         version: 1,
         prompt: "Apply this Reflection Coach skill diff?",
         detailsMarkdown: "```diff\n+Tighten the workflow.\n```",
-        target: { type: "custom", key: `reflection-coach:company-skill:${skillId}`, revisionId: "proposal-v1" },
+        target: { type: "custom", key: `reflection-coach:domain-skill:${skillId}`, revisionId: "proposal-v1" },
       },
       result: { version: 1, outcome: "accepted" },
       resolvedByUserId: "board-user",
@@ -240,7 +240,7 @@ describeEmbeddedPostgres("changeConsentGateService", () => {
     });
 
     await expect(changeConsentGateService(db).assertConsented({
-      companyId,
+      domainId,
       actorAgentId: coachId,
       actorRunId: randomUUID(),
       targetKeys: [targetKey],

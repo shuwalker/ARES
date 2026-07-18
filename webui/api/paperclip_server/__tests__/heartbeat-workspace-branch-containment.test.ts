@@ -12,7 +12,7 @@ import {
   agentWakeupRequests,
   agents,
   domains,
-  companySkills,
+  domainSkills,
   createDb,
   documentRevisions,
   documents,
@@ -203,7 +203,7 @@ async function deleteHeartbeatRunsForCleanup(db: Db) {
 
 async function waitForContainmentSideEffects(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   sourceIssueId: string;
   sameWorkspaceSiblingId: string;
   otherWorkspaceSiblingId: string;
@@ -223,7 +223,7 @@ async function waitForContainmentSideEffects(input: {
   while (Date.now() < deadline) {
     const [issueRows, actionRows, comments] = await Promise.all([
       readContainmentIssueRows(input.db, issueIds),
-      readContainmentActionRows(input.db, input.companyId, issueIds),
+      readContainmentActionRows(input.db, input.domainId, issueIds),
       readContainmentComments(input.db, issueIds),
     ]);
     latest = { issueRows, actionRows, comments };
@@ -256,7 +256,7 @@ async function waitForContainmentSideEffects(input: {
   }
   return latest ?? {
     issueRows: await readContainmentIssueRows(input.db, issueIds),
-    actionRows: await readContainmentActionRows(input.db, input.companyId, issueIds),
+    actionRows: await readContainmentActionRows(input.db, input.domainId, issueIds),
     comments: await readContainmentComments(input.db, issueIds),
   };
 }
@@ -275,12 +275,12 @@ function readContainmentIssueRows(db: Db, issueIds: string[]) {
     .where(inArray(issues.id, issueIds));
 }
 
-function readContainmentActionRows(db: Db, companyId: string, issueIds: string[]) {
+function readContainmentActionRows(db: Db, domainId: string, issueIds: string[]) {
   return db
     .select()
     .from(issueRecoveryActions)
     .where(and(
-      eq(issueRecoveryActions.companyId, companyId),
+      eq(issueRecoveryActions.domainId, domainId),
       inArray(issueRecoveryActions.sourceIssueId, issueIds),
     ));
 }
@@ -315,7 +315,7 @@ async function seedBranchContainmentRun(
   callSite: BranchContainmentCallSite,
   opts: { enableWorkspaceBranchReconcileForward?: boolean } = {},
 ) {
-  const companyId = randomUUID();
+  const domainId = randomUUID();
   const projectId = randomUUID();
   const projectWorkspaceId = randomUUID();
   const agentId = randomUUID();
@@ -326,7 +326,7 @@ async function seedBranchContainmentRun(
   const otherWorkspaceSiblingId = randomUUID();
   const sourceExecutionWorkspaceId = randomUUID();
   const otherExecutionWorkspaceId = randomUUID();
-  const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+  const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
   const sourceIdentifier = `${issuePrefix}-1`;
   const sameSiblingIdentifier = `${issuePrefix}-2`;
   const otherSiblingIdentifier = `${issuePrefix}-3`;
@@ -340,7 +340,7 @@ async function seedBranchContainmentRun(
     enableWorkspaceBranchReconcileForward: opts.enableWorkspaceBranchReconcileForward === true,
   });
   await db.insert(domains).values({
-    id: companyId,
+    id: domainId,
     name: "Acme",
     issuePrefix,
     status: "active",
@@ -350,7 +350,7 @@ async function seedBranchContainmentRun(
   });
   await db.insert(projects).values({
     id: projectId,
-    companyId,
+    domainId,
     name: "Branch containment",
     status: "active",
     executionWorkspacePolicy: {
@@ -367,7 +367,7 @@ async function seedBranchContainmentRun(
   });
   await db.insert(projectWorkspaces).values({
     id: projectWorkspaceId,
-    companyId,
+    domainId,
     projectId,
     name: "Primary",
     cwd: repoRoot,
@@ -377,7 +377,7 @@ async function seedBranchContainmentRun(
   });
   await db.insert(agents).values({
     id: agentId,
-    companyId,
+    domainId,
     name: "CodexCoder",
     role: "engineer",
     status: "idle",
@@ -407,7 +407,7 @@ async function seedBranchContainmentRun(
   await db.insert(executionWorkspaces).values([
     {
       id: sourceExecutionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       sourceIssueId: null,
@@ -428,7 +428,7 @@ async function seedBranchContainmentRun(
     },
     {
       id: otherExecutionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       sourceIssueId: null,
@@ -451,7 +451,7 @@ async function seedBranchContainmentRun(
 
   await db.insert(agentWakeupRequests).values({
     id: wakeupRequestId,
-    companyId,
+    domainId,
     agentId,
     source: "assignment",
     triggerDetail: "system",
@@ -464,7 +464,7 @@ async function seedBranchContainmentRun(
   });
   await db.insert(heartbeatRuns).values({
     id: runId,
-    companyId,
+    domainId,
     agentId,
     invocationSource: "assignment",
     triggerDetail: "system",
@@ -483,7 +483,7 @@ async function seedBranchContainmentRun(
   await db.insert(issues).values([
     {
       id: sourceIssueId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       title: `Source ${callSite}`,
@@ -509,7 +509,7 @@ async function seedBranchContainmentRun(
     },
     {
       id: sameWorkspaceSiblingId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       title: "Same-workspace sibling",
@@ -535,7 +535,7 @@ async function seedBranchContainmentRun(
     },
     {
       id: otherWorkspaceSiblingId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       title: "Other-workspace sibling",
@@ -570,7 +570,7 @@ async function seedBranchContainmentRun(
     .where(eq(executionWorkspaces.id, sourceExecutionWorkspaceId));
 
   return {
-    companyId,
+    domainId,
     agentId,
     runId,
     sourceIssueId,
@@ -594,7 +594,7 @@ async function expectContainedWorkspaceBranchFailure(input: {
   db: Db;
   heartbeat: Heartbeat;
   runId: string;
-  companyId: string;
+  domainId: string;
   sourceIssueId: string;
   sameWorkspaceSiblingId: string;
   otherWorkspaceSiblingId: string;
@@ -642,7 +642,7 @@ async function expectContainedWorkspaceBranchFailure(input: {
 
   const { issueRows, actionRows, comments } = await waitForContainmentSideEffects({
     db: input.db,
-    companyId: input.companyId,
+    domainId: input.domainId,
     sourceIssueId: input.sourceIssueId,
     sameWorkspaceSiblingId: input.sameWorkspaceSiblingId,
     otherWorkspaceSiblingId: input.otherWorkspaceSiblingId,
@@ -910,7 +910,7 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
     await db.delete(workspaceOperations);
     await db.delete(executionWorkspaces);
     await db.delete(environments);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(domains);
   });
 
@@ -920,15 +920,15 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
   });
 
   it("blocks projectless isolated git-worktree issues before dispatch", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
     const issueIdentifier = `${issuePrefix}-1`;
 
     await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: true });
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       issuePrefix,
       status: "active",
@@ -936,7 +936,7 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -952,7 +952,7 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Projectless isolated worktree",
       status: "todo",
       workMode: "standard",
@@ -1087,7 +1087,7 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
       db,
       heartbeat,
       runId: seeded.runId,
-      companyId: seeded.companyId,
+      domainId: seeded.domainId,
       sourceIssueId: seeded.sourceIssueId,
       sameWorkspaceSiblingId: seeded.sameWorkspaceSiblingId,
       otherWorkspaceSiblingId: seeded.otherWorkspaceSiblingId,
@@ -1135,7 +1135,7 @@ describeEmbeddedPostgres("heartbeat workspace branch containment", () => {
       const now = new Date("2026-07-07T00:00:01.000Z");
       await db.insert(issueRecoveryActions).values({
         id: randomUUID(),
-        companyId: seeded.companyId,
+        domainId: seeded.domainId,
         sourceIssueId: seeded.sourceIssueId,
         kind: "workspace_validation",
         status: "active",

@@ -12,7 +12,7 @@ import {
 import { actorMiddleware } from "../middleware/auth.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { createLocalAgentJwt } from "../agent-auth-jwt.js";
-import { assertCompanyAccess } from "../routes/authz.js";
+import { assertDomainAccess } from "../routes/authz.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -31,21 +31,21 @@ function createSelectChain(rowsForTable: (table: unknown) => unknown[]) {
 }
 
 function createDbState(input: {
-  agent: { id: string; companyId: string; status?: string };
-  agentKey?: { id: string; agentId: string; companyId: string; keyHash: string; responsibleUserId?: string | null };
-  run?: { id: string; companyId: string; agentId: string; responsibleUserId?: string | null };
+  agent: { id: string; domainId: string; status?: string };
+  agentKey?: { id: string; agentId: string; domainId: string; keyHash: string; responsibleUserId?: string | null };
+  run?: { id: string; domainId: string; agentId: string; responsibleUserId?: string | null };
 }) {
   const activity: Array<Record<string, unknown>> = [];
   const agentRow = {
     id: input.agent.id,
-    companyId: input.agent.companyId,
+    domainId: input.agent.domainId,
     status: input.agent.status ?? "active",
   };
   const keyRow = input.agentKey
     ? {
         id: input.agentKey.id,
         agentId: input.agentKey.agentId,
-        companyId: input.agentKey.companyId,
+        domainId: input.agentKey.domainId,
         keyHash: input.agentKey.keyHash,
         responsibleUserId: input.agentKey.responsibleUserId ?? null,
         revokedAt: null,
@@ -55,7 +55,7 @@ function createDbState(input: {
   const runRow = input.run
     ? {
         id: input.run.id,
-        companyId: input.run.companyId,
+        domainId: input.run.domainId,
         agentId: input.run.agentId,
         responsibleUserId: input.run.responsibleUserId ?? null,
       }
@@ -102,16 +102,16 @@ function createApp(db: any) {
   app.get("/actor", (req, res) => {
     res.json(req.actor);
   });
-  app.get("/domains/:companyId/protected", (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
+  app.get("/domains/:domainId/protected", (req, res) => {
+    assertDomainAccess(req, req.params.domainId);
     res.json({ ok: true });
   });
-  app.get("/domains/:companyId/issues/:issueId", (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
+  app.get("/domains/:domainId/issues/:issueId", (req, res) => {
+    assertDomainAccess(req, req.params.domainId);
     res.json({ id: req.params.issueId, readable: true });
   });
-  app.patch("/domains/:companyId/issues/:issueId", (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
+  app.patch("/domains/:domainId/issues/:issueId", (req, res) => {
+    assertDomainAccess(req, req.params.domainId);
     res.json({ id: req.params.issueId, writable: true });
   });
   app.use(errorHandler);
@@ -121,7 +121,7 @@ function createApp(db: any) {
 function craftAgentJwtWithoutResponsibleClaim(input: {
   secret: string;
   agentId: string;
-  companyId: string;
+  domainId: string;
   adapterType: string;
   runId: string;
 }) {
@@ -129,7 +129,7 @@ function craftAgentJwtWithoutResponsibleClaim(input: {
   const header = { alg: "HS256", typ: "JWT" };
   const claims = {
     sub: input.agentId,
-    company_id: input.companyId,
+    domain_id: input.domainId,
     adapter_type: input.adapterType,
     run_id: input.runId,
     iat: now,
@@ -140,11 +140,11 @@ function craftAgentJwtWithoutResponsibleClaim(input: {
   const headerB64 = Buffer.from(JSON.stringify(header), "utf8").toString("base64url");
   const claimsB64 = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
   const signingInput = `${headerB64}.${claimsB64}`;
-  // Sign with the same per-instance, per-company key the server derives. The
+  // Sign with the same per-instance, per-domain key the server derives. The
   // instance defaults to "default" (beforeEach clears PAPERCLIP_INSTANCE_ID),
   // matching the live control plane this middleware test exercises. This helper
   // only omits the responsible_user_id claim — it is not a cross-instance token.
-  const signingKey = createHmac("sha256", input.secret).update(`jwt:default:${input.companyId}`).digest("hex");
+  const signingKey = createHmac("sha256", input.secret).update(`jwt:default:${input.domainId}`).digest("hex");
   const signature = createHmac("sha256", signingKey).update(signingInput).digest("base64url");
   return `${signingInput}.${signature}`;
 }
@@ -172,14 +172,14 @@ describe("agent auth middleware", () => {
   });
 
   it("uses the signed responsible_user_id claim and keeps the signed run id authoritative", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const { db } = createDbState({
-      agent: { id: agentId, companyId },
-      run: { id: runId, companyId, agentId, responsibleUserId: "user-row" },
+      agent: { id: agentId, domainId },
+      run: { id: runId, domainId, agentId, responsibleUserId: "user-row" },
     });
-    const token = createLocalAgentJwt(agentId, companyId, "codex_local", runId, "user-claim");
+    const token = createLocalAgentJwt(agentId, domainId, "codex_local", runId, "user-claim");
 
     const res = await request(createApp(db))
       .get("/actor")
@@ -190,7 +190,7 @@ describe("agent auth middleware", () => {
     expect(res.body).toMatchObject({
       type: "agent",
       agentId,
-      companyId,
+      domainId,
       runId,
       onBehalfOfUserId: "user-claim",
       source: "agent_jwt",
@@ -198,15 +198,15 @@ describe("agent auth middleware", () => {
   });
 
   it("preserves signed skill_test JWT scope on the request actor", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const issueId = randomUUID();
     const { db } = createDbState({
-      agent: { id: agentId, companyId },
-      run: { id: runId, companyId, agentId, responsibleUserId: "user-claim" },
+      agent: { id: agentId, domainId },
+      run: { id: runId, domainId, agentId, responsibleUserId: "user-claim" },
     });
-    const token = createLocalAgentJwt(agentId, companyId, "codex_local", runId, "user-claim", {
+    const token = createLocalAgentJwt(agentId, domainId, "codex_local", runId, "user-claim", {
       kind: "skill_test",
       issueId,
     });
@@ -220,22 +220,22 @@ describe("agent auth middleware", () => {
     expect(res.body).toMatchObject({
       type: "agent",
       agentId,
-      companyId,
+      domainId,
       keyScope: { kind: "skill_test", issueId },
       source: "agent_jwt",
     });
   });
 
   it("rejects mismatched run headers for agent JWTs and audits the spoof attempt", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const spoofedRunId = randomUUID();
     const { db, activity } = createDbState({
-      agent: { id: agentId, companyId },
-      run: { id: runId, companyId, agentId, responsibleUserId: "user-claim" },
+      agent: { id: agentId, domainId },
+      run: { id: runId, domainId, agentId, responsibleUserId: "user-claim" },
     });
-    const token = createLocalAgentJwt(agentId, companyId, "codex_local", runId, "user-claim");
+    const token = createLocalAgentJwt(agentId, domainId, "codex_local", runId, "user-claim");
 
     const res = await request(createApp(db))
       .get("/actor")
@@ -246,7 +246,7 @@ describe("agent auth middleware", () => {
     expect(res.body.code).toBe("agent_jwt_run_id_mismatch");
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({
-      companyId,
+      domainId,
       actorType: "agent",
       actorId: agentId,
       action: "auth.agent_jwt_run_header_mismatch",
@@ -258,17 +258,17 @@ describe("agent auth middleware", () => {
   });
 
   it("falls back to the run row responsible user for legacy claim-less agent JWTs", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const { db } = createDbState({
-      agent: { id: agentId, companyId },
-      run: { id: runId, companyId, agentId, responsibleUserId: "user-legacy" },
+      agent: { id: agentId, domainId },
+      run: { id: runId, domainId, agentId, responsibleUserId: "user-legacy" },
     });
     const token = craftAgentJwtWithoutResponsibleClaim({
       secret: process.env.PAPERCLIP_AGENT_JWT_SECRET!,
       agentId,
-      companyId,
+      domainId,
       adapterType: "codex_local",
       runId,
     });
@@ -287,27 +287,27 @@ describe("agent auth middleware", () => {
   });
 
   it("rejects fork-minted run JWTs before issue reads or writes reach live issue data", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const runId = randomUUID();
     const issueId = randomUUID();
     const { db } = createDbState({
-      agent: { id: agentId, companyId },
-      run: { id: runId, companyId, agentId, responsibleUserId: "user-claim" },
+      agent: { id: agentId, domainId },
+      run: { id: runId, domainId, agentId, responsibleUserId: "user-claim" },
     });
 
     process.env.PAPERCLIP_INSTANCE_ID = "pap-12899-worktree";
-    const forkToken = createLocalAgentJwt(agentId, companyId, "codex_local", runId, "user-claim");
+    const forkToken = createLocalAgentJwt(agentId, domainId, "codex_local", runId, "user-claim");
     expect(forkToken).not.toBeNull();
 
     process.env.PAPERCLIP_INSTANCE_ID = "default";
     const app = createApp(db);
     const readRes = await request(app)
-      .get(`/domains/${companyId}/issues/${issueId}`)
+      .get(`/domains/${domainId}/issues/${issueId}`)
       .set("Authorization", `Bearer ${forkToken}`)
       .set("X-Paperclip-Run-Id", runId);
     const writeRes = await request(app)
-      .patch(`/domains/${companyId}/issues/${issueId}`)
+      .patch(`/domains/${domainId}/issues/${issueId}`)
       .set("Authorization", `Bearer ${forkToken}`)
       .set("X-Paperclip-Run-Id", runId)
       .send({ title: "should not write" });
@@ -317,15 +317,15 @@ describe("agent auth middleware", () => {
   });
 
   it("populates agent-key actors from the key responsible user binding", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const token = "pcp_test_agent_key";
     const { db } = createDbState({
-      agent: { id: agentId, companyId },
+      agent: { id: agentId, domainId },
       agentKey: {
         id: randomUUID(),
         agentId,
-        companyId,
+        domainId,
         keyHash: hashToken(token),
         responsibleUserId: "user-key",
       },
@@ -339,43 +339,43 @@ describe("agent auth middleware", () => {
     expect(res.body).toMatchObject({
       type: "agent",
       agentId,
-      companyId,
+      domainId,
       onBehalfOfUserId: "user-key",
       source: "agent_key",
     });
   });
 
   it("rejects agent keys that lack a responsible user binding and audits the denial", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const keyId = randomUUID();
     const token = "pcp_test_agent_key_without_user";
     const { db, activity } = createDbState({
-      agent: { id: agentId, companyId },
+      agent: { id: agentId, domainId },
       agentKey: {
         id: keyId,
         agentId,
-        companyId,
+        domainId,
         keyHash: hashToken(token),
         responsibleUserId: null,
       },
     });
 
     const res = await request(createApp(db))
-      .get(`/domains/${companyId}/protected`)
+      .get(`/domains/${domainId}/protected`)
       .set("Authorization", `Bearer ${token}`);
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe("RESPONSIBLE_USER_UNAVAILABLE");
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({
-      companyId,
+      domainId,
       actorType: "agent",
       actorId: agentId,
       action: "auth.agent_key_missing_responsible_user",
       entityType: "agent_api_key",
       entityId: keyId,
-      details: { method: "GET", url: `/domains/${companyId}/protected` },
+      details: { method: "GET", url: `/domains/${domainId}/protected` },
     });
   });
 });

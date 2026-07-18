@@ -50,16 +50,16 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
   });
 
   async function seedCrossAgentScenario(opts: { holderStatus: "queued" | "running" }) {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const coderAgentId = randomUUID();
     const reviewerAgentId = randomUUID();
     const issueId = randomUUID();
     const holderRunId = randomUUID();
     const wakeupRequestId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -68,7 +68,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
     await db.insert(agents).values([
       {
         id: coderAgentId,
-        companyId,
+        domainId,
         name: "Coder",
         role: "engineer",
         status: "idle",
@@ -79,7 +79,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
       },
       {
         id: reviewerAgentId,
-        companyId,
+        domainId,
         name: "Reviewer",
         role: "engineer",
         status: "idle",
@@ -92,7 +92,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId: coderAgentId,
       source: "assignment",
       status: "queued",
@@ -100,7 +100,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
 
     await db.insert(heartbeatRuns).values({
       id: holderRunId,
-      companyId,
+      domainId,
       agentId: coderAgentId,
       invocationSource: "assignment",
       triggerDetail: "system",
@@ -111,7 +111,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Cross-agent reassignment race",
       status: "in_review",
       priority: "medium",
@@ -124,7 +124,7 @@ describeEmbeddedPostgres("heartbeat lock release on cross-agent reassignment", (
     });
 
     return {
-      companyId,
+      domainId,
       coderAgentId,
       reviewerAgentId,
       issueId,

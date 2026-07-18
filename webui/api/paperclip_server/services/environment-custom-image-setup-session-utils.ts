@@ -1,12 +1,12 @@
 import { conflict } from "../errors.js";
 
-export function readCustomImageSetupSessionCompanyId(session: {
+export function readCustomImageSetupSessionDomainId(session: {
   metadata?: Record<string, unknown> | null;
 }): string | null {
-  const value = session.metadata?.setupRpcCompanyId;
+  const value = session.metadata?.setupRpcDomainId;
   if (typeof value !== "string") return null;
-  const companyId = value.trim();
-  return companyId && companyId !== "instance" ? companyId : null;
+  const domainId = value.trim();
+  return domainId && domainId !== "instance" ? domainId : null;
 }
 
 export function readNullableDate(value: unknown): Date | null {

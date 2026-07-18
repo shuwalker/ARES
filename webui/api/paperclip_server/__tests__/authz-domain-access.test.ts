@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpError } from "../errors.js";
-import { assertBoardOrgAccess, assertCompanyAccess, hasBoardOrgAccess } from "../routes/authz.js";
+import { assertBoardOrgAccess, assertDomainAccess, hasBoardOrgAccess } from "../routes/authz.js";
 
 function makeReq(input: {
   method?: string;
@@ -12,7 +12,7 @@ function makeReq(input: {
   } as Express.Request;
 }
 
-describe("assertCompanyAccess", () => {
+describe("assertDomainAccess", () => {
   it("allows viewer memberships to read", () => {
     const req = makeReq({
       method: "GET",
@@ -20,14 +20,14 @@ describe("assertCompanyAccess", () => {
         type: "board",
         userId: "user-1",
         source: "session",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         memberships: [
-          { companyId: "company-1", membershipRole: "viewer", status: "active" },
+          { domainId: "domain-1", membershipRole: "viewer", status: "active" },
         ],
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).not.toThrow();
+    expect(() => assertDomainAccess(req, "domain-1")).not.toThrow();
   });
 
   it("rejects viewer memberships for writes", () => {
@@ -37,46 +37,46 @@ describe("assertCompanyAccess", () => {
         type: "board",
         userId: "user-1",
         source: "session",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         memberships: [
-          { companyId: "company-1", membershipRole: "viewer", status: "active" },
+          { domainId: "domain-1", membershipRole: "viewer", status: "active" },
         ],
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).toThrow("Viewer access is read-only");
+    expect(() => assertDomainAccess(req, "domain-1")).toThrow("Viewer access is read-only");
   });
 
-  it("rejects writes when membership details are present but omit the target company", () => {
+  it("rejects writes when membership details are present but omit the target domain", () => {
     const req = makeReq({
       method: "POST",
       actor: {
         type: "board",
         userId: "user-1",
         source: "session",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         memberships: [],
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).toThrow("User does not have active company access");
+    expect(() => assertDomainAccess(req, "domain-1")).toThrow("User does not have active domain access");
   });
 
-  it("allows legacy board actors that only provide company ids", () => {
+  it("allows legacy board actors that only provide domain ids", () => {
     const req = makeReq({
       method: "POST",
       actor: {
         type: "board",
         userId: "user-1",
         source: "session",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).not.toThrow();
+    expect(() => assertDomainAccess(req, "domain-1")).not.toThrow();
   });
 
-  it("rejects signed-in instance admins without explicit company access", () => {
+  it("rejects signed-in instance admins without explicit domain access", () => {
     const req = makeReq({
       method: "GET",
       actor: {
@@ -84,12 +84,12 @@ describe("assertCompanyAccess", () => {
         userId: "admin-1",
         source: "session",
         isInstanceAdmin: true,
-        companyIds: [],
+        domainIds: [],
         memberships: [],
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).toThrow("User does not have access to this company");
+    expect(() => assertDomainAccess(req, "domain-1")).toThrow("User does not have access to this domain");
   });
 
   it("allows local trusted board access without explicit membership", () => {
@@ -103,7 +103,7 @@ describe("assertCompanyAccess", () => {
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).not.toThrow();
+    expect(() => assertDomainAccess(req, "domain-1")).not.toThrow();
   });
 
   it("fails closed when an on-behalf-of agent lacks a responsible user membership snapshot", () => {
@@ -112,16 +112,16 @@ describe("assertCompanyAccess", () => {
       actor: {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         onBehalfOfUserId: "user-1",
         onBehalfOfMemberships: [],
         source: "agent_jwt",
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).toThrow(HttpError);
+    expect(() => assertDomainAccess(req, "domain-1")).toThrow(HttpError);
     try {
-      assertCompanyAccess(req, "company-1");
+      assertDomainAccess(req, "domain-1");
     } catch (err) {
       expect((err as HttpError).details).toMatchObject({ code: "RESPONSIBLE_USER_UNAVAILABLE" });
     }
@@ -133,26 +133,26 @@ describe("assertCompanyAccess", () => {
       actor: {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         onBehalfOfUserId: "user-1",
         onBehalfOfMemberships: [
-          { companyId: "company-1", membershipRole: "viewer", status: "active" },
+          { domainId: "domain-1", membershipRole: "viewer", status: "active" },
         ],
         source: "agent_jwt",
       },
     });
 
     try {
-      assertCompanyAccess(req, "company-1");
+      assertDomainAccess(req, "domain-1");
     } catch (err) {
       expect((err as HttpError).status).toBe(403);
       expect((err as HttpError).details).toMatchObject({ code: "RESPONSIBLE_USER_UNAUTHORIZED" });
       return;
     }
-    throw new Error("Expected responsible-user company access denial");
+    throw new Error("Expected responsible-user domain access denial");
   });
 
-  it("logs only in shadow mode for responsible-user company access denials", () => {
+  it("logs only in shadow mode for responsible-user domain access denials", () => {
     const previous = process.env.PAPERCLIP_RESPONSIBLE_USER_AUTHZ_SHADOW;
     process.env.PAPERCLIP_RESPONSIBLE_USER_AUTHZ_SHADOW = "true";
     try {
@@ -161,14 +161,14 @@ describe("assertCompanyAccess", () => {
         actor: {
           type: "agent",
           agentId: "agent-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           onBehalfOfUserId: "user-1",
           onBehalfOfMemberships: [],
           source: "agent_jwt",
         },
       });
 
-      expect(() => assertCompanyAccess(req, "company-1")).not.toThrow();
+      expect(() => assertDomainAccess(req, "domain-1")).not.toThrow();
     } finally {
       if (previous === undefined) delete process.env.PAPERCLIP_RESPONSIBLE_USER_AUTHZ_SHADOW;
       else process.env.PAPERCLIP_RESPONSIBLE_USER_AUTHZ_SHADOW = previous;
@@ -181,28 +181,28 @@ describe("assertCompanyAccess", () => {
       actor: {
         type: "agent",
         agentId: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         onBehalfOfUserId: "user-1",
         onBehalfOfMemberships: [
-          { companyId: "company-1", membershipRole: "operator", status: "active" },
+          { domainId: "domain-1", membershipRole: "operator", status: "active" },
         ],
         source: "agent_jwt",
       },
     });
 
-    expect(() => assertCompanyAccess(req, "company-1")).not.toThrow();
+    expect(() => assertDomainAccess(req, "domain-1")).not.toThrow();
   });
 });
 
 describe("assertBoardOrgAccess", () => {
-  it("allows signed-in board users with active company access", () => {
+  it("allows signed-in board users with active domain access", () => {
     const req = makeReq({
       actor: {
         type: "board",
         userId: "user-1",
         source: "session",
-        companyIds: ["company-1"],
-        memberships: [{ companyId: "company-1", membershipRole: "operator", status: "active" }],
+        domainIds: ["domain-1"],
+        memberships: [{ domainId: "domain-1", membershipRole: "operator", status: "active" }],
         isInstanceAdmin: false,
       },
     });
@@ -211,13 +211,13 @@ describe("assertBoardOrgAccess", () => {
     expect(() => assertBoardOrgAccess(req)).not.toThrow();
   });
 
-  it("allows instance admins without company memberships", () => {
+  it("allows instance admins without domain memberships", () => {
     const req = makeReq({
       actor: {
         type: "board",
         userId: "admin-1",
         source: "session",
-        companyIds: [],
+        domainIds: [],
         memberships: [],
         isInstanceAdmin: true,
       },
@@ -227,13 +227,13 @@ describe("assertBoardOrgAccess", () => {
     expect(() => assertBoardOrgAccess(req)).not.toThrow();
   });
 
-  it("rejects signed-in users without company access or instance admin rights", () => {
+  it("rejects signed-in users without domain access or instance admin rights", () => {
     const req = makeReq({
       actor: {
         type: "board",
         userId: "outsider-1",
         source: "session",
-        companyIds: [],
+        domainIds: [],
         memberships: [],
         isInstanceAdmin: false,
       },

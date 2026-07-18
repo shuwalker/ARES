@@ -129,7 +129,7 @@ describe("dispatcher.registerPluginTools — activation path", () => {
         {
           agentId: "agent-1",
           runId: "run-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           projectId: "project-1",
         },
       ),
@@ -141,7 +141,7 @@ describe("dispatcher.registerPluginTools — activation path", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Edge case — missing UUID is rejected explicitly (no silent fallback)
+  // Edge life_admin — missing UUID is rejected explicitly (no silent fallback)
   // ---------------------------------------------------------------------------
 
   it("throws when pluginDbId is empty — no silent fallback to pluginKey", () => {
@@ -194,7 +194,7 @@ describe("dispatcher — lifecycle path (plugin.enabled → registerFromDb)", ()
       dispatcher.executeTool(
         `${PLUGIN_KEY}:ping`,
         {},
-        { agentId: "a", runId: "r", companyId: "c", projectId: "p" },
+        { agentId: "a", runId: "r", domainId: "c", projectId: "p" },
       ),
     ).resolves.toBeDefined();
     expect(workerManager.isRunning).toHaveBeenCalledWith(PLUGIN_DB_ID);
@@ -229,7 +229,7 @@ describe("dispatcher — disable → enable cycle (re-entry)", () => {
       dispatcher.executeTool(
         `${PLUGIN_KEY}:ping`,
         {},
-        { agentId: "a", runId: "r", companyId: "c", projectId: "p" },
+        { agentId: "a", runId: "r", domainId: "c", projectId: "p" },
       ),
     ).resolves.toBeDefined();
     expect(workerManager.isRunning).not.toHaveBeenCalledWith(PLUGIN_KEY);
@@ -283,7 +283,7 @@ describe("dispatcher — worker re-spawn after container restart", () => {
       dispatcher.executeTool(
         `${PLUGIN_KEY}:ping`,
         {},
-        { agentId: "a", runId: "r1", companyId: "c", projectId: "p" },
+        { agentId: "a", runId: "r1", domainId: "c", projectId: "p" },
       ),
     ).resolves.toBeDefined();
 
@@ -293,7 +293,7 @@ describe("dispatcher — worker re-spawn after container restart", () => {
       dispatcher.executeTool(
         `${PLUGIN_KEY}:ping`,
         {},
-        { agentId: "a", runId: "r2", companyId: "c", projectId: "p" },
+        { agentId: "a", runId: "r2", domainId: "c", projectId: "p" },
       ),
     ).rejects.toThrow(/is not running/);
 
@@ -303,7 +303,7 @@ describe("dispatcher — worker re-spawn after container restart", () => {
       dispatcher.executeTool(
         `${PLUGIN_KEY}:ping`,
         {},
-        { agentId: "a", runId: "r3", companyId: "c", projectId: "p" },
+        { agentId: "a", runId: "r3", domainId: "c", projectId: "p" },
       ),
     ).resolves.toBeDefined();
 

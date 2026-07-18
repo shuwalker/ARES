@@ -33,8 +33,8 @@ export function issueApprovalService(db: Db) {
     const approval = await getApproval(approvalId);
     if (!approval) throw notFound("Approval not found");
 
-    if (issue.companyId !== approval.companyId) {
-      throw unprocessable("Issue and approval must belong to the same company");
+    if (issue.domainId !== approval.domainId) {
+      throw unprocessable("Issue and approval must belong to the same domain");
     }
 
     return { issue, approval };
@@ -48,7 +48,7 @@ export function issueApprovalService(db: Db) {
       const result = await db
         .select({
           id: approvals.id,
-          companyId: approvals.companyId,
+          domainId: approvals.domainId,
           type: approvals.type,
           requestedByAgentId: approvals.requestedByAgentId,
           requestedByUserId: approvals.requestedByUserId,
@@ -77,7 +77,7 @@ export function issueApprovalService(db: Db) {
       return db
         .select({
           id: issues.id,
-          companyId: issues.companyId,
+          domainId: issues.domainId,
           projectId: issues.projectId,
           goalId: issues.goalId,
           parentId: issues.parentId,
@@ -110,7 +110,7 @@ export function issueApprovalService(db: Db) {
       await db
         .insert(issueApprovals)
         .values({
-          companyId: issue.companyId,
+          domainId: issue.domainId,
           issueId,
           approvalId,
           linkedByAgentId: actor?.agentId ?? null,
@@ -142,7 +142,7 @@ export function issueApprovalService(db: Db) {
       const rows = await db
         .select({
           id: issues.id,
-          companyId: issues.companyId,
+          domainId: issues.domainId,
         })
         .from(issues)
         .where(inArray(issues.id, uniqueIssueIds));
@@ -152,8 +152,8 @@ export function issueApprovalService(db: Db) {
       }
 
       for (const row of rows) {
-        if (row.companyId !== approval.companyId) {
-          throw unprocessable("Issue and approval must belong to the same company");
+        if (row.domainId !== approval.domainId) {
+          throw unprocessable("Issue and approval must belong to the same domain");
         }
       }
 
@@ -161,7 +161,7 @@ export function issueApprovalService(db: Db) {
         .insert(issueApprovals)
         .values(
           uniqueIssueIds.map((issueId) => ({
-            companyId: approval.companyId,
+            domainId: approval.domainId,
             issueId,
             approvalId,
             linkedByAgentId: actor?.agentId ?? null,

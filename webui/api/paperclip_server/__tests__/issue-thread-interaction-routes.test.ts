@@ -29,7 +29,7 @@ const mockHeartbeatService = vi.hoisted(() => ({
 const mockLogActivity = vi.hoisted(() => vi.fn(async () => undefined));
 const mockDbSelectWhere = vi.hoisted(() => vi.fn(() => ({
   then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-    Promise.resolve([{ companyId: "company-1", agentId: CREATED_AGENT_ID, contextSnapshot: null }]).then(
+    Promise.resolve([{ domainId: "domain-1", agentId: CREATED_AGENT_ID, contextSnapshot: null }]).then(
       onFulfilled,
       onRejected,
     ),
@@ -51,8 +51,8 @@ vi.mock("../telemetry.js", () => ({
 
 function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
-    companyService: () => ({
-      getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+    domainService: () => ({
+      getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
     }),
     accessService: () => ({
       canUser: vi.fn(async () => true),
@@ -65,14 +65,14 @@ function registerModuleMocks() {
       hasPermission: vi.fn(async () => true),
     }),
     agentService: () => ({
-      getById: vi.fn(async () => ({ id: CREATED_AGENT_ID, companyId: "company-1", permissions: null })),
-      resolveByReference: vi.fn(async (_companyId: string, raw: string) => ({
+      getById: vi.fn(async () => ({ id: CREATED_AGENT_ID, domainId: "domain-1", permissions: null })),
+      resolveByReference: vi.fn(async (_domainId: string, raw: string) => ({
         ambiguous: false,
         agent: { id: raw },
       })),
     }),
     clampIssueListLimit: (value: number) => value,
-    companySkillService: () => ({
+    domainSkillService: () => ({
       completeTestRunForIssue: vi.fn(async () => null),
     }),
     ISSUE_LIST_DEFAULT_LIMIT: 500,
@@ -94,7 +94,7 @@ function registerModuleMocks() {
           feedbackDataSharingPreference: "prompt",
         },
       })),
-      listCompanyIds: vi.fn(async () => ["company-1"]),
+      listDomainIds: vi.fn(async () => ["domain-1"]),
     }),
     issueApprovalService: () => ({}),
     issueReferenceService: () => ({
@@ -133,7 +133,7 @@ function registerModuleMocks() {
 function createIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    companyId: "company-1",
+    domainId: "domain-1",
     status: "in_progress",
     workMode: "standard",
     priority: "medium",
@@ -155,7 +155,7 @@ function createIssue(overrides: Record<string, unknown> = {}) {
 async function createApp(actor: Record<string, unknown> = {
   type: "board",
   userId: "local-board",
-  companyIds: ["company-1"],
+  domainIds: ["domain-1"],
   source: "local_implicit",
   isInstanceAdmin: false,
 }) {
@@ -188,7 +188,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.expireRequestConfirmationsSupersededByHistoricalComments.mockResolvedValue([]);
     mockInteractionService.create.mockResolvedValue({
       id: "interaction-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "suggest_tasks",
       status: "pending",
@@ -207,7 +207,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValue({
       interaction: {
         id: "interaction-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "suggest_tasks",
         status: "accepted",
@@ -238,7 +238,7 @@ describe.sequential("issue thread interaction routes", () => {
     });
     mockInteractionService.rejectInteraction.mockResolvedValue({
       id: "interaction-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "suggest_tasks",
       status: "rejected",
@@ -260,7 +260,7 @@ describe.sequential("issue thread interaction routes", () => {
     });
     mockInteractionService.answerQuestions.mockResolvedValue({
       id: "interaction-2",
-      companyId: "company-1",
+      domainId: "domain-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "ask_user_questions",
       status: "answered",
@@ -288,7 +288,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.submitItemVerdicts.mockResolvedValue({
       interaction: {
         id: "interaction-verdicts",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_item_verdicts",
         status: "pending",
@@ -329,7 +329,7 @@ describe.sequential("issue thread interaction routes", () => {
     });
     mockInteractionService.cancelQuestions.mockResolvedValue({
       id: "interaction-2",
-      companyId: "company-1",
+      domainId: "domain-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "ask_user_questions",
       status: "cancelled",
@@ -361,7 +361,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockDbSelectFrom.mockImplementation(() => ({ where: mockDbSelectWhere }));
     mockDbSelectWhere.mockImplementation(() => ({
       then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-        Promise.resolve([{ companyId: "company-1", agentId: CREATED_AGENT_ID, contextSnapshot: null }]).then(
+        Promise.resolve([{ domainId: "domain-1", agentId: CREATED_AGENT_ID, contextSnapshot: null }]).then(
           onFulfilled,
           onRejected,
         ),
@@ -614,7 +614,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-3",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -661,7 +661,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-checkbox",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_checkbox_confirmation",
         status: "accepted",
@@ -741,7 +741,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-checkbox-empty",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_checkbox_confirmation",
         status: "accepted",
@@ -802,7 +802,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-plan",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -876,7 +876,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-standard-plan",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -939,7 +939,7 @@ describe.sequential("issue thread interaction routes", () => {
     mockInteractionService.acceptInteraction.mockResolvedValueOnce({
       interaction: {
         id: "interaction-4",
-        companyId: "company-1",
+        domainId: "domain-1",
         issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         kind: "request_confirmation",
         status: "accepted",
@@ -1007,7 +1007,7 @@ describe.sequential("issue thread interaction routes", () => {
   it("does not emit a continuation wake when request confirmations are rejected", async () => {
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-3",
-      companyId: "company-1",
+      domainId: "domain-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "request_confirmation",
       status: "rejected",
@@ -1041,7 +1041,7 @@ describe.sequential("issue thread interaction routes", () => {
   it("does not emit an accept-only continuation wake for rejected suggested tasks", async () => {
     mockInteractionService.rejectInteraction.mockResolvedValueOnce({
       id: "interaction-5",
-      companyId: "company-1",
+      domainId: "domain-1",
       issueId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       kind: "suggest_tasks",
       status: "rejected",
@@ -1075,7 +1075,7 @@ describe.sequential("issue thread interaction routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: CREATED_AGENT_ID,
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     });
 

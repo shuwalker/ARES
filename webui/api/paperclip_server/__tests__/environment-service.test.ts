@@ -4,8 +4,8 @@ import { and, eq } from "drizzle-orm";
 import {
   agents,
   domains,
-  companySecretBindings,
-  companySecrets,
+  domainSecretBindings,
+  domainSecrets,
   createDb,
   environmentCustomImageSetupSessions,
   environmentLeases,
@@ -44,7 +44,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   afterEach(async () => {
-    await db.delete(companySecretBindings);
+    await db.delete(domainSecretBindings);
     await db.delete(environmentCustomImageSetupSessions);
     await db.delete(environmentLeases);
     await db.delete(heartbeatRuns);
@@ -54,7 +54,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     await db.delete(agents);
     await db.delete(instanceSettings);
     await db.delete(environments);
-    await db.delete(companySecrets);
+    await db.delete(domainSecrets);
     await db.delete(domains);
   });
 
@@ -63,13 +63,13 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   async function seedEnvironment() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const environmentId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -77,7 +77,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "active",
@@ -104,7 +104,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -112,14 +112,14 @@ describeEmbeddedPostgres("environmentService leases", () => {
       updatedAt: new Date(),
     });
 
-    return { companyId, agentId, environmentId, runId };
+    return { domainId, agentId, environmentId, runId };
   }
 
   it("acquires and releases a lease for a run", async () => {
-    const { companyId, environmentId, runId } = await seedEnvironment();
+    const { domainId, environmentId, runId } = await seedEnvironment();
 
     const lease = await svc.acquireLease({
-      companyId,
+      domainId,
       environmentId,
       heartbeatRunId: runId,
       metadata: { driver: "local" },
@@ -135,12 +135,12 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   it("releases all active leases for a run without touching unrelated rows", async () => {
-    const { companyId, agentId, environmentId, runId } = await seedEnvironment();
+    const { domainId, agentId, environmentId, runId } = await seedEnvironment();
     const otherRunId = randomUUID();
 
     await db.insert(heartbeatRuns).values({
       id: otherRunId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "manual",
       status: "running",
@@ -149,12 +149,12 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
 
     const targetLease = await svc.acquireLease({
-      companyId,
+      domainId,
       environmentId,
       heartbeatRunId: runId,
     });
     const otherLease = await svc.acquireLease({
-      companyId,
+      domainId,
       environmentId,
       heartbeatRunId: otherRunId,
     });
@@ -168,8 +168,8 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   it("aggregates delete blast radius counts into static and active tiers", async () => {
-    const companyId = randomUUID();
-    const otherCompanyId = randomUUID();
+    const domainId = randomUUID();
+    const otherDomainId = randomUUID();
     const environmentId = randomUUID();
     const otherEnvironmentId = randomUUID();
     const projectId = randomUUID();
@@ -181,7 +181,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
 
     await db.insert(domains).values([
       {
-        id: companyId,
+        id: domainId,
         name: "Acme",
         status: "active",
         issuePrefix: "ACM",
@@ -189,7 +189,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
         updatedAt: now,
       },
       {
-        id: otherCompanyId,
+        id: otherDomainId,
         name: "Other Co",
         status: "active",
         issuePrefix: "OTH",
@@ -237,7 +237,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
     await db.insert(agents).values([
       {
-        companyId,
+        domainId,
         name: "CodexCoder",
         role: "engineer",
         status: "active",
@@ -250,7 +250,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
         updatedAt: now,
       },
       {
-        companyId,
+        domainId,
         name: "OtherCoder",
         role: "engineer",
         status: "active",
@@ -265,7 +265,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     ]);
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Project",
       status: "in_progress",
       executionWorkspacePolicy: {
@@ -278,7 +278,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       projectId,
       title: "Issue",
       status: "todo",
@@ -292,7 +292,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: workspaceId,
-      companyId,
+      domainId,
       projectId,
       sourceIssueId: issueId,
       mode: "isolated_workspace",
@@ -308,10 +308,10 @@ describeEmbeddedPostgres("environmentService leases", () => {
       createdAt: now,
       updatedAt: now,
     });
-    await db.insert(companySecrets).values([
+    await db.insert(domainSecrets).values([
       {
         id: secretId,
-        companyId,
+        domainId,
         key: "env-secret",
         name: "Env Secret",
         provider: "local_encrypted",
@@ -320,7 +320,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
       },
       {
         id: otherSecretId,
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         key: "other-env-secret",
         name: "Other Env Secret",
         provider: "local_encrypted",
@@ -328,9 +328,9 @@ describeEmbeddedPostgres("environmentService leases", () => {
         updatedAt: now,
       },
     ]);
-    await db.insert(companySecretBindings).values([
+    await db.insert(domainSecretBindings).values([
       {
-        companyId,
+        domainId,
         secretId,
         targetType: "environment",
         targetId: environmentId,
@@ -339,7 +339,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
         updatedAt: now,
       },
       {
-        companyId: otherCompanyId,
+        domainId: otherDomainId,
         secretId: otherSecretId,
         targetType: "environment",
         targetId: environmentId,
@@ -348,7 +348,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
         updatedAt: now,
       },
       {
-        companyId,
+        domainId,
         secretId,
         targetType: "agent",
         targetId: "agent-1",
@@ -358,11 +358,11 @@ describeEmbeddedPostgres("environmentService leases", () => {
       },
     ]);
     await svc.acquireLease({
-      companyId,
+      domainId,
       environmentId,
     });
     const releasedLease = await svc.acquireLease({
-      companyId,
+      domainId,
       environmentId,
     });
     await svc.releaseLease(releasedLease.id);
@@ -473,18 +473,18 @@ describeEmbeddedPostgres("environmentService leases", () => {
     expect(deletedRows).toHaveLength(0);
   });
 
-  it("creates and then reuses the default local environment for a company", async () => {
-    const companyId = randomUUID();
+  it("creates and then reuses the default local environment for a domain", async () => {
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    const created = await svc.ensureLocalEnvironment(companyId);
-    const reused = await svc.ensureLocalEnvironment(companyId);
+    const created = await svc.ensureLocalEnvironment(domainId);
+    const reused = await svc.ensureLocalEnvironment(domainId);
 
     expect(created.driver).toBe("local");
     expect(reused.id).toBe(created.id);
@@ -495,9 +495,9 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   it("leaves an existing default local environment untouched", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -518,7 +518,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
       })
       .returning();
 
-    const ensured = await svc.ensureLocalEnvironment(companyId);
+    const ensured = await svc.ensureLocalEnvironment(domainId);
 
     expect(ensured.id).toBe(existing?.id);
     expect(ensured.name).toBe("Archived Local");
@@ -531,9 +531,9 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   it("deduplicates concurrent default local environment creation", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -541,7 +541,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
 
     const results = await Promise.all(
-      Array.from({ length: 8 }, () => svc.ensureLocalEnvironment(companyId)),
+      Array.from({ length: 8 }, () => svc.ensureLocalEnvironment(domainId)),
     );
 
     expect(new Set(results.map((environment) => environment.id)).size).toBe(1);
@@ -553,9 +553,9 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   it("ensures, refreshes, and finds a managed Kubernetes sandbox environment", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -563,9 +563,9 @@ describeEmbeddedPostgres("environmentService leases", () => {
     });
 
     // No managed k8s env yet.
-    expect(await svc.findKubernetesEnvironment(companyId)).toBeNull();
+    expect(await svc.findKubernetesEnvironment(domainId)).toBeNull();
 
-    const created = await svc.ensureKubernetesEnvironment(companyId, {
+    const created = await svc.ensureKubernetesEnvironment(domainId, {
       backend: "job",
       inCluster: true,
       runtimeClassName: "gvisor",
@@ -580,7 +580,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     expect(created.metadata?.managedKubernetesSandbox).toBe(true);
 
     // Idempotent: second call refreshes config in place, no new row.
-    const refreshed = await svc.ensureKubernetesEnvironment(companyId, {
+    const refreshed = await svc.ensureKubernetesEnvironment(domainId, {
       backend: "job",
       inCluster: true,
       egressMode: "cilium",
@@ -592,7 +592,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
       "api.openai.com",
     ]);
 
-    const found = await svc.findKubernetesEnvironment(companyId);
+    const found = await svc.findKubernetesEnvironment(domainId);
     expect(found?.id).toBe(created.id);
 
     const rows = await db
@@ -603,9 +603,9 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   it("deduplicates concurrent managed Kubernetes environment creation", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -616,7 +616,7 @@ describeEmbeddedPostgres("environmentService leases", () => {
     // post-insert convergence (prefer the oldest row, delete the loser).
     const results = await Promise.all(
       Array.from({ length: 8 }, () =>
-        svc.ensureKubernetesEnvironment(companyId, { inCluster: true, backend: "job" }),
+        svc.ensureKubernetesEnvironment(domainId, { inCluster: true, backend: "job" }),
       ),
     );
 
@@ -690,10 +690,10 @@ describeEmbeddedPostgres("environmentService leases", () => {
     expect(original?.name).toBe("Lease Fixture");
   });
 
-  it("rejects a second managed-sandbox row for the same company at the DB level", async () => {
-    const companyId = randomUUID();
+  it("rejects a second managed-sandbox row for the same domain at the DB level", async () => {
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -711,9 +711,9 @@ describeEmbeddedPostgres("environmentService leases", () => {
       updatedAt: now,
     });
 
-    // Partial unique index environments_company_managed_sandbox_idx rejects a
+    // Partial unique index environments_domain_managed_sandbox_idx rejects a
     // second row matching driver='sandbox' AND managedByPaperclip=true for the
-    // same company. This is the DB-level invariant that replaced the previous
+    // same domain. This is the DB-level invariant that replaced the previous
     // application-side post-insert convergence loop.
     const secondInsert = db.insert(environments).values({
       name: "Second",
@@ -756,27 +756,27 @@ describeEmbeddedPostgres("environmentService leases", () => {
   });
 
   it("does not treat a non-kubernetes sandbox environment as the managed k8s env", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    await svc.create(companyId, {
+    await svc.create(domainId, {
       name: "Fake Sandbox",
       driver: "sandbox",
       config: { provider: "fake", image: "busybox", reuseLease: false },
     });
 
-    expect(await svc.findKubernetesEnvironment(companyId)).toBeNull();
+    expect(await svc.findKubernetesEnvironment(domainId)).toBeNull();
   });
 
   it("ignores a config.provider=kubernetes sandbox env without the managed marker", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
@@ -786,41 +786,41 @@ describeEmbeddedPostgres("environmentService leases", () => {
     // A tenant-created sandbox env with config.provider "kubernetes" but WITHOUT
     // the managed metadata marker must NOT be treated as the managed k8s env,
     // otherwise it would bypass the operator gVisor runtimeClass / Cilium egress.
-    await svc.create(companyId, {
+    await svc.create(domainId, {
       name: "Tenant K8s Sandbox",
       driver: "sandbox",
       config: { provider: "kubernetes", reuseLease: false },
     });
 
-    expect(await svc.findKubernetesEnvironment(companyId)).toBeNull();
+    expect(await svc.findKubernetesEnvironment(domainId)).toBeNull();
 
     // The managed env (created via ensureKubernetesEnvironment) carries the
     // marker and is the only one found.
-    const managed = await svc.ensureKubernetesEnvironment(companyId, {
+    const managed = await svc.ensureKubernetesEnvironment(domainId, {
       backend: "job",
       inCluster: true,
       runtimeClassName: "gvisor",
     });
-    const found = await svc.findKubernetesEnvironment(companyId);
+    const found = await svc.findKubernetesEnvironment(domainId);
     expect(found?.id).toBe(managed.id);
   });
 
-  it("allows multiple SSH environments for the same company", async () => {
-    const companyId = randomUUID();
+  it("allows multiple SSH environments for the same domain", async () => {
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
       status: "active",
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    const first = await svc.create(companyId, {
+    const first = await svc.create(domainId, {
       name: "Production SSH",
       driver: "ssh",
       config: { host: "prod.example.com", username: "deploy" },
     });
-    const second = await svc.create(companyId, {
+    const second = await svc.create(domainId, {
       name: "Staging SSH",
       driver: "ssh",
       config: { host: "staging.example.com", username: "deploy" },

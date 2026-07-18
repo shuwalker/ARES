@@ -5,8 +5,8 @@ import {
   activityLog,
   agents,
   authUsers,
-  companyMemberships,
-  costEvents,
+  domainMemberships,
+  financeEvents,
   issueComments,
   issues,
 } from "@paperclipai/db";
@@ -18,9 +18,9 @@ import type {
 } from "@paperclipai/shared";
 import { notFound } from "../errors.js";
 import { visibleIssueCondition } from "../services/issue-visibility.js";
-import { assertCompanyAccess } from "./authz.js";
+import { assertDomainAccess } from "./authz.js";
 
-type CompanyUserRow = {
+type DomainUserRow = {
   id: string;
   principalId: string;
   status: string;
@@ -48,7 +48,7 @@ function slugifyUserPart(value: string | null | undefined) {
   return normalized || null;
 }
 
-function userSlugCandidates(row: CompanyUserRow) {
+function userSlugCandidates(row: DomainUserRow) {
   const candidates = new Set<string>();
   const add = (value: string | null | undefined) => {
     const slug = slugifyUserPart(value);
@@ -61,37 +61,37 @@ function userSlugCandidates(row: CompanyUserRow) {
   return [...candidates];
 }
 
-async function resolveCompanyUser(db: Db, companyId: string, rawSlug: string): Promise<CompanyUserRow | null> {
+async function resolveDomainUser(db: Db, domainId: string, rawSlug: string): Promise<DomainUserRow | null> {
   const slug = slugifyUserPart(rawSlug);
   if (!slug) return null;
 
   const rows = await db
     .select({
-      id: companyMemberships.id,
-      principalId: companyMemberships.principalId,
-      status: companyMemberships.status,
-      membershipRole: companyMemberships.membershipRole,
-      createdAt: companyMemberships.createdAt,
+      id: domainMemberships.id,
+      principalId: domainMemberships.principalId,
+      status: domainMemberships.status,
+      membershipRole: domainMemberships.membershipRole,
+      createdAt: domainMemberships.createdAt,
       userId: authUsers.id,
       name: authUsers.name,
       email: authUsers.email,
       image: authUsers.image,
     })
-    .from(companyMemberships)
-    .leftJoin(authUsers, eq(authUsers.id, companyMemberships.principalId))
+    .from(domainMemberships)
+    .leftJoin(authUsers, eq(authUsers.id, domainMemberships.principalId))
     .where(
       and(
-        eq(companyMemberships.companyId, companyId),
-        eq(companyMemberships.principalType, "user"),
+        eq(domainMemberships.domainId, domainId),
+        eq(domainMemberships.principalType, "user"),
       ),
     )
-    .orderBy(desc(companyMemberships.updatedAt))
+    .orderBy(desc(domainMemberships.updatedAt))
     .limit(200);
 
   return rows.find((row) => userSlugCandidates(row).includes(slug)) ?? null;
 }
 
-function userIssueInvolvementSql(companyId: string, userId: string) {
+function userIssueInvolvementSql(domainId: string, userId: string) {
   return sql<boolean>`
     (
       ${issues.createdByUserId} = ${userId}
@@ -99,7 +99,7 @@ function userIssueInvolvementSql(companyId: string, userId: string) {
       OR EXISTS (
         SELECT 1
         FROM ${issueComments}
-        WHERE ${issueComments.companyId} = ${companyId}
+        WHERE ${issueComments.domainId} = ${domainId}
           AND ${issueComments.issueId} = ${issues.id}
           AND ${issueComments.authorUserId} = ${userId}
       )
@@ -124,34 +124,34 @@ function dayKeyExpr(dateSql: ReturnType<typeof sql>) {
   return sql<string>`to_char(date_trunc('day', ${dateSql}), 'YYYY-MM-DD')`;
 }
 
-function sumNumber(column: typeof costEvents.costCents | typeof costEvents.inputTokens | typeof costEvents.cachedInputTokens | typeof costEvents.outputTokens) {
+function sumNumber(column: typeof financeEvents.financeCents | typeof financeEvents.inputTokens | typeof financeEvents.cachedInputTokens | typeof financeEvents.outputTokens) {
   return sql<number>`coalesce(sum(${column}), 0)::double precision`;
 }
 
 async function loadWindowStats(
   db: Db,
-  companyId: string,
+  domainId: string,
   userId: string,
   key: UserProfileWindowStats["key"],
   label: string,
   from: Date | null,
 ): Promise<UserProfileWindowStats> {
-  const involvement = userIssueInvolvementSql(companyId, userId);
+  const involvement = userIssueInvolvementSql(domainId, userId);
   const openStatuses = ["backlog", "todo", "in_progress", "in_review", "blocked"];
   const fromIso = from?.toISOString();
 
   const [issueStats] = await db
     .select({
-      touchedIssues: sql<number>`count(distinct case when ${involvement} ${fromIso ? sql`and ${issues.updatedAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
-      createdIssues: sql<number>`count(distinct case when ${issues.createdByUserId} = ${userId} ${fromIso ? sql`and ${issues.createdAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
-      completedIssues: sql<number>`count(distinct case when ${involvement} and ${issues.status} = 'done' ${fromIso ? sql`and ${issues.completedAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
-      assignedOpenIssues: sql<number>`count(distinct case when ${issues.assigneeUserId} = ${userId} and ${issues.status} in (${sql.join(openStatuses.map((status) => sql`${status}`), sql`, `)}) then ${issues.id} end)::int`,
+      touchedIssues: sql<number>`count(distinct life_admin when ${involvement} ${fromIso ? sql`and ${issues.updatedAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
+      createdIssues: sql<number>`count(distinct life_admin when ${issues.createdByUserId} = ${userId} ${fromIso ? sql`and ${issues.createdAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
+      completedIssues: sql<number>`count(distinct life_admin when ${involvement} and ${issues.status} = 'done' ${fromIso ? sql`and ${issues.completedAt} >= ${fromIso}` : sql``} then ${issues.id} end)::int`,
+      assignedOpenIssues: sql<number>`count(distinct life_admin when ${issues.assigneeUserId} = ${userId} and ${issues.status} in (${sql.join(openStatuses.map((status) => sql`${status}`), sql`, `)}) then ${issues.id} end)::int`,
     })
     .from(issues)
-    .where(and(eq(issues.companyId, companyId), visibleIssueCondition()));
+    .where(and(eq(issues.domainId, domainId), visibleIssueCondition()));
 
   const commentConditions = [
-    eq(issueComments.companyId, companyId),
+    eq(issueComments.domainId, domainId),
     eq(issueComments.authorUserId, userId),
   ];
   if (from) commentConditions.push(gte(issueComments.createdAt, from));
@@ -161,7 +161,7 @@ async function loadWindowStats(
     .where(and(...commentConditions));
 
   const activityConditions = [
-    eq(activityLog.companyId, companyId),
+    eq(activityLog.domainId, domainId),
     eq(activityLog.actorType, "user"),
     eq(activityLog.actorId, userId),
   ];
@@ -171,22 +171,22 @@ async function loadWindowStats(
     .from(activityLog)
     .where(and(...activityConditions));
 
-  const costConditions = [
-    eq(costEvents.companyId, companyId),
-    userIssueInvolvementSql(companyId, userId),
+  const financeConditions = [
+    eq(financeEvents.domainId, domainId),
+    userIssueInvolvementSql(domainId, userId),
   ];
-  if (from) costConditions.push(gte(costEvents.occurredAt, from));
-  const [costStats] = await db
+  if (from) financeConditions.push(gte(financeEvents.occurredAt, from));
+  const [financeStats] = await db
     .select({
-      costCents: sumNumber(costEvents.costCents),
-      inputTokens: sumNumber(costEvents.inputTokens),
-      cachedInputTokens: sumNumber(costEvents.cachedInputTokens),
-      outputTokens: sumNumber(costEvents.outputTokens),
-      costEventCount: sql<number>`count(${costEvents.id})::int`,
+      financeCents: sumNumber(financeEvents.financeCents),
+      inputTokens: sumNumber(financeEvents.inputTokens),
+      cachedInputTokens: sumNumber(financeEvents.cachedInputTokens),
+      outputTokens: sumNumber(financeEvents.outputTokens),
+      financeEventCount: sql<number>`count(${financeEvents.id})::int`,
     })
-    .from(costEvents)
-    .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
-    .where(and(...costConditions));
+    .from(financeEvents)
+    .innerJoin(issues, and(eq(issues.id, financeEvents.issueId), eq(issues.domainId, financeEvents.domainId)))
+    .where(and(...financeConditions));
 
   return {
     key,
@@ -197,15 +197,15 @@ async function loadWindowStats(
     assignedOpenIssues: Number(issueStats?.assignedOpenIssues ?? 0),
     commentCount: Number(commentStats?.count ?? 0),
     activityCount: Number(activityStats?.count ?? 0),
-    costCents: Number(costStats?.costCents ?? 0),
-    inputTokens: Number(costStats?.inputTokens ?? 0),
-    cachedInputTokens: Number(costStats?.cachedInputTokens ?? 0),
-    outputTokens: Number(costStats?.outputTokens ?? 0),
-    costEventCount: Number(costStats?.costEventCount ?? 0),
+    financeCents: Number(financeStats?.financeCents ?? 0),
+    inputTokens: Number(financeStats?.inputTokens ?? 0),
+    cachedInputTokens: Number(financeStats?.cachedInputTokens ?? 0),
+    outputTokens: Number(financeStats?.outputTokens ?? 0),
+    financeEventCount: Number(financeStats?.financeEventCount ?? 0),
   };
 }
 
-async function loadDailyStats(db: Db, companyId: string, userId: string): Promise<UserProfileDailyPoint[]> {
+async function loadDailyStats(db: Db, domainId: string, userId: string): Promise<UserProfileDailyPoint[]> {
   const firstDay = startOfUtcDay(new Date(Date.now() - 13 * 24 * 60 * 60 * 1000));
   const points = new Map<string, UserProfileDailyPoint>();
   for (let index = 0; index < 14; index += 1) {
@@ -214,7 +214,7 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
       date: isoDay(date),
       activityCount: 0,
       completedIssues: 0,
-      costCents: 0,
+      financeCents: 0,
       inputTokens: 0,
       cachedInputTokens: 0,
       outputTokens: 0,
@@ -230,7 +230,7 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
     .from(activityLog)
     .where(
       and(
-        eq(activityLog.companyId, companyId),
+        eq(activityLog.domainId, domainId),
         eq(activityLog.actorType, "user"),
         eq(activityLog.actorId, userId),
         gte(activityLog.createdAt, firstDay),
@@ -252,11 +252,11 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
     .from(issues)
     .where(
       and(
-        eq(issues.companyId, companyId),
+        eq(issues.domainId, domainId),
         visibleIssueCondition(),
         eq(issues.status, "done"),
         gte(issues.completedAt, firstDay),
-        userIssueInvolvementSql(companyId, userId),
+        userIssueInvolvementSql(domainId, userId),
       ),
     )
     .groupBy(completedDay);
@@ -266,30 +266,30 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
     if (point) point.completedIssues = Number(row.count);
   }
 
-  const costDay = dayKeyExpr(sql`${costEvents.occurredAt}`);
-  const costRows = await db
+  const financeDay = dayKeyExpr(sql`${financeEvents.occurredAt}`);
+  const financeRows = await db
     .select({
-      date: costDay,
-      costCents: sumNumber(costEvents.costCents),
-      inputTokens: sumNumber(costEvents.inputTokens),
-      cachedInputTokens: sumNumber(costEvents.cachedInputTokens),
-      outputTokens: sumNumber(costEvents.outputTokens),
+      date: financeDay,
+      financeCents: sumNumber(financeEvents.financeCents),
+      inputTokens: sumNumber(financeEvents.inputTokens),
+      cachedInputTokens: sumNumber(financeEvents.cachedInputTokens),
+      outputTokens: sumNumber(financeEvents.outputTokens),
     })
-    .from(costEvents)
-    .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
+    .from(financeEvents)
+    .innerJoin(issues, and(eq(issues.id, financeEvents.issueId), eq(issues.domainId, financeEvents.domainId)))
     .where(
       and(
-        eq(costEvents.companyId, companyId),
-        gte(costEvents.occurredAt, firstDay),
-        userIssueInvolvementSql(companyId, userId),
+        eq(financeEvents.domainId, domainId),
+        gte(financeEvents.occurredAt, firstDay),
+        userIssueInvolvementSql(domainId, userId),
       ),
     )
-    .groupBy(costDay);
+    .groupBy(financeDay);
 
-  for (const row of costRows) {
+  for (const row of financeRows) {
     const point = points.get(row.date);
     if (!point) continue;
-    point.costCents = Number(row.costCents);
+    point.financeCents = Number(row.financeCents);
     point.inputTokens = Number(row.inputTokens);
     point.cachedInputTokens = Number(row.cachedInputTokens);
     point.outputTokens = Number(row.outputTokens);
@@ -301,12 +301,12 @@ async function loadDailyStats(db: Db, companyId: string, userId: string): Promis
 export function userProfileRoutes(db: Db) {
   const router = Router();
 
-  router.get("/domains/:companyId/users/:userSlug/profile", async (req, res) => {
-    const companyId = req.params.companyId as string;
+  router.get("/domains/:domainId/users/:userSlug/profile", async (req, res) => {
+    const domainId = req.params.domainId as string;
     const userSlug = req.params.userSlug as string;
-    assertCompanyAccess(req, companyId);
+    assertDomainAccess(req, domainId);
 
-    const row = await resolveCompanyUser(db, companyId, userSlug);
+    const row = await resolveDomainUser(db, domainId, userSlug);
     if (!row) throw notFound("User not found");
     const canonicalSlug = userSlugCandidates(row)[0] ?? row.principalId;
     const userId = row.userId ?? row.principalId;
@@ -314,10 +314,10 @@ export function userProfileRoutes(db: Db) {
     const [stats, daily, recentIssues, recentActivity, topAgents, topProviders] = await Promise.all([
       Promise.all(
         PROFILE_WINDOWS.map((entry) =>
-          loadWindowStats(db, companyId, userId, entry.key, entry.label, windowStart(entry.days)),
+          loadWindowStats(db, domainId, userId, entry.key, entry.label, windowStart(entry.days)),
         ),
       ),
-      loadDailyStats(db, companyId, userId),
+      loadDailyStats(db, domainId, userId),
       db
         .select({
           id: issues.id,
@@ -333,9 +333,9 @@ export function userProfileRoutes(db: Db) {
         .from(issues)
         .where(
           and(
-            eq(issues.companyId, companyId),
+            eq(issues.domainId, domainId),
             visibleIssueCondition(),
-            userIssueInvolvementSql(companyId, userId),
+            userIssueInvolvementSql(domainId, userId),
           ),
         )
         .orderBy(desc(issues.updatedAt))
@@ -352,7 +352,7 @@ export function userProfileRoutes(db: Db) {
         .from(activityLog)
         .where(
           and(
-            eq(activityLog.companyId, companyId),
+            eq(activityLog.domainId, domainId),
             eq(activityLog.actorType, "user"),
             eq(activityLog.actorId, userId),
           ),
@@ -361,35 +361,35 @@ export function userProfileRoutes(db: Db) {
         .limit(12),
       db
         .select({
-          agentId: costEvents.agentId,
+          agentId: financeEvents.agentId,
           agentName: agents.name,
-          costCents: sumNumber(costEvents.costCents),
-          inputTokens: sumNumber(costEvents.inputTokens),
-          cachedInputTokens: sumNumber(costEvents.cachedInputTokens),
-          outputTokens: sumNumber(costEvents.outputTokens),
+          financeCents: sumNumber(financeEvents.financeCents),
+          inputTokens: sumNumber(financeEvents.inputTokens),
+          cachedInputTokens: sumNumber(financeEvents.cachedInputTokens),
+          outputTokens: sumNumber(financeEvents.outputTokens),
         })
-        .from(costEvents)
-        .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
-        .leftJoin(agents, eq(agents.id, costEvents.agentId))
-        .where(and(eq(costEvents.companyId, companyId), userIssueInvolvementSql(companyId, userId)))
-        .groupBy(costEvents.agentId, agents.name)
-        .orderBy(desc(sumNumber(costEvents.costCents)))
+        .from(financeEvents)
+        .innerJoin(issues, and(eq(issues.id, financeEvents.issueId), eq(issues.domainId, financeEvents.domainId)))
+        .leftJoin(agents, eq(agents.id, financeEvents.agentId))
+        .where(and(eq(financeEvents.domainId, domainId), userIssueInvolvementSql(domainId, userId)))
+        .groupBy(financeEvents.agentId, agents.name)
+        .orderBy(desc(sumNumber(financeEvents.financeCents)))
         .limit(5),
       db
         .select({
-          provider: costEvents.provider,
-          biller: costEvents.biller,
-          model: costEvents.model,
-          costCents: sumNumber(costEvents.costCents),
-          inputTokens: sumNumber(costEvents.inputTokens),
-          cachedInputTokens: sumNumber(costEvents.cachedInputTokens),
-          outputTokens: sumNumber(costEvents.outputTokens),
+          provider: financeEvents.provider,
+          biller: financeEvents.biller,
+          model: financeEvents.model,
+          financeCents: sumNumber(financeEvents.financeCents),
+          inputTokens: sumNumber(financeEvents.inputTokens),
+          cachedInputTokens: sumNumber(financeEvents.cachedInputTokens),
+          outputTokens: sumNumber(financeEvents.outputTokens),
         })
-        .from(costEvents)
-        .innerJoin(issues, and(eq(issues.id, costEvents.issueId), eq(issues.companyId, costEvents.companyId)))
-        .where(and(eq(costEvents.companyId, companyId), userIssueInvolvementSql(companyId, userId)))
-        .groupBy(costEvents.provider, costEvents.biller, costEvents.model)
-        .orderBy(desc(sumNumber(costEvents.costCents)))
+        .from(financeEvents)
+        .innerJoin(issues, and(eq(issues.id, financeEvents.issueId), eq(issues.domainId, financeEvents.domainId)))
+        .where(and(eq(financeEvents.domainId, domainId), userIssueInvolvementSql(domainId, userId)))
+        .groupBy(financeEvents.provider, financeEvents.biller, financeEvents.model)
+        .orderBy(desc(sumNumber(financeEvents.financeCents)))
         .limit(5),
     ]);
 
@@ -416,14 +416,14 @@ export function userProfileRoutes(db: Db) {
       recentActivity,
       topAgents: topAgents.map((entry) => ({
         ...entry,
-        costCents: Number(entry.costCents),
+        financeCents: Number(entry.financeCents),
         inputTokens: Number(entry.inputTokens),
         cachedInputTokens: Number(entry.cachedInputTokens),
         outputTokens: Number(entry.outputTokens),
       })),
       topProviders: topProviders.map((entry) => ({
         ...entry,
-        costCents: Number(entry.costCents),
+        financeCents: Number(entry.financeCents),
         inputTokens: Number(entry.inputTokens),
         cachedInputTokens: Number(entry.cachedInputTokens),
         outputTokens: Number(entry.outputTokens),

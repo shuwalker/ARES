@@ -13,7 +13,7 @@ const mockProjectService = vi.hoisted(() => ({
 }));
 
 const mockInstanceSettingsService = vi.hoisted(() => ({
-  listCompanyIds: vi.fn(),
+  listDomainIds: vi.fn(),
 }));
 
 const mockEnvironmentService = vi.hoisted(() => ({
@@ -44,7 +44,7 @@ const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockSecretService = vi.hoisted(() => ({
   create: vi.fn(),
   normalizeEnvBindingsForPersistence: vi.fn(),
-  listBindingCompanyIdsForTarget: vi.fn(),
+  listBindingDomainIdsForTarget: vi.fn(),
   resolveSecretValueForEphemeralAccess: vi.fn(),
   syncEnvBindingsForTarget: vi.fn(),
   syncSecretRefsForTarget: vi.fn(),
@@ -125,7 +125,7 @@ describe("environment instance routes", () => {
   beforeEach(() => {
     mockIssueService.clearExecutionWorkspaceEnvironmentSelection.mockReset();
     mockProjectService.clearExecutionWorkspaceEnvironmentSelection.mockReset();
-    mockInstanceSettingsService.listCompanyIds.mockReset();
+    mockInstanceSettingsService.listDomainIds.mockReset();
     mockEnvironmentService.list.mockReset();
     mockEnvironmentService.getById.mockReset();
     mockEnvironmentService.create.mockReset();
@@ -141,16 +141,16 @@ describe("environment instance routes", () => {
     mockLogActivity.mockReset();
     mockSecretService.create.mockReset();
     mockSecretService.normalizeEnvBindingsForPersistence.mockReset();
-    mockSecretService.listBindingCompanyIdsForTarget.mockReset();
+    mockSecretService.listBindingDomainIdsForTarget.mockReset();
     mockSecretService.resolveSecretValueForEphemeralAccess.mockReset();
     mockSecretService.syncEnvBindingsForTarget.mockReset();
     mockSecretService.syncSecretRefsForTarget.mockReset();
 
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1", "company-2"]);
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-1", "domain-2"]);
     mockEnvironmentService.list.mockResolvedValue([]);
     mockEnvironmentService.create.mockResolvedValue(createEnvironment());
-    mockSecretService.normalizeEnvBindingsForPersistence.mockImplementation(async (_companyId, env) => env ?? {});
-    mockSecretService.listBindingCompanyIdsForTarget.mockResolvedValue([]);
+    mockSecretService.normalizeEnvBindingsForPersistence.mockImplementation(async (_domainId, env) => env ?? {});
+    mockSecretService.listBindingDomainIdsForTarget.mockResolvedValue([]);
     mockSecretService.syncEnvBindingsForTarget.mockResolvedValue([]);
     mockSecretService.syncSecretRefsForTarget.mockResolvedValue([]);
   });
@@ -164,7 +164,7 @@ describe("environment instance routes", () => {
       isInstanceAdmin: true,
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments?driver=local");
+    const res = await request(app).get("/api/domains/domain-1/environments?driver=local");
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
@@ -174,34 +174,34 @@ describe("environment instance routes", () => {
     });
   });
 
-  it("allows non-admin board members with company access to read the shared environment catalog", async () => {
+  it("allows non-admin board members with domain access to read the shared environment catalog", async () => {
     mockEnvironmentService.list.mockResolvedValue([createEnvironment()]);
     const app = createApp({
       type: "board",
       userId: "user-1",
       source: "session",
-      companyIds: ["company-1"],
-      memberships: [{ companyId: "company-1", membershipRole: "member", status: "active" }],
+      domainIds: ["domain-1"],
+      memberships: [{ domainId: "domain-1", membershipRole: "member", status: "active" }],
       isInstanceAdmin: false,
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments");
+    const res = await request(app).get("/api/domains/domain-1/environments");
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(mockEnvironmentService.list).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects company agents from enumerating the shared environment catalog", async () => {
+  it("rejects domain agents from enumerating the shared environment catalog", async () => {
     const app = createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
-    const res = await request(app).get("/api/domains/company-1/environments");
+    const res = await request(app).get("/api/domains/domain-1/environments");
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("Board access required");
@@ -212,12 +212,12 @@ describe("environment instance routes", () => {
       type: "board",
       userId: "user-1",
       source: "session",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       isInstanceAdmin: false,
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Shared Local",
         driver: "local",
@@ -229,7 +229,7 @@ describe("environment instance routes", () => {
     expect(mockEnvironmentService.create).not.toHaveBeenCalled();
   });
 
-  it("creates an instance-scoped environment and logs the mutation to every company", async () => {
+  it("creates an instance-scoped environment and logs the mutation to every domain", async () => {
     const app = createApp({
       type: "board",
       userId: "board-1",
@@ -238,7 +238,7 @@ describe("environment instance routes", () => {
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Shared Local",
         driver: "local",
@@ -254,17 +254,17 @@ describe("environment instance routes", () => {
       }),
     );
     expect(mockSecretService.syncSecretRefsForTarget).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       { targetType: "environment", targetId: "env-1" },
       [],
     );
     expect(mockSecretService.syncEnvBindingsForTarget).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       { targetType: "environment", targetId: "env-1" },
       {},
     );
     expect(mockLogActivity).toHaveBeenCalledTimes(2);
-    expect(mockLogActivity.mock.calls.map((call) => call[1].companyId)).toEqual(["company-1", "company-2"]);
+    expect(mockLogActivity.mock.calls.map((call) => call[1].domainId)).toEqual(["domain-1", "domain-2"]);
   });
 
   it("normalizes and syncs environment envVars on create", async () => {
@@ -281,7 +281,7 @@ describe("environment instance routes", () => {
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/environments")
+      .post("/api/domains/domain-1/environments")
       .send({
         name: "Shared Local",
         driver: "local",
@@ -291,13 +291,13 @@ describe("environment instance routes", () => {
 
     expect(res.status).toBe(201);
     expect(mockSecretService.normalizeEnvBindingsForPersistence).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       envVars,
       expect.objectContaining({ fieldPath: "envVars" }),
     );
     expect(mockEnvironmentService.create).toHaveBeenCalledWith(expect.objectContaining({ envVars }));
     expect(mockSecretService.syncEnvBindingsForTarget).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       { targetType: "environment", targetId: "env-1" },
       envVars,
     );

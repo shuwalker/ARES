@@ -13,8 +13,8 @@ import type {
   CloudUpstreamSummaryCount,
   CloudUpstreamTarget,
   CloudUpstreamWarning,
-  CompanyPortabilityExportResult,
-  CompanyPortabilityFileEntry,
+  DomainPortabilityExportResult,
+  DomainPortabilityFileEntry,
 } from "@paperclipai/shared";
 import type { Db } from "@paperclipai/db";
 import {
@@ -29,7 +29,7 @@ import {
   routines,
 } from "@paperclipai/db";
 import { badRequest, conflict, HttpError, notFound } from "../errors.js";
-import { companyPortabilityService } from "./company-portability.js";
+import { domainPortabilityService } from "./domain-portability.js";
 import { localEncryptedProvider } from "../secrets/local-encrypted-provider.js";
 
 const DEFAULT_SCOPES = ["upstream_import:preview", "upstream_import:write", "upstream_import:read"];
@@ -48,7 +48,7 @@ type NormalizedSha256 = `sha256:${string}`;
 
 type SourceEntityKey = {
   sourceInstanceId: string;
-  sourceCompanyId: string;
+  sourceDomainId: string;
   sourceEntityType: string;
   sourceEntityId: string;
   sourceNaturalKey?: string;
@@ -88,14 +88,14 @@ type UpstreamTransferManifest = {
   schema: typeof TRANSFER_SCHEMA;
   source: {
     sourceInstanceId: string;
-    sourceCompanyId: string;
+    sourceDomainId: string;
     sourceInstanceKeyFingerprint: string;
     exporterVersion: string;
     sourceSchemaVersion: string;
   };
   target: {
     targetStackId: string;
-    targetCompanyId: string;
+    targetDomainId: string;
     targetOrigin: string;
     supportedSchemaMajor: number;
   };
@@ -122,20 +122,20 @@ type RunRow = typeof cloudUpstreamRuns.$inferSelect;
 
 export function cloudUpstreamService(db: Db, options: { instanceId?: string } = {}) {
   const sourceInstanceId = `paperclip-local-${options.instanceId ?? "default"}`;
-  const portability = companyPortabilityService(db);
+  const portability = domainPortabilityService(db);
 
   return {
-    list: async (companyId: string): Promise<CloudUpstreamsState> => {
+    list: async (domainId: string): Promise<CloudUpstreamsState> => {
       const [connectionRows, runRows] = await Promise.all([
         db
           .select()
           .from(cloudUpstreamConnections)
-          .where(eq(cloudUpstreamConnections.companyId, companyId))
+          .where(eq(cloudUpstreamConnections.domainId, domainId))
           .orderBy(desc(cloudUpstreamConnections.updatedAt)),
         db
           .select()
           .from(cloudUpstreamRuns)
-          .where(eq(cloudUpstreamRuns.companyId, companyId))
+          .where(eq(cloudUpstreamRuns.domainId, domainId))
           .orderBy(desc(cloudUpstreamRuns.createdAt))
           .limit(50),
       ]);
@@ -146,11 +146,11 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
     },
 
     startConnect: async (input: {
-      companyId: string;
+      domainId: string;
       remoteUrl: string;
       redirectUri: string;
     }): Promise<CloudUpstreamConnectStartResponse> => {
-      await requireDomain(input.companyId);
+      await requireDomain(input.domainId);
       const remoteUrl = input.remoteUrl.trim();
       if (!remoteUrl) throw badRequest("Remote URL is required");
 
@@ -169,7 +169,7 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
 
       const [row] = await db.insert(cloudUpstreamConnections).values({
         id: connectionId,
-        companyId: input.companyId,
+        domainId: input.domainId,
         remoteUrl,
         sourceInstanceId,
         sourceInstanceFingerprint,
@@ -180,7 +180,7 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
         targetStackId: target.stackId,
         targetStackSlug: target.stackSlug,
         targetStackDisplayName: target.stackDisplayName,
-        targetCompanyId: target.companyId,
+        targetDomainId: target.domainId,
         targetOrigin: target.origin,
         targetPrimaryHost: target.primaryHost,
         targetProduct: target.product,
@@ -250,8 +250,8 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       return connectionFromRow(updated);
     },
 
-    preview: async (connectionId: string, companyId: string): Promise<CloudUpstreamPreview> => {
-      const connection = await getConnectionRow(connectionId, companyId);
+    preview: async (connectionId: string, domainId: string): Promise<CloudUpstreamPreview> => {
+      const connection = await getConnectionRow(connectionId, domainId);
       const basePreview = await localPreview(connection);
       if (!basePreview.schemaCompatible || connection.tokenStatus !== "connected") {
         return basePreview;
@@ -263,7 +263,7 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
         if (!entity.conflictKeys || entity.conflictKeys.length === 0) continue;
         conflictKeysBySource[sourceEntityKeyString(entity.record.key)] = [...entity.conflictKeys];
       }
-      const remotePreview = await remotePost(connection, `/api/domains/${encodeURIComponent(connection.targetCompanyId)}/upstream-imports/preview`, {
+      const remotePreview = await remotePost(connection, `/api/domains/${encodeURIComponent(connection.targetDomainId)}/upstream-imports/preview`, {
         manifest: bundle.manifest,
         previewShape: "manifest_only",
         conflictKeysBySource,
@@ -275,12 +275,12 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       };
     },
 
-    createRun: async (input: { connectionId: string; companyId: string; retryOfRunId?: string | null }): Promise<CloudUpstreamRun> => {
-      const connection = await getConnectionRow(input.connectionId, input.companyId);
+    createRun: async (input: { connectionId: string; domainId: string; retryOfRunId?: string | null }): Promise<CloudUpstreamRun> => {
+      const connection = await getConnectionRow(input.connectionId, input.domainId);
       if (connection.tokenStatus !== "connected") {
         throw badRequest("Cloud upstream connection is not connected");
       }
-      await assertNoRunningRun(input.connectionId, input.companyId, db);
+      await assertNoRunningRun(input.connectionId, input.domainId, db);
       const preview = await localPreview(connection);
       if (!preview.schemaCompatible) {
         throw badRequest("Cloud stack schema is not compatible with this local Paperclip version");
@@ -291,7 +291,7 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       const now = new Date();
       const initialEvents = [
         event(now.toISOString(), "connect", "completed", "Connected to the target Paperclip Cloud stack."),
-        event(now.toISOString(), "scan", "completed", "Scanned the local company inventory."),
+        event(now.toISOString(), "scan", "completed", "Scanned the local domain inventory."),
         event(now.toISOString(), "preview", "completed", "Generated the transfer manifest."),
         ...(input.retryOfRunId
           ? [event(now.toISOString(), "push", "retrying", `Retrying run ${input.retryOfRunId} with the same import ledger idempotency key.`)]
@@ -299,13 +299,13 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       ];
       const created = await db.transaction(async (tx) => {
         await tx.execute(
-          sql`select ${cloudUpstreamConnections.id} from ${cloudUpstreamConnections} where ${cloudUpstreamConnections.id} = ${connection.id} and ${cloudUpstreamConnections.companyId} = ${connection.companyId} for update`,
+          sql`select ${cloudUpstreamConnections.id} from ${cloudUpstreamConnections} where ${cloudUpstreamConnections.id} = ${connection.id} and ${cloudUpstreamConnections.domainId} = ${connection.domainId} for update`,
         );
-        await assertNoRunningRun(input.connectionId, input.companyId, tx);
+        await assertNoRunningRun(input.connectionId, input.domainId, tx);
         const [row] = await tx.insert(cloudUpstreamRuns).values({
           id: runId,
           connectionId: connection.id,
-          companyId: connection.companyId,
+          domainId: connection.domainId,
           status: "running",
           activeStep: "push",
           progressPercent: 45,
@@ -327,7 +327,7 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       if (!created) throw badRequest("Failed to create cloud upstream run");
 
       try {
-        const remoteRun = await remotePost(connection, `/api/domains/${encodeURIComponent(connection.targetCompanyId)}/upstream-imports/runs`, {
+        const remoteRun = await remotePost(connection, `/api/domains/${encodeURIComponent(connection.targetDomainId)}/upstream-imports/runs`, {
           mode: "apply",
           manifest: bundle.manifest,
           entities: bundle.entities,
@@ -418,15 +418,15 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       }
     },
 
-    readRun: async (connectionId: string, runId: string, companyId: string): Promise<CloudUpstreamRun> => {
-      const row = await getRunRow(connectionId, runId, companyId);
+    readRun: async (connectionId: string, runId: string, domainId: string): Promise<CloudUpstreamRun> => {
+      const row = await getRunRow(connectionId, runId, domainId);
       return runFromRow(row);
     },
 
-    cancelRun: async (connectionId: string, runId: string, companyId: string): Promise<CloudUpstreamRun> => {
-      const row = await getRunRow(connectionId, runId, companyId);
+    cancelRun: async (connectionId: string, runId: string, domainId: string): Promise<CloudUpstreamRun> => {
+      const row = await getRunRow(connectionId, runId, domainId);
       if (row.status !== "running") return runFromRow(row);
-      const connection = await getConnectionRow(connectionId, companyId);
+      const connection = await getConnectionRow(connectionId, domainId);
       if (row.remoteRunId) {
         await remotePost(connection, `/api/upstream-import-runs/${encodeURIComponent(row.remoteRunId)}/cancel`, {}).catch(() => null);
       }
@@ -445,10 +445,10 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
     activateRunEntities: async (input: {
       connectionId: string;
       runId: string;
-      companyId: string;
+      domainId: string;
       entityType: CloudUpstreamActivationEntityType;
     }): Promise<CloudUpstreamRun> => {
-      const row = await getRunRow(input.connectionId, input.runId, input.companyId);
+      const row = await getRunRow(input.connectionId, input.runId, input.domainId);
       assertActivationEntityType(input.entityType);
       if (row.status !== "succeeded") {
         throw badRequest("Only succeeded cloud upstream runs can activate imported entities");
@@ -482,31 +482,31 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
     },
   };
 
-  async function requireDomain(companyId: string) {
-    const row = await db.select({ id: domains.id }).from(domains).where(eq(domains.id, companyId)).then((rows) => rows[0]);
+  async function requireDomain(domainId: string) {
+    const row = await db.select({ id: domains.id }).from(domains).where(eq(domains.id, domainId)).then((rows) => rows[0]);
     if (!row) throw notFound("Domain was not found");
   }
 
-  async function getConnectionRow(connectionId: string, companyId?: string): Promise<ConnectionRow> {
+  async function getConnectionRow(connectionId: string, domainId?: string): Promise<ConnectionRow> {
     const row = await db
       .select()
       .from(cloudUpstreamConnections)
-      .where(companyId
-        ? and(eq(cloudUpstreamConnections.id, connectionId), eq(cloudUpstreamConnections.companyId, companyId))
+      .where(domainId
+        ? and(eq(cloudUpstreamConnections.id, connectionId), eq(cloudUpstreamConnections.domainId, domainId))
         : eq(cloudUpstreamConnections.id, connectionId))
       .then((rows) => rows[0]);
     if (!row) throw notFound("Cloud upstream connection was not found");
     return row;
   }
 
-  async function getRunRow(connectionId: string, runId: string, companyId: string): Promise<RunRow> {
+  async function getRunRow(connectionId: string, runId: string, domainId: string): Promise<RunRow> {
     const row = await db
       .select()
       .from(cloudUpstreamRuns)
       .where(and(
         eq(cloudUpstreamRuns.id, runId),
         eq(cloudUpstreamRuns.connectionId, connectionId),
-        eq(cloudUpstreamRuns.companyId, companyId),
+        eq(cloudUpstreamRuns.domainId, domainId),
       ))
       .then((rows) => rows[0]);
     if (!row) throw notFound("Cloud upstream run was not found");
@@ -515,7 +515,7 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
 
   async function assertNoRunningRun(
     connectionId: string,
-    companyId: string,
+    domainId: string,
     database: Pick<Db, "select">,
   ) {
     const [running] = await database
@@ -523,7 +523,7 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       .from(cloudUpstreamRuns)
       .where(and(
         eq(cloudUpstreamRuns.connectionId, connectionId),
-        eq(cloudUpstreamRuns.companyId, companyId),
+        eq(cloudUpstreamRuns.domainId, domainId),
         eq(cloudUpstreamRuns.status, "running"),
       ))
       .limit(1);
@@ -562,24 +562,24 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
   async function localPreview(connection: ConnectionRow): Promise<CloudUpstreamPreview> {
     return {
       connectionId: connection.id,
-      sourceCompanyId: connection.companyId,
+      sourceDomainId: connection.domainId,
       target: targetFromConnectionRow(connection),
       schemaCompatible: connection.targetSchemaMajor === TRANSFER_SCHEMA.major,
-      summary: await buildSummary(connection.companyId),
+      summary: await buildSummary(connection.domainId),
       warnings: buildWarnings(connection.targetSchemaMajor),
       conflicts: [],
       generatedAt: new Date().toISOString(),
     };
   }
 
-  async function buildSummary(companyId: string): Promise<CloudUpstreamSummaryCount[]> {
+  async function buildSummary(domainId: string): Promise<CloudUpstreamSummaryCount[]> {
     const [agentCount, projectCount, goalCount, issueCount, commentCount, routineCount] = await Promise.all([
-      db.select({ count: count() }).from(agents).where(eq(agents.companyId, companyId)).then((rows) => rows[0]?.count ?? 0),
-      db.select({ count: count() }).from(projects).where(eq(projects.companyId, companyId)).then((rows) => rows[0]?.count ?? 0),
-      db.select({ count: count() }).from(goals).where(eq(goals.companyId, companyId)).then((rows) => rows[0]?.count ?? 0),
-      db.select({ count: count() }).from(issues).where(eq(issues.companyId, companyId)).then((rows) => rows[0]?.count ?? 0),
-      db.select({ count: count() }).from(issueComments).where(eq(issueComments.companyId, companyId)).then((rows) => rows[0]?.count ?? 0),
-      db.select({ count: count() }).from(routines).where(eq(routines.companyId, companyId)).then((rows) => rows[0]?.count ?? 0),
+      db.select({ count: count() }).from(agents).where(eq(agents.domainId, domainId)).then((rows) => rows[0]?.count ?? 0),
+      db.select({ count: count() }).from(projects).where(eq(projects.domainId, domainId)).then((rows) => rows[0]?.count ?? 0),
+      db.select({ count: count() }).from(goals).where(eq(goals.domainId, domainId)).then((rows) => rows[0]?.count ?? 0),
+      db.select({ count: count() }).from(issues).where(eq(issues.domainId, domainId)).then((rows) => rows[0]?.count ?? 0),
+      db.select({ count: count() }).from(issueComments).where(eq(issueComments.domainId, domainId)).then((rows) => rows[0]?.count ?? 0),
+      db.select({ count: count() }).from(routines).where(eq(routines.domainId, domainId)).then((rows) => rows[0]?.count ?? 0),
     ]);
     return [
       { key: "domains", label: "Domains", count: 1 },
@@ -594,9 +594,9 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
   }
 
   async function buildBundle(connection: ConnectionRow, mode: "preview" | "apply"): Promise<LocalUpstreamExportBundle> {
-    const exported = await portability.exportBundle(connection.companyId, {
+    const exported = await portability.exportBundle(connection.domainId, {
       include: {
-        company: true,
+        domain: true,
         agents: true,
         projects: true,
         issues: true,
@@ -610,21 +610,21 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
     });
     const source = {
       sourceInstanceId: connection.sourceInstanceId,
-      sourceCompanyId: connection.companyId,
+      sourceDomainId: connection.domainId,
       sourceInstanceKeyFingerprint: connection.sourceInstanceFingerprint,
       exporterVersion: "paperclip-local-cloud-ui-v1",
       sourceSchemaVersion: TRANSFER_SCHEMA.version,
     };
     const target = {
       targetStackId: connection.targetStackId,
-      targetCompanyId: connection.targetCompanyId,
+      targetDomainId: connection.targetDomainId,
       targetOrigin: connection.targetOrigin,
       supportedSchemaMajor: connection.targetSchemaMajor,
     };
     const idempotencyKey = [
       mode,
       connection.sourceInstanceId,
-      connection.companyId,
+      connection.domainId,
       connection.targetStackId,
       sourceHash,
     ].join(":");
@@ -633,9 +633,9 @@ export function cloudUpstreamService(db: Db, options: { instanceId?: string } = 
       target,
       runId: `local-${mode}-${shortHash(idempotencyKey)}`,
       idempotencyKey,
-      entities: buildEntitiesFromPortableExport(connection.companyId, connection.sourceInstanceId, exported),
+      entities: buildEntitiesFromPortableExport(connection.domainId, connection.sourceInstanceId, exported),
       warnings: exported.warnings.map((message): UpstreamTransferWarning => ({
-        code: "local_company_export_warning",
+        code: "local_domain_export_warning",
         severity: "warning",
         message,
       })),
@@ -716,7 +716,7 @@ function targetFromDiscovery(discovery: Record<string, unknown>): CloudUpstreamT
     stackId: stringField(stack, "id"),
     stackSlug: optionalString(stack.slug),
     stackDisplayName: optionalString(stack.displayName),
-    companyId: stringField(stack, "companyId"),
+    domainId: stringField(stack, "domainId"),
     primaryHost: optionalString(stack.primaryHost) ?? new URL(origin).host,
     origin,
     product: optionalString(discovery.product) ?? "Paperclip Cloud",
@@ -730,7 +730,7 @@ function targetFromConnectionRow(row: ConnectionRow): CloudUpstreamTarget {
     stackId: row.targetStackId,
     stackSlug: row.targetStackSlug,
     stackDisplayName: row.targetStackDisplayName,
-    companyId: row.targetCompanyId,
+    domainId: row.targetDomainId,
     primaryHost: row.targetPrimaryHost,
     origin: row.targetOrigin,
     product: row.targetProduct,
@@ -742,7 +742,7 @@ function targetFromConnectionRow(row: ConnectionRow): CloudUpstreamTarget {
 function connectionFromRow(row: ConnectionRow): CloudUpstreamConnection {
   return {
     id: row.id,
-    companyId: row.companyId,
+    domainId: row.domainId,
     remoteUrl: row.remoteUrl,
     target: targetFromConnectionRow(row),
     tokenStatus: cloudUpstreamTokenStatus(row.tokenStatus),
@@ -759,7 +759,7 @@ function runFromRow(row: RunRow): CloudUpstreamRun {
   return {
     id: row.id,
     connectionId: row.connectionId,
-    companyId: row.companyId,
+    domainId: row.domainId,
     status: cloudUpstreamRunStatus(row.status),
     activeStep: cloudUpstreamStep(row.activeStep),
     progressPercent: row.progressPercent,
@@ -833,28 +833,28 @@ type LocalUpstreamExportEntityInput = {
 };
 
 function buildEntitiesFromPortableExport(
-  localCompanyId: string,
+  localDomainId: string,
   sourceInstanceId: string,
-  exported: CompanyPortabilityExportResult,
+  exported: DomainPortabilityExportResult,
 ): LocalUpstreamExportEntityInput[] {
-  const companyKey: SourceEntityKey = {
+  const domainKey: SourceEntityKey = {
     sourceInstanceId,
-    sourceCompanyId: localCompanyId,
-    sourceEntityType: "company",
-    sourceEntityId: localCompanyId,
-    sourceNaturalKey: exported.manifest.company?.name ?? localCompanyId,
+    sourceDomainId: localDomainId,
+    sourceEntityType: "domain",
+    sourceEntityId: localDomainId,
+    sourceNaturalKey: exported.manifest.domain?.name ?? localDomainId,
   };
   const entities: LocalUpstreamExportEntityInput[] = [
     {
-      key: companyKey,
+      key: domainKey,
       body: {
-        kind: "paperclip_company_portability_manifest",
+        kind: "paperclip_domain_portability_manifest",
         manifest: exported.manifest,
         rootPath: exported.rootPath,
         paperclipExtensionPath: exported.paperclipExtensionPath,
         fileCount: Object.keys(exported.files).length,
       },
-      conflictKeys: [`company:${companyKey.sourceNaturalKey ?? localCompanyId}`],
+      conflictKeys: [`domain:${domainKey.sourceNaturalKey ?? localDomainId}`],
     },
   ];
 
@@ -862,8 +862,8 @@ function buildEntitiesFromPortableExport(
     entities.push({
       key: {
         sourceInstanceId,
-        sourceCompanyId: localCompanyId,
-        sourceEntityType: "company_setting",
+        sourceDomainId: localDomainId,
+        sourceEntityType: "domain_setting",
         sourceEntityId: shortHash(filePath),
         sourceNaturalKey: filePath,
       },
@@ -872,14 +872,14 @@ function buildEntitiesFromPortableExport(
         path: filePath,
         entry: normalizePortableFileEntry(entry),
       },
-      dependencies: [companyKey],
+      dependencies: [domainKey],
       conflictKeys: [`portable_file:${filePath}`],
     });
   }
   return entities;
 }
 
-function normalizePortableFileEntry(entry: CompanyPortabilityFileEntry): Record<string, unknown> {
+function normalizePortableFileEntry(entry: DomainPortabilityFileEntry): Record<string, unknown> {
   if (typeof entry === "string") {
     return { encoding: "utf8", data: entry };
   }
@@ -1233,7 +1233,7 @@ function shortHash(value: string): string {
 }
 
 function sourceEntityKeyString(key: SourceEntityKey): string {
-  return [key.sourceInstanceId, key.sourceCompanyId, key.sourceEntityType, key.sourceEntityId]
+  return [key.sourceInstanceId, key.sourceDomainId, key.sourceEntityType, key.sourceEntityId]
     .map((part) => encodeURIComponent(part))
     .join("/");
 }

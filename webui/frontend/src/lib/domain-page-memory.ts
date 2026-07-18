@@ -1,12 +1,12 @@
 import {
-  extractCompanyPrefixFromPath,
-  normalizeCompanyPrefix,
-  toCompanyRelativePath,
+  extractDomainPrefixFromPath,
+  normalizeDomainPrefix,
+  toDomainRelativePath,
 } from "./domain-routes";
 
 const GLOBAL_SEGMENTS = new Set(["auth", "invite", "board-claim", "cli-auth", "docs"]);
 
-export function isRememberableCompanyPath(path: string): boolean {
+export function isRememberableDomainPath(path: string): boolean {
   const pathname = path.split("?")[0] ?? "";
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return true;
@@ -15,36 +15,36 @@ export function isRememberableCompanyPath(path: string): boolean {
   return true;
 }
 
-function findCompanyByPrefix<T extends { id: string; issuePrefix: string }>(params: {
-  companies: T[];
-  companyPrefix: string;
+function findDomainByPrefix<T extends { id: string; issuePrefix: string }>(params: {
+  domains: T[];
+  domainPrefix: string;
 }): T | null {
-  const normalizedPrefix = normalizeCompanyPrefix(params.companyPrefix);
-  return params.companies.find((company) => normalizeCompanyPrefix(company.issuePrefix) === normalizedPrefix) ?? null;
+  const normalizedPrefix = normalizeDomainPrefix(params.domainPrefix);
+  return params.domains.find((domain) => normalizeDomainPrefix(domain.issuePrefix) === normalizedPrefix) ?? null;
 }
 
-export function getRememberedPathOwnerCompanyId<T extends { id: string; issuePrefix: string }>(params: {
-  companies: T[];
+export function getRememberedPathOwnerDomainId<T extends { id: string; issuePrefix: string }>(params: {
+  domains: T[];
   pathname: string;
-  fallbackCompanyId: string | null;
+  fallbackDomainId: string | null;
 }): string | null {
-  const routeCompanyPrefix = extractCompanyPrefixFromPath(params.pathname);
-  if (!routeCompanyPrefix) {
-    return params.fallbackCompanyId;
+  const routeDomainPrefix = extractDomainPrefixFromPath(params.pathname);
+  if (!routeDomainPrefix) {
+    return params.fallbackDomainId;
   }
 
-  return findCompanyByPrefix({
-    companies: params.companies,
-    companyPrefix: routeCompanyPrefix,
+  return findDomainByPrefix({
+    domains: params.domains,
+    domainPrefix: routeDomainPrefix,
   })?.id ?? null;
 }
 
 export function sanitizeRememberedPathForDomain(params: {
   path: string | null | undefined;
-  companyPrefix: string;
+  domainPrefix: string;
 }): string {
-  const relativePath = params.path ? toCompanyRelativePath(params.path) : "/dashboard";
-  if (!isRememberableCompanyPath(relativePath)) {
+  const relativePath = params.path ? toDomainRelativePath(params.path) : "/dashboard";
+  if (!isRememberableDomainPath(relativePath)) {
     return "/dashboard";
   }
 
@@ -55,7 +55,7 @@ export function sanitizeRememberedPathForDomain(params: {
     const identifierMatch = /^([A-Za-z]+)-\d+$/.exec(entityId);
     if (
       identifierMatch &&
-      normalizeCompanyPrefix(identifierMatch[1] ?? "") !== normalizeCompanyPrefix(params.companyPrefix)
+      normalizeDomainPrefix(identifierMatch[1] ?? "") !== normalizeDomainPrefix(params.domainPrefix)
     ) {
       return "/dashboard";
     }

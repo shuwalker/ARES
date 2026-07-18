@@ -1,4 +1,4 @@
-import type { WorkflowCompanyCaseEvent } from "../api/pipelines";
+import type { WorkflowDomainCaseEvent } from "../api/workflows";
 import { formatShortDate } from "./utils";
 
 export type LearningEventPresentation = {
@@ -16,7 +16,7 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function eventItemTitle(event: WorkflowCompanyCaseEvent): string {
+function eventItemTitle(event: WorkflowDomainCaseEvent): string {
   const payload = asRecord(event.payload);
   return (
     asString(event.case?.title) ??
@@ -27,7 +27,7 @@ function eventItemTitle(event: WorkflowCompanyCaseEvent): string {
   );
 }
 
-function eventActorName(event: WorkflowCompanyCaseEvent): string {
+function eventActorName(event: WorkflowDomainCaseEvent): string {
   const payload = asRecord(event.payload);
   return (
     asString(event.actorAgent?.name) ??
@@ -38,7 +38,7 @@ function eventActorName(event: WorkflowCompanyCaseEvent): string {
   );
 }
 
-function payloadText(event: WorkflowCompanyCaseEvent, ...keys: string[]): string | null {
+function payloadText(event: WorkflowDomainCaseEvent, ...keys: string[]): string | null {
   const payload = asRecord(event.payload);
   for (const key of keys) {
     const value = asString(payload[key]);
@@ -53,7 +53,7 @@ function reviewVerb(decision: string | null): string {
   return "approved";
 }
 
-export function formatLearningEvent(event: WorkflowCompanyCaseEvent): LearningEventPresentation {
+export function formatLearningEvent(event: WorkflowDomainCaseEvent): LearningEventPresentation {
   const payload = asRecord(event.payload);
   const title = eventItemTitle(event);
 

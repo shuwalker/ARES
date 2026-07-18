@@ -16,15 +16,15 @@ import {
 } from "@paperclipai/db";
 import {
   attachmentArtifactWorkProductMetadataSchema,
-  COMPANY_ARTIFACTS_MAX_LIMIT,
-  companyArtifactsQuerySchema,
+  DOMAIN_ARTIFACTS_MAX_LIMIT,
+  domainArtifactsQuerySchema,
   SYSTEM_ISSUE_DOCUMENT_KEYS,
-  type CompanyArtifact,
-  type CompanyArtifactGroup,
-  type CompanyArtifactGroupBy,
-  type CompanyArtifactMediaKind,
-  type CompanyArtifactsQuery,
-  type CompanyArtifactsResponse,
+  type DomainArtifact,
+  type DomainArtifactGroup,
+  type DomainArtifactGroupBy,
+  type DomainArtifactMediaKind,
+  type DomainArtifactsQuery,
+  type DomainArtifactsResponse,
 } from "@paperclipai/shared";
 import { badRequest, notFound } from "../errors.js";
 import type { StorageService } from "../storage/types.js";
@@ -32,14 +32,14 @@ import type { StorageService } from "../storage/types.js";
 const TEXT_PREVIEW_BYTES = 4096;
 const PREVIEW_TEXT_MAX_LENGTH = 280;
 const GROUP_PREVIEW_ARTIFACT_LIMIT = 3;
-const GROUPED_ARTIFACT_FETCH_LIMIT = COMPANY_ARTIFACTS_MAX_LIMIT * 10;
+const GROUPED_ARTIFACT_FETCH_LIMIT = DOMAIN_ARTIFACTS_MAX_LIMIT * 10;
 
 type ArtifactCursor = {
   updatedAt: string;
   id: string;
 };
 
-type ArtifactGroupBy = Exclude<CompanyArtifactGroupBy, "none">;
+type ArtifactGroupBy = Exclude<DomainArtifactGroupBy, "none">;
 
 type IssueGroupingRow = {
   id: string;
@@ -101,7 +101,7 @@ function normalizePreviewText(input: string | null | undefined) {
     : stripped;
 }
 
-function classifyMediaKind(contentType: string | null | undefined, fallback: CompanyArtifactMediaKind = "file") {
+function classifyMediaKind(contentType: string | null | undefined, fallback: DomainArtifactMediaKind = "file") {
   const normalized = (contentType ?? "").toLowerLifeAdmin();
   if (!normalized) return fallback;
   if (normalized.startsWith("image/")) return "image";
@@ -119,7 +119,7 @@ function classifyMediaKind(contentType: string | null | undefined, fallback: Com
   return "file";
 }
 
-function contentTypeKindCondition(contentTypeExpression: SQL<string>, kind: CompanyArtifactsQuery["kind"]) {
+function contentTypeKindCondition(contentTypeExpression: SQL<string>, kind: DomainArtifactsQuery["kind"]) {
   if (!kind || kind === "all") return undefined;
   if (kind === "image") return sql`${contentTypeExpression} ILIKE 'image/%'`;
   if (kind === "video") return sql`${contentTypeExpression} ILIKE 'video/%'`;
@@ -132,13 +132,13 @@ function contentTypeKindCondition(contentTypeExpression: SQL<string>, kind: Comp
   return undefined;
 }
 
-function buildIssueHref(companyPrefix: string, identifier: string, anchor: string) {
-  return `/${encodeURIComponent(companyPrefix)}/issues/${encodeURIComponent(identifier)}#${anchor}`;
+function buildIssueHref(domainPrefix: string, identifier: string, anchor: string) {
+  return `/${encodeURIComponent(domainPrefix)}/issues/${encodeURIComponent(identifier)}#${anchor}`;
 }
 
 function buildArtifactsGroupHref(
-  companyPrefix: string,
-  query: CompanyArtifactsQuery,
+  domainPrefix: string,
+  query: DomainArtifactsQuery,
   groupBy: ArtifactGroupBy,
   groupIssueId: string,
 ) {
@@ -148,7 +148,7 @@ function buildArtifactsGroupHref(
   if (query.kind !== "all") params.set("kind", query.kind);
   if (query.projectId) params.set("projectId", query.projectId);
   if (query.q) params.set("q", query.q);
-  return `/${encodeURIComponent(companyPrefix)}/artifacts?${params.toString()}`;
+  return `/${encodeURIComponent(domainPrefix)}/artifacts?${params.toString()}`;
 }
 
 function attachmentContentPath(attachmentId: string) {
@@ -157,11 +157,11 @@ function attachmentContentPath(attachmentId: string) {
 
 async function readTextAttachmentPreview(
   storage: StorageService | undefined,
-  input: { companyId: string; objectKey: string; byteSize: number },
+  input: { domainId: string; objectKey: string; byteSize: number },
 ) {
   if (!storage || input.byteSize <= 0) return null;
   try {
-    const object = await storage.getObject(input.companyId, input.objectKey, {
+    const object = await storage.getObject(input.domainId, input.objectKey, {
       range: { start: 0, end: Math.min(input.byteSize, TEXT_PREVIEW_BYTES) - 1 },
     });
     const body = await buffer(object.stream);
@@ -171,7 +171,7 @@ async function readTextAttachmentPreview(
   }
 }
 
-function sortArtifacts(artifacts: CompanyArtifact[]) {
+function sortArtifacts(artifacts: DomainArtifact[]) {
   return artifacts.sort((a, b) => {
     const dateDiff = Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
     if (dateDiff !== 0) return dateDiff;
@@ -192,7 +192,7 @@ function pageByCursor<T extends { id: string; updatedAt: string }>(
   return { page, nextCursor };
 }
 
-async function loadIssueGroupingRows(db: Db, companyId: string, seedIssueIds: Iterable<string>) {
+async function loadIssueGroupingRows(db: Db, domainId: string, seedIssueIds: Iterable<string>) {
   const rowsById = new Map<string, IssueGroupingRow>();
   let pending = [...new Set(seedIssueIds)];
 
@@ -206,7 +206,7 @@ async function loadIssueGroupingRows(db: Db, companyId: string, seedIssueIds: It
         updatedAt: issues.updatedAt,
       })
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), inArray(issues.id, pending)));
+      .where(and(eq(issues.domainId, domainId), inArray(issues.id, pending)));
 
     const nextPending = new Set<string>();
     for (const row of rows) {
@@ -247,11 +247,11 @@ function resolveGroupIssueId(groupBy: ArtifactGroupBy, issueId: string, issueRow
 }
 
 function emptyGroup(input: {
-  companyPrefix: string;
-  query: CompanyArtifactsQuery;
+  domainPrefix: string;
+  query: DomainArtifactsQuery;
   groupBy: ArtifactGroupBy;
   issue: IssueGroupingRow;
-}): CompanyArtifactGroup {
+}): DomainArtifactGroup {
   const summary = getIssueSummary(input.issue);
   return {
     id: `${input.groupBy}:${input.issue.id}`,
@@ -262,18 +262,18 @@ function emptyGroup(input: {
     mediaKinds: [],
     previewArtifacts: [],
     updatedAt: input.issue.updatedAt.toISOString(),
-    href: buildArtifactsGroupHref(input.companyPrefix, input.query, input.groupBy, input.issue.id),
+    href: buildArtifactsGroupHref(input.domainPrefix, input.query, input.groupBy, input.issue.id),
   };
 }
 
 function buildArtifactGroups(input: {
-  artifacts: CompanyArtifact[];
-  companyPrefix: string;
-  query: CompanyArtifactsQuery;
+  artifacts: DomainArtifact[];
+  domainPrefix: string;
+  query: DomainArtifactsQuery;
   groupBy: ArtifactGroupBy;
   issueRows: Map<string, IssueGroupingRow>;
 }) {
-  const groups = new Map<string, CompanyArtifactGroup>();
+  const groups = new Map<string, DomainArtifactGroup>();
 
   for (const artifact of input.artifacts) {
     const groupIssueId = resolveGroupIssueId(input.groupBy, artifact.issue.id, input.issueRows);
@@ -287,7 +287,7 @@ function buildArtifactGroups(input: {
     const groupId = `${input.groupBy}:${groupIssueId}`;
     const existing = groups.get(groupId);
     const group = existing ?? emptyGroup({
-      companyPrefix: input.companyPrefix,
+      domainPrefix: input.domainPrefix,
       query: input.query,
       groupBy: input.groupBy,
       issue: groupIssue,
@@ -313,24 +313,24 @@ function buildArtifactGroups(input: {
   });
 }
 
-export function companyArtifactsService(db: Db, storage?: StorageService) {
+export function domainArtifactsService(db: Db, storage?: StorageService) {
   return {
     list: async (
-      companyId: string,
-      rawQuery: Partial<CompanyArtifactsQuery> = {},
+      domainId: string,
+      rawQuery: Partial<DomainArtifactsQuery> = {},
       options: { issueConditions?: SQL[] } = {},
-    ): Promise<CompanyArtifactsResponse> => {
-      const query = companyArtifactsQuerySchema.parse(rawQuery);
+    ): Promise<DomainArtifactsResponse> => {
+      const query = domainArtifactsQuerySchema.parse(rawQuery);
       const cursor = decodeCursor(query.cursor);
       const groupBy = query.groupBy === "none" ? null : query.groupBy;
-      const company = await db
+      const domain = await db
         .select({ id: domains.id, issuePrefix: domains.issuePrefix })
         .from(domains)
-        .where(eq(domains.id, companyId))
+        .where(eq(domains.id, domainId))
         .then((rows) => rows[0] ?? null);
-      if (!company) throw notFound("Domain not found");
+      if (!domain) throw notFound("Domain not found");
 
-      const fetchLimit = Math.min(query.limit + 1, COMPANY_ARTIFACTS_MAX_LIMIT + 1);
+      const fetchLimit = Math.min(query.limit + 1, DOMAIN_ARTIFACTS_MAX_LIMIT + 1);
       const sourceFetchLimit = groupBy ? GROUPED_ARTIFACT_FETCH_LIMIT : fetchLimit;
       const q = query.q ? `%${escapeLikePattern(query.q)}%` : null;
       const issueConditions: SQL[] = [
@@ -338,7 +338,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         isNull(issues.harnessKind),
         ...(options.issueConditions ?? []),
       ];
-      const artifacts: CompanyArtifact[] = [];
+      const artifacts: DomainArtifact[] = [];
       const workProductAttachmentIds = new Set<string>();
 
       if (query.kind === "all" || query.kind === "document") {
@@ -346,8 +346,8 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         const updatedAgent = alias(agents, "document_updated_agent");
         const documentArtifactId = sql<string>`concat('document:', ${documents.id})`;
         const documentConditions: SQL[] = [
-          eq(issueDocuments.companyId, companyId),
-          eq(documents.companyId, companyId),
+          eq(issueDocuments.domainId, domainId),
+          eq(documents.domainId, domainId),
           or(isNotNull(documents.createdByAgentId), isNotNull(documents.updatedByAgentId))!,
           notInArray(issueDocuments.key, [...SYSTEM_ISSUE_DOCUMENT_KEYS]),
           ...issueConditions,
@@ -386,35 +386,35 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
             documents,
             and(
               eq(issueDocuments.documentId, documents.id),
-              eq(documents.companyId, issueDocuments.companyId),
+              eq(documents.domainId, issueDocuments.domainId),
             ),
           )
           .innerJoin(
             issues,
             and(
               eq(issueDocuments.issueId, issues.id),
-              eq(issues.companyId, issueDocuments.companyId),
+              eq(issues.domainId, issueDocuments.domainId),
             ),
           )
           .leftJoin(
             projects,
             and(
               eq(issues.projectId, projects.id),
-              eq(projects.companyId, issues.companyId),
+              eq(projects.domainId, issues.domainId),
             ),
           )
           .leftJoin(
             createdAgent,
             and(
               eq(documents.createdByAgentId, createdAgent.id),
-              eq(createdAgent.companyId, documents.companyId),
+              eq(createdAgent.domainId, documents.domainId),
             ),
           )
           .leftJoin(
             updatedAgent,
             and(
               eq(documents.updatedByAgentId, updatedAgent.id),
-              eq(updatedAgent.companyId, documents.companyId),
+              eq(updatedAgent.domainId, documents.domainId),
             ),
           )
           .where(and(...documentConditions))
@@ -439,7 +439,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
               ? { id: row.createdByAgentId, name: row.createdByAgentName }
               : null,
             updatedAt: row.updatedAt.toISOString(),
-            href: buildIssueHref(company.issuePrefix, identifier, `document-${row.key}`),
+            href: buildIssueHref(domain.issuePrefix, identifier, `document-${row.key}`),
           });
         }
       }
@@ -449,7 +449,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         const workProductArtifactId = sql<string>`concat('work_product:', ${issueWorkProducts.id})`;
         const workProductContentType = sql<string>`coalesce(${issueWorkProducts.metadata}->>'contentType', '')`;
         const workProductBaseConditions: SQL[] = [
-          eq(issueWorkProducts.companyId, companyId),
+          eq(issueWorkProducts.domainId, domainId),
           eq(issueWorkProducts.type, "artifact"),
           eq(issueWorkProducts.provider, "paperclip"),
           ...issueConditions,
@@ -506,28 +506,28 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
             issues,
             and(
               eq(issueWorkProducts.issueId, issues.id),
-              eq(issues.companyId, issueWorkProducts.companyId),
+              eq(issues.domainId, issueWorkProducts.domainId),
             ),
           )
           .leftJoin(
             projects,
             and(
               eq(issues.projectId, projects.id),
-              eq(projects.companyId, issueWorkProducts.companyId),
+              eq(projects.domainId, issueWorkProducts.domainId),
             ),
           )
           .leftJoin(
             heartbeatRuns,
             and(
               eq(issueWorkProducts.createdByRunId, heartbeatRuns.id),
-              eq(heartbeatRuns.companyId, issueWorkProducts.companyId),
+              eq(heartbeatRuns.domainId, issueWorkProducts.domainId),
             ),
           )
           .leftJoin(
             workProductAgent,
             and(
               eq(heartbeatRuns.agentId, workProductAgent.id),
-              eq(workProductAgent.companyId, issueWorkProducts.companyId),
+              eq(workProductAgent.domainId, issueWorkProducts.domainId),
             ),
           )
           .where(and(...workProductConditions))
@@ -543,7 +543,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
             issues,
             and(
               eq(issueWorkProducts.issueId, issues.id),
-              eq(issues.companyId, issueWorkProducts.companyId),
+              eq(issues.domainId, issueWorkProducts.domainId),
             ),
           )
           .where(and(...workProductBaseConditions, sql`${issueWorkProducts.metadata}->>'attachmentId' IS NOT NULL`))
@@ -579,14 +579,14 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
               ? { id: row.createdByAgentId, name: row.createdByAgentName }
               : null,
             updatedAt: row.updatedAt.toISOString(),
-            href: buildIssueHref(company.issuePrefix, identifier, `work-product-${row.workProductId}`),
+            href: buildIssueHref(domain.issuePrefix, identifier, `work-product-${row.workProductId}`),
           });
         }
 
         const attachmentAgent = alias(agents, "attachment_agent");
         const attachmentArtifactId = sql<string>`concat('attachment:', ${issueAttachments.id})`;
         const attachmentConditions: SQL[] = [
-          eq(issueAttachments.companyId, companyId),
+          eq(issueAttachments.domainId, domainId),
           isNull(issueAttachments.issueCommentId),
           isNotNull(assets.createdByAgentId),
           ...issueConditions,
@@ -611,7 +611,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
           .select({
             artifactId: attachmentArtifactId,
             attachmentId: issueAttachments.id,
-            companyId: issueAttachments.companyId,
+            domainId: issueAttachments.domainId,
             issueId: issues.id,
             issueIdentifier: issues.identifier,
             issueTitle: issues.title,
@@ -630,35 +630,35 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
             assets,
             and(
               eq(issueAttachments.assetId, assets.id),
-              eq(assets.companyId, issueAttachments.companyId),
+              eq(assets.domainId, issueAttachments.domainId),
             ),
           )
           .innerJoin(
             issues,
             and(
               eq(issueAttachments.issueId, issues.id),
-              eq(issues.companyId, issueAttachments.companyId),
+              eq(issues.domainId, issueAttachments.domainId),
             ),
           )
           .leftJoin(
             projects,
             and(
               eq(issues.projectId, projects.id),
-              eq(projects.companyId, issues.companyId),
+              eq(projects.domainId, issues.domainId),
             ),
           )
           .leftJoin(
             attachmentAgent,
             and(
               eq(assets.createdByAgentId, attachmentAgent.id),
-              eq(attachmentAgent.companyId, assets.companyId),
+              eq(attachmentAgent.domainId, assets.domainId),
             ),
           )
           .where(and(...attachmentConditions))
           .orderBy(desc(issueAttachments.updatedAt), desc(attachmentArtifactId));
         const attachmentRows = await attachmentRowsQuery.limit(sourceFetchLimit);
 
-        const attachmentArtifacts = await Promise.all(attachmentRows.map(async (row): Promise<CompanyArtifact | null> => {
+        const attachmentArtifacts = await Promise.all(attachmentRows.map(async (row): Promise<DomainArtifact | null> => {
           if (workProductAttachmentIds.has(row.attachmentId)) return null;
           const mediaKind = classifyMediaKind(row.contentType);
           const contentPath = attachmentContentPath(row.attachmentId);
@@ -670,7 +670,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
             title: row.originalFilename ?? "Attachment",
             previewText: mediaKind === "text"
               ? await readTextAttachmentPreview(storage, {
-                companyId: row.companyId,
+                domainId: row.domainId,
                 objectKey: row.objectKey,
                 byteSize: row.byteSize,
               })
@@ -685,11 +685,11 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
               ? { id: row.createdByAgentId, name: row.createdByAgentName }
               : null,
             updatedAt: row.updatedAt.toISOString(),
-            href: buildIssueHref(company.issuePrefix, identifier, `attachment-${row.attachmentId}`),
+            href: buildIssueHref(domain.issuePrefix, identifier, `attachment-${row.attachmentId}`),
           };
         }));
 
-        artifacts.push(...attachmentArtifacts.filter((artifact): artifact is CompanyArtifact => artifact !== null));
+        artifacts.push(...attachmentArtifacts.filter((artifact): artifact is DomainArtifact => artifact !== null));
       }
 
       const sorted = sortArtifacts(artifacts);
@@ -704,10 +704,10 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
 
       const issueSeedIds = new Set(artifacts.map((artifact) => artifact.issue.id));
       if (query.groupIssueId) issueSeedIds.add(query.groupIssueId);
-      const issueRows = await loadIssueGroupingRows(db, companyId, issueSeedIds);
+      const issueRows = await loadIssueGroupingRows(db, domainId, issueSeedIds);
       const groups = buildArtifactGroups({
         artifacts: sorted,
-        companyPrefix: company.issuePrefix,
+        domainPrefix: domain.issuePrefix,
         query,
         groupBy,
         issueRows,
@@ -722,7 +722,7 @@ export function companyArtifactsService(db: Db, storage?: StorageService) {
         const selectedGroupIssueId = resolveGroupIssueId(groupBy, selectedIssue.id, issueRows);
         const selectedGroup = groups.find((group) => group.issue.id === selectedGroupIssueId)
           ?? emptyGroup({
-            companyPrefix: company.issuePrefix,
+            domainPrefix: domain.issuePrefix,
             query,
             groupBy,
             issue: issueRows.get(selectedGroupIssueId) ?? selectedIssue,

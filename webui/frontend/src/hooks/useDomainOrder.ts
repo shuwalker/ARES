@@ -12,72 +12,72 @@ function areEqual(a: string[], b: string[]) {
   return true;
 }
 
-function sortDomainsByOrder(companies: Domain[], orderedIds: string[]): Domain[] {
-  if (companies.length === 0) return [];
-  if (orderedIds.length === 0) return companies;
+function sortDomainsByOrder(domains: Domain[], orderedIds: string[]): Domain[] {
+  if (domains.length === 0) return [];
+  if (orderedIds.length === 0) return domains;
 
-  const byId = new Map(companies.map((company) => [company.id, company]));
+  const byId = new Map(domains.map((domain) => [domain.id, domain]));
   const sorted: Domain[] = [];
 
   for (const id of orderedIds) {
-    const company = byId.get(id);
-    if (!company) continue;
-    sorted.push(company);
+    const domain = byId.get(id);
+    if (!domain) continue;
+    sorted.push(domain);
     byId.delete(id);
   }
-  for (const company of byId.values()) {
-    sorted.push(company);
+  for (const domain of byId.values()) {
+    sorted.push(domain);
   }
   return sorted;
 }
 
-function buildOrderIds(companies: Domain[], orderedIds: string[]) {
-  return sortDomainsByOrder(companies, orderedIds).map((company) => company.id);
+function buildOrderIds(domains: Domain[], orderedIds: string[]) {
+  return sortDomainsByOrder(domains, orderedIds).map((domain) => domain.id);
 }
 
-type UseCompanyOrderParams = {
-  companies: Domain[];
+type UseDomainOrderParams = {
+  domains: Domain[];
   userId: string | null | undefined;
 };
 
-export function useDomainOrder({ companies, userId }: UseCompanyOrderParams) {
+export function useDomainOrder({ domains, userId }: UseDomainOrderParams) {
   const queryClient = useQueryClient();
   const queryKey = useMemo(
-    () => queryKeys.sidebarPreferences.companyOrder(userId ?? "__anon__"),
+    () => queryKeys.sidebarPreferences.domainOrder(userId ?? "__anon__"),
     [userId],
   );
 
   const { data } = useQuery({
     queryKey,
-    queryFn: () => sidebarPreferencesApi.getCompanyOrder(),
+    queryFn: () => sidebarPreferencesApi.getDomainOrder(),
     enabled: Boolean(userId),
   });
 
-  const [orderedIds, setOrderedIds] = useState<string[]>(() => buildOrderIds(companies, []));
+  const [orderedIds, setOrderedIds] = useState<string[]>(() => buildOrderIds(domains, []));
 
   useEffect(() => {
-    const nextIds = buildOrderIds(companies, data?.orderedIds ?? []);
+    const nextIds = buildOrderIds(domains, data?.orderedIds ?? []);
     setOrderedIds((current) => (areEqual(current, nextIds) ? current : nextIds));
-  }, [companies, data?.orderedIds]);
+  }, [domains, data?.orderedIds]);
 
   const mutation = useMutation({
-    mutationFn: (nextIds: string[]) => sidebarPreferencesApi.updateCompanyOrder({ orderedIds: nextIds }),
+    mutationFn: (nextIds: string[]) => sidebarPreferencesApi.updateDomainOrder({ orderedIds: nextIds }),
     onSuccess: (preference) => {
       queryClient.setQueryData(queryKey, preference);
     },
   });
 
   const orderedDomains = useMemo(
-    () => sortDomainsByOrder(companies, orderedIds),
-    [companies, orderedIds],
+    () => sortDomainsByOrder(domains, orderedIds),
+    [domains, orderedIds],
   );
 
   const persistOrder = useCallback(
     (ids: string[]) => {
-      const idSet = new Set(companies.map((company) => company.id));
+      const idSet = new Set(domains.map((domain) => domain.id));
       const filtered = ids.filter((id) => idSet.has(id));
-      for (const company of companies) {
-        if (!filtered.includes(company.id)) filtered.push(company.id);
+      for (const domain of domains) {
+        if (!filtered.includes(domain.id)) filtered.push(domain.id);
       }
 
       setOrderedIds((current) => (areEqual(current, filtered) ? current : filtered));
@@ -89,7 +89,7 @@ export function useDomainOrder({ companies, userId }: UseCompanyOrderParams) {
       }));
       mutation.mutate(filtered);
     },
-    [companies, mutation, queryClient, queryKey, userId],
+    [domains, mutation, queryClient, queryKey, userId],
   );
 
   return {

@@ -44,7 +44,7 @@ const mockHeartbeatService = vi.hoisted(() => ({
 
 const mockInstanceSettingsService = vi.hoisted(() => ({
   get: vi.fn(),
-  listCompanyIds: vi.fn(),
+  listDomainIds: vi.fn(),
 }));
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
@@ -55,7 +55,7 @@ const mockRoutineService = vi.hoisted(() => ({
 
 const mockDbSelectWhere = vi.hoisted(() => vi.fn(() => ({
   then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-    Promise.resolve([{ companyId: "company-1", agentId: "agent-1", contextSnapshot: null }]).then(
+    Promise.resolve([{ domainId: "domain-1", agentId: "agent-1", contextSnapshot: null }]).then(
       onFulfilled,
       onRejected,
     ),
@@ -104,12 +104,12 @@ function registerRouteMocks() {
   }));
 
   vi.doMock("../services/index.js", () => ({
-    companyService: () => ({
-      getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+    domainService: () => ({
+      getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
     }),
     accessService: () => mockAccessService,
     agentService: () => mockAgentService,
-    companySkillService: () => ({
+    domainSkillService: () => ({
       completeTestRunForIssue: vi.fn(async () => null),
     }),
     documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
@@ -169,7 +169,7 @@ async function createApp(actor: Record<string, unknown>) {
 function makeIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: "issue-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     status: "todo",
     priority: "medium",
     projectId: null,
@@ -219,14 +219,14 @@ describe("issue workspace command authorization", () => {
     mockAccessService.canUser.mockResolvedValue(true);
     mockAccessService.decide.mockResolvedValue({
       allowed: true,
-      action: "company_scope:read",
+      action: "domain_scope:read",
       reason: "allow_test",
       explanation: "Allowed by test mock.",
     });
     mockAccessService.hasPermission.mockResolvedValue(true);
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       permissions: null,
     });
     mockExecutionWorkspaceService.getById.mockResolvedValue(null);
@@ -248,14 +248,14 @@ describe("issue workspace command authorization", () => {
         feedbackDataSharingPreference: "prompt",
       },
     });
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1"]);
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-1"]);
     mockLogActivity.mockResolvedValue(undefined);
     mockRoutineService.syncRunStatusForIssue.mockResolvedValue(undefined);
     mockDbSelect.mockImplementation(() => ({ from: mockDbSelectFrom }));
     mockDbSelectFrom.mockImplementation(() => ({ where: mockDbSelectWhere }));
     mockDbSelectWhere.mockImplementation(() => ({
       then: (onFulfilled: (rows: unknown[]) => unknown, onRejected?: (reason: unknown) => unknown) =>
-        Promise.resolve([{ companyId: "company-1", agentId: "agent-1", contextSnapshot: null }]).then(
+        Promise.resolve([{ domainId: "domain-1", agentId: "agent-1", contextSnapshot: null }]).then(
           onFulfilled,
           onRejected,
         ),
@@ -266,13 +266,13 @@ describe("issue workspace command authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });
 
     const res = await request(app)
-      .post("/api/domains/company-1/issues")
+      .post("/api/domains/domain-1/issues")
       .send({
         title: "Exploit",
         executionWorkspaceSettings: {
@@ -293,7 +293,7 @@ describe("issue workspace command authorization", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
       runId: "run-1",
     });

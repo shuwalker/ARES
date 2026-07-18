@@ -28,7 +28,7 @@ const mockEnvironmentService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
 
-const mockCompanyService = vi.hoisted(() => ({
+const mockDomainService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
 
@@ -47,7 +47,7 @@ const mockIssueReferenceService = vi.hoisted(() => ({
 }));
 
 const mockSecretService = vi.hoisted(() => ({
-  normalizeEnvBindingsForPersistence: vi.fn(async (_companyId: string, env: Record<string, unknown>) => env),
+  normalizeEnvBindingsForPersistence: vi.fn(async (_domainId: string, env: Record<string, unknown>) => env),
 }));
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
@@ -55,7 +55,7 @@ const mockLogActivity = vi.hoisted(() => vi.fn());
 vi.mock("../services/index.js", () => ({
   projectService: () => mockProjectService,
   issueService: () => mockIssueService,
-  companyService: () => mockCompanyService,
+  domainService: () => mockDomainService,
   environmentService: () => mockEnvironmentService,
   issueReferenceService: () => mockIssueReferenceService,
   logActivity: mockLogActivity,
@@ -67,13 +67,13 @@ vi.mock("../services/index.js", () => ({
   agentService: () => ({
     getById: vi.fn(),
   }),
-  companySkillService: () => ({
+  domainSkillService: () => ({
     completeTestRunForIssue: vi.fn(async () => null),
   }),
   executionWorkspaceService: () => ({}),
   goalService: () => ({
     getById: vi.fn(),
-    getDefaultCompanyGoal: vi.fn(),
+    getDefaultDomainGoal: vi.fn(),
   }),
   heartbeatService: () => ({
     getRun: vi.fn(),
@@ -176,9 +176,9 @@ describe.sequential("execution environment route guards", () => {
     mockIssueService.update.mockReset();
     mockIssueService.getByIdentifier.mockReset();
     mockIssueService.assertCheckoutOwner.mockReset();
-    mockCompanyService.getById.mockReset();
-    mockCompanyService.getById.mockResolvedValue({
-      id: "company-1",
+    mockDomainService.getById.mockReset();
+    mockDomainService.getById.mockResolvedValue({
+      id: "domain-1",
       attachmentMaxBytes: 10 * 1024 * 1024,
     });
     mockEnvironmentService.getById.mockReset();
@@ -196,20 +196,20 @@ describe.sequential("execution environment route guards", () => {
   it("accepts sandbox environments on project create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
+      domainId: "domain-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockProjectService.create.mockResolvedValue({
       id: "project-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Sandboxed Project",
       status: "backlog",
     });
     const app = createProjectApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/projects")
+      .post("/api/domains/domain-1/projects")
       .send({
         name: "Sandboxed Project",
         executionWorkspacePolicy: {
@@ -225,20 +225,20 @@ describe.sequential("execution environment route guards", () => {
   it("accepts sandbox environments on project update", async () => {
     mockProjectService.getById.mockResolvedValue({
       id: "project-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Sandboxed Project",
       status: "backlog",
       archivedAt: null,
     });
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
+      domainId: "domain-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockProjectService.update.mockResolvedValue({
       id: "project-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Sandboxed Project",
       status: "backlog",
     });
@@ -260,13 +260,13 @@ describe.sequential("execution environment route guards", () => {
   it("accepts sandbox environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
+      domainId: "domain-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockIssueService.create.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       title: "Sandboxed Issue",
       status: "todo",
       identifier: "PAPA-999",
@@ -274,7 +274,7 @@ describe.sequential("execution environment route guards", () => {
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/issues")
+      .post("/api/domains/domain-1/issues")
       .send({
         title: "Sandboxed Issue",
         executionWorkspaceSettings: {
@@ -289,14 +289,14 @@ describe.sequential("execution environment route guards", () => {
   it("rejects unsupported driver environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
+      domainId: "domain-1",
       driver: "unsupported_driver",
       config: {},
     });
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/issues")
+      .post("/api/domains/domain-1/issues")
       .send({
         title: "Unsupported Driver Issue",
         executionWorkspaceSettings: {
@@ -312,14 +312,14 @@ describe.sequential("execution environment route guards", () => {
   it("rejects built-in fake sandbox environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
+      domainId: "domain-1",
       driver: "sandbox",
       config: { provider: "fake" },
     });
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/issues")
+      .post("/api/domains/domain-1/issues")
       .send({
         title: "Fake Sandbox Issue",
         executionWorkspaceSettings: {
@@ -335,13 +335,13 @@ describe.sequential("execution environment route guards", () => {
   it("accepts plugin-backed sandbox environments on issue create", async () => {
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
+      domainId: "domain-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockIssueService.create.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       title: "Plugin Sandbox Issue",
       status: "todo",
       identifier: "PAPA-999",
@@ -349,7 +349,7 @@ describe.sequential("execution environment route guards", () => {
     const app = createIssueApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/issues")
+      .post("/api/domains/domain-1/issues")
       .send({
         title: "Plugin Sandbox Issue",
         executionWorkspaceSettings: {
@@ -364,7 +364,7 @@ describe.sequential("execution environment route guards", () => {
   it("accepts sandbox environments on issue update", async () => {
     mockIssueService.getById.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       status: "todo",
       assigneeAgentId: null,
       assigneeUserId: null,
@@ -373,13 +373,13 @@ describe.sequential("execution environment route guards", () => {
     });
     mockEnvironmentService.getById.mockResolvedValue({
       id: sandboxEnvironmentId,
-      companyId: "company-1",
+      domainId: "domain-1",
       driver: "sandbox",
       config: { provider: "fake-plugin" },
     });
     mockIssueService.update.mockResolvedValue({
       id: "issue-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       status: "todo",
       identifier: "PAPA-999",
     });

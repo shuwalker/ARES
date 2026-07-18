@@ -6,7 +6,7 @@ import { agentInstructionsService } from "../services/agent-instructions.js";
 
 type TestAgent = {
   id: string;
-  companyId: string;
+  domainId: string;
   name: string;
   adapterConfig: Record<string, unknown>;
 };
@@ -18,7 +18,7 @@ async function makeTempDir(prefix: string) {
 function makeAgent(adapterConfig: Record<string, unknown>): TestAgent {
   return {
     id: "agent-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     name: "Agent 1",
     adapterConfig,
   };
@@ -70,7 +70,7 @@ describe("agent instructions service", () => {
         "instances",
         "test-instance",
         "domains",
-        "company-1",
+        "domain-1",
         "agents",
         "agent-1",
         "instructions",
@@ -88,7 +88,7 @@ describe("agent instructions service", () => {
       "instances",
       "test-instance",
       "domains",
-      "company-1",
+      "domain-1",
       "agents",
       "agent-1",
       "instructions",
@@ -173,7 +173,7 @@ describe("agent instructions service", () => {
       "instances",
       "test-instance",
       "domains",
-      "company-1",
+      "domain-1",
       "agents",
       "agent-1",
       "instructions",
@@ -206,7 +206,7 @@ describe("agent instructions service", () => {
       "instances",
       "test-instance",
       "domains",
-      "company-1",
+      "domain-1",
       "agents",
       "agent-1",
       "instructions",
@@ -249,7 +249,7 @@ describe("agent instructions service", () => {
       "instances",
       "test-instance",
       "domains",
-      "company-1",
+      "domain-1",
       "agents",
       "agent-1",
       "instructions",
@@ -289,7 +289,7 @@ describe("agent instructions service", () => {
       "instances",
       "test-instance",
       "domains",
-      "company-1",
+      "domain-1",
       "agents",
       "agent-1",
       "instructions",
@@ -331,7 +331,7 @@ describe("agent instructions service", () => {
       "instances",
       "test-instance",
       "domains",
-      "company-1",
+      "domain-1",
       "agents",
       "agent-1",
       "instructions",

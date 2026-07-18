@@ -16,19 +16,19 @@ export async function probeEnvironment(
   db: Db,
   environment: Environment,
   options: {
-    companyId?: string | null;
+    domainId?: string | null;
     pluginWorkerManager?: PluginWorkerManager;
     resolvedConfig?: ParsedEnvironmentConfig;
     applyCustomImageTemplate?: boolean;
     acquireSandboxRuntimeLease?: boolean;
   } = {},
 ): Promise<EnvironmentProbeResult> {
-  const resolvedCompanyId = options.companyId ?? null;
+  const resolvedDomainId = options.domainId ?? null;
   const parsed = options.resolvedConfig ?? (
     options.acquireSandboxRuntimeLease === true
       ? parseEnvironmentDriverConfig(environment)
-      : resolvedCompanyId || options.applyCustomImageTemplate === true
-      ? await resolveEnvironmentDriverConfigForRuntime(db, resolvedCompanyId, environment, {
+      : resolvedDomainId || options.applyCustomImageTemplate === true
+      ? await resolveEnvironmentDriverConfigForRuntime(db, resolvedDomainId, environment, {
           applyCustomImageTemplate: options.applyCustomImageTemplate === true,
         })
       : parseEnvironmentDriverConfig(environment)
@@ -48,11 +48,11 @@ export async function probeEnvironment(
 
   if (parsed.driver === "sandbox") {
     if (options.acquireSandboxRuntimeLease) {
-      if (!resolvedCompanyId) {
+      if (!resolvedDomainId) {
         return {
           ok: false,
           driver: "sandbox",
-          summary: "Sandbox environment probe requires a companyId context.",
+          summary: "Sandbox environment probe requires a domainId context.",
           details: {
             provider: parsed.config.provider,
           },
@@ -79,7 +79,7 @@ export async function probeEnvironment(
       let releaseStatus: "released" | "failed" = "released";
       try {
         leaseRecord = await runtime.acquireRunLease({
-          companyId: resolvedCompanyId,
+          domainId: resolvedDomainId,
           environment: probeEnvironmentConfig,
           issueId: null,
           agentId: null,
@@ -153,7 +153,7 @@ export async function probeEnvironment(
       return await probePluginSandboxProviderDriver({
         db,
         workerManager: options.pluginWorkerManager,
-        companyId: resolvedCompanyId ?? "instance",
+        domainId: resolvedDomainId ?? "instance",
         environmentId: environment.id,
         provider: parsed.config.provider,
         config: parsed.config as unknown as Record<string, unknown>,
@@ -177,7 +177,7 @@ export async function probeEnvironment(
     return await probePluginEnvironmentDriver({
       db,
       workerManager: options.pluginWorkerManager,
-      companyId: resolvedCompanyId ?? "instance",
+      domainId: resolvedDomainId ?? "instance",
       environmentId: environment.id,
       config: parsed.config,
     });

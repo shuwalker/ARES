@@ -7,8 +7,8 @@ import {
   agentWakeupRequests,
   budgetPolicies,
   domains,
-  companyMemberships,
-  costEvents,
+  domainMemberships,
+  financeEvents,
   createDb,
   executionWorkspaces,
   heartbeatRuns,
@@ -126,15 +126,15 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     blockerStatus?: string;
     blockerAssigneeAgentId?: "coder" | "manager" | null;
   } = {}) {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const managerId = randomUUID();
     const coderId = randomUUID();
     const blockedIssueId = randomUUID();
     const blockerIssueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
@@ -143,7 +143,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await db.insert(agents).values([
       {
         id: managerId,
-        companyId,
+        domainId,
         name: "CTO",
         role: "cto",
         status: "idle",
@@ -154,7 +154,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       },
       {
         id: coderId,
-        companyId,
+        domainId,
         name: "Coder",
         role: "engineer",
         status: "idle",
@@ -172,7 +172,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await db.insert(issues).values([
       {
         id: blockedIssueId,
-        companyId,
+        domainId,
         title: "Blocked parent",
         status: "blocked",
         priority: "medium",
@@ -184,7 +184,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       },
       {
         id: blockerIssueId,
-        companyId,
+        domainId,
         title: "Missing unblock owner",
         status: opts.blockerStatus ?? "todo",
         priority: "medium",
@@ -201,13 +201,13 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     ]);
 
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerIssueId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
     });
 
-    return { companyId, managerId, coderId, blockedIssueId, blockerIssueId };
+    return { domainId, managerId, coderId, blockedIssueId, blockerIssueId };
   }
 
   async function seedResolvedDependencyBackstopFixture(opts: {
@@ -215,7 +215,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     assignee?: "agent" | null;
   } = {}) {
     const workspaceState = opts.workspaceState ?? "none";
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const ownerUserId = randomUUID();
     const blockedIssueId = randomUUID();
@@ -223,16 +223,16 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
-    const issuePrefix = `R${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `R${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
     });
-    await db.insert(companyMemberships).values({
-      companyId,
+    await db.insert(domainMemberships).values({
+      domainId,
       principalType: "user",
       principalId: ownerUserId,
       membershipRole: "owner",
@@ -240,7 +240,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Priya",
       role: "engineer",
       status: "idle",
@@ -253,20 +253,20 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     if (workspaceState !== "none") {
       await db.insert(projects).values({
         id: projectId,
-        companyId,
+        domainId,
         name: "Synthetic dependency project",
         status: "in_progress",
       });
       await db.insert(projectWorkspaces).values({
         id: projectWorkspaceId,
-        companyId,
+        domainId,
         projectId,
         name: "Synthetic workspace",
         sourceType: "git_worktree",
       });
       await db.insert(executionWorkspaces).values({
         id: executionWorkspaceId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         mode: "isolated_workspace",
@@ -279,7 +279,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await db.insert(issues).values([
       {
         id: blockedIssueId,
-        companyId,
+        domainId,
         projectId: workspaceState === "none" ? null : projectId,
         title: "Synthetic blocked dependent",
         status: "blocked",
@@ -290,7 +290,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       },
       {
         id: blockerIssueId,
-        companyId,
+        domainId,
         projectId: workspaceState === "none" ? null : projectId,
         title: "Synthetic completed blocker",
         status: "done",
@@ -301,7 +301,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       },
     ]);
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerIssueId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
@@ -309,7 +309,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
     if (workspaceState === "not_finalized") {
       await db.insert(workspaceOperations).values({
-        companyId,
+        domainId,
         executionWorkspaceId,
         issueId: blockerIssueId,
         phase: "adapter_execute",
@@ -318,7 +318,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       });
     } else if (workspaceState === "finalized") {
       await db.insert(workspaceOperations).values({
-        companyId,
+        domainId,
         executionWorkspaceId,
         issueId: blockerIssueId,
         phase: "workspace_finalize",
@@ -327,14 +327,14 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       });
     }
 
-    return { companyId, agentId, blockedIssueId, blockerIssueId, executionWorkspaceId };
+    return { domainId, agentId, blockedIssueId, blockerIssueId, executionWorkspaceId };
   }
 
   it("keeps liveness findings advisory when auto recovery is disabled", async () => {
     await instanceSettingsService(db).updateExperimental({
       enableIssueGraphLivenessAutoRecovery: false,
     });
-    const { companyId } = await seedBlockedChain();
+    const { domainId } = await seedBlockedChain();
     const heartbeat = heartbeatService(db);
 
     const result = await heartbeat.reconcileIssueGraphLiveness();
@@ -347,12 +347,12 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(0);
   });
 
   it("keeps resolved dependency wake reconciliation active when liveness auto recovery is disabled", async () => {
-    const { companyId, agentId, blockedIssueId, blockerIssueId } =
+    const { domainId, agentId, blockedIssueId, blockerIssueId } =
       await seedResolvedDependencyBackstopFixture({ workspaceState: "none" });
 
     const result = await heartbeatService(db).reconcileIssueGraphLiveness();
@@ -380,7 +380,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const events = await db
       .select({ action: activityLog.action, entityId: activityLog.entityId, details: activityLog.details })
       .from(activityLog)
-      .where(and(eq(activityLog.companyId, companyId), eq(activityLog.action, "issue.blockers_resolved_wake_emitted")));
+      .where(and(eq(activityLog.domainId, domainId), eq(activityLog.action, "issue.blockers_resolved_wake_emitted")));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       entityId: blockedIssueId,
@@ -390,7 +390,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("heals a blocked dependent whose done blocker has no workspace finalize obligation", async () => {
     await enableAutoRecovery();
-    const { companyId, agentId, blockedIssueId, blockerIssueId } =
+    const { domainId, agentId, blockedIssueId, blockerIssueId } =
       await seedResolvedDependencyBackstopFixture({ workspaceState: "none" });
 
     const result = await heartbeatService(db).reconcileIssueGraphLiveness();
@@ -418,7 +418,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const events = await db
       .select({ action: activityLog.action, entityId: activityLog.entityId, details: activityLog.details })
       .from(activityLog)
-      .where(and(eq(activityLog.companyId, companyId), eq(activityLog.action, "issue.blockers_resolved_wake_emitted")));
+      .where(and(eq(activityLog.domainId, domainId), eq(activityLog.action, "issue.blockers_resolved_wake_emitted")));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ entityId: blockedIssueId });
   });
@@ -459,11 +459,11 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
   });
 
   it("retries a resolved dependency wake when the prior wake was skipped as stale", async () => {
-    const { companyId, agentId, blockedIssueId, blockerIssueId } =
+    const { domainId, agentId, blockedIssueId, blockerIssueId } =
       await seedResolvedDependencyBackstopFixture({ workspaceState: "none" });
     const idempotencyKey = `issue_blockers_resolved:${blockedIssueId}:${blockerIssueId}`;
     await db.insert(agentWakeupRequests).values({
-      companyId,
+      domainId,
       agentId,
       source: "automation",
       triggerDetail: "system",
@@ -491,7 +491,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
         idempotencyKey: agentWakeupRequests.idempotencyKey,
       })
       .from(agentWakeupRequests)
-      .where(and(eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.reason, "issue_blockers_resolved")))
+      .where(and(eq(agentWakeupRequests.domainId, domainId), eq(agentWakeupRequests.reason, "issue_blockers_resolved")))
       .orderBy(agentWakeupRequests.requestedAt);
 
     expect(wakes).toHaveLength(2);
@@ -502,7 +502,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("waits for workspace finalize before healing a resolved blocked dependent", async () => {
     await enableAutoRecovery();
-    const { companyId, agentId, blockedIssueId, blockerIssueId, executionWorkspaceId } =
+    const { domainId, agentId, blockedIssueId, blockerIssueId, executionWorkspaceId } =
       await seedResolvedDependencyBackstopFixture({ workspaceState: "not_finalized" });
     const heartbeat = heartbeatService(db);
 
@@ -519,7 +519,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     expect(wakesBeforeFinalize).toHaveLength(0);
 
     await db.insert(workspaceOperations).values({
-      companyId,
+      domainId,
       executionWorkspaceId,
       issueId: blockerIssueId,
       phase: "workspace_finalize",
@@ -549,12 +549,12 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("does not duplicate an existing dependency wake keyed to any resolved blocker", async () => {
     await enableAutoRecovery();
-    const { companyId, agentId, blockedIssueId, blockerIssueId } =
+    const { domainId, agentId, blockedIssueId, blockerIssueId } =
       await seedResolvedDependencyBackstopFixture({ workspaceState: "none" });
     const secondBlockerIssueId = randomUUID();
     await db.insert(issues).values({
       id: secondBlockerIssueId,
-      companyId,
+      domainId,
       title: "Second completed blocker",
       status: "done",
       priority: "medium",
@@ -562,7 +562,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       identifier: "R-MULTI-3",
     });
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: secondBlockerIssueId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
@@ -575,7 +575,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     }
     expect(blockerIdNotUsedByBackstop).toBe(secondBlockerIssueId);
     await db.insert(agentWakeupRequests).values({
-      companyId,
+      domainId,
       agentId,
       source: "automation",
       triggerDetail: "system",
@@ -599,7 +599,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
         idempotencyKey: agentWakeupRequests.idempotencyKey,
       })
       .from(agentWakeupRequests)
-      .where(and(eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.reason, "issue_blockers_resolved")));
+      .where(and(eq(agentWakeupRequests.domainId, domainId), eq(agentWakeupRequests.reason, "issue_blockers_resolved")));
     expect(wakes).toHaveLength(1);
     expect(wakes[0]?.idempotencyKey).toBe(
       `issue_blockers_resolved:${blockedIssueId}:${blockerIdNotUsedByBackstop}`,
@@ -608,7 +608,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("counts null dependency wake returns as deferred instead of enqueue failures", async () => {
     await enableAutoRecovery();
-    const { companyId, agentId } =
+    const { domainId, agentId } =
       await seedResolvedDependencyBackstopFixture({ workspaceState: "none" });
     await db
       .update(agents)
@@ -629,7 +629,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
         reason: agentWakeupRequests.reason,
       })
       .from(agentWakeupRequests)
-      .where(and(eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.agentId, agentId)))
+      .where(and(eq(agentWakeupRequests.domainId, domainId), eq(agentWakeupRequests.agentId, agentId)))
       .then((rows) => rows[0] ?? null);
     expect(skippedWake).toMatchObject({
       status: "skipped",
@@ -639,7 +639,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("does not create recovery issues outside the configured lookback window", async () => {
     await enableAutoRecovery();
-    const { companyId } = await seedBlockedChain({ outsideLookback: true });
+    const { domainId } = await seedBlockedChain({ outsideLookback: true });
     const heartbeat = heartbeatService(db);
 
     const result = await heartbeat.reconcileIssueGraphLiveness();
@@ -651,16 +651,16 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(0);
   });
 
   it("suppresses liveness escalation when the source issue is under an active pause hold", async () => {
     await enableAutoRecovery();
-    const { companyId, blockedIssueId } = await seedBlockedChain();
+    const { domainId, blockedIssueId } = await seedBlockedChain();
 
     await db.insert(issueTreeHolds).values({
-      companyId,
+      domainId,
       rootIssueId: blockedIssueId,
       mode: "pause",
       status: "active",
@@ -678,17 +678,17 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(0);
   });
 
   it("treats an active executionRunId on the leaf blocker as a live execution path", async () => {
     await enableAutoRecovery();
-    const { companyId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const runId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId: managerId,
       status: "running",
       contextSnapshot: { issueId: blockedIssueId },
@@ -704,7 +704,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("creates one bounded escalation for an assigned backlog blocker leaf", async () => {
     await enableAutoRecovery();
-    const { companyId, coderId, blockedIssueId, blockerIssueId } = await seedBlockedChain({
+    const { domainId, coderId, blockedIssueId, blockerIssueId } = await seedBlockedChain({
       blockerStatus: "backlog",
       blockerAssigneeAgentId: "coder",
     });
@@ -721,21 +721,21 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({
       parentId: blockerIssueId,
       assigneeAgentId: coderId,
       originId: [
         "harness_liveness",
-        companyId,
+        domainId,
         blockedIssueId,
         "blocked_by_assigned_backlog_issue",
         blockerIssueId,
       ].join(":"),
       originFingerprint: [
         "harness_liveness_leaf",
-        companyId,
+        domainId,
         "blocked_by_assigned_backlog_issue",
         blockerIssueId,
       ].join(":"),
@@ -744,23 +744,23 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("treats open recovery issues as active waiting paths for non-assigned-backlog states", async () => {
     await enableAutoRecovery();
-    const { companyId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const existingEscalationId = randomUUID();
 
     await db.insert(issues).values({
       id: existingEscalationId,
-      companyId,
+      domainId,
       title: "Existing liveness unblock work",
       status: "todo",
       priority: "high",
       parentId: blockerIssueId,
       assigneeAgentId: managerId,
       issueNumber: 5,
-      identifier: `${`P${companyId.replace(/-/g, "").slice(0, 4)}`}-5`,
+      identifier: `${`P${domainId.replace(/-/g, "").slice(0, 4)}`}-5`,
       originKind: "harness_liveness_escalation",
       originId: [
         "harness_liveness",
-        companyId,
+        domainId,
         blockedIssueId,
         "in_review_without_action_path",
         blockerIssueId,
@@ -776,29 +776,29 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(1);
   });
 
   it("keeps active invalid_review_participant recoveries from being retired", async () => {
     await enableAutoRecovery();
-    const { companyId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const existingEscalationId = randomUUID();
 
     await db.insert(issues).values({
       id: existingEscalationId,
-      companyId,
+      domainId,
       title: "Existing invalid review participant unblock work",
       status: "todo",
       priority: "high",
       parentId: blockedIssueId,
       assigneeAgentId: managerId,
       issueNumber: 5,
-      identifier: `${`P${companyId.replace(/-/g, "").slice(0, 4)}`}-5`,
+      identifier: `${`P${domainId.replace(/-/g, "").slice(0, 4)}`}-5`,
       originKind: "harness_liveness_escalation",
       originId: [
         "harness_liveness",
-        companyId,
+        domainId,
         blockedIssueId,
         "invalid_review_participant",
         blockerIssueId,
@@ -814,13 +814,13 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(1);
   });
 
   it("creates one manager escalation, preserves blockers, and records owner selection", async () => {
     await enableAutoRecovery();
-    const { companyId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const heartbeat = heartbeatService(db);
 
     const first = await heartbeat.reconcileIssueGraphLiveness();
@@ -830,7 +830,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       .select({ updatedAt: issues.updatedAt })
       .from(issues)
       .where(eq(issues.id, blockedIssueId));
-    const eventsAfterFirst = await db.select().from(activityLog).where(eq(activityLog.companyId, companyId));
+    const eventsAfterFirst = await db.select().from(activityLog).where(eq(activityLog.domainId, domainId));
     expect(eventsAfterFirst.filter((event) => event.action === "issue.blockers.updated")).toHaveLength(1);
 
     const second = await heartbeat.reconcileIssueGraphLiveness();
@@ -847,7 +847,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       .from(issues)
       .where(
         and(
-          eq(issues.companyId, companyId),
+          eq(issues.domainId, domainId),
           eq(issues.originKind, "harness_liveness_escalation"),
         ),
       );
@@ -859,7 +859,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       status: expect.stringMatching(/^(todo|in_progress|done)$/),
       originFingerprint: [
         "harness_liveness_leaf",
-        companyId,
+        domainId,
         "blocked_by_unassigned_issue",
         blockerIssueId,
       ].join(":"),
@@ -878,7 +878,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     expect(comments[0]?.body).toContain("harness-level liveness incident");
     expect(comments[0]?.body).toContain(escalations[0]?.identifier ?? escalations[0]!.id);
 
-    const events = await db.select().from(activityLog).where(eq(activityLog.companyId, companyId));
+    const events = await db.select().from(activityLog).where(eq(activityLog.domainId, domainId));
     const createdEvent = events.find((event) => event.action === "issue.harness_liveness_escalation_created");
     expect(createdEvent).toBeTruthy();
     expect(createdEvent?.details).toMatchObject({
@@ -899,7 +899,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("skips budget-blocked direct owners and assigns recovery to the manager fallback", async () => {
     await enableAutoRecovery();
-    const { companyId, managerId, coderId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, managerId, coderId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const issueTimestamp = new Date(Date.now() - 25 * 60 * 60 * 1000);
     await db
       .update(issues)
@@ -910,7 +910,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       })
       .where(eq(issues.id, blockerIssueId));
     await db.insert(budgetPolicies).values({
-      companyId,
+      domainId,
       scopeType: "agent",
       scopeId: coderId,
       metric: "billed_cents",
@@ -919,15 +919,15 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       hardStopEnabled: true,
       isActive: true,
     });
-    await db.insert(costEvents).values({
-      companyId,
+    await db.insert(financeEvents).values({
+      domainId,
       agentId: coderId,
       issueId: blockerIssueId,
       provider: "test",
       biller: "test",
       billingType: "tokens",
       model: "test-model",
-      costCents: 1,
+      financeCents: 1,
       occurredAt: new Date(),
     });
 
@@ -937,21 +937,21 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({
       parentId: blockerIssueId,
       assigneeAgentId: managerId,
       originId: [
         "harness_liveness",
-        companyId,
+        domainId,
         blockedIssueId,
         "in_review_without_action_path",
         blockerIssueId,
       ].join(":"),
     });
 
-    const events = await db.select().from(activityLog).where(eq(activityLog.companyId, companyId));
+    const events = await db.select().from(activityLog).where(eq(activityLog.domainId, domainId));
     const createdEvent = events.find((event) => event.action === "issue.harness_liveness_escalation_created");
     expect(createdEvent?.details).toMatchObject({
       ownerSelection: {
@@ -966,7 +966,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await enableAutoRecovery();
     await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: true });
 
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const managerId = randomUUID();
     const blockedIssueId = randomUUID();
     const blockerIssueId = randomUUID();
@@ -976,18 +976,18 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const blockerProjectWorkspaceId = randomUUID();
     const dependentExecutionWorkspaceId = randomUUID();
     const blockerExecutionWorkspaceId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
     const issueTimestamp = new Date(Date.now() - 60 * 60 * 1000);
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
       issuePrefix,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: managerId,
-      companyId,
+      domainId,
       name: "Root Operator",
       role: "operator",
       status: "idle",
@@ -999,13 +999,13 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await db.insert(projects).values([
       {
         id: dependentProjectId,
-        companyId,
+        domainId,
         name: "Dependent workspace project",
         status: "in_progress",
       },
       {
         id: blockerProjectId,
-        companyId,
+        domainId,
         name: "Blocker workspace project",
         status: "in_progress",
       },
@@ -1013,13 +1013,13 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await db.insert(projectWorkspaces).values([
       {
         id: dependentProjectWorkspaceId,
-        companyId,
+        domainId,
         projectId: dependentProjectId,
         name: "Dependent primary",
       },
       {
         id: blockerProjectWorkspaceId,
-        companyId,
+        domainId,
         projectId: blockerProjectId,
         name: "Blocker primary",
       },
@@ -1027,7 +1027,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await db.insert(executionWorkspaces).values([
       {
         id: dependentExecutionWorkspaceId,
-        companyId,
+        domainId,
         projectId: dependentProjectId,
         projectWorkspaceId: dependentProjectWorkspaceId,
         mode: "operator_branch",
@@ -1038,7 +1038,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       },
       {
         id: blockerExecutionWorkspaceId,
-        companyId,
+        domainId,
         projectId: blockerProjectId,
         projectWorkspaceId: blockerProjectWorkspaceId,
         mode: "operator_branch",
@@ -1051,7 +1051,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     await db.insert(issues).values([
       {
         id: blockedIssueId,
-        companyId,
+        domainId,
         projectId: dependentProjectId,
         projectWorkspaceId: dependentProjectWorkspaceId,
         executionWorkspaceId: dependentExecutionWorkspaceId,
@@ -1067,7 +1067,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       },
       {
         id: blockerIssueId,
-        companyId,
+        domainId,
         projectId: blockerProjectId,
         projectWorkspaceId: blockerProjectWorkspaceId,
         executionWorkspaceId: blockerExecutionWorkspaceId,
@@ -1083,7 +1083,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       },
     ]);
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerIssueId,
       relatedIssueId: blockedIssueId,
       type: "blocks",
@@ -1095,7 +1095,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({
       parentId: blockerIssueId,
@@ -1110,13 +1110,13 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("reuses one open recovery issue for multiple dependents with the same leaf blocker", async () => {
     await enableAutoRecovery();
-    const { companyId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const secondBlockedIssueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
     const issueTimestamp = new Date(Date.now() - 60 * 60 * 1000);
     await db.insert(issues).values({
       id: secondBlockedIssueId,
-      companyId,
+      domainId,
       title: "Second blocked parent",
       status: "blocked",
       priority: "medium",
@@ -1126,7 +1126,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       updatedAt: issueTimestamp,
     });
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: blockerIssueId,
       relatedIssueId: secondBlockedIssueId,
       type: "blocks",
@@ -1141,13 +1141,13 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
     const escalations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "harness_liveness_escalation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "harness_liveness_escalation")));
     expect(escalations).toHaveLength(1);
 
     const blockers = await db
       .select({ blockedIssueId: issueRelations.relatedIssueId })
       .from(issueRelations)
-      .where(and(eq(issueRelations.companyId, companyId), eq(issueRelations.issueId, escalations[0]!.id)));
+      .where(and(eq(issueRelations.domainId, domainId), eq(issueRelations.issueId, escalations[0]!.id)));
     expect(blockers.map((row) => row.blockedIssueId).sort()).toEqual(
       [blockedIssueId, secondBlockedIssueId].sort(),
     );
@@ -1155,11 +1155,11 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("creates a fresh escalation when the previous matching escalation is terminal", async () => {
     await enableAutoRecovery();
-    const { companyId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, managerId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const heartbeat = heartbeatService(db);
     const incidentKey = [
       "harness_liveness",
-      companyId,
+      domainId,
       blockedIssueId,
       "blocked_by_unassigned_issue",
       blockerIssueId,
@@ -1168,7 +1168,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
     await db.insert(issues).values({
       id: closedEscalationId,
-      companyId,
+      domainId,
       title: "Closed escalation",
       status: "done",
       priority: "high",
@@ -1190,7 +1190,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       .from(issues)
       .where(
         and(
-          eq(issues.companyId, companyId),
+          eq(issues.domainId, domainId),
           eq(issues.originKind, "harness_liveness_escalation"),
           eq(issues.originId, incidentKey),
         ),
@@ -1213,7 +1213,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
 
   it("removes closed liveness escalations from blocker relations during reconciliation", async () => {
     await enableAutoRecovery();
-    const { companyId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
+    const { domainId, blockedIssueId, blockerIssueId } = await seedBlockedChain();
     const heartbeat = heartbeatService(db);
 
     const first = await heartbeat.reconcileIssueGraphLiveness();
@@ -1224,7 +1224,7 @@ describeEmbeddedPostgres("heartbeat issue graph liveness escalation", () => {
       .from(issues)
       .where(
         and(
-          eq(issues.companyId, companyId),
+          eq(issues.domainId, domainId),
           eq(issues.originKind, "harness_liveness_escalation"),
         ),
       );

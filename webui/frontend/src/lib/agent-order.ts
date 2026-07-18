@@ -33,12 +33,12 @@ function resolveUserId(userId: string | null | undefined): string {
   return trimmed.length > 0 ? trimmed : ANONYMOUS_USER_ID;
 }
 
-export function getAgentOrderStorageKey(companyId: string, userId: string | null | undefined): string {
-  return `${AGENT_ORDER_STORAGE_PREFIX}:${companyId}:${resolveUserId(userId)}`;
+export function getAgentOrderStorageKey(domainId: string, userId: string | null | undefined): string {
+  return `${AGENT_ORDER_STORAGE_PREFIX}:${domainId}:${resolveUserId(userId)}`;
 }
 
-export function getAgentSortModeStorageKey(companyId: string, userId: string | null | undefined): string {
-  return `${AGENT_SORT_MODE_STORAGE_PREFIX}:${companyId}:${resolveUserId(userId)}`;
+export function getAgentSortModeStorageKey(domainId: string, userId: string | null | undefined): string {
+  return `${AGENT_SORT_MODE_STORAGE_PREFIX}:${domainId}:${resolveUserId(userId)}`;
 }
 
 export function readAgentOrder(storageKey: string): string[] {
@@ -91,7 +91,7 @@ export function writeAgentSortMode(storageKey: string, sortMode: AgentSidebarSor
   }
 }
 
-// Leadership roles surface at the top of each sibling group so the company's
+// Leadership roles surface at the top of each sibling group so the domain's
 // lead (typically the freshly-hired CEO) is visible without scrolling the
 // sidebar. Anything outside this list falls back to alphabetical.
 const ROLE_SORT_PRIORITY: Record<string, number> = {
@@ -102,7 +102,7 @@ const ROLE_SORT_PRIORITY: Record<string, number> = {
 };
 
 function rolePriority(agent: Agent): number {
-  const role = typeof agent.role === "string" ? agent.role.toLowerLifeAdmin() : "";
+  const role = typeof agent.role === "string" ? agent.role.toLowerCase() : "";
   return ROLE_SORT_PRIORITY[role] ?? Number.MAX_SAFE_INTEGER;
 }
 

@@ -4,7 +4,7 @@ import { parseCursorStdoutLine } from "@paperclipai/adapter-cursor-local/ui";
 import { printCursorStreamEvent } from "@paperclipai/adapter-cursor-local/cli";
 
 describe("cursor parser", () => {
-  it("extracts session, summary, usage, cost, and terminal error message", () => {
+  it("extracts session, summary, usage, finance, and terminal error message", () => {
     const stdout = [
       JSON.stringify({ type: "system", subtype: "init", session_id: "chat_123", model: "gpt-5" }),
       JSON.stringify({
@@ -22,7 +22,7 @@ describe("cursor parser", () => {
           cached_input_tokens: 25,
           output_tokens: 40,
         },
-        total_cost_usd: 0.001,
+        total_finance_usd: 0.001,
         result: "Task complete",
       }),
       JSON.stringify({ type: "error", message: "model access denied" }),
@@ -36,7 +36,7 @@ describe("cursor parser", () => {
       cachedInputTokens: 25,
       outputTokens: 40,
     });
-    expect(parsed.costUsd).toBeCloseTo(0.001, 6);
+    expect(parsed.financeUsd).toBeCloseTo(0.001, 6);
     expect(parsed.errorMessage).toBe("model access denied");
   });
 
@@ -44,7 +44,7 @@ describe("cursor parser", () => {
     const stdout = [
       'stdout{"type":"system","subtype":"init","session_id":"chat_prefixed","model":"gpt-5"}',
       'stdout{"type":"assistant","message":{"content":[{"type":"output_text","text":"prefixed hello"}]}}',
-      'stdout{"type":"result","subtype":"success","usage":{"input_tokens":3,"output_tokens":2,"cached_input_tokens":1},"total_cost_usd":0.0001}',
+      'stdout{"type":"result","subtype":"success","usage":{"input_tokens":3,"output_tokens":2,"cached_input_tokens":1},"total_finance_usd":0.0001}',
     ].join("\n");
 
     const parsed = parseCursorJsonl(stdout);
@@ -55,7 +55,7 @@ describe("cursor parser", () => {
       cachedInputTokens: 1,
       outputTokens: 2,
     });
-    expect(parsed.costUsd).toBeCloseTo(0.0001, 6);
+    expect(parsed.financeUsd).toBeCloseTo(0.0001, 6);
   });
 });
 
@@ -106,7 +106,7 @@ describe("cursor ui stdout parser", () => {
             output_tokens: 5,
             cached_input_tokens: 2,
           },
-          total_cost_usd: 0.00042,
+          total_finance_usd: 0.00042,
           is_error: false,
         }),
         ts,
@@ -119,7 +119,7 @@ describe("cursor ui stdout parser", () => {
         inputTokens: 10,
         outputTokens: 5,
         cachedTokens: 2,
-        costUsd: 0.00042,
+        financeUsd: 0.00042,
         subtype: "success",
         isError: false,
         errors: [],
@@ -372,7 +372,7 @@ describe("cursor cli formatter", () => {
           subtype: "success",
           result: "Done",
           usage: { input_tokens: 10, output_tokens: 5, cached_input_tokens: 2 },
-          total_cost_usd: 0.00042,
+          total_finance_usd: 0.00042,
         }),
         false,
       );
@@ -394,7 +394,7 @@ describe("cursor cli formatter", () => {
           "tool_result",
           "AGENTS.md",
           "result: subtype=success",
-          "tokens: in=10 out=5 cached=2 cost=$0.000420",
+          "tokens: in=10 out=5 cached=2 finance=$0.000420",
           "assistant: Done",
         ]),
       );

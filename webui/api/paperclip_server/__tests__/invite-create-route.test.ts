@@ -29,8 +29,8 @@ function registerModuleMocks() {
 function createDbStub() {
   const createdInvite = {
     id: "invite-1",
-    companyId: "company-1",
-    inviteType: "company_join",
+    domainId: "domain-1",
+    inviteType: "domain_join",
     allowedJoinTypes: "human",
     tokenHash: "hash",
     defaultsPayload: { humanRole: "viewer" },
@@ -88,7 +88,7 @@ async function createApp() {
       type: "board",
       source: "local_implicit",
       userId: null,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
     };
     next();
   });
@@ -105,7 +105,7 @@ async function createApp() {
   return app;
 }
 
-describe("POST /domains/:companyId/invites", () => {
+describe("POST /domains/:domainId/invites", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("../services/index.js");
@@ -121,7 +121,7 @@ describe("POST /domains/:companyId/invites", () => {
     const app = await createApp();
 
     const res = await request(app)
-      .post("/api/domains/company-1/invites")
+      .post("/api/domains/domain-1/invites")
       .set("host", "paperclip.example")
       .set("x-forwarded-proto", "https")
       .send({
@@ -130,7 +130,7 @@ describe("POST /domains/:companyId/invites", () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.companyName).toBe("Acme Robotics");
+    expect(res.body.domainName).toBe("Acme Robotics");
     expect(res.body.invitePath).toMatch(/^\/invite\/pcp_invite_/);
     expect(res.body.inviteUrl).toMatch(/^https:\/\/paperclip\.example\/invite\/pcp_invite_/);
   });

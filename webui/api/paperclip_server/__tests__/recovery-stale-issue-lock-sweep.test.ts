@@ -56,20 +56,20 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   async function seed() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const failedRunId = randomUUID();
     const runningRunId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Coder",
       role: "engineer",
       status: "active",
@@ -81,7 +81,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: failedRunId,
-        companyId,
+        domainId,
         agentId,
         status: "failed",
         invocationSource: "manual",
@@ -89,7 +89,7 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       },
       {
         id: runningRunId,
-        companyId,
+        domainId,
         agentId,
         status: "running",
         invocationSource: "manual",
@@ -97,15 +97,15 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
       },
     ]);
 
-    return { companyId, agentId, failedRunId, runningRunId };
+    return { domainId, agentId, failedRunId, runningRunId };
   }
 
   it("clears lock columns when checkoutRunId points at a terminal heartbeat run", async () => {
-    const { companyId, agentId, failedRunId } = await seed();
+    const { domainId, agentId, failedRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Stale lock — terminal checkoutRunId",
       // Status off in_progress + checkoutRunId still set → exactly the recurrence shape.
       status: "todo",
@@ -144,11 +144,11 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("does not clear locks while the referenced run is still running", async () => {
-    const { companyId, agentId, runningRunId } = await seed();
+    const { domainId, agentId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Live lock — must be preserved",
       status: "in_progress",
       priority: "high",
@@ -174,11 +174,11 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("does not clear when checkoutRunId is terminal but executionRunId is still running", async () => {
-    const { companyId, agentId, failedRunId, runningRunId } = await seed();
+    const { domainId, agentId, failedRunId, runningRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Mixed lock — preserve",
       status: "in_progress",
       priority: "high",
@@ -204,11 +204,11 @@ describeEmbeddedPostgres("recovery sweepStaleIssueLocks", () => {
   });
 
   it("is idempotent — second pass finds nothing to clear", async () => {
-    const { companyId, agentId, failedRunId } = await seed();
+    const { domainId, agentId, failedRunId } = await seed();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Idempotency",
       status: "todo",
       priority: "high",

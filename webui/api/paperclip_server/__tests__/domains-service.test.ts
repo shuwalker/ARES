@@ -8,9 +8,9 @@ import {
   agentWakeupRequests,
   builtInManagedResources,
   domains,
-  companySkillVersions,
-  companySkills,
-  companyMemberships,
+  domainSkillVersions,
+  domainSkills,
+  domainMemberships,
   createDb,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -22,7 +22,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
-import { companyService } from "../services/domains.js";
+import { domainService } from "../services/domains.js";
 import { readBuiltInAgentMarker } from "../services/built-in-agent-metadata.js";
 import { reconcileBuiltInAgentsOnStartup } from "../services/built-in-agents.js";
 
@@ -31,16 +31,16 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres company service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres domain service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
-describeEmbeddedPostgres("companyService", () => {
+describeEmbeddedPostgres("domainService", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
   beforeAll(async () => {
-    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-company-service-");
+    tempDb = await startEmbeddedPostgresTestDatabase("paperclip-domain-service-");
     db = createDb(tempDb.connectionString);
   }, 20_000);
 
@@ -48,8 +48,8 @@ describeEmbeddedPostgres("companyService", () => {
     await db.delete(routineTriggers);
     await db.delete(routines);
     await db.delete(builtInManagedResources);
-    await db.delete(companySkillVersions);
-    await db.delete(companySkills);
+    await db.delete(domainSkillVersions);
+    await db.delete(domainSkills);
     await db.delete(heartbeatRunEvents);
     await db.delete(heartbeatRuns);
     await db.delete(agentWakeupRequests);
@@ -57,7 +57,7 @@ describeEmbeddedPostgres("companyService", () => {
     await db.delete(activityLog);
     await db.delete(agents);
     await db.delete(principalPermissionGrants);
-    await db.delete(companyMemberships);
+    await db.delete(domainMemberships);
     await db.delete(domains);
   });
 
@@ -71,7 +71,7 @@ describeEmbeddedPostgres("companyService", () => {
       issuePrefix: "ARO",
     });
 
-    const created = await companyService(db).create({
+    const created = await domainService(db).create({
       name: "Aron & Sharon",
     });
 
@@ -81,12 +81,12 @@ describeEmbeddedPostgres("companyService", () => {
     expect(rows.map((row) => row.issuePrefix).sort()).toEqual(["ARO", "AROA"]);
   });
 
-  it("auto-provisions one paused Reflection Coach bundle for a freshly created company", async () => {
-    const created = await companyService(db).create({
+  it("auto-provisions one paused Reflection Coach bundle for a freshly created domain", async () => {
+    const created = await domainService(db).create({
       name: "Fresh Domain",
     });
 
-    const agentRows = await db.select().from(agents).where(eq(agents.companyId, created.id));
+    const agentRows = await db.select().from(agents).where(eq(agents.domainId, created.id));
     const reflectionRows = agentRows.filter((row) => readBuiltInAgentMarker(row.metadata)?.key === "reflection-coach");
     expect(reflectionRows).toHaveLength(1);
     expect(reflectionRows[0]).toMatchObject({
@@ -98,16 +98,16 @@ describeEmbeddedPostgres("companyService", () => {
 
     const [skill] = await db
       .select()
-      .from(companySkills)
+      .from(domainSkills)
       .where(and(
-        eq(companySkills.companyId, created.id),
-        eq(companySkills.key, "paperclipai/bundled/paperclip-operations/reflection-coach"),
+        eq(domainSkills.domainId, created.id),
+        eq(domainSkills.key, "paperclipai/bundled/paperclip-operations/reflection-coach"),
       ));
     expect(skill).toMatchObject({
       slug: "reflection-coach",
     });
 
-    const [routine] = await db.select().from(routines).where(eq(routines.companyId, created.id));
+    const [routine] = await db.select().from(routines).where(eq(routines.domainId, created.id));
     expect(routine).toMatchObject({
       status: "paused",
       assigneeAgentId: reflectionRows[0]!.id,
@@ -121,12 +121,12 @@ describeEmbeddedPostgres("companyService", () => {
     });
 
     await reconcileBuiltInAgentsOnStartup(db);
-    const afterReconcileRows = await db.select().from(agents).where(eq(agents.companyId, created.id));
+    const afterReconcileRows = await db.select().from(agents).where(eq(agents.domainId, created.id));
     expect(afterReconcileRows.filter((row) => readBuiltInAgentMarker(row.metadata)?.key === "reflection-coach")).toHaveLength(1);
   });
 
   it("archives domains by pausing runnable agents and cancelling active runs", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const runningAgentId = randomUUID();
     const idleAgentId = randomUUID();
     const errorAgentId = randomUUID();
@@ -137,16 +137,16 @@ describeEmbeddedPostgres("companyService", () => {
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Archive Test Co",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values([
       {
         id: runningAgentId,
-        companyId,
+        domainId,
         name: "Running Agent",
         role: "engineer",
         status: "running",
@@ -157,7 +157,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: idleAgentId,
-        companyId,
+        domainId,
         name: "Idle Agent",
         role: "engineer",
         status: "idle",
@@ -168,7 +168,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: errorAgentId,
-        companyId,
+        domainId,
         name: "Error Agent",
         role: "engineer",
         status: "error",
@@ -179,7 +179,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: pausedAgentId,
-        companyId,
+        domainId,
         name: "Paused Agent",
         role: "engineer",
         status: "paused",
@@ -192,7 +192,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: pendingAgentId,
-        companyId,
+        domainId,
         name: "Pending Agent",
         role: "engineer",
         status: "pending_approval",
@@ -203,7 +203,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: terminatedAgentId,
-        companyId,
+        domainId,
         name: "Terminated Agent",
         role: "engineer",
         status: "terminated",
@@ -216,7 +216,7 @@ describeEmbeddedPostgres("companyService", () => {
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId: runningAgentId,
       source: "timer",
       status: "queued",
@@ -224,14 +224,14 @@ describeEmbeddedPostgres("companyService", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId: runningAgentId,
       invocationSource: "timer",
       status: "running",
       wakeupRequestId,
     });
 
-    const archived = await companyService(db).archive(companyId, {
+    const archived = await domainService(db).archive(domainId, {
       actorType: "user",
       actorId: "test-user",
       agentId: null,
@@ -248,8 +248,8 @@ describeEmbeddedPostgres("companyService", () => {
       })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.archived"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.archived"),
       ));
     expect(archiveActivity).toHaveLength(1);
     expect(archiveActivity[0]).toMatchObject({
@@ -267,9 +267,9 @@ describeEmbeddedPostgres("companyService", () => {
       .from(agents);
 
     const byId = new Map(rows.map((row) => [row.id, row]));
-    expect(byId.get(runningAgentId)).toMatchObject({ status: "paused", pauseReason: "company_archived" });
-    expect(byId.get(idleAgentId)).toMatchObject({ status: "paused", pauseReason: "company_archived" });
-    expect(byId.get(errorAgentId)).toMatchObject({ status: "paused", pauseReason: "company_archived" });
+    expect(byId.get(runningAgentId)).toMatchObject({ status: "paused", pauseReason: "domain_archived" });
+    expect(byId.get(idleAgentId)).toMatchObject({ status: "paused", pauseReason: "domain_archived" });
+    expect(byId.get(errorAgentId)).toMatchObject({ status: "paused", pauseReason: "domain_archived" });
     expect(byId.get(pausedAgentId)).toMatchObject({ status: "paused", pauseReason: "manual" });
     expect(byId.get(pendingAgentId)).toMatchObject({ status: "pending_approval", pauseReason: null });
     expect(byId.get(terminatedAgentId)).toMatchObject({ status: "terminated", pauseReason: null });
@@ -283,7 +283,7 @@ describeEmbeddedPostgres("companyService", () => {
       .then((result) => result[0] ?? null);
     expect(run).toMatchObject({
       status: "cancelled",
-      error: "Cancelled because the company was archived",
+      error: "Cancelled because the domain was archived",
     });
 
     const wakeup = await db
@@ -295,32 +295,32 @@ describeEmbeddedPostgres("companyService", () => {
       .then((result) => result[0] ?? null);
     expect(wakeup).toMatchObject({
       status: "cancelled",
-      error: "Cancelled because the company was archived",
+      error: "Cancelled because the domain was archived",
     });
   });
 
-  it("reactivates only agents paused because the company was archived", async () => {
-    const companyId = randomUUID();
+  it("reactivates only agents paused because the domain was archived", async () => {
+    const domainId = randomUUID();
     const archivedPausedAgentId = randomUUID();
     const manualPausedAgentId = randomUUID();
     const pendingAgentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Reactivate Test Co",
       status: "archived",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values([
       {
         id: archivedPausedAgentId,
-        companyId,
+        domainId,
         name: "Archived Paused Agent",
         role: "engineer",
         status: "paused",
-        pauseReason: "company_archived",
+        pauseReason: "domain_archived",
         pausedAt: new Date("2026-06-01T00:00:00Z"),
         adapterType: "codex_local",
         adapterConfig: {},
@@ -329,7 +329,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: manualPausedAgentId,
-        companyId,
+        domainId,
         name: "Manual Paused Agent",
         role: "engineer",
         status: "paused",
@@ -342,7 +342,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: pendingAgentId,
-        companyId,
+        domainId,
         name: "Pending Approval Agent",
         role: "engineer",
         status: "pending_approval",
@@ -353,8 +353,8 @@ describeEmbeddedPostgres("companyService", () => {
       },
     ]);
 
-    const reactivated = await companyService(db).update(
-      companyId,
+    const reactivated = await domainService(db).update(
+      domainId,
       { status: "active" },
       { actorType: "user", actorId: "test-user", agentId: null, runId: null },
     );
@@ -369,8 +369,8 @@ describeEmbeddedPostgres("companyService", () => {
       })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.reactivated"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.reactivated"),
       ));
     expect(reactivateActivity).toHaveLength(1);
     expect(reactivateActivity[0]).toMatchObject({
@@ -404,8 +404,8 @@ describeEmbeddedPostgres("companyService", () => {
     });
   });
 
-  it("runs the archive cascade when update() transitions a company to archived", async () => {
-    const companyId = randomUUID();
+  it("runs the archive cascade when update() transitions a domain to archived", async () => {
+    const domainId = randomUUID();
     const runningAgentId = randomUUID();
     const idleAgentId = randomUUID();
     const pendingAgentId = randomUUID();
@@ -413,16 +413,16 @@ describeEmbeddedPostgres("companyService", () => {
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Update Archive Test Co",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values([
       {
         id: runningAgentId,
-        companyId,
+        domainId,
         name: "Running Agent",
         role: "engineer",
         status: "running",
@@ -433,7 +433,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: idleAgentId,
-        companyId,
+        domainId,
         name: "Idle Agent",
         role: "engineer",
         status: "idle",
@@ -444,7 +444,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: pendingAgentId,
-        companyId,
+        domainId,
         name: "Pending Agent",
         role: "engineer",
         status: "pending_approval",
@@ -457,7 +457,7 @@ describeEmbeddedPostgres("companyService", () => {
 
     await db.insert(agentWakeupRequests).values({
       id: wakeupRequestId,
-      companyId,
+      domainId,
       agentId: runningAgentId,
       source: "timer",
       status: "queued",
@@ -465,15 +465,15 @@ describeEmbeddedPostgres("companyService", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId: runningAgentId,
       invocationSource: "timer",
       status: "running",
       wakeupRequestId,
     });
 
-    const archived = await companyService(db).update(
-      companyId,
+    const archived = await domainService(db).update(
+      domainId,
       { status: "archived" },
       { actorType: "user", actorId: "test-user", agentId: null, runId: null },
     );
@@ -484,8 +484,8 @@ describeEmbeddedPostgres("companyService", () => {
       .select({ id: agents.id, status: agents.status, pauseReason: agents.pauseReason })
       .from(agents);
     const byId = new Map(rows.map((row) => [row.id, row]));
-    expect(byId.get(runningAgentId)).toMatchObject({ status: "paused", pauseReason: "company_archived" });
-    expect(byId.get(idleAgentId)).toMatchObject({ status: "paused", pauseReason: "company_archived" });
+    expect(byId.get(runningAgentId)).toMatchObject({ status: "paused", pauseReason: "domain_archived" });
+    expect(byId.get(idleAgentId)).toMatchObject({ status: "paused", pauseReason: "domain_archived" });
     expect(byId.get(pendingAgentId)).toMatchObject({ status: "pending_approval", pauseReason: null });
 
     const run = await db
@@ -494,7 +494,7 @@ describeEmbeddedPostgres("companyService", () => {
       .then((result) => result[0] ?? null);
     expect(run).toMatchObject({
       status: "cancelled",
-      error: "Cancelled because the company was archived",
+      error: "Cancelled because the domain was archived",
     });
 
     const archiveActivity = await db
@@ -505,8 +505,8 @@ describeEmbeddedPostgres("companyService", () => {
       })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.archived"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.archived"),
       ));
     expect(archiveActivity).toHaveLength(1);
     expect(archiveActivity[0]).toMatchObject({
@@ -516,27 +516,27 @@ describeEmbeddedPostgres("companyService", () => {
     });
   });
 
-  it("reactivates company_archived agents even when going via paused state (archived → paused → active)", async () => {
-    const companyId = randomUUID();
+  it("reactivates domain_archived agents even when going via paused state (archived → paused → active)", async () => {
+    const domainId = randomUUID();
     const archivedPausedAgentId = randomUUID();
     const manualPausedAgentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Indirect Reactivate Test Co",
       status: "paused",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values([
       {
         id: archivedPausedAgentId,
-        companyId,
+        domainId,
         name: "Archived Paused Agent",
         role: "engineer",
         status: "paused",
-        pauseReason: "company_archived",
+        pauseReason: "domain_archived",
         pausedAt: new Date("2026-06-01T00:00:00Z"),
         adapterType: "codex_local",
         adapterConfig: {},
@@ -545,7 +545,7 @@ describeEmbeddedPostgres("companyService", () => {
       },
       {
         id: manualPausedAgentId,
-        companyId,
+        domainId,
         name: "Manual Paused Agent",
         role: "engineer",
         status: "paused",
@@ -558,8 +558,8 @@ describeEmbeddedPostgres("companyService", () => {
       },
     ]);
 
-    const reactivated = await companyService(db).update(
-      companyId,
+    const reactivated = await domainService(db).update(
+      domainId,
       { status: "active" },
       { actorType: "user", actorId: "test-user", agentId: null, runId: null },
     );
@@ -577,28 +577,28 @@ describeEmbeddedPostgres("companyService", () => {
       .select({ details: activityLog.details })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.reactivated"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.reactivated"),
       ));
     expect(reactivateActivity).toHaveLength(1);
     expect(reactivateActivity[0]).toMatchObject({ details: { agentsRestored: 1 } });
   });
 
-  it("emits company.reactivated for archived → active even when no agents need restoring", async () => {
-    const companyId = randomUUID();
+  it("emits domain.reactivated for archived → active even when no agents need restoring", async () => {
+    const domainId = randomUUID();
     const terminatedAgentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Empty Reactivate Co",
       status: "archived",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: terminatedAgentId,
-      companyId,
+      domainId,
       name: "Terminated Agent",
       role: "engineer",
       status: "terminated",
@@ -608,8 +608,8 @@ describeEmbeddedPostgres("companyService", () => {
       permissions: {},
     });
 
-    const reactivated = await companyService(db).update(
-      companyId,
+    const reactivated = await domainService(db).update(
+      domainId,
       { status: "active" },
       { actorType: "user", actorId: "test-user", agentId: null, runId: null },
     );
@@ -620,28 +620,28 @@ describeEmbeddedPostgres("companyService", () => {
       .select({ details: activityLog.details })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.reactivated"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.reactivated"),
       ));
     expect(reactivateActivity).toHaveLength(1);
     expect(reactivateActivity[0]).toMatchObject({ details: { agentsRestored: 0 } });
   });
 
-  it("does not emit company.reactivated when paused → active restores no archive-paused agents", async () => {
-    const companyId = randomUUID();
+  it("does not emit domain.reactivated when paused → active restores no archive-paused agents", async () => {
+    const domainId = randomUUID();
     const manualPausedAgentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Plain Unpause Co",
       status: "paused",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: manualPausedAgentId,
-      companyId,
+      domainId,
       name: "Manual Paused Agent",
       role: "engineer",
       status: "paused",
@@ -653,8 +653,8 @@ describeEmbeddedPostgres("companyService", () => {
       permissions: {},
     });
 
-    const reactivated = await companyService(db).update(
-      companyId,
+    const reactivated = await domainService(db).update(
+      domainId,
       { status: "active" },
       { actorType: "user", actorId: "test-user", agentId: null, runId: null },
     );
@@ -665,8 +665,8 @@ describeEmbeddedPostgres("companyService", () => {
       .select({ id: activityLog.id })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.reactivated"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.reactivated"),
       ));
     expect(reactivateActivity).toHaveLength(0);
 
@@ -678,22 +678,22 @@ describeEmbeddedPostgres("companyService", () => {
   });
 
   it("cancels orphan queued wakeup requests with no runId during archive", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const orphanWakeupId = randomUUID();
     const runWakeupId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Orphan Wakeup Co",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Idle Agent",
       role: "engineer",
       status: "idle",
@@ -706,14 +706,14 @@ describeEmbeddedPostgres("companyService", () => {
     await db.insert(agentWakeupRequests).values([
       {
         id: orphanWakeupId,
-        companyId,
+        domainId,
         agentId,
         source: "automation",
         status: "queued",
       },
       {
         id: runWakeupId,
-        companyId,
+        domainId,
         agentId,
         source: "timer",
         status: "queued",
@@ -722,14 +722,14 @@ describeEmbeddedPostgres("companyService", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "timer",
       status: "running",
       wakeupRequestId: runWakeupId,
     });
 
-    const archived = await companyService(db).archive(companyId, {
+    const archived = await domainService(db).archive(domainId, {
       actorType: "user",
       actorId: "test-user",
       agentId: null,
@@ -747,28 +747,28 @@ describeEmbeddedPostgres("companyService", () => {
     const byId = new Map(wakeups.map((row) => [row.id, row]));
     expect(byId.get(orphanWakeupId)).toMatchObject({
       status: "cancelled",
-      error: "Cancelled because the company was archived",
+      error: "Cancelled because the domain was archived",
     });
     expect(byId.get(runWakeupId)).toMatchObject({
       status: "cancelled",
-      error: "Cancelled because the company was archived",
+      error: "Cancelled because the domain was archived",
     });
   });
 
   it("archive() is idempotent — re-archiving emits no second cascade or activity entry", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Idempotent Archive Test Co",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "Idle Agent",
       role: "engineer",
       status: "idle",
@@ -779,39 +779,39 @@ describeEmbeddedPostgres("companyService", () => {
     });
 
     const actor = { actorType: "user" as const, actorId: "test-user", agentId: null, runId: null };
-    const first = await companyService(db).archive(companyId, actor);
+    const first = await domainService(db).archive(domainId, actor);
     expect(first?.status).toBe("archived");
 
-    const second = await companyService(db).archive(companyId, actor);
+    const second = await domainService(db).archive(domainId, actor);
     expect(second?.status).toBe("archived");
 
     const archiveActivity = await db
       .select({ details: activityLog.details })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.archived"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.archived"),
       ));
     expect(archiveActivity).toHaveLength(1);
     expect(archiveActivity[0]).toMatchObject({ details: { agentsPaused: 1, runsCancelled: 0 } });
   });
 
-  it("runs the archive cascade when update() transitions a paused company to archived", async () => {
-    const companyId = randomUUID();
+  it("runs the archive cascade when update() transitions a paused domain to archived", async () => {
+    const domainId = randomUUID();
     const idleAgentId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paused To Archived Test Co",
       status: "paused",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: idleAgentId,
-      companyId,
+      domainId,
       name: "Idle Agent",
       role: "engineer",
       status: "idle",
@@ -823,14 +823,14 @@ describeEmbeddedPostgres("companyService", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId: idleAgentId,
       invocationSource: "timer",
       status: "queued",
     });
 
-    const archived = await companyService(db).update(
-      companyId,
+    const archived = await domainService(db).update(
+      domainId,
       { status: "archived" },
       { actorType: "user", actorId: "test-user", agentId: null, runId: null },
     );
@@ -841,7 +841,7 @@ describeEmbeddedPostgres("companyService", () => {
       .select({ status: agents.status, pauseReason: agents.pauseReason })
       .from(agents)
       .then((rows) => rows[0] ?? null);
-    expect(agent).toMatchObject({ status: "paused", pauseReason: "company_archived" });
+    expect(agent).toMatchObject({ status: "paused", pauseReason: "domain_archived" });
 
     const run = await db
       .select({ status: heartbeatRuns.status })
@@ -853,8 +853,8 @@ describeEmbeddedPostgres("companyService", () => {
       .select({ details: activityLog.details })
       .from(activityLog)
       .where(and(
-        eq(activityLog.companyId, companyId),
-        eq(activityLog.action, "company.archived"),
+        eq(activityLog.domainId, domainId),
+        eq(activityLog.action, "domain.archived"),
       ));
     expect(archiveActivity).toHaveLength(1);
     expect(archiveActivity[0]).toMatchObject({

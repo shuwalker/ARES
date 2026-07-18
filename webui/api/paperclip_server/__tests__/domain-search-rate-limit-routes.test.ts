@@ -2,10 +2,10 @@ import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { issueRoutes } from "../routes/issues.js";
-import { createCompanySearchRateLimiter } from "../services/company-search-rate-limit.js";
-import type { CompanySearchQuery, CompanySearchResponse } from "@paperclipai/shared";
+import { createDomainSearchRateLimiter } from "../services/domain-search-rate-limit.js";
+import type { DomainSearchQuery, DomainSearchResponse } from "@paperclipai/shared";
 
-function createSearchResponse(query: CompanySearchQuery): CompanySearchResponse {
+function createSearchResponse(query: DomainSearchQuery): DomainSearchResponse {
   return {
     query: query.q,
     normalizedQuery: query.q.trim().toLowerLifeAdmin(),
@@ -29,15 +29,15 @@ function createSearchResponse(query: CompanySearchQuery): CompanySearchResponse 
   };
 }
 
-describe("company search route rate limiting", () => {
+describe("domain search route rate limiting", () => {
   it("rejects repeated same-actor search calls before invoking search", async () => {
-    const search = vi.fn(async (_companyId: string, query: CompanySearchQuery) => createSearchResponse(query));
+    const search = vi.fn(async (_domainId: string, query: DomainSearchQuery) => createSearchResponse(query));
     const app = express();
     app.use((req, _res, next) => {
       req.actor = {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
@@ -45,15 +45,15 @@ describe("company search route rate limiting", () => {
     });
     app.use("/api", issueRoutes({} as never, {} as never, {
       searchService: { search },
-      searchRateLimiter: createCompanySearchRateLimiter({
+      searchRateLimiter: createDomainSearchRateLimiter({
         maxRequests: 1,
         windowMs: 60_000,
         now: () => 1_000,
       }),
     }));
 
-    await request(app).get("/api/domains/company-1/search?q=wizard").expect(200);
-    const limited = await request(app).get("/api/domains/company-1/search?q=wizard").expect(429);
+    await request(app).get("/api/domains/domain-1/search?q=wizard").expect(200);
+    const limited = await request(app).get("/api/domains/domain-1/search?q=wizard").expect(429);
 
     expect(search).toHaveBeenCalledTimes(1);
     expect(limited.body).toMatchObject({
@@ -63,13 +63,13 @@ describe("company search route rate limiting", () => {
     expect(limited.headers["retry-after"]).toBe("60");
   });
   it("resolves assigneeUserId=me for board actors before invoking search", async () => {
-    const search = vi.fn(async (_companyId: string, query: CompanySearchQuery) => createSearchResponse(query));
+    const search = vi.fn(async (_domainId: string, query: DomainSearchQuery) => createSearchResponse(query));
     const app = express();
     app.use((req, _res, next) => {
       req.actor = {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
@@ -77,27 +77,27 @@ describe("company search route rate limiting", () => {
     });
     app.use("/api", issueRoutes({} as never, {} as never, {
       searchService: { search },
-      searchRateLimiter: createCompanySearchRateLimiter({
+      searchRateLimiter: createDomainSearchRateLimiter({
         maxRequests: 10,
         windowMs: 60_000,
         now: () => 1_000,
       }),
     }));
 
-    await request(app).get("/api/domains/company-1/search?q=wizard&assigneeUserId=me").expect(200);
+    await request(app).get("/api/domains/domain-1/search?q=wizard&assigneeUserId=me").expect(200);
 
     expect(search).toHaveBeenCalledTimes(1);
     expect(search.mock.calls[0]?.[1].assigneeUserId).toBe("user-1");
   });
 
   it("rejects invalid filter and sort params before invoking search", async () => {
-    const search = vi.fn(async (_companyId: string, query: CompanySearchQuery) => createSearchResponse(query));
+    const search = vi.fn(async (_domainId: string, query: DomainSearchQuery) => createSearchResponse(query));
     const app = express();
     app.use((req, _res, next) => {
       req.actor = {
         type: "board",
         userId: "user-1",
-        companyIds: ["company-1"],
+        domainIds: ["domain-1"],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
@@ -105,15 +105,15 @@ describe("company search route rate limiting", () => {
     });
     app.use("/api", issueRoutes({} as never, {} as never, {
       searchService: { search },
-      searchRateLimiter: createCompanySearchRateLimiter({
+      searchRateLimiter: createDomainSearchRateLimiter({
         maxRequests: 10,
         windowMs: 60_000,
         now: () => 1_000,
       }),
     }));
 
-    await request(app).get("/api/domains/company-1/search?q=wizard&sort=nope").expect(400);
-    await request(app).get("/api/domains/company-1/search?q=wizard&assigneeAgentId=nope").expect(400);
+    await request(app).get("/api/domains/domain-1/search?q=wizard&sort=nope").expect(400);
+    await request(app).get("/api/domains/domain-1/search?q=wizard&assigneeAgentId=nope").expect(400);
 
     expect(search).not.toHaveBeenCalled();
   });

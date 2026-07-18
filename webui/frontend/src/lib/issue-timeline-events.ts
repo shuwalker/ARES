@@ -121,7 +121,7 @@ export function extractIssueJournalEvents(activity: ActivityEvent[] | null | und
     if (event.action !== "issue.updated") continue;
 
     const previous = asRecord(details._previous);
-    const timelineEvent: IssueJournalEvent = {
+    const journalEvent: IssueJournalEvent = {
       id: event.id,
       createdAt: event.createdAt,
       actorType: event.actorType,
@@ -129,15 +129,15 @@ export function extractIssueJournalEvents(activity: ActivityEvent[] | null | und
       runId: event.runId ?? null,
     };
     if (details.followUpRequested === true || details.resumeIntent === true) {
-      timelineEvent.followUpRequested = true;
-      timelineEvent.commentId = nullableString(details.commentId);
+      journalEvent.followUpRequested = true;
+      journalEvent.commentId = nullableString(details.commentId);
     }
 
     if (hasOwn(details, "status")) {
       const from = nullableString(previous?.status) ?? nullableString(details.reopenedFrom);
       const to = nullableString(details.status);
       if (from !== to) {
-        timelineEvent.statusChange = { from, to };
+        journalEvent.statusChange = { from, to };
       }
     }
 
@@ -156,7 +156,7 @@ export function extractIssueJournalEvents(activity: ActivityEvent[] | null | und
       };
 
       if (!sameAssignee(previousAssignee, nextAssignee)) {
-        timelineEvent.assigneeChange = {
+        journalEvent.assigneeChange = {
           from: previousAssignee,
           to: nextAssignee,
         };
@@ -165,16 +165,16 @@ export function extractIssueJournalEvents(activity: ActivityEvent[] | null | und
 
     const workspaceChange = workspaceChangeFromDetails(details);
     if (workspaceChange) {
-      timelineEvent.workspaceChange = workspaceChange;
+      journalEvent.workspaceChange = workspaceChange;
     }
 
     if (
-      timelineEvent.statusChange
-      || timelineEvent.assigneeChange
-      || timelineEvent.workspaceChange
-      || timelineEvent.followUpRequested
+      journalEvent.statusChange
+      || journalEvent.assigneeChange
+      || journalEvent.workspaceChange
+      || journalEvent.followUpRequested
     ) {
-      events.push(timelineEvent);
+      events.push(journalEvent);
     }
   }
 

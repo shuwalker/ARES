@@ -42,7 +42,7 @@ const mockAgentInstructionsService = vi.hoisted(() => ({
   materializeManagedBundle: vi.fn(),
 }));
 
-const mockCompanySkillService = vi.hoisted(() => ({
+const mockDomainSkillService = vi.hoisted(() => ({
   listRuntimeSkillEntries: vi.fn(),
   resolveRequestedSkillEntries: vi.fn(),
   resolveRequestedSkillKeys: vi.fn(),
@@ -50,7 +50,7 @@ const mockCompanySkillService = vi.hoisted(() => ({
 
 const mockSecretService = vi.hoisted(() => ({
   resolveAdapterConfigForRuntime: vi.fn(),
-  normalizeAdapterConfigForPersistence: vi.fn(async (_companyId: string, config: Record<string, unknown>) => config),
+  normalizeAdapterConfigForPersistence: vi.fn(async (_domainId: string, config: Record<string, unknown>) => config),
   syncEnvBindingsForTarget: vi.fn(),
 }));
 
@@ -85,8 +85,8 @@ vi.mock("../services/index.js", () => ({
   agentInstructionsService: () => mockAgentInstructionsService,
   accessService: () => mockAccessService,
   approvalService: () => mockApprovalService,
-  builtInAgentService: () => ({ ensureCompanyDefaultAgentGrants: vi.fn() }),
-  companySkillService: () => mockCompanySkillService,
+  builtInAgentService: () => ({ ensureDomainDefaultAgentGrants: vi.fn() }),
+  domainSkillService: () => mockDomainSkillService,
   budgetService: () => mockBudgetService,
   environmentService: () => mockEnvironmentService,
   heartbeatService: () => mockHeartbeatService,
@@ -124,8 +124,8 @@ function registerModuleMocks() {
     agentInstructionsService: () => mockAgentInstructionsService,
     accessService: () => mockAccessService,
     approvalService: () => mockApprovalService,
-    builtInAgentService: () => ({ ensureCompanyDefaultAgentGrants: vi.fn() }),
-    companySkillService: () => mockCompanySkillService,
+    builtInAgentService: () => ({ ensureDomainDefaultAgentGrants: vi.fn() }),
+    domainSkillService: () => mockDomainSkillService,
     budgetService: () => mockBudgetService,
     heartbeatService: () => mockHeartbeatService,
     issueApprovalService: () => mockIssueApprovalService,
@@ -154,7 +154,7 @@ function createDb(requireBoardApprovalForNewAgents = false) {
       from: vi.fn(() => ({
         where: vi.fn(async () => [
           {
-            id: "company-1",
+            id: "domain-1",
             requireBoardApprovalForNewAgents,
           },
         ]),
@@ -174,7 +174,7 @@ async function createApp(db: Record<string, unknown> = createDb()) {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -215,7 +215,7 @@ async function requestApp(
 function makeAgent(adapterType: string) {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    companyId: "company-1",
+    domainId: "domain-1",
     name: "Agent",
     role: "engineer",
     title: "Engineer",
@@ -244,7 +244,7 @@ describe.sequential("agent skill routes", () => {
     for (const mock of Object.values(mockApprovalService)) mock.mockReset();
     for (const mock of Object.values(mockIssueApprovalService)) mock.mockReset();
     for (const mock of Object.values(mockAgentInstructionsService)) mock.mockReset();
-    for (const mock of Object.values(mockCompanySkillService)) mock.mockReset();
+    for (const mock of Object.values(mockDomainSkillService)) mock.mockReset();
     for (const mock of Object.values(mockSecretService)) mock.mockReset();
     mockLogActivity.mockReset();
     mockTrackAgentCreated.mockReset();
@@ -261,23 +261,23 @@ describe.sequential("agent skill routes", () => {
     });
     mockSecretService.resolveAdapterConfigForRuntime.mockResolvedValue({ config: { env: {} } });
     mockSecretService.syncEnvBindingsForTarget.mockResolvedValue(undefined);
-    mockCompanySkillService.listRuntimeSkillEntries.mockResolvedValue([
+    mockDomainSkillService.listRuntimeSkillEntries.mockResolvedValue([
       {
         key: "paperclipai/paperclip/paperclip",
         runtimeName: "paperclip",
         source: "/tmp/paperclip",
       },
     ]);
-    mockCompanySkillService.resolveRequestedSkillKeys.mockImplementation(
-      async (_companyId: string, requested: string[]) =>
+    mockDomainSkillService.resolveRequestedSkillKeys.mockImplementation(
+      async (_domainId: string, requested: string[]) =>
         requested.map((value) =>
           value === "paperclip"
             ? "paperclipai/paperclip/paperclip"
             : value,
         ),
     );
-    mockCompanySkillService.resolveRequestedSkillEntries.mockImplementation(
-      async (_companyId: string, requested: Array<{ key: string; versionId?: string | null }>) => ({
+    mockDomainSkillService.resolveRequestedSkillEntries.mockImplementation(
+      async (_domainId: string, requested: Array<{ key: string; versionId?: string | null }>) => ({
         resolved: requested.map((entry) => ({
           key: entry.key === "paperclip" ? "paperclipai/paperclip/paperclip" : entry.key,
           versionId: entry.versionId ?? null,
@@ -310,7 +310,7 @@ describe.sequential("agent skill routes", () => {
       };
       return persistedAgent;
     });
-    mockAgentService.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => {
+    mockAgentService.create.mockImplementation(async (_domainId: string, input: Record<string, unknown>) => {
       persistedAgent = {
         ...makeAgent(String(input.adapterType ?? "claude_local")),
         ...input,
@@ -321,9 +321,9 @@ describe.sequential("agent skill routes", () => {
       };
       return persistedAgent;
     });
-    mockApprovalService.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
+    mockApprovalService.create.mockImplementation(async (_domainId: string, input: Record<string, unknown>) => ({
       id: "approval-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       type: "hire_agent",
       status: "pending",
       payload: input.payload ?? {},
@@ -361,11 +361,11 @@ describe.sequential("agent skill routes", () => {
     const res = await requestApp(
       await createApp(),
       (baseUrl) => request(baseUrl)
-        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?companyId=company-1"),
+        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?domainId=domain-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(mockCompanySkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(mockDomainSkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("domain-1", expect.objectContaining({
       materializeMissing: false,
       versionSelections: expect.any(Map),
     }));
@@ -397,7 +397,7 @@ describe.sequential("agent skill routes", () => {
     });
     mockSecretService.resolveAdapterConfigForRuntime.mockImplementationOnce(
       async (
-        _companyId: string,
+        _domainId: string,
         config: Record<string, unknown>,
         context?: unknown,
         opts?: { skipUserSecrets?: boolean },
@@ -412,7 +412,7 @@ describe.sequential("agent skill routes", () => {
     const res = await requestApp(
       await createApp(),
       (baseUrl) => request(baseUrl)
-        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?companyId=company-1"),
+        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?domainId=domain-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -441,11 +441,11 @@ describe.sequential("agent skill routes", () => {
     const res = await requestApp(
       await createApp(),
       (baseUrl) => request(baseUrl)
-        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?companyId=company-1"),
+        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?domainId=domain-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(mockCompanySkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(mockDomainSkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("domain-1", expect.objectContaining({
       materializeMissing: false,
       versionSelections: expect.any(Map),
     }));
@@ -471,11 +471,11 @@ describe.sequential("agent skill routes", () => {
     const res = await requestApp(
       await createApp(),
       (baseUrl) => request(baseUrl)
-        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?companyId=company-1"),
+        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?domainId=domain-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(mockCompanySkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(mockDomainSkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("domain-1", expect.objectContaining({
       materializeMissing: false,
       versionSelections: expect.any(Map),
     }));
@@ -517,7 +517,7 @@ describe.sequential("agent skill routes", () => {
     });
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?companyId=company-1")
+      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?domainId=domain-1")
       .send({ desiredSkills: ["paperclip"] }));
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -548,11 +548,11 @@ describe.sequential("agent skill routes", () => {
   it("preserves stale desired keys instead of 422-ing when syncing (PAP-13222)", async () => {
     mockAgentService.getById.mockResolvedValue(makeAgent("acpx_local"));
     // The agent already carries a stale desired key that no longer resolves to a
-    // company-library skill. Toggling a resolvable skill must still succeed and
+    // domain-library skill. Toggling a resolvable skill must still succeed and
     // keep the stale key so it stays visible/removable in the UI.
-    mockCompanySkillService.resolveRequestedSkillEntries.mockImplementationOnce(
+    mockDomainSkillService.resolveRequestedSkillEntries.mockImplementationOnce(
       async (
-        _companyId: string,
+        _domainId: string,
         requested: Array<{ key: string; versionId?: string | null }>,
         options?: { tolerateUnknownReferences?: boolean },
       ) => {
@@ -574,7 +574,7 @@ describe.sequential("agent skill routes", () => {
     );
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?companyId=company-1")
+      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?domainId=domain-1")
       .send({ desiredSkills: ["paperclip", "stale/removed/skill"] }));
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -591,11 +591,11 @@ describe.sequential("agent skill routes", () => {
       expect.any(Object),
     );
     // Runtime version selection only considers resolvable keys.
-    expect(mockCompanySkillService.listRuntimeSkillEntries).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.listRuntimeSkillEntries).toHaveBeenCalledWith(
+      "domain-1",
       expect.objectContaining({ versionSelections: expect.any(Map) }),
     );
-    const versionSelections = mockCompanySkillService.listRuntimeSkillEntries.mock.calls.at(-1)?.[1]
+    const versionSelections = mockDomainSkillService.listRuntimeSkillEntries.mock.calls.at(-1)?.[1]
       ?.versionSelections as Map<string, unknown> | undefined;
     expect(versionSelections?.has("stale/removed/skill")).toBe(false);
   });
@@ -614,11 +614,11 @@ describe.sequential("agent skill routes", () => {
     const res = await requestApp(
       await createApp(),
       (baseUrl) => request(baseUrl)
-        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?companyId=company-1"),
+        .get("/api/agents/11111111-1111-4111-8111-111111111111/skills?domainId=domain-1"),
     );
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(mockCompanySkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(mockDomainSkillService.listRuntimeSkillEntries).toHaveBeenCalledWith("domain-1", expect.objectContaining({
       materializeMissing: false,
       versionSelections: expect.any(Map),
     }));
@@ -628,7 +628,7 @@ describe.sequential("agent skill routes", () => {
     mockAgentService.getById.mockResolvedValue(makeAgent("claude_local"));
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?companyId=company-1")
+      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?domainId=domain-1")
       .send({ desiredSkills: ["paperclipai/paperclip/paperclip"] }));
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -653,7 +653,7 @@ describe.sequential("agent skill routes", () => {
     });
     mockSecretService.resolveAdapterConfigForRuntime.mockImplementationOnce(
       async (
-        _companyId: string,
+        _domainId: string,
         config: Record<string, unknown>,
         context?: unknown,
         opts?: { skipUserSecrets?: boolean },
@@ -674,7 +674,7 @@ describe.sequential("agent skill routes", () => {
     );
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?companyId=company-1")
+      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?domainId=domain-1")
       .send({ desiredSkills: ["paperclipai/paperclip/paperclip"] }));
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -694,7 +694,7 @@ describe.sequential("agent skill routes", () => {
     mockAgentService.getById.mockResolvedValue(makeAgent("claude_local"));
 
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?companyId=company-1")
+      .post("/api/agents/11111111-1111-4111-8111-111111111111/skills/sync?domainId=domain-1")
       .send({ desiredSkills: ["paperclip"] }));
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -713,7 +713,7 @@ describe.sequential("agent skill routes", () => {
 
   it("persists canonical desired skills when creating an agent directly", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/domains/company-1/agents")
+      .post("/api/domains/domain-1/agents")
       .send({
         name: "QA Agent",
         role: "engineer",
@@ -725,7 +725,7 @@ describe.sequential("agent skill routes", () => {
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
     const createdAgentId = expectResponseId(res.body.id);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         adapterConfig: expect.objectContaining({
           paperclipSkillSync: expect.objectContaining({
@@ -745,7 +745,7 @@ describe.sequential("agent skill routes", () => {
 
   it("accepts the security role on direct agent creation and preserves it in telemetry", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/domains/company-1/agents")
+      .post("/api/domains/domain-1/agents")
       .send({
         name: "Security Engineer",
         role: "security",
@@ -759,7 +759,7 @@ describe.sequential("agent skill routes", () => {
       role: "security",
     });
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         role: "security",
       }),
@@ -775,7 +775,7 @@ describe.sequential("agent skill routes", () => {
 
   it("materializes a managed AGENTS.md for directly created local agents", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/domains/company-1/agents")
+      .post("/api/domains/domain-1/agents")
       .send({
         name: "QA Agent",
         role: "engineer",
@@ -811,7 +811,7 @@ describe.sequential("agent skill routes", () => {
 
   it("rejects legacy prompt templates for directly created local agents", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/domains/company-1/agents")
+      .post("/api/domains/domain-1/agents")
       .send({
         name: "QA Agent",
         role: "engineer",
@@ -831,7 +831,7 @@ describe.sequential("agent skill routes", () => {
 
   it("materializes the bundled CEO instruction set for default CEO agents", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/domains/company-1/agents")
+      .post("/api/domains/domain-1/agents")
       .send({
         name: "CEO",
         role: "ceo",
@@ -859,7 +859,7 @@ describe.sequential("agent skill routes", () => {
 
   it("materializes the bundled default instruction set for non-CEO agents with no prompt template", async () => {
     const res = await requestApp(await createApp(), (baseUrl) => request(baseUrl)
-      .post("/api/domains/company-1/agents")
+      .post("/api/domains/domain-1/agents")
       .send({
         name: "Engineer",
         role: "engineer",
@@ -909,7 +909,7 @@ describe.sequential("agent skill routes", () => {
     const db = createDb(true);
 
     const res = await request(await createApp(db))
-      .post("/api/domains/company-1/agent-hires")
+      .post("/api/domains/domain-1/agent-hires")
       .send({
         name: "QA Agent",
         role: "engineer",
@@ -920,7 +920,7 @@ describe.sequential("agent skill routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockApprovalService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         payload: expect.objectContaining({
           desiredSkills: ["paperclipai/paperclip/paperclip"],
@@ -937,7 +937,7 @@ describe.sequential("agent skill routes", () => {
     const sourceIssueId = "22222222-2222-4222-8222-222222222222";
 
     const res = await request(await createApp(db))
-      .post("/api/domains/company-1/agent-hires")
+      .post("/api/domains/domain-1/agent-hires")
       .send({
         name: "Security Engineer",
         role: "engineer",
@@ -950,7 +950,7 @@ describe.sequential("agent skill routes", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAgentService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         icon: "crown",
         adapterConfig: expect.objectContaining({
@@ -961,7 +961,7 @@ describe.sequential("agent skill routes", () => {
       }),
     );
     expect(mockApprovalService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         payload: expect.objectContaining({
           icon: "crown",
@@ -981,7 +981,7 @@ describe.sequential("agent skill routes", () => {
 
   it("uses managed AGENTS config in hire approval payloads", async () => {
     const res = await request(await createApp(createDb(true)))
-      .post("/api/domains/company-1/agent-hires")
+      .post("/api/domains/domain-1/agent-hires")
       .send({
         name: "QA Agent",
         role: "engineer",
@@ -1000,7 +1000,7 @@ describe.sequential("agent skill routes", () => {
       | undefined;
     const hiredAgentId = expectResponseId(approvalInput?.payload?.agentId);
     expect(mockApprovalService.create).toHaveBeenCalledWith(
-      "company-1",
+      "domain-1",
       expect.objectContaining({
         payload: expect.objectContaining({
           adapterConfig: expect.objectContaining({
@@ -1017,7 +1017,7 @@ describe.sequential("agent skill routes", () => {
 
   it("rejects legacy prompt templates for hire approval payloads", async () => {
     const res = await request(await createApp(createDb(true)))
-      .post("/api/domains/company-1/agent-hires")
+      .post("/api/domains/domain-1/agent-hires")
       .send({
         name: "QA Agent",
         role: "engineer",

@@ -13,7 +13,7 @@ import {
   agentWakeupRequests,
   agents,
   domains,
-  companySkills,
+  domainSkills,
   createDb,
   documentRevisions,
   documents,
@@ -157,7 +157,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await db.delete(agentRuntimeState);
     await db.delete(agents);
     await db.delete(workspaceOperations);
-    await db.delete(companySkills);
+    await db.delete(domainSkills);
     await db.delete(domains);
   });
 
@@ -167,7 +167,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   });
 
   async function seedAcceptedPlanClaim(args: {
-    companyId: string;
+    domainId: string;
     issueId: string;
     ownerAgentId: string;
     status?: "in_flight" | "completed";
@@ -177,7 +177,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId: args.companyId,
+      domainId: args.domainId,
       title: "Plan",
       format: "markdown",
       latestBody: "Plan body",
@@ -188,7 +188,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId: args.companyId,
+      domainId: args.domainId,
       documentId,
       revisionNumber: 1,
       title: "Plan",
@@ -197,13 +197,13 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       createdByAgentId: args.ownerAgentId,
     });
     await db.insert(issueDocuments).values({
-      companyId: args.companyId,
+      domainId: args.domainId,
       issueId: args.issueId,
       documentId,
       key: "plan",
     });
     await db.insert(issuePlanDecompositions).values({
-      companyId: args.companyId,
+      domainId: args.domainId,
       sourceIssueId: args.issueId,
       acceptedPlanRevisionId: revisionId,
       status: args.status ?? "in_flight",
@@ -218,7 +218,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   }
 
   async function seedAcceptedPlanAcceptance(args: {
-    companyId: string;
+    domainId: string;
     issueId: string;
     ownerAgentId: string;
   }) {
@@ -228,7 +228,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId: args.companyId,
+      domainId: args.domainId,
       title: "Plan",
       format: "markdown",
       latestBody: "Plan body",
@@ -239,7 +239,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId: args.companyId,
+      domainId: args.domainId,
       documentId,
       revisionNumber: 1,
       title: "Plan",
@@ -248,14 +248,14 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       createdByAgentId: args.ownerAgentId,
     });
     await db.insert(issueDocuments).values({
-      companyId: args.companyId,
+      domainId: args.domainId,
       issueId: args.issueId,
       documentId,
       key: "plan",
     });
     await db.insert(issueThreadInteractions).values({
       id: interactionId,
-      companyId: args.companyId,
+      domainId: args.domainId,
       issueId: args.issueId,
       kind: "request_confirmation",
       status: "accepted",
@@ -285,7 +285,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   }
 
   it("realizes an isolated workspace and drops stale shared task-session params before executing", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const sharedExecutionWorkspaceId = randomUUID();
@@ -298,9 +298,9 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       enableIsolatedWorkspaces: true,
     });
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       status: "active",
       defaultResponsibleUserId: "responsible-user",
       createdAt: new Date(),
@@ -308,7 +308,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Accepted Plan Workspace Refresh",
       status: "active",
       createdAt: new Date(),
@@ -316,7 +316,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -326,7 +326,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -339,7 +339,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(executionWorkspaces).values({
       id: sharedExecutionWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       mode: "shared_workspace",
@@ -354,7 +354,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       title: "Implement accepted plan",
@@ -372,7 +372,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       updatedAt: new Date(),
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
+      domainId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,
@@ -460,7 +460,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   }, 20_000);
 
   it("keeps accepted-plan children strategy-only until first realization after the base ref moves", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const sourceIssueId = randomUUID();
@@ -472,9 +472,9 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       enableIsolatedWorkspaces: true,
     });
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       status: "active",
       defaultResponsibleUserId: "responsible-user",
       createdAt: new Date(),
@@ -482,7 +482,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Accepted Plan Branch Freshness",
       status: "active",
       createdAt: new Date(),
@@ -490,7 +490,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -500,7 +500,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -518,7 +518,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(issues).values({
       id: sourceIssueId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       title: "Planning source issue",
@@ -589,7 +589,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await runGit(repoRoot, ["fetch", "origin", "master"]);
 
     const acceptedPlanRevisionId = await seedAcceptedPlanAcceptance({
-      companyId,
+      domainId,
       issueId: sourceIssueId,
       ownerAgentId: agentId,
     });
@@ -686,7 +686,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   }, 20_000);
 
   it("forces a fresh session and suppresses accepted-plan continuation when another issue owns the in-flight claim", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const issueId = randomUUID();
@@ -699,9 +699,9 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       enableIsolatedWorkspaces: false,
     });
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       status: "active",
       defaultResponsibleUserId: "responsible-user",
       createdAt: new Date(),
@@ -709,7 +709,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Accepted Plan Routing",
       status: "active",
       createdAt: new Date(),
@@ -717,7 +717,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -727,7 +727,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -741,7 +741,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await db.insert(issues).values([
       {
         id: issueId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         title: "Later planning wake",
@@ -756,7 +756,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
       {
         id: otherPlanningIssueId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         title: "Earlier accepted plan",
@@ -771,13 +771,13 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
     ]);
     await seedAcceptedPlanClaim({
-      companyId,
+      domainId,
       issueId: otherPlanningIssueId,
       ownerAgentId: agentId,
       status: "in_flight",
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
+      domainId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,
@@ -845,7 +845,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   }, 20_000);
 
   it("guards cross-issue accepted-plan retries even when the waking issue is standard work mode", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const issueId = randomUUID();
@@ -858,9 +858,9 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       enableIsolatedWorkspaces: false,
     });
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       status: "active",
       defaultResponsibleUserId: "responsible-user",
       createdAt: new Date(),
@@ -868,7 +868,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Accepted Plan Routing",
       status: "active",
       createdAt: new Date(),
@@ -876,7 +876,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -886,7 +886,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -900,7 +900,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     await db.insert(issues).values([
       {
         id: issueId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         title: "Implementation wake after accepted plan",
@@ -915,7 +915,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
       {
         id: otherPlanningIssueId,
-        companyId,
+        domainId,
         projectId,
         projectWorkspaceId,
         title: "Earlier accepted plan",
@@ -930,13 +930,13 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       },
     ]);
     await seedAcceptedPlanClaim({
-      companyId,
+      domainId,
       issueId: otherPlanningIssueId,
       ownerAgentId: agentId,
       status: "in_flight",
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
+      domainId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,
@@ -1006,7 +1006,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
   }, 20_000);
 
   it("preserves accepted-plan continuation resume state when the wake issue owns the in-flight claim", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const issueId = randomUUID();
@@ -1018,9 +1018,9 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       enableIsolatedWorkspaces: false,
     });
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Acme",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       status: "active",
       defaultResponsibleUserId: "responsible-user",
       createdAt: new Date(),
@@ -1028,7 +1028,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projects).values({
       id: projectId,
-      companyId,
+      domainId,
       name: "Accepted Plan Retry",
       status: "active",
       createdAt: new Date(),
@@ -1036,7 +1036,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId,
+      domainId,
       projectId,
       name: "Primary",
       cwd: repoRoot,
@@ -1046,7 +1046,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -1059,7 +1059,7 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       projectId,
       projectWorkspaceId,
       title: "Accepted plan retry",
@@ -1073,13 +1073,13 @@ describeEmbeddedPostgres("accepted plan workspace refresh", () => {
       updatedAt: new Date(),
     });
     await seedAcceptedPlanClaim({
-      companyId,
+      domainId,
       issueId,
       ownerAgentId: agentId,
       status: "in_flight",
     });
     await db.insert(agentTaskSessions).values({
-      companyId,
+      domainId,
       agentId,
       adapterType: "codex_local",
       taskKey: issueId,

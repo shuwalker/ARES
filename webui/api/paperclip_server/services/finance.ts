@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, costEvents, financeEvents, goals, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { agents, financeEvents, financeEvents, goals, heartbeatRuns, issues, projects } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 
 export interface FinanceDateRange {
@@ -12,7 +12,7 @@ async function assertBelongsToDomain(
   db: Db,
   table: any,
   id: string,
-  companyId: string,
+  domainId: string,
   label: string,
 ) {
   const row = await db
@@ -22,37 +22,37 @@ async function assertBelongsToDomain(
     .then((rows) => rows[0] ?? null);
 
   if (!row) throw notFound(`${label} not found`);
-  if ((row as unknown as { companyId: string }).companyId !== companyId) {
-    throw unprocessable(`${label} does not belong to company`);
+  if ((row as unknown as { domainId: string }).domainId !== domainId) {
+    throw unprocessable(`${label} does not belong to domain`);
   }
 }
 
-function rangeConditions(companyId: string, range?: FinanceDateRange) {
-  const conditions: ReturnType<typeof eq>[] = [eq(financeEvents.companyId, companyId)];
+function rangeConditions(domainId: string, range?: FinanceDateRange) {
+  const conditions: ReturnType<typeof eq>[] = [eq(financeEvents.domainId, domainId)];
   if (range?.from) conditions.push(gte(financeEvents.occurredAt, range.from));
   if (range?.to) conditions.push(lte(financeEvents.occurredAt, range.to));
   return conditions;
 }
 
 export function financeService(db: Db) {
-  const debitExpr = sql<number>`coalesce(sum(case when ${financeEvents.direction} = 'debit' then ${financeEvents.amountCents} else 0 end), 0)::double precision`;
-  const creditExpr = sql<number>`coalesce(sum(case when ${financeEvents.direction} = 'credit' then ${financeEvents.amountCents} else 0 end), 0)::double precision`;
-  const estimatedDebitExpr = sql<number>`coalesce(sum(case when ${financeEvents.direction} = 'debit' and ${financeEvents.estimated} = true then ${financeEvents.amountCents} else 0 end), 0)::double precision`;
+  const debitExpr = sql<number>`coalesce(sum(life_admin when ${financeEvents.direction} = 'debit' then ${financeEvents.amountCents} else 0 end), 0)::double precision`;
+  const creditExpr = sql<number>`coalesce(sum(life_admin when ${financeEvents.direction} = 'credit' then ${financeEvents.amountCents} else 0 end), 0)::double precision`;
+  const estimatedDebitExpr = sql<number>`coalesce(sum(life_admin when ${financeEvents.direction} = 'debit' and ${financeEvents.estimated} = true then ${financeEvents.amountCents} else 0 end), 0)::double precision`;
 
   return {
-    createEvent: async (companyId: string, data: Omit<typeof financeEvents.$inferInsert, "companyId">) => {
-      if (data.agentId) await assertBelongsToDomain(db, agents, data.agentId, companyId, "Agent");
-      if (data.issueId) await assertBelongsToDomain(db, issues, data.issueId, companyId, "Issue");
-      if (data.projectId) await assertBelongsToDomain(db, projects, data.projectId, companyId, "Project");
-      if (data.goalId) await assertBelongsToDomain(db, goals, data.goalId, companyId, "Goal");
-      if (data.heartbeatRunId) await assertBelongsToDomain(db, heartbeatRuns, data.heartbeatRunId, companyId, "Heartbeat run");
-      if (data.costEventId) await assertBelongsToDomain(db, costEvents, data.costEventId, companyId, "Cost event");
+    createEvent: async (domainId: string, data: Omit<typeof financeEvents.$inferInsert, "domainId">) => {
+      if (data.agentId) await assertBelongsToDomain(db, agents, data.agentId, domainId, "Agent");
+      if (data.issueId) await assertBelongsToDomain(db, issues, data.issueId, domainId, "Issue");
+      if (data.projectId) await assertBelongsToDomain(db, projects, data.projectId, domainId, "Project");
+      if (data.goalId) await assertBelongsToDomain(db, goals, data.goalId, domainId, "Goal");
+      if (data.heartbeatRunId) await assertBelongsToDomain(db, heartbeatRuns, data.heartbeatRunId, domainId, "Heartbeat run");
+      if (data.financeEventId) await assertBelongsToDomain(db, financeEvents, data.financeEventId, domainId, "Finance event");
 
       const event = await db
         .insert(financeEvents)
         .values({
           ...data,
-          companyId,
+          domainId,
           currency: data.currency ?? "USD",
           direction: data.direction ?? "debit",
           estimated: data.estimated ?? false,
@@ -63,8 +63,8 @@ export function financeService(db: Db) {
       return event;
     },
 
-    summary: async (companyId: string, range?: FinanceDateRange) => {
-      const conditions = rangeConditions(companyId, range);
+    summary: async (domainId: string, range?: FinanceDateRange) => {
+      const conditions = rangeConditions(domainId, range);
       const [row] = await db
         .select({
           debitCents: debitExpr,
@@ -76,7 +76,7 @@ export function financeService(db: Db) {
         .where(and(...conditions));
 
       return {
-        companyId,
+        domainId,
         debitCents: Number(row?.debitCents ?? 0),
         creditCents: Number(row?.creditCents ?? 0),
         netCents: Number(row?.debitCents ?? 0) - Number(row?.creditCents ?? 0),
@@ -85,8 +85,8 @@ export function financeService(db: Db) {
       };
     },
 
-    byBiller: async (companyId: string, range?: FinanceDateRange) => {
-      const conditions = rangeConditions(companyId, range);
+    byBiller: async (domainId: string, range?: FinanceDateRange) => {
+      const conditions = rangeConditions(domainId, range);
       return db
         .select({
           biller: financeEvents.biller,
@@ -103,8 +103,8 @@ export function financeService(db: Db) {
         .orderBy(desc(sql`(${debitExpr} - ${creditExpr})::double precision`), financeEvents.biller);
     },
 
-    byKind: async (companyId: string, range?: FinanceDateRange) => {
-      const conditions = rangeConditions(companyId, range);
+    byKind: async (domainId: string, range?: FinanceDateRange) => {
+      const conditions = rangeConditions(domainId, range);
       return db
         .select({
           eventKind: financeEvents.eventKind,
@@ -121,8 +121,8 @@ export function financeService(db: Db) {
         .orderBy(desc(sql`(${debitExpr} - ${creditExpr})::double precision`), financeEvents.eventKind);
     },
 
-    list: async (companyId: string, range?: FinanceDateRange, limit: number = 100) => {
-      const conditions = rangeConditions(companyId, range);
+    list: async (domainId: string, range?: FinanceDateRange, limit: number = 100) => {
+      const conditions = rangeConditions(domainId, range);
       return db
         .select()
         .from(financeEvents)

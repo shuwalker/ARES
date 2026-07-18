@@ -43,7 +43,7 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
+describeEmbeddedPostgres("plugin tenant isolation (domain_id FK)", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
@@ -93,32 +93,32 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
   }
 
   async function seedDomain() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
-      name: `Tenant ${companyId.slice(0, 6)}`,
-      issuePrefix: issuePrefix(companyId),
+      id: domainId,
+      name: `Tenant ${domainId.slice(0, 6)}`,
+      issuePrefix: issuePrefix(domainId),
     });
-    return companyId;
+    return domainId;
   }
 
-  it("allows NULL company_id on plugin_logs (instance-scope rows behave as before)", async () => {
+  it("allows NULL domain_id on plugin_logs (instance-scope rows behave as before)", async () => {
     const pluginId = await seedPlugin();
     await db.insert(pluginLogs).values({
       pluginId,
-      // companyId intentionally omitted — NULL means instance-scope.
+      // domainId intentionally omitted — NULL means instance-scope.
       level: "info",
       message: "instance-scope log",
     });
     const rows = await db.select().from(pluginLogs).where(eq(pluginLogs.pluginId, pluginId));
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.companyId).toBeNull();
+    expect(rows[0]?.domainId).toBeNull();
   });
 
-  it("cascades plugin_logs / plugin_entities / plugin_job_runs / plugin_webhook_deliveries when the owning company is deleted", async () => {
+  it("cascades plugin_logs / plugin_entities / plugin_job_runs / plugin_webhook_deliveries when the owning domain is deleted", async () => {
     const pluginId = await seedPlugin();
-    const companyA = await seedDomain();
-    const companyB = await seedDomain();
+    const domainA = await seedDomain();
+    const domainB = await seedDomain();
 
     // Seed a job + run so we can verify plugin_job_runs cascades too.
     const jobAId = randomUUID();
@@ -129,106 +129,106 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
     ]);
 
     await db.insert(pluginLogs).values([
-      { pluginId, companyId: companyA, level: "info", message: "A log" },
-      { pluginId, companyId: companyB, level: "info", message: "B log" },
+      { pluginId, domainId: domainA, level: "info", message: "A log" },
+      { pluginId, domainId: domainB, level: "info", message: "B log" },
       { pluginId, level: "info", message: "instance log" },
     ]);
 
     await db.insert(pluginEntities).values([
       {
         pluginId,
-        companyId: companyA,
+        domainId: domainA,
         entityType: "issue",
-        scopeKind: "company",
-        scopeId: companyA,
+        scopeKind: "domain",
+        scopeId: domainA,
         externalId: "ext-a",
       },
       {
         pluginId,
-        companyId: companyB,
+        domainId: domainB,
         entityType: "issue",
-        scopeKind: "company",
-        scopeId: companyB,
+        scopeKind: "domain",
+        scopeId: domainB,
         externalId: "ext-b",
       },
     ]);
 
     await db.insert(pluginJobRuns).values([
-      { jobId: jobAId, pluginId, companyId: companyA, trigger: "manual" },
-      { jobId: jobBId, pluginId, companyId: companyB, trigger: "manual" },
+      { jobId: jobAId, pluginId, domainId: domainA, trigger: "manual" },
+      { jobId: jobBId, pluginId, domainId: domainB, trigger: "manual" },
       { jobId: jobAId, pluginId, trigger: "scheduled" },
     ]);
 
     await db.insert(pluginWebhookDeliveries).values([
-      { pluginId, companyId: companyA, webhookKey: "wh", payload: { who: "A" } },
-      { pluginId, companyId: companyB, webhookKey: "wh", payload: { who: "B" } },
+      { pluginId, domainId: domainA, webhookKey: "wh", payload: { who: "A" } },
+      { pluginId, domainId: domainB, webhookKey: "wh", payload: { who: "B" } },
       { pluginId, webhookKey: "wh", payload: { who: "instance" } },
     ]);
 
-    // Delete company A — only A's rows should be reaped. B's and NULL-scope rows stay.
-    await db.delete(domains).where(eq(domains.id, companyA));
+    // Delete domain A — only A's rows should be reaped. B's and NULL-scope rows stay.
+    await db.delete(domains).where(eq(domains.id, domainA));
 
     const logs = await db.select().from(pluginLogs);
-    expect(logs.map((r) => r.companyId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
-      [companyB, null].sort((a, b) => String(a).localeCompare(String(b))),
+    expect(logs.map((r) => r.domainId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
+      [domainB, null].sort((a, b) => String(a).localeCompare(String(b))),
     );
 
     const entities = await db.select().from(pluginEntities);
     expect(entities).toHaveLength(1);
-    expect(entities[0]?.companyId).toBe(companyB);
+    expect(entities[0]?.domainId).toBe(domainB);
 
     const runs = await db.select().from(pluginJobRuns);
-    expect(runs.map((r) => r.companyId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
-      [companyB, null].sort((a, b) => String(a).localeCompare(String(b))),
+    expect(runs.map((r) => r.domainId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
+      [domainB, null].sort((a, b) => String(a).localeCompare(String(b))),
     );
 
     const deliveries = await db.select().from(pluginWebhookDeliveries);
-    expect(deliveries.map((r) => r.companyId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
-      [companyB, null].sort((a, b) => String(a).localeCompare(String(b))),
+    expect(deliveries.map((r) => r.domainId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
+      [domainB, null].sort((a, b) => String(a).localeCompare(String(b))),
     );
   });
 
-  it("plugin_entities unique index is scoped per company — two tenants can share (pluginId, entityType, externalId)", async () => {
+  it("plugin_entities unique index is scoped per domain — two tenants can share (pluginId, entityType, externalId)", async () => {
     const pluginId = await seedPlugin();
-    const companyA = await seedDomain();
-    const companyB = await seedDomain();
+    const domainA = await seedDomain();
+    const domainB = await seedDomain();
 
     // Domain A claims external id "ext-1".
     await db.insert(pluginEntities).values({
       pluginId,
-      companyId: companyA,
+      domainId: domainA,
       entityType: "page",
-      scopeKind: "company",
-      scopeId: companyA,
+      scopeKind: "domain",
+      scopeId: domainA,
       externalId: "ext-1",
     });
 
     // Domain B uses the SAME (pluginId, entityType, externalId) — must succeed
-    // under the per-company unique index (would have collided under the old index).
+    // under the per-domain unique index (would have collided under the old index).
     await db.insert(pluginEntities).values({
       pluginId,
-      companyId: companyB,
+      domainId: domainB,
       entityType: "page",
-      scopeKind: "company",
-      scopeId: companyB,
+      scopeKind: "domain",
+      scopeId: domainB,
       externalId: "ext-1",
     });
 
     const rows = await db.select().from(pluginEntities);
     expect(rows).toHaveLength(2);
 
-    // Re-inserting the same (companyId, pluginId, entityType, externalId) tuple
-    // for company A must violate the unique constraint. Drizzle wraps the
+    // Re-inserting the same (domainId, pluginId, entityType, externalId) tuple
+    // for domain A must violate the unique constraint. Drizzle wraps the
     // underlying pg error as "Failed query: ..." — inspect the cause to confirm
     // it's the unique violation on our index (pg error code 23505).
     const err = await db
       .insert(pluginEntities)
       .values({
         pluginId,
-        companyId: companyA,
+        domainId: domainA,
         entityType: "page",
-        scopeKind: "company",
-        scopeId: companyA,
+        scopeKind: "domain",
+        scopeId: domainA,
         externalId: "ext-1",
       })
       .then(
@@ -243,19 +243,19 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
     expect(cause?.code).toBe("23505");
   });
 
-  it("pluginRegistryService.upsertEntity scopes its lookup by companyId — never overwrites another tenant's row", async () => {
+  it("pluginRegistryService.upsertEntity scopes its lookup by domainId — never overwrites another tenant's row", async () => {
     const pluginId = await seedPlugin();
-    const companyA = await seedDomain();
-    const companyB = await seedDomain();
+    const domainA = await seedDomain();
+    const domainB = await seedDomain();
 
     const registry = pluginRegistryService(db);
 
     // Domain A claims (issue, ext-shared) with title "A".
     const createdA = await registry.upsertEntity(pluginId, {
-      companyId: companyA,
+      domainId: domainA,
       entityType: "issue",
-      scopeKind: "company",
-      scopeId: companyA,
+      scopeKind: "domain",
+      scopeId: domainA,
       externalId: "ext-shared",
       title: "A",
       status: "open",
@@ -265,10 +265,10 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
     // Domain B upserts the SAME (entityType, externalId) tuple under its own
     // scope — must create a NEW row for B, NOT overwrite A.
     const createdB = await registry.upsertEntity(pluginId, {
-      companyId: companyB,
+      domainId: domainB,
       entityType: "issue",
-      scopeKind: "company",
-      scopeId: companyB,
+      scopeKind: "domain",
+      scopeId: domainB,
       externalId: "ext-shared",
       title: "B",
       status: "open",
@@ -281,10 +281,10 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
 
     // Domain B updates its own row — A's row must remain untouched.
     const updatedB = await registry.upsertEntity(pluginId, {
-      companyId: companyB,
+      domainId: domainB,
       entityType: "issue",
-      scopeKind: "company",
-      scopeId: companyB,
+      scopeKind: "domain",
+      scopeId: domainB,
       externalId: "ext-shared",
       title: "B-updated",
       status: "closed",
@@ -295,17 +295,17 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
 
     const rows = await db.select().from(pluginEntities);
     expect(rows).toHaveLength(2);
-    const rowA = rows.find((r) => r.companyId === companyA);
-    const rowB = rows.find((r) => r.companyId === companyB);
+    const rowA = rows.find((r) => r.domainId === domainA);
+    const rowB = rows.find((r) => r.domainId === domainB);
     expect(rowA?.title).toBe("A");
     expect(rowA?.status).toBe("open");
     expect(rowB?.title).toBe("B-updated");
     expect(rowB?.status).toBe("closed");
 
-    // Instance-scope upsert (companyId = NULL) on the same tuple must also
+    // Instance-scope upsert (domainId = NULL) on the same tuple must also
     // create its own row, not collide with A or B.
     const createdInstance = await registry.upsertEntity(pluginId, {
-      companyId: null,
+      domainId: null,
       entityType: "issue",
       scopeKind: "instance",
       scopeId: null,
@@ -322,35 +322,35 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
     expect(allRows).toHaveLength(3);
   });
 
-  it("pluginRegistryService.getEntityByExternalId scopes by companyId — never returns another tenant's row", async () => {
+  it("pluginRegistryService.getEntityByExternalId scopes by domainId — never returns another tenant's row", async () => {
     const pluginId = await seedPlugin();
-    const companyA = await seedDomain();
-    const companyB = await seedDomain();
+    const domainA = await seedDomain();
+    const domainB = await seedDomain();
 
     const registry = pluginRegistryService(db);
 
     await registry.upsertEntity(pluginId, {
-      companyId: companyA,
+      domainId: domainA,
       entityType: "issue",
-      scopeKind: "company",
-      scopeId: companyA,
+      scopeKind: "domain",
+      scopeId: domainA,
       externalId: "ext-shared",
       title: "A",
       status: "open",
       data: {},
     });
     await registry.upsertEntity(pluginId, {
-      companyId: companyB,
+      domainId: domainB,
       entityType: "issue",
-      scopeKind: "company",
-      scopeId: companyB,
+      scopeKind: "domain",
+      scopeId: domainB,
       externalId: "ext-shared",
       title: "B",
       status: "open",
       data: {},
     });
     await registry.upsertEntity(pluginId, {
-      companyId: null,
+      domainId: null,
       entityType: "issue",
       scopeKind: "instance",
       scopeId: null,
@@ -360,16 +360,16 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
       data: {},
     });
 
-    const fromA = await registry.getEntityByExternalId(pluginId, "issue", "ext-shared", companyA);
-    expect(fromA?.companyId).toBe(companyA);
+    const fromA = await registry.getEntityByExternalId(pluginId, "issue", "ext-shared", domainA);
+    expect(fromA?.domainId).toBe(domainA);
     expect(fromA?.title).toBe("A");
 
-    const fromB = await registry.getEntityByExternalId(pluginId, "issue", "ext-shared", companyB);
-    expect(fromB?.companyId).toBe(companyB);
+    const fromB = await registry.getEntityByExternalId(pluginId, "issue", "ext-shared", domainB);
+    expect(fromB?.domainId).toBe(domainB);
     expect(fromB?.title).toBe("B");
 
     const fromInstance = await registry.getEntityByExternalId(pluginId, "issue", "ext-shared", null);
-    expect(fromInstance?.companyId).toBeNull();
+    expect(fromInstance?.domainId).toBeNull();
     expect(fromInstance?.title).toBe("instance");
 
     // Unknown tenant returns null, not another tenant's row.
@@ -382,10 +382,10 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
     expect(unknown).toBeNull();
   });
 
-  it("pluginRegistryService.createJobRun + createWebhookDelivery persist companyId so cascade delete reaps them", async () => {
+  it("pluginRegistryService.createJobRun + createWebhookDelivery persist domainId so cascade delete reaps them", async () => {
     const pluginId = await seedPlugin();
-    const companyA = await seedDomain();
-    const companyB = await seedDomain();
+    const domainA = await seedDomain();
+    const domainB = await seedDomain();
 
     const registry = pluginRegistryService(db);
     const jobId = randomUUID();
@@ -396,46 +396,46 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
       schedule: "* * * * *",
     });
 
-    const runA = await registry.createJobRun(pluginId, jobId, "manual", companyA);
-    const runB = await registry.createJobRun(pluginId, jobId, "manual", companyB);
+    const runA = await registry.createJobRun(pluginId, jobId, "manual", domainA);
+    const runB = await registry.createJobRun(pluginId, jobId, "manual", domainB);
     const runInstance = await registry.createJobRun(pluginId, jobId, "scheduled", null);
 
-    expect(runA?.companyId).toBe(companyA);
-    expect(runB?.companyId).toBe(companyB);
-    expect(runInstance?.companyId).toBeNull();
+    expect(runA?.domainId).toBe(domainA);
+    expect(runB?.domainId).toBe(domainB);
+    expect(runInstance?.domainId).toBeNull();
 
-    const whA = await registry.createWebhookDelivery(pluginId, "wh", companyA, {
+    const whA = await registry.createWebhookDelivery(pluginId, "wh", domainA, {
       payload: { who: "A" },
     });
-    const whB = await registry.createWebhookDelivery(pluginId, "wh", companyB, {
+    const whB = await registry.createWebhookDelivery(pluginId, "wh", domainB, {
       payload: { who: "B" },
     });
     const whInstance = await registry.createWebhookDelivery(pluginId, "wh", null, {
       payload: { who: "instance" },
     });
 
-    expect(whA?.companyId).toBe(companyA);
-    expect(whB?.companyId).toBe(companyB);
-    expect(whInstance?.companyId).toBeNull();
+    expect(whA?.domainId).toBe(domainA);
+    expect(whB?.domainId).toBe(domainB);
+    expect(whInstance?.domainId).toBeNull();
 
-    // Cascade: deleting company A reaps A's rows; B's and instance-scope rows stay.
-    await db.delete(domains).where(eq(domains.id, companyA));
+    // Cascade: deleting domain A reaps A's rows; B's and instance-scope rows stay.
+    await db.delete(domains).where(eq(domains.id, domainA));
 
     const runs = await db.select().from(pluginJobRuns);
-    expect(runs.map((r) => r.companyId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
-      [companyB, null].sort((a, b) => String(a).localeCompare(String(b))),
+    expect(runs.map((r) => r.domainId).sort((a, b) => String(a).localeCompare(String(b)))).toEqual(
+      [domainB, null].sort((a, b) => String(a).localeCompare(String(b))),
     );
 
     const deliveries = await db.select().from(pluginWebhookDeliveries);
     expect(
-      deliveries.map((r) => r.companyId).sort((a, b) => String(a).localeCompare(String(b))),
-    ).toEqual([companyB, null].sort((a, b) => String(a).localeCompare(String(b))));
+      deliveries.map((r) => r.domainId).sort((a, b) => String(a).localeCompare(String(b))),
+    ).toEqual([domainB, null].sort((a, b) => String(a).localeCompare(String(b))));
   });
 
-  it("buildHostServices.logger.log + flushPluginLogBuffer persist companyId so cascade delete reaps log rows", async () => {
+  it("buildHostServices.logger.log + flushPluginLogBuffer persist domainId so cascade delete reaps log rows", async () => {
     const pluginId = await seedPlugin();
-    const companyA = await seedDomain();
-    const companyB = await seedDomain();
+    const domainA = await seedDomain();
+    const domainB = await seedDomain();
 
     // Flush any leftovers from prior tests (the buffer is module-scoped).
     await flushPluginLogBuffer();
@@ -446,22 +446,22 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
       await services.logger.log({
         level: "info",
         message: "A log",
-        companyId: companyA,
+        domainId: domainA,
       });
       await services.logger.log({
         level: "warn",
         message: "B log",
-        companyId: companyB,
+        domainId: domainB,
       });
       await services.logger.log({
         level: "info",
         message: "instance log",
-        // companyId omitted — explicit instance-scope.
+        // domainId omitted — explicit instance-scope.
       });
       await services.logger.log({
         level: "debug",
         message: "explicit-null log",
-        companyId: null,
+        domainId: null,
       });
 
       await flushPluginLogBuffer();
@@ -471,13 +471,13 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
         .from(pluginLogs)
         .where(eq(pluginLogs.pluginId, pluginId));
       const byMessage = new Map(rows.map((r) => [r.message, r]));
-      expect(byMessage.get("A log")?.companyId).toBe(companyA);
-      expect(byMessage.get("B log")?.companyId).toBe(companyB);
-      expect(byMessage.get("instance log")?.companyId).toBeNull();
-      expect(byMessage.get("explicit-null log")?.companyId).toBeNull();
+      expect(byMessage.get("A log")?.domainId).toBe(domainA);
+      expect(byMessage.get("B log")?.domainId).toBe(domainB);
+      expect(byMessage.get("instance log")?.domainId).toBeNull();
+      expect(byMessage.get("explicit-null log")?.domainId).toBeNull();
 
-      // Cascade: deleting company A reaps A's log row; B's + NULL rows remain.
-      await db.delete(domains).where(eq(domains.id, companyA));
+      // Cascade: deleting domain A reaps A's log row; B's + NULL rows remain.
+      await db.delete(domains).where(eq(domains.id, domainA));
 
       const afterDelete = await db
         .select()
@@ -492,13 +492,13 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
     }
   });
 
-  it("plugin_entities unique index treats NULL companyId as equal (NULLS NOT DISTINCT) so instance-scope dedup holds", async () => {
+  it("plugin_entities unique index treats NULL domainId as equal (NULLS NOT DISTINCT) so instance-scope dedup holds", async () => {
     const pluginId = await seedPlugin();
 
-    // First instance-scope entity (companyId = NULL) — succeeds.
+    // First instance-scope entity (domainId = NULL) — succeeds.
     await db.insert(pluginEntities).values({
       pluginId,
-      companyId: null,
+      domainId: null,
       entityType: "cron",
       scopeKind: "instance",
       scopeId: null,
@@ -507,12 +507,12 @@ describeEmbeddedPostgres("plugin tenant isolation (company_id FK)", () => {
 
     // Second instance-scope row with the SAME (pluginId, entityType, externalId)
     // must be rejected. Without `.nullsNotDistinct()`, postgres would treat the
-    // two NULL company_ids as distinct and silently allow the duplicate.
+    // two NULL domain_ids as distinct and silently allow the duplicate.
     const err = await db
       .insert(pluginEntities)
       .values({
         pluginId,
-        companyId: null,
+        domainId: null,
         entityType: "cron",
         scopeKind: "instance",
         scopeId: null,

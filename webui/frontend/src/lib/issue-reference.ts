@@ -20,7 +20,7 @@ export function parseIssuePathIdFromPath(pathOrUrl: string | null | undefined): 
   if (issueIndex === -1 || issueIndex === segments.length - 1) return null;
   const issuePathId = decodeURIComponent(segments[issueIndex + 1] ?? "");
   if (!issuePathId || issuePathId.startsWith(":")) return null;
-  return BARE_ISSUE_IDENTIFIER_RE.test(issuePathId) ? issuePathId.toUpperLifeAdmin() : issuePathId;
+  return BARE_ISSUE_IDENTIFIER_RE.test(issuePathId) ? issuePathId.toUpperCase() : issuePathId;
 }
 
 export function parseIssueReferenceFromHref(
@@ -47,9 +47,9 @@ export function parseIssueReferenceFromHref(
   }
 
   if (!BARE_ISSUE_IDENTIFIER_RE.test(trimmed)) return null;
-  const normalized = trimmed.toUpperLifeAdmin();
+  const normalized = trimmed.toUpperCase();
   // Only auto-link a bare IDENT-123 token when its prefix belongs to a known
-  // company. An empty or omitted set means "prefixes unknown" -> stay permissive
+  // domain. An empty or omitted set means "prefixes unknown" -> stay permissive
   // (preserves behavior during initial load and in provider-less render
   // surfaces). The issue:// scheme and /issues/ path forms handled above are
   // never gated -- they are deliberate references, not accidental foreign keys.
@@ -171,7 +171,7 @@ export interface RemarkLinkIssueReferencesOptions {
 
 export function remarkLinkIssueReferences(options?: RemarkLinkIssueReferencesOptions) {
   const knownPrefixes = options?.knownPrefixes && options.knownPrefixes.length > 0
-    ? new Set(options.knownPrefixes.map((prefix) => prefix.toUpperLifeAdmin()))
+    ? new Set(options.knownPrefixes.map((prefix) => prefix.toUpperCase()))
     : undefined;
   return (tree: MarkdownNode) => {
     rewriteMarkdownTree(tree, knownPrefixes);

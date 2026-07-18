@@ -48,19 +48,19 @@ describeEmbeddedPostgres("documentService system issue documents", () => {
   });
 
   async function createIssueWithDocuments() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const issueId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       identifier: "PAP-1600",
       title: "System document filtering",
       description: "Validate document filtering",

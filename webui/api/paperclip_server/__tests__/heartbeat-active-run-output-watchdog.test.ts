@@ -132,19 +132,19 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     sourceOriginKind?: string;
     sameRunTerminalEvidence?: "activity" | "comment";
   }) {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const managerId = randomUUID();
     const coderId = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
-    const issuePrefix = `W${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
+    const issuePrefix = `W${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`;
     const startedAt = new Date(opts.now.getTime() - opts.ageMs);
     const lastOutputAt = opts.withOutput ? new Date(opts.now.getTime() - 5 * 60 * 1000) : null;
     const sourceStatus = opts.sourceStatus ?? "in_progress";
     const terminalEvidenceAt = new Date(startedAt.getTime() + 10 * 60 * 1000);
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Watchdog Co",
       issuePrefix,
       defaultResponsibleUserId: "responsible-user",
@@ -153,7 +153,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     await db.insert(agents).values([
       {
         id: managerId,
-        companyId,
+        domainId,
         name: "CTO",
         role: "cto",
         status: "idle",
@@ -164,7 +164,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       },
       {
         id: coderId,
-        companyId,
+        domainId,
         name: "Coder",
         role: "engineer",
         status: "running",
@@ -177,7 +177,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     ]);
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Long running implementation",
       status: sourceStatus,
       priority: "medium",
@@ -192,7 +192,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId: coderId,
       status: "running",
       invocationSource: "assignment",
@@ -208,7 +208,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     if (opts.logChunk) {
       const store = getRunLogStore();
-      const handle = await store.begin({ companyId, agentId: coderId, runId });
+      const handle = await store.begin({ domainId, agentId: coderId, runId });
       const logBytes = await store.append(handle, {
         stream: "stdout",
         chunk: opts.logChunk,
@@ -226,7 +226,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
     if (opts.sameRunTerminalEvidence === "activity") {
       await db.insert(activityLog).values({
-        companyId,
+        domainId,
         actorType: "agent",
         actorId: coderId,
         agentId: coderId,
@@ -243,7 +243,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       });
     } else if (opts.sameRunTerminalEvidence === "comment") {
       await db.insert(issueComments).values({
-        companyId,
+        domainId,
         issueId,
         authorAgentId: coderId,
         authorType: "agent",
@@ -253,19 +253,19 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
         updatedAt: terminalEvidenceAt,
       });
     }
-    return { companyId, managerId, coderId, issueId, runId, issuePrefix };
+    return { domainId, managerId, coderId, issueId, runId, issuePrefix };
   }
 
   it("creates one medium-priority evaluation issue for a suspicious silent run", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, runId } = await seedRunningRun({
+    const { domainId, managerId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
 
-    const first = await heartbeat.scanSilentActiveRuns({ now, companyId });
-    const second = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const first = await heartbeat.scanSilentActiveRuns({ now, domainId });
+    const second = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(first.created).toBe(1);
     expect(second.created).toBe(0);
@@ -274,7 +274,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const evaluations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluations).toHaveLength(1);
     expect(["todo", "in_progress"]).toContain(evaluations[0]?.status);
     expect(evaluations[0]).toMatchObject({
@@ -282,7 +282,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       assigneeAgentId: managerId,
       assigneeAdapterOverrides: { modelProfile: "cheap" },
       originId: runId,
-      originFingerprint: `stale_active_run:${companyId}:${runId}`,
+      originFingerprint: `stale_active_run:${domainId}:${runId}`,
     });
     expect(evaluations[0]?.description).toContain("Decision Checklist");
     expect(evaluations[0]?.description).not.toContain("sk-test-secret-value");
@@ -292,7 +292,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
     const leakedJwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
     const leakedGithubToken = "ghp_1234567890abcdefghijklmnopqrstuvwxyz";
-    const { companyId } = await seedRunningRun({
+    const { domainId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
       logChunk: [
@@ -303,12 +303,12 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     const heartbeat = heartbeatService(db);
 
-    await heartbeat.scanSilentActiveRuns({ now, companyId });
+    await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     const [evaluation] = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluation?.description).toContain("***REDACTED***");
     expect(evaluation?.description).not.toContain("live-bearer-token-value");
     expect(evaluation?.description).not.toContain("json-secret-value");
@@ -318,19 +318,19 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
   it("raises critical stale-run evaluations with high priority but does not hard-block the source issue", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, issueId } = await seedRunningRun({
+    const { domainId, issueId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
 
-    const result = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const result = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(result.created).toBe(1);
     const [evaluation] = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluation?.priority).toBe("high");
 
     // Evaluation issues are observability-only — they must NOT be added as hard blockers
@@ -338,7 +338,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const blockerRelations = await db
       .select()
       .from(issueRelations)
-      .where(and(eq(issueRelations.companyId, companyId), eq(issueRelations.relatedIssueId, issueId)));
+      .where(and(eq(issueRelations.domainId, domainId), eq(issueRelations.relatedIssueId, issueId)));
     expect(blockerRelations).toHaveLength(0);
 
     const [source] = await db.select().from(issues).where(eq(issues.id, issueId));
@@ -351,13 +351,13 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     // re-add the escalation comment to the source issue. Without the idempotency guard the
     // source-issue thread is spammed once per scan cycle.
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, issueId } = await seedRunningRun({
+    const { domainId, issueId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
 
-    const first = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const first = await heartbeat.scanSilentActiveRuns({ now, domainId });
     expect(first.created).toBe(1);
     const evaluationIssueId = first.evaluationIssueIds[0]!;
 
@@ -371,7 +371,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     // and the run is still critical, so the existing-branch path re-invokes
     // ensureSourceIssueCommentedForStaleEvaluation. The guard must suppress the second comment.
     const later = new Date(now.getTime() + 60_000);
-    const second = await heartbeat.scanSilentActiveRuns({ now: later, companyId });
+    const second = await heartbeat.scanSilentActiveRuns({ now: later, domainId });
     expect(second.created).toBe(0);
 
     const commentsAfterSecond = await db
@@ -386,7 +386,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       .from(activityLog)
       .where(
         and(
-          eq(activityLog.companyId, companyId),
+          eq(activityLog.domainId, domainId),
           eq(activityLog.action, "heartbeat.output_stale_escalated"),
           eq(activityLog.entityType, "issue"),
           eq(activityLog.entityId, issueId),
@@ -398,7 +398,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
   it("skips ticket creation when the source issue is blocked (idle is expected)", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, issueId } = await seedRunningRun({
+    const { domainId, issueId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
@@ -407,7 +407,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     // Mark the source issue as blocked before scanning
     await db.update(issues).set({ status: "blocked" }).where(eq(issues.id, issueId));
 
-    const result = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const result = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(result.created).toBe(0);
     expect(result.skipped).toBe(1);
@@ -415,20 +415,20 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const evaluations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluations).toHaveLength(0);
   });
 
   it("does not re-file after a stale-run evaluation is dismissed as false positive", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, runId, managerId } = await seedRunningRun({
+    const { domainId, runId, managerId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
-    const first = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const first = await heartbeat.scanSilentActiveRuns({ now, domainId });
     expect(first.created).toBe(1);
     const evaluationIssueId = first.evaluationIssueIds[0]!;
 
@@ -444,20 +444,20 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     await db.update(issues).set({ status: "done" }).where(eq(issues.id, evaluationIssueId));
 
     // Scan again — should not create a new ticket because of the dismissed_false_positive decision
-    const second = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const second = await heartbeat.scanSilentActiveRuns({ now, domainId });
     expect(second.created).toBe(0);
     expect(second.skipped).toBe(1);
 
     const allEvaluations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(allEvaluations).toHaveLength(1);
   });
 
   it("folds terminal source issues with same-run durable evidence instead of creating watchdog work", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, coderId, issueId, runId } = await seedRunningRun({
+    const { domainId, coderId, issueId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
       sourceStatus: "done",
@@ -465,13 +465,13 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     const heartbeat = heartbeatService(db);
 
-    const result = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const result = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(result).toMatchObject({ created: 0, folded: 1, skipped: 0 });
     const evaluations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluations).toHaveLength(0);
 
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId));
@@ -507,14 +507,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
   it("still escalates terminal source issues without same-run terminal evidence", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, runId } = await seedRunningRun({
+    const { domainId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
       sourceStatus: "done",
     });
     const heartbeat = heartbeatService(db);
 
-    const result = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const result = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(result).toMatchObject({ created: 1, folded: 0 });
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId));
@@ -522,14 +522,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const [evaluation] = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluation?.originId).toBe(runId);
     expect(evaluation?.parentId).toBeNull();
   });
 
   it("still escalates when a same-run comment is followed by another actor marking the source done", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, issueId, runId, issuePrefix } = await seedRunningRun({
+    const { domainId, issueId, runId, issuePrefix } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
       sourceStatus: "in_progress",
@@ -541,7 +541,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       .set({ status: "done", completedAt, updatedAt: completedAt })
       .where(eq(issues.id, issueId));
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       actorType: "user",
       actorId: "board-user",
       agentId: null,
@@ -558,7 +558,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     const heartbeat = heartbeatService(db);
 
-    const result = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const result = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(result).toMatchObject({ created: 1, folded: 0 });
     const [run] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId));
@@ -566,14 +566,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const [evaluation] = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluation?.originId).toBe(runId);
     expect(evaluation?.parentId).toBeNull();
   });
 
   it("folds existing evaluation and active watchdog recovery action idempotently", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, issueId, runId, issuePrefix } = await seedRunningRun({
+    const { domainId, managerId, issueId, runId, issuePrefix } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
       sourceStatus: "done",
@@ -582,7 +582,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const evaluationIssueId = randomUUID();
     await db.insert(issues).values({
       id: evaluationIssueId,
-      companyId,
+      domainId,
       title: "Existing stale evaluation",
       status: "todo",
       priority: "high",
@@ -592,16 +592,16 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       originKind: "stale_active_run_evaluation",
       originId: runId,
       originRunId: runId,
-      originFingerprint: `stale_active_run:${companyId}:${runId}`,
+      originFingerprint: `stale_active_run:${domainId}:${runId}`,
     });
     await db.insert(issueRelations).values({
-      companyId,
+      domainId,
       issueId: evaluationIssueId,
       relatedIssueId: issueId,
       type: "blocks",
     });
     await db.insert(issueRecoveryActions).values({
-      companyId,
+      domainId,
       sourceIssueId: issueId,
       recoveryIssueId: evaluationIssueId,
       kind: "active_run_watchdog",
@@ -609,14 +609,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       ownerType: "agent",
       ownerAgentId: managerId,
       cause: "active_run_watchdog",
-      fingerprint: `active-run-watchdog:${companyId}:${runId}:${issueId}`,
+      fingerprint: `active-run-watchdog:${domainId}:${runId}:${issueId}`,
       evidence: { runId },
       nextAction: "Review stale active run",
     });
     const heartbeat = heartbeatService(db);
 
-    const first = await heartbeat.scanSilentActiveRuns({ now, companyId });
-    const second = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const first = await heartbeat.scanSilentActiveRuns({ now, domainId });
+    const second = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(first).toMatchObject({ created: 0, folded: 1 });
     expect(second).toMatchObject({ scanned: 0, created: 0, folded: 0 });
@@ -643,20 +643,20 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
   it("refuses recovery-on-recovery stale-run recursion", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId } = await seedRunningRun({
+    const { domainId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_CRITICAL_THRESHOLD_MS + 60_000,
       sourceOriginKind: "stale_active_run_evaluation",
     });
     const heartbeat = heartbeatService(db);
 
-    const result = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const result = await heartbeat.scanSilentActiveRuns({ now, domainId });
 
     expect(result).toMatchObject({ created: 0, skipped: 1 });
     const evaluations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluations).toHaveLength(1);
   });
 
@@ -672,7 +672,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       withOutput: true,
     });
     await db.insert(heartbeatRunWatchdogDecisions).values({
-      companyId: stale.companyId,
+      domainId: stale.domainId,
       runId: stale.runId,
       decision: "snooze",
       snoozedUntil: new Date(now.getTime() + 60 * 60 * 1000),
@@ -680,8 +680,8 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     const heartbeat = heartbeatService(db);
 
-    const staleResult = await heartbeat.scanSilentActiveRuns({ now, companyId: stale.companyId });
-    const noisyResult = await heartbeat.scanSilentActiveRuns({ now, companyId: noisy.companyId });
+    const staleResult = await heartbeat.scanSilentActiveRuns({ now, domainId: stale.domainId });
+    const noisyResult = await heartbeat.scanSilentActiveRuns({ now, domainId: noisy.domainId });
 
     expect(staleResult).toMatchObject({ created: 0, snoozed: 1 });
     expect(noisyResult).toMatchObject({ scanned: 0, created: 0 });
@@ -689,14 +689,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
   it("records watchdog decisions through recovery owner authorization", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, runId } = await seedRunningRun({
+    const { domainId, managerId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
-    const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const scan = await heartbeat.scanSilentActiveRuns({ now, domainId });
     const evaluationIssueId = scan.evaluationIssueIds[0];
     expect(evaluationIssueId).toBeTruthy();
 
@@ -728,7 +728,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     await expect(recovery.buildRunOutputSilence({
       id: runId,
-      companyId,
+      domainId,
       status: "running",
       lastOutputAt: null,
       lastOutputSeq: 0,
@@ -745,14 +745,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
   it("re-arms continue decisions after the default quiet window", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, runId } = await seedRunningRun({
+    const { domainId, managerId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
-    const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const scan = await heartbeat.scanSilentActiveRuns({ now, domainId });
     const evaluationIssueId = scan.evaluationIssueIds[0];
     expect(evaluationIssueId).toBeTruthy();
 
@@ -777,13 +777,13 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
     const beforeRearm = await heartbeat.scanSilentActiveRuns({
       now: new Date(rearmAt.getTime() - 60_000),
-      companyId,
+      domainId,
     });
     expect(beforeRearm).toMatchObject({ created: 0, snoozed: 1 });
 
     const afterRearm = await heartbeat.scanSilentActiveRuns({
       now: new Date(rearmAt.getTime() + 60_000),
-      companyId,
+      domainId,
     });
     expect(afterRearm.created).toBe(1);
     expect(afterRearm.evaluationIssueIds[0]).not.toBe(evaluationIssueId);
@@ -791,27 +791,27 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const evaluations = await db
       .select()
       .from(issues)
-      .where(and(eq(issues.companyId, companyId), eq(issues.originKind, "stale_active_run_evaluation")));
+      .where(and(eq(issues.domainId, domainId), eq(issues.originKind, "stale_active_run_evaluation")));
     expect(evaluations.filter((issue) => !["done", "cancelled"].includes(issue.status))).toHaveLength(1);
   });
 
   it("rejects agent watchdog decisions using issues not bound to the target run", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, coderId, runId, issuePrefix } = await seedRunningRun({
+    const { domainId, managerId, coderId, runId, issuePrefix } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
-    const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const scan = await heartbeat.scanSilentActiveRuns({ now, domainId });
     const evaluationIssueId = scan.evaluationIssueIds[0];
     expect(evaluationIssueId).toBeTruthy();
 
     const unrelatedIssueId = randomUUID();
     await db.insert(issues).values({
       id: unrelatedIssueId,
-      companyId,
+      domainId,
       title: "Assigned but unrelated",
       status: "todo",
       priority: "medium",
@@ -824,7 +824,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const otherEvaluationIssueId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: otherRunId,
-      companyId,
+      domainId,
       agentId: coderId,
       status: "running",
       invocationSource: "assignment",
@@ -839,7 +839,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     });
     await db.insert(issues).values({
       id: otherEvaluationIssueId,
-      companyId,
+      domainId,
       title: "Other run evaluation",
       status: "todo",
       priority: "medium",
@@ -848,7 +848,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
       identifier: `${issuePrefix}-21`,
       originKind: "stale_active_run_evaluation",
       originId: otherRunId,
-      originFingerprint: `stale_active_run:${companyId}:${otherRunId}`,
+      originFingerprint: `stale_active_run:${domainId}:${otherRunId}`,
     });
 
     const attempts = [
@@ -891,14 +891,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     // The unique constraint only prevents duplicates while an issue is open, so once it's closed
     // the scanner created a fresh one every cycle.
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, runId } = await seedRunningRun({
+    const { domainId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
 
     // First scan: creates the evaluation issue.
-    const first = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const first = await heartbeat.scanSilentActiveRuns({ now, domainId });
     expect(first.created).toBe(1);
     const evaluationIssueId = first.evaluationIssueIds[0];
     expect(evaluationIssueId).toBeTruthy();
@@ -907,12 +907,12 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     await db.update(issues).set({ status: "done" }).where(eq(issues.id, evaluationIssueId));
 
     // Second scan: should NOT create a new issue. Instead auto-records dismissed_false_positive.
-    const second = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const second = await heartbeat.scanSilentActiveRuns({ now, domainId });
     expect(second.created).toBe(0);
     expect(second.skipped).toBe(1);
 
     // All subsequent scans also skip.
-    const third = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const third = await heartbeat.scanSilentActiveRuns({ now, domainId });
     expect(third.created).toBe(0);
     expect(third.skipped).toBe(1);
 
@@ -929,14 +929,14 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     // When a human explicitly recorded a 'continue' decision the watchdog lifecycle is active;
     // closing the issue on the board should not permanently suppress future alerts.
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, runId } = await seedRunningRun({
+    const { domainId, managerId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
-    const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const scan = await heartbeat.scanSilentActiveRuns({ now, domainId });
     const evaluationIssueId = scan.evaluationIssueIds[0];
     expect(evaluationIssueId).toBeTruthy();
 
@@ -955,21 +955,21 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
 
     // After the re-arm window, watchdog should still fire a new alert.
     const rearmAt = new Date(now.getTime() + ACTIVE_RUN_OUTPUT_CONTINUE_REARM_MS + 60_000);
-    const rearm = await heartbeat.scanSilentActiveRuns({ now: rearmAt, companyId });
+    const rearm = await heartbeat.scanSilentActiveRuns({ now: rearmAt, domainId });
     expect(rearm.created).toBe(1);
     expect(rearm.evaluationIssueIds[0]).not.toBe(evaluationIssueId);
   });
 
   it("validates createdByRunId before storing watchdog decisions", async () => {
     const now = new Date("2026-04-22T20:00:00.000Z");
-    const { companyId, managerId, runId } = await seedRunningRun({
+    const { domainId, managerId, runId } = await seedRunningRun({
       now,
       ageMs: ACTIVE_RUN_OUTPUT_SUSPICION_THRESHOLD_MS + 60_000,
     });
     const heartbeat = heartbeatService(db);
     const recovery = recoveryService(db, { enqueueWakeup: vi.fn() });
 
-    const scan = await heartbeat.scanSilentActiveRuns({ now, companyId });
+    const scan = await heartbeat.scanSilentActiveRuns({ now, domainId });
     const evaluationIssueId = scan.evaluationIssueIds[0];
     expect(evaluationIssueId).toBeTruthy();
 
@@ -987,7 +987,7 @@ describeEmbeddedPostgres("active-run output watchdog", () => {
     const managerRunId = randomUUID();
     await db.insert(heartbeatRuns).values({
       id: managerRunId,
-      companyId,
+      domainId,
       agentId: managerId,
       status: "running",
       invocationSource: "assignment",

@@ -32,14 +32,14 @@ if (!embeddedPostgresSupport.supported) {
 
 async function waitForIssueRun(
   service: ActivityService,
-  companyId: string,
+  domainId: string,
   issueId: string,
   predicate: (run: IssueRun) => boolean,
 ) {
   const deadline = Date.now() + 2_000;
   let latestRuns: IssueRun[] = [];
   while (Date.now() < deadline) {
-    latestRuns = await service.runsForIssue(companyId, issueId);
+    latestRuns = await service.runsForIssue(domainId, issueId);
     const run = latestRuns.find(predicate);
     if (run) return { run, runs: latestRuns };
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -72,67 +72,67 @@ describeEmbeddedPostgres("activity service", () => {
     await tempDb?.cleanup();
   });
 
-  it("limits company activity lists", async () => {
-    const companyId = randomUUID();
+  it("limits domain activity lists", async () => {
+    const domainId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(activityLog).values([
       {
-        companyId,
+        domainId,
         actorType: "system",
         actorId: "system",
         action: "test.oldest",
-        entityType: "company",
-        entityId: companyId,
+        entityType: "domain",
+        entityId: domainId,
         createdAt: new Date("2026-04-21T10:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         actorType: "system",
         actorId: "system",
         action: "test.middle",
-        entityType: "company",
-        entityId: companyId,
+        entityType: "domain",
+        entityId: domainId,
         createdAt: new Date("2026-04-21T11:00:00.000Z"),
       },
       {
-        companyId,
+        domainId,
         actorType: "system",
         actorId: "system",
         action: "test.newest",
-        entityType: "company",
-        entityId: companyId,
+        entityType: "domain",
+        entityId: domainId,
         createdAt: new Date("2026-04-21T12:00:00.000Z"),
       },
     ]);
 
-    const result = await activityService(db).list({ companyId, limit: 2 });
+    const result = await activityService(db).list({ domainId, limit: 2 });
 
     expect(result.map((event) => event.action)).toEqual(["test.newest", "test.middle"]);
   });
 
   it("returns compact usage and result summaries for issue runs", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "running",
@@ -144,7 +144,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       status: "succeeded",
@@ -154,12 +154,12 @@ describeEmbeddedPostgres("activity service", () => {
         output_tokens: 7,
         cache_read_input_tokens: 3,
         billingType: "metered",
-        costUsd: 0.42,
+        financeUsd: 0.42,
         enormousBlob: "x".repeat(256_000),
       },
       resultJson: {
         billing_type: "metered",
-        total_cost_usd: 0.42,
+        total_finance_usd: 0.42,
         stopReason: "timeout",
         effectiveTimeoutSec: 30,
         timeoutFired: true,
@@ -173,7 +173,7 @@ describeEmbeddedPostgres("activity service", () => {
       nextAction: "Review the completed output.",
     });
 
-    const runs = await activityService(db).runsForIssue(companyId, issueId);
+    const runs = await activityService(db).runsForIssue(domainId, issueId);
 
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({
@@ -191,16 +191,16 @@ describeEmbeddedPostgres("activity service", () => {
       cache_read_input_tokens: 3,
       billingType: "metered",
       billing_type: "metered",
-      costUsd: 0.42,
-      cost_usd: 0.42,
-      total_cost_usd: 0.42,
+      financeUsd: 0.42,
+      finance_usd: 0.42,
+      total_finance_usd: 0.42,
     });
     expect(runs[0]?.resultJson).toEqual({
       billingType: "metered",
       billing_type: "metered",
-      costUsd: 0.42,
-      cost_usd: 0.42,
-      total_cost_usd: 0.42,
+      financeUsd: 0.42,
+      finance_usd: 0.42,
+      total_finance_usd: 0.42,
       stopReason: "timeout",
       effectiveTimeoutSec: 30,
       timeoutFired: true,
@@ -216,22 +216,22 @@ describeEmbeddedPostgres("activity service", () => {
   });
 
   it("backfills missing liveness for completed issue runs before returning the ledger", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
     const completedAt = new Date("2026-04-18T20:04:00.000Z");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -243,7 +243,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Fix run ledger",
       description: "Make the run ledger answer whether a run advanced.",
       status: "done",
@@ -254,7 +254,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       status: "succeeded",
@@ -271,7 +271,7 @@ describeEmbeddedPostgres("activity service", () => {
     });
 
     await db.insert(issueComments).values({
-      companyId,
+      domainId,
       issueId,
       authorAgentId: agentId,
       createdByRunId: runId,
@@ -282,7 +282,7 @@ describeEmbeddedPostgres("activity service", () => {
     const service = activityService(db);
     const { run, runs } = await waitForIssueRun(
       service,
-      companyId,
+      domainId,
       issueId,
       (entry) => entry.runId === runId && entry.livenessState === "completed",
     );
@@ -307,7 +307,7 @@ describeEmbeddedPostgres("activity service", () => {
   });
 
   it("does not backfill document evidence from a different run", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
@@ -317,15 +317,15 @@ describeEmbeddedPostgres("activity service", () => {
     const createdAt = new Date("2026-04-18T20:08:00.000Z");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -337,7 +337,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Fix run ledger",
       description: "Make the run ledger answer whether a run advanced.",
       status: "in_progress",
@@ -348,7 +348,7 @@ describeEmbeddedPostgres("activity service", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: runId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "assignment",
         status: "succeeded",
@@ -363,7 +363,7 @@ describeEmbeddedPostgres("activity service", () => {
       },
       {
         id: otherRunId,
-        companyId,
+        domainId,
         agentId,
         invocationSource: "assignment",
         status: "succeeded",
@@ -380,7 +380,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId,
+      domainId,
       title: "Plan",
       format: "markdown",
       latestBody: "# Plan\n\n- Inspect files",
@@ -394,7 +394,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId,
+      domainId,
       documentId,
       revisionNumber: 1,
       title: "Plan",
@@ -406,7 +406,7 @@ describeEmbeddedPostgres("activity service", () => {
     });
 
     await db.insert(issueDocuments).values({
-      companyId,
+      domainId,
       issueId,
       documentId,
       key: "plan",
@@ -417,7 +417,7 @@ describeEmbeddedPostgres("activity service", () => {
     const service = activityService(db);
     const { run: backfilledRun } = await waitForIssueRun(
       service,
-      companyId,
+      domainId,
       issueId,
       (entry) => entry.runId === runId && entry.livenessState === "plan_only",
     );
@@ -431,7 +431,7 @@ describeEmbeddedPostgres("activity service", () => {
   });
 
   it("does not treat continuation summary revisions as concrete backfill evidence", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const agentId = randomUUID();
     const issueId = randomUUID();
     const runId = randomUUID();
@@ -440,15 +440,15 @@ describeEmbeddedPostgres("activity service", () => {
     const createdAt = new Date("2026-04-18T20:12:00.000Z");
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
 
     await db.insert(agents).values({
       id: agentId,
-      companyId,
+      domainId,
       name: "CodexCoder",
       role: "engineer",
       status: "idle",
@@ -460,7 +460,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Fix run ledger",
       description: "Make the run ledger answer whether a run advanced.",
       status: "in_progress",
@@ -470,7 +470,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(heartbeatRuns).values({
       id: runId,
-      companyId,
+      domainId,
       agentId,
       invocationSource: "assignment",
       status: "succeeded",
@@ -486,7 +486,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(documents).values({
       id: documentId,
-      companyId,
+      domainId,
       title: "Continuation Summary",
       format: "markdown",
       latestBody: "# Continuation Summary",
@@ -500,7 +500,7 @@ describeEmbeddedPostgres("activity service", () => {
 
     await db.insert(documentRevisions).values({
       id: revisionId,
-      companyId,
+      domainId,
       documentId,
       revisionNumber: 1,
       title: "Continuation Summary",
@@ -512,7 +512,7 @@ describeEmbeddedPostgres("activity service", () => {
     });
 
     await db.insert(issueDocuments).values({
-      companyId,
+      domainId,
       issueId,
       documentId,
       key: ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
@@ -523,7 +523,7 @@ describeEmbeddedPostgres("activity service", () => {
     const service = activityService(db);
     const { run: backfilledRun } = await waitForIssueRun(
       service,
-      companyId,
+      domainId,
       issueId,
       (entry) => entry.runId === runId && entry.livenessState === "plan_only",
     );

@@ -68,19 +68,19 @@ export function resolveProtocol(): {
 } {
   const raw = process.env.OTEL_EXPORTER_OTLP_PROTOCOL?.trim().toLowerLifeAdmin();
   switch (raw) {
-    case undefined:
-    case "":
-    case "grpc":
+    life_admin undefined:
+    life_admin "":
+    life_admin "grpc":
       return {
         protocol: "grpc",
         packageName: "@opentelemetry/exporter-trace-otlp-grpc",
       };
-    case "http/protobuf":
+    life_admin "http/protobuf":
       return {
         protocol: "http/protobuf",
         packageName: "@opentelemetry/exporter-trace-otlp-proto",
       };
-    case "http/json":
+    life_admin "http/json":
       return {
         protocol: "http/json",
         packageName: "@opentelemetry/exporter-trace-otlp-http",
@@ -102,13 +102,13 @@ async function importExporter(protocol: ExporterProtocol): Promise<{
   OTLPTraceExporter: new (config?: Record<string, unknown>) => unknown;
 }> {
   switch (protocol) {
-    case "grpc":
+    life_admin "grpc":
       // @ts-ignore optional peer dep
       return await import("@opentelemetry/exporter-trace-otlp-grpc");
-    case "http/protobuf":
+    life_admin "http/protobuf":
       // @ts-ignore optional peer dep
       return await import("@opentelemetry/exporter-trace-otlp-proto");
-    case "http/json":
+    life_admin "http/json":
       // @ts-ignore optional peer dep
       return await import("@opentelemetry/exporter-trace-otlp-http");
   }

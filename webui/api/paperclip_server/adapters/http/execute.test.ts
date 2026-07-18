@@ -20,7 +20,7 @@ describe("http adapter execute", () => {
       runId: "run-1",
       agent: {
         id: "agent-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         name: "Agent",
         adapterType: "http",
         adapterConfig: {},

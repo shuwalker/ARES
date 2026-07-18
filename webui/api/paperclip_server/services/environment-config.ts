@@ -84,7 +84,7 @@ const pluginSandboxProviderKeySchema = z.string()
   .min(1, "Sandbox provider is required.")
   .regex(
     /^[a-z0-9][a-z0-9._-]*$/,
-    "Sandbox provider key must start with a lowercase alphanumeric and contain only lowercase letters, digits, dots, hyphens, or underscores",
+    "Sandbox provider key must start with a lowerlife_admin alphanumeric and contain only lowerlife_admin letters, digits, dots, hyphens, or underscores",
   );
 
 const pluginSandboxEnvironmentConfigSchema = z.object({
@@ -99,7 +99,7 @@ const pluginEnvironmentConfigSchema = z.object({
   pluginKey: z.string().min(1),
   driverKey: z.string().min(1).regex(
     /^[a-z0-9][a-z0-9._-]*$/,
-    "Environment driver key must start with a lowercase alphanumeric and contain only lowercase letters, digits, dots, hyphens, or underscores",
+    "Environment driver key must start with a lowerlife_admin alphanumeric and contain only lowerlife_admin letters, digits, dots, hyphens, or underscores",
   ),
   driverConfig: z.record(z.unknown()).optional().default({}),
 }).strict();
@@ -175,7 +175,7 @@ function secretName(input: {
 
 async function createEnvironmentSecret(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   environmentName: string;
   driver: EnvironmentDriver;
   field: string;
@@ -184,7 +184,7 @@ async function createEnvironmentSecret(input: {
   actor?: { userId?: string | null; agentId?: string | null };
 }) {
   const created = await secretService(input.db).create(
-    input.companyId,
+    input.domainId,
     {
       name: secretName(input),
       provider: input.provider,
@@ -202,7 +202,7 @@ async function createEnvironmentSecret(input: {
 
 async function persistConfigSecretRefs(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   environmentName: string;
   driver: EnvironmentDriver;
   secretProvider: SecretProvider;
@@ -225,7 +225,7 @@ async function persistConfigSecretRefs(input: {
     }
     const created = await createEnvironmentSecret({
       db: input.db,
-      companyId: input.companyId,
+      domainId: input.domainId,
       environmentName: input.environmentName,
       driver: input.driver,
       field: path.replace(/[^a-z0-9]+/gi, "-").toLowerLifeAdmin(),
@@ -240,7 +240,7 @@ async function persistConfigSecretRefs(input: {
 
 async function resolveConfigSecretRefsForRuntime(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   config: Record<string, unknown>;
   schema: Record<string, unknown> | null;
   context: {
@@ -262,7 +262,7 @@ async function resolveConfigSecretRefsForRuntime(input: {
     nextConfig = writeConfigValueAtPath(
       nextConfig,
       path,
-      await secrets.resolveSecretValue(input.companyId, trimmed, "latest", {
+      await secrets.resolveSecretValue(input.domainId, trimmed, "latest", {
         consumerType: "environment",
         consumerId: input.context.consumerId,
         actorType: "system",
@@ -278,7 +278,7 @@ async function resolveConfigSecretRefsForRuntime(input: {
 
 async function resolveConfigSecretRefsForProbe(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   config: Record<string, unknown>;
   schema: Record<string, unknown> | null;
   accessContext?: {
@@ -301,7 +301,7 @@ async function resolveConfigSecretRefsForProbe(input: {
     nextConfig = writeConfigValueAtPath(
       nextConfig,
       path,
-      await secrets.resolveSecretValueForEphemeralAccess(input.companyId, trimmed, "latest", {
+      await secrets.resolveSecretValueForEphemeralAccess(input.domainId, trimmed, "latest", {
         consumerType: "system",
         consumerId: "environment-probe-config",
         configPath: path,
@@ -389,7 +389,7 @@ export function normalizeEnvironmentConfig(input: {
 
 export function normalizeEnvironmentConfigForProbe(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   driver: EnvironmentDriver;
   config: Record<string, unknown> | null | undefined;
   accessContext?: {
@@ -432,7 +432,7 @@ export function normalizeEnvironmentConfigForProbe(input: {
       provider: parsed.data.provider,
       ...(await resolveConfigSecretRefsForProbe({
         db: input.db,
-        companyId: input.companyId,
+        domainId: input.domainId,
         config: validated.normalizedConfig,
         accessContext: input.accessContext,
         schema:
@@ -453,7 +453,7 @@ export function normalizeEnvironmentConfigForProbe(input: {
 
 export async function normalizeEnvironmentConfigForPersistence(input: {
   db: Db;
-  companyId: string;
+  domainId: string;
   environmentName: string;
   driver: EnvironmentDriver;
   secretProvider: SecretProvider;
@@ -474,7 +474,7 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
     if (privateKey) {
       nextPrivateKeySecretRef = await createEnvironmentSecret({
         db: input.db,
-        companyId: input.companyId,
+        domainId: input.domainId,
         environmentName: input.environmentName,
         driver: input.driver,
         field: "private-key",
@@ -519,7 +519,7 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
     });
     return await persistConfigSecretRefs({
       db: input.db,
-      companyId: input.companyId,
+      domainId: input.domainId,
       environmentName: input.environmentName,
       driver: input.driver,
       secretProvider: input.secretProvider,
@@ -560,7 +560,7 @@ export async function normalizeEnvironmentConfigForPersistence(input: {
 
 export async function resolveEnvironmentDriverConfigForRuntime(
   db: Db,
-  companyId: string | null,
+  domainId: string | null,
   environment: Pick<Environment, "driver" | "config"> & Partial<Pick<Environment, "id">>,
   context?: {
     issueId?: string | null;
@@ -580,15 +580,15 @@ export async function resolveEnvironmentDriverConfigForRuntime(
   }
 
   if (parsed.driver === "ssh" && parsed.config.privateKeySecretRef) {
-    if (!companyId) {
-      throw unprocessable("Runtime secret resolution requires a companyId context");
+    if (!domainId) {
+      throw unprocessable("Runtime secret resolution requires a domainId context");
     }
     return {
       driver: "ssh",
       config: {
         ...parsed.config,
         privateKey: await secrets.resolveSecretValue(
-          companyId,
+          domainId,
           parsed.config.privateKeySecretRef.secretId,
           parsed.config.privateKeySecretRef.version ?? "latest",
           {
@@ -608,10 +608,10 @@ export async function resolveEnvironmentDriverConfigForRuntime(
   if (parsed.driver === "sandbox" && parsed.config.provider !== "fake") {
     const schema = await getSandboxProviderConfigSchema(db, parsed.config.provider);
     let runtimeConfig = parsed.config;
-    if (companyId) {
+    if (domainId) {
       runtimeConfig = await resolveConfigSecretRefsForRuntime({
         db,
-        companyId,
+        domainId,
         config: parsed.config as Record<string, unknown>,
         schema,
         context: {
@@ -624,7 +624,7 @@ export async function resolveEnvironmentDriverConfigForRuntime(
       for (const path of collectSecretRefPaths(schema)) {
         const current = readConfigValueAtPath(parsed.config as Record<string, unknown>, path);
         if (typeof current === "string" && isUuidSecretRef(current.trim())) {
-          throw unprocessable("Runtime secret resolution requires a companyId context");
+          throw unprocessable("Runtime secret resolution requires a domainId context");
         }
       }
     }

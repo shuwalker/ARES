@@ -36,10 +36,10 @@ if (!embeddedPostgresSupport.supported) {
   );
 }
 
-describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
+describeEmbeddedPostgres("GET /domains/:domainId/invites", () => {
   let db!: ReturnType<typeof createDb>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
-  let companyId!: string;
+  let domainId!: string;
 
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-invite-list-route-");
@@ -47,11 +47,11 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
   }, 20_000);
 
   beforeEach(async () => {
-    companyId = randomUUID();
+    domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
   });
@@ -66,7 +66,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
     await tempDb?.cleanup();
   });
 
-  function createApp(currentCompanyId: string) {
+  function createApp(currentDomainId: string) {
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
@@ -74,7 +74,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
         type: "board",
         source: "local_implicit",
         userId: null,
-        companyIds: [currentCompanyId],
+        domainIds: [currentDomainId],
       };
       next();
     });
@@ -99,8 +99,8 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
     await db.insert(invites).values([
       {
         id: inviteOneId,
-        companyId,
-        inviteType: "company_join",
+        domainId,
+        inviteType: "domain_join",
         tokenHash: "invite-token-1",
         allowedJoinTypes: "human",
         defaultsPayload: { humanRole: "viewer" },
@@ -110,8 +110,8 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
       },
       {
         id: inviteTwoId,
-        companyId,
-        inviteType: "company_join",
+        domainId,
+        inviteType: "domain_join",
         tokenHash: "invite-token-2",
         allowedJoinTypes: "human",
         defaultsPayload: { humanRole: "operator" },
@@ -121,8 +121,8 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
       },
       {
         id: inviteThreeId,
-        companyId,
-        inviteType: "company_join",
+        domainId,
+        inviteType: "domain_join",
         tokenHash: "invite-token-3",
         allowedJoinTypes: "human",
         defaultsPayload: { humanRole: "admin" },
@@ -135,7 +135,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
     await db.insert(joinRequests).values({
       id: randomUUID(),
       inviteId: inviteThreeId,
-      companyId,
+      domainId,
       requestType: "human",
       status: "pending_approval",
       requestIp: "127.0.0.1",
@@ -144,9 +144,9 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
       updatedAt: new Date("2026-04-12T00:05:00.000Z"),
     });
 
-    const app = createApp(companyId);
+    const app = createApp(domainId);
 
-    const firstPage = await request(app).get(`/api/domains/${companyId}/invites?limit=2`);
+    const firstPage = await request(app).get(`/api/domains/${domainId}/invites?limit=2`);
 
     expect(firstPage.status).toBe(200);
     expect(firstPage.body.invites).toHaveLength(2);
@@ -154,7 +154,7 @@ describeEmbeddedPostgres("GET /domains/:companyId/invites", () => {
     expect(firstPage.body.invites[0].relatedJoinRequestId).toBeTruthy();
     expect(firstPage.body.nextOffset).toBe(2);
 
-    const secondPage = await request(app).get(`/api/domains/${companyId}/invites?limit=2&offset=2`);
+    const secondPage = await request(app).get(`/api/domains/${domainId}/invites?limit=2&offset=2`);
 
     expect(secondPage.status).toBe(200);
     expect(secondPage.body.invites).toHaveLength(1);

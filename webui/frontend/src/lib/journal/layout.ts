@@ -1,6 +1,6 @@
 /**
- * Work Timeline layout — pure transform from the Phase B endpoint contract
- * (`WorkTimelineResult`) into a renderable view model for the custom-SVG Gantt.
+ * Work Journal layout — pure transform from the Phase B endpoint contract
+ * (`WorkJournalResult`) into a renderable view model for the custom-SVG Gantt.
  *
  * Ports the board-locked "Direction C" logic (PAP-12422): agent/system rows only
  * (humans never get a row), overlapping runs packed into concurrency sub-lanes,
@@ -13,11 +13,11 @@
  * tested without a DOM.
  */
 import type {
-  WorkTimelineActor,
-  WorkTimelineEdge,
-  WorkTimelineEvent,
-  WorkTimelineResult,
-  WorkTimelineSpan,
+  WorkJournalActor,
+  WorkJournalEdge,
+  WorkJournalEvent,
+  WorkJournalResult,
+  WorkJournalSpan,
 } from "@paperclipai/shared";
 
 export interface LayoutOptions {
@@ -36,7 +36,7 @@ export interface LayoutOptions {
 }
 
 export interface PositionedBar {
-  span: WorkTimelineSpan;
+  span: WorkJournalSpan;
   /** leading (start) x in px. */
   x1: number;
   /** trailing (end) x in px. */
@@ -48,7 +48,7 @@ export interface PositionedBar {
   height: number;
   running: boolean;
   /** the actor who kicked this run off, if resolvable (may be a human/user). */
-  kickoff: WorkTimelineActor | null;
+  kickoff: WorkJournalActor | null;
 }
 
 /**
@@ -57,7 +57,7 @@ export interface PositionedBar {
  * but rows now stay focused on actors with actual run participation.
  */
 export interface PositionedMarker {
-  event: WorkTimelineEvent;
+  event: WorkJournalEvent;
   /** x position (px) of the marker centre = x(event.at). */
   x: number;
   /** vertical centre of the marker in px (row-relative, excludes axis offset). */
@@ -65,7 +65,7 @@ export interface PositionedMarker {
 }
 
 export interface ActorRow {
-  actor: WorkTimelineActor;
+  actor: WorkJournalActor;
   /** top of the row (excluding axis offset) in px. */
   y: number;
   /** row height in px. */
@@ -91,7 +91,7 @@ export interface Connector {
   dashed: boolean;
 }
 
-export interface TimelineLayout {
+export interface JournalLayout {
   rows: ActorRow[];
   connectors: Connector[];
   /** full inner width of the chart (gutter + plotted time + pad). */
@@ -129,7 +129,7 @@ export function isCancelledStatus(status: string): boolean {
  * drop their fill entirely (rendered as a hollow dashed bar) and a status-blue "now"
  * line marks the present.
  */
-export const TIMELINE_COLORS = {
+export const JOURNAL_COLORS = {
   delegated: "#5b9bf6",
   automation: "#f4b740",
   /** stroke/ink for a hollow, cancelled bar. */
@@ -146,10 +146,10 @@ export function barSourceKind(bar: PositionedBar): RunSourceKind {
 
 /** Source colour for a bar under the "Signal" encoding. */
 export function barColor(bar: PositionedBar): string {
-  return TIMELINE_COLORS[barSourceKind(bar)];
+  return JOURNAL_COLORS[barSourceKind(bar)];
 }
 
-export function actorType(actor: WorkTimelineActor | undefined): string {
+export function actorType(actor: WorkJournalActor | undefined): string {
   return actor?.type ?? "system";
 }
 
@@ -170,16 +170,16 @@ export function shortLabel(name: string): string {
   return (name.slice(0, 2) || "?").toUpperCase();
 }
 
-function spanStartMs(s: WorkTimelineSpan): number {
+function spanStartMs(s: WorkJournalSpan): number {
   return new Date(s.start).getTime();
 }
 
-function spanEndMs(s: WorkTimelineSpan, nowMs: number): number {
+function spanEndMs(s: WorkJournalSpan, nowMs: number): number {
   const raw = s.end ? new Date(s.end).getTime() : nowMs;
   return raw;
 }
 
-function kickoffEdgeRunDistanceMs(edge: WorkTimelineEdge, span: WorkTimelineSpan): number {
+function kickoffEdgeRunDistanceMs(edge: WorkJournalEdge, span: WorkJournalSpan): number {
   return Math.abs(spanStartMs(span) - new Date(edge.at).getTime());
 }
 
@@ -187,8 +187,8 @@ function spanGroupKey(actorId: string, issueId: string): string {
   return `${actorId}\0${issueId}`;
 }
 
-function closestRunForKickoffEdge(edge: WorkTimelineEdge, spans: readonly WorkTimelineSpan[]): string | null {
-  let closest: { span: WorkTimelineSpan; distance: number } | null = null;
+function closestRunForKickoffEdge(edge: WorkJournalEdge, spans: readonly WorkJournalSpan[]): string | null {
+  let closest: { span: WorkJournalSpan; distance: number } | null = null;
   for (const span of spans) {
     const distance = kickoffEdgeRunDistanceMs(edge, span);
     if (
@@ -203,10 +203,10 @@ function closestRunForKickoffEdge(edge: WorkTimelineEdge, spans: readonly WorkTi
 }
 
 function buildClosestRunByKickoffEdge(
-  spans: readonly WorkTimelineSpan[],
-  edges: readonly WorkTimelineEdge[],
-): Map<WorkTimelineEdge, string> {
-  const spansByActorIssue = new Map<string, WorkTimelineSpan[]>();
+  spans: readonly WorkJournalSpan[],
+  edges: readonly WorkJournalEdge[],
+): Map<WorkJournalEdge, string> {
+  const spansByActorIssue = new Map<string, WorkJournalSpan[]>();
   for (const span of spans) {
     const key = spanGroupKey(span.actorId, span.issueId);
     const group = spansByActorIssue.get(key);
@@ -214,7 +214,7 @@ function buildClosestRunByKickoffEdge(
     else spansByActorIssue.set(key, [span]);
   }
 
-  const closestRunByEdge = new Map<WorkTimelineEdge, string>();
+  const closestRunByEdge = new Map<WorkJournalEdge, string>();
   for (const edge of edges) {
     const closestRunId = closestRunForKickoffEdge(
       edge,
@@ -232,13 +232,13 @@ function buildClosestRunByKickoffEdge(
  * "avatar chip at the leading edge = who kicked it off".
  */
 function resolveKickoff(
-  span: WorkTimelineSpan,
-  edges: WorkTimelineEdge[],
-  actorById: Map<string, WorkTimelineActor>,
-  closestRunByKickoffEdge: ReadonlyMap<WorkTimelineEdge, string>,
-): WorkTimelineActor | null {
+  span: WorkJournalSpan,
+  edges: WorkJournalEdge[],
+  actorById: Map<string, WorkJournalActor>,
+  closestRunByKickoffEdge: ReadonlyMap<WorkJournalEdge, string>,
+): WorkJournalActor | null {
   const start = spanStartMs(span);
-  let best: { edge: WorkTimelineEdge; delta: number } | null = null;
+  let best: { edge: WorkJournalEdge; delta: number } | null = null;
   for (const e of edges) {
     if (e.toActorId !== span.actorId || e.issueId !== span.issueId) continue;
     if (e.fromActorId === span.actorId) continue; // self-kickoff is not a delegation
@@ -252,7 +252,7 @@ function resolveKickoff(
   return actorById.get(best.edge.fromActorId) ?? null;
 }
 
-export function computeLayout(result: WorkTimelineResult, opts: LayoutOptions): TimelineLayout {
+export function computeLayout(result: WorkJournalResult, opts: LayoutOptions): JournalLayout {
   const { pxPerMinute, gutter, rowH, barH, laneGap, nowMs } = opts;
   const fromMs = new Date(result.window.from).getTime();
   const toMs = new Date(result.window.to).getTime();

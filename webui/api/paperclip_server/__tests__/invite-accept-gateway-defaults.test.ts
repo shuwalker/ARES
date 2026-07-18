@@ -6,9 +6,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   domains,
-  companySecretProviderConfigs,
-  companySecretVersions,
-  companySecrets,
+  domainSecretProviderConfigs,
+  domainSecretVersions,
+  domainSecrets,
   createDb,
   invites,
   joinRequests,
@@ -269,9 +269,9 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
   afterEach(async () => {
     await db.delete(joinRequests);
     await db.delete(invites);
-    await db.delete(companySecretVersions);
-    await db.delete(companySecrets);
-    await db.delete(companySecretProviderConfigs);
+    await db.delete(domainSecretVersions);
+    await db.delete(domainSecrets);
+    await db.delete(domainSecretProviderConfigs);
     await db.delete(domains);
   });
 
@@ -286,21 +286,21 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
   });
 
   it("stores a secret ref instead of the literal apiKey in join request defaults", async () => {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const inviteId = randomUUID();
     const joinRequestId = randomUUID();
     const literalApiKey = `hermes-key-${randomUUID()}`;
 
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
+      issuePrefix: `T${domainId.replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(invites).values({
       id: inviteId,
-      companyId,
-      inviteType: "company_join",
+      domainId,
+      inviteType: "domain_join",
       tokenHash: `invite-token-${randomUUID()}`,
       allowedJoinTypes: "agent",
       defaultsPayload: null,
@@ -323,7 +323,7 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
 
     const persistedDefaults = await prepareAgentDefaultsPayloadForJoinPersistence({
       db,
-      companyId,
+      domainId,
       adapterType: "hermes_gateway",
       normalized: joinDefaults.normalized,
     });
@@ -331,7 +331,7 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
     await db.insert(joinRequests).values({
       id: joinRequestId,
       inviteId,
-      companyId,
+      domainId,
       requestType: "agent",
       status: "pending_approval",
       requestIp: "127.0.0.1",
@@ -355,7 +355,7 @@ describeEmbeddedPostgres("prepareAgentDefaultsPayloadForJoinPersistence (hermes_
       version: "latest",
     });
 
-    const storedSecrets = await db.select().from(companySecrets);
+    const storedSecrets = await db.select().from(domainSecrets);
     expect(storedSecrets).toHaveLength(1);
     expect((storedPayload.apiKey as { secretId: string }).secretId).toBe(storedSecrets[0]?.id);
   });

@@ -8,7 +8,7 @@
  *   2. Persist `executionMode` into instance general settings (so the per-run
  *      heartbeat guard enforces it).
  *   3. Idempotently ensure a configured Kubernetes sandbox environment for every
- *      company (mirrors `ensureLocalEnvironment`).
+ *      domain (mirrors `ensureLocalEnvironment`).
  *
  * The boot hook is *configuration convenience*; the actual security gate is the
  * per-run guard in the heartbeat (see `execution-allowlist.ts`). Even with no
@@ -134,7 +134,7 @@ export function parseExecutionPolicyBootstrapEnv(
 /**
  * Apply the parsed bootstrap to the database: persist `executionMode` into
  * instance settings and ensure a configured Kubernetes environment for every
- * company. Idempotent; safe to call on every boot.
+ * domain. Idempotent; safe to call on every boot.
  */
 export async function applyExecutionPolicyBootstrap(
   db: Db,
@@ -145,19 +145,19 @@ export async function applyExecutionPolicyBootstrap(
 
   await instanceSettings.updateGeneral({ executionMode: bootstrap.executionMode });
 
-  const companyIds = await instanceSettings.listCompanyIds();
+  const domainIds = await instanceSettings.listDomainIds();
   let configured = 0;
-  const failedCompanyIds: string[] = [];
-  for (const companyId of companyIds) {
+  const failedDomainIds: string[] = [];
+  for (const domainId of domainIds) {
     try {
-      await environments.ensureKubernetesEnvironment(companyId, bootstrap.kubernetesConfig);
+      await environments.ensureKubernetesEnvironment(domainId, bootstrap.kubernetesConfig);
       configured += 1;
     } catch (err) {
       logger.error(
-        { err, companyId },
+        { err, domainId },
         "failed to ensure managed Kubernetes environment during execution-policy bootstrap",
       );
-      failedCompanyIds.push(companyId);
+      failedDomainIds.push(domainId);
     }
   }
 
@@ -172,9 +172,9 @@ export async function applyExecutionPolicyBootstrap(
     "applied forced Kubernetes execution policy",
   );
 
-  if (failedCompanyIds.length > 0) {
+  if (failedDomainIds.length > 0) {
     throw new Error(
-      `execution-policy bootstrap: ${failedCompanyIds.length} of ${companyIds.length} domains failed to get a managed Kubernetes environment under executionMode=${bootstrap.executionMode}; refusing to start (domains: ${failedCompanyIds.join(", ")})`,
+      `execution-policy bootstrap: ${failedDomainIds.length} of ${domainIds.length} domains failed to get a managed Kubernetes environment under executionMode=${bootstrap.executionMode}; refusing to start (domains: ${failedDomainIds.join(", ")})`,
     );
   }
 

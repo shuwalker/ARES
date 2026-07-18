@@ -1,7 +1,7 @@
 import type {
-  CompanySkillCreateRequest,
-  CompanySkillDetail,
-  CompanySkillSharingScope,
+  DomainSkillCreateRequest,
+  DomainSkillDetail,
+  DomainSkillSharingScope,
 } from "@paperclipai/shared";
 
 export const SKILL_CREATE_ACCENTS = [
@@ -18,7 +18,7 @@ export type SkillCreateDraft = {
   color: string;
   categories: string[];
   markdown: string;
-  sharingScope: Exclude<CompanySkillSharingScope, "public_link">;
+  sharingScope: Exclude<DomainSkillSharingScope, "public_link">;
   forkedFromSkillId: string | null;
   forkedFromName: string | null;
 };
@@ -26,7 +26,7 @@ export type SkillCreateDraft = {
 export function normalizeSkillDraftSlug(value: string) {
   return value
     .trim()
-    .toLowerLifeAdmin()
+    .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
@@ -38,7 +38,7 @@ export function splitCategoryDraft(value: string) {
   for (const entry of value.split(",")) {
     const category = entry.trim().replace(/\s+/g, " ");
     if (!category) continue;
-    const key = category.toLowerLifeAdmin();
+    const key = category.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     categories.push(category);
@@ -89,13 +89,13 @@ export function buildBlankSkillDraft(): SkillCreateDraft {
     color: SKILL_CREATE_ACCENTS[0]!,
     categories: [],
     markdown: defaultSkillMarkdown("", ""),
-    sharingScope: "company",
+    sharingScope: "domain",
     forkedFromSkillId: null,
     forkedFromName: null,
   };
 }
 
-export function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft {
+export function buildForkSkillDraft(skill: DomainSkillDetail): SkillCreateDraft {
   const name = `${skill.name} Fork`;
   const slug = normalizeSkillDraftSlug(`${skill.slug}-fork`);
   return {
@@ -106,13 +106,13 @@ export function buildForkSkillDraft(skill: CompanySkillDetail): SkillCreateDraft
     color: skill.color ?? skillAccentColor(skill.key, null),
     categories: skill.categories,
     markdown: skill.markdown.replace(/^name:\s*.*$/m, `name: ${name}`),
-    sharingScope: "company",
+    sharingScope: "domain",
     forkedFromSkillId: skill.id,
     forkedFromName: skill.name,
   };
 }
 
-export function skillCreateDraftToPayload(draft: SkillCreateDraft): CompanySkillCreateRequest {
+export function skillCreateDraftToPayload(draft: SkillCreateDraft): DomainSkillCreateRequest {
   const effectiveSlug = draft.slug.trim() || normalizeSkillDraftSlug(draft.name);
   const effectiveMarkdown = draft.markdown.trim().length > 0
     ? draft.markdown

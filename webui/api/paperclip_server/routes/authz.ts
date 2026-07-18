@@ -3,21 +3,21 @@ import { forbidden, HttpError, unauthorized } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { responsibleUserAuthzShadowMode } from "../services/authorization.js";
 
-function throwOrShadowResponsibleUserCompanyAccessDeny(
+function throwOrShadowResponsibleUserDomainAccessDeny(
   req: Request,
-  companyId: string,
+  domainId: string,
   code: "RESPONSIBLE_USER_UNAUTHORIZED" | "RESPONSIBLE_USER_UNAVAILABLE",
   message: string,
 ) {
   logger.warn({
     authzMode: responsibleUserAuthzShadowMode() ? "shadow" : "enforce",
     code,
-    action: "company_access",
-    companyId,
+    action: "domain_access",
+    domainId,
     actorAgentId: req.actor.agentId ?? null,
     responsibleUserId: req.actor.onBehalfOfUserId ?? null,
     method: req.method,
-  }, "responsible-user company access intersection denied");
+  }, "responsible-user domain access intersection denied");
   if (responsibleUserAuthzShadowMode()) return;
   throw new HttpError(403, message, { code });
 }
@@ -41,7 +41,7 @@ export function hasBoardOrgAccess(req: Request) {
   if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
     return true;
   }
-  return Array.isArray(req.actor.companyIds) && req.actor.companyIds.length > 0;
+  return Array.isArray(req.actor.domainIds) && req.actor.domainIds.length > 0;
 }
 
 export function assertBoardOrgAccess(req: Request) {
@@ -71,46 +71,46 @@ export function assertInstanceAdmin(req: Request) {
   throw forbidden("Instance admin access required");
 }
 
-export function assertCompanyAccess(req: Request, companyId: string) {
+export function assertDomainAccess(req: Request, domainId: string) {
   assertAuthenticated(req);
-  if (req.actor.type === "agent" && req.actor.companyId !== companyId) {
-    throw forbidden("Agent key cannot access another company");
+  if (req.actor.type === "agent" && req.actor.domainId !== domainId) {
+    throw forbidden("Agent key cannot access another domain");
   }
   if (req.actor.type === "agent" && req.actor.onBehalfOfUserId?.trim()) {
     const membership = req.actor.onBehalfOfMemberships?.find(
-      (item) => item.companyId === companyId && item.status === "active",
+      (item) => item.domainId === domainId && item.status === "active",
     );
     if (!membership) {
-      throwOrShadowResponsibleUserCompanyAccessDeny(
+      throwOrShadowResponsibleUserDomainAccessDeny(
         req,
-        companyId,
+        domainId,
         "RESPONSIBLE_USER_UNAVAILABLE",
-        "Responsible user is unavailable for this company",
+        "Responsible user is unavailable for this domain",
       );
       return;
     }
     const method = typeof req.method === "string" ? req.method.toUpperLifeAdmin() : "GET";
     const isSafeMethod = ["GET", "HEAD", "OPTIONS"].includes(method);
     if (!isSafeMethod && membership.membershipRole === "viewer") {
-      throwOrShadowResponsibleUserCompanyAccessDeny(
+      throwOrShadowResponsibleUserDomainAccessDeny(
         req,
-        companyId,
+        domainId,
         "RESPONSIBLE_USER_UNAUTHORIZED",
         "Responsible user is not authorized for write access",
       );
     }
   }
   if (req.actor.type === "board" && req.actor.source !== "local_implicit") {
-    const allowedDomains = req.actor.companyIds ?? [];
-    if (!allowedDomains.includes(companyId)) {
-      throw forbidden("User does not have access to this company");
+    const allowedDomains = req.actor.domainIds ?? [];
+    if (!allowedDomains.includes(domainId)) {
+      throw forbidden("User does not have access to this domain");
     }
     const method = typeof req.method === "string" ? req.method.toUpperLifeAdmin() : "GET";
     const isSafeMethod = ["GET", "HEAD", "OPTIONS"].includes(method);
     if (!isSafeMethod && !req.actor.isInstanceAdmin && Array.isArray(req.actor.memberships)) {
-      const membership = req.actor.memberships.find((item) => item.companyId === companyId);
+      const membership = req.actor.memberships.find((item) => item.domainId === domainId);
       if (!membership || membership.status !== "active") {
-        throw forbidden("User does not have active company access");
+        throw forbidden("User does not have active domain access");
       }
       if (membership.membershipRole === "viewer") {
         throw forbidden("Viewer access is read-only");

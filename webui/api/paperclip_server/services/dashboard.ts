@@ -1,6 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, approvals, domains, costEvents, heartbeatRuns, issues } from "@paperclipai/db";
+import { agents, approvals, domains, financeEvents, heartbeatRuns, issues } from "@paperclipai/db";
 import { notFound } from "../errors.js";
 import { budgetService } from "./budgets.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
@@ -26,31 +26,31 @@ function getRecentUtcDateKeys(now: Date, days: number): string[] {
 export function dashboardService(db: Db) {
   const budgets = budgetService(db);
   return {
-    summary: async (companyId: string) => {
-      const company = await db
+    summary: async (domainId: string) => {
+      const domain = await db
         .select()
         .from(domains)
-        .where(eq(domains.id, companyId))
+        .where(eq(domains.id, domainId))
         .then((rows) => rows[0] ?? null);
 
-      if (!company) throw notFound("Domain not found");
+      if (!domain) throw notFound("Domain not found");
 
       const agentRows = await db
         .select({ status: agents.status, count: sql<number>`count(*)` })
         .from(agents)
-        .where(eq(agents.companyId, companyId))
+        .where(eq(agents.domainId, domainId))
         .groupBy(agents.status);
 
       const taskRows = await db
         .select({ status: issues.status, count: sql<number>`count(*)` })
         .from(issues)
-        .where(and(eq(issues.companyId, companyId), visibleIssueCondition()))
+        .where(and(eq(issues.domainId, domainId), visibleIssueCondition()))
         .groupBy(issues.status);
 
       const pendingApprovals = await db
         .select({ count: sql<number>`count(*)` })
         .from(approvals)
-        .where(and(eq(approvals.companyId, companyId), eq(approvals.status, "pending")))
+        .where(and(eq(approvals.domainId, domainId), eq(approvals.status, "pending")))
         .then((rows) => Number(rows[0]?.count ?? 0));
 
       const agentCounts: Record<string, number> = {
@@ -86,13 +86,13 @@ export function dashboardService(db: Db) {
       const runActivityStart = new Date(`${runActivityDays[0]}T00:00:00.000Z`);
       const [{ monthSpend }] = await db
         .select({
-          monthSpend: sql<number>`coalesce(sum(${costEvents.costCents}), 0)::double precision`,
+          monthSpend: sql<number>`coalesce(sum(${financeEvents.financeCents}), 0)::double precision`,
         })
-        .from(costEvents)
+        .from(financeEvents)
         .where(
           and(
-            eq(costEvents.companyId, companyId),
-            gte(costEvents.occurredAt, monthStart),
+            eq(financeEvents.domainId, domainId),
+            gte(financeEvents.occurredAt, monthStart),
           ),
         );
 
@@ -107,7 +107,7 @@ export function dashboardService(db: Db) {
           SELECT parent.id
           FROM ${heartbeatRuns} AS child
           JOIN ${heartbeatRuns} AS parent ON parent.id = child.retry_of_run_id
-          WHERE child.company_id = ${companyId}
+          WHERE child.domain_id = ${domainId}
             AND child.status = 'succeeded'
           UNION
           SELECT parent.id
@@ -122,7 +122,7 @@ export function dashboardService(db: Db) {
           (run.id IN (SELECT id FROM recovered_runs)) AS recovered,
           count(*)::double precision AS count
         FROM ${heartbeatRuns} AS run
-        WHERE run.company_id = ${companyId}
+        WHERE run.domain_id = ${domainId}
           AND run.created_at >= ${runActivityStart.toISOString()}::timestamptz
         GROUP BY date, run.status, run.error_code, recovered
       `)) as unknown as Iterable<{
@@ -174,13 +174,13 @@ export function dashboardService(db: Db) {
       }
 
       const utilization =
-        company.budgetMonthlyCents > 0
-          ? (monthSpendCents / company.budgetMonthlyCents) * 100
+        domain.budgetMonthlyCents > 0
+          ? (monthSpendCents / domain.budgetMonthlyCents) * 100
           : 0;
-      const budgetOverview = await budgets.overview(companyId);
+      const budgetOverview = await budgets.overview(domainId);
 
       return {
-        companyId,
+        domainId,
         agents: {
           active: agentCounts.active,
           running: agentCounts.running,
@@ -190,7 +190,7 @@ export function dashboardService(db: Db) {
         tasks: taskCounts,
         finances: {
           monthSpendCents,
-          monthBudgetCents: company.budgetMonthlyCents,
+          monthBudgetCents: domain.budgetMonthlyCents,
           monthUtilizationPercent: Number(utilization.toFixed(2)),
         },
         pendingApprovals,

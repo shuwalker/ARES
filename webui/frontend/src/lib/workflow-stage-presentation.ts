@@ -6,7 +6,7 @@ const defaultWorkflowStageColumnTone = {
   bodyOver: "bg-accent/40",
 };
 
-export const pipelineStageColumnTones: Record<string, typeof defaultWorkflowStageColumnTone> = {
+export const workflowStageColumnTones: Record<string, typeof defaultWorkflowStageColumnTone> = {
   review: {
     outer: "border-violet-500/25 bg-violet-50/50 dark:bg-violet-950/15",
     header: "border-violet-500/15 text-violet-700 dark:text-violet-300",
@@ -38,9 +38,9 @@ export const pipelineStageColumnTones: Record<string, typeof defaultWorkflowStag
 };
 
 export function getWorkflowStageColumnTone(kind: string | null | undefined) {
-  return pipelineStageColumnTones[kind?.trim().toLowerLifeAdmin() ?? ""] ?? defaultWorkflowStageColumnTone;
+  return workflowStageColumnTones[kind?.trim().toLowerCase() ?? ""] ?? defaultWorkflowStageColumnTone;
 }
 
-export function pipelineStageAutomationSettingsHref(pipelineId: string, stageId: string) {
-  return `/pipelines/${pipelineId}/settings?stage=${stageId}&section=instructions`;
+export function workflowStageAutomationSettingsHref(workflowId: string, stageId: string) {
+  return `/workflows/${workflowId}/settings?stage=${stageId}&section=instructions`;
 }

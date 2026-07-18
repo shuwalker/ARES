@@ -62,14 +62,14 @@ export function healthRoutes(
     deploymentMode: DeploymentMode;
     deploymentExposure: DeploymentExposure;
     authReady: boolean;
-    companyDeletionEnabled: boolean;
+    domainDeletionEnabled: boolean;
     serverInfo?: ServerInfoSnapshot;
     databaseBackupHealth?: InspectDatabaseBackupHealthOptions;
   } = {
     deploymentMode: "local_trusted",
     deploymentExposure: "private",
     authReady: true,
-    companyDeletionEnabled: true,
+    domainDeletionEnabled: true,
   },
 ) {
   const router = Router();
@@ -220,7 +220,7 @@ export function healthRoutes(
       bootstrapStatus,
       bootstrapInviteActive,
       features: {
-        companyDeletionEnabled: opts.companyDeletionEnabled,
+        domainDeletionEnabled: opts.domainDeletionEnabled,
       },
       serverInfo,
       ...(databaseBackup ? { databaseBackup } : {}),

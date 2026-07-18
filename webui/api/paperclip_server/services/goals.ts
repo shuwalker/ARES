@@ -4,14 +4,14 @@ import { goals } from "@paperclipai/db";
 
 type GoalReader = Pick<Db, "select">;
 
-export async function getDefaultCompanyGoal(db: GoalReader, companyId: string) {
+export async function getDefaultDomainGoal(db: GoalReader, domainId: string) {
   const activeRootGoal = await db
     .select()
     .from(goals)
     .where(
       and(
-        eq(goals.companyId, companyId),
-        eq(goals.level, "company"),
+        eq(goals.domainId, domainId),
+        eq(goals.level, "domain"),
         eq(goals.status, "active"),
         isNull(goals.parentId),
       ),
@@ -25,8 +25,8 @@ export async function getDefaultCompanyGoal(db: GoalReader, companyId: string) {
     .from(goals)
     .where(
       and(
-        eq(goals.companyId, companyId),
-        eq(goals.level, "company"),
+        eq(goals.domainId, domainId),
+        eq(goals.level, "domain"),
         isNull(goals.parentId),
       ),
     )
@@ -37,14 +37,14 @@ export async function getDefaultCompanyGoal(db: GoalReader, companyId: string) {
   return db
     .select()
     .from(goals)
-    .where(and(eq(goals.companyId, companyId), eq(goals.level, "company")))
+    .where(and(eq(goals.domainId, domainId), eq(goals.level, "domain")))
     .orderBy(asc(goals.createdAt))
     .then((rows) => rows[0] ?? null);
 }
 
 export function goalService(db: Db) {
   return {
-    list: (companyId: string) => db.select().from(goals).where(eq(goals.companyId, companyId)),
+    list: (domainId: string) => db.select().from(goals).where(eq(goals.domainId, domainId)),
 
     getById: (id: string) =>
       db
@@ -53,12 +53,12 @@ export function goalService(db: Db) {
         .where(eq(goals.id, id))
         .then((rows) => rows[0] ?? null),
 
-    getDefaultCompanyGoal: (companyId: string) => getDefaultCompanyGoal(db, companyId),
+    getDefaultDomainGoal: (domainId: string) => getDefaultDomainGoal(db, domainId),
 
-    create: (companyId: string, data: Omit<typeof goals.$inferInsert, "companyId">) =>
+    create: (domainId: string, data: Omit<typeof goals.$inferInsert, "domainId">) =>
       db
         .insert(goals)
-        .values({ ...data, companyId })
+        .values({ ...data, domainId })
         .returning()
         .then((rows) => rows[0]),
 

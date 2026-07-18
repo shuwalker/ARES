@@ -51,21 +51,21 @@ describeEmbeddedPostgres("pending approval agent config integrity", () => {
   });
 
   async function seedDomain() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Paperclip",
-      issuePrefix: issuePrefix(companyId),
+      issuePrefix: issuePrefix(domainId),
       requireBoardApprovalForNewAgents: true,
     });
-    return companyId;
+    return domainId;
   }
 
   it("freezes generic pending hire config and reapplies the approval snapshot on activation", async () => {
-    const companyId = await seedDomain();
+    const domainId = await seedDomain();
     const agentSvc = agentService(db);
     const approvalSvc = approvalService(db);
-    const pending = await agentSvc.create(companyId, {
+    const pending = await agentSvc.create(domainId, {
       name: "Pending Coder",
       role: "engineer",
       title: "Software Engineer",
@@ -81,7 +81,7 @@ describeEmbeddedPostgres("pending approval agent config integrity", () => {
       permissions: {},
       lastHeartbeatAt: null,
     });
-    const approval = await approvalSvc.create(companyId, {
+    const approval = await approvalSvc.create(domainId, {
       type: "hire_agent",
       requestedByAgentId: null,
       requestedByUserId: "board-user",

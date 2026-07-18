@@ -12,7 +12,7 @@ const mockAccessService = vi.hoisted(() => ({
   hasPermission: vi.fn(),
 }));
 
-const mockCompanySkillService = vi.hoisted(() => ({
+const mockDomainSkillService = vi.hoisted(() => ({
   list: vi.fn(),
   categoryCounts: vi.fn(),
   detail: vi.fn(),
@@ -127,8 +127,8 @@ function registerModuleMocks() {
     agentService: () => mockAgentService,
   }));
 
-  vi.doMock("../services/company-skills.js", () => ({
-    companySkillService: () => mockCompanySkillService,
+  vi.doMock("../services/domain-skills.js", () => ({
+    domainSkillService: () => mockDomainSkillService,
   }));
 
   vi.doMock("../services/skills-catalog.js", () => mockCatalogService);
@@ -146,7 +146,7 @@ function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
     accessService: () => mockAccessService,
     agentService: () => mockAgentService,
-    companySkillService: () => mockCompanySkillService,
+    domainSkillService: () => mockDomainSkillService,
     issueService: () => mockIssueService,
     heartbeatService: () => mockHeartbeatService,
     logActivity: mockLogActivity,
@@ -154,8 +154,8 @@ function registerModuleMocks() {
 }
 
 async function createApp(actor: Record<string, unknown>) {
-  const [{ companySkillRoutes }, { errorHandler }] = await Promise.all([
-    vi.importActual<typeof import("../routes/company-skills.js")>("../routes/company-skills.js"),
+  const [{ domainSkillRoutes }, { errorHandler }] = await Promise.all([
+    vi.importActual<typeof import("../routes/domain-skills.js")>("../routes/domain-skills.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
   ]);
   const app = express();
@@ -164,12 +164,12 @@ async function createApp(actor: Record<string, unknown>) {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api", companySkillRoutes({} as any));
+  app.use("/api", domainSkillRoutes({} as any));
   app.use(errorHandler);
   return app;
 }
 
-describe("company skill mutation permissions", () => {
+describe("domain skill mutation permissions", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doUnmock("@paperclipai/shared/telemetry");
@@ -177,30 +177,30 @@ describe("company skill mutation permissions", () => {
     vi.doUnmock("../services/access.js");
     vi.doUnmock("../services/activity-log.js");
     vi.doUnmock("../services/agents.js");
-    vi.doUnmock("../services/company-skills.js");
+    vi.doUnmock("../services/domain-skills.js");
     vi.doUnmock("../services/skills-catalog.js");
     vi.doUnmock("../services/change-consent-gate.js");
     vi.doUnmock("../services/index.js");
-    vi.doUnmock("../routes/company-skills.js");
+    vi.doUnmock("../routes/domain-skills.js");
     vi.doUnmock("../routes/authz.js");
     vi.doUnmock("../middleware/index.js");
     registerModuleMocks();
     vi.clearAllMocks();
     mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
-    mockCompanySkillService.importFromSource.mockResolvedValue({
+    mockDomainSkillService.importFromSource.mockResolvedValue({
       imported: [],
       warnings: [],
     });
     mockCatalogService.listCatalogSkillsOrEmpty.mockReturnValue([]);
-    mockCompanySkillService.list.mockResolvedValue([]);
-    mockCompanySkillService.categoryCounts.mockResolvedValue([]);
-    mockCompanySkillService.detail.mockResolvedValue(null);
-    mockCompanySkillService.listVersions.mockResolvedValue([]);
-    mockCompanySkillService.getVersion.mockResolvedValue(null);
-    mockCompanySkillService.createVersion.mockResolvedValue({
+    mockDomainSkillService.list.mockResolvedValue([]);
+    mockDomainSkillService.categoryCounts.mockResolvedValue([]);
+    mockDomainSkillService.detail.mockResolvedValue(null);
+    mockDomainSkillService.listVersions.mockResolvedValue([]);
+    mockDomainSkillService.getVersion.mockResolvedValue(null);
+    mockDomainSkillService.createVersion.mockResolvedValue({
       id: "version-1",
-      companyId: "company-1",
-      companySkillId: "skill-1",
+      domainId: "domain-1",
+      domainSkillId: "skill-1",
       revisionNumber: 1,
       label: "v1",
       fileInventory: [{ path: "SKILL.md", kind: "skill", content: "# Skill" }],
@@ -208,20 +208,20 @@ describe("company skill mutation permissions", () => {
       authorUserId: "board",
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
     });
-    mockCompanySkillService.starSkill.mockResolvedValue({
+    mockDomainSkillService.starSkill.mockResolvedValue({
       skillId: "skill-1",
       starred: true,
       starCount: 1,
     });
-    mockCompanySkillService.unstarSkill.mockResolvedValue({
+    mockDomainSkillService.unstarSkill.mockResolvedValue({
       skillId: "skill-1",
       starred: false,
       starCount: 0,
     });
     const forkedSkill = {
       id: "skill-fork",
-      companyId: "company-1",
-      key: "company/company-1/review-fork",
+      domainId: "domain-1",
+      key: "domain/domain-1/review-fork",
       slug: "review-fork",
       name: "Review Fork",
       description: null,
@@ -238,10 +238,10 @@ describe("company skill mutation permissions", () => {
       authorName: null,
       homepageUrl: null,
       categories: [],
-      sharingScope: "company",
+      sharingScope: "domain",
       publicShareToken: null,
       forkedFromSkillId: "skill-1",
-      forkedFromCompanyId: "company-1",
+      forkedFromDomainId: "domain-1",
       starCount: 0,
       installCount: 1,
       forkCount: 0,
@@ -250,7 +250,7 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:00:00.000Z"),
     };
-    mockCompanySkillService.forkSkill.mockResolvedValue({
+    mockDomainSkillService.forkSkill.mockResolvedValue({
       skill: forkedSkill,
       original: {
         id: "skill-1",
@@ -262,7 +262,7 @@ describe("company skill mutation permissions", () => {
       },
       reassignments: [],
     });
-    mockCompanySkillService.forkPrecheck.mockResolvedValue({
+    mockDomainSkillService.forkPrecheck.mockResolvedValue({
       skillId: "skill-1",
       original: {
         id: "skill-1",
@@ -276,11 +276,11 @@ describe("company skill mutation permissions", () => {
       usedByAgents: [],
       existingForks: [],
     });
-    mockCompanySkillService.listComments.mockResolvedValue([]);
-    mockCompanySkillService.createComment.mockResolvedValue({
+    mockDomainSkillService.listComments.mockResolvedValue([]);
+    mockDomainSkillService.createComment.mockResolvedValue({
       id: "comment-1",
-      companyId: "company-1",
-      companySkillId: "skill-1",
+      domainId: "domain-1",
+      domainSkillId: "skill-1",
       parentCommentId: null,
       authorAgentId: null,
       authorUserId: "board",
@@ -289,10 +289,10 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:00:00.000Z"),
     });
-    mockCompanySkillService.updateComment.mockResolvedValue({
+    mockDomainSkillService.updateComment.mockResolvedValue({
       id: "comment-1",
-      companyId: "company-1",
-      companySkillId: "skill-1",
+      domainId: "domain-1",
+      domainSkillId: "skill-1",
       parentCommentId: null,
       authorAgentId: null,
       authorUserId: "board",
@@ -301,10 +301,10 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:00:00.000Z"),
     });
-    mockCompanySkillService.deleteComment.mockResolvedValue({
+    mockDomainSkillService.deleteComment.mockResolvedValue({
       id: "comment-1",
-      companyId: "company-1",
-      companySkillId: "skill-1",
+      domainId: "domain-1",
+      domainSkillId: "skill-1",
       parentCommentId: null,
       authorAgentId: null,
       authorUserId: "board",
@@ -313,11 +313,11 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:01:00.000Z"),
     });
-    mockCompanySkillService.installFromCatalog.mockResolvedValue({
+    mockDomainSkillService.installFromCatalog.mockResolvedValue({
       action: "created",
       skill: {
         id: "skill-1",
-        companyId: "company-1",
+        domainId: "domain-1",
         key: "paperclipai/bundled/software-development/review",
         slug: "review",
         name: "review",
@@ -358,10 +358,10 @@ describe("company skill mutation permissions", () => {
       },
       warnings: [],
     });
-    mockCompanySkillService.createLocalSkill.mockResolvedValue({
+    mockDomainSkillService.createLocalSkill.mockResolvedValue({
       id: "skill-1",
-      companyId: "company-1",
-      key: "company/company-1/review",
+      domainId: "domain-1",
+      key: "domain/domain-1/review",
       slug: "review",
       name: "Review",
       description: null,
@@ -378,10 +378,10 @@ describe("company skill mutation permissions", () => {
       authorName: null,
       homepageUrl: null,
       categories: [],
-      sharingScope: "company",
+      sharingScope: "domain",
       publicShareToken: null,
       forkedFromSkillId: null,
-      forkedFromCompanyId: null,
+      forkedFromDomainId: null,
       starCount: 0,
       installCount: 1,
       forkCount: 0,
@@ -390,13 +390,13 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:00:00.000Z"),
     });
-    mockCompanySkillService.updateSkill.mockResolvedValue({
+    mockDomainSkillService.updateSkill.mockResolvedValue({
       id: "skill-1",
       slug: "review",
       categories: ["memory", "review"],
-      sharingScope: "company",
+      sharingScope: "domain",
     });
-    mockCompanySkillService.updateFile.mockResolvedValue({
+    mockDomainSkillService.updateFile.mockResolvedValue({
       skillId: "skill-1",
       path: "SKILL.md",
       kind: "skill",
@@ -405,13 +405,13 @@ describe("company skill mutation permissions", () => {
       markdown: true,
       editable: true,
     });
-    mockCompanySkillService.deleteFile.mockResolvedValue({
+    mockDomainSkillService.deleteFile.mockResolvedValue({
       skillId: "skill-1",
       path: "references",
       target: "folder",
       deletedPaths: ["references/example.md"],
     });
-    mockCompanySkillService.scanProjectWorkspaces.mockResolvedValue({
+    mockDomainSkillService.scanProjectWorkspaces.mockResolvedValue({
       scannedProjects: 0,
       scannedWorkspaces: 0,
       discovered: 0,
@@ -421,12 +421,12 @@ describe("company skill mutation permissions", () => {
       conflicts: [],
       warnings: [],
     });
-    mockCompanySkillService.deleteSkill.mockResolvedValue({
+    mockDomainSkillService.deleteSkill.mockResolvedValue({
       id: "skill-1",
       slug: "find-skills",
       name: "Find Skills",
     });
-    mockCompanySkillService.auditSkill.mockResolvedValue({
+    mockDomainSkillService.auditSkill.mockResolvedValue({
       skillId: "skill-1",
       installedHash: "sha256:abc",
       originHash: "sha256:abc",
@@ -436,29 +436,29 @@ describe("company skill mutation permissions", () => {
       scannedAt: "2026-05-26T00:00:00.000Z",
       scanVersion: "1",
     });
-    mockCompanySkillService.getById.mockResolvedValue({
+    mockDomainSkillService.getById.mockResolvedValue({
       id: "skill-1",
       slug: "review",
       sourceRef: "sha256:abc",
       metadata: { originHash: "sha256:abc" },
     });
-    mockCompanySkillService.installUpdate.mockResolvedValue({
+    mockDomainSkillService.installUpdate.mockResolvedValue({
       id: "skill-1",
       slug: "review",
       sourceRef: "sha256:def",
       metadata: { originHash: "sha256:def" },
     });
-    mockCompanySkillService.resetSkill.mockResolvedValue({
+    mockDomainSkillService.resetSkill.mockResolvedValue({
       id: "skill-1",
       slug: "review",
       sourceRef: "sha256:def",
       metadata: { originHash: "sha256:def" },
     });
-    mockCompanySkillService.pruneExpiredTestHarnessIssues.mockResolvedValue({ pruned: 0 });
-    mockCompanySkillService.listTestInputs.mockResolvedValue([]);
-    mockCompanySkillService.createTestInput.mockResolvedValue({
+    mockDomainSkillService.pruneExpiredTestHarnessIssues.mockResolvedValue({ pruned: 0 });
+    mockDomainSkillService.listTestInputs.mockResolvedValue([]);
+    mockDomainSkillService.createTestInput.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       skillId: "skill-1",
       name: "smoke/input",
       content: "Try the skill",
@@ -467,9 +467,9 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:00:00.000Z"),
     });
-    mockCompanySkillService.updateTestInput.mockResolvedValue({
+    mockDomainSkillService.updateTestInput.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       skillId: "skill-1",
       name: "smoke/renamed",
       content: "Try the skill again",
@@ -478,9 +478,9 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:01:00.000Z"),
     });
-    mockCompanySkillService.deleteTestInput.mockResolvedValue({
+    mockDomainSkillService.deleteTestInput.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
-      companyId: "company-1",
+      domainId: "domain-1",
       skillId: "skill-1",
       name: "smoke/renamed",
       content: "Try the skill again",
@@ -491,7 +491,7 @@ describe("company skill mutation permissions", () => {
     });
     const templateResponse = {
       id: "66666666-6666-4666-8666-666666666666",
-      companyId: "company-1",
+      domainId: "domain-1",
       name: "Custom template",
       description: "Custom run guidance",
       body: "Run {{skillName}} into {{outputDocumentKey}}.",
@@ -504,7 +504,7 @@ describe("company skill mutation permissions", () => {
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:00:00.000Z"),
     };
-    mockCompanySkillService.listTestRunTemplates.mockResolvedValue([{
+    mockDomainSkillService.listTestRunTemplates.mockResolvedValue([{
       ...templateResponse,
       id: "built-in:default-test-template",
       name: "Default test template",
@@ -514,22 +514,22 @@ describe("company skill mutation permissions", () => {
       createdByUserId: null,
       updatedByUserId: null,
     }, templateResponse]);
-    mockCompanySkillService.createTestRunTemplate.mockResolvedValue(templateResponse);
-    mockCompanySkillService.updateTestRunTemplate.mockResolvedValue({
+    mockDomainSkillService.createTestRunTemplate.mockResolvedValue(templateResponse);
+    mockDomainSkillService.updateTestRunTemplate.mockResolvedValue({
       ...templateResponse,
       name: "Renamed template",
       updatedAt: new Date("2026-05-26T00:01:00.000Z"),
     });
-    mockCompanySkillService.deleteTestRunTemplate.mockResolvedValue({
+    mockDomainSkillService.deleteTestRunTemplate.mockResolvedValue({
       ...templateResponse,
       deletedAt: new Date("2026-05-26T00:02:00.000Z"),
       updatedAt: new Date("2026-05-26T00:02:00.000Z"),
     });
-    mockCompanySkillService.listTestRuns.mockResolvedValue([]);
-    mockCompanySkillService.getTestRunDetail.mockResolvedValue(null);
-    mockCompanySkillService.createTestRun.mockResolvedValue({
+    mockDomainSkillService.listTestRuns.mockResolvedValue([]);
+    mockDomainSkillService.getTestRunDetail.mockResolvedValue(null);
+    mockDomainSkillService.createTestRun.mockResolvedValue({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
+      domainId: "domain-1",
       skillId: "skill-1",
       inputId: "11111111-1111-4111-8111-111111111111",
       inputSnapshot: "Try the skill",
@@ -552,12 +552,12 @@ describe("company skill mutation permissions", () => {
       harnessIssueDeletedAt: null,
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:00:00.000Z"),
-      cost: { costCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+      finance: { financeCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
       taskExpired: false,
     });
-    mockCompanySkillService.cancelTestRun.mockResolvedValue({
+    mockDomainSkillService.cancelTestRun.mockResolvedValue({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
+      domainId: "domain-1",
       skillId: "skill-1",
       inputId: "11111111-1111-4111-8111-111111111111",
       inputSnapshot: "Try the skill",
@@ -580,18 +580,18 @@ describe("company skill mutation permissions", () => {
       harnessIssueDeletedAt: null,
       createdAt: new Date("2026-05-26T00:00:00.000Z"),
       updatedAt: new Date("2026-05-26T00:01:00.000Z"),
-      cost: { costCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+      finance: { financeCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
       taskExpired: false,
     });
     mockIssueService.create.mockResolvedValue({
       id: "44444444-4444-4444-8444-444444444444",
-      companyId: "company-1",
+      domainId: "domain-1",
       identifier: "PAP-999",
       title: "Skill test: Review",
     });
     mockIssueService.getById.mockResolvedValue({
       id: "44444444-4444-4444-8444-444444444444",
-      companyId: "company-1",
+      domainId: "domain-1",
       status: "in_progress",
       executionRunId: "run-1",
     });
@@ -633,15 +633,15 @@ describe("company skill mutation permissions", () => {
     mockReflectionCoachMutationGate.assertConsented.mockResolvedValue(undefined);
   });
 
-  it("allows local board operators to mutate company skills", async () => {
+  it("allows local board operators to mutate domain skills", async () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -651,81 +651,81 @@ describe("company skill mutation permissions", () => {
     });
   });
 
-  it("allows board users with skills:create to create, import, install, update, delete, audit, and reset company skills", async () => {
+  it("allows board users with skills:create to create, import, install, update, delete, audit, and reset domain skills", async () => {
     const app = await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "session",
       isInstanceAdmin: false,
     });
 
     await request(app)
-      .post("/api/domains/company-1/skills")
+      .post("/api/domains/domain-1/skills")
       .send({ name: "Review", slug: "review", markdown: "# Review" })
       .expect(201);
     await request(app)
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" })
       .expect(201);
     await request(app)
-      .post("/api/domains/company-1/skills/install-catalog")
+      .post("/api/domains/domain-1/skills/install-catalog")
       .send({ catalogSkillId: "paperclipai:bundled:software-development:review" })
       .expect(201);
     await request(app)
-      .patch("/api/domains/company-1/skills/skill-1")
+      .patch("/api/domains/domain-1/skills/skill-1")
       .send({ description: "Updated" })
       .expect(200);
     await request(app)
-      .delete("/api/domains/company-1/skills/skill-1")
+      .delete("/api/domains/domain-1/skills/skill-1")
       .expect(200);
     await request(app)
-      .post("/api/domains/company-1/skills/skill-1/audit")
+      .post("/api/domains/domain-1/skills/skill-1/audit")
       .send({})
       .expect(200);
     await request(app)
-      .post("/api/domains/company-1/skills/skill-1/reset")
+      .post("/api/domains/domain-1/skills/skill-1/reset")
       .send({})
       .expect(200);
 
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "domain", domainId: "domain-1" },
     }));
-    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("company-1", "board-user", "agents:create");
-    expect(mockCompanySkillService.createLocalSkill).toHaveBeenCalled();
-    expect(mockCompanySkillService.importFromSource).toHaveBeenCalled();
-    expect(mockCompanySkillService.installFromCatalog).toHaveBeenCalled();
-    expect(mockCompanySkillService.updateSkill).toHaveBeenCalled();
-    expect(mockCompanySkillService.deleteSkill).toHaveBeenCalled();
-    expect(mockCompanySkillService.auditSkill).toHaveBeenCalled();
-    expect(mockCompanySkillService.resetSkill).toHaveBeenCalled();
+    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("domain-1", "board-user", "agents:create");
+    expect(mockDomainSkillService.createLocalSkill).toHaveBeenCalled();
+    expect(mockDomainSkillService.importFromSource).toHaveBeenCalled();
+    expect(mockDomainSkillService.installFromCatalog).toHaveBeenCalled();
+    expect(mockDomainSkillService.updateSkill).toHaveBeenCalled();
+    expect(mockDomainSkillService.deleteSkill).toHaveBeenCalled();
+    expect(mockDomainSkillService.auditSkill).toHaveBeenCalled();
+    expect(mockDomainSkillService.resetSkill).toHaveBeenCalled();
   });
 
-  it("blocks board users without skills:create from mutating company skills", async () => {
+  it("blocks board users without skills:create from mutating domain skills", async () => {
     mockAccessService.decide.mockResolvedValue(denySkillChangeDecision());
 
     const res = await request(await createApp({
       type: "board",
       userId: "board-user",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "session",
       isInstanceAdmin: false,
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Missing permission: skills:create or skills:suggest-changes.");
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "domain", domainId: "domain-1" },
     }));
-    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("company-1", "board-user", "agents:create");
-    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
+    expect(mockAccessService.canUser).not.toHaveBeenCalledWith("domain-1", "board-user", "agents:create");
+    expect(mockDomainSkillService.importFromSource).not.toHaveBeenCalled();
   });
 
-  it("serves catalog listing without mutating company skills", async () => {
+  it("serves catalog listing without mutating domain skills", async () => {
     mockCatalogService.listCatalogSkillsOrEmpty.mockReturnValue([
       {
         id: "paperclipai:bundled:software-development:review",
@@ -751,7 +751,7 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
@@ -759,8 +759,8 @@ describe("company skill mutation permissions", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(mockCatalogService.listCatalogSkillsOrEmpty).toHaveBeenCalledWith({ kind: "bundled", q: "review" });
-    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
-    expect(mockCompanySkillService.installFromCatalog).not.toHaveBeenCalled();
+    expect(mockDomainSkillService.importFromSource).not.toHaveBeenCalled();
+    expect(mockDomainSkillService.installFromCatalog).not.toHaveBeenCalled();
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 
@@ -783,7 +783,7 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
@@ -804,25 +804,25 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/domains/company-1/skills/install-catalog")
+      .post("/api/domains/domain-1/skills/install-catalog")
       .send({
         catalogSkillId: "paperclipai:bundled:software-development:review",
         slug: "review",
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(mockCompanySkillService.installFromCatalog).toHaveBeenCalledWith("company-1", {
+    expect(mockDomainSkillService.installFromCatalog).toHaveBeenCalledWith("domain-1", {
       catalogSkillId: "paperclipai:bundled:software-development:review",
       slug: "review",
     });
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId: "company-1",
-      action: "company.skill_catalog_installed",
-      entityType: "company_skill",
+      domainId: "domain-1",
+      action: "domain.skill_catalog_installed",
+      entityType: "domain_skill",
       entityId: "skill-1",
       details: expect.objectContaining({
         catalogId: "paperclipai:bundled:software-development:review",
@@ -833,11 +833,11 @@ describe("company skill mutation permissions", () => {
   });
 
   it("tracks public GitHub skill imports with an explicit skill reference", async () => {
-    mockCompanySkillService.importFromSource.mockResolvedValue({
+    mockDomainSkillService.importFromSource.mockResolvedValue({
       imported: [
         {
           id: "skill-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           key: "vercel-labs/agent-browser/find-skills",
           slug: "find-skills",
           name: "Find Skills",
@@ -864,11 +864,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -879,11 +879,11 @@ describe("company skill mutation permissions", () => {
   });
 
   it("does not expose a skill reference for non-public skill imports", async () => {
-    mockCompanySkillService.importFromSource.mockResolvedValue({
+    mockDomainSkillService.importFromSource.mockResolvedValue({
       imported: [
         {
           id: "skill-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           key: "private-skill",
           slug: "private-skill",
           name: "Private Skill",
@@ -910,11 +910,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://ghe.example.com/acme/private-skill" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -925,11 +925,11 @@ describe("company skill mutation permissions", () => {
   });
 
   it("does not expose a skill reference when GitHub metadata is missing", async () => {
-    mockCompanySkillService.importFromSource.mockResolvedValue({
+    mockDomainSkillService.importFromSource.mockResolvedValue({
       imported: [
         {
           id: "skill-1",
-          companyId: "company-1",
+          domainId: "domain-1",
           key: "unknown/private-skill",
           slug: "private-skill",
           name: "Private Skill",
@@ -952,11 +952,11 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/acme/private-skill" });
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
@@ -966,99 +966,99 @@ describe("company skill mutation permissions", () => {
     });
   });
 
-  it("blocks same-company agents without skill change grants from mutating company skills", async () => {
+  it("blocks same-domain agents without skill change grants from mutating domain skills", async () => {
     mockAccessService.decide.mockResolvedValue(denySkillChangeDecision());
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       permissions: { canCreateSkills: false },
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Missing permission: skills:create or skills:suggest-changes.");
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "domain", domainId: "domain-1" },
     }));
-    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("company-1", "agent", "55555555-5555-4555-8555-555555555555", "agents:create");
-    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
+    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("domain-1", "agent", "55555555-5555-4555-8555-555555555555", "agents:create");
+    expect(mockDomainSkillService.importFromSource).not.toHaveBeenCalled();
   });
 
   it("blocks agent catalog installs for other domains", async () => {
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       permissions: { canCreateSkills: true },
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     }))
-      .post("/api/domains/company-2/skills/install-catalog")
+      .post("/api/domains/domain-2/skills/install-catalog")
       .send({ catalogSkillId: "paperclipai:bundled:software-development:review" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
-    expect(mockCompanySkillService.installFromCatalog).not.toHaveBeenCalled();
+    expect(mockDomainSkillService.installFromCatalog).not.toHaveBeenCalled();
   });
 
   it("passes store list filters and category count requests to the service", async () => {
     const app = await createApp({ type: "board", source: "local_implicit" });
 
     await request(app)
-      .get("/api/domains/company-1/skills?sort=stars&categories[]=memory&category=git&scope=company&q=review&include=lastEditor")
+      .get("/api/domains/domain-1/skills?sort=stars&categories[]=memory&category=git&scope=domain&q=review&include=lastEditor")
       .expect(200);
-    expect(mockCompanySkillService.list).toHaveBeenCalledWith("company-1", {
+    expect(mockDomainSkillService.list).toHaveBeenCalledWith("domain-1", {
       q: "review",
       sort: "stars",
       categories: ["git", "memory"],
-      scope: "company",
+      scope: "domain",
       include: ["lastEditor"],
     });
 
-    await request(app).get("/api/domains/company-1/skills/categories").expect(200);
-    expect(mockCompanySkillService.categoryCounts).toHaveBeenCalledWith("company-1");
+    await request(app).get("/api/domains/domain-1/skills/categories").expect(200);
+    expect(mockDomainSkillService.categoryCounts).toHaveBeenCalledWith("domain-1");
   });
 
   it("accepts category updates and logs the skill mutation", async () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     const res = await request(app)
-      .patch("/api/domains/company-1/skills/skill-1")
-      .send({ categories: ["memory", "review"], sharingScope: "company" })
+      .patch("/api/domains/domain-1/skills/skill-1")
+      .send({ categories: ["memory", "review"], sharingScope: "domain" })
       .expect(200);
 
     expect(res.body).toMatchObject({
       id: "skill-1",
       categories: ["memory", "review"],
-      sharingScope: "company",
+      sharingScope: "domain",
     });
-    expect(mockCompanySkillService.updateSkill).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockDomainSkillService.updateSkill).toHaveBeenCalledWith("domain-1", "skill-1", {
       categories: ["memory", "review"],
-      sharingScope: "company",
+      sharingScope: "domain",
     });
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      companyId: "company-1",
+      domainId: "domain-1",
       actorType: "user",
       actorId: "user-1",
-      action: "company.skill_updated",
-      entityType: "company_skill",
+      action: "domain.skill_updated",
+      entityType: "domain_skill",
       entityId: "skill-1",
       details: {
         slug: "review",
         categories: ["memory", "review"],
-        sharingScope: "company",
+        sharingScope: "domain",
       },
     }));
   });
@@ -1067,17 +1067,17 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     await request(app)
-      .post("/api/domains/company-1/skills/skill-1/versions")
+      .post("/api/domains/domain-1/skills/skill-1/versions")
       .send({ label: "v1" })
       .expect(201);
 
-    expect(mockCompanySkillService.createVersion).toHaveBeenCalledWith("company-1", "skill-1", { label: "v1" }, {
+    expect(mockDomainSkillService.createVersion).toHaveBeenCalledWith("domain-1", "skill-1", { label: "v1" }, {
       type: "user",
       userId: "user-1",
     });
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      action: "company.skill_version_created",
-      entityType: "company_skill_version",
+      action: "domain.skill_version_created",
+      entityType: "domain_skill_version",
       entityId: "version-1",
     }));
   });
@@ -1086,12 +1086,12 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
     const res = await request(app)
-      .delete("/api/domains/company-1/skills/skill-1/files")
+      .delete("/api/domains/domain-1/skills/skill-1/files")
       .send({ path: "references", target: "folder" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
-    expect(mockCompanySkillService.deleteFile).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockDomainSkillService.deleteFile).toHaveBeenCalledWith("domain-1", "skill-1", {
       path: "references",
       target: "folder",
     }, {
@@ -1099,8 +1099,8 @@ describe("company skill mutation permissions", () => {
       userId: "user-1",
     });
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      action: "company.skill_file_deleted",
-      entityType: "company_skill",
+      action: "domain.skill_file_deleted",
+      entityType: "domain_skill",
       entityId: "skill-1",
       details: {
         path: "references",
@@ -1110,17 +1110,17 @@ describe("company skill mutation permissions", () => {
     }));
   });
 
-  it("stars, forks, and comments on skills through company-scoped endpoints", async () => {
+  it("stars, forks, and comments on skills through domain-scoped endpoints", async () => {
     const app = await createApp({ type: "board", source: "local_implicit", userId: "user-1" });
 
-    await request(app).post("/api/domains/company-1/skills/skill-1/star").send({}).expect(200);
-    expect(mockCompanySkillService.starSkill).toHaveBeenCalledWith("company-1", "skill-1", {
+    await request(app).post("/api/domains/domain-1/skills/skill-1/star").send({}).expect(200);
+    expect(mockDomainSkillService.starSkill).toHaveBeenCalledWith("domain-1", "skill-1", {
       type: "user",
       userId: "user-1",
     });
 
     const forkRes = await request(app)
-      .post("/api/domains/company-1/skills/skill-1/fork")
+      .post("/api/domains/domain-1/skills/skill-1/fork")
       .send({ slug: "review-fork", reassignAgentIds: ["11111111-1111-4111-8111-111111111111"] })
       .expect(201);
     expect(forkRes.body).toMatchObject({
@@ -1128,8 +1128,8 @@ describe("company skill mutation permissions", () => {
       original: { id: "skill-1", slug: "review" },
       reassignments: [],
     });
-    expect(mockCompanySkillService.forkSkill).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.forkSkill).toHaveBeenCalledWith(
+      "domain-1",
       "skill-1",
       { slug: "review-fork", reassignAgentIds: ["11111111-1111-4111-8111-111111111111"] },
       {
@@ -1138,28 +1138,28 @@ describe("company skill mutation permissions", () => {
       },
     );
 
-    await request(app).get("/api/domains/company-1/skills/skill-1/fork-precheck").expect(200);
-    expect(mockCompanySkillService.forkPrecheck).toHaveBeenCalledWith("company-1", "skill-1", {
+    await request(app).get("/api/domains/domain-1/skills/skill-1/fork-precheck").expect(200);
+    expect(mockDomainSkillService.forkPrecheck).toHaveBeenCalledWith("domain-1", "skill-1", {
       type: "user",
       userId: "user-1",
     });
 
-    await request(app).post("/api/domains/company-1/skills/skill-1/comments").send({ body: "Looks good" }).expect(201);
-    expect(mockCompanySkillService.createComment).toHaveBeenCalledWith("company-1", "skill-1", { body: "Looks good" }, {
+    await request(app).post("/api/domains/domain-1/skills/skill-1/comments").send({ body: "Looks good" }).expect(201);
+    expect(mockDomainSkillService.createComment).toHaveBeenCalledWith("domain-1", "skill-1", { body: "Looks good" }, {
       type: "user",
       userId: "user-1",
     });
 
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      action: "company.skill_starred",
+      action: "domain.skill_starred",
       entityId: "skill-1",
     }));
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      action: "company.skill_forked",
+      action: "domain.skill_forked",
       entityId: "skill-fork",
     }));
     expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      action: "company.skill_comment_created",
+      action: "domain.skill_comment_created",
       entityId: "comment-1",
     }));
   });
@@ -1167,39 +1167,39 @@ describe("company skill mutation permissions", () => {
   it("does not synthesize a shared board user id for board actors without user ids", async () => {
     const app = await createApp({ type: "board", source: "local_implicit" });
 
-    await request(app).post("/api/domains/company-1/skills/skill-1/star").send({}).expect(200);
+    await request(app).post("/api/domains/domain-1/skills/skill-1/star").send({}).expect(200);
 
-    expect(mockCompanySkillService.starSkill).toHaveBeenCalledWith("company-1", "skill-1", {
+    expect(mockDomainSkillService.starSkill).toHaveBeenCalledWith("domain-1", "skill-1", {
       type: "user",
       userId: null,
     });
   });
 
-  it("allows agents with direct skills:create grants to mutate company skills", async () => {
+  it("allows agents with direct skills:create grants to mutate domain skills", async () => {
     mockAccessService.decide.mockResolvedValue(allowSkillChangeDecision("allow_direct_change"));
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       permissions: { canCreateSkills: false },
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "domain", domainId: "domain-1" },
     }));
     expect(mockReflectionCoachMutationGate.assertConsented).not.toHaveBeenCalled();
-    expect(mockCompanySkillService.importFromSource).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.importFromSource).toHaveBeenCalledWith(
+      "domain-1",
       "https://github.com/vercel-labs/agent-browser",
     );
   });
@@ -1217,21 +1217,21 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "reflection-coach",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-apply",
     }))
-      .post("/api/domains/company-1/skills")
+      .post("/api/domains/domain-1/skills")
       .send({ name: "Reflection Draft", slug: "reflection-draft", markdown: "# Draft" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Permission skills:suggest-changes requires accepted change consent before applying this mutation.");
     expect(mockReflectionCoachMutationGate.assertConsented).toHaveBeenCalledWith({
-      companyId: "company-1",
+      domainId: "domain-1",
       actorAgentId: "reflection-coach",
       actorRunId: "run-apply",
       targetKeys: ["skill-slug:reflection-draft"],
     });
-    expect(mockCompanySkillService.createLocalSkill).not.toHaveBeenCalled();
+    expect(mockDomainSkillService.createLocalSkill).not.toHaveBeenCalled();
   });
 
   it("does not convert consent gate service failures into authorization denials", async () => {
@@ -1244,21 +1244,21 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "reflection-coach",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-apply",
     }))
-      .post("/api/domains/company-1/skills")
+      .post("/api/domains/domain-1/skills")
       .send({ name: "Reflection Draft", slug: "reflection-draft", markdown: "# Draft" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(500);
     expect(res.body.error).toBe("Internal server error");
     expect(mockReflectionCoachMutationGate.assertConsented).toHaveBeenCalledWith({
-      companyId: "company-1",
+      domainId: "domain-1",
       actorAgentId: "reflection-coach",
       actorRunId: "run-apply",
       targetKeys: ["skill-slug:reflection-draft"],
     });
-    expect(mockCompanySkillService.createLocalSkill).not.toHaveBeenCalled();
+    expect(mockDomainSkillService.createLocalSkill).not.toHaveBeenCalled();
   });
 
   it("allows suggest-tier skill mutations after accepted change consent", async () => {
@@ -1270,72 +1270,72 @@ describe("company skill mutation permissions", () => {
       .mockResolvedValueOnce(allowSkillChangeDecision("allow_consented_change"));
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       permissions: {},
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockReflectionCoachMutationGate.assertConsented).toHaveBeenCalledWith({
-      companyId: "company-1",
+      domainId: "domain-1",
       actorAgentId: "55555555-5555-4555-8555-555555555555",
       actorRunId: "run-1",
       targetKeys: ["skill-import:https://github.com/vercel-labs/agent-browser"],
     });
     expect(mockAccessService.decide).toHaveBeenLastCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "domain", domainId: "domain-1" },
       scope: { consentedChange: true },
     }));
-    expect(mockCompanySkillService.importFromSource).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.importFromSource).toHaveBeenCalledWith(
+      "domain-1",
       "https://github.com/vercel-labs/agent-browser",
     );
   });
 
-  it("blocks same-company agents without skill change or suggest grants", async () => {
+  it("blocks same-domain agents without skill change or suggest grants", async () => {
     mockAccessService.decide.mockResolvedValue(denySkillChangeDecision());
     mockAgentService.getById.mockResolvedValue({
       id: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       permissions: {},
     });
 
     const res = await request(await createApp({
       type: "agent",
       agentId: "55555555-5555-4555-8555-555555555555",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Missing permission: skills:create or skills:suggest-changes.");
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "domain", domainId: "domain-1" },
     }));
-    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
+    expect(mockDomainSkillService.importFromSource).not.toHaveBeenCalled();
   });
 
-  it("does not allow explicit agents:create grants to mutate company skills", async () => {
+  it("does not allow explicit agents:create grants to mutate domain skills", async () => {
     mockAccessService.decide.mockResolvedValue(denySkillChangeDecision());
     mockAgentService.getById.mockResolvedValue({
       id: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       permissions: { canCreateSkills: false },
     });
     mockAccessService.hasPermission.mockImplementation(async (
-      _companyId: string,
+      _domainId: string,
       _principalType: string,
       _principalId: string,
       key: string,
@@ -1344,58 +1344,58 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       runId: "run-1",
     }))
-      .post("/api/domains/company-1/skills/import")
+      .post("/api/domains/domain-1/skills/import")
       .send({ source: "https://github.com/vercel-labs/agent-browser" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body.error).toBe("Missing permission: skills:create or skills:suggest-changes.");
     expect(mockAccessService.decide).toHaveBeenCalledWith(expect.objectContaining({
       action: "skill_config:update",
-      resource: { type: "company", companyId: "company-1" },
+      resource: { type: "domain", domainId: "domain-1" },
     }));
-    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("company-1", "agent", "agent-1", "agents:create");
-    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
+    expect(mockAccessService.hasPermission).not.toHaveBeenCalledWith("domain-1", "agent", "agent-1", "agents:create");
+    expect(mockDomainSkillService.importFromSource).not.toHaveBeenCalled();
   });
 
   it("routes skill test input CRUD through skills mutation permissions", async () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const created = await request(app)
-      .post("/api/domains/company-1/skills/skill-1/test-inputs")
+      .post("/api/domains/domain-1/skills/skill-1/test-inputs")
       .send({ name: "smoke/input", content: "Try the skill" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect(mockCompanySkillService.createTestInput).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.createTestInput).toHaveBeenCalledWith(
+      "domain-1",
       "skill-1",
       { name: "smoke/input", content: "Try the skill" },
       { type: "user", userId: "local-board" },
     );
 
     const updated = await request(app)
-      .patch("/api/domains/company-1/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111")
+      .patch("/api/domains/domain-1/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111")
       .send({ name: "smoke/renamed", content: "Try the skill again" });
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
-    expect(mockCompanySkillService.updateTestInput).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.updateTestInput).toHaveBeenCalledWith(
+      "domain-1",
       "skill-1",
       "11111111-1111-4111-8111-111111111111",
       { name: "smoke/renamed", content: "Try the skill again" },
     );
 
     const removed = await request(app)
-      .delete("/api/domains/company-1/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111");
+      .delete("/api/domains/domain-1/skills/skill-1/test-inputs/11111111-1111-4111-8111-111111111111");
     expect(removed.status, JSON.stringify(removed.body)).toBe(200);
-    expect(mockCompanySkillService.deleteTestInput).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.deleteTestInput).toHaveBeenCalledWith(
+      "domain-1",
       "skill-1",
       "11111111-1111-4111-8111-111111111111",
     );
@@ -1405,48 +1405,48 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
-    const listed = await request(app).get("/api/domains/company-1/skill-test-run-templates");
+    const listed = await request(app).get("/api/domains/domain-1/skill-test-run-templates");
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
-    expect(mockCompanySkillService.listTestRunTemplates).toHaveBeenCalledWith("company-1");
+    expect(mockDomainSkillService.listTestRunTemplates).toHaveBeenCalledWith("domain-1");
 
     const created = await request(app)
-      .post("/api/domains/company-1/skill-test-run-templates")
+      .post("/api/domains/domain-1/skill-test-run-templates")
       .send({ name: "Custom template", description: "Custom run guidance", body: "Run {{skillName}}." });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect(mockCompanySkillService.createTestRunTemplate).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.createTestRunTemplate).toHaveBeenCalledWith(
+      "domain-1",
       { name: "Custom template", description: "Custom run guidance", body: "Run {{skillName}}." },
       { type: "user", userId: "local-board" },
     );
 
     const updated = await request(app)
-      .patch("/api/domains/company-1/skill-test-run-templates/66666666-6666-4666-8666-666666666666")
+      .patch("/api/domains/domain-1/skill-test-run-templates/66666666-6666-4666-8666-666666666666")
       .send({ name: "Renamed template" });
     expect(updated.status, JSON.stringify(updated.body)).toBe(200);
-    expect(mockCompanySkillService.updateTestRunTemplate).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.updateTestRunTemplate).toHaveBeenCalledWith(
+      "domain-1",
       "66666666-6666-4666-8666-666666666666",
       { name: "Renamed template" },
       { type: "user", userId: "local-board" },
     );
 
     const removed = await request(app)
-      .delete("/api/domains/company-1/skill-test-run-templates/66666666-6666-4666-8666-666666666666");
+      .delete("/api/domains/domain-1/skill-test-run-templates/66666666-6666-4666-8666-666666666666");
     expect(removed.status, JSON.stringify(removed.body)).toBe(200);
-    expect(mockCompanySkillService.deleteTestRunTemplate).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.deleteTestRunTemplate).toHaveBeenCalledWith(
+      "domain-1",
       "66666666-6666-4666-8666-666666666666",
     );
   });
 
   it("creates and cancels skill test runs through hidden issue orchestration", async () => {
-    mockCompanySkillService.createTestRun.mockImplementationOnce(async (
-      _companyId: string,
+    mockDomainSkillService.createTestRun.mockImplementationOnce(async (
+      _domainId: string,
       _skillId: string,
       _body: unknown,
       _actor: unknown,
@@ -1470,7 +1470,7 @@ describe("company skill mutation permissions", () => {
       await deps.wakeHarnessIssue("44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555");
       return {
         id: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
+        domainId: "domain-1",
         skillId: "skill-1",
         inputId: "11111111-1111-4111-8111-111111111111",
         inputSnapshot: "Try the skill",
@@ -1493,12 +1493,12 @@ describe("company skill mutation permissions", () => {
         harnessIssueDeletedAt: null,
         createdAt: new Date("2026-05-26T00:00:00.000Z"),
         updatedAt: new Date("2026-05-26T00:00:00.000Z"),
-        cost: { costCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+        finance: { financeCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
         taskExpired: false,
       };
     });
-    mockCompanySkillService.cancelTestRun.mockImplementationOnce(async (
-      _companyId: string,
+    mockDomainSkillService.cancelTestRun.mockImplementationOnce(async (
+      _domainId: string,
       _skillId: string,
       _runId: string,
       deps: { cancelHarnessIssue: (issueId: string) => Promise<unknown> },
@@ -1506,7 +1506,7 @@ describe("company skill mutation permissions", () => {
       await deps.cancelHarnessIssue("44444444-4444-4444-8444-444444444444");
       return {
         id: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
+        domainId: "domain-1",
         skillId: "skill-1",
         inputId: "11111111-1111-4111-8111-111111111111",
         inputSnapshot: "Try the skill",
@@ -1529,7 +1529,7 @@ describe("company skill mutation permissions", () => {
         harnessIssueDeletedAt: null,
         createdAt: new Date("2026-05-26T00:00:00.000Z"),
         updatedAt: new Date("2026-05-26T00:01:00.000Z"),
-        cost: { costCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+        finance: { financeCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
         taskExpired: false,
       };
     });
@@ -1537,16 +1537,16 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const created = await request(app)
-      .post("/api/domains/company-1/skills/skill-1/test-runs")
+      .post("/api/domains/domain-1/skills/skill-1/test-runs")
       .send({ inputId: "11111111-1111-4111-8111-111111111111", agentId: "55555555-5555-4555-8555-555555555555" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect(mockIssueService.create).toHaveBeenCalledWith("company-1", expect.objectContaining({
+    expect(mockIssueService.create).toHaveBeenCalledWith("domain-1", expect.objectContaining({
       harnessKind: "skill_test",
       workMode: "skill_test",
       assigneeAgentId: "55555555-5555-4555-8555-555555555555",
@@ -1558,7 +1558,7 @@ describe("company skill mutation permissions", () => {
     }));
 
     const cancelled = await request(app)
-      .post("/api/domains/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222/cancel")
+      .post("/api/domains/domain-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222/cancel")
       .send({});
     expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
     expect(mockHeartbeatService.cancelRun).toHaveBeenCalledWith("run-1", "Cancelled by skill test run request");
@@ -1569,10 +1569,10 @@ describe("company skill mutation permissions", () => {
   });
 
   it("does not prune expired harness issues from test run reads", async () => {
-    mockCompanySkillService.listTestRuns.mockResolvedValueOnce([]);
-    mockCompanySkillService.getTestRunDetail.mockResolvedValueOnce({
+    mockDomainSkillService.listTestRuns.mockResolvedValueOnce([]);
+    mockDomainSkillService.getTestRunDetail.mockResolvedValueOnce({
       id: "22222222-2222-4222-8222-222222222222",
-      companyId: "company-1",
+      domainId: "domain-1",
       skillId: "skill-1",
       status: "succeeded",
       harnessContent: { available: false, unavailableReason: "expired", documents: [], attachments: [], workProducts: [] },
@@ -1581,37 +1581,37 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const listed = await request(app)
-      .get("/api/domains/company-1/skills/skill-1/test-runs");
+      .get("/api/domains/domain-1/skills/skill-1/test-runs");
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
 
     const detail = await request(app)
-      .get("/api/domains/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
+      .get("/api/domains/domain-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
     expect(detail.status, JSON.stringify(detail.body)).toBe(200);
 
-    expect(mockCompanySkillService.listTestRuns).toHaveBeenCalledWith("company-1", "skill-1", {});
-    expect(mockCompanySkillService.getTestRunDetail).toHaveBeenCalledWith(
-      "company-1",
+    expect(mockDomainSkillService.listTestRuns).toHaveBeenCalledWith("domain-1", "skill-1", {});
+    expect(mockDomainSkillService.getTestRunDetail).toHaveBeenCalledWith(
+      "domain-1",
       "skill-1",
       "22222222-2222-4222-8222-222222222222",
     );
-    expect(mockCompanySkillService.pruneExpiredTestHarnessIssues).not.toHaveBeenCalled();
+    expect(mockDomainSkillService.pruneExpiredTestHarnessIssues).not.toHaveBeenCalled();
   });
 
   it("deletes a terminal test run and hides its harness task", async () => {
     mockIssueService.getById.mockResolvedValueOnce({
       id: "44444444-4444-4444-8444-444444444444",
-      companyId: "company-1",
+      domainId: "domain-1",
       status: "done",
       executionRunId: null,
     });
-    mockCompanySkillService.deleteTestRun.mockImplementationOnce(async (
-      _companyId: string,
+    mockDomainSkillService.deleteTestRun.mockImplementationOnce(async (
+      _domainId: string,
       _skillId: string,
       _runId: string,
       deps: { hideHarnessIssue: (issueId: string) => Promise<unknown> },
@@ -1619,7 +1619,7 @@ describe("company skill mutation permissions", () => {
       await deps.hideHarnessIssue("44444444-4444-4444-8444-444444444444");
       return {
         id: "22222222-2222-4222-8222-222222222222",
-        companyId: "company-1",
+        domainId: "domain-1",
         skillId: "skill-1",
         inputId: null,
         inputSnapshot: "Try the skill",
@@ -1642,7 +1642,7 @@ describe("company skill mutation permissions", () => {
         harnessIssueDeletedAt: null,
         createdAt: new Date("2026-05-26T00:00:00.000Z"),
         updatedAt: new Date("2026-05-26T00:02:00.000Z"),
-        cost: { costCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+        finance: { financeCents: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
         taskExpired: false,
       };
     });
@@ -1650,15 +1650,15 @@ describe("company skill mutation permissions", () => {
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
 
     const deleted = await request(app)
-      .delete("/api/domains/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
+      .delete("/api/domains/domain-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
     expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
-    expect(mockCompanySkillService.deleteTestRun).toHaveBeenCalled();
+    expect(mockDomainSkillService.deleteTestRun).toHaveBeenCalled();
     expect(mockIssueService.update).toHaveBeenCalledWith(
       "44444444-4444-4444-8444-444444444444",
       expect.objectContaining({ hiddenAt: expect.any(Date) }),
@@ -1666,22 +1666,22 @@ describe("company skill mutation permissions", () => {
   });
 
   it("returns 404 when deleting a missing test run", async () => {
-    mockCompanySkillService.deleteTestRun.mockResolvedValueOnce(null);
+    mockDomainSkillService.deleteTestRun.mockResolvedValueOnce(null);
     const app = await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     });
     const res = await request(app)
-      .delete("/api/domains/company-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
+      .delete("/api/domains/domain-1/skills/skill-1/test-runs/22222222-2222-4222-8222-222222222222");
     expect(res.status).toBe(404);
   });
 
   it("returns a blocking error when attempting to delete a skill still used by agents", async () => {
     const { unprocessable } = await import("../errors.js");
-    mockCompanySkillService.deleteSkill.mockImplementationOnce(async () => {
+    mockDomainSkillService.deleteSkill.mockImplementationOnce(async () => {
       throw unprocessable(
         'Cannot delete skill "Find Skills" while it is still used by Builder, Reviewer. Detach it from those agents first.',
       );
@@ -1690,17 +1690,17 @@ describe("company skill mutation permissions", () => {
     const res = await request(await createApp({
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     }))
-      .delete("/api/domains/company-1/skills/skill-1");
+      .delete("/api/domains/domain-1/skills/skill-1");
 
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body).toEqual({
       error: 'Cannot delete skill "Find Skills" while it is still used by Builder, Reviewer. Detach it from those agents first.',
     });
-    expect(mockCompanySkillService.deleteSkill).toHaveBeenCalledWith("company-1", "skill-1");
+    expect(mockDomainSkillService.deleteSkill).toHaveBeenCalledWith("domain-1", "skill-1");
     expect(mockLogActivity).not.toHaveBeenCalled();
   });
 });

@@ -24,7 +24,7 @@ const mockProjectService = vi.hoisted(() => ({
 
 const mockGoalService = vi.hoisted(() => ({
   getById: vi.fn(),
-  getDefaultCompanyGoal: vi.fn(),
+  getDefaultDomainGoal: vi.fn(),
 }));
 
 const mockDocumentsService = vi.hoisted(() => ({
@@ -64,7 +64,7 @@ const mockInstanceSettingsService = vi.hoisted(() => ({
       feedbackDataSharingPreference: "prompt",
     },
   })),
-  listCompanyIds: vi.fn(async () => ["company-1"]),
+  listDomainIds: vi.fn(async () => ["domain-1"]),
 }));
 
 const mockIssueReferenceService = vi.hoisted(() => ({
@@ -99,12 +99,12 @@ const mockDb = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/index.js", () => ({
-  companyService: () => ({
-    getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+  domainService: () => ({
+    getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
   }),
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
-  companySkillService: () => ({
+  domainSkillService: () => ({
     completeTestRunForIssue: vi.fn(async () => null),
   }),
   documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
@@ -144,7 +144,7 @@ function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -157,7 +157,7 @@ function createApp() {
 
 const legacyProjectLinkedIssue = {
   id: "11111111-1111-4111-8111-111111111111",
-  companyId: "company-1",
+  domainId: "domain-1",
   identifier: "PAP-581",
   title: "Legacy onboarding task",
   description: "Seed the first CEO task",
@@ -177,10 +177,10 @@ const legacyProjectLinkedIssue = {
 
 const projectGoal = {
   id: "44444444-4444-4444-8444-444444444444",
-  companyId: "company-1",
-  title: "Launch the company",
+  domainId: "domain-1",
+  title: "Launch the domain",
   description: null,
-  level: "company",
+  level: "domain",
   status: "active",
   parentId: null,
   ownerAgentId: null,
@@ -226,7 +226,7 @@ describe.sequential("issue goal context routes", () => {
     mockDb.execute.mockResolvedValue([]);
     mockProjectService.getById.mockResolvedValue({
       id: legacyProjectLinkedIssue.projectId,
-      companyId: "company-1",
+      domainId: "domain-1",
       urlKey: "onboarding",
       goalId: projectGoal.id,
       goalIds: [projectGoal.id],
@@ -247,8 +247,8 @@ describe.sequential("issue goal context routes", () => {
         defaultRef: null,
         repoName: null,
         localFolder: null,
-        managedFolder: "/tmp/company-1/project-1",
-        effectiveLocalFolder: "/tmp/company-1/project-1",
+        managedFolder: "/tmp/domain-1/project-1",
+        effectiveLocalFolder: "/tmp/domain-1/project-1",
         origin: "managed_checkout",
       },
       workspaces: [],
@@ -261,7 +261,7 @@ describe.sequential("issue goal context routes", () => {
     mockGoalService.getById.mockImplementation(async (id: string) =>
       id === projectGoal.id ? projectGoal : null,
     );
-    mockGoalService.getDefaultCompanyGoal.mockResolvedValue(null);
+    mockGoalService.getDefaultDomainGoal.mockResolvedValue(null);
   });
 
   it("surfaces the project goal from GET /issues/:id when the issue has no direct goal", async () => {
@@ -279,13 +279,13 @@ describe.sequential("issue goal context routes", () => {
       "11111111-1111-4111-8111-111111111111",
       { includeCommentBodies: false },
     );
-    expect(mockGoalService.getDefaultCompanyGoal).not.toHaveBeenCalled();
+    expect(mockGoalService.getDefaultDomainGoal).not.toHaveBeenCalled();
   });
 
   it("keeps GET /issues/:id project and workspace embeds compact for fast detail loads", async () => {
     const workspaceId = "55555555-5555-4555-8555-555555555555";
     const runtimeServiceBase = {
-      companyId: "company-1",
+      domainId: "domain-1",
       projectId: legacyProjectLinkedIssue.projectId,
       projectWorkspaceId: "workspace-primary",
       executionWorkspaceId: workspaceId,
@@ -296,7 +296,7 @@ describe.sequential("issue goal context routes", () => {
       lifecycle: "shared",
       reuseKey: "dev-server",
       command: "pnpm dev",
-      cwd: "/tmp/company-1/project-1",
+      cwd: "/tmp/domain-1/project-1",
       port: 3100,
       url: "http://localhost:3100",
       provider: "local_process",
@@ -320,11 +320,11 @@ describe.sequential("issue goal context routes", () => {
       workspaces: [
         {
           id: "workspace-primary",
-          companyId: "company-1",
+          domainId: "domain-1",
           projectId: legacyProjectLinkedIssue.projectId,
           name: "Main",
           sourceType: "local_path",
-          cwd: "/tmp/company-1/project-1",
+          cwd: "/tmp/domain-1/project-1",
           repoUrl: null,
           repoRef: "master",
           defaultRef: "master",
@@ -344,11 +344,11 @@ describe.sequential("issue goal context routes", () => {
       ],
       primaryWorkspace: {
         id: "workspace-primary",
-        companyId: "company-1",
+        domainId: "domain-1",
         projectId: legacyProjectLinkedIssue.projectId,
         name: "Main",
         sourceType: "local_path",
-        cwd: "/tmp/company-1/project-1",
+        cwd: "/tmp/domain-1/project-1",
         repoUrl: null,
         repoRef: "master",
         defaultRef: "master",
@@ -368,7 +368,7 @@ describe.sequential("issue goal context routes", () => {
     });
     mockExecutionWorkspaceService.getById.mockResolvedValueOnce({
       id: workspaceId,
-      companyId: "company-1",
+      domainId: "domain-1",
       projectId: legacyProjectLinkedIssue.projectId,
       projectWorkspaceId: "workspace-primary",
       sourceIssueId: legacyProjectLinkedIssue.id,
@@ -376,12 +376,12 @@ describe.sequential("issue goal context routes", () => {
       strategyType: "git_worktree",
       name: "PAP-581-workspace",
       status: "active",
-      cwd: "/tmp/company-1/project-1",
+      cwd: "/tmp/domain-1/project-1",
       repoUrl: null,
       baseRef: "master",
       branchName: "PAP-581-workspace",
       providerType: "local",
-      providerRef: "/tmp/company-1/project-1",
+      providerRef: "/tmp/domain-1/project-1",
       derivedFromExecutionWorkspaceId: null,
       lastUsedAt: new Date("2026-03-24T12:00:00Z"),
       openedAt: new Date("2026-03-24T12:00:00Z"),
@@ -438,7 +438,7 @@ describe.sequential("issue goal context routes", () => {
         title: projectGoal.title,
       }),
     );
-    expect(mockGoalService.getDefaultCompanyGoal).not.toHaveBeenCalled();
+    expect(mockGoalService.getDefaultDomainGoal).not.toHaveBeenCalled();
     expect(res.body.attachments).toEqual([]);
   });
 

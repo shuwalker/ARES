@@ -10,7 +10,7 @@ describe("grok local skill sync", () => {
   it("reports Grok skills as ephemeral workspace-mounted state", async () => {
     const snapshot = await listGrokSkills({
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       adapterType: "grok_local",
       config: {
         paperclipSkillSync: {
@@ -32,7 +32,7 @@ describe("grok local skill sync", () => {
   it("tracks unavailable desired Grok skills as missing without persistent install state", async () => {
     const snapshot = await syncGrokSkills({
       agentId: "agent-2",
-      companyId: "company-1",
+      domainId: "domain-1",
       adapterType: "grok_local",
       config: {
         paperclipRuntimeSkills: [],

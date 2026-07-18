@@ -30,8 +30,8 @@ const mockIssueThreadInteractionService = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/index.js", () => ({
-  companyService: () => ({
-    getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+  domainService: () => ({
+    getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
   }),
   accessService: () => ({
     canUser: vi.fn(async () => true),
@@ -45,12 +45,12 @@ vi.mock("../services/index.js", () => ({
   }),
   agentService: () => ({
     getById: vi.fn(async () => null),
-    resolveByReference: vi.fn(async (_companyId: string, raw: string) => ({
+    resolveByReference: vi.fn(async (_domainId: string, raw: string) => ({
       ambiguous: false,
       agent: { id: raw },
     })),
   }),
-  companySkillService: () => ({
+  domainSkillService: () => ({
     completeTestRunForIssue: vi.fn(async () => null),
   }),
   documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
@@ -70,7 +70,7 @@ vi.mock("../services/index.js", () => ({
         feedbackDataSharingPreference: "prompt",
       },
     })),
-    listCompanyIds: vi.fn(async () => ["company-1"]),
+    listDomainIds: vi.fn(async () => ["domain-1"]),
   }),
   issueApprovalService: () => ({}),
   issueReferenceService: () => ({
@@ -102,8 +102,8 @@ vi.mock("../services/index.js", () => ({
 
 function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
-    companyService: () => ({
-      getById: vi.fn(async () => ({ id: "company-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
+    domainService: () => ({
+      getById: vi.fn(async () => ({ id: "domain-1", attachmentMaxBytes: 10 * 1024 * 1024 })),
     }),
     accessService: () => ({
       canUser: vi.fn(async () => true),
@@ -117,12 +117,12 @@ function registerModuleMocks() {
     }),
     agentService: () => ({
       getById: vi.fn(async () => null),
-      resolveByReference: vi.fn(async (_companyId: string, raw: string) => ({
+      resolveByReference: vi.fn(async (_domainId: string, raw: string) => ({
         ambiguous: false,
         agent: { id: raw },
       })),
     }),
-    companySkillService: () => ({
+    domainSkillService: () => ({
       completeTestRunForIssue: vi.fn(async () => null),
     }),
     documentAnnotationService: () => ({ remapOpenThreadsForDocument: async () => [] }),
@@ -142,7 +142,7 @@ function registerModuleMocks() {
           feedbackDataSharingPreference: "prompt",
         },
       })),
-      listCompanyIds: vi.fn(async () => ["company-1"]),
+      listDomainIds: vi.fn(async () => ["domain-1"]),
     }),
     issueApprovalService: () => ({}),
     issueReferenceService: () => ({
@@ -184,7 +184,7 @@ async function createApp() {
     (req as any).actor = {
       type: "board",
       userId: "local-board",
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
@@ -198,7 +198,7 @@ async function createApp() {
 function makeIssue(overrides: Record<string, unknown> = {}) {
   return {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    companyId: "company-1",
+    domainId: "domain-1",
     status: "todo",
     priority: "medium",
     projectId: null,
@@ -242,7 +242,7 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-1",
       issueId: existing.id,
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       body: "write the whole thing",
     });
 
@@ -295,19 +295,19 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-interrupt-agent",
       issueId: existing.id,
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       body: "stop and hand this to CodexCoder",
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-1",
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       agentId: PREVIOUS_AGENT_ID,
       status: "running",
       contextSnapshot: { issueId: existing.id },
     });
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "run-1",
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       agentId: PREVIOUS_AGENT_ID,
       status: "cancelled",
     });
@@ -381,19 +381,19 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-interrupt-user",
       issueId: existing.id,
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       body: "stop here, I will take it",
     });
     mockHeartbeatService.getRun.mockResolvedValue({
       id: "run-2",
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       agentId: PREVIOUS_AGENT_ID,
       status: "running",
       contextSnapshot: { issueId: existing.id },
     });
     mockHeartbeatService.cancelRun.mockResolvedValue({
       id: "run-2",
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       agentId: PREVIOUS_AGENT_ID,
       status: "cancelled",
     });
@@ -422,7 +422,7 @@ describe("issue update comment wakeups", () => {
       }),
     );
     await vi.waitFor(() => expect(mockIssueService.findMentionedAgents).toHaveBeenCalledWith(
-      existing.companyId,
+      existing.domainId,
       "stop here, I will take it",
     ));
     expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
@@ -440,7 +440,7 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-2",
       issueId: existing.id,
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       body: "please revise this",
     });
 
@@ -484,7 +484,7 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-3",
       issueId: existing.id,
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       body: "please handle this top-level thread comment",
     });
 
@@ -528,7 +528,7 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-plain-agent-name",
       issueId: existing.id,
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       body: "QA please take the screenshot",
     });
     mockIssueService.findMentionedAgents.mockResolvedValue([]);
@@ -541,7 +541,7 @@ describe("issue update comment wakeups", () => {
 
     expect(res.status).toBe(201);
     await vi.waitFor(() => expect(mockIssueService.findMentionedAgents).toHaveBeenCalledWith(
-      existing.companyId,
+      existing.domainId,
       "QA please take the screenshot",
     ));
     expect(mockHeartbeatService.wakeup).not.toHaveBeenCalled();
@@ -557,7 +557,7 @@ describe("issue update comment wakeups", () => {
     mockIssueService.addComment.mockResolvedValue({
       id: "comment-structured-mention",
       issueId: existing.id,
-      companyId: existing.companyId,
+      domainId: existing.domainId,
       body: "[@QA](/agents/33333333-3333-4333-8333-333333333333) please inspect this",
     });
     mockIssueService.findMentionedAgents.mockResolvedValue([MENTIONED_AGENT_ID]);

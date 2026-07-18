@@ -19,7 +19,7 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { errorHandler } from "../middleware/index.js";
-import { companyRoutes } from "../routes/domains.js";
+import { domainRoutes } from "../routes/domains.js";
 import { normalizeJournalWindow, workJournalService } from "../services/work-journal.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
@@ -63,25 +63,25 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       (req as any).actor = {
         type: "board",
         userId: "local-board",
-        companyIds: [],
+        domainIds: [],
         memberships: [],
         source: "local_implicit",
         isInstanceAdmin: true,
       };
       next();
     });
-    app.use("/api/domains", companyRoutes(db, {} as any));
+    app.use("/api/domains", domainRoutes(db, {} as any));
     app.use(errorHandler);
     return app;
   }
 
   async function seedBase() {
-    const companyId = randomUUID();
+    const domainId = randomUUID();
     const userId = "user-1";
     const agentAId = randomUUID();
     const agentBId = randomUUID();
     await db.insert(domains).values({
-      id: companyId,
+      id: domainId,
       name: "Journal Co",
       issuePrefix: `T${randomUUID().replace(/-/g, "").slice(0, 4).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
@@ -97,7 +97,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     await db.insert(agents).values([
       {
         id: agentAId,
-        companyId,
+        domainId,
         name: "Coder",
         role: "engineer",
         status: "active",
@@ -108,7 +108,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       },
       {
         id: agentBId,
-        companyId,
+        domainId,
         name: "QA",
         role: "qa",
         status: "active",
@@ -118,7 +118,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
         permissions: {},
       },
     ]);
-    return { companyId, userId, agentAId, agentBId };
+    return { domainId, userId, agentAId, agentBId };
   }
 
   it("normalizes journal windows with a 31 day cap", () => {
@@ -132,7 +132,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
   });
 
   it("aggregates runs, human events, approvals, and delegation edges", async () => {
-    const { companyId, userId, agentAId, agentBId } = await seedBase();
+    const { domainId, userId, agentAId, agentBId } = await seedBase();
     const parentIssueId = randomUUID();
     const childIssueId = randomUUID();
     const contextRunId = randomUUID();
@@ -142,7 +142,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     await db.insert(issues).values([
       {
         id: parentIssueId,
-        companyId,
+        domainId,
         title: "Parent",
         identifier: "TL-1",
         status: "in_progress",
@@ -154,7 +154,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       },
       {
         id: childIssueId,
-        companyId,
+        domainId,
         title: "Child",
         identifier: "TL-2",
         status: "in_progress",
@@ -169,7 +169,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     await db.insert(heartbeatRuns).values([
       {
         id: contextRunId,
-        companyId,
+        domainId,
         agentId: agentBId,
         status: "running",
         invocationSource: "issue_assigned",
@@ -180,7 +180,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       },
       {
         id: activityRunId,
-        companyId,
+        domainId,
         agentId: agentAId,
         status: "completed",
         invocationSource: "manual",
@@ -191,7 +191,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     ]);
     await db.insert(activityLog).values([
       {
-        companyId,
+        domainId,
         actorType: "agent",
         actorId: agentAId,
         action: "issue.updated",
@@ -202,7 +202,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
         createdAt: new Date("2026-03-01T12:35:00Z"),
       },
       {
-        companyId,
+        domainId,
         actorType: "user",
         actorId: userId,
         action: "issue.assigned",
@@ -213,7 +213,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       },
     ]);
     await db.insert(issueComments).values({
-      companyId,
+      domainId,
       issueId: childIssueId,
       authorUserId: userId,
       body: "Looks good",
@@ -221,17 +221,17 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     });
     await db.insert(approvals).values({
       id: approvalId,
-      companyId,
+      domainId,
       type: "request_board_approval",
       status: "approved",
       payload: {},
       decidedByUserId: userId,
       decidedAt: new Date("2026-03-01T14:00:00Z"),
     });
-    await db.insert(issueApprovals).values({ companyId, issueId: childIssueId, approvalId });
+    await db.insert(issueApprovals).values({ domainId, issueId: childIssueId, approvalId });
 
     const result = await workJournalService(db).getJournal({
-      companyId,
+      domainId,
       from: new Date("2026-03-01T00:00:00Z"),
       to: new Date("2026-03-02T00:00:00Z"),
     });
@@ -260,22 +260,22 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     ]));
   });
 
-  it("does not join activity rows to runs from another company", async () => {
-    const { companyId, agentAId } = await seedBase();
-    const otherCompanyId = randomUUID();
+  it("does not join activity rows to runs from another domain", async () => {
+    const { domainId, agentAId } = await seedBase();
+    const otherDomainId = randomUUID();
     const otherAgentId = randomUUID();
     const issueId = randomUUID();
     const foreignRunId = randomUUID();
 
     await db.insert(domains).values({
-      id: otherCompanyId,
+      id: otherDomainId,
       name: "Other Journal Co",
       issuePrefix: `O${randomUUID().replace(/-/g, "").slice(0, 4).toUpperLifeAdmin()}`,
       requireBoardApprovalForNewAgents: false,
     });
     await db.insert(agents).values({
       id: otherAgentId,
-      companyId: otherCompanyId,
+      domainId: otherDomainId,
       name: "Foreign Coder",
       role: "engineer",
       status: "active",
@@ -286,7 +286,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     });
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Local issue",
       status: "todo",
       priority: "medium",
@@ -296,7 +296,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     });
     await db.insert(heartbeatRuns).values({
       id: foreignRunId,
-      companyId: otherCompanyId,
+      domainId: otherDomainId,
       agentId: otherAgentId,
       status: "completed",
       invocationSource: "manual",
@@ -305,7 +305,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       contextSnapshot: {},
     });
     await db.insert(activityLog).values({
-      companyId,
+      domainId,
       actorType: "agent",
       actorId: agentAId,
       action: "issue.updated",
@@ -317,7 +317,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     });
 
     const result = await workJournalService(db).getJournal({
-      companyId,
+      domainId,
       from: new Date("2026-03-02T00:00:00Z"),
       to: new Date("2026-03-03T00:00:00Z"),
     });
@@ -327,7 +327,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
   });
 
   it("applies the user lens as a transitive issue subtree", async () => {
-    const { companyId, userId, agentAId, agentBId } = await seedBase();
+    const { domainId, userId, agentAId, agentBId } = await seedBase();
     const rootIssueId = randomUUID();
     const childIssueId = randomUUID();
     const unrelatedIssueId = randomUUID();
@@ -335,7 +335,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     await db.insert(issues).values([
       {
         id: rootIssueId,
-        companyId,
+        domainId,
         title: "User root",
         status: "todo",
         priority: "medium",
@@ -346,7 +346,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       },
       {
         id: childIssueId,
-        companyId,
+        domainId,
         title: "Delegated child",
         status: "todo",
         priority: "medium",
@@ -358,7 +358,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       },
       {
         id: unrelatedIssueId,
-        companyId,
+        domainId,
         title: "Unrelated",
         status: "todo",
         priority: "medium",
@@ -369,7 +369,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     ]);
 
     const result = await workJournalService(db).getJournal({
-      companyId,
+      domainId,
       userId,
       from: new Date("2026-03-03T00:00:00Z"),
       to: new Date("2026-03-04T00:00:00Z"),
@@ -380,13 +380,13 @@ describeEmbeddedPostgres("work journal aggregation", () => {
   });
 
   it("filters unreadable issues before emitting journal rows", async () => {
-    const { companyId, agentAId } = await seedBase();
+    const { domainId, agentAId } = await seedBase();
     const visibleIssueId = randomUUID();
     const hiddenIssueId = randomUUID();
     await db.insert(issues).values([
       {
         id: visibleIssueId,
-        companyId,
+        domainId,
         title: "Visible",
         status: "todo",
         priority: "medium",
@@ -396,7 +396,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
       },
       {
         id: hiddenIssueId,
-        companyId,
+        domainId,
         title: "Denied",
         status: "todo",
         priority: "medium",
@@ -407,7 +407,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     ]);
 
     const result = await workJournalService(db).getJournal({
-      companyId,
+      domainId,
       from: new Date("2026-03-04T00:00:00Z"),
       to: new Date("2026-03-05T00:00:00Z"),
       canReadIssue: async (issue) => issue.id !== hiddenIssueId,
@@ -419,11 +419,11 @@ describeEmbeddedPostgres("work journal aggregation", () => {
   });
 
   it("bounds pre-pagination ACL checks", async () => {
-    const { companyId, agentAId } = await seedBase();
+    const { domainId, agentAId } = await seedBase();
     const issueCount = 40;
     await db.insert(issues).values(Array.from({ length: issueCount }, (_, index) => ({
       id: randomUUID(),
-      companyId,
+      domainId,
       title: `Visible ${index}`,
       status: "todo",
       priority: "medium",
@@ -435,7 +435,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     let activeChecks = 0;
     let maxActiveChecks = 0;
     const result = await workJournalService(db).getJournal({
-      companyId,
+      domainId,
       from: new Date("2026-03-04T00:00:00Z"),
       to: new Date("2026-03-05T00:00:00Z"),
       limit: issueCount,
@@ -452,12 +452,12 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     expect(maxActiveChecks).toBeLessThanOrEqual(16);
   });
 
-  it("serves GET /api/domains/:companyId/journal", async () => {
-    const { companyId, agentAId } = await seedBase();
+  it("serves GET /api/domains/:domainId/journal", async () => {
+    const { domainId, agentAId } = await seedBase();
     const issueId = randomUUID();
     await db.insert(issues).values({
       id: issueId,
-      companyId,
+      domainId,
       title: "Route issue",
       identifier: "TL-9",
       status: "todo",
@@ -468,7 +468,7 @@ describeEmbeddedPostgres("work journal aggregation", () => {
     });
 
     const res = await request(createApp())
-      .get(`/api/domains/${companyId}/journal`)
+      .get(`/api/domains/${domainId}/journal`)
       .query({ from: "2026-03-05T00:00:00Z", to: "2026-03-06T00:00:00Z" });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);

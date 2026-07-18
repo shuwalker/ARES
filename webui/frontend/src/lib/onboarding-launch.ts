@@ -11,15 +11,15 @@ function pickEarliestGoal(goals: Goal[]) {
   return [...goals].sort((a, b) => goalCreatedAt(a) - goalCreatedAt(b))[0] ?? null;
 }
 
-export function selectDefaultCompanyGoalId(goals: Goal[]): string | null {
-  const companyGoals = goals.filter((goal) => goal.level === "company");
-  const rootGoals = companyGoals.filter((goal) => !goal.parentId);
+export function selectDefaultDomainGoalId(goals: Goal[]): string | null {
+  const domainGoals = goals.filter((goal) => goal.level === "domain");
+  const rootGoals = domainGoals.filter((goal) => !goal.parentId);
   const activeRootGoals = rootGoals.filter((goal) => goal.status === "active");
 
   return (
     pickEarliestGoal(activeRootGoals)?.id ??
     pickEarliestGoal(rootGoals)?.id ??
-    pickEarliestGoal(companyGoals)?.id ??
+    pickEarliestGoal(domainGoals)?.id ??
     null
   );
 }
@@ -39,7 +39,7 @@ export function selectReusableOnboardingProject<T extends Pick<Project, "name" |
     projects.find(
       (project) =>
         project.status !== "cancelled" &&
-        project.name.trim().toLowerLifeAdmin() === ONBOARDING_PROJECT_NAME.toLowerLifeAdmin(),
+        project.name.trim().toLowerCase() === ONBOARDING_PROJECT_NAME.toLowerCase(),
     ) ?? null
   );
 }

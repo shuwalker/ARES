@@ -9,7 +9,7 @@ const mockInstanceSettingsService = vi.hoisted(() => ({
   update: vi.fn(),
   updateGeneral: vi.fn(),
   updateExperimental: vi.fn(),
-  listCompanyIds: vi.fn(),
+  listDomainIds: vi.fn(),
 }));
 const mockHeartbeatService = vi.hoisted(() => ({
   buildIssueGraphLivenessAutoRecoveryPreview: vi.fn(),
@@ -62,7 +62,7 @@ describe("instance settings routes", () => {
     mockInstanceSettingsService.update.mockReset();
     mockInstanceSettingsService.updateGeneral.mockReset();
     mockInstanceSettingsService.updateExperimental.mockReset();
-    mockInstanceSettingsService.listCompanyIds.mockReset();
+    mockInstanceSettingsService.listDomainIds.mockReset();
     mockHeartbeatService.buildIssueGraphLivenessAutoRecoveryPreview.mockReset();
     mockHeartbeatService.reconcileIssueGraphLiveness.mockReset();
     mockEnvironmentService.getById.mockReset();
@@ -183,7 +183,7 @@ describe("instance settings routes", () => {
         issueGraphLivenessAutoRecoveryLookbackHours: 24,
       },
     });
-    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1", "company-2"]);
+    mockInstanceSettingsService.listDomainIds.mockResolvedValue(["domain-1", "domain-2"]);
     mockHeartbeatService.buildIssueGraphLivenessAutoRecoveryPreview.mockResolvedValue({
       lookbackHours: 24,
       cutoff: "2026-04-26T12:00:00.000Z",
@@ -508,13 +508,13 @@ describe("instance settings routes", () => {
     });
   });
 
-  it("allows non-admin board users with company access to read but not update experimental settings", async () => {
+  it("allows non-admin board users with domain access to read but not update experimental settings", async () => {
     const app = await createApp({
       type: "board",
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
     });
 
     await request(app).get("/api/instance/settings/experimental").expect(200);
@@ -566,7 +566,7 @@ describe("instance settings routes", () => {
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
     });
 
     const res = await request(app).get("/api/instance/settings/general");
@@ -579,13 +579,13 @@ describe("instance settings routes", () => {
     });
   });
 
-  it("rejects signed-in users without company access from reading general settings", async () => {
+  it("rejects signed-in users without domain access from reading general settings", async () => {
     const app = await createApp({
       type: "board",
       userId: "user-2",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: [],
+      domainIds: [],
       memberships: [],
     });
 
@@ -601,7 +601,7 @@ describe("instance settings routes", () => {
       userId: "user-1",
       source: "session",
       isInstanceAdmin: false,
-      companyIds: ["company-1"],
+      domainIds: ["domain-1"],
     });
 
     const res = await request(app)
@@ -616,7 +616,7 @@ describe("instance settings routes", () => {
     const app = await createApp({
       type: "agent",
       agentId: "agent-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       source: "agent_key",
     });
 

@@ -11,13 +11,13 @@ import {
   instanceSettings,
   issueComments,
   issues,
-  pipelineAutomationExecutions,
-  pipelineCaseBlockers,
-  pipelineCaseIssueLinks,
-  pipelineCaseEvents,
-  pipelineLifeAdmin,
-  pipelineStages,
-  pipelineTransitions,
+  workflowAutomationExecutions,
+  workflowLifeAdminBlockers,
+  workflowLifeAdminIssueLinks,
+  workflowLifeAdminEvents,
+  workflowLifeAdmin,
+  workflowStages,
+  workflowTransitions,
   workflows,
   projectWorkspaces,
   projects,
@@ -29,8 +29,8 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import {
-  PIPELINE_AUTOMATION_DEFAULT_TITLE_TEMPLATE,
-  pipelineService,
+  WORKFLOW_AUTOMATION_DEFAULT_TITLE_TEMPLATE,
+  workflowService,
   type WorkflowActor,
 } from "../services/workflows.ts";
 import { routineService } from "../services/routines.ts";
@@ -41,13 +41,13 @@ const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : 
 
 if (!embeddedPostgresSupport.supported) {
   console.warn(
-    `Skipping embedded Postgres pipeline service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
+    `Skipping embedded Postgres workflow service tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
   );
 }
 
-describeEmbeddedPostgres("pipelineService", () => {
+describeEmbeddedPostgres("workflowService", () => {
   let db!: ReturnType<typeof createDb>;
-  let svc!: ReturnType<typeof pipelineService>;
+  let svc!: ReturnType<typeof workflowService>;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
 
   const userActor: WorkflowActor = { type: "user", userId: "board-user" };
@@ -56,17 +56,17 @@ describeEmbeddedPostgres("pipelineService", () => {
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-workflows-service-");
     db = createDb(tempDb.connectionString);
-    svc = pipelineService(db, { heartbeat: noopHeartbeat });
+    svc = workflowService(db, { heartbeat: noopHeartbeat });
   }, 20_000);
 
   afterEach(async () => {
-    await db.delete(pipelineAutomationExecutions);
-    await db.delete(pipelineCaseBlockers);
-    await db.delete(pipelineCaseIssueLinks);
-    await db.delete(pipelineCaseEvents);
-    await db.delete(pipelineLifeAdmin);
-    await db.delete(pipelineTransitions);
-    await db.delete(pipelineStages);
+    await db.delete(workflowAutomationExecutions);
+    await db.delete(workflowLifeAdminBlockers);
+    await db.delete(workflowLifeAdminIssueLinks);
+    await db.delete(workflowLifeAdminEvents);
+    await db.delete(workflowLifeAdmin);
+    await db.delete(workflowTransitions);
+    await db.delete(workflowStages);
     await db.delete(workflows);
     await db.delete(issueComments);
     await db.delete(activityLog);
@@ -87,30 +87,30 @@ describeEmbeddedPostgres("pipelineService", () => {
   });
 
   async function seedDomain() {
-    const [company] = await db.insert(domains).values({
+    const [domain] = await db.insert(domains).values({
       name: "Workflow Co",
       issuePrefix: `P${randomUUID().replace(/-/g, "").slice(0, 6).toUpperLifeAdmin()}`,
       defaultResponsibleUserId: "board-user",
     }).returning();
-    return company!;
+    return domain!;
   }
 
   async function seedWorkflow(options?: { enforceTransitions?: boolean }) {
-    const company = await seedDomain();
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const domain = await seedDomain();
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: `content-${randomUUID().slice(0, 8)}`,
       name: "Content",
       enforceTransitions: options?.enforceTransitions ?? false,
       actor: userActor,
     });
-    const stages = await svc.listStages(company.id, pipeline.id);
-    return { company, pipeline, stages, byKey: new Map(stages.map((stage) => [stage.key, stage])) };
+    const stages = await svc.listStages(domain.id, workflow.id);
+    return { domain, workflow, stages, byKey: new Map(stages.map((stage) => [stage.key, stage])) };
   }
 
-  async function seedRoutine(companyId: string, title = "Routine") {
+  async function seedRoutine(domainId: string, title = "Routine") {
     const [agent] = await db.insert(agents).values({
-      companyId,
+      domainId,
       name: `${title} Agent`,
       role: "engineer",
       adapterType: "codex_local",
@@ -118,7 +118,7 @@ describeEmbeddedPostgres("pipelineService", () => {
       runtimeConfig: {},
       permissions: {},
     }).returning();
-    return routineService(db, { heartbeat: noopHeartbeat }).create(companyId, {
+    return routineService(db, { heartbeat: noopHeartbeat }).create(domainId, {
       projectId: null,
       goalId: null,
       parentIssueId: null,
@@ -132,30 +132,30 @@ describeEmbeddedPostgres("pipelineService", () => {
     }, {});
   }
 
-  async function eventCount(caseId: string) {
+  async function eventCount(lifeAdminId: string) {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(pipelineCaseEvents)
-      .where(eq(pipelineCaseEvents.caseId, caseId));
+      .from(workflowLifeAdminEvents)
+      .where(eq(workflowLifeAdminEvents.lifeAdminId, lifeAdminId));
     return count ?? 0;
   }
 
   async function seedLinkedIssue(input: {
-    companyId: string;
-    caseId: string;
+    domainId: string;
+    lifeAdminId: string;
     role: "origin" | "conversation" | "work" | "automation";
     status?: "backlog" | "todo" | "in_progress" | "in_review" | "done" | "blocked" | "cancelled";
     title?: string;
   }) {
     const [issue] = await db.insert(issues).values({
-      companyId: input.companyId,
+      domainId: input.domainId,
       title: input.title ?? `${input.role} issue`,
       status: input.status ?? "todo",
       priority: "medium",
     }).returning();
-    await db.insert(pipelineCaseIssueLinks).values({
-      companyId: input.companyId,
-      caseId: input.caseId,
+    await db.insert(workflowLifeAdminIssueLinks).values({
+      domainId: input.domainId,
+      lifeAdminId: input.lifeAdminId,
       issueId: issue!.id,
       role: input.role,
     });
@@ -163,198 +163,198 @@ describeEmbeddedPostgres("pipelineService", () => {
   }
 
   it("seeds default stages and protects non-empty stage deletion", async () => {
-    const { company, pipeline, byKey } = await seedWorkflow();
+    const { domain, workflow, byKey } = await seedWorkflow();
 
     expect([...byKey.keys()]).toEqual(["intake", "in_progress", "review", "done", "cancelled"]);
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "stage-delete",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "stage-delete",
       title: "Stage delete guard",
       actor: userActor,
     });
 
     await expect(
-      svc.deleteStage({ companyId: company.id, pipelineId: pipeline.id, stageId: byKey.get("intake")!.id }),
+      svc.deleteStage({ domainId: domain.id, workflowId: workflow.id, stageId: byKey.get("intake")!.id }),
     ).rejects.toMatchObject({ status: 422, details: { code: "stage_has_life_admin" } });
 
     await svc.deleteStage({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageId: byKey.get("intake")!.id,
       moveLifeAdminToStageId: byKey.get("in_progress")!.id,
     });
-    const [moved] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, created.case.id));
+    const [moved] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, created.life_admin.id));
     expect(moved!.stageId).toBe(byKey.get("in_progress")!.id);
   });
 
   it("updates parent terminal counts when deleting a stage moves child life_admin to done", async () => {
-    const { company, pipeline, byKey } = await seedWorkflow();
+    const { domain, workflow, byKey } = await seedWorkflow();
     const parent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageKey: "in_progress",
-      caseKey: "delete-stage-parent",
+      life_adminKey: "delete-stage-parent",
       title: "Delete stage parent",
       actor: userActor,
     });
     const child = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "delete-stage-child",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "delete-stage-child",
       title: "Delete stage child",
-      parentCaseId: parent.case.id,
+      parentLifeAdminId: parent.life_admin.id,
       actor: userActor,
     });
 
     await svc.deleteStage({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageId: byKey.get("intake")!.id,
       moveLifeAdminToStageId: byKey.get("done")!.id,
     });
 
-    const [freshParent] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, parent.case.id));
-    const [freshChild] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, child.case.id));
+    const [freshParent] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, parent.life_admin.id));
+    const [freshChild] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, child.life_admin.id));
     expect(freshParent!.childCount).toBe(1);
     expect(freshParent!.terminalChildCount).toBe(1);
     expect(freshChild!.terminalKind).toBe("done");
 
     await expect(
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: parent.case.id,
+        domainId: domain.id,
+        lifeAdminId: parent.life_admin.id,
         toStageKey: "done",
-        expectedVersion: parent.case.version,
+        expectedVersion: parent.life_admin.version,
         actor: userActor,
       }),
-    ).resolves.toMatchObject({ case: { terminalKind: "done" } });
+    ).resolves.toMatchObject({ life_admin: { terminalKind: "done" } });
   });
 
   it("implements idempotent single and batch ingest", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
 
     const first = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "release-1",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "release-1",
       title: "Release 1",
       actor: userActor,
     });
     const second = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "release-1",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "release-1",
       title: "Duplicate title is ignored",
       actor: userActor,
     });
 
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
-    expect(second.case.id).toBe(first.case.id);
-    expect(await eventCount(first.case.id)).toBe(1);
+    expect(second.life_admin.id).toBe(first.life_admin.id);
+    expect(await eventCount(first.life_admin.id)).toBe(1);
 
     await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "existing-2",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "existing-2",
       title: "Existing 2",
       actor: userActor,
     });
     const batch = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       actor: userActor,
       items: [
-        { caseKey: "new-1", title: "New 1" },
-        { caseKey: "new-2", title: "New 2" },
-        { caseKey: "release-1", title: "Existing 1" },
-        { caseKey: "new-3", title: "New 3" },
-        { caseKey: "existing-2", title: "Existing 2 again" },
+        { life_adminKey: "new-1", title: "New 1" },
+        { life_adminKey: "new-2", title: "New 2" },
+        { life_adminKey: "release-1", title: "Existing 1" },
+        { life_adminKey: "new-3", title: "New 3" },
+        { life_adminKey: "existing-2", title: "Existing 2 again" },
       ],
     });
 
     expect(batch).toHaveLength(5);
     expect(batch.filter((item) => item.ok && item.created)).toHaveLength(3);
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(pipelineLifeAdmin);
+    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(workflowLifeAdmin);
     expect(count).toBe(5);
   });
 
   it("persists workspaceRef during ingest", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const workspaceRef = {
-      workspacePath: "exports/pipeline-case",
-      name: "Workflow case files",
+      workspacePath: "exports/workflow-life_admin",
+      name: "Workflow life_admin files",
     };
 
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "workspace-ref",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "workspace-ref",
       title: "Workspace ref",
       workspaceRef,
       actor: userActor,
     });
 
-    expect(created.case.workspaceRef).toEqual(workspaceRef);
+    expect(created.life_admin.workspaceRef).toEqual(workspaceRef);
     const [stored] = await db
-      .select({ workspaceRef: pipelineLifeAdmin.workspaceRef })
-      .from(pipelineLifeAdmin)
-      .where(eq(pipelineLifeAdmin.id, created.case.id));
+      .select({ workspaceRef: workflowLifeAdmin.workspaceRef })
+      .from(workflowLifeAdmin)
+      .where(eq(workflowLifeAdmin.id, created.life_admin.id));
     expect(stored?.workspaceRef).toEqual(workspaceRef);
   });
 
   it("rejects stale content PATCH without writing an event", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "patch",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "patch",
       title: "Patch me",
       actor: userActor,
     });
-    await svc.patchCaseContent({
-      companyId: company.id,
-      caseId: created.case.id,
+    await svc.patchLifeAdminContent({
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       title: "Patched",
       expectedVersion: 1,
       actor: userActor,
     });
-    const before = await eventCount(created.case.id);
+    const before = await eventCount(created.life_admin.id);
 
     await expect(
-      svc.patchCaseContent({
-        companyId: company.id,
-        caseId: created.case.id,
+      svc.patchLifeAdminContent({
+        domainId: domain.id,
+        lifeAdminId: created.life_admin.id,
         title: "Stale",
         expectedVersion: 1,
         actor: userActor,
       }),
     ).rejects.toMatchObject({ status: 409, details: { code: "version_conflict", version: 2 } });
-    expect(await eventCount(created.case.id)).toBe(before);
+    expect(await eventCount(created.life_admin.id)).toBe(before);
   });
 
   it("lets exactly one parallel transition with the same expectedVersion succeed", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "parallel",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "parallel",
       title: "Parallel transition",
       actor: userActor,
     });
 
     const attempts = await Promise.allSettled([
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: created.case.id,
+        domainId: domain.id,
+        lifeAdminId: created.life_admin.id,
         toStageKey: "in_progress",
         expectedVersion: 1,
         actor: userActor,
       }),
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: created.case.id,
+        domainId: domain.id,
+        lifeAdminId: created.life_admin.id,
         toStageKey: "review",
         expectedVersion: 1,
         actor: userActor,
@@ -363,32 +363,32 @@ describeEmbeddedPostgres("pipelineService", () => {
 
     expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
     expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
-    const [row] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, created.case.id));
+    const [row] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, created.life_admin.id));
     expect(row!.version).toBe(2);
-    expect(await eventCount(created.case.id)).toBe(2);
+    expect(await eventCount(created.life_admin.id)).toBe(2);
   });
 
   it("enforces active leases and lets the holder transition with the lease token", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "lease",
-      title: "Leased case",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "lease",
+      title: "Leased life_admin",
       actor: userActor,
     });
     const owner: WorkflowActor = { type: "user", userId: "owner" };
     const other: WorkflowActor = { type: "user", userId: "other" };
 
-    const claimed = await svc.claimLifeAdmin({ companyId: company.id, caseId: created.case.id, actor: owner });
-    await expect(svc.claimLifeAdmin({ companyId: company.id, caseId: created.case.id, actor: other })).rejects.toMatchObject({
+    const claimed = await svc.claimLifeAdmin({ domainId: domain.id, lifeAdminId: created.life_admin.id, actor: owner });
+    await expect(svc.claimLifeAdmin({ domainId: domain.id, lifeAdminId: created.life_admin.id, actor: other })).rejects.toMatchObject({
       status: 409,
       details: { code: "lease_held" },
     });
     await expect(
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: created.case.id,
+        domainId: domain.id,
+        lifeAdminId: created.life_admin.id,
         toStageKey: "in_progress",
         expectedVersion: 1,
         actor: other,
@@ -396,98 +396,98 @@ describeEmbeddedPostgres("pipelineService", () => {
     ).rejects.toMatchObject({ status: 409, details: { code: "lease_held" } });
 
     const transitioned = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "in_progress",
       expectedVersion: 1,
       leaseToken: claimed.leaseToken,
       actor: owner,
     });
-    expect(transitioned.case.version).toBe(2);
-    expect(await eventCount(created.case.id)).toBe(3);
+    expect(transitioned.life_admin.version).toBe(2);
+    expect(await eventCount(created.life_admin.id)).toBe(3);
   });
 
   it("expires leases on read before a new claim", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "expired-lease",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "expired-lease",
       title: "Expired lease",
       actor: userActor,
     });
-    await db.update(pipelineLifeAdmin).set({
+    await db.update(workflowLifeAdmin).set({
       leaseOwnerType: "user",
       leaseUserId: "old-owner",
       leaseToken: randomUUID(),
       leaseExpiresAt: new Date(Date.now() - 5_000),
-    }).where(eq(pipelineLifeAdmin.id, created.case.id));
+    }).where(eq(workflowLifeAdmin.id, created.life_admin.id));
 
-    const claimed = await svc.claimLifeAdmin({ companyId: company.id, caseId: created.case.id, actor: { type: "user", userId: "new-owner" } });
+    const claimed = await svc.claimLifeAdmin({ domainId: domain.id, lifeAdminId: created.life_admin.id, actor: { type: "user", userId: "new-owner" } });
 
     expect(claimed.leaseUserId).toBe("new-owner");
-    const events = await svc.listCaseEvents(company.id, created.case.id);
+    const events = await svc.listLifeAdminEvents(domain.id, created.life_admin.id);
     expect(events.map((event) => event.type)).toEqual(["ingested", "lease_expired", "claimed"]);
   });
 
   it("enforces transition edges only when enforceTransitions is enabled", async () => {
-    const { company, pipeline } = await seedWorkflow({ enforceTransitions: true });
+    const { domain, workflow } = await seedWorkflow({ enforceTransitions: true });
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "edges",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "edges",
       title: "Transition edges",
       actor: userActor,
     });
 
     await expect(
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: created.case.id,
+        domainId: domain.id,
+        lifeAdminId: created.life_admin.id,
         toStageKey: "done",
         expectedVersion: 1,
         actor: userActor,
       }),
     ).rejects.toMatchObject({ status: 409, details: { code: "transition_not_allowed" } });
 
-    await db.update(workflows).set({ enforceTransitions: false }).where(eq(workflows.id, pipeline.id));
+    await db.update(workflows).set({ enforceTransitions: false }).where(eq(workflows.id, workflow.id));
     const moved = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "done",
       expectedVersion: 1,
       actor: userActor,
     });
-    expect(moved.case.terminalKind).toBe("done");
+    expect(moved.life_admin.terminalKind).toBe("done");
   });
 
   it("blocks transitions while blockers are not done", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const blocked = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "blocked",
-      title: "Blocked case",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "blocked",
+      title: "Blocked life_admin",
       actor: userActor,
     });
     const blocker = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "blocker",
-      title: "Blocking case",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "blocker",
+      title: "Blocking life_admin",
       actor: userActor,
     });
     await svc.replaceBlockers({
-      companyId: company.id,
-      caseId: blocked.case.id,
-      blockedByCaseIds: [blocker.case.id],
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
+      blockedByLifeAdminIds: [blocker.life_admin.id],
       actor: userActor,
     });
 
     await expect(
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: blocked.case.id,
+        domainId: domain.id,
+        lifeAdminId: blocked.life_admin.id,
         toStageKey: "in_progress",
         expectedVersion: 1,
         actor: userActor,
@@ -495,18 +495,18 @@ describeEmbeddedPostgres("pipelineService", () => {
     ).rejects.toMatchObject({ status: 409, details: { code: "blocked" } });
 
     const reviewMove = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: blocked.case.id,
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
       toStageKey: "review",
       expectedVersion: 1,
       actor: userActor,
     });
-    expect(reviewMove.case.version).toBe(2);
+    expect(reviewMove.life_admin.version).toBe(2);
 
     await expect(
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: blocked.case.id,
+        domainId: domain.id,
+        lifeAdminId: blocked.life_admin.id,
         toStageKey: "done",
         expectedVersion: 2,
         actor: userActor,
@@ -514,115 +514,115 @@ describeEmbeddedPostgres("pipelineService", () => {
     ).rejects.toMatchObject({ status: 409, details: { code: "blocked" } });
 
     await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: blocker.case.id,
+      domainId: domain.id,
+      lifeAdminId: blocker.life_admin.id,
       toStageKey: "done",
       expectedVersion: 1,
       actor: userActor,
     });
     const moved = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: blocked.case.id,
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
       toStageKey: "in_progress",
       expectedVersion: 2,
       actor: userActor,
     });
-    expect(moved.case.version).toBe(3);
-    const events = await svc.listCaseEvents(company.id, blocked.case.id);
+    expect(moved.life_admin.version).toBe(3);
+    const events = await svc.listLifeAdminEvents(domain.id, blocked.life_admin.id);
     expect(events.map((event) => event.type)).toContain("blockers_resolved");
   });
 
   it("emits blockers_resolved once for each fresh blocker set", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const blocked = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "blocked-again",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "blocked-again",
       title: "Blocked again",
       actor: userActor,
     });
     const firstBlocker = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "first-blocker",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "first-blocker",
       title: "First blocker",
       actor: userActor,
     });
     const secondBlocker = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "second-blocker",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "second-blocker",
       title: "Second blocker",
       actor: userActor,
     });
     const workIssue = await seedLinkedIssue({
-      companyId: company.id,
-      caseId: blocked.case.id,
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
       role: "work",
       title: "Blocked work",
     });
 
     await svc.replaceBlockers({
-      companyId: company.id,
-      caseId: blocked.case.id,
-      blockedByCaseIds: [firstBlocker.case.id],
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
+      blockedByLifeAdminIds: [firstBlocker.life_admin.id],
       actor: userActor,
     });
     await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: firstBlocker.case.id,
+      domainId: domain.id,
+      lifeAdminId: firstBlocker.life_admin.id,
       toStageKey: "done",
       expectedVersion: 1,
       actor: userActor,
     });
 
     await svc.replaceBlockers({
-      companyId: company.id,
-      caseId: blocked.case.id,
-      blockedByCaseIds: [secondBlocker.case.id],
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
+      blockedByLifeAdminIds: [secondBlocker.life_admin.id],
       actor: userActor,
     });
     await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: secondBlocker.case.id,
+      domainId: domain.id,
+      lifeAdminId: secondBlocker.life_admin.id,
       toStageKey: "done",
       expectedVersion: 1,
       actor: userActor,
     });
 
-    const events = await svc.listCaseEvents(company.id, blocked.case.id);
+    const events = await svc.listLifeAdminEvents(domain.id, blocked.life_admin.id);
     expect(events.filter((event) => event.type === "blockers_resolved")).toHaveLength(2);
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, workIssue.id));
     expect(comments).toHaveLength(2);
-    expect(comments.map((comment) => comment.body).join("\n")).toContain(firstBlocker.case.id);
-    expect(comments.map((comment) => comment.body).join("\n")).toContain(secondBlocker.case.id);
+    expect(comments.map((comment) => comment.body).join("\n")).toContain(firstBlocker.life_admin.id);
+    expect(comments.map((comment) => comment.body).join("\n")).toContain(secondBlocker.life_admin.id);
   });
 
   it("keeps cancelled blockers unsatisfied until replaced", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const blocked = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "blocked-cancelled",
-      title: "Blocked case",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "blocked-cancelled",
+      title: "Blocked life_admin",
       actor: userActor,
     });
     const blocker = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "blocker-cancelled",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "blocker-cancelled",
       title: "Cancelled blocker",
       actor: userActor,
     });
     await svc.replaceBlockers({
-      companyId: company.id,
-      caseId: blocked.case.id,
-      blockedByCaseIds: [blocker.case.id],
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
+      blockedByLifeAdminIds: [blocker.life_admin.id],
       actor: userActor,
     });
     await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: blocker.case.id,
+      domainId: domain.id,
+      lifeAdminId: blocker.life_admin.id,
       toStageKey: "cancelled",
       expectedVersion: 1,
       actor: userActor,
@@ -630,66 +630,66 @@ describeEmbeddedPostgres("pipelineService", () => {
 
     await expect(
       svc.transitionLifeAdmin({
-        companyId: company.id,
-        caseId: blocked.case.id,
+        domainId: domain.id,
+        lifeAdminId: blocked.life_admin.id,
         toStageKey: "in_progress",
         expectedVersion: 1,
         actor: userActor,
       }),
     ).rejects.toMatchObject({ status: 409, details: { code: "blocked" } });
 
-    await svc.replaceBlockers({ companyId: company.id, caseId: blocked.case.id, blockedByCaseIds: [], actor: userActor });
+    await svc.replaceBlockers({ domainId: domain.id, lifeAdminId: blocked.life_admin.id, blockedByLifeAdminIds: [], actor: userActor });
     const moved = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: blocked.case.id,
+      domainId: domain.id,
+      lifeAdminId: blocked.life_admin.id,
       toStageKey: "in_progress",
       expectedVersion: 1,
       actor: userActor,
     });
-    expect(moved.case.version).toBe(2);
+    expect(moved.life_admin.version).toBe(2);
   });
 
   it("posts upstream drift notices to active dependent work issues only", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const upstream = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "draft",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "draft",
       title: "Draft",
       actor: userActor,
     });
     const workDependent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "asset-work",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "asset-work",
       title: "Asset work",
-      blockedByCaseIds: [upstream.case.id],
+      blockedByLifeAdminIds: [upstream.life_admin.id],
       actor: userActor,
     });
     const conversationDependent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "asset-conversation",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "asset-conversation",
       title: "Asset conversation",
-      blockedByCaseIds: [upstream.case.id],
+      blockedByLifeAdminIds: [upstream.life_admin.id],
       actor: userActor,
     });
     const workIssue = await seedLinkedIssue({
-      companyId: company.id,
-      caseId: workDependent.case.id,
+      domainId: domain.id,
+      lifeAdminId: workDependent.life_admin.id,
       role: "work",
       title: "Asset work issue",
     });
     const conversationIssue = await seedLinkedIssue({
-      companyId: company.id,
-      caseId: conversationDependent.case.id,
+      domainId: domain.id,
+      lifeAdminId: conversationDependent.life_admin.id,
       role: "conversation",
       title: "Conversation issue",
     });
 
-    const updated = await svc.patchCaseContent({
-      companyId: company.id,
-      caseId: upstream.case.id,
+    const updated = await svc.patchLifeAdminContent({
+      domainId: domain.id,
+      lifeAdminId: upstream.life_admin.id,
       title: "Draft v2",
       expectedVersion: 1,
       actor: userActor,
@@ -700,59 +700,59 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(workComments).toHaveLength(1);
     expect(workComments[0]!.authorType).toBe("system");
     expect(workComments[0]!.body).toBe(
-      `Upstream case [draft](/PAP/workflows/${pipeline.id}/life_admin/${upstream.case.id}) changed (v1→v2).`,
+      `Upstream life_admin [draft](/PAP/workflows/${workflow.id}/life_admin/${upstream.life_admin.id}) changed (v1→v2).`,
     );
     const conversationComments = await db.select().from(issueComments).where(eq(issueComments.issueId, conversationIssue.id));
     expect(conversationComments).toHaveLength(0);
   });
 
   it("skips upstream drift notices for terminal dependents and dependents without work issues", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const upstream = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "source",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "source",
       title: "Source",
       actor: userActor,
     });
     const terminalDependent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageKey: "done",
-      caseKey: "terminal-dependent",
+      life_adminKey: "terminal-dependent",
       title: "Terminal dependent",
       actor: userActor,
     });
     await svc.replaceBlockers({
-      companyId: company.id,
-      caseId: terminalDependent.case.id,
-      blockedByCaseIds: [upstream.case.id],
+      domainId: domain.id,
+      lifeAdminId: terminalDependent.life_admin.id,
+      blockedByLifeAdminIds: [upstream.life_admin.id],
       actor: userActor,
     });
     const noWorkDependent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "no-work-dependent",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "no-work-dependent",
       title: "No work dependent",
-      blockedByCaseIds: [upstream.case.id],
+      blockedByLifeAdminIds: [upstream.life_admin.id],
       actor: userActor,
     });
     const terminalIssue = await seedLinkedIssue({
-      companyId: company.id,
-      caseId: terminalDependent.case.id,
+      domainId: domain.id,
+      lifeAdminId: terminalDependent.life_admin.id,
       role: "work",
       title: "Terminal work issue",
     });
     const conversationIssue = await seedLinkedIssue({
-      companyId: company.id,
-      caseId: noWorkDependent.case.id,
+      domainId: domain.id,
+      lifeAdminId: noWorkDependent.life_admin.id,
       role: "conversation",
       title: "Non-work issue",
     });
 
-    await svc.patchCaseContent({
-      companyId: company.id,
-      caseId: upstream.case.id,
+    await svc.patchLifeAdminContent({
+      domainId: domain.id,
+      lifeAdminId: upstream.life_admin.id,
       summary: "Updated source",
       expectedVersion: 1,
       actor: userActor,
@@ -765,34 +765,34 @@ describeEmbeddedPostgres("pipelineService", () => {
   });
 
   it("does not bump versions or notify dependents on no-op content patches", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const upstream = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "noop-source",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "noop-source",
       title: "No-op source",
       fields: { channel: "blog" },
       actor: userActor,
     });
     const dependent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "noop-dependent",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "noop-dependent",
       title: "No-op dependent",
-      blockedByCaseIds: [upstream.case.id],
+      blockedByLifeAdminIds: [upstream.life_admin.id],
       actor: userActor,
     });
     const workIssue = await seedLinkedIssue({
-      companyId: company.id,
-      caseId: dependent.case.id,
+      domainId: domain.id,
+      lifeAdminId: dependent.life_admin.id,
       role: "work",
       title: "No-op work issue",
     });
-    const beforeEvents = await eventCount(upstream.case.id);
+    const beforeEvents = await eventCount(upstream.life_admin.id);
 
-    const patched = await svc.patchCaseContent({
-      companyId: company.id,
-      caseId: upstream.case.id,
+    const patched = await svc.patchLifeAdminContent({
+      domainId: domain.id,
+      lifeAdminId: upstream.life_admin.id,
       title: "No-op source",
       fields: { channel: "blog" },
       expectedVersion: 1,
@@ -800,21 +800,21 @@ describeEmbeddedPostgres("pipelineService", () => {
     });
 
     expect(patched.version).toBe(1);
-    expect(await eventCount(upstream.case.id)).toBe(beforeEvents);
+    expect(await eventCount(upstream.life_admin.id)).toBe(beforeEvents);
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, workIssue.id));
     expect(comments).toHaveLength(0);
   });
 
-  it("resolves in-batch forward blocker case keys", async () => {
-    const { company, pipeline } = await seedWorkflow();
+  it("resolves in-batch forward blocker life_admin keys", async () => {
+    const { domain, workflow } = await seedWorkflow();
 
     const results = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       items: [
-        { caseKey: "tweet", title: "Tweet", blockedByCaseKeys: ["image", "post"] },
-        { caseKey: "image", title: "Image" },
-        { caseKey: "post", title: "Post" },
+        { life_adminKey: "tweet", title: "Tweet", blockedByLifeAdminKeys: ["image", "post"] },
+        { life_adminKey: "image", title: "Image" },
+        { life_adminKey: "post", title: "Post" },
       ],
       actor: userActor,
     });
@@ -822,59 +822,59 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(results.map((result) => result.ok)).toEqual([true, true, true]);
     const successful = results.filter((result): result is Extract<(typeof results)[number], { ok: true }> => result.ok);
     const byKey = new Map(successful
-      .map((result) => [result.case.caseKey, result.case.id]));
+      .map((result) => [result.life_admin.life_adminKey, result.life_admin.id]));
     const blockers = await db
       .select()
-      .from(pipelineCaseBlockers)
-      .where(eq(pipelineCaseBlockers.caseId, byKey.get("tweet")!));
-    expect(blockers.map((row) => row.blockedByCaseId).sort()).toEqual([
+      .from(workflowLifeAdminBlockers)
+      .where(eq(workflowLifeAdminBlockers.lifeAdminId, byKey.get("tweet")!));
+    expect(blockers.map((row) => row.blockedByLifeAdminId).sort()).toEqual([
       byKey.get("image")!,
       byKey.get("post")!,
     ].sort());
-    const events = await svc.listCaseEvents(company.id, byKey.get("tweet")!);
+    const events = await svc.listLifeAdminEvents(domain.id, byKey.get("tweet")!);
     const blockersEvent = events.find((event) => event.type === "blockers_set");
     expect(blockersEvent?.payload).toMatchObject({
-      blockedByCaseIds: expect.arrayContaining([byKey.get("image")!, byKey.get("post")!]),
-      blockedByCaseKeys: ["image", "post"],
+      blockedByLifeAdminIds: expect.arrayContaining([byKey.get("image")!, byKey.get("post")!]),
+      blockedByLifeAdminKeys: ["image", "post"],
     });
   });
 
-  it("resolves blocker case keys against existing life_admin", async () => {
-    const { company, pipeline } = await seedWorkflow();
+  it("resolves blocker life_admin keys against existing life_admin", async () => {
+    const { domain, workflow } = await seedWorkflow();
     const asset = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "asset",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "asset",
       title: "Asset",
       actor: userActor,
     });
 
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "tweet",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "tweet",
       title: "Tweet",
-      blockedByCaseKeys: ["asset"],
+      blockedByLifeAdminKeys: ["asset"],
       actor: userActor,
     });
 
     const blockers = await db
       .select()
-      .from(pipelineCaseBlockers)
-      .where(eq(pipelineCaseBlockers.caseId, created.case.id));
-    expect(blockers.map((row) => row.blockedByCaseId)).toEqual([asset.case.id]);
+      .from(workflowLifeAdminBlockers)
+      .where(eq(workflowLifeAdminBlockers.lifeAdminId, created.life_admin.id));
+    expect(blockers.map((row) => row.blockedByLifeAdminId)).toEqual([asset.life_admin.id]);
   });
 
   it("fails only unresolved blocker-key rows in batch ingest", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
 
     const results = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       items: [
-        { caseKey: "ok", title: "OK" },
-        { caseKey: "missing", title: "Missing", blockedByCaseKeys: ["does-not-exist"] },
-        { caseKey: "after", title: "After" },
+        { life_adminKey: "ok", title: "OK" },
+        { life_adminKey: "missing", title: "Missing", blockedByLifeAdminKeys: ["does-not-exist"] },
+        { life_adminKey: "after", title: "After" },
       ],
       actor: userActor,
     });
@@ -882,26 +882,26 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(results[0]).toMatchObject({ ok: true });
     expect(results[1]).toMatchObject({
       ok: false,
-      caseKey: "missing",
+      life_adminKey: "missing",
       error: {
         status: 404,
-        details: { code: "blocker_case_key_not_found", missingCaseKeys: ["does-not-exist"] },
+        details: { code: "blocker_life_admin_key_not_found", missingLifeAdminKeys: ["does-not-exist"] },
       },
     });
     expect(results[2]).toMatchObject({ ok: true });
-    const rows = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.pipelineId, pipeline.id));
-    expect(rows.map((row) => row.caseKey).sort()).toEqual(["after", "ok"]);
+    const rows = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.workflowId, workflow.id));
+    expect(rows.map((row) => row.life_adminKey).sort()).toEqual(["after", "ok"]);
   });
 
-  it("rejects blocker cycles declared by batch case keys", async () => {
-    const { company, pipeline } = await seedWorkflow();
+  it("rejects blocker cycles declared by batch life_admin keys", async () => {
+    const { domain, workflow } = await seedWorkflow();
 
     const results = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       items: [
-        { caseKey: "a", title: "A", blockedByCaseKeys: ["b"] },
-        { caseKey: "b", title: "B", blockedByCaseKeys: ["a"] },
+        { life_adminKey: "a", title: "A", blockedByLifeAdminKeys: ["b"] },
+        { life_adminKey: "b", title: "B", blockedByLifeAdminKeys: ["a"] },
       ],
       actor: userActor,
     });
@@ -909,146 +909,146 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(results).toEqual([
       expect.objectContaining({
         ok: false,
-        caseKey: "a",
-        error: expect.objectContaining({ status: 409, details: { code: "blocker_cycle", blockedByCaseKeys: ["b"] } }),
+        life_adminKey: "a",
+        error: expect.objectContaining({ status: 409, details: { code: "blocker_cycle", blockedByLifeAdminKeys: ["b"] } }),
       }),
       expect.objectContaining({
         ok: false,
-        caseKey: "b",
-        error: expect.objectContaining({ status: 409, details: { code: "blocker_cycle", blockedByCaseKeys: ["a"] } }),
+        life_adminKey: "b",
+        error: expect.objectContaining({ status: 409, details: { code: "blocker_cycle", blockedByLifeAdminKeys: ["a"] } }),
       }),
     ]);
-    const rows = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.pipelineId, pipeline.id));
+    const rows = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.workflowId, workflow.id));
     expect(rows).toHaveLength(0);
   });
 
   it("rejects parent and blocker cycles and enforces parent depth", async () => {
-    const { company, pipeline } = await seedWorkflow();
-    const a = await svc.ingestLifeAdmin({ companyId: company.id, pipelineId: pipeline.id, caseKey: "a", title: "A", actor: userActor });
+    const { domain, workflow } = await seedWorkflow();
+    const a = await svc.ingestLifeAdmin({ domainId: domain.id, workflowId: workflow.id, life_adminKey: "a", title: "A", actor: userActor });
     const b = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "b",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "b",
       title: "B",
-      parentCaseId: a.case.id,
+      parentLifeAdminId: a.life_admin.id,
       actor: userActor,
     });
 
     await expect(
-      svc.patchCaseContent({
-        companyId: company.id,
-        caseId: a.case.id,
-        parentCaseId: b.case.id,
+      svc.patchLifeAdminContent({
+        domainId: domain.id,
+        lifeAdminId: a.life_admin.id,
+        parentLifeAdminId: b.life_admin.id,
         expectedVersion: 1,
         actor: userActor,
       }),
     ).rejects.toMatchObject({ status: 409, details: { code: "parent_cycle" } });
 
-    await svc.replaceBlockers({ companyId: company.id, caseId: a.case.id, blockedByCaseIds: [b.case.id], actor: userActor });
+    await svc.replaceBlockers({ domainId: domain.id, lifeAdminId: a.life_admin.id, blockedByLifeAdminIds: [b.life_admin.id], actor: userActor });
     await expect(
-      svc.replaceBlockers({ companyId: company.id, caseId: b.case.id, blockedByCaseIds: [a.case.id], actor: userActor }),
+      svc.replaceBlockers({ domainId: domain.id, lifeAdminId: b.life_admin.id, blockedByLifeAdminIds: [a.life_admin.id], actor: userActor }),
     ).rejects.toMatchObject({ status: 409, details: { code: "blocker_cycle" } });
 
-    let parentCaseId: string | null = null;
+    let parentLifeAdminId: string | null = null;
     for (let index = 0; index < 32; index += 1) {
       const created = await svc.ingestLifeAdmin({
-        companyId: company.id,
-        pipelineId: pipeline.id,
-        caseKey: `chain-${index}`,
+        domainId: domain.id,
+        workflowId: workflow.id,
+        life_adminKey: `chain-${index}`,
         title: `Chain ${index}`,
-        parentCaseId,
+        parentLifeAdminId,
         actor: userActor,
       });
-      parentCaseId = created.case.id;
+      parentLifeAdminId = created.life_admin.id;
     }
     await expect(
       svc.ingestLifeAdmin({
-        companyId: company.id,
-        pipelineId: pipeline.id,
-        caseKey: "too-deep",
+        domainId: domain.id,
+        workflowId: workflow.id,
+        life_adminKey: "too-deep",
         title: "Too deep",
-        parentCaseId,
+        parentLifeAdminId,
         actor: userActor,
       }),
     ).rejects.toMatchObject({ status: 422, details: { code: "parent_depth_exceeded" } });
   });
 
   it("rolls up a three-level tree, updates counters, and emits children_terminal once", async () => {
-    const { company, pipeline } = await seedWorkflow();
-    const root = await svc.ingestLifeAdmin({ companyId: company.id, pipelineId: pipeline.id, caseKey: "root", title: "Root", actor: userActor });
+    const { domain, workflow } = await seedWorkflow();
+    const root = await svc.ingestLifeAdmin({ domainId: domain.id, workflowId: workflow.id, life_adminKey: "root", title: "Root", actor: userActor });
     const [linkedIssue] = await db.insert(issues).values({
-      companyId: company.id,
+      domainId: domain.id,
       title: "Root conversation",
       status: "todo",
       priority: "medium",
     }).returning();
-    await db.insert(pipelineCaseIssueLinks).values({
-      companyId: company.id,
-      caseId: root.case.id,
+    await db.insert(workflowLifeAdminIssueLinks).values({
+      domainId: domain.id,
+      lifeAdminId: root.life_admin.id,
       issueId: linkedIssue!.id,
       role: "conversation",
     });
     const childA = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "child-a",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "child-a",
       title: "Child A",
-      parentCaseId: root.case.id,
+      parentLifeAdminId: root.life_admin.id,
       actor: userActor,
     });
     const childB = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "child-b",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "child-b",
       title: "Child B",
-      parentCaseId: root.case.id,
+      parentLifeAdminId: root.life_admin.id,
       actor: userActor,
     });
     const childC = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "child-c",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "child-c",
       title: "Child C",
-      parentCaseId: root.case.id,
+      parentLifeAdminId: root.life_admin.id,
       actor: userActor,
     });
     const grandA = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "grand-a",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "grand-a",
       title: "Grand A",
-      parentCaseId: childA.case.id,
+      parentLifeAdminId: childA.life_admin.id,
       actor: userActor,
     });
     const grandB = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "grand-b",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "grand-b",
       title: "Grand B",
-      parentCaseId: childA.case.id,
+      parentLifeAdminId: childA.life_admin.id,
       actor: userActor,
     });
 
-    await svc.transitionLifeAdmin({ companyId: company.id, caseId: childB.case.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
-    await svc.transitionLifeAdmin({ companyId: company.id, caseId: childC.case.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
-    await svc.transitionLifeAdmin({ companyId: company.id, caseId: grandA.case.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
-    await svc.transitionLifeAdmin({ companyId: company.id, caseId: grandB.case.id, toStageKey: "cancelled", expectedVersion: 1, actor: userActor });
-    await svc.transitionLifeAdmin({ companyId: company.id, caseId: childA.case.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
+    await svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: childB.life_admin.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
+    await svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: childC.life_admin.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
+    await svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: grandA.life_admin.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
+    await svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: grandB.life_admin.id, toStageKey: "cancelled", expectedVersion: 1, actor: userActor });
+    await svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: childA.life_admin.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
 
-    expect(await svc.getCaseRollup(company.id, root.case.id)).toEqual({
+    expect(await svc.getLifeAdminRollup(domain.id, root.life_admin.id)).toEqual({
       total: 5,
       done: 4,
       cancelled: 1,
       open: 0,
       complete: true,
     });
-    const [freshRoot] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, root.case.id));
-    const [freshChildA] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, childA.case.id));
+    const [freshRoot] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, root.life_admin.id));
+    const [freshChildA] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, childA.life_admin.id));
     expect(freshRoot!.childCount).toBe(3);
     expect(freshRoot!.terminalChildCount).toBe(3);
     expect(freshChildA!.childCount).toBe(2);
     expect(freshChildA!.terminalChildCount).toBe(2);
-    const rootEvents = await svc.listCaseEvents(company.id, root.case.id);
+    const rootEvents = await svc.listLifeAdminEvents(domain.id, root.life_admin.id);
     expect(rootEvents.filter((event) => event.type === "children_terminal")).toHaveLength(1);
     const comments = await db.select().from(issueComments).where(eq(issueComments.issueId, linkedIssue!.id));
     expect(comments).toHaveLength(1);
@@ -1057,9 +1057,9 @@ describeEmbeddedPostgres("pipelineService", () => {
   });
 
   it("auto-advances a parent when all descendants are terminal", async () => {
-    const company = await seedDomain();
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const domain = await seedDomain();
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: "auto-children",
       name: "Auto children",
       actor: userActor,
@@ -1069,29 +1069,29 @@ describeEmbeddedPostgres("pipelineService", () => {
         { key: "cancelled", name: "Cancelled", kind: "cancelled" },
       ],
     });
-    const root = await svc.ingestLifeAdmin({ companyId: company.id, pipelineId: pipeline.id, caseKey: "auto-root", title: "Root", actor: userActor });
+    const root = await svc.ingestLifeAdmin({ domainId: domain.id, workflowId: workflow.id, life_adminKey: "auto-root", title: "Root", actor: userActor });
     const child = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "auto-child",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "auto-child",
       title: "Child",
-      parentCaseId: root.case.id,
+      parentLifeAdminId: root.life_admin.id,
       actor: userActor,
     });
 
-    await svc.transitionLifeAdmin({ companyId: company.id, caseId: child.case.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
+    await svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: child.life_admin.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
 
-    const [freshRoot] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, root.case.id));
+    const [freshRoot] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, root.life_admin.id));
     expect(freshRoot!.terminalKind).toBe("done");
     expect(freshRoot!.version).toBe(2);
-    const rootEvents = await svc.listCaseEvents(company.id, root.case.id);
+    const rootEvents = await svc.listLifeAdminEvents(domain.id, root.life_admin.id);
     expect(rootEvents.map((event) => event.type)).toEqual(["ingested", "children_terminal", "transitioned"]);
   });
 
   it("auto-advances a leased parent when child completion triggers a system transition", async () => {
-    const company = await seedDomain();
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const domain = await seedDomain();
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: "auto-children-lease",
       name: "Auto children lease",
       actor: userActor,
@@ -1101,34 +1101,34 @@ describeEmbeddedPostgres("pipelineService", () => {
         { key: "cancelled", name: "Cancelled", kind: "cancelled" },
       ],
     });
-    const root = await svc.ingestLifeAdmin({ companyId: company.id, pipelineId: pipeline.id, caseKey: "leased-root", title: "Root", actor: userActor });
+    const root = await svc.ingestLifeAdmin({ domainId: domain.id, workflowId: workflow.id, life_adminKey: "leased-root", title: "Root", actor: userActor });
     const child = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "leased-child",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "leased-child",
       title: "Child",
-      parentCaseId: root.case.id,
+      parentLifeAdminId: root.life_admin.id,
       actor: userActor,
     });
     await svc.claimLifeAdmin({
-      companyId: company.id,
-      caseId: root.case.id,
+      domainId: domain.id,
+      lifeAdminId: root.life_admin.id,
       actor: { type: "user", userId: "reviewer" },
     });
 
-    await svc.transitionLifeAdmin({ companyId: company.id, caseId: child.case.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
+    await svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: child.life_admin.id, toStageKey: "done", expectedVersion: 1, actor: userActor });
 
-    const [freshRoot] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, root.case.id));
+    const [freshRoot] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, root.life_admin.id));
     expect(freshRoot!.terminalKind).toBe("done");
     expect(freshRoot!.leaseToken).toBeNull();
-    const rootEvents = await svc.listCaseEvents(company.id, root.case.id);
+    const rootEvents = await svc.listLifeAdminEvents(domain.id, root.life_admin.id);
     expect(rootEvents.map((event) => event.type)).toEqual(["ingested", "claimed", "children_terminal", "transitioned"]);
   });
 
   it("keeps child completion committed when parent children-terminal auto-advance is gated", async () => {
-    const company = await seedDomain();
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const domain = await seedDomain();
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: "auto-children-blocked",
       name: "Auto children blocked",
       actor: userActor,
@@ -1138,61 +1138,61 @@ describeEmbeddedPostgres("pipelineService", () => {
         { key: "cancelled", name: "Cancelled", kind: "cancelled" },
       ],
     });
-    const root = await svc.ingestLifeAdmin({ companyId: company.id, pipelineId: pipeline.id, caseKey: "blocked-root", title: "Root", actor: userActor });
+    const root = await svc.ingestLifeAdmin({ domainId: domain.id, workflowId: workflow.id, life_adminKey: "blocked-root", title: "Root", actor: userActor });
     const child = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "blocked-child",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "blocked-child",
       title: "Child",
-      parentCaseId: root.case.id,
+      parentLifeAdminId: root.life_admin.id,
       actor: userActor,
     });
     const blocker = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "open-blocker",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "open-blocker",
       title: "Open blocker",
       actor: userActor,
     });
     await svc.replaceBlockers({
-      companyId: company.id,
-      caseId: root.case.id,
-      blockedByCaseIds: [blocker.case.id],
+      domainId: domain.id,
+      lifeAdminId: root.life_admin.id,
+      blockedByLifeAdminIds: [blocker.life_admin.id],
       actor: userActor,
     });
 
     await expect(
-      svc.transitionLifeAdmin({ companyId: company.id, caseId: child.case.id, toStageKey: "done", expectedVersion: 1, actor: userActor }),
-    ).resolves.toMatchObject({ case: { terminalKind: "done" } });
+      svc.transitionLifeAdmin({ domainId: domain.id, lifeAdminId: child.life_admin.id, toStageKey: "done", expectedVersion: 1, actor: userActor }),
+    ).resolves.toMatchObject({ life_admin: { terminalKind: "done" } });
 
-    const [freshRoot] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, root.case.id));
-    const [freshChild] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, child.case.id));
+    const [freshRoot] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, root.life_admin.id));
+    const [freshChild] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, child.life_admin.id));
     expect(freshRoot!.terminalKind).toBeNull();
     expect(freshRoot!.terminalChildCount).toBe(1);
     expect(freshChild!.terminalKind).toBe("done");
-    const rootEvents = await svc.listCaseEvents(company.id, root.case.id);
+    const rootEvents = await svc.listLifeAdminEvents(domain.id, root.life_admin.id);
     expect(rootEvents.map((event) => event.type)).toEqual(["ingested", "blockers_set", "children_terminal"]);
   });
 
   it("records suggestion supersede, accept, and dismiss lifecycles", async () => {
-    const { company, pipeline } = await seedWorkflow();
+    const { domain, workflow } = await seedWorkflow();
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "suggest-accept",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "suggest-accept",
       title: "Suggestion accept",
       actor: userActor,
     });
     const first = await svc.suggestTransition({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "review",
       rationale: "Needs review",
       actor: userActor,
     });
     const second = await svc.suggestTransition({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "in_progress",
       rationale: "Actually draft first",
       actor: userActor,
@@ -1200,15 +1200,15 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(second.suggestion.id).not.toBe(first.suggestion.id);
 
     const accepted = await svc.resolveSuggestion({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       suggestionId: second.suggestion.id,
       decision: "accept",
       expectedVersion: 1,
       actor: userActor,
     });
-    expect(accepted.case.version).toBe(2);
-    const acceptEvents = await svc.listCaseEvents(company.id, created.case.id);
+    expect(accepted.life_admin.version).toBe(2);
+    const acceptEvents = await svc.listLifeAdminEvents(domain.id, created.life_admin.id);
     expect(acceptEvents.map((event) => event.type)).toEqual([
       "ingested",
       "transition_suggested",
@@ -1218,74 +1218,74 @@ describeEmbeddedPostgres("pipelineService", () => {
     ]);
 
     const dismissLifeAdmin = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "suggest-dismiss",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "suggest-dismiss",
       title: "Suggestion dismiss",
       actor: userActor,
     });
     const suggestion = await svc.suggestTransition({
-      companyId: company.id,
-      caseId: dismissLifeAdmin.case.id,
+      domainId: domain.id,
+      lifeAdminId: dismissLifeAdmin.life_admin.id,
       toStageKey: "review",
       rationale: "Maybe review",
       actor: userActor,
     });
     await svc.resolveSuggestion({
-      companyId: company.id,
-      caseId: dismissLifeAdmin.case.id,
+      domainId: domain.id,
+      lifeAdminId: dismissLifeAdmin.life_admin.id,
       suggestionId: suggestion.suggestion.id,
       decision: "dismiss",
       reason: "Not ready",
       actor: userActor,
     });
-    const [dismissed] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, dismissLifeAdmin.case.id));
+    const [dismissed] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, dismissLifeAdmin.life_admin.id));
     expect(dismissed!.pendingSuggestion).toBeNull();
     expect(dismissed!.version).toBe(1);
   });
 
-  it("writes an event for each case mutation and rejects agent mutations without run provenance", async () => {
-    const { company, pipeline } = await seedWorkflow();
+  it("writes an event for each life_admin mutation and rejects agent mutations without run provenance", async () => {
+    const { domain, workflow } = await seedWorkflow();
     const agentActor = { type: "agent", agentId: randomUUID() } as WorkflowActor;
     await expect(
       svc.ingestLifeAdmin({
-        companyId: company.id,
-        pipelineId: pipeline.id,
-        caseKey: "bad-agent",
+        domainId: domain.id,
+        workflowId: workflow.id,
+        life_adminKey: "bad-agent",
         title: "Bad provenance",
         actor: agentActor,
       }),
     ).rejects.toMatchObject({ status: 422, details: { code: "run_id_required" } });
 
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "events",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "events",
       title: "Events",
       actor: userActor,
     });
-    expect(await eventCount(created.case.id)).toBe(1);
-    await svc.patchCaseContent({ companyId: company.id, caseId: created.case.id, title: "Updated", actor: userActor });
-    expect(await eventCount(created.case.id)).toBe(2);
-    const claimed = await svc.claimLifeAdmin({ companyId: company.id, caseId: created.case.id, actor: { type: "user", userId: "claimer" } });
-    expect(await eventCount(created.case.id)).toBe(3);
-    await svc.releaseLifeAdmin({ companyId: company.id, caseId: created.case.id, leaseToken: claimed.leaseToken, actor: { type: "user", userId: "claimer" } });
-    expect(await eventCount(created.case.id)).toBe(4);
+    expect(await eventCount(created.life_admin.id)).toBe(1);
+    await svc.patchLifeAdminContent({ domainId: domain.id, lifeAdminId: created.life_admin.id, title: "Updated", actor: userActor });
+    expect(await eventCount(created.life_admin.id)).toBe(2);
+    const claimed = await svc.claimLifeAdmin({ domainId: domain.id, lifeAdminId: created.life_admin.id, actor: { type: "user", userId: "claimer" } });
+    expect(await eventCount(created.life_admin.id)).toBe(3);
+    await svc.releaseLifeAdmin({ domainId: domain.id, lifeAdminId: created.life_admin.id, leaseToken: claimed.leaseToken, actor: { type: "user", userId: "claimer" } });
+    expect(await eventCount(created.life_admin.id)).toBe(4);
     await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "in_progress",
       expectedVersion: 2,
       actor: userActor,
     });
-    expect(await eventCount(created.case.id)).toBe(5);
+    expect(await eventCount(created.life_admin.id)).toBe(5);
   });
 
   it("fires a stage-entry automation routine once and keeps crash-retry idempotent", async () => {
-    const company = await seedDomain();
-    const routine = await seedRoutine(company.id, "Draft on enter");
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const domain = await seedDomain();
+    const routine = await seedRoutine(domain.id, "Draft on enter");
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: "automation",
       name: "Automation",
       actor: userActor,
@@ -1297,29 +1297,29 @@ describeEmbeddedPostgres("pipelineService", () => {
       ],
     });
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "automation",
-      title: "Automation case",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "automation",
+      title: "Automation life_admin",
       actor: userActor,
     });
 
     const moved = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "drafting",
       expectedVersion: 1,
       actor: userActor,
     });
     expect(moved.automationLedger?.routineId).toBe(routine.id);
     expect(moved.automationExecution.status).toBe("succeeded");
-    const ledgers = await db.select().from(pipelineAutomationExecutions);
+    const ledgers = await db.select().from(workflowAutomationExecutions);
     expect(ledgers).toHaveLength(1);
     expect(ledgers[0]!.triggeringEventId).toBe(moved.event.id);
     expect(ledgers[0]!.executionIssueId).toBeTruthy();
     const runsAfterTransition = await db.select().from(routineRuns);
     expect(runsAfterTransition).toHaveLength(1);
-    const linksAfterTransition = await db.select().from(pipelineCaseIssueLinks);
+    const linksAfterTransition = await db.select().from(workflowLifeAdminIssueLinks);
     expect(linksAfterTransition).toHaveLength(1);
     expect(linksAfterTransition[0]!.role).toBe("automation");
 
@@ -1327,18 +1327,18 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(issue!.description).toContain("Workflow LifeAdmin Context");
     expect(issue!.description).toContain("untrustedContent");
 
-    const triggerEvent = await db.insert(pipelineCaseEvents).values({
-      companyId: company.id,
-      caseId: created.case.id,
+    const triggerEvent = await db.insert(workflowLifeAdminEvents).values({
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       type: "transitioned",
       actorType: "system",
-      toStageId: moved.case.stageId,
+      toStageId: moved.life_admin.stageId,
       payload: { simulatedCrash: true },
     }).returning();
     const automationId = ledgers[0]!.automationId;
-    await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
-      caseId: created.case.id,
+    await db.insert(workflowAutomationExecutions).values({
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       automationId,
       triggeringEventId: triggerEvent[0]!.id,
       routineId: routine.id,
@@ -1347,14 +1347,14 @@ describeEmbeddedPostgres("pipelineService", () => {
     });
 
     const firstRetry = await svc.retryAutomation({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       automationId,
       actor: userActor,
     });
     const secondRetry = await svc.retryAutomation({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       automationId,
       actor: userActor,
     });
@@ -1364,20 +1364,20 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(runsAfterRetries).toHaveLength(2);
     const crashExecutions = await db
       .select()
-      .from(pipelineAutomationExecutions)
-      .where(eq(pipelineAutomationExecutions.triggeringEventId, triggerEvent[0]!.id));
+      .from(workflowAutomationExecutions)
+      .where(eq(workflowAutomationExecutions.triggeringEventId, triggerEvent[0]!.id));
     expect(crashExecutions).toHaveLength(1);
     expect(crashExecutions[0]!.executionIssueId).toBeTruthy();
     const crashLinks = await db
       .select()
-      .from(pipelineCaseIssueLinks)
-      .where(eq(pipelineCaseIssueLinks.issueId, crashExecutions[0]!.executionIssueId!));
+      .from(workflowLifeAdminIssueLinks)
+      .where(eq(workflowLifeAdminIssueLinks.issueId, crashExecutions[0]!.executionIssueId!));
     expect(crashLinks).toHaveLength(1);
   });
 
   it("carries saved stage automation workspace context into the execution issue", async () => {
-    const { company, pipeline, byKey } = await seedWorkflow();
-    const routineSeed = await seedRoutine(company.id, "Workspace automation seed");
+    const { domain, workflow, byKey } = await seedWorkflow();
+    const routineSeed = await seedRoutine(domain.id, "Workspace automation seed");
     const projectId = randomUUID();
     const projectWorkspaceId = randomUUID();
     const executionWorkspaceId = randomUUID();
@@ -1385,21 +1385,21 @@ describeEmbeddedPostgres("pipelineService", () => {
     await instanceSettingsService(db).updateExperimental({ enableIsolatedWorkspaces: true });
     await db.insert(projects).values({
       id: projectId,
-      companyId: company.id,
+      domainId: domain.id,
       name: "Automation project",
       status: "in_progress",
     });
     await db.insert(projectWorkspaces).values({
       id: projectWorkspaceId,
-      companyId: company.id,
+      domainId: domain.id,
       projectId,
       name: "Automation workspace",
       isPrimary: true,
-      sharedWorkspaceKey: "pipeline-automation-primary",
+      sharedWorkspaceKey: "workflow-automation-primary",
     });
     await db.insert(executionWorkspaces).values({
       id: executionWorkspaceId,
-      companyId: company.id,
+      domainId: domain.id,
       projectId,
       projectWorkspaceId,
       mode: "isolated_workspace",
@@ -1410,8 +1410,8 @@ describeEmbeddedPostgres("pipelineService", () => {
     });
 
     const updatedStage = await svc.updateStage({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageId: byKey.get("in_progress")!.id,
       patch: {
         config: {
@@ -1438,15 +1438,15 @@ describeEmbeddedPostgres("pipelineService", () => {
     });
 
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "workspace-context",
-      title: "Workspace context case",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "workspace-context",
+      title: "Workspace context life_admin",
       actor: userActor,
     });
     const moved = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "in_progress",
       expectedVersion: 1,
       actor: userActor,
@@ -1476,20 +1476,20 @@ describeEmbeddedPostgres("pipelineService", () => {
     });
   });
 
-  it("defaults, preserves, and interpolates pipeline automation issue title templates", async () => {
-    const { company, pipeline, byKey } = await seedWorkflow();
-    const routineSeed = await seedRoutine(company.id, "Automation seed");
+  it("defaults, preserves, and interpolates workflow automation issue title templates", async () => {
+    const { domain, workflow, byKey } = await seedWorkflow();
+    const routineSeed = await seedRoutine(domain.id, "Automation seed");
     const stageId = byKey.get("in_progress")!.id;
 
     const firstSave = await svc.updateStage({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageId,
       patch: {
         config: {
           automation: {
             assigneeAgentId: routineSeed.assigneeAgentId,
-            instructionsBody: "Draft from {{body}} for {{case_title}}.",
+            instructionsBody: "Draft from {{body}} for {{life_admin_title}}.",
           },
         },
       },
@@ -1498,68 +1498,68 @@ describeEmbeddedPostgres("pipelineService", () => {
     const firstRoutineId = (firstSave.config as { onEnter?: { routineId?: string } }).onEnter?.routineId;
     expect(firstRoutineId).toBeTruthy();
     const [defaultRoutine] = await db.select().from(routines).where(eq(routines.id, firstRoutineId!));
-    expect(defaultRoutine!.title).toBe(PIPELINE_AUTOMATION_DEFAULT_TITLE_TEMPLATE);
+    expect(defaultRoutine!.title).toBe(WORKFLOW_AUTOMATION_DEFAULT_TITLE_TEMPLATE);
     expect((defaultRoutine!.variables ?? []).map((variable) => variable.name)).toEqual([
-      "pipeline_name",
+      "workflow_name",
       "stage_name",
-      "case_title",
+      "life_admin_title",
       "body",
     ]);
 
     await db
       .update(routines)
-      .set({ title: "Custom {{case_key}}: {{case_title}}" })
+      .set({ title: "Custom {{life_admin_key}}: {{life_admin_title}}" })
       .where(eq(routines.id, firstRoutineId!));
     await svc.updateStage({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageId,
       patch: {
         config: {
           automation: {
             assigneeAgentId: routineSeed.assigneeAgentId,
-            instructionsBody: "Updated instructions for {{case_title}}.",
+            instructionsBody: "Updated instructions for {{life_admin_title}}.",
           },
         },
       },
       actor: userActor,
     });
     const [customRoutine] = await db.select().from(routines).where(eq(routines.id, firstRoutineId!));
-    expect(customRoutine!.title).toBe("Custom {{case_key}}: {{case_title}}");
-    expect((customRoutine!.variables ?? []).map((variable) => variable.name)).toContain("case_key");
+    expect(customRoutine!.title).toBe("Custom {{life_admin_key}}: {{life_admin_title}}");
+    expect((customRoutine!.variables ?? []).map((variable) => variable.name)).toContain("life_admin_key");
 
     await db
       .update(routines)
       .set({ title: "In progress automation" })
       .where(eq(routines.id, firstRoutineId!));
     await svc.updateStage({
-      companyId: company.id,
-      pipelineId: pipeline.id,
+      domainId: domain.id,
+      workflowId: workflow.id,
       stageId,
       patch: {
         config: {
           automation: {
             assigneeAgentId: routineSeed.assigneeAgentId,
-            instructionsBody: "Runtime interpolation for {{case_title}}.",
+            instructionsBody: "Runtime interpolation for {{life_admin_title}}.",
           },
         },
       },
       actor: userActor,
     });
     const [upgradedRoutine] = await db.select().from(routines).where(eq(routines.id, firstRoutineId!));
-    expect(upgradedRoutine!.title).toBe(PIPELINE_AUTOMATION_DEFAULT_TITLE_TEMPLATE);
+    expect(upgradedRoutine!.title).toBe(WORKFLOW_AUTOMATION_DEFAULT_TITLE_TEMPLATE);
 
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "pulpit-opinion",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "pulpit-opinion",
       title: "Pulpit opinion piece",
       body: "Agentic work should be composed, not rebuilt",
       actor: userActor,
     });
     const moved = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "in_progress",
       expectedVersion: 1,
       actor: userActor,
@@ -1575,14 +1575,14 @@ describeEmbeddedPostgres("pipelineService", () => {
     expect(issue!.title).toBe("Content / In progress: Pulpit opinion piece");
   });
 
-  it("rejects cross-company stage automation routines at save and execution", async () => {
-    const company = await seedDomain();
+  it("rejects cross-domain stage automation routines at save and execution", async () => {
+    const domain = await seedDomain();
     const otherDomain = await seedDomain();
-    const routine = await seedRoutine(company.id, "Own routine");
+    const routine = await seedRoutine(domain.id, "Own routine");
     const otherRoutine = await seedRoutine(otherDomain.id, "Other routine");
 
     await expect(svc.createWorkflow({
-      companyId: company.id,
+      domainId: domain.id,
       key: "bad-automation",
       name: "Bad automation",
       actor: userActor,
@@ -1594,8 +1594,8 @@ describeEmbeddedPostgres("pipelineService", () => {
       ],
     })).rejects.toMatchObject({ status: 422, details: { code: "validation" } });
 
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: "execution-automation",
       name: "Execution automation",
       actor: userActor,
@@ -1607,32 +1607,32 @@ describeEmbeddedPostgres("pipelineService", () => {
       ],
     });
     const created = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "cross-company-execution",
-      title: "Cross-company execution",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "cross-domain-execution",
+      title: "Cross-domain execution",
       actor: userActor,
     });
     const moved = await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       toStageKey: "drafting",
       expectedVersion: 1,
       actor: userActor,
     });
     expect(moved.automationExecution.status).toBe("succeeded");
 
-    const [triggerEvent] = await db.insert(pipelineCaseEvents).values({
-      companyId: company.id,
-      caseId: created.case.id,
+    const [triggerEvent] = await db.insert(workflowLifeAdminEvents).values({
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       type: "transitioned",
       actorType: "system",
-      toStageId: moved.case.stageId,
-      payload: { crossCompanyRoutine: true },
+      toStageId: moved.life_admin.stageId,
+      payload: { crossDomainRoutine: true },
     }).returning();
-    const [badExecution] = await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
-      caseId: created.case.id,
+    const [badExecution] = await db.insert(workflowAutomationExecutions).values({
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       automationId: moved.automationLedger!.automationId,
       triggeringEventId: triggerEvent!.id,
       routineId: otherRoutine.id,
@@ -1641,26 +1641,26 @@ describeEmbeddedPostgres("pipelineService", () => {
     }).returning();
 
     const retried = await svc.retryAutomation({
-      companyId: company.id,
-      caseId: created.case.id,
+      domainId: domain.id,
+      lifeAdminId: created.life_admin.id,
       automationId: moved.automationLedger!.automationId,
       actor: userActor,
     });
     expect(retried.status).toBe("failed");
     const [execution] = await db
       .select()
-      .from(pipelineAutomationExecutions)
-      .where(eq(pipelineAutomationExecutions.id, badExecution!.id));
-    expect(execution!.error).toContain("same company");
-    const events = await svc.listCaseEvents(company.id, created.case.id);
+      .from(workflowAutomationExecutions)
+      .where(eq(workflowAutomationExecutions.id, badExecution!.id));
+    expect(execution!.error).toContain("same domain");
+    const events = await svc.listLifeAdminEvents(domain.id, created.life_admin.id);
     expect(events.filter((event) => event.type === "automation_failed")).toHaveLength(1);
   });
 
   it("auto-advances after retry creates a fresh terminal child rollup", async () => {
-    const company = await seedDomain();
-    const routine = await seedRoutine(company.id, "Retry child cleanup");
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const domain = await seedDomain();
+    const routine = await seedRoutine(domain.id, "Retry child cleanup");
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: "retry-child-cleanup",
       name: "Retry child cleanup",
       actor: userActor,
@@ -1684,23 +1684,23 @@ describeEmbeddedPostgres("pipelineService", () => {
       ],
     });
     const parent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "parent",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "parent",
       title: "Parent",
       actor: userActor,
     });
-    const [event] = await db.insert(pipelineCaseEvents).values({
-      companyId: company.id,
-      caseId: parent.case.id,
+    const [event] = await db.insert(workflowLifeAdminEvents).values({
+      domainId: domain.id,
+      lifeAdminId: parent.life_admin.id,
       type: "transitioned",
       actorType: "system",
-      toStageId: parent.case.stageId,
+      toStageId: parent.life_admin.stageId,
       payload: { test: true },
     }).returning();
-    const [attempt] = await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
-      caseId: parent.case.id,
+    const [attempt] = await db.insert(workflowAutomationExecutions).values({
+      domainId: domain.id,
+      lifeAdminId: parent.life_admin.id,
       automationId: "build-children",
       triggeringEventId: event!.id,
       routineId: routine.id,
@@ -1708,34 +1708,34 @@ describeEmbeddedPostgres("pipelineService", () => {
       error: "boom",
     }).returning();
     const child = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "child",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "child",
       title: "Child",
-      parentCaseId: parent.case.id,
+      parentLifeAdminId: parent.life_admin.id,
       actor: userActor,
     });
     await db
-      .update(pipelineLifeAdmin)
+      .update(workflowLifeAdmin)
       .set({ automationAttemptId: attempt!.id })
-      .where(eq(pipelineLifeAdmin.id, child.case.id));
+      .where(eq(workflowLifeAdmin.id, child.life_admin.id));
     await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: child.case.id,
+      domainId: domain.id,
+      lifeAdminId: child.life_admin.id,
       toStageKey: "done",
-      expectedVersion: child.case.version,
+      expectedVersion: child.life_admin.version,
       actor: userActor,
     });
     const [reviewingParent] = await db
-      .select({ version: pipelineLifeAdmin.version, stageKey: pipelineStages.key })
-      .from(pipelineLifeAdmin)
-      .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
-      .where(eq(pipelineLifeAdmin.id, parent.case.id));
+      .select({ version: workflowLifeAdmin.version, stageKey: workflowStages.key })
+      .from(workflowLifeAdmin)
+      .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
+      .where(eq(workflowLifeAdmin.id, parent.life_admin.id));
     expect(reviewingParent!.stageKey).toBe("review");
 
     const retry = await svc.retryStageAutomation({
-      companyId: company.id,
-      caseId: parent.case.id,
+      domainId: domain.id,
+      lifeAdminId: parent.life_admin.id,
       scope: "previous_stage",
       targetStageId: event!.toStageId,
       expectedVersion: reviewingParent!.version,
@@ -1747,45 +1747,45 @@ describeEmbeddedPostgres("pipelineService", () => {
       actor: userActor,
     });
     const retryChild = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "retry-child",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "retry-child",
       title: "Retry child",
-      parentCaseId: parent.case.id,
+      parentLifeAdminId: parent.life_admin.id,
       actor: userActor,
     });
     await db
-      .update(pipelineLifeAdmin)
+      .update(workflowLifeAdmin)
       .set({ automationAttemptId: retry.automationLedger.id })
-      .where(eq(pipelineLifeAdmin.id, retryChild.case.id));
+      .where(eq(workflowLifeAdmin.id, retryChild.life_admin.id));
     await svc.transitionLifeAdmin({
-      companyId: company.id,
-      caseId: retryChild.case.id,
+      domainId: domain.id,
+      lifeAdminId: retryChild.life_admin.id,
       toStageKey: "done",
-      expectedVersion: retryChild.case.version,
+      expectedVersion: retryChild.life_admin.version,
       actor: userActor,
     });
 
     const [freshParent] = await db
-      .select({ childCount: pipelineLifeAdmin.childCount, terminalChildCount: pipelineLifeAdmin.terminalChildCount, stageKey: pipelineStages.key })
-      .from(pipelineLifeAdmin)
-      .innerJoin(pipelineStages, eq(pipelineLifeAdmin.stageId, pipelineStages.id))
-      .where(eq(pipelineLifeAdmin.id, parent.case.id));
-    const [freshChild] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, child.case.id));
+      .select({ childCount: workflowLifeAdmin.childCount, terminalChildCount: workflowLifeAdmin.terminalChildCount, stageKey: workflowStages.key })
+      .from(workflowLifeAdmin)
+      .innerJoin(workflowStages, eq(workflowLifeAdmin.stageId, workflowStages.id))
+      .where(eq(workflowLifeAdmin.id, parent.life_admin.id));
+    const [freshChild] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, child.life_admin.id));
     expect(freshParent!.childCount).toBe(2);
     expect(freshParent!.terminalChildCount).toBe(2);
     expect(freshParent!.stageKey).toBe("review");
     expect(freshChild!.terminalKind).toBe("cancelled");
     expect(freshChild!.retiredReason).toBe("automation_retry");
-    const events = await svc.listCaseEvents(company.id, parent.case.id);
-    expect(events.filter((pipelineEvent) => pipelineEvent.type === "children_terminal")).toHaveLength(2);
+    const events = await svc.listLifeAdminEvents(domain.id, parent.life_admin.id);
+    expect(events.filter((workflowEvent) => workflowEvent.type === "children_terminal")).toHaveLength(2);
   });
 
   it("updates intermediate terminal counts when retry retires descendants only", async () => {
-    const company = await seedDomain();
-    const routine = await seedRoutine(company.id, "Retry descendants only");
-    const pipeline = await svc.createWorkflow({
-      companyId: company.id,
+    const domain = await seedDomain();
+    const routine = await seedRoutine(domain.id, "Retry descendants only");
+    const workflow = await svc.createWorkflow({
+      domainId: domain.id,
       key: "retry-descendants-only",
       name: "Retry descendants only",
       actor: userActor,
@@ -1807,23 +1807,23 @@ describeEmbeddedPostgres("pipelineService", () => {
       ],
     });
     const parent = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "descendants-parent",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "descendants-parent",
       title: "Descendants parent",
       actor: userActor,
     });
-    const [event] = await db.insert(pipelineCaseEvents).values({
-      companyId: company.id,
-      caseId: parent.case.id,
+    const [event] = await db.insert(workflowLifeAdminEvents).values({
+      domainId: domain.id,
+      lifeAdminId: parent.life_admin.id,
       type: "transitioned",
       actorType: "system",
-      toStageId: parent.case.stageId,
+      toStageId: parent.life_admin.stageId,
       payload: { test: true },
     }).returning();
-    const [attempt] = await db.insert(pipelineAutomationExecutions).values({
-      companyId: company.id,
-      caseId: parent.case.id,
+    const [attempt] = await db.insert(workflowAutomationExecutions).values({
+      domainId: domain.id,
+      lifeAdminId: parent.life_admin.id,
       automationId: "build-descendants",
       triggeringEventId: event!.id,
       routineId: routine.id,
@@ -1831,31 +1831,31 @@ describeEmbeddedPostgres("pipelineService", () => {
       error: "boom",
     }).returning();
     const child = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "descendants-child",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "descendants-child",
       title: "Descendants child",
-      parentCaseId: parent.case.id,
+      parentLifeAdminId: parent.life_admin.id,
       actor: userActor,
     });
     await db
-      .update(pipelineLifeAdmin)
+      .update(workflowLifeAdmin)
       .set({ automationAttemptId: attempt!.id })
-      .where(eq(pipelineLifeAdmin.id, child.case.id));
+      .where(eq(workflowLifeAdmin.id, child.life_admin.id));
     const grandchild = await svc.ingestLifeAdmin({
-      companyId: company.id,
-      pipelineId: pipeline.id,
-      caseKey: "descendants-grandchild",
+      domainId: domain.id,
+      workflowId: workflow.id,
+      life_adminKey: "descendants-grandchild",
       title: "Descendants grandchild",
-      parentCaseId: child.case.id,
+      parentLifeAdminId: child.life_admin.id,
       actor: userActor,
     });
 
     await svc.retryStageAutomation({
-      companyId: company.id,
-      caseId: parent.case.id,
+      domainId: domain.id,
+      lifeAdminId: parent.life_admin.id,
       scope: "current_stage",
-      expectedVersion: parent.case.version,
+      expectedVersion: parent.life_admin.version,
       cleanup: {
         retireDirectChildren: false,
         retireDescendants: true,
@@ -1864,9 +1864,9 @@ describeEmbeddedPostgres("pipelineService", () => {
       actor: userActor,
     });
 
-    const [freshParent] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, parent.case.id));
-    const [freshChild] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, child.case.id));
-    const [freshGrandchild] = await db.select().from(pipelineLifeAdmin).where(eq(pipelineLifeAdmin.id, grandchild.case.id));
+    const [freshParent] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, parent.life_admin.id));
+    const [freshChild] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, child.life_admin.id));
+    const [freshGrandchild] = await db.select().from(workflowLifeAdmin).where(eq(workflowLifeAdmin.id, grandchild.life_admin.id));
     expect(freshParent!.terminalChildCount).toBe(0);
     expect(freshChild!.terminalKind).toBeNull();
     expect(freshChild!.terminalChildCount).toBe(1);

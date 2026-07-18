@@ -917,8 +917,8 @@ export function workspaceFileResourceService(db: Db) {
     const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
     const [workspace] = await db.select().from(projectWorkspaces).where(eq(projectWorkspaces.id, workspaceId)).limit(1);
     if (!project || !workspace) throw notFound("Project workspace not found");
-    if (project.companyId !== issue.companyId || workspace.companyId !== issue.companyId) {
-      throw new HttpError(403, "Project workspace belongs to another company", { code: "cross_company_workspace" });
+    if (project.domainId !== issue.domainId || workspace.domainId !== issue.domainId) {
+      throw new HttpError(403, "Project workspace belongs to another domain", { code: "cross_domain_workspace" });
     }
     if (workspace.projectId !== project.id) {
       throw unprocessable("Workspace does not belong to the selected project", { code: "workspace_project_mismatch" });
@@ -942,7 +942,7 @@ export function workspaceFileResourceService(db: Db) {
       if (executionIds.length > 0) {
         executionRows = await db.select().from(executionWorkspaces).where(
           and(
-            eq(executionWorkspaces.companyId, issue.companyId),
+            eq(executionWorkspaces.domainId, issue.domainId),
             inArray(executionWorkspaces.id, executionIds),
           ),
         );
@@ -951,7 +951,7 @@ export function workspaceFileResourceService(db: Db) {
       if (sourceIssueIds.length > 0) {
         const activeRows = await db.select().from(executionWorkspaces).where(
           and(
-            eq(executionWorkspaces.companyId, issue.companyId),
+            eq(executionWorkspaces.domainId, issue.domainId),
             eq(executionWorkspaces.projectId, issue.projectId),
             inArray(executionWorkspaces.sourceIssueId, sourceIssueIds),
             eq(executionWorkspaces.status, "active"),
@@ -972,7 +972,7 @@ export function workspaceFileResourceService(db: Db) {
       if (issue.projectWorkspaceId) {
         const rows = await db.select().from(projectWorkspaces).where(
           and(
-            eq(projectWorkspaces.companyId, issue.companyId),
+            eq(projectWorkspaces.domainId, issue.domainId),
             eq(projectWorkspaces.projectId, issue.projectId),
             eq(projectWorkspaces.id, issue.projectWorkspaceId),
           ),
@@ -981,7 +981,7 @@ export function workspaceFileResourceService(db: Db) {
       }
       const primaryRows = await db.select().from(projectWorkspaces).where(
         and(
-          eq(projectWorkspaces.companyId, issue.companyId),
+          eq(projectWorkspaces.domainId, issue.domainId),
           eq(projectWorkspaces.projectId, issue.projectId),
           eq(projectWorkspaces.isPrimary, true),
         ),
@@ -994,7 +994,7 @@ export function workspaceFileResourceService(db: Db) {
     return candidates;
   }
 
-  async function sameCompanyProjectWorkspaceCandidates(
+  async function sameDomainProjectWorkspaceCandidates(
     issue: IssueRow,
     excludedWorkspaceIds: Set<string>,
   ): Promise<WorkspaceCandidate[]> {
@@ -1008,8 +1008,8 @@ export function workspaceFileResourceService(db: Db) {
       .from(projectWorkspaces)
       .innerJoin(projects, eq(projectWorkspaces.projectId, projects.id))
       .where(and(
-        eq(projectWorkspaces.companyId, issue.companyId),
-        eq(projects.companyId, issue.companyId),
+        eq(projectWorkspaces.domainId, issue.domainId),
+        eq(projects.domainId, issue.domainId),
       ))
       .orderBy(desc(projectWorkspaces.isPrimary), desc(projectWorkspaces.updatedAt));
 
@@ -1028,7 +1028,7 @@ export function workspaceFileResourceService(db: Db) {
     excludedWorkspaceIds: Set<string>,
     check: (candidate: WorkspaceCandidate) => Promise<T>,
   ): Promise<AutoDiscovered<T>> {
-    const candidates = await sameCompanyProjectWorkspaceCandidates(issue, excludedWorkspaceIds);
+    const candidates = await sameDomainProjectWorkspaceCandidates(issue, excludedWorkspaceIds);
     const matches: T[] = [];
     for (const candidate of candidates) {
       if (candidate.remote) continue;

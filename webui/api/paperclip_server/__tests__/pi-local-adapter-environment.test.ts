@@ -22,7 +22,7 @@ console.log(JSON.stringify({
   message: {
     role: "assistant",
     content: [{ type: "text", text: "hello" }],
-    usage: { input: 1, output: 1, cacheRead: 0, cost: { total: 0 } }
+    usage: { input: 1, output: 1, cacheRead: 0, finance: { total: 0 } }
   },
   toolResults: []
 }));
@@ -51,7 +51,7 @@ describe("pi_local environment diagnostics", () => {
     await writeFakePiCommand(binDir, "success");
 
     const result = await testEnvironment({
-      companyId: "company-1",
+      domainId: "domain-1",
       adapterType: "pi_local",
       config: {
         command: "pi",
@@ -82,7 +82,7 @@ describe("pi_local environment diagnostics", () => {
     await writeFakePiCommand(binDir, "stale-package");
 
     const result = await testEnvironment({
-      companyId: "company-1",
+      domainId: "domain-1",
       adapterType: "pi_local",
       config: {
         command: "pi",

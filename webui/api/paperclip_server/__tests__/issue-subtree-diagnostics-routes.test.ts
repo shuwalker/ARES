@@ -35,7 +35,7 @@ if (!embeddedPostgresSupport.supported) {
 }
 
 type Db = ReturnType<typeof createDb>;
-type CompanyRow = typeof domains.$inferSelect;
+type DomainRow = typeof domains.$inferSelect;
 type AgentRow = typeof agents.$inferSelect;
 type ProjectRow = typeof projects.$inferSelect;
 type IssueRow = typeof issues.$inferSelect;
@@ -52,22 +52,22 @@ function createApp(db: Db, actor: Express.Request["actor"]) {
   return app;
 }
 
-function boardActor(company: CompanyRow): Express.Request["actor"] {
+function boardActor(domain: DomainRow): Express.Request["actor"] {
   return {
     type: "board",
     userId: "board-user",
-    companyIds: [company.id],
-    memberships: [{ companyId: company.id, membershipRole: "operator", status: "active" }],
+    domainIds: [domain.id],
+    memberships: [{ domainId: domain.id, membershipRole: "operator", status: "active" }],
     isInstanceAdmin: true,
     source: "local_implicit",
   };
 }
 
-function agentActor(company: CompanyRow, agent: AgentRow, runId: string): Express.Request["actor"] {
+function agentActor(domain: DomainRow, agent: AgentRow, runId: string): Express.Request["actor"] {
   return {
     type: "agent",
     agentId: agent.id,
-    companyId: company.id,
+    domainId: domain.id,
     runId,
     source: "agent_jwt",
   };
@@ -75,17 +75,17 @@ function agentActor(company: CompanyRow, agent: AgentRow, runId: string): Expres
 
 async function seedDomain(db: Db, label = "Subtree Diagnostics") {
   const nonce = randomUUID().slice(0, 8);
-  const [company] = await db.insert(domains).values({
+  const [domain] = await db.insert(domains).values({
     name: `${label} ${nonce}`,
     issuePrefix: `SD${nonce.slice(0, 4).toUpperLifeAdmin()}`,
     defaultResponsibleUserId: "board-user",
   }).returning();
-  return company!;
+  return domain!;
 }
 
-async function seedAgent(db: Db, companyId: string, permissions: Record<string, unknown> = {}) {
+async function seedAgent(db: Db, domainId: string, permissions: Record<string, unknown> = {}) {
   const [agent] = await db.insert(agents).values({
-    companyId,
+    domainId,
     name: `Agent ${randomUUID().slice(0, 6)}`,
     role: "engineer",
     adapterType: "process",
@@ -96,9 +96,9 @@ async function seedAgent(db: Db, companyId: string, permissions: Record<string, 
   return agent!;
 }
 
-async function seedProject(db: Db, companyId: string, name: string) {
+async function seedProject(db: Db, domainId: string, name: string) {
   const [project] = await db.insert(projects).values({
-    companyId,
+    domainId,
     name,
     status: "in_progress",
   }).returning();
@@ -108,7 +108,7 @@ async function seedProject(db: Db, companyId: string, name: string) {
 async function seedIssue(
   db: Db,
   input: {
-    companyId: string;
+    domainId: string;
     projectId?: string | null;
     title: string;
     status?: string;
@@ -117,7 +117,7 @@ async function seedIssue(
   },
 ) {
   const [issue] = await db.insert(issues).values({
-    companyId: input.companyId,
+    domainId: input.domainId,
     projectId: input.projectId ?? null,
     parentId: input.parentId ?? null,
     title: input.title,
@@ -129,9 +129,9 @@ async function seedIssue(
   return issue!;
 }
 
-async function blockIssue(db: Db, companyId: string, blockerIssueId: string, blockedIssueId: string) {
+async function blockIssue(db: Db, domainId: string, blockerIssueId: string, blockedIssueId: string) {
   await db.insert(issueRelations).values({
-    companyId,
+    domainId,
     issueId: blockerIssueId,
     relatedIssueId: blockedIssueId,
     type: "blocks",
@@ -139,7 +139,7 @@ async function blockIssue(db: Db, companyId: string, blockerIssueId: string, blo
 }
 
 async function attachMentionScopedLowTrustRun(db: Db, fixture: {
-  company: CompanyRow;
+  domain: DomainRow;
   ownerAgent: AgentRow;
   mentionedAgent: AgentRow;
   allowedProject: ProjectRow;
@@ -149,7 +149,7 @@ async function attachMentionScopedLowTrustRun(db: Db, fixture: {
     authorizationPolicy: {
       trustBoundary: {
         mode: LOW_TRUST_REVIEW_PRESET,
-        companyId: fixture.company.id,
+        domainId: fixture.domain.id,
         projectIds: [fixture.allowedProject.id],
         issueIds: [],
         allowedAgentIds: [],
@@ -167,13 +167,13 @@ async function attachMentionScopedLowTrustRun(db: Db, fixture: {
     authorizationPolicy: executionPolicy.authorizationPolicy,
   };
   await db.insert(issueComments).values({
-    companyId: fixture.company.id,
+    domainId: fixture.domain.id,
     issueId: fixture.root.id,
     authorAgentId: fixture.ownerAgent.id,
     body: `[@Mentioned Agent](agent://${fixture.mentionedAgent.id}) please inspect this root.`,
   });
   const [run] = await db.insert(heartbeatRuns).values({
-    companyId: fixture.company.id,
+    domainId: fixture.domain.id,
     agentId: fixture.mentionedAgent.id,
     status: "running",
     contextSnapshot: {
@@ -210,27 +210,27 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
   });
 
   it("returns visible subtree nodes, blocker edges, wake edges, and a deterministic stall diagnosis", async () => {
-    const company = await seedDomain(db);
-    const agent = await seedAgent(db, company.id);
-    const project = await seedProject(db, company.id, "Core");
+    const domain = await seedDomain(db);
+    const agent = await seedAgent(db, domain.id);
+    const project = await seedProject(db, domain.id, "Core");
     const root = await seedIssue(db, {
-      companyId: company.id,
+      domainId: domain.id,
       projectId: project.id,
       title: "Blocked root",
       status: "blocked",
       assigneeAgentId: agent.id,
     });
     const child = await seedIssue(db, {
-      companyId: company.id,
+      domainId: domain.id,
       projectId: project.id,
       parentId: root.id,
       title: "Unfinished child blocker",
       status: "in_progress",
     });
     const rawMarker = `RAW-SUBTREE-${randomUUID()}`;
-    await blockIssue(db, company.id, child.id, root.id);
+    await blockIssue(db, domain.id, child.id, root.id);
     await db.insert(agentWakeupRequests).values({
-      companyId: company.id,
+      domainId: domain.id,
       agentId: agent.id,
       source: "automation",
       reason: "issue_commented",
@@ -241,7 +241,7 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
       finishedAt: new Date(Date.now() - 1_000),
     });
 
-    const res = await request(createApp(db, boardActor(company)))
+    const res = await request(createApp(db, boardActor(domain)))
       .get(`/api/issues/${root.id}/diagnostics/subtree`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -287,16 +287,16 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
   });
 
   it("returns null diagnosis for a quiet unblocked singleton subtree", async () => {
-    const company = await seedDomain(db);
-    const project = await seedProject(db, company.id, "Core");
+    const domain = await seedDomain(db);
+    const project = await seedProject(db, domain.id, "Core");
     const issue = await seedIssue(db, {
-      companyId: company.id,
+      domainId: domain.id,
       projectId: project.id,
       title: "Quiet root",
       status: "todo",
     });
 
-    const res = await request(createApp(db, boardActor(company)))
+    const res = await request(createApp(db, boardActor(domain)))
       .get(`/api/issues/${issue.id}/diagnostics/subtree`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -315,10 +315,10 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
   });
 
   it("caps subtree nodes and reports truncation explicitly", async () => {
-    const company = await seedDomain(db);
-    const project = await seedProject(db, company.id, "Core");
+    const domain = await seedDomain(db);
+    const project = await seedProject(db, domain.id, "Core");
     const root = await seedIssue(db, {
-      companyId: company.id,
+      domainId: domain.id,
       projectId: project.id,
       title: "Wide root",
       status: "todo",
@@ -326,7 +326,7 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
     const childRows = [];
     for (let index = 0; index < 100; index += 1) {
       childRows.push({
-        companyId: company.id,
+        domainId: domain.id,
         projectId: project.id,
         parentId: root.id,
         title: `Child ${String(index).padStart(3, "0")}`,
@@ -337,7 +337,7 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
     }
     await db.insert(issues).values(childRows);
 
-    const res = await request(createApp(db, boardActor(company)))
+    const res = await request(createApp(db, boardActor(domain)))
       .get(`/api/issues/${root.id}/diagnostics/subtree`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -350,28 +350,28 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
   });
 
   it("omits subtree nodes outside a mention-scoped actor's issue-read grant", async () => {
-    const company = await seedDomain(db);
-    const ownerAgent = await seedAgent(db, company.id);
-    const mentionedAgent = await seedAgent(db, company.id);
-    const allowedProject = await seedProject(db, company.id, "Allowed");
-    const targetProject = await seedProject(db, company.id, "Target");
+    const domain = await seedDomain(db);
+    const ownerAgent = await seedAgent(db, domain.id);
+    const mentionedAgent = await seedAgent(db, domain.id);
+    const allowedProject = await seedProject(db, domain.id, "Allowed");
+    const targetProject = await seedProject(db, domain.id, "Target");
     const hiddenMarker = `HIDDEN-SUBTREE-${randomUUID()}`;
     const root = await seedIssue(db, {
-      companyId: company.id,
+      domainId: domain.id,
       projectId: targetProject.id,
       title: "Mention-visible root",
       status: "todo",
       assigneeAgentId: ownerAgent.id,
     });
     const hiddenChild = await seedIssue(db, {
-      companyId: company.id,
+      domainId: domain.id,
       projectId: targetProject.id,
       parentId: root.id,
       title: hiddenMarker,
       status: "blocked",
     });
     await db.insert(agentWakeupRequests).values({
-      companyId: company.id,
+      domainId: domain.id,
       agentId: ownerAgent.id,
       source: "automation",
       reason: "issue_commented",
@@ -381,14 +381,14 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
       requestedAt: new Date(Date.now() - 5_000),
     });
     const run = await attachMentionScopedLowTrustRun(db, {
-      company,
+      domain,
       ownerAgent,
       mentionedAgent,
       allowedProject,
       root,
     });
 
-    const res = await request(createApp(db, agentActor(company, mentionedAgent, run.id)))
+    const res = await request(createApp(db, agentActor(domain, mentionedAgent, run.id)))
       .get(`/api/issues/${root.id}/diagnostics/subtree`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -403,25 +403,25 @@ describeEmbeddedPostgres("issue subtree diagnostics route", () => {
     expect(serialized).not.toContain("\"error\"");
   });
 
-  it("denies cross-company issue reads", async () => {
-    const companyA = await seedDomain(db, "Domain A");
-    const companyB = await seedDomain(db, "Domain B");
-    const agentB = await seedAgent(db, companyB.id);
-    const projectA = await seedProject(db, companyA.id, "A");
+  it("denies cross-domain issue reads", async () => {
+    const domainA = await seedDomain(db, "Domain A");
+    const domainB = await seedDomain(db, "Domain B");
+    const agentB = await seedAgent(db, domainB.id);
+    const projectA = await seedProject(db, domainA.id, "A");
     const issueA = await seedIssue(db, {
-      companyId: companyA.id,
+      domainId: domainA.id,
       projectId: projectA.id,
       title: "Domain A issue",
       status: "blocked",
     });
     const [runB] = await db.insert(heartbeatRuns).values({
-      companyId: companyB.id,
+      domainId: domainB.id,
       agentId: agentB.id,
       status: "running",
       contextSnapshot: { issueId: issueA.id },
     }).returning();
 
-    const res = await request(createApp(db, agentActor(companyB, agentB, runB!.id)))
+    const res = await request(createApp(db, agentActor(domainB, agentB, runB!.id)))
       .get(`/api/issues/${issueA.id}/diagnostics/subtree`);
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);

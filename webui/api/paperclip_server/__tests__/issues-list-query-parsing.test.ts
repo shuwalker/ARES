@@ -16,7 +16,7 @@ import { parseStatusFilter } from "../services/issues.ts";
  *   3. Repeated key (array) — `?status=todo&status=in_progress` (the bug)
  *   4. Mixed array + CSV    — `?status=todo,in_progress&status=done`
  *
- * Pre-fix, case 3 returned HTTP 500 with `TypeError: filters.status.split is
+ * Pre-fix, life_admin 3 returned HTTP 500 with `TypeError: filters.status.split is
  * not a function`. We don't spin embedded-postgres here; the helper itself is
  * unit-tested in `parse-status-filter.test.ts`, and the route→helper contract
  * is what regresses if anyone reverts the fix.
@@ -25,7 +25,7 @@ import { parseStatusFilter } from "../services/issues.ts";
 function buildApp() {
   const app = express();
   app.use(express.json());
-  app.get("/api/domains/:companyId/issues", (req, res) => {
+  app.get("/api/domains/:domainId/issues", (req, res) => {
     // Mirror the cast at routes/issues.ts:958 exactly. Pre-fix this said
     // `as string | undefined` and the cast was a lie when qs returned an array.
     const statusInput = req.query.status as string | string[] | undefined;

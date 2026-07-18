@@ -93,7 +93,7 @@ function buildWorkspaceValidationInput(
     },
     persistedExecutionWorkspace: {
       id: "execution-workspace-1",
-      companyId: "company-1",
+      domainId: "domain-1",
       projectId: "project-1",
       projectWorkspaceId: "workspace-1",
       sourceIssueId: "issue-1",
@@ -157,7 +157,7 @@ async function expectWorkspaceValidationFailure(
 function buildAgent(adapterType: string, runtimeConfig: Record<string, unknown> = {}) {
   return {
     id: "agent-1",
-    companyId: "company-1",
+    domainId: "domain-1",
     projectId: null,
     goalId: null,
     name: "Agent",
@@ -211,7 +211,7 @@ function lowTrustResolution(): TrustPresetResolution {
     preset: "low_trust_review",
     boundary: {
       mode: "low_trust_review",
-      companyId: "company-1",
+      domainId: "domain-1",
       rootIssueId: "issue-1",
     },
     sourcePresets: { agent: "low_trust_review" },
@@ -227,7 +227,7 @@ function standardTrustResolution(): TrustPresetResolution {
   };
 }
 
-function buildIssueAncestryDb(rows: Array<{ id: string; companyId: string; parentId: string | null }>) {
+function buildIssueAncestryDb(rows: Array<{ id: string; domainId: string; parentId: string | null }>) {
   const queue = [...rows];
   return {
     select: () => ({
@@ -795,7 +795,7 @@ describe("preflightLowTrustWorkspaceIsolation", () => {
         isolatedWorkspacesEnabled: true,
         effectiveExecutionWorkspaceMode: "isolated_workspace",
         issue: {
-          companyId: "company-1",
+          domainId: "domain-1",
           id: "issue-1",
           projectId: "project-1",
         },
@@ -818,7 +818,7 @@ describe("preflightLowTrustWorkspaceIsolation", () => {
       isolatedWorkspacesEnabled: true,
       effectiveExecutionWorkspaceMode: "isolated_workspace",
       issue: {
-        companyId: "company-1",
+        domainId: "domain-1",
         id: "issue-1",
         projectId: "project-1",
       },
@@ -829,14 +829,14 @@ describe("preflightLowTrustWorkspaceIsolation", () => {
   it("allows child issues inside a rootIssueId low-trust boundary during workspace preflight", async () => {
     await expect(preflightLowTrustWorkspaceIsolation({
       db: buildIssueAncestryDb([
-        { id: "issue-child", companyId: "company-1", parentId: "issue-1" },
-        { id: "issue-1", companyId: "company-1", parentId: null },
+        { id: "issue-child", domainId: "domain-1", parentId: "issue-1" },
+        { id: "issue-1", domainId: "domain-1", parentId: null },
       ]) as any,
       trustPreset: lowTrustResolution(),
       isolatedWorkspacesEnabled: true,
       effectiveExecutionWorkspaceMode: "isolated_workspace",
       issue: {
-        companyId: "company-1",
+        domainId: "domain-1",
         id: "issue-child",
         projectId: null,
       },
@@ -854,7 +854,7 @@ describe("resolveWorkspaceAfterLowTrustPreflight", () => {
       isolatedWorkspacesEnabled: true,
       effectiveExecutionWorkspaceMode: "isolated_workspace",
       issue: {
-        companyId: "company-1",
+        domainId: "domain-1",
         id: "issue-1",
         projectId: "project-1",
       },
@@ -881,7 +881,7 @@ describe("resolveWorkspaceAfterLowTrustPreflight", () => {
       isolatedWorkspacesEnabled: false,
       effectiveExecutionWorkspaceMode: "shared_workspace",
       issue: {
-        companyId: "company-1",
+        domainId: "domain-1",
         id: "issue-1",
         projectId: "project-1",
       },
