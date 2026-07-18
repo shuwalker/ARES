@@ -24,6 +24,7 @@ import {
   Radio,
   Smartphone,
   Webhook,
+  Server,
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -66,6 +67,7 @@ const systemNavigation: NavItem[] = [
   { to: "/cron", label: "Schedules", icon: CalendarClock },
   { to: "/webhooks", label: "Webhooks", icon: Webhook },
   { to: "/pairing", label: "Pairing", icon: Smartphone },
+  { to: "/mcp", label: "MCP Servers", icon: Server },
   { to: "/config", label: "Config", icon: Sliders },
 ];
 

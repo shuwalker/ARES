@@ -8,6 +8,15 @@ export default defineConfig(({ mode }) => ({
   build: {
     minify: "esbuild",
     sourcemap: mode !== "production",
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/@monaco-editor")) return "monaco";
+          if (id.includes("node_modules/@xterm")) return "xterm";
+          if (id.includes("node_modules/monaco-editor")) return "monaco";
+        },
+      },
+    },
   },
   esbuild:
     mode === "production"
