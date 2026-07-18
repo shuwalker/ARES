@@ -242,7 +242,7 @@ class CodexLocalBackend(CliBackend):
     cli_name = "codex"
     display_label = "OpenAI Codex"
     supports_tools = True
-    extra_args = ["exec"]
+    extra_args = ["exec", "--skip-git-repo-check"]
 
 class GeminiLocalBackend(CliBackend):
     name = "gemini_local"
