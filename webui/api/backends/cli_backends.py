@@ -136,6 +136,25 @@ class CliBackend(AgenticBackend):
             "version": version,
         }
 
+    # Per-tool invocation pattern (Paperclip-style native CLI passthrough).
+    # Subclasses can override these three attributes to match the exact upstream CLI contract.
+    prompt_flag: str | None = None          # e.g. "-p" for claude/gemini
+    prompt_position: str = "trailing"     # "trailing" or "positional"
+    extra_args: list[str] | None = None   # extra fixed flags (e.g. ["exec"] for codex)
+    needs_tty: bool = False                # true if the CLI refuses to run without a pty
+
+    def _build_args(self, cli: str, message: str, model: str) -> list[str]:
+        args: list[str] = [cli]
+        if self.extra_args:
+            args.extend(self.extra_args)
+        if self.prompt_flag:
+            args.extend([self.prompt_flag, message])
+        else:
+            args.append(message)
+        if model:
+            args.extend(["-m", model])
+        return args
+
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
         cli = self._cli_path()
         if not cli:
@@ -145,26 +164,60 @@ class CliBackend(AgenticBackend):
         model = _cfg_str(config, "model") or ""
         timeout_sec = _cfg_int(config, "timeout_sec") or 300
 
-        args = [cli, message]
-        if model:
-            args.extend(["-m", model])
-
+        args = self._build_args(cli, message, model)
         env = dict(os.environ)
         try:
-            proc = subprocess.run(
-                args, capture_output=True, text=True,
-                timeout=timeout_sec, env=env,
-            )
-            stdout = proc.stdout or ""
-            stderr = proc.stderr or ""
+            if self.needs_tty:
+                import pty
+                stdout_chunks: list[bytes] = []
+                stderr_chunks: list[bytes] = []
+                pid, fd = pty.fork()
+                if pid == 0:
+                    os.execvpe(args[0], args, env)
+                else:
+                    try:
+                        import select
+                        end = time.monotonic() + timeout_sec
+                        while time.monotonic() < end:
+                            ready, _, _ = select.select([fd], [], [], 1.0)
+                            if ready:
+                                try:
+                                    chunk = os.read(fd, 4096)
+                                    if not chunk:
+                                        break
+                                    stdout_chunks.append(chunk)
+                                except OSError:
+                                    break
+                            else:
+                                break
+                        os.waitpid(pid, 0)
+                    finally:
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass
+                stdout = b"".join(stdout_chunks).decode("utf-8", errors="replace")
+                stderr = ""
+                return_code = 0
+            else:
+                proc = subprocess.run(
+                    args, capture_output=True, text=True,
+                    timeout=timeout_sec, env=env,
+                )
+                stdout = proc.stdout or ""
+                stderr = proc.stderr or ""
+                return_code = proc.returncode
+
             error = None
-            if proc.returncode != 0:
+            if return_code != 0:
                 error_lines = [
                     line for line in stderr.strip().split("\n")
                     if re.search(r"error|exception|traceback|failed", line, re.IGNORECASE)
                 ]
                 if error_lines:
                     error = "\n".join(error_lines[:5])
+                elif stderr.strip():
+                    error = stderr.strip()[:500]
             return {"text": stdout.strip(), "error": error, "tool_activity": []}
         except subprocess.TimeoutExpired:
             return {"text": "", "error": f"{self.display_label} turn timed out after {timeout_sec}s.", "tool_activity": []}
@@ -182,24 +235,28 @@ class ClaudeLocalBackend(CliBackend):
     cli_name = "claude"
     display_label = "Claude Code"
     supports_tools = True
+    prompt_flag = "-p"
 
 class CodexLocalBackend(CliBackend):
     name = "codex_local"
     cli_name = "codex"
     display_label = "OpenAI Codex"
     supports_tools = True
+    extra_args = ["exec"]
 
 class GeminiLocalBackend(CliBackend):
     name = "gemini_local"
     cli_name = "gemini"
     display_label = "Google Gemini"
     supports_tools = True
+    prompt_flag = "-p"
 
 class GrokLocalBackend(CliBackend):
     name = "grok_local"
     cli_name = "grok"
     display_label = "xAI Grok"
     supports_tools = True
+    needs_tty = True
 
 class OpenCodeLocalBackend(CliBackend):
     name = "opencode_local"
@@ -209,9 +266,10 @@ class OpenCodeLocalBackend(CliBackend):
 
 class CursorLocalBackend(CliBackend):
     name = "cursor_local"
-    cli_name = "agent"
+    cli_name = "cursor"
     display_label = "Cursor"
     supports_tools = True
+    prompt_flag = "-p"
 
 class PiLocalBackend(CliBackend):
     name = "pi_local"

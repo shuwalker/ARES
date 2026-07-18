@@ -1,0 +1,5246 @@
+// Safari automation layer — dual engine:
+// 1. Extension (WebSocket) — fastest (~5ms), native browser API, keeps logins
+// 2. AppleScript + Swift daemon (~5ms) — keeps logins, always available
+// Extension is preferred. AppleScript is fallback when extension is not connected.
+
+import { execFile, spawn, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
+import { tmpdir } from "node:os";
+import { join, dirname, resolve as resolvePath } from "node:path";
+import { readFile, writeFile, unlink, appendFile } from "node:fs/promises";
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+import { VIEWPORT_SCRIPT, SAFE_AREA_SCRIPT, PWA_SCRIPT, WEBKIT_COMPAT_SCRIPT } from "./injected-validators.js";
+import { escJsSingleQuote, escAppleScriptString } from "./injected-escape.js";
+// Extension bridge is handled by index.js (WebSocket server on port 9223)
+
+const execFileAsync = promisify(execFile);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Local session ID — kept in sync with index.js SESSION_ID for tab marker generation
+// Both files need their own const because they're separate ES modules; the marker only needs to be unique per process
+const SESSION_ID = randomUUID().slice(0, 8);
+
+// ========== STRING ESCAPING (single source of truth) ==========
+// Escaping ORDER is security-relevant: the backslash MUST be escaped before the quote, or the
+// backslash inserted in front of the quote gets doubled and the string breaks out. These helpers
+// replace ~70 hand-inlined copies of the same recipe — fix the escaping once here, not at every
+// call site. Verified equivalent to the inline pattern by test/escaping.test.mjs.
+
+// Escaping helpers now live in ./injected-escape.js (pure + test-locked). Imported above
+// for internal use; re-exported here so existing `from "./safari.js"` imports keep working.
+export { escJsSingleQuote, escAppleScriptString };
+
+// ========== SWIFT HELPER DAEMON ==========
+// Persistent process — no subprocess spawn overhead (~5ms vs ~90ms)
+let _helperProc = null;
+const _helperQueue = []; // callbacks waiting for responses
+let _helperConsecutiveTimeouts = 0; // Track consecutive timeouts — kill threshold lives where it's checked (currently 5)
+
+// ── Helper request serialization ──────────────────────────────────────────
+// The Swift helper runs each request on its own background thread, so it can
+// finish requests out of order. The Node side matches responses to callbacks by
+// FIFO queue position — correct ONLY if at most one request is in flight at a
+// time. This mutex enforces exactly that: every helper round-trip runs strictly
+// one at a time. Helper calls are ~5ms so serializing costs nothing measurable,
+// but it eliminates the response/callback desync that made tab resolution
+// silently return the wrong tab when the user was browsing concurrently.
+let _helperLock = Promise.resolve();
+function _withHelperLock(makePromise) {
+  const result = _helperLock.then(makePromise, makePromise);
+  _helperLock = result.then(() => {}, () => {});
+  return result;
+}
+
+// Reject all pending callbacks when helper crashes
+function _drainHelperQueue(reason) {
+  while (_helperQueue.length > 0) {
+    const cb = _helperQueue.shift();
+    if (cb) cb(JSON.stringify({ error: reason }));
+  }
+}
+
+function startHelper() {
+  if (_helperProc) return; // idempotent — a respawn already won the race; don't orphan a daemon
+  const helperPath = join(__dirname, "safari-helper");
+  try {
+    _helperProc = spawn(helperPath, [], { stdio: ["pipe", "pipe", "ignore"] });
+    let _buf = "";
+    _helperProc.stdout.on("data", (chunk) => {
+      _buf += chunk.toString();
+      const lines = _buf.split("\n");
+      _buf = lines.pop(); // Keep incomplete line
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const cb = _helperQueue.shift();
+        if (cb) cb(line);
+      }
+    });
+    _helperProc.on("error", () => { _drainHelperQueue("helper process error"); _helperProc = null; _scheduleRestart(); });
+    _helperProc.on("exit", (code) => { _drainHelperQueue("helper process exited (code " + code + ")"); _helperProc = null; _scheduleRestart(); });
+  } catch {
+    _helperProc = null;
+  }
+}
+
+startHelper();
+
+// ========== AUTO-RESTART: recover from helper crashes ==========
+let _restartCount = 0;
+let _restartTimer = null;
+let _shuttingDown = false;
+
+function _scheduleRestart() {
+  if (_shuttingDown || _restartTimer) return;
+  _restartCount++;
+  // Exponential backoff: 500ms, 1s, 2s, 4s, max 10s
+  const delay = Math.min(500 * Math.pow(2, _restartCount - 1), 10000);
+  console.error(`safari-helper crashed (restart #${_restartCount}, retrying in ${delay}ms)`);
+  _restartTimer = setTimeout(() => {
+    _restartTimer = null;
+    if (!_shuttingDown && !_helperProc) {
+      startHelper();
+      // Reset restart count after 60s of stability
+      setTimeout(() => { if (_helperProc) _restartCount = 0; }, 60000);
+    }
+  }, delay);
+}
+
+// ========== CLEANUP: kill helper when parent process exits ==========
+// Without this, safari-helper processes accumulate as zombies when MCP restarts
+function cleanupHelper() {
+  _shuttingDown = true;
+  if (_restartTimer) { clearTimeout(_restartTimer); _restartTimer = null; }
+  if (_helperProc) {
+    try { _helperProc.kill("SIGTERM"); } catch (_) {}
+    _helperProc = null;
+  }
+}
+// Signal handlers (SIGINT/SIGTERM/SIGHUP) are registered in index.js only.
+// cleanupHelper runs via process.on("exit"), which fires when index.js calls process.exit().
+process.on("exit", cleanupHelper);
+process.on("uncaughtException", (err) => { console.error("Uncaught:", err); cleanupHelper(); process.exit(1); });
+// Unhandled promise rejections must NOT terminate the server. A single failed
+// async operation — e.g. a proxy fetch to the primary instance while it is
+// mid-restart, or an aborted fetch timeout — would otherwise bubble to the
+// uncaughtException handler above (Node's default for unhandled rejections) and
+// exit the whole MCP process, disconnecting every concurrent session. Log and
+// continue: the failed operation is localized, the process itself is healthy.
+process.on("unhandledRejection", (reason) => {
+  console.error("[Safari MCP] Unhandled rejection (non-fatal, continuing):", (reason && reason.stack) || reason);
+});
+
+// ========== SAFARI RUNNING CHECK ==========
+// Prevent AppleScript from auto-launching Safari when it's closed
+async function isSafariRunning() {
+  try {
+    const { stdout } = await execFileAsync("pgrep", ["-x", "Safari"], { timeout: 2000 });
+    return stdout.trim().length > 0;
+  } catch {
+    return false; // pgrep exits 1 when no match
+  }
+}
+
+function safariNotRunningError() {
+  return new Error("Safari is not running. Open Safari manually before using Safari MCP tools.");
+}
+
+// ========== CLIPBOARD LOCK ==========
+// Prevents concurrent clipboard operations from clobbering the user's clipboard.
+// While locked, any new clipboard operation waits until the current one completes.
+let _clipboardLocked = false;
+let _clipboardRestoreTimer = null;
+let _pendingClipboardRestore; // content stashed for a synchronous flush on shutdown (see flushClipboardRestore)
+
+async function _acquireClipboardLock(timeoutMs = 10000) {
+  const start = Date.now();
+  while (_clipboardLocked) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error("Clipboard lock timeout — another operation is still using the clipboard. Try again shortly.");
+    }
+    await new Promise(r => setTimeout(r, 50));
+  }
+  _clipboardLocked = true;
+}
+
+function _releaseClipboardLock() {
+  _clipboardLocked = false;
+}
+
+// Save current clipboard and return it for later restore
+async function _saveClipboard() {
+  try {
+    const { stdout } = await execFileAsync("pbpaste", []);
+    return stdout;
+  } catch { return null; }
+}
+
+// Write text to the macOS clipboard via pbcopy. Single place that handles EPIPE on the stdin
+// stream (pbcopy exiting before it reads) — an unhandled 'error' there would otherwise reach
+// uncaughtException and kill the whole server.
+function _pbcopy(text) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("pbcopy", [], { stdio: ["pipe", "ignore", "ignore"] });
+    proc.stdin.on("error", reject);
+    proc.on("error", reject);
+    proc.on("close", resolve);
+    proc.stdin.write(text);
+    proc.stdin.end();
+  });
+}
+
+// Restore clipboard immediately (no async setTimeout leak)
+async function _restoreClipboard(savedContent) {
+  if (savedContent === null) return;
+  try {
+    await _pbcopy(savedContent);
+  } catch {}
+}
+
+// ========== ACTIVE TAB TRACKING ==========
+// Instead of visually switching tabs (which interrupts the user),
+// we track which tab we're "working on" by URL (not index, because indices shift
+// when the user opens/closes tabs). Before each operation we resolve the URL
+// to the current index.
+let _activeTabIndex = null; // null = use front document (default)
+let _activeTabURL = null;   // URL-based tracking (stable even when tabs shift)
+// Timestamp of most recent new_tab — within this grace window we MUST NOT fall
+// back to "current tab of window" (which is the USER'S active tab). New tabs
+// often start at about:blank if their URL fails to load (file://, blocked, etc.),
+// and the URL-based marker resolution can fail until the page actually loads.
+// During the grace window, navigate/click/fill operations either use the cached
+// _activeTabIndex or fail loudly — never silently target the user's tab.
+// Becomes true once safari_new_tab is called for the first time in this session.
+// Once true, write operations (navigate/click/fill) MUST NOT fall back to
+// "current tab of window" — that targets the USER'S active tab. The 30s grace
+// window was insufficient: tab tracking can be lost much later in a session
+// (e.g. tab ghost recovery in runJS), and silently falling back to the user's
+// tab caused incidents where the user's working tab was overwritten.
+let _hasOwnedTab = false;
+let _lastResolveTime = 0;   // Cache: skip resolve if verified recently
+let _lastTabCount = null;   // Track tab count for smart cache invalidation
+let _activeTabMarker = null; // window.__mcpTabMarker — survives same-tab navigation, bulletproof tab identity
+const RESOLVE_CACHE_MS = 100; // Brief cache — was 500, reduced to catch tabs added by user/popups (v2.8.3 fix)
+
+// ========== DIAGNOSTIC LOG ==========
+// File-based log for profile/focus issues — survives MCP restart, visible to user
+const _LOG_FILE = '/tmp/safari-mcp-profile.log';
+function _logProfile(msg) {
+  const ts = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const line = `[${ts}] ${msg}\n`;
+  console.error(`[Safari MCP] ${msg}`);
+  appendFile(_LOG_FILE, line).catch(() => {});
+}
+
+// ========== PROFILE TARGETING ==========
+// Set SAFARI_PROFILE env var to target a specific Safari profile window.
+// Safari shows profile windows as: "ProfileName — Tab Title"
+const SAFARI_PROFILE = process.env.SAFARI_PROFILE || null;
+let _targetWindowRef = null; // null = not yet discovered. Updated by refreshTargetWindow()
+let _targetWindowId = null;  // Numeric window ID (for CGEvent window targeting)
+let _targetWindowCacheTime = 0;
+const TARGET_WINDOW_CACHE_MS = 1000; // Short cache — fast detection of window changes
+let _profileWindowMissing = false; // True when profile window is not found
+let _focusGuardActive = false; // True when an outer caller already handles focus save/restore
+
+// Get the target window ref, falling back to 'front window' ONLY when no profile is configured
+function getTargetWindowRef() {
+  if (SAFARI_PROFILE) {
+    if (!_targetWindowRef) {
+      throw new Error(`Safari profile "${SAFARI_PROFILE}" window not found. Open the "${SAFARI_PROFILE}" profile in Safari first.`);
+    }
+    return _targetWindowRef;
+  }
+  return _targetWindowRef || 'front window';
+}
+
+async function refreshTargetWindow(force = false) {
+  if (!SAFARI_PROFILE) return;
+  const now = Date.now();
+  if (!force && _targetWindowRef && (now - _targetWindowCacheTime) < TARGET_WINDOW_CACHE_MS) return;
+  const safeProfile = SAFARI_PROFILE.replace(/"/g, '\\"');
+  // Find profile window by name AND verify the window ID still matches
+  const detectScript = `tell application "Safari"\n  repeat with w in every window\n    if name of w starts with "${safeProfile} \u2014" then return (id of w as text) & "|" & name of w\n  end repeat\n  return "0|"\nend tell`;
+  let result = await osascriptFast(detectScript).catch(() => '0|');
+  // The persistent helper occasionally returns '0|' for a window that genuinely
+  // exists (daemon timeout / restart race). Before concluding the window is
+  // missing, retry once with a plain osascript subprocess \u2014 slower but reliable.
+  if (String(result).split('|')[0] === '0') {
+    result = await osascript(detectScript).catch(() => '0|');
+  }
+  const [idStr, windowName] = String(result).split('|');
+  const id = Number(idStr);
+  if (id > 0) {
+    const newRef = `window id ${id}`;
+    if (_targetWindowRef && _targetWindowRef !== newRef) {
+      _logProfile(`Profile window changed: ${_targetWindowRef} → ${newRef} ("${windowName}")`);
+    }
+    _targetWindowRef = newRef;
+    _targetWindowId = id;
+    _targetWindowCacheTime = now;
+    _profileWindowMissing = false;
+  } else {
+    // Profile window not found — clear ref so getTargetWindowRef() will throw
+    _targetWindowRef = null;
+    _targetWindowId = null;
+    _targetWindowCacheTime = 0;
+    _profileWindowMissing = true;
+    _logProfile(`WARNING: Profile "${SAFARI_PROFILE}" window not found — refusing to use front window`);
+  }
+}
+
+// Background verification: periodically check that cached window ID still belongs to profile
+if (SAFARI_PROFILE) {
+  setInterval(async () => {
+    // No cached window (e.g. flaky detection at startup) — keep trying to
+    // rediscover it so the server self-heals instead of staying stuck.
+    if (!_targetWindowRef || !_targetWindowId) {
+      await refreshTargetWindow(true).catch(() => {});
+      return;
+    }
+    try {
+      // Read-only window-name query — opt out of focus-guard so a rare
+      // user-app-switch race never triggers the hide-fallback against them.
+      const name = await osascriptFast(
+        `tell application "Safari" to return name of ${_targetWindowRef}`,
+        { noFocusGuard: true }
+      ).catch(() => '');
+      if (name && !name.startsWith(`${SAFARI_PROFILE} \u2014`)) {
+        // Window ID no longer belongs to profile — invalidate cache immediately
+        _logProfile(`SAFETY: Window ${_targetWindowRef} no longer belongs to profile "${SAFARI_PROFILE}" (name: "${name}") — invalidating`);
+        _targetWindowRef = null;
+        _targetWindowId = null;
+        _targetWindowCacheTime = 0;
+        _profileWindowMissing = true;
+        // Try to rediscover immediately
+        await refreshTargetWindow(true);
+      }
+    } catch {
+      // Window might have been closed — invalidate and rediscover
+      _targetWindowRef = null;
+      _targetWindowId = null;
+      _targetWindowCacheTime = 0;
+      await refreshTargetWindow(true);
+    }
+  }, 3000); // Check every 3 seconds
+}
+
+// Initialize profile window at startup (ES module top-level await)
+if (SAFARI_PROFILE) {
+  // Run profile-window detection off the critical path so module init — and
+  // therefore the MCP initialize handshake — completes immediately. Tool calls
+  // that arrive before this finishes already trigger lazy refresh via
+  // getTargetWindowRef(), so correctness is preserved.
+  // Why this matters: a blocking `await refreshTargetWindow(true)` here could
+  // run >30s when Safari was busy or AppleScript was stalled, tripping Claude
+  // Code's 30s MCP timeout and leaving the conversation's tool catalog without
+  // safari tools until a new conversation is started.
+  (async () => {
+    await new Promise(r => setTimeout(r, 50)); // Let helper process initialize
+    await refreshTargetWindow(true);
+    if (_targetWindowRef) {
+      _logProfile(`Startup: Profile "${SAFARI_PROFILE}" → targeting ${_targetWindowRef}`);
+    } else {
+      _logProfile(`WARNING: Profile "${SAFARI_PROFILE}" window NOT found at startup`);
+    }
+  })();
+}
+
+// Detect stale window ID errors and invalidate cache
+function isStaleWindowError(err) {
+  const msg = (err && (err.message || err.stderr || String(err))) || '';
+  return /window id \d+/.test(msg) && /(-1728|-10006)/.test(msg);
+}
+
+// Safe fallback target: when no tab index is known, use the profile window's current tab
+// instead of "front document" which can target the user's personal profile window
+// Throw if a write operation is about to fall back to the user's active tab
+// during the new-tab grace window. Without this, navigate/fill/click silently
+// target whatever tab the user is looking at when our cached index is lost.
+function _assertNotFallingBackToUserTab(opName) {
+  if (_activeTabIndex) return; // we have a tracked index — fine
+  // If we ever opened our own tab in this session, we MUST NOT fall back to
+  // "current tab of window" — that's the USER'S active tab. Always throw,
+  // regardless of how long ago the tab was opened. The previous 30-second
+  // grace window was insufficient: long-running sessions (Reddit warmup,
+  // multi-step workflows) routinely exceed it, and the danger persists.
+  if (_hasOwnedTab) {
+    throw new Error(
+      `Tab tracking lost — refusing to ${opName} via fallback to "current tab of window" (would target the user's active tab). ` +
+      `This session previously opened its own tab via safari_new_tab; re-run safari_new_tab to recover, or call safari_list_tabs and safari_switch_tab to re-anchor to a known tab.`
+    );
+  }
+  // No tab ever owned by this session — fallback to front document is intentional.
+}
+
+function getFallbackTarget() {
+  return SAFARI_PROFILE ? `current tab of ${getTargetWindowRef()}` : "front document";
+}
+
+// ========== TAB IDENTITY MARKER + VISIBILITY SPOOF ==========
+// Build the JS that stamps our identity onto a tab and keeps it rendering:
+//  - window.name           : survives EVERY navigation (full loads, redirects,
+//                            cross-origin). The browser preserves window.name by
+//                            design — the bulletproof identity that index/URL lack.
+//  - window.__mcpTabMarker : survives SPA / same-document routing (secondary marker).
+//  - visibility spoof      : forces document.visibilityState='visible' so a
+//                            backgrounded tab keeps rendering. SPAs (e.g. the Meta
+//                            developer console) blank their main content when hidden;
+//                            with the user actively switching tabs our automation tab
+//                            is constantly backgrounded, so without this its content
+//                            never paints.
+function _buildStampJS(marker) {
+  const m = String(marker).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return "(function(){"
+    + "try{window.name='" + m + "';}catch(e){}"
+    + "try{window.__mcpTabMarker='" + m + "';}catch(e){}"
+    + "try{if(!window.__mcpVisSpoof){window.__mcpVisSpoof=1;"
+    +   "Object.defineProperty(document,'visibilityState',{configurable:true,get:function(){return 'visible';}});"
+    +   "Object.defineProperty(document,'hidden',{configurable:true,get:function(){return false;}});"
+    +   "Object.defineProperty(document,'webkitVisibilityState',{configurable:true,get:function(){return 'visible';}});"
+    +   "Object.defineProperty(document,'webkitHidden',{configurable:true,get:function(){return false;}});"
+    +   "var s=function(e){e.stopImmediatePropagation();};"
+    +   "document.addEventListener('visibilitychange',s,true);"
+    +   "document.addEventListener('webkitvisibilitychange',s,true);"
+    +   "try{document.hasFocus=function(){return true;};}catch(e){}"
+    + "}}catch(e){}"
+    + "return '1';})()";
+}
+
+// Stamp identity marker + visibility spoof onto a specific tab.
+// Identity-critical: a missed stamp loses the tab marker, so this is NOT best-effort —
+// a daemon hiccup falls back to the reliable osascript subprocess.
+async function _stampTab(idx) {
+  if (!idx || !_activeTabMarker) return;
+  const js = _buildStampJS(_activeTabMarker).replace(/"/g, '\\"');
+  const script = `tell application "Safari" to do JavaScript "${js}" in tab ${idx} of ${getTargetWindowRef()}`;
+  try {
+    await osascriptFast(script, { timeout: 5000 });
+  } catch {
+    // Daemon hiccup — retry via the reliable subprocess. Stamping is identity-critical
+    // (a missed stamp loses the tab marker), so it must not be silently best-effort.
+    await osascript(script, { timeout: 8000 }).catch(() => {});
+  }
+}
+
+// Quick JS execution — exposed for smart-wait checks in index.js
+export async function runJSQuick(js) { return runJS(js); }
+
+// Run a SYNCHRONOUS function body in the page and return its raw result string. The body
+// must `return JSON.stringify(...)` (AppleScript `do JavaScript` can't await). This is the
+// single home for the `(function(){ … })()` wrapper that ~50 extractors hand-write; output
+// is byte-identical to `runJS(\`(function(){BODY})()\`)` — it only removes the boilerplate.
+function evalReturningJSON(body, opts) {
+  return runJS(`(function(){${body}})()`, opts);
+}
+
+// ========== FOCUS PRESERVATION ==========
+// Safari AppleScript can steal focus (bring Safari window to front), especially
+// on macOS Tahoe where window-mutation commands trigger an implicit activate.
+// Strategy: 1) read frontmost from daemon (~0.1ms), 2) try to re-activate previous
+// app, 3) settle 5ms (Tahoe needs time to honor the activate), 4) verify, and
+// 5) fall back to hiding Safari if activate didn't take.
+export async function saveFrontmostApp() {
+  const app = await _helperGetFrontApp();
+  return app?.bundleId || null;
+}
+export async function restoreFocusIfStolen(savedBundleId) {
+  if (!savedBundleId || savedBundleId === "com.apple.Safari") return;
+  let current = await _helperGetFrontApp();
+  if (current?.bundleId !== "com.apple.Safari") return;
+
+  // GUARD FIRST — check the user BEFORE any activate. If they interacted within
+  // the last couple seconds, Safari is frontmost because THEY are working in it
+  // (or just switched to it while a background instance's op was mid-flight), and
+  // restoring the previous app rips Safari out from under them — the "VS Code
+  // keeps jumping in front every few seconds" bug. The OLD code ran this guard
+  // only AFTER the first activate below, so that activate already stole focus
+  // before the guard could veto. With ~5 safari-mcp instances sharing one Safari
+  // window, every background op fired this steal. Bias HARD toward not stealing:
+  // a stale Safari-frontmost (user clicks back once) beats repeatedly yanking
+  // focus away from an active user.
+  if (await _userIsActive()) { _traceRestore(savedBundleId, "skip-user-active"); return; }
+
+  _traceRestore(savedBundleId, "restore");
+  // Bring previous app back. Await so the caller doesn't hand control back to
+  // user-space while Safari is still frontmost.
+  await _helperActivateApp(savedBundleId).catch(() => {});
+
+  // Settle window — NSRunningApplication.activate() is async at the OS level and
+  // reliably takes tens of ms to take effect. The old 5ms was far too short: the
+  // verify below almost always still saw Safari frontmost and wrongly fired the
+  // hide fallback, even though activate() was about to land. Give it a real
+  // chance before deciding activate "failed".
+  await new Promise(r => setTimeout(r, 120));
+
+  current = await _helperGetFrontApp();
+  if (current?.bundleId === "com.apple.Safari") {
+    // Safari still frontmost after activate. The OLD code HID Safari here — but
+    // hiding is destructive: it pulls the WHOLE app off-screen. It fired whenever
+    // the user had switched into Safari themselves while a background agent's op
+    // was in flight, and recurred even with an idle-guard because a user passively
+    // VIEWING Safari exceeds the idle threshold. Several autonomous background
+    // instances (Daily-RC → codex computer-use) share this one profile window, so
+    // the race was constant. NEVER hide. Non-destructive only: if the user is
+    // interacting, they own the foreground — leave it. Otherwise one more activate
+    // attempt, then give up and leave Safari frontmost (the user clicks back —
+    // vastly better than Safari vanishing).
+    if (await _userIsActive()) { _traceRestore(savedBundleId, "skip-user-active-late"); return; }
+    await _helperActivateApp(savedBundleId).catch(() => {});
+  }
+}
+
+// Seconds since the user's last HID input (keyboard or mouse), via IOKit.
+// `-r -d 1` roots the dump at IOHIDSystem and keeps it shallow (~13ms, ~4KB) —
+// note: a plain `-d 1` measures depth from the registry root and never reaches
+// IOHIDSystem, returning no HIDIdleTime. Returns Infinity on any failure so
+// callers fail toward "user is idle" (preserving the pre-existing hide behavior).
+async function _userIdleSeconds() {
+  try {
+    const { stdout } = await execFileAsync("ioreg", ["-c", "IOHIDSystem", "-r", "-d", "1"], { timeout: 1500 });
+    const m = stdout.match(/"HIDIdleTime"\s*=\s*(\d+)/);
+    if (!m) return Infinity;
+    return parseInt(m[1], 10) / 1e9; // nanoseconds → seconds
+  } catch { return Infinity; }
+}
+
+// True when the user interacted within the last ~2.5s — used to avoid hiding
+// Safari out from under a user who just brought it to the front themselves.
+async function _userIsActive() {
+  return (await _userIdleSeconds()) < 2.5;
+}
+
+// Lightweight trace of every restore decision — confirms WHICH instance (pid)
+// restored focus and whether the user-active guard vetoed it. Best-effort; never
+// throws into the hot path. Tail ~/safari-mcp/restore-trace.log to watch live.
+const _RESTORE_TRACE = join(__dirname, "restore-trace.log");
+function _traceRestore(savedBundleId, decision) {
+  appendFile(_RESTORE_TRACE, `${new Date().toISOString()} pid=${process.pid} saved=${savedBundleId} -> ${decision}\n`).catch(() => {});
+}
+
+function _helperHideSafari(timeout = 2000) {
+  return _withHelperLock(() => new Promise((resolve) => {
+    if (!_helperProc || !_helperProc.stdin?.writable) { resolve(); return; }
+    let resolved = false;
+    const timer = setTimeout(() => { if (!resolved) { resolved = true; resolve(); } }, timeout);
+    function cb() {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      resolve();
+    }
+    _helperQueue.push(cb);
+    try { _helperProc.stdin.write('{"hideSafari":true}\n'); }
+    catch { clearTimeout(timer); resolve(); }
+  }));
+}
+
+function _helperActivateApp(bundleId, timeout = 2000) {
+  return _withHelperLock(() => new Promise((resolve) => {
+    if (!_helperProc || !_helperProc.stdin?.writable) { resolve(); return; }
+    let resolved = false;
+    const timer = setTimeout(() => { if (!resolved) { resolved = true; resolve(); } }, timeout);
+    function cb() {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      resolve();
+    }
+    _helperQueue.push(cb);
+    try { _helperProc.stdin.write(JSON.stringify({ activateApp: bundleId }) + '\n'); }
+    catch { clearTimeout(timer); resolve(); }
+  }));
+}
+
+export function setFocusGuard(active) { _focusGuardActive = active; }
+export function getActiveTabIndex() { return _activeTabIndex; }
+export function setActiveTabIndex(idx) { _activeTabIndex = idx; }
+export function getActiveTabURL() { return _activeTabURL; }
+export function setActiveTabURL(url) { _activeTabURL = url; _lastResolveTime = Date.now(); }
+
+// Resolve our tracked URL to current tab index — single combined osascript call
+async function resolveActiveTab() {
+  if (!_activeTabURL && !_activeTabMarker) return _activeTabIndex;
+
+  // Strategy 1: identity marker — window.name (survives ALL navigation: full loads,
+  // redirects, cross-origin) or window.__mcpTabMarker (survives SPA routing).
+  // One AppleScript call loops every tab internally: faster and far more reliable
+  // than N separate daemon round-trips (a daemon hiccup mid-scan used to silently
+  // mis-resolve to the user's tab).
+  if (_activeTabMarker) {
+    try {
+      const safeMarker = _activeTabMarker.replace(/'/g, "\\'");
+      const check = `(function(){try{return (window.name==='${safeMarker}'||window.__mcpTabMarker==='${safeMarker}')?'1':'0'}catch(e){return '0'}})()`;
+      const scanScript = `tell application "Safari"
+        set w to ${getTargetWindowRef()}
+        set n to count of tabs of w
+        ${_activeTabIndex ? `try
+          if n is greater than or equal to ${_activeTabIndex} then
+            if (do JavaScript "${check}" in tab ${_activeTabIndex} of w) is "1" then return ${_activeTabIndex}
+          end if
+        end try` : ''}
+        repeat with i from n to 1 by -1
+          try
+            if (do JavaScript "${check}" in tab i of w) is "1" then return i
+          end try
+        end repeat
+        return 0
+      end tell`;
+      // Fast daemon first; if it hiccups, retry once via reliable subprocess.
+      let res = await osascriptFast(scanScript).catch(() => null);
+      if (res === null) res = await osascript(scanScript).catch(() => null);
+      if (res !== null) {
+        const found = Number(String(res).trim());
+        if (found > 0) { _activeTabIndex = found; return found; }
+        // Reliable scan completed and the marker is on NO tab — it is genuinely
+        // gone (tab closed, or a site overwrote window.name). Drop it; the URL
+        // strategy below is the last chance before we fail safe.
+        _activeTabMarker = null;
+      }
+      // res === null → both attempts errored; can't verify — keep marker, fall through.
+    } catch { /* fall through to URL strategy */ }
+  }
+
+  if (!_activeTabURL) {
+    // No URL to resolve. If this session owns a tab but the marker is gone, we can
+    // no longer positively identify our tab — refuse to return a stale index that
+    // may now point at the user's tab. runJS will throw a clear re-anchor error.
+    if (_hasOwnedTab && !_activeTabMarker) { _activeTabIndex = null; }
+    return _activeTabIndex;
+  }
+
+  try {
+    const safeUrl = _activeTabURL.replace(/"/g, '\\"');
+    const domain = _activeTabURL.replace(/^https?:\/\//, '').split('/')[0].replace(/"/g, '\\"');
+    // Single AppleScript call: verify current index, then search by URL, then by domain
+    // Also returns tabCount so we can clamp stale indices
+    const result = await osascriptFast(
+      `tell application "Safari"
+        set w to ${getTargetWindowRef()}
+        set tabCount to count of tabs of w
+        ${_activeTabIndex ? `try
+          if tabCount >= ${_activeTabIndex} then
+            if URL of tab ${_activeTabIndex} of w starts with "${safeUrl}" then return ${_activeTabIndex}
+          end if
+        end try` : ''}
+        repeat with i from tabCount to 1 by -1
+          if URL of tab i of w starts with "${safeUrl}" then return i
+        end repeat
+        repeat with i from tabCount to 1 by -1
+          if URL of tab i of w contains "${domain}" then return -(i)
+        end repeat
+        return "0:" & tabCount
+      end tell`
+    );
+    // Parse result — can be "N" (found) or "0:tabCount" (not found)
+    const resultStr = String(result);
+    if (resultStr.includes(':')) {
+      // Not found — clamp stale index to tabCount
+      const tabCount = Number(resultStr.split(':')[1]) || 1;
+      _lastTabCount = tabCount;
+      _activeTabURL = null;
+      if (_hasOwnedTab && !_activeTabMarker) {
+        // Identity fully lost: marker gone AND URL matches no tab. Returning the
+        // stale index could silently target the user's tab. Fail safe — drop it.
+        console.error('[Safari MCP] Tab identity lost (marker + URL unresolved) — clearing index to avoid targeting the user\'s tab');
+        _activeTabIndex = null;
+        return null;
+      }
+      if (_activeTabIndex && _activeTabIndex > tabCount) {
+        console.error(`[Safari MCP] Tab ghost proactive fix: index ${_activeTabIndex} > tabCount ${tabCount}, clamping to ${tabCount}`);
+        _activeTabIndex = tabCount;
+      }
+      return _activeTabIndex;
+    }
+    const num = Number(result);
+    if (num > 0) {
+      _activeTabIndex = num;
+      return num;
+    }
+    if (num < 0) {
+      // Domain match (negative = partial match)
+      _activeTabIndex = -num;
+      return -num;
+    }
+    _activeTabURL = null;
+    return _activeTabIndex;
+  } catch {
+    return _activeTabIndex;
+  }
+}
+
+// ========== FAST OSASCRIPT VIA TEMP FILE ==========
+// osascript -i persistent process doesn't work reliably with pipes.
+// Instead, we use execFile for every call (~80ms each).
+// Optimization: for runJS we write to temp file and execute (avoids arg escaping).
+
+// Run AppleScript — uses execFile (safe, isolated, for complex scripts)
+async function osascript(script, { timeout = 10000 } = {}) {
+  if (!(await isSafariRunning())) throw safariNotRunningError();
+  // Save frontmost app via daemon BEFORE subprocess (~0.1ms)
+  // Skip if an outer caller (extensionOrFallback) already handles focus
+  const shouldGuardFocus = !_focusGuardActive;
+  const frontApp = shouldGuardFocus ? await _helperGetFrontApp() : null;
+  try {
+    const { stdout } = await execFileAsync("osascript", ["-e", script], {
+      timeout,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return stdout.trim();
+  } catch (err) {
+    // Retry once if the window ID became stale (window reopened/changed)
+    if (isStaleWindowError(err) && SAFARI_PROFILE) {
+      const oldRef = _targetWindowRef;
+      await refreshTargetWindow(true);
+      if (_targetWindowRef !== oldRef) {
+        const retryScript = script.replace(new RegExp(oldRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), _targetWindowRef);
+        const { stdout } = await execFileAsync("osascript", ["-e", retryScript], { timeout, maxBuffer: 10 * 1024 * 1024 });
+        return stdout.trim();
+      }
+    }
+    throw new Error(`AppleScript error: ${err.stderr || err.message}`);
+  } finally {
+    // Awaited restore — caller must not return to user-space while Safari is still frontmost.
+    if (shouldGuardFocus && frontApp?.bundleId && frontApp.bundleId !== 'com.apple.Safari') {
+      await restoreFocusIfStolen(frontApp.bundleId).catch(() => {});
+    }
+  }
+}
+
+// osascriptFast: uses persistent Swift daemon (~5ms) — 18x faster than subprocess (~90ms)
+async function osascriptFast(script, { timeout = 10000, noFocusGuard = false } = {}) {
+  if (!(await isSafariRunning())) throw safariNotRunningError();
+  if (!_helperProc) startHelper();
+
+  // Focus guard — Tahoe AppleScript can implicitly activate Safari (especially
+  // on window-mutating commands: set URL / set bounds / set current tab).
+  // Skip if an outer caller (extensionOrFallback / runJSLarge / osascript)
+  // already handles focus, or if the caller knows the script is read-only and
+  // not worth the round-trip overhead (e.g. background polling every 3s).
+  const shouldGuardFocus = !_focusGuardActive && !noFocusGuard;
+  const frontApp = shouldGuardFocus ? await _helperGetFrontApp() : null;
+
+  try {
+    if (_helperProc) {
+      try {
+        return await _osascriptFastHelper(script, timeout);
+      } catch (err) {
+        // Retry once if the window ID became stale
+        if (isStaleWindowError(err) && SAFARI_PROFILE) {
+          const oldRef = _targetWindowRef;
+          await refreshTargetWindow(true);
+          if (_targetWindowRef !== oldRef) {
+            const retryScript = script.replace(new RegExp(oldRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), _targetWindowRef);
+            // Guard: helper may have died during the stale-window retry
+            if (!_helperProc) startHelper();
+            if (_helperProc) return await _osascriptFastHelper(retryScript, timeout);
+            return await osascript(retryScript, { timeout });
+          }
+        }
+        throw err;
+      }
+    }
+    return await osascript(script, { timeout });
+  } finally {
+    if (shouldGuardFocus && frontApp?.bundleId && frontApp.bundleId !== "com.apple.Safari") {
+      await restoreFocusIfStolen(frontApp.bundleId).catch(() => {});
+    }
+  }
+}
+
+function _osascriptFastHelper(script, timeout) {
+  return _withHelperLock(() => new Promise((resolve, reject) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      // DON'T remove from queue — replace with a proof-of-life consumer to maintain
+      // FIFO order. A heavy page (e.g. the Airtable SPA) makes `do JavaScript` legitimately
+      // slow: the call exceeds `timeout`ms, but the helper IS alive and emits its response a
+      // moment later. That late response proves liveness — so when it arrives we reset the
+      // consecutive-timeout counter instead of discarding the signal. Killing the daemon on a
+      // slow page is pointless (the fresh daemon hits the same slow page) and disruptive.
+      // Only a helper that NEVER replies (truly hung) accumulates timeouts with no late reply.
+      const idx = _helperQueue.indexOf(cb);
+      if (idx >= 0) _helperQueue[idx] = () => { _helperConsecutiveTimeouts = 0; }; // late reply ⇒ alive
+      _helperConsecutiveTimeouts++;
+      if (_helperConsecutiveTimeouts >= 5) {
+        console.error(`[Safari MCP] safari-helper: ${_helperConsecutiveTimeouts} consecutive timeouts with no late replies — killing daemon`);
+        _helperProc?.kill();
+        _helperProc = null;
+        _helperConsecutiveTimeouts = 0;
+        // The killed proc's 'exit' handler also schedules a restart; guard the timer so only
+        // one respawn wins (startHelper is now idempotent too) — no second, orphaned daemon.
+        setTimeout(() => { if (!_shuttingDown && !_helperProc) startHelper(); }, 100);
+      }
+      reject(new Error("safari-helper timeout"));
+    }, timeout);
+
+    function cb(line) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      _helperConsecutiveTimeouts = 0;
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.error) reject(new Error(parsed.error));
+        else resolve(parsed.result ?? "");
+      } catch {
+        resolve(line);
+      }
+    }
+
+    if (!_helperProc || !_helperProc.stdin || !_helperProc.stdin.writable) {
+      clearTimeout(timer);
+      reject(new Error("safari-helper not available"));
+      return;
+    }
+    _helperQueue.push(cb);
+    try {
+      _helperProc.stdin.write(JSON.stringify({ script }) + "\n");
+    } catch (writeErr) {
+      const idx = _helperQueue.indexOf(cb);
+      if (idx >= 0) _helperQueue.splice(idx, 1);
+      clearTimeout(timer);
+      reject(new Error("safari-helper write failed: " + writeErr.message));
+    }
+  }));
+}
+
+// Ask the helper for its permission state (CGEvent posting + screen capture) without
+// acting. Resolves the FULL parsed object ({accessibility, screenRecording}); doubles as
+// a daemon liveness probe. Used by doctor() (issue #29/#14/#15).
+function _helperPreflight(timeout = 3000) {
+  return _withHelperLock(() => new Promise((resolve, reject) => {
+    if (!_helperProc) startHelper();
+    if (!_helperProc || !_helperProc.stdin || !_helperProc.stdin.writable) {
+      reject(new Error("safari-helper not available"));
+      return;
+    }
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      const idx = _helperQueue.indexOf(cb);
+      if (idx >= 0) _helperQueue[idx] = () => {}; // no-op consumer for a late reply
+      reject(new Error("preflight timeout"));
+    }, timeout);
+    function cb(line) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      try { resolve(JSON.parse(line)); }
+      catch { reject(new Error("unparseable preflight reply")); }
+    }
+    _helperQueue.push(cb);
+    try {
+      _helperProc.stdin.write(JSON.stringify({ preflight: true }) + "\n");
+    } catch (writeErr) {
+      const idx = _helperQueue.indexOf(cb);
+      if (idx >= 0) _helperQueue.splice(idx, 1);
+      clearTimeout(timer);
+      reject(new Error("preflight write failed: " + writeErr.message));
+    }
+  }));
+}
+
+// ========== NATIVE CLICK VIA CGEVENT ==========
+// Sends a CGEvent click command to the Swift helper daemon.
+// This produces isTrusted: true events — bypasses WAF protection (G2, etc.)
+
+function _helperNativeClick(x, y, doubleClick = false, windowId = 0, timeout = 5000) {
+  return _withHelperLock(() => new Promise((resolve, reject) => {
+    if (!_helperProc) startHelper();
+    if (!_helperProc || !_helperProc.stdin || !_helperProc.stdin.writable) {
+      reject(new Error("safari-helper not available for native click"));
+      return;
+    }
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      const idx = _helperQueue.indexOf(cb);
+      if (idx >= 0) _helperQueue[idx] = () => {}; // No-op consumer for late response
+      reject(new Error("native click timeout"));
+    }, timeout);
+
+    function cb(line) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.error) reject(new Error(parsed.error));
+        else resolve(parsed.result ?? "");
+      } catch {
+        resolve(line);
+      }
+    }
+
+    _helperQueue.push(cb);
+    const cmd = { click: { x, y } };
+    if (doubleClick) cmd.click.double = true;
+    if (windowId) cmd.click.windowId = windowId;
+    try {
+      _helperProc.stdin.write(JSON.stringify(cmd) + "\n");
+    } catch (e) {
+      // EPIPE if the daemon died in the gap after the writable check — splice our callback
+      // out so it can't consume the NEXT command's response (FIFO desync), then reject.
+      const i = _helperQueue.indexOf(cb);
+      if (i >= 0) _helperQueue.splice(i, 1);
+      clearTimeout(timer);
+      resolved = true;
+      reject(e);
+    }
+  }));
+}
+
+// Sends a CGEvent hover command to the Swift helper daemon.
+// Moves the cursor to (x, y), dwells to let tooltips render, optionally restores cursor.
+function _helperNativeHover(x, y, windowId = 0, dwellMs = 500, restoreMouse = true, timeout = 10000) {
+  return _withHelperLock(() => new Promise((resolve, reject) => {
+    if (!_helperProc) startHelper();
+    if (!_helperProc || !_helperProc.stdin || !_helperProc.stdin.writable) {
+      reject(new Error("safari-helper not available for native hover"));
+      return;
+    }
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      const idx = _helperQueue.indexOf(cb);
+      if (idx >= 0) _helperQueue[idx] = () => {};
+      reject(new Error("native hover timeout"));
+    }, timeout);
+
+    function cb(line) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.error) reject(new Error(parsed.error));
+        else resolve(parsed.result ?? "");
+      } catch {
+        resolve(line);
+      }
+    }
+
+    _helperQueue.push(cb);
+    const cmd = { hover: { x, y, dwellMs, restoreMouse } };
+    if (windowId) cmd.hover.windowId = windowId;
+    try {
+      _helperProc.stdin.write(JSON.stringify(cmd) + "\n");
+    } catch (e) {
+      // EPIPE if the daemon died in the gap after the writable check — splice our callback
+      // out so it can't consume the NEXT command's response (FIFO desync), then reject.
+      const i = _helperQueue.indexOf(cb);
+      if (i >= 0) _helperQueue.splice(i, 1);
+      clearTimeout(timer);
+      resolved = true;
+      reject(e);
+    }
+  }));
+}
+
+// Sends a CGEvent keyboard command to the Swift helper daemon.
+// No focus stealing — sends key events directly to the target window via PID.
+function _helperNativeKeyboard(keyCode, flags = [], windowId = 0, timeout = 5000) {
+  return _withHelperLock(() => new Promise((resolve, reject) => {
+    if (!_helperProc) startHelper();
+    if (!_helperProc || !_helperProc.stdin || !_helperProc.stdin.writable) {
+      reject(new Error("safari-helper not available for native keyboard"));
+      return;
+    }
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      const idx = _helperQueue.indexOf(cb);
+      if (idx >= 0) _helperQueue[idx] = () => {}; // No-op consumer for late response
+      reject(new Error("native keyboard timeout"));
+    }, timeout);
+
+    function cb(line) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.error) reject(new Error(parsed.error));
+        else resolve(parsed.result ?? "");
+      } catch {
+        resolve(line);
+      }
+    }
+
+    _helperQueue.push(cb);
+    const cmd = { keyboard: { keyCode, flags } };
+    if (windowId) cmd.keyboard.windowId = windowId;
+    try {
+      _helperProc.stdin.write(JSON.stringify(cmd) + "\n");
+    } catch (e) {
+      // EPIPE if the daemon died in the gap after the writable check — splice our callback
+      // out so it can't consume the NEXT command's response (FIFO desync), then reject.
+      const i = _helperQueue.indexOf(cb);
+      if (i >= 0) _helperQueue.splice(i, 1);
+      clearTimeout(timer);
+      resolved = true;
+      reject(e);
+    }
+  }));
+}
+
+// ========== NATIVE FOCUS OPERATIONS VIA DAEMON ==========
+// Uses NSRunningApplication — ~0.1ms for get, ~1ms for activate (vs ~90ms AppleScript)
+
+function _helperGetFrontApp(timeout = 2000) {
+  return _withHelperLock(() => new Promise((resolve) => {
+    if (!_helperProc || !_helperProc.stdin?.writable) { resolve(null); return; }
+    let resolved = false;
+    const timer = setTimeout(() => { if (!resolved) { resolved = true; resolve(null); } }, timeout);
+    function cb(line) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      try { resolve(JSON.parse(line)); } catch { resolve(null); }
+    }
+    _helperQueue.push(cb);
+    try { _helperProc.stdin.write('{"getFrontApp":true}\n'); }
+    catch { clearTimeout(timer); resolve(null); }
+  }));
+}
+
+// Get Safari window bounds, toolbar height, and window ID for coordinate calculation
+async function _getSafariWindowGeometry() {
+  await refreshTargetWindow();
+  const windowRef = getTargetWindowRef();
+  // Get window bounds + window ID via the helper daemon. The daemon is TCC-granted
+  // under safari-helper's STABLE path, so this never falls back to osascript-under-claude
+  // — which re-prompts for Apple Events on every claude version bump (the binary lives in
+  // a version-numbered folder). The script returns a plain comma-joined string (not a list),
+  // which the daemon's stringValue handles fine. osascriptFast itself falls back to a fresh
+  // osascript subprocess only if the daemon is dead — a rare hiccup, not the steady state.
+  const boundsResult = await osascriptFast(
+    `tell application "Safari"\n  set b to bounds of ${windowRef}\n  set wid to id of ${windowRef}\n  return (item 1 of b as text) & "," & (item 2 of b as text) & "," & (item 3 of b as text) & "," & (item 4 of b as text) & "," & (wid as text)\nend tell`
+  );
+  // boundsResult = "x1, y1, x2, y2, windowId"
+  const parts = boundsResult.split(",").map(s => Number(s.trim()));
+  if (parts.length !== 5 || parts.some(isNaN)) {
+    throw new Error("Failed to parse Safari window geometry: " + boundsResult);
+  }
+  // Dynamic toolbar height: outerHeight - innerHeight gives total chrome above content
+  // (title bar + URL bar + tab strip + optional bookmarks bar). Hardcoded 74 was wrong
+  // for modern Safari (Sequoia+) where chrome is ~90px. Fall back to 74 if JS unreachable.
+  let toolbarHeight = 74;
+  try {
+    const chromeStr = await runJS(`(window.outerHeight - window.innerHeight) + ''`);
+    const chrome = Number(chromeStr);
+    if (Number.isFinite(chrome) && chrome >= 50 && chrome <= 200) toolbarHeight = chrome;
+  } catch (_e) { /* keep fallback */ }
+  return {
+    windowX: parts[0],
+    windowY: parts[1],
+    windowRight: parts[2],
+    windowBottom: parts[3],
+    toolbarHeight,
+    // CGWindow ID for background click targeting (no mouse move, no focus steal)
+    windowId: parts[4]
+  };
+}
+
+// Run JavaScript in Safari — fastest path, no focus stealing
+// Uses osascriptFast (persistent process, ~5ms) for short scripts,
+// falls back to osascript (~80ms) for long scripts that exceed stdin limits
+async function runJS(js, { tabIndex, timeout = 15000 } = {}) {
+  await refreshTargetWindow();
+  const escaped = js
+    .replace(/^\s*\/\/[^\n]*$/gm, '')  // Strip // comment-only lines before flattening
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, " ")
+    .replace(/\r/g, "")
+    .replace(/\t/g, " ");
+  // Resolve tab: explicit tabIndex > cached index > URL-tracked tab > front document
+  let idx = tabIndex;
+  if (!idx && _activeTabIndex && _activeTabURL && (Date.now() - _lastResolveTime < RESOLVE_CACHE_MS)) {
+    // Recently verified and tab count unchanged — use cached index
+    idx = _activeTabIndex;
+  } else if (!idx && (_activeTabURL || _activeTabMarker)) {
+    // Resolve by URL or marker — the marker scan still finds an owned tab
+    // even after _activeTabURL has been cleared by a failed URL lookup.
+    const resolved = await resolveActiveTab();
+    if (resolved) { idx = resolved; _lastResolveTime = Date.now(); }
+  }
+  // ALWAYS fall back to _activeTabIndex — never clear it from resolve failures
+  if (!idx) idx = _activeTabIndex;
+  // Once this session owns a tab, never silently run on the user's current tab —
+  // regardless of SAFARI_PROFILE. Without a profile getFallbackTarget() returns
+  // "front document" (the user's active tab), so the guard matters MOST there.
+  // Mirrors runJSLarge and the ghost-recovery guard below, which key on _hasOwnedTab alone.
+  if (!idx && _hasOwnedTab) {
+    throw new Error('Tab tracking lost during runJS — refusing to target the user\'s current tab. Call safari_new_tab to reopen.');
+  }
+  const target = idx
+    ? `tab ${idx} of ${getTargetWindowRef()}`
+    : getFallbackTarget();
+  // NEVER activate or raise Safari — that steals the user's foreground. JS runs in the
+  // target tab in the background regardless of window stacking. (rAF/timers stay frozen
+  // while the window is occluded by macOS; that is a deliberate trade-off — measuring an
+  // occluded window's frame rate is not worth stealing focus. Measure when it's visible.)
+  const script = `tell application "Safari" to do JavaScript "${escaped}" in ${target}`;
+  try {
+    if (script.length < 50000) {
+      return await osascriptFast(script, { timeout });
+    }
+    return await osascript(script, { timeout });
+  } catch (err) {
+    // Tab ghost recovery: "Can't get tab X" → re-resolve and retry once.
+    // Match both apostrophes — Safari emits a typographic apostrophe (U+2019),
+    // so a plain "Can't" includes() check silently missed every ghost error.
+    const msg = err.message || '';
+    if (idx && (/[Cc]an.t get tab/.test(msg) || msg.includes("-1728"))) {
+      console.error(`[Safari MCP] Tab ghost detected (tab ${idx}), re-resolving...`);
+      _lastResolveTime = 0; // Force re-resolve
+      _lastTabCount = null;  // Invalidate tab count cache
+      _activeTabIndex = null;
+      if (_activeTabURL || _activeTabMarker) {
+        const newIdx = await resolveActiveTab();
+        if (newIdx && newIdx !== idx) {
+          console.error(`[Safari MCP] Tab ghost resolved: ${idx} → ${newIdx}`);
+          const newTarget = `tab ${newIdx} of ${getTargetWindowRef()}`;
+          const retryScript = `tell application "Safari" to do JavaScript "${escaped}" in ${newTarget}`;
+          if (retryScript.length < 50000) return osascriptFast(retryScript, { timeout });
+          return osascript(retryScript, { timeout });
+        }
+      }
+      // If still can't resolve and we previously owned a tab — refuse to
+      // fall back to "current tab of window" (which is the USER'S active tab).
+      // Falling back would silently run our JS (potentially writes:
+      // document.title=, location.href=) on the user's working page.
+      if (_hasOwnedTab) {
+        throw new Error(
+          `Tab tracking lost during runJS — original tab ${idx} no longer exists, and URL-based resolution failed. ` +
+          `Refusing to fall back to "current tab of window" (would target user's active tab). ` +
+          `Call safari_new_tab to open a fresh tab and retry.`
+        );
+      }
+      // No owned tab in this session — front-document fallback is intentional.
+      const fallbackScript = `tell application "Safari" to do JavaScript "${escaped}" in current tab of ${getTargetWindowRef()}`;
+      console.error(`[Safari MCP] Falling back to current tab`);
+      if (fallbackScript.length < 50000) return osascriptFast(fallbackScript, { timeout });
+      return osascript(fallbackScript, { timeout });
+    }
+    throw err;
+  }
+}
+
+// Run large JavaScript via temp file — bypasses osascript arg length limit (~260KB)
+// Used for operations that embed file data (upload, paste image)
+async function runJSLarge(js, { tabIndex, timeout = 30000 } = {}) {
+  await refreshTargetWindow();
+  // Resolve tab the same way runJS does — verify cached index via URL
+  let idx = tabIndex;
+  // Match runJS: resolve when EITHER the URL or the tab marker is tracked — after a
+  // redirect clears _activeTabURL the marker is still authoritative; skipping the
+  // scan meant large-payload ops (upload/paste) could target a stale index.
+  if (!idx && ((_activeTabURL && _activeTabURL !== 'about:blank' && _activeTabURL !== '') || _activeTabMarker)) {
+    const resolved = await resolveActiveTab();
+    if (resolved) { idx = resolved; _lastResolveTime = Date.now(); }
+  }
+  if (!idx) idx = _activeTabIndex;
+  // If we previously owned a tab but lost tracking, refuse to target current tab
+  // (which is the USER'S active tab). Same protection as navigate/runJS fallback.
+  if (!idx && _hasOwnedTab) {
+    throw new Error(
+      `Tab tracking lost during runJSLarge — refusing to fall back to "current tab of window" (would target user's active tab). ` +
+      `Call safari_new_tab to open a fresh tab and retry.`
+    );
+  }
+  const target = idx
+    ? `tab ${idx} of ${getTargetWindowRef()}`
+    : getFallbackTarget();
+  // Write AppleScript to temp file — the JS is embedded inside the AppleScript
+  const escaped = js
+    .replace(/^\s*\/\/[^\n]*$/gm, '')  // Strip // comment-only lines before flattening
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, " ")
+    .replace(/\r/g, "")
+    .replace(/\t/g, " ");
+  const appleScript = `tell application "Safari" to do JavaScript "${escaped}" in ${target}`;
+  const tmpFile = join(tmpdir(), `safari-mcp-${Date.now()}.scpt`);
+  await writeFile(tmpFile, appleScript, "utf8");
+  // Save frontmost app via daemon before subprocess execution
+  // Skip if outer caller already handles focus
+  const shouldGuard = !_focusGuardActive;
+  const frontApp = shouldGuard ? await _helperGetFrontApp() : null;
+  try {
+    const { stdout } = await execFileAsync("osascript", [tmpFile], {
+      timeout,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return stdout.trim();
+  } finally {
+    unlink(tmpFile).catch(() => {});
+    // Awaited restore — caller must not return to user-space while Safari is still frontmost.
+    if (shouldGuard && frontApp?.bundleId && frontApp.bundleId !== 'com.apple.Safari') {
+      await restoreFocusIfStolen(frontApp.bundleId).catch(() => {});
+    }
+  }
+}
+
+// ========== NAVIGATION ==========
+
+export async function navigate(url) {
+  await refreshTargetWindow();
+  let targetUrl = url;
+  if (!/^https?:\/\//i.test(targetUrl)) {
+    targetUrl = "https://" + targetUrl;
+  }
+
+  // Escape backslash first, then quotes; strip CR/LF — a newline would break out of
+  // the AppleScript string literal and allow AppleScript injection.
+  const safeUrl = targetUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, '');
+    // Resolve tab by URL first (in case indices shifted)
+    if (_activeTabURL) await resolveActiveTab();
+    _assertNotFallingBackToUserTab('navigate');
+    // Capture our tab index ONCE. Every internal runJS below targets it explicitly:
+    // re-resolving mid-navigation is unsafe — a cross-origin load transiently wipes
+    // window.name (a browser privacy feature) and the tracked URL is stale until the
+    // new page settles, so resolveActiveTab() would conclude "identity lost" and drop
+    // the very tab we are navigating.
+    const navIndex = _activeTabIndex;
+    const navTarget = navIndex
+      ? `tab ${navIndex} of ${getTargetWindowRef()}`
+      : getFallbackTarget();
+    // Step 0: Suppress onbeforeunload dialogs (prevents blocking navigation)
+    await runJS("window.onbeforeunload=null", { tabIndex: navIndex, timeout: 2000 }).catch(() => {});
+
+    // Pre-navigation URL, captured before Step 1. Lets the post-load check below
+    // detect a `set URL` that silently no-ops (a cold or crashed Swift daemon):
+    // the readyState poll would otherwise just see the OLD page still loaded.
+    const preNavUrl = await runJS('location.href', { tabIndex: navIndex, timeout: 3000 }).catch(() => '');
+
+    // Step 1: Set URL via fast daemon (~5ms) — don't block daemon with polling
+    await osascriptFast(
+      `tell application "Safari" to set URL of ${navTarget} to "${safeUrl}"`,
+      { timeout: 10000 }
+    );
+
+    // Optimistically track the destination NOW. The async load below can take seconds
+    // on a heavy SPA; if any step throws mid-load, resolveActiveTab() can still re-find
+    // this tab by URL instead of clearing the index and locking the session out of its
+    // own tab. Corrected to the real landed URL once the page settles (below).
+    _activeTabURL = targetUrl;
+    _activeTabIndex = navIndex;
+    _lastResolveTime = Date.now();
+
+    // about:blank and any already-loaded page report readyState 'complete' the instant
+    // we poll, BEFORE the async set-URL takes effect — so breaking on readyState alone
+    // mistakes the stale/blank page for a finished navigation (root cause of false
+    // "set URL had no effect" failures navigating a fresh tab to an SPA). Only settle
+    // once the URL has actually LEFT preNavUrl (a same-URL reload is exempt).
+    const _isReload = !!preNavUrl && preNavUrl === targetUrl;
+    const _settled = (state, landed) => {
+      if (state !== 'complete' && state !== 'interactive') return false;
+      if (_isReload) return true;
+      if (!landed || landed === 'about:blank') return false;
+      return landed !== preNavUrl;
+    };
+    const _probeUrl = (json) => { try { return JSON.parse(json).url || ''; } catch { return ''; } };
+
+    // Step 2: Poll readyState synchronously from Node.js side
+    // (AppleScript do JavaScript doesn't await async Promises — returns immediately)
+    let result = '{}';
+    for (let poll = 0; poll < 80; poll++) {
+      await new Promise(r => setTimeout(r, 200));
+      try {
+        const state = await runJS('document.readyState', { tabIndex: navIndex, timeout: 5000 });
+        if (state === 'complete' || state === 'interactive') {
+          result = await runJS(
+            `JSON.stringify({title:document.title,url:location.href,blocked:document.title.includes('cannot open')||document.title.includes('\u05D0\u05D9\u05DF \u05D0\u05E4\u05E9\u05E8\u05D5\u05EA')})`,
+            { tabIndex: navIndex, timeout: 5000 }
+          );
+          if (_settled(state, _probeUrl(result))) {
+            if (state === 'complete') break;
+            // interactive = DOM ready but resources still loading — wait a bit more
+            if (poll > 10) break; // Don't wait forever for 'complete' if interactive after 2s
+          }
+          // else: new URL not in effect yet (stale/blank page) — keep polling
+        }
+      } catch { /* page still loading, retry */ }
+    }
+
+    // If the fast `set URL` above silently no-opped (cold/crashed daemon), the poll
+    // just saw the OLD page already loaded. Detect that — the URL never left
+    // preNavUrl — and retry once through the daemon-independent osascript path.
+    let landedUrl = _probeUrl(result);
+    if (preNavUrl && preNavUrl !== targetUrl && (!landedUrl || landedUrl === preNavUrl || landedUrl === 'about:blank')) {
+      console.error('[Safari MCP] navigate: fast set-URL did not take effect — retrying via osascript subprocess');
+      await osascript(`tell application "Safari" to set URL of ${navTarget} to "${safeUrl}"`, { timeout: 12000 });
+      for (let rpoll = 0; rpoll < 80; rpoll++) {
+        await new Promise(res => setTimeout(res, 200));
+        try {
+          const state = await runJS('document.readyState', { tabIndex: navIndex, timeout: 5000 });
+          if (state === 'complete' || state === 'interactive') {
+            const probe = await runJS('JSON.stringify({title:document.title,url:location.href})', { tabIndex: navIndex, timeout: 5000 });
+            if (_settled(state, _probeUrl(probe))) {
+              result = probe;
+              if (state === 'complete') break;
+              if (rpoll > 10) break;
+            }
+          }
+        } catch { /* page still loading, retry */ }
+      }
+      // Last chance: the daemon may have applied the set URL only AFTER our polls ran.
+      // Re-read the live URL directly before declaring failure.
+      let retryUrl = _probeUrl(result);
+      if (!retryUrl || retryUrl === preNavUrl || retryUrl === 'about:blank') {
+        const liveUrl = await runJS('location.href', { tabIndex: navIndex, timeout: 5000 }).catch(() => '');
+        if (liveUrl && liveUrl !== preNavUrl && liveUrl !== 'about:blank') {
+          result = JSON.stringify({ title: '', url: liveUrl });
+          retryUrl = liveUrl;
+        }
+      }
+      // Still stuck on the pre-navigation URL → the navigation genuinely failed.
+      if (retryUrl && retryUrl === preNavUrl) {
+        // Preserve tab tracking (index + the page actually showing) so the session can
+        // recover via switch_tab / re-navigate instead of being locked out of its tab.
+        _activeTabURL = preNavUrl;
+        _activeTabIndex = navIndex;
+        _lastResolveTime = Date.now();
+        throw new Error(`navigate failed: page stayed on ${preNavUrl} — Safari "set URL" to ${targetUrl} had no effect (Safari automation/daemon issue, retry exhausted)`);
+      }
+    }
+
+    // Inject click helpers in background (non-blocking, for subsequent clicks)
+    _injectHelpersfast().catch((err) => console.error(`[Safari MCP] background helper injection skipped: ${err.message}`));
+
+    // If HTTPS failed and original was HTTP, try original HTTP URL
+    try {
+      const parsed = JSON.parse(result);
+      if (parsed.blocked && url.startsWith("http://")) {
+        const httpUrl = url.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, '');
+        await osascriptFast(
+          `tell application "Safari" to set URL of ${navTarget} to "${httpUrl}"`
+        );
+        // Poll readyState for HTTP retry — target navIndex explicitly (no re-resolve)
+        let retryResult = '{}';
+        for (let rp = 0; rp < 40; rp++) {
+          await new Promise(r => setTimeout(r, 300));
+          try {
+            const rs = await runJS('document.readyState', { tabIndex: navIndex, timeout: 5000 });
+            if (rs === 'complete' || rs === 'interactive') {
+              retryResult = await runJS('JSON.stringify({title:document.title,url:location.href})', { tabIndex: navIndex, timeout: 5000 });
+              if (rs === 'complete') break;
+              if (rp > 8) break;
+            }
+          } catch { /* retry */ }
+        }
+        const retry = retryResult;
+        // Update URL tracking with actual URL after HTTP retry
+        try {
+          const retryParsed = JSON.parse(retry);
+          if (retryParsed.url) _activeTabURL = retryParsed.url;
+        } catch {}
+        _activeTabIndex = navIndex;
+        _lastResolveTime = Date.now();
+        await _stampTab(navIndex);
+        return retry;
+      }
+    } catch (_) {}
+
+    // Update URL tracking after navigation (non-blocked path)
+    try {
+      const parsed = JSON.parse(result);
+      _activeTabURL = parsed.url || targetUrl;
+    } catch {
+      _activeTabURL = targetUrl;
+    }
+    _activeTabIndex = navIndex;
+    _lastResolveTime = Date.now();
+
+    // Re-stamp identity marker + visibility spoof onto the settled page. A cross-origin
+    // navigation clears window.name, and any full load wipes __mcpTabMarker and the
+    // visibility spoof — re-stamping keeps resolveActiveTab able to find this tab and
+    // keeps the page rendering even while backgrounded.
+    await _stampTab(navIndex);
+
+    return result;
+}
+
+// Poll document.readyState from the Node side and return {title,url[,text]} once the
+// page settles. `do JavaScript` returns immediately and never awaits an async IIFE
+// (see _evaluateAsync), so any in-page `await` loop is fire-and-forget — page-load
+// waits MUST be driven from Node. Shared by goBack/goForward/reload/navigateAndRead.
+async function _pollReadyAndRead(navIndex, { maxLength } = {}) {
+  const readExpr = maxLength != null
+    ? `JSON.stringify({title:document.title,url:location.href,text:document.body?document.body.innerText.substring(0,${Number(maxLength)}):''})`
+    : `JSON.stringify({title:document.title,url:location.href})`;
+  let result = '{}';
+  for (let poll = 0; poll < 60; poll++) {
+    await new Promise(r => setTimeout(r, poll < 10 ? 200 : 500));
+    try {
+      const state = await runJS('document.readyState', { tabIndex: navIndex, timeout: 5000 });
+      if (state === 'complete' || state === 'interactive') {
+        result = await runJS(readExpr, { tabIndex: navIndex, timeout: 5000 });
+        if (state === 'complete') break;
+        if (poll > 10) break; // interactive after ~2s is good enough
+      }
+    } catch { /* page still loading, retry */ }
+  }
+  return result;
+}
+
+export async function goBack() {
+  await refreshTargetWindow();
+  const navIndex = _activeTabIndex;
+  // history.back() is synchronous; the page-load wait is polled from Node (see _pollReadyAndRead).
+  await runJS("history.back()", { tabIndex: navIndex, timeout: 5000 });
+  const result = await _pollReadyAndRead(navIndex);
+  try { const p = JSON.parse(result); if (p.url) _activeTabURL = p.url; } catch {}
+  return result;
+}
+
+export async function goForward() {
+  await refreshTargetWindow();
+  const navIndex = _activeTabIndex;
+  await runJS("history.forward()", { tabIndex: navIndex, timeout: 5000 });
+  const result = await _pollReadyAndRead(navIndex);
+  try { const p = JSON.parse(result); if (p.url) _activeTabURL = p.url; } catch {}
+  return result;
+}
+
+export async function reload(hardReload = false) {
+  await refreshTargetWindow();
+  const navIndex = _activeTabIndex;
+  // Reload destroys JS context — fire it, then poll readyState from Node.
+  await runJS(hardReload ? "location.reload(true)" : "location.reload()", { tabIndex: navIndex });
+  await new Promise((r) => setTimeout(r, 100)); // Brief wait for reload to start
+  const result = await _pollReadyAndRead(navIndex);
+  try { const p = JSON.parse(result); if (p.url) _activeTabURL = p.url; } catch {}
+  // A reload destroys the JS context — re-stamp marker + visibility spoof.
+  await _stampTab(navIndex);
+  return result;
+}
+
+// ========== PAGE INFO ==========
+
+export async function readPage({ selector, maxLength = 50000 } = {}) {
+  if (selector) {
+    const sel = escJsSingleQuote(selector);
+    return runJS(
+      `(function(){
+        var el = document.querySelector('${sel}');
+        if (!el) return 'Element not found: ${sel}';
+        if (el.value !== undefined && el.value !== '') return el.value.substring(0,${Number(maxLength)});
+        return (el.innerText || el.textContent || '').substring(0,${Number(maxLength)});
+      })()`
+    );
+  }
+  // innerText needs a built render tree, which Safari may skip for a tab that has
+  // never been foregrounded — it can come back near-empty even though the DOM is
+  // fully present. Detect that and fall back to a layout-independent TreeWalker
+  // text extraction so reads work on a background tab without ever taking focus.
+  return runJS(
+    `(function(){
+      var max=${Number(maxLength)};
+      var t=document.body.innerText||'';
+      if(t.replace(/\\s/g,'').length<20){
+        var parts=[];
+        var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
+        var n;
+        while(n=w.nextNode()){
+          var p=n.parentElement;if(!p)continue;
+          var tag=p.tagName;
+          if(tag==='SCRIPT'||tag==='STYLE'||tag==='NOSCRIPT'||tag==='TEMPLATE')continue;
+          var s=(n.textContent||'').replace(/\\s+/g,' ').trim();
+          if(s)parts.push(s);
+        }
+        t=parts.join('\\n');
+      }
+      return JSON.stringify({title:document.title,url:location.href,text:t.substring(0,max)});
+    })()`
+  );
+}
+
+export async function getPageSource({ maxLength = 200000 } = {}) {
+  return runJS(`document.documentElement.outerHTML.substring(0,${Number(maxLength)})`);
+}
+
+// ========== CLICK ==========
+
+// Inject click helpers ONCE per page (cached on window.__mcp)
+// Includes: mcpClick (full event sequence), mcpReactClick (React Fiber), mcpFindText (fast TreeWalker)
+// Loaded from mcp-helpers.js at startup — enables syntax highlighting, linting, and easier maintenance
+const INJECT_MCP_HELPERS = readFileSync(join(__dirname, 'mcp-helpers.js'), 'utf8');
+
+// NOTE: ~300 lines of legacy inline helpers were here — now in mcp-helpers.js (deleted in v2.4.0)
+
+
+// Precomputed escaped helper string — avoids re-escaping ~4KB on every injection call
+const _HELPERS_ESCAPED = INJECT_MCP_HELPERS
+  .replace(/^\s*\/\/[^\n]*$/gm, '')
+  .replace(/\\/g, "\\\\")
+  .replace(/"/g, '\\"')
+  .replace(/\n/g, " ")
+  .replace(/\r/g, "")
+  .replace(/\t/g, " ");
+
+// Fast helper injection — uses precomputed escaped string + daemon directly
+// Skips runJS overhead (escaping, tab resolution) since we already have the escaped string
+async function _injectHelpersfast() {
+  await refreshTargetWindow();
+  let idx = _activeTabIndex;
+  // Same guard as runJS: once this session has owned a tab, NEVER fall back to
+  // "front document" — that's the user's active tab, and injecting the helpers
+  // there is script injection into a page the user is working in.
+  if (!idx && _hasOwnedTab) {
+    throw new Error("Tab tracking lost — refusing to inject helpers into the front (user) tab.");
+  }
+  const target = idx
+    ? `tab ${idx} of ${getTargetWindowRef()}`
+    : getFallbackTarget();
+  const script = `tell application "Safari" to do JavaScript "${_HELPERS_ESCAPED}" in ${target}`;
+  return osascriptFast(script, { timeout: 15000 });
+}
+
+// Ensure helpers are injected — verify critical functions exist, reset version if partial
+// Cache: skip ensureHelpers check if we already injected on this URL recently
+let _helpersInjectedForUrl = null;
+let _helpersInjectedAt = 0;
+const HELPERS_CACHE_MS = 10000; // Re-verify every 10s max
+
+async function ensureHelpers() {
+  // Skip check if we recently verified helpers on the same URL
+  const now = Date.now();
+  if (_activeTabURL && _helpersInjectedForUrl === _activeTabURL && (now - _helpersInjectedAt) < HELPERS_CACHE_MS) return;
+
+  // Check if helpers are actually present (not just version flag)
+  const check = await runJS("(typeof mcpClickWithReact==='function'&&typeof mcpFindText==='function'&&typeof mcpReactSelectSet==='function')?'ok':'missing'").catch(() => 'missing');
+  if (check === 'ok') {
+    _helpersInjectedForUrl = _activeTabURL;
+    _helpersInjectedAt = now;
+    return;
+  }
+  // Reset version to force re-injection
+  await runJS("window.__mcpVersion=0").catch(() => {});
+  // Use precomputed escaped string + osascriptFast directly (~5ms vs ~80ms subprocess)
+  const result = await _injectHelpersfast().catch(err => 'INJECT_ERR:' + err.message);
+  if (typeof result === 'string' && result.startsWith('INJECT_ERR:')) {
+    throw new Error('ensureHelpers failed: ' + result);
+  }
+  _helpersInjectedForUrl = _activeTabURL;
+  _helpersInjectedAt = now;
+}
+
+// Try tiny click first (~200B). If helpers missing, inject once and retry.
+async function clickWithRetry(js) {
+  try {
+    const result = await runJS(js);
+    if (result && (result.includes('mcpClick is not defined') || result.includes('mcpFindText is not defined'))) {
+      await ensureHelpers();
+      return runJS(js);
+    }
+    return result;
+  } catch (err) {
+    if (err.message && (err.message.includes('mcpClick') || err.message.includes('mcpFindText') || err.message.includes('not defined'))) {
+      await ensureHelpers();
+      return runJS(js);
+    }
+    throw err;
+  }
+}
+
+export async function click({ selector, text, x, y, ref }) {
+  await ensureHelpers();
+  // Native <select> elements look like custom dropdowns on LinkedIn etc., but they
+  // hand off to the OS-level option list. .click() on them blocks AppleScript until
+  // the native popup is dismissed → the JSC eval times out and the tool returns an
+  // error after seconds of hang. Detect early and return a clear directive instead.
+  const selectGuard = `if(el&&el.tagName==='SELECT'){var opts=[];for(var oi=0;oi<el.options.length&&opts.length<8;oi++){opts.push(el.options[oi].text||el.options[oi].value);}return '__SELECT_GUARD__:'+(el.id||el.name||'select')+': '+opts.join('|');}`;
+  // Page fingerprint, captured synchronously on either side of the click. dispatchEvent
+  // is synchronous, so anything that differs between before/after is a direct effect of
+  // the click's own handlers — there is no window for ambient ad/lazy-load noise. Catches
+  // DOM add/remove, class/attribute/text mutations, navigation, and focus changes.
+  const FP = `(location.href+'|'+document.querySelectorAll('*').length+'|'+document.documentElement.innerHTML.length+'|'+(document.activeElement?(document.activeElement.tagName+'#'+(document.activeElement.id||'')):''))`;
+  // Mirrors mcpClickWithReact (resolve → React-fiber click → synthetic fallback) but also
+  // reports reactFired and whether the page observably changed — so click() can detect a
+  // synthetic click that was silently ignored (isTrusted-gated handlers) and escalate.
+  const coreJS = (finderExpr, notFound) =>
+    `(function(){var el=${finderExpr};if(!el)return JSON.stringify({err:${JSON.stringify(notFound)}});${selectGuard}` +
+    `var target=mcpResolveTarget(el)||el;var before=${FP};` +
+    `var reactFired=false;try{reactFired=mcpReactClick(target);}catch(e){}` +
+    `var anchor=target&&target.closest?target.closest('a[href]'):null;` +
+    `if(!reactFired||anchor)mcpClick(target);` +
+    `return JSON.stringify({tag:target.tagName,text:((target.innerText||target.textContent)||'').trim().substring(0,50),reactFired:!!reactFired,changed:before!==(${FP}),fp:before});})()`;
+
+  let result;
+  if (ref) {
+    result = await clickWithRetry(coreJS(`mcpFindRef('${ref}')`, `Element not found: ref=${ref}`));
+  } else if (selector) {
+    const sel = escJsSingleQuote(selector);
+    result = await clickWithRetry(coreJS(`mcpQuerySelectorDeep('${sel}')`, `Element not found: ${selector}`));
+  } else if (text) {
+    const safeText = escJsSingleQuote(text);
+    result = await clickWithRetry(coreJS(`mcpFindText('${safeText}',true)||mcpFindText('${safeText}',false)`, `Element not found with text: ${text}`));
+  } else if (x !== undefined && y !== undefined) {
+    result = await clickWithRetry(coreJS(`mcpElementFromPoint(${Number(x)},${Number(y)})`, `No element at (${Number(x)},${Number(y)})`));
+  } else {
+    throw new Error("click requires selector, text, or x/y coordinates");
+  }
+
+  if (typeof result === 'string' && result.startsWith('__SELECT_GUARD__:')) {
+    const detail = result.substring('__SELECT_GUARD__:'.length);
+    throw new Error(`Target is a native <select> (${detail}). Use safari_select_option with a value matching one of the options instead — clicking it would open the OS picker and block.`);
+  }
+
+  // Structured result from coreJS. Fall back to the raw string for forward-compat.
+  let info;
+  try { info = JSON.parse(result); } catch { return result; }
+  if (info.err) return info.err;
+  const label = info.tag + (info.text ? ` "${info.text}"` : '');
+
+  // A React handler fired, or the page observably changed → the click landed.
+  if (info.reactFired || info.changed) return 'Clicked: ' + label;
+
+  // No React handler and no synchronous effect. Give an async handler a brief moment,
+  // then re-check before deciding the click was truly ignored.
+  await new Promise(r => setTimeout(r, 320));
+  const afterFp = await runJS(FP).catch(() => null);
+  if (afterFp != null && afterFp !== info.fp) return 'Clicked: ' + label;
+
+  // Synthetic events were ignored — the handler gates on event.isTrusted (Clutch, G2,
+  // Cloudflare-class sites). Escalate to a real OS-level CGEvent click (isTrusted:true).
+  // If a handler genuinely has no observable effect (pure analytics, slow >320ms async),
+  // this re-fires it once via the native click — an accepted, low-cost trade-off.
+  try {
+    await nativeClick({ selector, text, x, y, ref });
+    return 'Clicked (native fallback — synthetic click had no effect): ' + label;
+  } catch (e) {
+    return 'Clicked: ' + label + ' — ⚠️ synthetic click produced no detectable effect and the native fallback is unavailable (' + ((e && e.message) || e) + '). Retry with safari_native_click.';
+  }
+}
+
+export async function doubleClick({ selector, x, y, ref }) {
+  if (ref) selector = refSelector(ref);
+  if (selector) {
+    const sel = escJsSingleQuote(selector);
+    return runJS(
+      `(function(){var el=document.querySelector('${sel}');if(!el)return 'Element not found: ${sel}';el.scrollIntoView({block:'center'});el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));return 'Double-clicked: '+el.tagName;})()`
+    );
+  }
+  if (x !== undefined && y !== undefined) {
+    return runJS(
+      `(function(){var el=document.elementFromPoint(${Number(x)},${Number(y)});if(!el)return 'No element at (${x},${y})';el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));return 'Double-clicked: '+el.tagName+' at (${x},${y})';})()`
+    );
+  }
+  throw new Error("doubleClick requires selector or x/y coordinates");
+}
+
+export async function rightClick({ selector, x, y }) {
+  if (selector) {
+    const sel = escJsSingleQuote(selector);
+    return runJS(
+      `(function(){var el=document.querySelector('${sel}');if(!el)return 'Element not found: ${sel}';el.scrollIntoView({block:'center'});el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2}));return 'Right-clicked: '+el.tagName;})()`
+    );
+  }
+  if (x !== undefined && y !== undefined) {
+    return runJS(
+      `(function(){var el=document.elementFromPoint(${Number(x)},${Number(y)});if(!el)return 'No element at (${x},${y})';el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2}));return 'Right-clicked: '+el.tagName+' at (${x},${y})';})()`
+    );
+  }
+  throw new Error("rightClick requires selector or x/y coordinates");
+}
+
+// ========== NATIVE CLICK (OS-level CGEvent — produces isTrusted: true) ==========
+// Unlike JS clicks (dispatchEvent/element.click), CGEvent clicks are real OS input.
+// Sites with WAF protection (G2, Cloudflare, etc.) that check isTrusted will accept these.
+// Trade-off: this moves the physical mouse cursor and requires Safari to be visible.
+
+export async function nativeClick({ selector, text, x, y, ref, doubleClick = false }) {
+  await ensureHelpers();
+
+  // Step 1: Get element's viewport coordinates via JavaScript
+  let viewportCoords;
+  if (ref || selector || text) {
+    let jsExpr;
+    if (ref) {
+      jsExpr = `(function(){
+        var el = mcpFindRef('${ref}');
+        if (!el) return JSON.stringify({error: 'Element not found: ref=${ref}'});
+        el.scrollIntoView({block:'center', behavior:'instant'});
+        var rect = el.getBoundingClientRect();
+        return JSON.stringify({
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          tag: el.tagName,
+          text: (el.innerText || el.textContent || '').trim().substring(0, 50)
+        });
+      })()`;
+    } else if (selector) {
+      const sel = escJsSingleQuote(selector);
+      jsExpr = `(function(){
+        var el = document.querySelector('${sel}');
+        if (!el) return JSON.stringify({error: 'Element not found: ${sel}'});
+        el.scrollIntoView({block:'center', behavior:'instant'});
+        var rect = el.getBoundingClientRect();
+        return JSON.stringify({
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          tag: el.tagName,
+          text: (el.innerText || el.textContent || '').trim().substring(0, 50)
+        });
+      })()`;
+    } else {
+      const safeText = escJsSingleQuote(text);
+      jsExpr = `(function(){
+        var el = mcpFindText('${safeText}', true) || mcpFindText('${safeText}', false);
+        if (!el) return JSON.stringify({error: 'Element not found with text: ${safeText}'});
+        el.scrollIntoView({block:'center', behavior:'instant'});
+        var rect = el.getBoundingClientRect();
+        return JSON.stringify({
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          tag: el.tagName,
+          text: (el.innerText || el.textContent || '').trim().substring(0, 50)
+        });
+      })()`;
+    }
+
+    const result = await runJS(jsExpr);
+    try {
+      viewportCoords = JSON.parse(result);
+    } catch {
+      throw new Error("Failed to get element coordinates: " + result);
+    }
+    if (viewportCoords.error) {
+      throw new Error(viewportCoords.error);
+    }
+  } else if (x !== undefined && y !== undefined) {
+    // Direct viewport coordinates provided
+    viewportCoords = { x: Number(x), y: Number(y), tag: 'point', text: '' };
+  } else {
+    throw new Error("nativeClick requires selector, text, ref, or x/y coordinates");
+  }
+
+  // Step 2: Get Safari window position and toolbar geometry
+  const geo = await _getSafariWindowGeometry();
+
+  // Step 3: Calculate absolute screen coordinates
+  // screenX = windowLeft + viewportX
+  // screenY = windowTop + toolbarHeight + viewportY
+  const screenX = geo.windowX + viewportCoords.x;
+  const screenY = geo.windowY + geo.toolbarHeight + viewportCoords.y;
+
+  // Sanity check: ensure coordinates are within the window bounds
+  if (screenX < geo.windowX || screenX > geo.windowRight ||
+      screenY < geo.windowY || screenY > geo.windowBottom) {
+    console.error(`[Safari MCP] nativeClick: coords (${screenX},${screenY}) outside window bounds (${geo.windowX},${geo.windowY})-(${geo.windowRight},${geo.windowBottom}). Proceeding anyway.`);
+  }
+
+  // Step 4: Perform the native click via CGEvent (targeted to specific window — no mouse move, no focus steal)
+  // MUST have windowId — legacy path (windowId=0) moves mouse and may steal focus
+  if (!geo.windowId) throw new Error("Cannot native-click without Safari window ID — would move mouse and steal focus");
+  await _helperNativeClick(screenX, screenY, doubleClick, geo.windowId);
+
+  const clickType = doubleClick ? 'Native double-clicked' : 'Native clicked';
+  const label = viewportCoords.tag + (viewportCoords.text ? ` "${viewportCoords.text}"` : '');
+  return `${clickType}: ${label} at screen (${screenX},${screenY})`;
+}
+
+// ========== NATIVE HOVER (OS-level CGEvent mouse move — triggers real :hover and mouseenter) ==========
+// JS-dispatched mouseenter events work for most React components, but some UIs
+// (Discord sidebar, virtualized CSS :hover tooltips, custom portal-rendered
+// tooltips) only respond to a real OS-level cursor position. This function
+// moves the physical cursor to the target, dwells for tooltips to render,
+// then optionally restores the cursor to its original position.
+export async function nativeHover({ selector, text, x, y, ref, dwellMs = 500, restoreMouse = true }) {
+  await ensureHelpers();
+
+  // Step 1: Get element's viewport coordinates via JavaScript
+  let viewportCoords;
+  if (ref || selector || text) {
+    let jsExpr;
+    if (ref) {
+      jsExpr = `(function(){
+        var el = mcpFindRef('${ref}');
+        if (!el) return JSON.stringify({error: 'Element not found: ref=${ref}'});
+        el.scrollIntoView({block:'center', behavior:'instant'});
+        var rect = el.getBoundingClientRect();
+        return JSON.stringify({
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          tag: el.tagName,
+          text: (el.innerText || el.textContent || '').trim().substring(0, 50)
+        });
+      })()`;
+    } else if (selector) {
+      const sel = escJsSingleQuote(selector);
+      jsExpr = `(function(){
+        var el = document.querySelector('${sel}');
+        if (!el) return JSON.stringify({error: 'Element not found: ${sel}'});
+        el.scrollIntoView({block:'center', behavior:'instant'});
+        var rect = el.getBoundingClientRect();
+        return JSON.stringify({
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          tag: el.tagName,
+          text: (el.innerText || el.textContent || '').trim().substring(0, 50)
+        });
+      })()`;
+    } else {
+      const safeText = escJsSingleQuote(text);
+      jsExpr = `(function(){
+        var el = mcpFindText('${safeText}', true) || mcpFindText('${safeText}', false);
+        if (!el) return JSON.stringify({error: 'Element not found with text: ${safeText}'});
+        el.scrollIntoView({block:'center', behavior:'instant'});
+        var rect = el.getBoundingClientRect();
+        return JSON.stringify({
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          tag: el.tagName,
+          text: (el.innerText || el.textContent || '').trim().substring(0, 50)
+        });
+      })()`;
+    }
+
+    const result = await runJS(jsExpr);
+    try {
+      viewportCoords = JSON.parse(result);
+    } catch {
+      throw new Error("Failed to get element coordinates: " + result);
+    }
+    if (viewportCoords.error) {
+      throw new Error(viewportCoords.error);
+    }
+  } else if (x !== undefined && y !== undefined) {
+    viewportCoords = { x: Number(x), y: Number(y), tag: 'point', text: '' };
+  } else {
+    throw new Error("nativeHover requires selector, text, ref, or x/y coordinates");
+  }
+
+  const geo = await _getSafariWindowGeometry();
+  const screenX = geo.windowX + viewportCoords.x;
+  const screenY = geo.windowY + geo.toolbarHeight + viewportCoords.y;
+
+  if (!geo.windowId) throw new Error("Cannot native-hover without Safari window ID — would move mouse and steal focus");
+  await _helperNativeHover(screenX, screenY, geo.windowId, dwellMs, restoreMouse);
+
+  const label = viewportCoords.tag + (viewportCoords.text ? ` "${viewportCoords.text}"` : '');
+  return `Native hovered: ${label} at screen (${screenX},${screenY}) for ${dwellMs}ms${restoreMouse ? ' (mouse restored)' : ''}`;
+}
+
+// ========== FORM INPUT ==========
+
+export async function fill({ selector, value, ref }) {
+  if (ref) selector = refSelector(ref);
+  if (!selector) throw new Error("fill requires selector or ref");
+  const sel = escJsSingleQuote(selector);
+  // Proper escaping order: backslashes first, then quotes
+  const val = value.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "");
+  // Same value encoded for the Lexical JSON literal (Strategy 2): JSON-escape first
+  // (quotes/newlines/backslashes), then escape for the surrounding single-quoted JS
+  // string. `val` alone broke the JSON on any double-quote, and parseEditorState's
+  // silent catch made the whole strategy vanish without a trace.
+  const lexVal = JSON.stringify(String(value)).slice(1, -1).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const result = await runJS(
+    `(function(){try{var el=document.querySelector('${sel}');if(!el){var q=function(r){var a=r.querySelectorAll('*');for(var i=0;i<a.length;i++){if(a[i].shadowRoot){el=a[i].shadowRoot.querySelector('${sel}');if(el)return el;el=q(a[i].shadowRoot);if(el)return el;}}return null;};el=q(document);}if(!el)return 'Element not found: ${sel}';el.focus();if(el.isContentEditable||el.getAttribute('contenteditable')==='true'){` +
+    // Quill editor detection (LinkedIn share composer in 2026 — they migrated from
+    // ProseMirror, Slack message editor, many enterprise apps). The Quill instance is
+    // attached to `.ql-container.__quill` (v2) or accessible via React Fiber's
+    // memoizedProps/stateNode. Without proper API access, fill-by-DOM crashes Quill's
+    // internal Delta state and dismisses the dialog (the v2.10.0 LinkedIn bug repro).
+    `var qlEditor=el.classList&&el.classList.contains('ql-editor')?el:el.closest('.ql-editor');` +
+    `if(qlEditor){` +
+      `var qlContainer=qlEditor.closest('.ql-container')||qlEditor.parentElement;` +
+      `var quill=(qlContainer&&qlContainer.__quill)||null;` +
+      // Fallback: walk React Fiber to find the Quill instance attached as a prop or stateNode
+      `if(!quill&&qlContainer){var qfk=Object.keys(qlContainer).find(function(k){return k.indexOf('__reactFiber')===0||k.indexOf('__reactInternalInstance')===0;});if(qfk){var qf=qlContainer[qfk];for(var qd=0;qd<25&&qf;qd++){var qp=qf.memoizedProps;if(qp&&qp.quill&&typeof qp.quill.setContents==='function'){quill=qp.quill;break;}var qsn=qf.stateNode;if(qsn&&qsn.quill&&typeof qsn.quill.setContents==='function'){quill=qsn.quill;break;}qf=qf.return;}}}` +
+      `if(quill&&typeof quill.setContents==='function'){` +
+        `try{` +
+          // Convert escaped string back to real string for Quill API.
+          // The val template var has \\n / \\\\ / \\' applied, so we need to unescape for setText.
+          `var qlText='${val}'.replace(/\\\\n/g,'\\n').replace(/\\\\'/g,"'").replace(/\\\\\\\\/g,'\\\\');` +
+          // setContents with a plain text Delta — bypasses clipboard, no synthetic events,
+          // doesn't trigger LinkedIn's focusout-dismiss handler.
+          `quill.setContents([{insert: qlText + '\\n'}], 'api');` +
+          `quill.setSelection(qlText.length, 0, 'api');` +
+          // Verify the text actually committed
+          `var qlActual=quill.getText().replace(/\\n+$/,'');` +
+          `if(qlActual.indexOf(qlText.substring(0, Math.min(20, qlText.length)))>=0){return 'Filled CE (Quill setContents)';}` +
+        `}catch(_qE){}` +
+      `}` +
+      // Quill instance not found via direct or Fiber — route to native paste fallback.
+      // Quill respects real isTrusted clipboard events, so CGEvent Cmd+V works.
+      `return '__NATIVE_PASTE_DIALOG__';` +
+    `}` +
+    // Lexical editor detection (LinkedIn share composer, modern Meta/Shopify apps).
+    // Three lookup strategies, cheapest first:
+    //   A) [data-lexical-editor="true"] on ancestor with __lexicalEditor property.
+    //   B) Walk DOM ancestors for __lexicalEditor (nested-config wrappers).
+    //   C) React Fiber walk — LinkedIn sometimes obfuscates __lexicalEditor, so we
+    //      locate the editor by duck-typing: any object on props/state/stateNode
+    //      that exposes both parseEditorState AND setEditorState is the editor.
+    // Once found, two fill strategies, both pure DOM (no CGEvent, no focus shift):
+    //   1) InputEvent('beforeinput', insertFromPaste + DataTransfer) — Lexical's
+    //      handleBeforeInput reads dataTransfer and commits via editor.update().
+    //   2) parseEditorState() + setEditorState() with a minimal paragraph doc —
+    //      used when Lexical ignores synthetic paste events.
+    `var lexEl=el.closest('[data-lexical-editor="true"]');var lex=(lexEl&&lexEl.__lexicalEditor)||null;` +
+    `if(!lex){var lexCur=el;for(var lexI=0;lexI<15&&lexCur;lexI++){if(lexCur.__lexicalEditor){lexEl=lexCur;lex=lexCur.__lexicalEditor;break;}lexCur=lexCur.parentElement;}}` +
+    `if(!lex){var lexHost=lexEl||el;var lexFk=null;for(var lfk in lexHost){if(lfk.indexOf('__reactFiber')===0||lfk.indexOf('__reactInternalInstance')===0){lexFk=lfk;break;}}` +
+      `if(lexFk){var lexF=lexHost[lexFk];var lexIsEd=function(o){return o&&typeof o.parseEditorState==='function'&&typeof o.setEditorState==='function';};` +
+        `for(var lexD=0;lexD<30&&lexF;lexD++){var lp=lexF.memoizedProps;if(lp){for(var lpk in lp){if(lexIsEd(lp[lpk])){lex=lp[lpk];break;}}}` +
+        `if(!lex){var ls=lexF.memoizedState;while(ls){if(lexIsEd(ls.memoizedState)){lex=ls.memoizedState;break;}ls=ls.next;}}` +
+        `if(!lex){var lsn=lexF.stateNode;if(lsn){if(lexIsEd(lsn))lex=lsn;else if(lsn.editor&&lexIsEd(lsn.editor))lex=lsn.editor;}}` +
+        `if(lex)break;lexF=lexF.return;}}}` +
+    `if(lex){if(!lexEl){lexEl=lex._rootElement||el;}` +
+      // Strategy 1: beforeinput with insertFromPaste + DataTransfer
+      `try{lexEl.focus();var lexSel=window.getSelection();if(lexSel){var lexRng=document.createRange();lexRng.selectNodeContents(lexEl);lexSel.removeAllRanges();lexSel.addRange(lexRng);}var lexDt=new DataTransfer();lexDt.setData('text/plain','${val}');var lexBi=new InputEvent('beforeinput',{inputType:'insertFromPaste',dataTransfer:lexDt,bubbles:true,cancelable:true});var lexCancelled=!lexEl.dispatchEvent(lexBi);if(lexCancelled||lexEl.textContent.indexOf('${val.substring(0, 20)}')>=0){return 'Filled CE (Lexical beforeinput paste)';}}catch(lexE1){}` +
+      // Strategy 2: parseEditorState + setEditorState (direct state replacement)
+      `try{var lexJson='{"root":{"children":[{"children":[{"detail":0,"format":0,"mode":"normal","style":"","text":"${lexVal}","type":"text","version":1}],"direction":"ltr","format":"","indent":0,"textFormat":0,"type":"paragraph","version":1}],"direction":"ltr","format":"","indent":0,"type":"root","version":1}}';var lexNs=lex.parseEditorState(lexJson);lex.setEditorState(lexNs);if(typeof lex.focus==='function')lex.focus();return 'Filled CE (Lexical setEditorState)';}catch(lexE2){}` +
+    `}` +
+    // ProseMirror detection
+    `var pm=el.closest('.ProseMirror')||el.querySelector('.ProseMirror');if(pm){try{var v=null;if(pm.pmViewDesc&&pm.pmViewDesc.view)v=pm.pmViewDesc.view;else if(pm.cmView&&pm.cmView.view)v=pm.cmView.view;else{var keys=Object.keys(pm);for(var ki=0;ki<keys.length;ki++){var o=pm[keys[ki]];if(o&&o.state&&o.dispatch){v=o;break;}}}` +
+    // React Fiber walk for ProseMirror view (LinkedIn, Tiptap-React)
+    `if(!v){var fk=Object.keys(pm).find(function(k){return k.startsWith('__reactFiber$')||k.startsWith('__reactInternalInstance$');});if(fk){var fiber=pm[fk];for(var d=0;d<20&&fiber;d++){var props=fiber.memoizedProps||(fiber.stateNode&&fiber.stateNode.props);if(props){var pv=props.editorView||props.view;if(pv&&pv.state&&pv.dispatch){v=pv;break;}}fiber=fiber.return;}}}` +
+    `if(v&&v.state&&v.dispatch){try{var doc=v.state.doc;var hasContent=doc.textContent&&doc.textContent.trim().length>0;if(hasContent){var endPos=doc.content.size>1?doc.content.size-1:doc.content.size;v.dispatch(v.state.tr.insertText(' ${val}',endPos));}else{var tr=v.state.tr;tr.replaceWith(0,doc.content.size,v.state.schema.text('${val}'));v.dispatch(tr);}v.focus();` +
+      // Verify the dispatch actually committed — LinkedIn's PM sometimes accepts the
+      // tr but rolls it back on the next tick (its readOnly plugin reasserts state).
+      // If the doc text doesn't contain our value within 50ms, route to native paste.
+      `var pmCheck=(v.state.doc.textContent||'')+' '+(pm.textContent||'');` +
+      `if(pmCheck.indexOf('${val.substring(0, Math.min(20, val.length))}')>=0){return 'Filled CE (ProseMirror)';}` +
+      `}catch(_pmE){}}}catch(e){}}` +
+    // ProseMirror detected but no view — in a dialog (LinkedIn share composer), go to
+    // native paste (real CGEvent Cmd+V) so ProseMirror's isTrusted-gated paste handler
+    // accepts the insertion and the dialog doesn't dismiss. Outside a dialog fall back
+    // to char-by-char beforeinput (works on Discord-style PM without dismissal risk).
+    `if(pm&&!v){var inDlg=!!el.closest('[role="dialog"]');if(inDlg){return '__NATIVE_PASTE_DIALOG__';}return '__PM_CHARBYCHAR__';}` +
+    // Closure/Medium detection — signal for native paste.
+    // Match any of: closure_uid_ key on element, medium.com hostname, ancestor with
+    // closure markers, or window.goog.events/goog.editor.Plugin globals (broader catch
+    // for Closure-built editors outside Medium).
+    `var isClosure=false;` +
+    `try{` +
+    `if(Object.keys(el).some(function(k){return k.indexOf('closure_uid_')===0||k.indexOf('closure_lm_')===0;}))isClosure=true;` +
+    `else if(location.hostname.indexOf('medium.com')>=0)isClosure=true;` +
+    `else if(typeof goog!=='undefined'&&goog&&(goog.events||goog.editor))isClosure=true;` +
+    `else{var clCur=el.parentElement,clHop=0;while(clCur&&clHop<10){if(Object.keys(clCur).some(function(k){return k.indexOf('closure_uid_')===0;})){isClosure=true;break;}clCur=clCur.parentElement;clHop++;}}` +
+    `}catch(_clE){}` +
+    `if(isClosure){return '__CLOSURE_NATIVE_PASTE__';}` +
+    // Synthetic ClipboardEvent paste — works on ProseMirror, TipTap, Slate, and most modern editors
+    // that don't respond to execCommand but DO handle paste events
+    // Pre-clear: select all + delete BEFORE paste. Some editors (X's tweetTextarea_0
+    // when it has URL-prefilled content from /intent/post?text=, Quill in some configs)
+    // append paste content to selection instead of replacing — explicit delete avoids
+    // the duplication seen when the textarea was pre-populated by URL parameters.
+    `try{el.focus();var sel2=window.getSelection();if(sel2.rangeCount){var rng=document.createRange();rng.selectNodeContents(el);sel2.removeAllRanges();sel2.addRange(rng);document.execCommand('delete',false,null);}var dt=new DataTransfer();dt.setData('text/plain','${val}');var pe=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:dt});var handled=!el.dispatchEvent(pe);if(handled||el.textContent.indexOf('${val.substring(0, 20)}')>=0){return 'Filled CE (synthetic paste)';}}catch(ep){}` +
+    // Synthetic paste did not verify — in a dialog, route to native paste (CGEvent Cmd+V)
+    // to produce real isTrusted:true events. Avoids LinkedIn-style dialog dismissal too.
+    `if(!!el.closest('[role="dialog"]')){return '__NATIVE_PASTE_DIALOG__';}` +
+    // Default contenteditable: selectAll+delete+insert. No blur — blur dismisses dialogs
+    // and nearby popovers; React only needs 'input' to see the change.
+    `document.execCommand('selectAll');document.execCommand('delete');document.execCommand('insertText',false,'${val}');el.dispatchEvent(new Event('input',{bubbles:true}));return 'Filled contenteditable';}` +
+    // Standard input/textarea with _valueTracker.
+    //   • focus() FIRST — Formik/HubSpot read focused state during onChange validation.
+    //   • InputEvent with inputType:'insertReplacementText' + data — React 18 RSC, Next.js,
+    //     and Featured.com require a real InputEvent (not plain Event) to update store state.
+    //   • composed:true on every event — pierces Shadow DOM (Reddit, web components).
+    //   • blur/focusout SUPPRESSED inside dialogs — blur dismisses LinkedIn share composer
+    //     and many MUI/Radix dialogs. React only needs 'input' to see the change anyway.
+    //   • Post-fill verification — if el.value !== expected after dispatch, signal the wrapper
+    //     to try native CGEvent paste fallback (real isTrusted events).
+    `var inDlg=!!(el.closest&&el.closest('[role="dialog"]'));` +
+    `var t=el._valueTracker;if(t)t.setValue('');` +
+    `var proto=el.tagName==='TEXTAREA'?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;` +
+    `var s=Object.getOwnPropertyDescriptor(proto,'value');` +
+    `if(s&&s.set){s.set.call(el,'${val}');}else{el.value='${val}';}` +
+    `try{el.dispatchEvent(new InputEvent('input',{inputType:'insertReplacementText',data:'${val}',bubbles:true,composed:true,cancelable:true}));}catch(_iE){el.dispatchEvent(new Event('input',{bubbles:true,composed:true}));}` +
+    `el.dispatchEvent(new Event('change',{bubbles:true,composed:true}));` +
+    `if(!inDlg){el.dispatchEvent(new Event('blur',{bubbles:true,composed:true}));el.dispatchEvent(new Event('focusout',{bubbles:true,composed:true}));el.focus();}` +
+    `var actual=(el.value!==undefined?el.value:'');` +
+    `if(actual!=='${val}'){return '__FILL_VALUE_MISMATCH__:'+actual.substring(0,80);}` +
+    `return 'Filled: '+actual.substring(0,50);}catch(e){return 'ERR: '+e.message;}})()`
+  );
+
+  // ProseMirror editor with no view access: use char-by-char with beforeinput events
+  if (result === "__PM_CHARBYCHAR__") {
+    const rawValue = value;
+    const lines = rawValue.split('\n');
+    const charInserts = lines.map((line, i) => {
+      const escaped = line.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      let cmds = '';
+      if (i > 0) {
+        cmds += `t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,code:'Enter',bubbles:true,cancelable:true}));`;
+        cmds += `t.dispatchEvent(new InputEvent('beforeinput',{inputType:'insertParagraph',bubbles:true,cancelable:true}));`;
+        cmds += `document.execCommand('insertParagraph');`;
+        cmds += `t.dispatchEvent(new InputEvent('input',{inputType:'insertParagraph',bubbles:true}));`;
+        cmds += `t.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',keyCode:13,code:'Enter',bubbles:true}));`;
+      }
+      if (escaped.length > 0) {
+        // Insert text in one beforeinput + execCommand, then fire input
+        cmds += `t.dispatchEvent(new InputEvent('beforeinput',{data:'${escaped}',inputType:'insertText',bubbles:true,cancelable:true}));`;
+        cmds += `document.execCommand('insertText',false,'${escaped}');`;
+        cmds += `t.dispatchEvent(new InputEvent('input',{data:'${escaped}',inputType:'insertText',bubbles:true}));`;
+      }
+      return cmds;
+    }).join('');
+
+    const fillResult = await runJS(
+      `(function(){` +
+      `var el=document.querySelector('${escJsSingleQuote(selector)}');` +
+      `if(!el)return 'Element not found';` +
+      `el.focus();el.click();` +
+      `var t=document.activeElement||el;` +
+      charInserts +
+      // Verification: count actual text length vs expected. If char-by-char dropped
+      // intermediate paragraphs (Hashnode-style Tiptap with markdown-like chars at
+      // line starts: `>`, `**`, `[`), fall back to execCommand('insertHTML') with
+      // paragraph-wrapped HTML.
+      `var actualLen=(el.innerText||'').length;` +
+      `var expectedLen=${value.length};` +
+      `if(actualLen<expectedLen*0.6){` +
+        // Clear and re-fill via insertHTML
+        `var sel=window.getSelection();var r=document.createRange();r.selectNodeContents(el);sel.removeAllRanges();sel.addRange(r);` +
+        `document.execCommand('delete',false,null);` +
+        // Build paragraph HTML from the original value
+        `var paras=${JSON.stringify(value)}.split(/\\n\\n+/).filter(function(p){return p.trim().length>0;});` +
+        `var html=paras.map(function(p){var safe=p.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');return '<p>'+safe+'</p>';}).join('');` +
+        `el.focus();var sel2=window.getSelection();var r2=document.createRange();r2.selectNodeContents(el);r2.collapse(true);sel2.removeAllRanges();sel2.addRange(r2);` +
+        `document.execCommand('insertHTML',false,html);` +
+        `return 'Filled CE (ProseMirror insertHTML fallback, '+(el.innerText||'').length+'/'+expectedLen+')';` +
+      `}` +
+      `return 'Filled CE (ProseMirror char-by-char)';` +
+      `})()`
+    );
+    return fillResult;
+  }
+
+  // Closure/Medium editor: insert line-by-line via execCommand in small batches
+  // No focus stealing, no System Events, no clipboard manipulation.
+  // Medium's Closure editor accepts execCommand('insertText') for individual lines
+  // and execCommand('insertParagraph') for line breaks — the key is doing it
+  // within a single do-JavaScript call so the mutation observer stays in sync.
+  if (result === "__CLOSURE_NATIVE_PASTE__") {
+    const rawValue = value;
+    // Split into lines, escape each for JS string
+    const lines = rawValue.split('\n');
+    // Build a JS script that inserts line by line
+    const lineInserts = lines.map((line, i) => {
+      const escaped = line.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      if (i === 0) {
+        return escaped.length > 0 ? `document.execCommand('insertText',false,'${escaped}');` : '';
+      }
+      return `document.execCommand('insertParagraph');` +
+        (escaped.length > 0 ? `document.execCommand('insertText',false,'${escaped}');` : '');
+    }).join('');
+
+    const fillResult = await runJS(
+      `(function(){` +
+      `var el=document.querySelector('${escJsSingleQuote(selector)}');` +
+      `if(!el)return 'Element not found';` +
+      `el.focus();el.click();` +
+      `var sel=window.getSelection();if(sel.rangeCount){var r=document.createRange();r.selectNodeContents(el);r.collapse(false);sel.removeAllRanges();sel.addRange(r);}` +
+      lineInserts +
+      `return 'Filled CE (Closure line-by-line)';` +
+      `})()`
+    );
+    return fillResult;
+  }
+
+  // Standard input/textarea path returned with el.value mismatched against expected —
+  // typically Next.js RSC (Featured.com) or HubSpot Formik silently ignored the property
+  // descriptor setter. Fall back to native CGEvent Cmd+V paste — real keyboard events
+  // route through the framework's normal input pipeline.
+  if (typeof result === 'string' && result.startsWith('__FILL_VALUE_MISMATCH__')) {
+    const sel = escJsSingleQuote(selector);
+    await runJS(
+      `(function(){var el=document.querySelector('${sel}');if(!el)return 'not-found';` +
+      `el.focus();if('select' in el){el.select();}else if(el.setSelectionRange){el.setSelectionRange(0,(el.value||'').length);}` +
+      `return 'focused';})()`
+    );
+    await new Promise(r => setTimeout(r, 30));
+    try {
+      await _nativeTypeViaClipboard(value);
+      return `Filled (native paste fallback after value-mismatch, ${value.length} chars)`;
+    } catch (e) {
+      return `${result} (native paste fallback failed: ${e.message})`;
+    }
+  }
+
+  // ProseMirror/contenteditable inside a dialog (LinkedIn share composer is the canonical
+  // case). Synthetic events get rejected by isTrusted-gated paste handlers, and stray blur
+  // events dismiss the dialog. Use CGEvent Cmd+V — real paste, isTrusted:true, windowed so
+  // no focus steal. Requires the element to be focused + have a collapsed selection at end.
+  if (result === "__NATIVE_PASTE_DIALOG__") {
+    const sel = escJsSingleQuote(selector);
+    await runJS(
+      `(function(){var el=document.querySelector('${sel}');if(!el)return 'not-found';` +
+      `el.focus();` +
+      // Select all existing content so Cmd+V replaces (not appends)
+      `var s=window.getSelection();if(s){var r=document.createRange();r.selectNodeContents(el);s.removeAllRanges();s.addRange(r);}` +
+      `return 'focused';})()`
+    );
+    await new Promise(r => setTimeout(r, 50));
+    try {
+      await _nativeTypeViaClipboard(value);
+      return `Filled CE (native paste in dialog, ${value.length} chars)`;
+    } catch (e) {
+      return `ERR native paste in dialog: ${e.message}`;
+    }
+  }
+
+  return result;
+}
+
+// Verify the framework-level state of an editor or input matches `expected`.
+// Modern editors (ProseMirror, Lexical, Closure, React-controlled inputs) maintain
+// state separately from the DOM — `.value` or `.textContent` can show the new text
+// while the framework's internal store still holds the old value, so a Submit click
+// sends the stale data. Call this after `fill` and BEFORE `click`-Submit.
+//
+// Returns JSON: { match: boolean, mode: 'input'|'prosemirror'|'lexical'|'closure'|'contenteditable',
+//                 actual: string, expected: string, hint?: string }
+export async function verifyState({ selector, expected, ref }) {
+  if (ref) selector = refSelector(ref);
+  if (!selector) throw new Error("verifyState requires selector or ref");
+  const sel = escJsSingleQuote(selector);
+  const exp = String(expected || '').replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "");
+  const expSnippet = String(expected || '').substring(0, 30).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "");
+  return runJS(
+    `(function(){
+      var el = document.querySelector('${sel}');
+      if (!el && window.mcpQuerySelectorDeep) el = window.mcpQuerySelectorDeep('${sel}');
+      if (!el) return JSON.stringify({ match: false, mode: 'not-found', actual: '', expected: '${exp}' });
+
+      var expected = '${exp}';
+      var snippet = '${expSnippet}';
+
+      // ProseMirror — check view state, not DOM
+      var pm = el.closest && el.closest('.ProseMirror') || el.querySelector && el.querySelector('.ProseMirror');
+      if (pm) {
+        var v = (pm.pmViewDesc && pm.pmViewDesc.view) || (pm.cmView && pm.cmView.view) || null;
+        if (!v) {
+          var keys = Object.keys(pm);
+          for (var ki = 0; ki < keys.length; ki++) { var o = pm[keys[ki]]; if (o && o.state && o.dispatch) { v = o; break; } }
+        }
+        if (!v) {
+          var fk = Object.keys(pm).find(function(k){return k.indexOf('__reactFiber')===0||k.indexOf('__reactInternalInstance')===0;});
+          if (fk) { var fb = pm[fk]; for (var d=0; d<20 && fb; d++){ var pp=fb.memoizedProps||(fb.stateNode&&fb.stateNode.props); if (pp){ var pv=pp.editorView||pp.view; if (pv&&pv.state){ v=pv; break; }} fb=fb.return; }}
+        }
+        var pmText = v && v.state && v.state.doc ? (v.state.doc.textContent || '') : (pm.textContent || '');
+        return JSON.stringify({ match: pmText.indexOf(snippet) >= 0, mode: 'prosemirror', actual: pmText.substring(0, 200), expected: expected.substring(0, 200) });
+      }
+
+      // Lexical — read editor state
+      var lexEl = el.closest && el.closest('[data-lexical-editor="true"]');
+      var lex = lexEl && lexEl.__lexicalEditor;
+      if (!lex) {
+        var lc = el; for (var li = 0; li < 15 && lc; li++) { if (lc.__lexicalEditor) { lex = lc.__lexicalEditor; break; } lc = lc.parentElement; }
+      }
+      if (lex && typeof lex.getEditorState === 'function') {
+        try {
+          var lexText = '';
+          lex.getEditorState().read(function(){
+            lexText = (lexEl || el).textContent || '';
+          });
+          return JSON.stringify({ match: lexText.indexOf(snippet) >= 0, mode: 'lexical', actual: lexText.substring(0, 200), expected: expected.substring(0, 200) });
+        } catch (_lE) {}
+      }
+
+      // Closure (Medium and similar) — check element textContent (Closure mutates DOM directly)
+      var isClosure = Object.keys(el).some(function(k){return k.indexOf('closure_uid_')===0;}) || location.hostname.indexOf('medium.com') >= 0;
+      if (isClosure) {
+        var clText = el.textContent || '';
+        return JSON.stringify({ match: clText.indexOf(snippet) >= 0, mode: 'closure', actual: clText.substring(0, 200), expected: expected.substring(0, 200) });
+      }
+
+      // Generic contenteditable
+      if (el.isContentEditable) {
+        var ceText = el.textContent || '';
+        return JSON.stringify({ match: ceText.indexOf(snippet) >= 0, mode: 'contenteditable', actual: ceText.substring(0, 200), expected: expected.substring(0, 200) });
+      }
+
+      // Standard input/textarea/select
+      var actualVal = el.value !== undefined ? String(el.value) : '';
+      var match = actualVal === expected;
+      var hint = '';
+      // Detect React store/_valueTracker mismatch — common Featured.com / Next.js RSC bug
+      if (!match && el._valueTracker && typeof el._valueTracker.getValue === 'function') {
+        var tracked = el._valueTracker.getValue();
+        if (tracked !== actualVal) hint = 'React _valueTracker out of sync (tracked=' + JSON.stringify(tracked.substring(0, 60)) + ')';
+      }
+      return JSON.stringify({ match: match, mode: 'input', actual: actualVal.substring(0, 200), expected: expected.substring(0, 200), hint: hint });
+    })()`
+  );
+}
+
+export async function clearField({ selector }) {
+  const sel = escJsSingleQuote(selector);
+  return runJS(
+    `(function(){var el=document.querySelector('${sel}');if(!el)return 'Element not found: ${sel}';if(el.isContentEditable){el.focus();document.execCommand('selectAll');document.execCommand('delete');el.dispatchEvent(new Event('input',{bubbles:true}));return 'Cleared (contenteditable)';}var t=el._valueTracker;if(t)t.setValue('x');var p=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;var d=Object.getOwnPropertyDescriptor(p,'value');if(d&&d.set)d.set.call(el,'');else el.value='';el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));return 'Cleared';})()`
+  );
+}
+
+export async function selectOption({ selector, value, ref }) {
+  // ref/deep finder: native <select> elements inside same-origin iframes or shadow
+  // DOM are invisible to a top-frame document.querySelector. mcpFindRef (snapshot ref)
+  // and mcpQuerySelectorDeep traverse those roots — the same finders click() uses.
+  await ensureHelpers();
+  const val = String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  let finder;
+  if (ref) {
+    finder = `mcpFindRef('${String(ref).replace(/'/g, "\\'")}')`;
+  } else if (selector) {
+    const sel = escJsSingleQuote(selector);
+    finder = `(document.querySelector('${sel}')||mcpQuerySelectorDeep('${sel}'))`;
+  } else {
+    throw new Error("selectOption requires 'ref' or 'selector'");
+  }
+  return runJS(
+    `(function(){var el=${finder};if(!el)return 'Element not found';el.focus();var t=el._valueTracker;if(t)t.setValue('');var d=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');if(d&&d.set){d.set.call(el,'${val}');}else{el.value='${val}';}var m=false;for(var i=0;i<el.options.length;i++){if(el.options[i].value==='${val}'){el.selectedIndex=i;m=true;break;}}if(!m||el.value!=='${val}'){var norm=function(s){return s.replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069\\uFEFF]/g,'').replace(/[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]/g,'-').replace(/\\s*-\\s*/g,'-').replace(/\\s+/g,' ').trim();};var cv=norm('${val}');for(var i=0;i<el.options.length;i++){if(norm(el.options[i].value)===cv||norm(el.options[i].text)===cv){el.selectedIndex=i;if(d&&d.set){d.set.call(el,el.options[i].value);}else{el.value=el.options[i].value;}m=true;break;}}if(!m){for(var i=0;i<el.options.length;i++){var nv=norm(el.options[i].value),nt=norm(el.options[i].text);if(nv.indexOf(cv)>=0||nt.indexOf(cv)>=0||cv.indexOf(nv)>=0||cv.indexOf(nt)>=0){if(i===0&&el.options.length>1)continue;el.selectedIndex=i;if(d&&d.set){d.set.call(el,el.options[i].value);}else{el.value=el.options[i].value;}m=true;break;}}}}el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new Event('blur',{bubbles:true}));return 'Selected: '+el.value+' (index '+el.selectedIndex+')';})()`
+  );
+}
+
+// React-Select v5 / Radix-style controlled-select bypass.
+// Walks React fiber up from the target element to find a Select component
+// (props.options + props.onChange) and calls onChange directly — no menu UI.
+// Use when safari_click on the chevron/option fails (Cloudflare token form,
+// portal-rendered selects that intercept synthetic events).
+export async function reactSelectSet({ selector, ref, value }) {
+  await ensureHelpers();
+  if (value === undefined || value === null) throw new Error("reactSelectSet requires 'value' (option label)");
+  let finder;
+  if (ref) {
+    const safeRef = String(ref).replace(/'/g, "\\'");
+    finder = `mcpFindRef('${safeRef}')`;
+  } else if (selector) {
+    const sel = escJsSingleQuote(selector);
+    finder = `mcpQuerySelectorDeep('${sel}')`;
+  } else {
+    throw new Error("reactSelectSet requires 'ref' or 'selector'");
+  }
+  const safeValue = String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const js = `(function(){var el=${finder};if(!el)return JSON.stringify({ok:false,error:'element not found'});return window.mcpReactSelectSet(el,'${safeValue}');})()`;
+  return runJS(js);
+}
+
+export async function reactSelectListOptions({ selector, ref }) {
+  await ensureHelpers();
+  let finder;
+  if (ref) {
+    const safeRef = String(ref).replace(/'/g, "\\'");
+    finder = `mcpFindRef('${safeRef}')`;
+  } else if (selector) {
+    const sel = escJsSingleQuote(selector);
+    finder = `mcpQuerySelectorDeep('${sel}')`;
+  } else {
+    throw new Error("reactSelectListOptions requires 'ref' or 'selector'");
+  }
+  const js = `(function(){var el=${finder};if(!el)return JSON.stringify({ok:false,error:'element not found'});return window.mcpReactSelectListOptions(el);})()`;
+  return runJS(js);
+}
+
+export async function fillForm({ fields }) {
+  // Single JS call for ALL fields (instead of N separate osascript calls).
+  // Same React-state-sync logic as `fill`: _valueTracker reset, prototype-correct setter,
+  // InputEvent with inputType, composed events for shadow DOM, dialog-aware blur.
+  const fieldsJSON = JSON.stringify(fields.map(f => ({
+    s: escJsSingleQuote(f.selector),
+    v: f.value.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n"),
+  })));
+  return runJS(
+    `(function(){
+      var fields = ${fieldsJSON};
+      var results = [];
+      fields.forEach(function(f) {
+        var el = document.querySelector(f.s);
+        if (!el) {
+          var roots = window.mcpCollectRoots ? window.mcpCollectRoots() : [document];
+          for (var ri = 0; ri < roots.length && !el; ri++) {
+            try { el = roots[ri].querySelector(f.s); } catch (_e) {}
+          }
+        }
+        if (!el) { results.push('Not found: ' + f.s); return; }
+        el.focus();
+        var inDlg = !!(el.closest && el.closest('[role="dialog"]'));
+        if (el.isContentEditable) {
+          try {
+            var sel = window.getSelection();
+            if (sel) { var rng = document.createRange(); rng.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(rng); }
+            document.execCommand('delete');
+          } catch (_seE) {}
+          document.execCommand('insertText', false, f.v);
+          el.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        } else {
+          var t = el._valueTracker; if (t) t.setValue('');
+          var proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype :
+                      el.tagName === 'SELECT' ? window.HTMLSelectElement.prototype :
+                      window.HTMLInputElement.prototype;
+          var setter = Object.getOwnPropertyDescriptor(proto, 'value');
+          if (setter && setter.set) setter.set.call(el, f.v);
+          else el.value = f.v;
+          try { el.dispatchEvent(new InputEvent('input', { inputType: 'insertReplacementText', data: f.v, bubbles: true, composed: true, cancelable: true })); }
+          catch (_iE) { el.dispatchEvent(new Event('input', { bubbles: true, composed: true })); }
+          el.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          if (!inDlg) {
+            el.dispatchEvent(new Event('blur', { bubbles: true, composed: true }));
+            el.dispatchEvent(new Event('focusout', { bubbles: true, composed: true }));
+          }
+        }
+        var actual = el.value !== undefined ? String(el.value) : (el.textContent || '');
+        var match = actual === f.v || actual.indexOf(f.v.substring(0, 20)) >= 0;
+        results.push((match ? 'Filled' : 'PARTIAL') + ': ' + el.tagName + ' with "' + f.v.substring(0, 30) + '"');
+      });
+      return results.join('\\n');
+    })()`
+  );
+}
+
+// ========== KEYBOARD ==========
+
+// JS key names for KeyboardEvent
+const jsKeyMap = {
+  enter: "Enter", return: "Enter", tab: "Tab", escape: "Escape", space: " ",
+  delete: "Backspace", backspace: "Backspace", up: "ArrowUp", down: "ArrowDown",
+  left: "ArrowLeft", right: "ArrowRight", home: "Home", end: "End",
+  pageup: "PageUp", pagedown: "PageDown",
+  f1: "F1", f2: "F2", f3: "F3", f4: "F4", f5: "F5", f6: "F6",
+};
+
+// macOS virtual key codes for CGEvent keyboard (used by _helperNativeKeyboard).
+// These are the HID-level codes that postToPid uses, NOT JS keyCode values.
+const macKeyCodeMap = {
+  enter: 36, return: 36, "numpad-enter": 76,
+  tab: 48, space: 49, delete: 51, backspace: 51, escape: 53,
+  up: 126, "arrowup": 126, down: 125, "arrowdown": 125,
+  left: 123, "arrowleft": 123, right: 124, "arrowright": 124,
+  home: 115, end: 119, pageup: 116, pagedown: 121,
+  f1: 122, f2: 120, f3: 99, f4: 118, f5: 96, f6: 97,
+  a: 0, s: 1, d: 2, f: 3, h: 4, g: 5, z: 6, x: 7, c: 8, v: 9,
+  b: 11, q: 12, w: 13, e: 14, r: 15, y: 16, t: 17,
+  "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23,
+  "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
+  "]": 30, o: 31, u: 32, "[": 33, i: 34, p: 35,
+  l: 37, j: 38, "'": 39, k: 40, ";": 41, "\\": 42,
+  ",": 43, "/": 44, n: 45, m: 46, ".": 47, "`": 50,
+};
+
+// Native keyboard via CGEvent — sends a single key (with optional modifiers)
+// to the Safari window WITHOUT activating Safari or moving the mouse.
+// This produces isTrusted:true events that bypass React trust checks (Discord ProseMirror,
+// Slack virtualized editors, etc.) without any focus stealing. Requires Safari window ID.
+// Native type via clipboard paste (CGEvent Cmd+V targeted to Safari window).
+// Inserts text into ANY editor (ProseMirror, Slate, Draft.js, regular inputs,
+// contenteditable, cross-origin iframes) by going through the real paste pipeline.
+// Unlike safari_fill's synthetic paste, this updates the framework's internal
+// model state, so subsequent operations (like pressing Enter to submit in Discord)
+// see the text as "really there".
+export async function nativeType({ value, selector, ref }) {
+  await ensureHelpers();
+  if (!value) throw new Error("nativeType requires 'value'");
+  // Focus the target element if selector/ref provided
+  if (ref || selector) {
+    const sel = ref ? refSelector(ref) : escJsSingleQuote(selector);
+    await runJS(`(function(){ var el=document.querySelector('${sel}'); if(el){el.focus();el.click();} return el?'focused':'not found'; })()`);
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return await _nativeTypeViaClipboard(value);
+}
+
+export async function nativeKeyboard({ key, modifiers = [] }) {
+  await ensureHelpers();
+  if (!key) throw new Error("nativeKeyboard requires 'key'");
+  const k = String(key).toLowerCase();
+  const keyCode = macKeyCodeMap[k];
+  if (keyCode === undefined) {
+    throw new Error(`nativeKeyboard: unsupported key "${key}". Supported: ${Object.keys(macKeyCodeMap).join(", ")}`);
+  }
+  const geo = await _getSafariWindowGeometry();
+  if (!geo.windowId) throw new Error("Cannot native-key without Safari window ID — would steal focus");
+  const normalized = (modifiers || []).map(m => String(m).toLowerCase());
+  await _helperNativeKeyboard(keyCode, normalized, geo.windowId);
+  const modsLabel = normalized.length ? normalized.join("+") + "+" : "";
+  return `Native key: ${modsLabel}${k} (CGEvent to window ${geo.windowId}, no focus steal)`;
+}
+
+// System Events key codes — only used for paste_image, upload_file, save_pdf
+// (functions that truly require OS-level UI interaction)
+
+export async function pressKey({ key, modifiers = [] }) {
+  const hasCmdOrCtrl = modifiers.some((m) => ["cmd", "ctrl"].includes(m.toLowerCase()));
+  const hasShift = modifiers.some((m) => m.toLowerCase() === "shift");
+  const k = key.toLowerCase();
+
+  // Try to handle EVERYTHING via JavaScript — no System Events, no focus stealing
+  if (hasCmdOrCtrl) {
+    // Map Cmd/Ctrl shortcuts to JS execCommand equivalents
+    const jsShortcuts = {
+      a: "document.execCommand('selectAll')",
+      c: `(function(){
+        var sel = window.getSelection();
+        if (sel.toString()) { navigator.clipboard.writeText(sel.toString()).catch(function(){}); }
+        return 'Copied';
+      })()`,
+      x: "document.execCommand('cut')",
+      z: hasShift ? "document.execCommand('redo')" : "document.execCommand('undo')",
+      b: "document.execCommand('bold')",
+      i: "document.execCommand('italic')",
+      u: "document.execCommand('underline')",
+    };
+
+    if (jsShortcuts[k]) {
+      await runJS(jsShortcuts[k]);
+      return `Pressed: ${modifiers.join("+")}+${key} (via JS)`;
+    }
+
+    // Cmd+V (paste) — read clipboard via AppleScript (no activate!), inject via JS
+    if (k === "v") {
+      // Cross-origin iframe: JS can't paste into it, use CGEvent Cmd+V (no focus steal)
+      const activeTag = await runJS(`document.activeElement ? document.activeElement.tagName : ''`);
+      if (activeTag === 'IFRAME') {
+        // MUST have windowId — windowId=0 would steal focus and move mouse
+        const geo = await _getSafariWindowGeometry();
+        if (!geo.windowId) throw new Error("Cannot paste into iframe without Safari window ID — would steal focus");
+        await _helperNativeKeyboard(9, ["cmd"], geo.windowId);
+        await new Promise(r => setTimeout(r, 100)); // 100ms is enough for Cmd+V to process
+        return `Pressed: ${modifiers.join("+")}+v (CGEvent Cmd+V into iframe, no focus steal)`;
+      }
+
+      const clipText = await osascript(`the clipboard as text`).catch(() => "");
+      if (clipText) {
+        const escaped = clipText.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+        await runJS(
+          `(function(){
+            var el = document.activeElement;
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+              var start = el.selectionStart, end = el.selectionEnd;
+              var val = el.value;
+              el.value = val.substring(0, start) + '${escaped}' + val.substring(end);
+              el.selectionStart = el.selectionEnd = start + '${escaped}'.length;
+              el.dispatchEvent(new Event('input', {bubbles:true}));
+              el.dispatchEvent(new Event('change', {bubbles:true}));
+              return 'Pasted (input)';
+            }
+            // ProseMirror: use native API to ensure state updates
+            var pm = el && el.closest && el.closest('.ProseMirror');
+            if (pm) {
+              var v = null;
+              if (pm.pmViewDesc && pm.pmViewDesc.view) v = pm.pmViewDesc.view;
+              else { var keys = Object.keys(pm); for (var i=0;i<keys.length;i++) { var o=pm[keys[i]]; if(o&&o.state&&o.dispatch){v=o;break;} } }
+              if (v && v.dispatch) {
+                v.dispatch(v.state.tr.insertText('${escaped}'));
+                v.focus();
+                return 'Pasted (ProseMirror)';
+              }
+            }
+            // Default: execCommand
+            document.execCommand('insertText', false, '${escaped}');
+            return 'Pasted';
+          })()`
+        );
+      }
+      return `Pressed: ${modifiers.join("+")}+v (via JS, no focus steal)`;
+    }
+
+    // Other Cmd shortcuts — dispatch JS KeyboardEvent
+    await runJS(
+      `(function(){
+        var el = document.activeElement || document.body;
+        var e = new KeyboardEvent('keydown', {key:'${k}',code:'Key${k.toUpperCase()}',metaKey:true,ctrlKey:false,bubbles:true,cancelable:true});
+        el.dispatchEvent(e);
+        el.dispatchEvent(new KeyboardEvent('keyup', {key:'${k}',metaKey:true,bubbles:true}));
+        return 'Pressed';
+      })()`
+    );
+    return `Pressed: ${modifiers.join("+")}+${key}`;
+  }
+
+  // Non-modifier keys: pure JavaScript (no System Events)
+  const jsKey = jsKeyMap[k] || key;
+  const safeKey = jsKey.replace(/'/g, "\\'");
+  // W3C `code` values: special keys are NOT "Key"-prefixed ("Enter", "ArrowUp", ...);
+  // only letters are ("KeyA"), digits are "Digit1". Apps that route on event.code
+  // (Notion, Monaco, Google Docs) ignore a bogus "KeyEnter".
+  const jsCodeMap = {
+    "Enter": "Enter", "Tab": "Tab", "Escape": "Escape", " ": "Space",
+    "Backspace": "Backspace", "Delete": "Delete",
+    "ArrowUp": "ArrowUp", "ArrowDown": "ArrowDown", "ArrowLeft": "ArrowLeft", "ArrowRight": "ArrowRight",
+    "Home": "Home", "End": "End", "PageUp": "PageUp", "PageDown": "PageDown",
+    "F1": "F1", "F2": "F2", "F3": "F3", "F4": "F4", "F5": "F5", "F6": "F6",
+  };
+  const jsCode = jsCodeMap[jsKey]
+    || (/^[a-z]$/i.test(jsKey) ? "Key" + jsKey.toUpperCase()
+      : /^[0-9]$/.test(jsKey) ? "Digit" + jsKey
+        : jsKey);
+  const safeCode = jsCode.replace(/'/g, "\\'");
+  const shiftKey = hasShift;
+  const altKey = modifiers.some((m) => m.toLowerCase() === "alt");
+
+  const result = await runJS(
+    `(function(){
+      var el = document.activeElement || document.body;
+      var opts = {key:'${safeKey}',code:'${safeCode}',bubbles:true,cancelable:true,shiftKey:${shiftKey},altKey:${altKey}};
+      var down = new KeyboardEvent('keydown', opts);
+      var prevented = !el.dispatchEvent(down);
+      if (!prevented) {
+        if ('${safeKey}' === 'Enter') {
+          if (el.tagName === 'INPUT') { el.form && el.form.dispatchEvent(new Event('submit',{bubbles:true})); }
+          else if (el.tagName === 'TEXTAREA') { document.execCommand('insertLineBreak'); }
+          else if (el.isContentEditable && ${shiftKey}) { document.execCommand('insertLineBreak'); }
+          // ContentEditable + Enter (no Shift): do NOT insertLineBreak.
+          // Modern editors (Discord Slate, Slack, Notion, Medium) handle Enter
+          // in their own keydown listener to trigger submit/send/newBlock.
+          // insertLineBreak would double-act: the app submits AND we add a newline.
+        } else if ('${safeKey}' === 'Tab') {
+          var focusable = [...document.querySelectorAll('input,textarea,select,button,a,[tabindex]')].filter(function(e){return e.tabIndex>=0;});
+          var idx = focusable.indexOf(el);
+          var next = ${shiftKey} ? focusable[idx-1] : focusable[idx+1];
+          if (next) next.focus();
+        } else if ('${safeKey}' === 'Backspace') {
+          document.execCommand('delete');
+        } else if ('${safeKey}' === 'Escape') {
+          el.blur();
+        }
+      }
+      el.dispatchEvent(new KeyboardEvent('keyup', opts));
+      // ContentEditable + Enter: check if the app actually handled it.
+      // If editor content didn't change (no submit, no newline), the JS
+      // keydown was ignored (isTrusted:false). Signal for native fallback.
+      if ('${safeKey}' === 'Enter' && el.isContentEditable && !${shiftKey} && !prevented) {
+        return '__ENTER_NOT_HANDLED__';
+      }
+      return 'OK';
+    })()`
+  );
+
+  // Fallback for ContentEditable Enter that wasn't handled by JS keydown:
+  // apps like Discord/Slack require isTrusted:true. Briefly activate Safari
+  // (~50ms), send real keystroke, then immediately restore the previous
+  // frontmost app. The visual flash is imperceptible (<100ms total).
+  if (result === '__ENTER_NOT_HANDLED__') {
+    return `Pressed: enter (JS keydown dispatched but not handled — the app likely requires isTrusted:true. Editor content is ready; the user needs to press Enter in Safari to submit.)`;
+  }
+
+  return `Pressed: ${modifiers.length ? modifiers.join("+") + "+" : ""}${key}`;
+}
+
+// ========== NATIVE TYPE VIA CLIPBOARD PASTE ==========
+// Uses OS-level clipboard + CGEvent Cmd+V to insert text. Produces a REAL paste event
+// that ProseMirror/Slate/Draft.js process through their native paste handlers, updating
+// internal model state (not just the DOM). Also works for cross-origin iframes.
+// NO focus steal — sends CGEvent Cmd+V targeted to Safari window ID.
+//
+// Why this matters: synthetic DOM manipulation (safari_fill's "synthetic paste") writes
+// to the DOM but doesn't update React/ProseMirror state. Discord's onSubmit reads from
+// state, not DOM, so Enter submits empty. This function fixes that by going through the
+// real paste pipeline.
+async function _nativeTypeViaClipboard(text) {
+  await _acquireClipboardLock();
+  let savedClipboard;
+  try {
+    // Save current clipboard
+    savedClipboard = await _saveClipboard();
+
+    // Set clipboard to our text via pipe (safe from shell injection)
+    await _pbcopy(text);
+
+    // Paste via CGEvent Cmd+V targeted to Safari window — NO activate, NO focus steal
+    // MUST have windowId — global CGEvent (windowId=0) would steal focus and move mouse
+    const geo = await _getSafariWindowGeometry();
+    if (!geo.windowId) {
+      throw new Error("Cannot native-paste without Safari window ID — would steal focus");
+    }
+    // keyCode 9 = V key, flags: ["cmd"]
+    await _helperNativeKeyboard(9, ["cmd"], geo.windowId);
+
+    // Wait for paste to settle
+    await new Promise(r => setTimeout(r, 100)); // 100ms is enough for Cmd+V to process
+    return `Typed ${text.length} chars (native paste into iframe)`;
+  } finally {
+    // ALWAYS restore the user's clipboard + release the lock — even if the daemon died
+    // mid-paste — so the user never silently inherits the tool's pasted text.
+    if (savedClipboard !== undefined) await _restoreClipboard(savedClipboard).catch(() => {});
+    if (_clipboardLocked) _releaseClipboardLock();
+  }
+}
+
+export async function typeText({ text, selector, ref }) {
+  if (ref) selector = refSelector(ref);
+  if (selector) {
+    const sel = escJsSingleQuote(selector);
+    await runJS(`document.querySelector('${sel}')?.focus()`);
+    // Quick poll for focus to settle (was 200ms fixed sleep)
+    await new Promise((r) => setTimeout(r, 30));
+  }
+
+  // Cross-origin iframe detection: JS can't access content inside cross-origin iframes.
+  // When activeElement is an IFRAME, use native clipboard paste via System Events.
+  const activeTag = await runJS(`document.activeElement ? document.activeElement.tagName : ''`);
+  if (activeTag === 'IFRAME') {
+    return await _nativeTypeViaClipboard(text);
+  }
+
+  // Use execCommand("insertText") — the ONLY approach that works for BOTH:
+  // 1. Regular inputs/textareas (execCommand works natively)
+  // 2. ContentEditable (ProseMirror/Draft.js/Slate) — execCommand causes real DOM mutation
+  //    → MutationObserver fires → framework detects change → state updates
+  // InputEvent dispatch does NOT work because it doesn't cause real DOM mutations.
+  const safeText = text.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n");
+  const result = await runJS(
+    `(function(){var el=document.activeElement;if(!el)return 'No focused element';` +
+    // ProseMirror: use native API
+    `var pm=el.closest&&el.closest('.ProseMirror');if(pm){try{var v=null;if(pm.pmViewDesc&&pm.pmViewDesc.view)v=pm.pmViewDesc.view;else{var keys=Object.keys(pm);for(var ki=0;ki<keys.length;ki++){var o=pm[keys[ki]];if(o&&o.state&&o.dispatch){v=o;break;}}}if(v&&v.dispatch){var tr=v.state.tr.insertText('${safeText}');v.dispatch(tr);v.focus();return 'Typed ${text.length} chars (ProseMirror)';}}catch(e){}}` +
+    // Closure/Medium: char-by-char with keyboard events + Enter handling
+    `var isClosure=el.isContentEditable&&(Object.keys(el).some(function(k){return k.startsWith('closure_uid_');})||location.hostname.includes('medium.com'));` +
+    `if(isClosure){var txt='${safeText}';for(var i=0;i<txt.length;i++){var target=document.activeElement||el;var ch=txt[i];if(ch==='\\n'){target.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true}));document.execCommand('insertParagraph');target.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',keyCode:13,bubbles:true}));continue;}var kc=ch.charCodeAt(0);target.dispatchEvent(new KeyboardEvent('keydown',{key:ch,keyCode:kc,bubbles:true}));document.execCommand('insertText',false,ch);target.dispatchEvent(new InputEvent('input',{data:ch,inputType:'insertText',bubbles:true}));target.dispatchEvent(new KeyboardEvent('keyup',{key:ch,keyCode:kc,bubbles:true}));}return 'Typed ${text.length} chars (Closure char-by-char)';}` +
+    // Default: execCommand
+    `var ok=document.execCommand('insertText',false,'${safeText}');if(ok)return 'Typed '+${text.length}+' chars';` +
+    // Fallback for inputs where execCommand failed
+    `if('value' in el){var start=el.selectionStart||0;el.value=el.value.substring(0,start)+'${safeText}'+el.value.substring(el.selectionEnd||start);el.selectionStart=el.selectionEnd=start+${text.length};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return 'Typed '+${text.length}+' chars via value set';}return 'Could not type';})()`
+  );
+
+  // If JS typing failed and we're somehow in an iframe context, try native fallback
+  if (result === 'Could not type') {
+    return await _nativeTypeViaClipboard(text);
+  }
+
+  return result;
+}
+
+// ========== EDITOR SUPPORT (Monaco, CodeMirror) ==========
+
+// Replace all content in a code editor (Monaco, CodeMirror, or ace)
+// Used when typeText/fill can't handle the editor
+export async function replaceEditorContent({ text }) {
+  // Escape for embedding in JS string
+  const safeText = text
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '');
+
+  // PREFLIGHT: Two-channel Monaco sync — update the model (visual) AND call
+  // the React wrapper's onChange (state). Airtable wraps Monaco in a React
+  // component whose "Finish editing" save reads from React state, not from
+  // the Monaco model. So setValue alone is "visually correct, stale on save".
+  // We walk the React fiber up from .monaco-editor until we find a component
+  // whose memoizedProps contain an `onChange` function + a `value` field,
+  // then call onChange(text) to sync React. Works for Airtable-style embeds
+  // and is a no-op on plain Monaco (VS Code web, GitHub) where setValue
+  // already covers the state.
+  const preflightFirstLine = text.split('\n')[0].slice(0, 20).replace(/'/g, "\\'");
+  const monacoPreflight = await runJS(
+    `(function(){
+      var m = (typeof monaco !== 'undefined') ? monaco : window.monaco;
+      if (!m || !m.editor) return JSON.stringify({kind:'not-monaco'});
+      var hasTextarea = !!document.querySelector('.monaco-editor textarea.inputarea');
+      var models = []; try { models = m.editor.getModels() || []; } catch(e){}
+      if (!models.length) return JSON.stringify({kind:'no-model', hasTextarea: hasTextarea});
+
+      // Locate the React wrapper component that owns this Monaco embed.
+      // Prefer an editable wrapper (isReadOnly !== true); fall back to any
+      // wrapper if only a read-only preview exists (Airtable before Edit).
+      function findFiber(el) {
+        if (!el) return null;
+        var ks = Object.keys(el);
+        for (var j = 0; j < ks.length; j++) {
+          if (ks[j].indexOf('__reactFiber') === 0) return el[ks[j]];
+        }
+        return null;
+      }
+      function findWrapperWithOnChange(fiber) {
+        var c = fiber;
+        for (var i = 0; i < 40 && c; i++) {
+          var p = c.memoizedProps;
+          if (p && typeof p.onChange === 'function' && ('value' in p)) return c;
+          c = c.return;
+        }
+        return null;
+      }
+      var els = document.querySelectorAll('.monaco-editor');
+      var editableWrapper = null, anyWrapper = null;
+      for (var i = els.length - 1; i >= 0; i--) {
+        var f = findFiber(els[i].parentElement);
+        if (!f) continue;
+        var w = findWrapperWithOnChange(f);
+        if (!w) continue;
+        if (!anyWrapper) anyWrapper = w;
+        if (w.memoizedProps.isReadOnly !== true) { editableWrapper = w; break; }
+      }
+      var wrapper = editableWrapper || anyWrapper;
+
+      // Step 1: Monaco model setValue — updates visual + fires onDidChangeModelContent
+      try { models[models.length - 1].setValue('${safeText}'); }
+      catch(e) { return JSON.stringify({kind:'setValue-err', hasTextarea: hasTextarea, err: String(e && e.message)}); }
+
+      // Step 2: Sync React state via wrapper.onChange (if wrapper found).
+      // onChange may be silently guarded (e.g. Airtable's readOnly check).
+      // We only treat sync as real when the wrapper's value prop actually
+      // changes OR a sibling/parent expression state reflects the update
+      // on the next render tick.
+      var reactSynced = false;
+      var reactGuarded = false;
+      if (wrapper) {
+        var prevValue = wrapper.memoizedProps.value;
+        try {
+          wrapper.memoizedProps.onChange('${safeText}');
+          // Re-fetch the fiber's memoizedProps (may have been swapped by React)
+          var after = wrapper.alternate ? wrapper.alternate.memoizedProps : wrapper.memoizedProps;
+          var nowValue = (after && 'value' in after) ? after.value : wrapper.memoizedProps.value;
+          reactSynced = (nowValue !== prevValue);
+          // If value didn't change, onChange was a no-op (guarded by isReadOnly
+          // or permission check). Signal this so caller falls back to native paste.
+          reactGuarded = !reactSynced;
+        } catch(e) { reactSynced = false; reactGuarded = true; }
+      }
+
+      // Step 3: Verify DOM reflects the new content
+      var firstDom = document.querySelector('.monaco-editor .view-line');
+      var domTxt = firstDom ? firstDom.textContent : '';
+      var expected = '${preflightFirstLine}';
+      var domOk = expected.length < 5 || domTxt.indexOf(expected) !== -1;
+
+      return JSON.stringify({
+        kind: 'monaco',
+        domOk: domOk,
+        reactSynced: reactSynced,
+        reactGuarded: reactGuarded,
+        hasWrapper: !!wrapper,
+        editable: !!editableWrapper,
+        hasTextarea: hasTextarea,
+        models: models.length
+      });
+    })()`
+  );
+
+  let mpParsed = null;
+  try { mpParsed = JSON.parse(monacoPreflight); } catch(e) {}
+
+  // Fully synced: Monaco model + React state both updated.
+  if (mpParsed && mpParsed.kind === 'monaco' && mpParsed.domOk && mpParsed.reactSynced) {
+    return 'Monaco(model+react): replaced ' + text.split('\n').length + ' lines';
+  }
+
+  // Plain Monaco embed (no React wrapper) — setValue is sufficient.
+  if (mpParsed && mpParsed.kind === 'monaco' && mpParsed.domOk && !mpParsed.hasWrapper) {
+    return 'Monaco(model): replaced ' + text.split('\n').length + ' lines';
+  }
+
+  // Airtable-style embed where React fiber sync failed (wrapper.onChange was
+  // a no-op, or the site guards writes by permission/readOnly). Fall back to
+  // native clipboard paste via CGEvent: forces readOnly=false first, activates
+  // Safari, focuses the textarea, and sends Cmd+A/Cmd+V targeted to the window.
+  if (mpParsed && mpParsed.kind === 'monaco' && mpParsed.hasTextarea) {
+    const savedFrontApp = await saveFrontmostApp();
+    try {
+      // Step 1: Install editor capture hook (if not already) + try to find visible editable editor
+      await runJS(
+        `(function(){
+          if (!window.__mcpEditorHook) {
+            window.__mcpEditorHook = true;
+            window.__mcpCapturedEditors = [];
+            try { monaco.editor.onDidCreateEditor(function(e){window.__mcpCapturedEditors.push(e);}); } catch(e){}
+          }
+          // Force readOnly=false on all existing editors (harmless if already false)
+          try {
+            (window.__mcpCapturedEditors || []).forEach(function(e){
+              try { if (e.updateOptions) e.updateOptions({readOnly: false}); } catch(_){}
+            });
+          } catch(e){}
+          return 'hook-installed';
+        })()`
+      );
+      // Step 2: Activate Safari to frontmost — required for CGEvent keyboard to reach web content
+      await _helperActivateApp("com.apple.Safari");
+      await new Promise(r => setTimeout(r, 300));
+      // Step 3: Focus Monaco's input textarea
+      await runJS(`(function(){var t=document.querySelector('.monaco-editor textarea.inputarea');if(t){t.focus();return 'focused';}return 'no-textarea';})()`);
+      await new Promise(r => setTimeout(r, 100));
+      // Step 4: Cmd+A + Cmd+V via GLOBAL CGEvent (cghidEventTap) — reaches web content
+      // reliably since Safari is frontmost
+      await _helperNativeKeyboard(0, ["cmd"], 0); // Cmd+A global
+      await new Promise(r => setTimeout(r, 100));
+      // Write clipboard + paste via global CGEvent (not windowed)
+      await _acquireClipboardLock();
+      try {
+        const savedClip = await _saveClipboard();
+        await _pbcopy(text);
+        await _helperNativeKeyboard(9, ["cmd"], 0); // Cmd+V global
+        await new Promise(r => setTimeout(r, 200));
+        await _restoreClipboard(savedClip);
+      } finally {
+        _releaseClipboardLock();
+      }
+      await new Promise(r => setTimeout(r, 300));
+      // Restore original front app
+      if (savedFrontApp) await restoreFocusIfStolen(savedFrontApp);
+      return 'Monaco(native-paste): replaced ' + text.split('\n').length + ' lines';
+    } catch(e) {
+      if (savedFrontApp) await restoreFocusIfStolen(savedFrontApp).catch(() => {});
+      // Fall through to remaining editor-type checks
+    }
+  }
+
+  const result = await runJS(
+    `(function(){
+      // Monaco editor (Airtable, VS Code web, GitHub)
+      // Try both global 'monaco' and window.monaco — some sites expose one but not the other
+      var m = (typeof monaco !== 'undefined') ? monaco : window.monaco;
+      if (m && m.editor) {
+        // Try getModels first (works on Airtable and most Monaco embeds)
+        try {
+          var models = m.editor.getModels();
+          if (models && models.length > 0) {
+            models[models.length - 1].setValue('${safeText}');
+            return 'Monaco(model): replaced ' + '${safeText}'.split('\\n').length + ' lines';
+          }
+        } catch(e) {}
+        // Try getEditors (standard Monaco API)
+        try {
+          var eds = m.editor.getEditors();
+          if (eds && eds.length > 0) {
+            eds[eds.length - 1].setValue('${safeText}');
+            return 'Monaco(editor): replaced ' + '${safeText}'.split('\\n').length + ' lines';
+          }
+        } catch(e) {}
+      }
+
+      // CodeMirror 6 (uses EditorView stored on DOM element)
+      var cmEls = document.querySelectorAll('.cm-editor');
+      for (var i = cmEls.length - 1; i >= 0; i--) {
+        var view = cmEls[i].cmView;
+        if (view && view.view) {
+          var v = view.view;
+          v.dispatch({changes: {from: 0, to: v.state.doc.length, insert: '${safeText}'}});
+          return 'CodeMirror6: replaced ' + '${safeText}'.split('\\n').length + ' lines';
+        }
+      }
+
+      // CodeMirror 5
+      var CM5 = (typeof CodeMirror !== 'undefined') ? CodeMirror : window.CodeMirror;
+      if (CM5) {
+        var cm5 = document.querySelector('.CodeMirror');
+        if (cm5 && cm5.CodeMirror) {
+          cm5.CodeMirror.setValue('${safeText}');
+          return 'CodeMirror5: replaced ' + '${safeText}'.split('\\n').length + ' lines';
+        }
+      }
+
+      // Ace editor
+      var aceRef = (typeof ace !== 'undefined') ? ace : window.ace;
+      if (aceRef) {
+        var aceEls = document.querySelectorAll('.ace_editor');
+        if (aceEls.length > 0) {
+          var aceEd = aceRef.edit(aceEls[aceEls.length - 1]);
+          aceEd.setValue('${safeText}', -1);
+          return 'Ace: replaced ' + '${safeText}'.split('\\n').length + ' lines';
+        }
+      }
+
+      // ProseMirror (LinkedIn, Medium, Notion, HackerNoon)
+      var pmEl = document.querySelector('.ProseMirror');
+      if (pmEl) {
+        // Strategy 1: Native API via view.dispatch (most reliable)
+        try {
+          var view = pmEl.pmViewDesc && pmEl.pmViewDesc.view;
+          if (view && view.state && view.dispatch) {
+            var state = view.state;
+            var tr = state.tr.replaceWith(0, state.doc.content.size,
+              state.schema.text ? state.schema.text('${safeText}') : state.schema.node('paragraph', null, state.schema.text('${safeText}')));
+            view.dispatch(tr);
+            view.focus();
+            return 'ProseMirror(API): replaced';
+          }
+        } catch(e) {}
+        // Strategy 2: execCommand fallback
+        try {
+          pmEl.focus();
+          document.execCommand('selectAll');
+          document.execCommand('insertText', false, '${safeText}');
+          return 'ProseMirror(execCommand): replaced';
+        } catch(e) {}
+      }
+
+      // Fallback: contentEditable — try clipboard paste first, then delete+insert
+      var el = document.activeElement;
+      if (!el || !el.isContentEditable) {
+        el = document.querySelector('[contenteditable="true"]');
+        if (el) el.focus();
+      }
+      if (el && el.isContentEditable) {
+        // Try clipboard paste (safe for Closure/Medium/unknown editors)
+        try {
+          document.execCommand('selectAll');
+          var dt = new DataTransfer();
+          dt.setData('text/plain', '${safeText}');
+          var pe = new ClipboardEvent('paste', {bubbles:true,cancelable:true,clipboardData:dt});
+          var handled = !el.dispatchEvent(pe);
+          if (handled) return 'ContentEditable(paste): replaced';
+        } catch(e) {}
+        // Fallback: delete then insert (don't combine selectAll+insertText)
+        document.execCommand('selectAll');
+        document.execCommand('delete');
+        document.execCommand('insertText', false, '${safeText}');
+        return 'ContentEditable: replaced';
+      }
+
+      return 'No code editor found';
+    })()`
+    , { timeout: 15000 }
+  );
+  return result;
+}
+
+// ========== SCREENSHOT ==========
+
+export async function screenshot({ fullPage = false } = {}) {
+  await refreshTargetWindow();
+  const tmpFile = join(tmpdir(), `safari-screenshot-${Date.now()}.png`);
+  try {
+    // Check if target tab is a background tab — if so, use JS screenshot to avoid tab jumping
+    let isBackgroundTab = false;
+    if (_activeTabIndex) {
+      try {
+        const currentIdx = await osascriptFast(
+          `tell application "Safari" to return index of current tab of ${getTargetWindowRef()}`
+        );
+        isBackgroundTab = Number(currentIdx) !== _activeTabIndex;
+      } catch (_) {}
+    }
+    // When on a background tab, go straight to JS-based screenshot (no tab switch, no focus steal)
+    const skipScreencapture = isBackgroundTab;
+
+    // Try screencapture — use osascript's do shell script to bypass VS Code permission issue
+    const windowIdRaw = !skipScreencapture ? await osascript(
+      `tell application "Safari" to return id of ${getTargetWindowRef()}`
+    ).catch(() => null) : null;
+    // Window IDs are OS-assigned integers — reject anything non-numeric before it reaches
+    // `do shell script "screencapture -l<id>"` (defense-in-depth against odd AppleScript stdout).
+    const windowId = windowIdRaw != null && /^\d+$/.test(String(windowIdRaw).trim()) ? String(windowIdRaw).trim() : null;
+
+    // On macOS Tahoe, screencapture -l may briefly steal focus.
+    // Save frontmost app via daemon so we can hide Safari if it stole focus.
+    let previousBundleId = null;
+    if (windowId) {
+      const fa = await _helperGetFrontApp();
+      previousBundleId = fa?.bundleId || null;
+    }
+
+    if (windowId) {
+      try {
+        if (fullPage) {
+          const bounds = await osascript(
+            `tell application "Safari" to return bounds of ${getTargetWindowRef()}`
+          );
+          const dims = await runJS("JSON.stringify({h:document.documentElement.scrollHeight,w:document.documentElement.scrollWidth})");
+          const { h, w } = JSON.parse(dims);
+          await osascript(
+            `tell application "Safari" to set bounds of ${getTargetWindowRef()} to {0, 0, ${Number(w)}, ${Math.min(Number(h) + 100, 5000)}}`
+          );
+          try {
+            await new Promise((r) => setTimeout(r, 500));
+            // Use do shell script to inherit osascript's Screen Recording permission
+            await osascript(
+              `do shell script "screencapture -l${windowId} -o -x '${tmpFile}'"`,
+              { timeout: 15000 }
+            );
+          } finally {
+            // Always restore bounds — even if screencapture fails
+            await osascript(
+              `tell application "Safari" to set bounds of ${getTargetWindowRef()} to {${bounds}}`
+            ).catch(() => {});
+          }
+        } else {
+          // Try direct execFile first (works if VS Code has Screen Recording permission)
+          try {
+            await execFileAsync("screencapture", ["-l" + windowId, "-o", "-x", tmpFile]);
+            const testData = await readFile(tmpFile);
+            if (testData.length < 100) throw new Error("empty");
+          } catch (_) {
+            // Fallback: use do shell script (osascript may have permission)
+            await osascript(
+              `do shell script "screencapture -l${windowId} -o -x '${tmpFile}'"`,
+              { timeout: 15000 }
+            );
+          }
+        }
+        // Re-activate previous app if screencapture stole focus (common on macOS Tahoe).
+        // Centralized restore handles settle delay + hide fallback if activate is blocked.
+        if (previousBundleId && previousBundleId !== "com.apple.Safari") {
+          await restoreFocusIfStolen(previousBundleId).catch(() => {});
+        }
+        // Compress: convert PNG to JPEG (50% quality) + resize to max 1200px width
+        // Cuts ~600KB PNG → ~60KB JPEG — critical for staying under 20MB context limit
+        const jpgFile = tmpFile.replace(/\.png$/, '.jpg');
+        try {
+          await execFileAsync("sips", [
+            "-s", "format", "jpeg",
+            "-s", "formatOptions", "50",
+            "--resampleWidth", "1200",
+            tmpFile, "--out", jpgFile
+          ], { timeout: 5000 });
+          const jpgData = await readFile(jpgFile);
+          await unlink(tmpFile).catch(() => {});
+          await unlink(jpgFile).catch(() => {});
+          if (jpgData.length > 100) return jpgData.toString("base64");
+        } catch (_) {
+          // sips failed — fall back to original PNG
+          await unlink(jpgFile).catch(() => {});
+        }
+        const data = await readFile(tmpFile);
+        await unlink(tmpFile).catch(() => {});
+        if (data.length > 100) return data.toString("base64");
+      } catch (_) {
+        // screencapture failed, fall through to JS method
+      }
+    }
+
+    // Fallback: JS-based screenshot via canvas (no permissions needed)
+    const dataUrl = await runJS(
+      `(async function(){` +
+      `var c=document.createElement('canvas');var ctx=c.getContext('2d');` +
+      `c.width=window.innerWidth;c.height=${fullPage ? 'document.documentElement.scrollHeight' : 'window.innerHeight'};` +
+      `var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+c.width+'" height="'+c.height+'">' +` +
+      `'<foreignObject width="100%" height="100%">' +` +
+      `'<div xmlns="http://www.w3.org/1999/xhtml">' + document.documentElement.outerHTML + '</div>' +` +
+      `'</foreignObject></svg>';` +
+      `var blob=new Blob([svg],{type:'image/svg+xml'});` +
+      `var url=URL.createObjectURL(blob);` +
+      `var img=new Image();` +
+      `return new Promise(function(resolve){` +
+      `img.onload=function(){ctx.drawImage(img,0,0);resolve(c.toDataURL('image/png').split(',')[1]);};` +
+      `img.onerror=function(){resolve('FALLBACK_TEXT')};` +
+      `img.src=url;});})()`,
+      { timeout: 30000 }
+    );
+
+    // canvas/SVG returns a Promise `do JavaScript` can't await → guard against the
+    // unsettled "[object Promise]"/empty value and only return a real base64 PNG.
+    const looksBase64 = typeof dataUrl === 'string' && dataUrl.length > 100 && /^[A-Za-z0-9+/]+={0,2}$/.test(dataUrl.slice(0, 120));
+    if (looksBase64) {
+      return dataUrl;
+    }
+
+    // Final fallback: throw with clear message for the retry logic in index.js
+    throw new Error("screencapture failed — Screen Recording permission may have been lost. Grant permission in System Settings → Privacy & Security → Screen Recording, then restart Safari.");
+  } finally {
+    await unlink(tmpFile).catch(() => {});
+  }
+}
+
+// ========== ELEMENT SCREENSHOT ==========
+
+export async function screenshotElement({ selector }) {
+  const sel = escJsSingleQuote(selector);
+  // Use html2canvas-like approach: capture element via SVG foreignObject
+  const result = await runJS(
+    `(async function(){
+      var el = document.querySelector('${sel}');
+      if (!el) return 'Element not found: ${sel}';
+      var rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return 'Element has no dimensions';
+
+      // Scroll element into view
+      el.scrollIntoView({block:'center'});
+      await new Promise(r => setTimeout(r, 100));
+      rect = el.getBoundingClientRect();
+
+      // Use canvas + drawImage from window screenshot approach
+      var c = document.createElement('canvas');
+      c.width = Math.ceil(rect.width * window.devicePixelRatio);
+      c.height = Math.ceil(rect.height * window.devicePixelRatio);
+      var ctx = c.getContext('2d');
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+      // Clone element to avoid cross-origin issues
+      var clone = el.cloneNode(true);
+      var styles = window.getComputedStyle(el);
+      var wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:absolute;left:-99999px;top:0;width:'+rect.width+'px;height:'+rect.height+'px;overflow:hidden;background:'+styles.backgroundColor;
+      wrapper.appendChild(clone);
+      document.body.appendChild(wrapper);
+
+      // Serialize to SVG foreignObject
+      var html = new XMLSerializer().serializeToString(wrapper);
+      document.body.removeChild(wrapper);
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+rect.width+'" height="'+rect.height+'">' +
+        '<foreignObject width="100%" height="100%">' + html + '</foreignObject></svg>';
+      var blob = new Blob([svg], {type:'image/svg+xml;charset=utf-8'});
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      return new Promise(function(resolve){
+        img.onload = function(){
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+          URL.revokeObjectURL(url);
+          resolve(c.toDataURL('image/png').split(',')[1]);
+        };
+        img.onerror = function(){ resolve('SVG_RENDER_FAILED'); };
+        img.src = url;
+      });
+    })()`,
+    { timeout: 15000 }
+  );
+
+  // The canvas/SVG path returns a Promise that `do JavaScript` can't await (so it yields
+  // "[object Promise]"/empty), and foreignObject can't render cross-origin images/fonts.
+  // Treat anything that isn't a valid base64 PNG as a render failure and fall through to
+  // the reliable screencapture+crop path.
+  const looksBase64 = typeof result === 'string' && result.length > 100 && /^[A-Za-z0-9+/]+={0,2}$/.test(result.slice(0, 120));
+  if (!looksBase64) {
+    // Fallback: use screencapture + crop
+    const tmpFile = join(tmpdir(), `safari-el-${Date.now()}.png`);
+    let cropFile = null;
+    try {
+      const windowIdRaw = await osascript(`tell application "Safari" to return id of ${getTargetWindowRef()}`).catch(() => null);
+      const windowId = windowIdRaw != null && /^\d+$/.test(String(windowIdRaw).trim()) ? String(windowIdRaw).trim() : null;
+      if (!windowId) throw new Error("Cannot get Safari window ID");
+
+      // Get element bounds relative to screen
+      const bounds = await runJS(
+        `(function(){var el=document.querySelector('${sel}');if(!el)return '';var r=el.getBoundingClientRect();return JSON.stringify({x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),dpr:(window.devicePixelRatio||1)});})()`
+      );
+      if (!bounds) throw new Error(typeof result === 'string' && result.startsWith('Element') ? result : 'Element not found for screenshot');
+
+      // Full window screenshot then crop with sips
+      await execFileAsync("screencapture", ["-l" + windowId, "-o", "-x", tmpFile]);
+      const { x, y, w, h, dpr = 1 } = JSON.parse(bounds);
+      // Use sips to crop (macOS built-in). Use the DYNAMIC toolbar height — Sequoia+ chrome is
+      // ~90px, not 74, so a hardcoded 74 left element screenshots vertically offset. Fall back
+      // to 74 only if geometry can't be read.
+      let toolbarHeight = 74;
+      try { const g = await _getSafariWindowGeometry(); if (g?.toolbarHeight) toolbarHeight = g.toolbarHeight; } catch {}
+      // screencapture writes the window PNG at PHYSICAL resolution (2× on Retina), but the
+      // bounds + toolbar height are CSS points. Scale every crop dimension by devicePixelRatio
+      // so the crop lands on the right physical pixels instead of a half-size top-left region.
+      const sw = Math.round(w * dpr);
+      const sh = Math.round(h * dpr);
+      const sx = Math.round(x * dpr);
+      const sy = Math.round((y + toolbarHeight) * dpr);
+      cropFile = join(tmpdir(), `safari-el-crop-${Date.now()}.png`);
+      await execFileAsync("sips", [
+        "-c", String(sh), String(sw),
+        "--cropOffset", String(sy), String(sx),
+        tmpFile, "--out", cropFile
+      ]);
+      const data = await readFile(cropFile);
+      await unlink(tmpFile).catch(() => {});
+      await unlink(cropFile).catch(() => {});
+      if (data.length > 100) return data.toString("base64");
+    } catch (e) {
+      await unlink(tmpFile).catch(() => {});
+      if (cropFile) await unlink(cropFile).catch(() => {});  // captured path — old code rebuilt it with the wrong timestamp and leaked it
+      throw new Error(`Element screenshot failed: ${e.message}`);
+    }
+  }
+
+  return result;
+}
+
+// ========== SCROLL ==========
+
+export async function scroll({ direction = "down", amount = 500 }) {
+  const y = direction === "up" ? -Number(amount) : Number(amount);
+  // Single call: scroll + return position
+  return runJS(
+    `(function(){window.scrollBy(0,${y});return 'Scrolled ${direction} ${amount}px. Position: '+JSON.stringify({x:window.scrollX,y:window.scrollY,height:document.documentElement.scrollHeight});})()`
+  );
+}
+
+export async function scrollTo({ x = 0, y = 0 }) {
+  return runJS(`(function(){window.scrollTo(${Number(x)},${Number(y)});return 'Scrolled to (${x},${y})';})()`);
+}
+
+// ========== TAB MANAGEMENT ==========
+
+export async function listTabs() {
+  await refreshTargetWindow();
+  // Re-resolve when EITHER the URL or the tab marker is tracked — the URL may be
+  // cleared after a redirect while the marker is still valid; resetting the index
+  // then caused spurious "tab tracking lost" errors. Only a session with no
+  // tracking at all should reset.
+  if (_activeTabURL || _activeTabMarker) {
+    await resolveActiveTab();
+  } else {
+    _activeTabIndex = null;
+  }
+
+  const result = await osascript(
+    `tell application "Safari"
+      set output to ""
+      set tabIndex to 1
+      repeat with t in every tab of ${getTargetWindowRef()}
+        if tabIndex > 1 then set output to output & linefeed
+        set output to output & (tabIndex as text) & (ASCII character 9) & name of t & (ASCII character 9) & URL of t
+        set tabIndex to tabIndex + 1
+      end repeat
+      return output
+    end tell`
+  );
+  if (!result.trim()) return JSON.stringify([]);
+  const tabs = result.split("\n").map((line) => {
+    const parts = line.split("\t");
+    return { index: parseInt(parts[0]), title: parts[1] || "", url: parts[2] || "" };
+  });
+  return JSON.stringify(tabs, null, 2);
+}
+
+export async function newTab(url = "") {
+  await refreshTargetWindow();
+  const safeUrl = escAppleScriptString(url); // url defaults to "" → escAppleScriptString("") === ""
+  try {
+    if (url) {
+      await osascript(`tell application "Safari"\ntell ${getTargetWindowRef()}\nset userTab to current tab\nmake new tab with properties {URL:"${safeUrl}"}\nset current tab to userTab\nend tell\nend tell`);
+    } else {
+      await osascript(`tell application "Safari"\ntell ${getTargetWindowRef()}\nset userTab to current tab\nmake new tab\nset current tab to userTab\nend tell\nend tell`);
+    }
+  } catch {
+    if (SAFARI_PROFILE) {
+      // Profile mode: create tab inside the profile window, never use make new document (opens in front/personal window)
+      if (url) {
+        await osascript(`tell application "Safari" to tell ${getTargetWindowRef()} to make new tab with properties {URL:"${safeUrl}"}`);
+      } else {
+        await osascript(`tell application "Safari" to tell ${getTargetWindowRef()} to make new tab`);
+      }
+    } else {
+      if (url) { await osascript(`tell application "Safari" to make new document with properties {URL:"${safeUrl}"}`); }
+      else { await osascript('tell application "Safari" to make new document'); }
+    }
+  }
+  // NOT atomic with the creation call above — a tab the user opens between the two
+  // osascript round-trips can skew this count; the marker stamped below self-corrects
+  // via resolveActiveTab() on the next operation.
+  const tabCount = await osascriptFast(`tell application "Safari" to return count of tabs of ${getTargetWindowRef()}`);
+  _activeTabIndex = Number(tabCount);  // New tab is always appended as last
+  _activeTabURL = url || null;
+  _lastResolveTime = Date.now();
+  _lastTabCount = Number(tabCount);  // Update tab count cache
+  _hasOwnedTab = true;               // Permanently true: this session has opened its own tab,
+                                     // so write ops must NEVER fall back to the user's current tab.
+  // Set bulletproof tab marker — stamped onto the tab by _stampTab() after load.
+  // window.name survives ALL navigation (full loads, redirects, cross-origin);
+  // __mcpTabMarker survives SPA routing.
+  _activeTabMarker = `MCP_${SESSION_ID}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  // Wait for page load if URL given. Poll readyState from the Node side — Safari's
+  // `do JavaScript` does NOT await async IIFEs, so an in-page wait loop returns
+  // immediately without waiting. Stamping before the page settles loses the marker.
+  if (url) {
+    for (let i = 0; i < 50; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      try {
+        const st = await runJS('document.readyState', { tabIndex: _activeTabIndex, timeout: 5000 });
+        const href = await runJS('location.href', { tabIndex: _activeTabIndex, timeout: 5000 });
+        if ((st === 'complete' || st === 'interactive') && href && href !== 'about:blank') break;
+      } catch { /* tab still loading */ }
+    }
+  } else {
+    await new Promise(r => setTimeout(r, 200));
+  }
+  // Stamp identity marker + visibility spoof onto the loaded document.
+  await _stampTab(_activeTabIndex);
+  const info = await runJS(`JSON.stringify({title:document.title,url:location.href,tabIndex:${_activeTabIndex}})`, { tabIndex: _activeTabIndex });
+  try {
+    const parsed = JSON.parse(info);
+    if (parsed.url && parsed.url !== 'about:blank') _activeTabURL = parsed.url;
+  } catch {}
+  return info;
+}
+
+export async function closeTab() {
+  await refreshTargetWindow();
+  // ── Guard: never close a window's LAST tab. Closing it shuts the window —
+  // which quits Safari if it's the only window, AND (for profile-targeted
+  // instances) makes the target window vanish so every later op throws
+  // "profile window not found". It also wedges a 0-tab "ghost" window that
+  // resists `close`. Per-window (not global): with SAFARI_PROFILE set, several
+  // skills race closes on the same profile window while other-profile windows
+  // exist, so a global count would wrongly allow shutting the profile window.
+  // If the target window is down to one tab, blank it instead of closing.
+  try {
+    const _winTabs = parseInt(
+      await osascript(`tell application "Safari" to return (count of tabs of ${getTargetWindowRef()})`),
+      10
+    );
+    if (Number.isFinite(_winTabs) && _winTabs <= 1) {
+      const _ref = _activeTabIndex
+        ? `tab ${_activeTabIndex} of ${getTargetWindowRef()}`
+        : `current tab of ${getTargetWindowRef()}`;
+      await osascript(`tell application "Safari" to set URL of ${_ref} to "about:blank"`);
+      _activeTabIndex = null;
+      _activeTabURL = null;
+      _lastTabCount = null;
+      _lastResolveTime = 0;
+      return "Window's last tab blanked instead of closed (closing it would shut the window / quit Safari)";
+    }
+  } catch { /* count check failed — fall through to normal close */ }
+
+  if (_activeTabIndex) {
+    await osascript(
+      `tell application "Safari" to close tab ${_activeTabIndex} of ${getTargetWindowRef()}`
+    );
+    _activeTabIndex = null;
+    _activeTabURL = null;
+  } else {
+    await osascript(
+      `tell application "Safari" to close current tab of ${getTargetWindowRef()}`
+    );
+  }
+  _lastTabCount = null;    // Invalidate — tab count changed
+  _lastResolveTime = 0;    // Force re-resolve on next operation
+  return "Tab closed";
+}
+
+export async function switchTab(index) {
+  const idx = Number(index);
+  _activeTabIndex = idx;
+  // Claiming this tab: stamp it with a FRESH identity marker so resolveActiveTab can
+  // re-find it after the user shifts tab indices. A fresh marker (not a reused one)
+  // ensures a previously-claimed tab — which still carries the old marker string —
+  // is never mistaken for this one.
+  _activeTabMarker = `MCP_${SESSION_ID}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  _hasOwnedTab = true;
+  await _stampTab(idx);
+  // Do NOT visually switch the tab — it brings the Safari window to foreground
+  // and interrupts the user. Visual switching only happens in screenshot() when needed.
+  // AppleScript `do JavaScript in tab N` works on background tabs without switching.
+  // Get title+URL from the target tab
+  const result = await runJS(
+    `JSON.stringify({title:document.title,url:location.href})`,
+    { tabIndex: idx }
+  );
+  // Track by URL so we can find this tab even if indices shift
+  try {
+    const parsed = JSON.parse(result);
+    _activeTabURL = parsed.url || null;
+  } catch {}
+  _lastResolveTime = Date.now();
+  return result;
+}
+
+// ========== WAIT ==========
+
+export async function waitFor({ selector, text, timeout = 10000 }) {
+  // `do JavaScript` can't await, so an in-page async wait loop returns immediately
+  // (handing back an unsettled promise) instead of waiting. The wait loop runs on
+  // the Node side: each tick re-evaluates one SYNCHRONOUS check against the page.
+  const safeSelector = selector ? escJsSingleQuote(selector) : "";
+  const safeText = text ? escJsSingleQuote(text) : "";
+  if (!safeSelector && !safeText) {
+    throw new Error("waitFor requires selector or text");
+  }
+  const checkJs = `(function(){` +
+    (safeSelector ? `if(document.querySelector('${safeSelector}'))return 'Found: ${safeSelector}';` : "") +
+    (safeText ? `if(document.body&&document.body.innerText.includes('${safeText}'))return 'Found text: ${safeText}';` : "") +
+    `return '';})()`;
+  const deadline = Date.now() + Number(timeout);
+  while (Date.now() < deadline) {
+    const hit = await runJS(checkJs, { timeout: 5000 }).catch(() => "");
+    if (hit) return hit;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  throw new Error(`Timeout waiting for ${selector || text} (${timeout}ms)`);
+}
+
+// ========== EVALUATE ==========
+
+// Index of the last `;` that ends a top-level statement — skips `;` inside strings,
+// template literals and parens/brackets/braces (e.g. a `for (;;)` header). Returns
+// -1 when there is no top-level statement separator.
+function _lastTopLevelSemicolon(s) {
+  let depth = 0, inStr = false, quote = '', last = -1;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (c === '\\') { i++; continue; }
+      if (c === quote) inStr = false;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { inStr = true; quote = c; }
+    else if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ';' && depth === 0) last = i;
+  }
+  return last;
+}
+
+// Build the expression to evaluate from a user script. Pure (no Safari calls) so
+// it can be unit-tested directly — see scripts/test-evaluate-wrapping.js.
+export function _buildEvalExpr(js) {
+  // Async iff the *result* is a promise to wait on. `fetch(` alone is NOT async —
+  // an un-awaited fetch is fire-and-forget; only await / .then() / a leading
+  // `async` make the result thenable.
+  const isAsync = /\bawait\b/.test(js) || /\.then\s*\(/.test(js) || /^async\b/.test(js);
+  // Statement keywords: a script starting with one is never a bare expression,
+  // and `return (<keyword> ...)` would be a syntax error.
+  const NON_EXPR = /^(var|let|const|return|if|for|while|switch|try|do|throw)\b/;
+  const isIIFE = /^\((?:async\s+)?function/.test(js) || /^\((?:async\s+)?\(/.test(js);
+  const isSimpleExpression = !js.includes(';') && !js.includes('\n') && !NON_EXPR.test(js);
+
+  let expr;
+  if (isIIFE) {
+    expr = js;
+  } else if (isSimpleExpression) {
+    // A bare expression — usable as-is for sync; async needs an awaiting wrapper.
+    expr = isAsync ? `(async function(){return (${js})})()` : js;
+  } else {
+    // Multi-statement: prepend `return` to the last value-producing line when it
+    // can safely take one; otherwise fall back to indirect-eval completion value.
+    const lines = js.split('\n');
+    let addedReturn = false;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('//')) continue;
+      if (line.startsWith('return ') || line.startsWith('return;') || line === 'return') {
+        addedReturn = true; break;
+      }
+      // A block-closer (`}`, `})`, `})()`), a block body (ends with `}`) or a
+      // statement keyword can't take a prepended `return`.
+      if (line.startsWith('}') || line.endsWith('}') || NON_EXPR.test(line)) break;
+      lines[i] = 'return ' + lines[i];
+      addedReturn = true;
+      break;
+    }
+    if (addedReturn) {
+      expr = `(${isAsync ? 'async function' : 'function'}(){${lines.join('\n')}})()`;
+    } else if (isAsync) {
+      // No newline gave a return slot — typically a single-line `const x = await …; expr`.
+      // Split at the last top-level `;`: if a bare expression follows it, that becomes the
+      // awaited result. Otherwise run the body as-is (value may be undefined).
+      const semi = _lastTopLevelSemicolon(js);
+      const tail = semi >= 0 ? js.slice(semi + 1).trim() : '';
+      if (tail && !tail.startsWith('}') && !NON_EXPR.test(tail)) {
+        expr = `(async function(){${js.slice(0, semi + 1)} return (${tail}); })()`;
+      } else {
+        expr = `(async function(){${js}})()`;
+      }
+    } else {
+      // Indirect eval yields the completion value of an arbitrary statement list;
+      // the catch re-runs the body plainly when a strict CSP blocks eval.
+      const escaped = js.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+      expr = "(function(){ try { return (0,eval)('" + escaped + "') } catch(_e) { " + js.replace(/\n/g, ' ') + " } })()";
+    }
+  }
+  return { isAsync, expr };
+}
+
+// Async scripts can't be awaited through AppleScript `do JavaScript` — it returns
+// the moment the synchronous portion finishes, handing back an unsettled Promise.
+// So the work is started fire-and-forget into a page global, then that global is
+// polled synchronously from the Node side (the same pattern navigate() uses).
+async function _evaluateAsync(expr) {
+  // Token is identifier-safe (base36 → [0-9a-z], `_` prefix) so `window.<token>`
+  // dot access needs no quoting/escaping through the AppleScript bridge.
+  const token = '__mcpEval_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const slot = 'window.' + token;
+  // A SYNC outer function installs the globals, starts the async work (NOT awaited
+  // here — `do JavaScript` would not await it anyway) and returns immediately.
+  const kickoff =
+    `(function(){${slot}={done:false};(async function(){try{` +
+    `var __v=await (${expr});` +
+    `${slot}.val=(__v===undefined||__v===null)?null:(typeof __v==='object'?JSON.stringify(__v):String(__v));` +
+    `}catch(__e){${slot}.err=(__e&&__e.message)||String(__e);}` +
+    `finally{${slot}.done=true;}})();return 'ok';})()`;
+  const started = await runJS(kickoff, { timeout: 10000 });
+  if (started !== 'ok') {
+    return typeof started === 'string' && started ? started : '(no return value)';
+  }
+  // Poll the result global until the async work settles (35s budget).
+  const pollJs =
+    `(function(){var s=${slot};if(!s)return '__MCP_GONE__';` +
+    `if(!s.done)return '';return JSON.stringify({v:s.val,e:s.err});})()`;
+  const deadline = Date.now() + 35000;
+  let raw = '';
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 120));
+    raw = await runJS(pollJs, { timeout: 5000 }).catch(() => '');
+    if (raw === '__MCP_GONE__') {
+      return '(no return value — page navigated away during async evaluation)';
+    }
+    if (raw) break;
+  }
+  // Best-effort cleanup of the page global.
+  runJS(`(function(){try{delete ${slot};}catch(__e){${slot}=undefined;}return '';})()`).catch(() => {});
+  if (!raw) {
+    throw new Error('safari_evaluate: async script did not settle within 35s');
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.e) return 'Error: ' + parsed.e;
+    return parsed.v !== undefined && parsed.v !== null ? String(parsed.v) : '(no return value)';
+  } catch {
+    return raw;
+  }
+}
+
+export async function evaluate({ script }) {
+  const js = (script || '').trim();
+  if (!js) return '(no return value)';
+  const { isAsync, expr } = _buildEvalExpr(js);
+  if (isAsync) return _evaluateAsync(expr);
+  // Sync: a single `do JavaScript` over one expression. `do JavaScript` only
+  // returns the value of a single expression, so the whole script is one IIFE.
+  const wrappedJs = `(function(){ try { return (${expr}); } catch(__mcpErr) { return 'Error: ' + __mcpErr.message; } })()`;
+  if (process.env.MCP_DEBUG) console.error('[evaluate] wrapped:', wrappedJs.substring(0, 300));
+  const result = await runJS(wrappedJs);
+  // The regex async-sniff in _buildEvalExpr only catches a literal await/.then/async.
+  // It misses scripts whose *value* is a thenable — `Promise.resolve(5)`, an async IIFE
+  // with no inner await, any fn returning a promise. `do JavaScript` can't await those,
+  // so they come back as the literal "[object Promise]". Re-run through the async poller
+  // in that case. (Pathological: a script genuinely returning the string "[object Promise]"
+  // re-runs to the same value, so there is no downside.)
+  if (typeof result === 'string' && result.trim() === '[object Promise]') {
+    return _evaluateAsync(expr);
+  }
+  if (result === null || result === undefined || result === '') {
+    return '(no return value)';
+  }
+  return result;
+}
+
+// ========== ELEMENT INFO ==========
+
+export async function getElementInfo({ selector }) {
+  const sel = escJsSingleQuote(selector);
+  return runJS(
+    `(function(){var el=document.querySelector('${sel}');if(!el)return 'Element not found';var r=el.getBoundingClientRect();return JSON.stringify({tag:el.tagName,text:el.textContent.trim().substring(0,200),href:el.href||'',value:el.value||'',visible:r.width>0&&r.height>0,rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)},attrs:Object.fromEntries([...el.attributes].map(function(a){return[a.name,a.value.substring(0,100)]}))})})()`
+  );
+}
+
+export async function querySelectorAll({ selector, limit = 20 }) {
+  const sel = escJsSingleQuote(selector);
+  return runJS(
+    `JSON.stringify([...document.querySelectorAll('${sel}')].slice(0,${Number(limit)}).map(function(el,i){return{index:i,tag:el.tagName,text:el.textContent.trim().substring(0,100),href:el.href||undefined,value:el.value||undefined}}))`
+  );
+}
+
+// ========== HOVER ==========
+
+export async function hover({ selector, x, y, ref }) {
+  if (ref) selector = refSelector(ref);
+  if (selector) {
+    const sel = escJsSingleQuote(selector);
+    return runJS(
+      `(function(){var el=document.querySelector('${sel}');if(!el)return 'Element not found';el.scrollIntoView({block:'center'});el.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));el.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true}));return 'Hovered: '+el.tagName;})()`
+    );
+  }
+  if (x !== undefined && y !== undefined) {
+    return runJS(
+      `(function(){var el=document.elementFromPoint(${Number(x)},${Number(y)});if(!el)return 'No element';el.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));el.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true}));return 'Hovered: '+el.tagName+' at (${Number(x)},${Number(y)})';})()`
+    );
+  }
+  throw new Error("hover requires selector or x/y coordinates");
+}
+
+// ========== DIALOG HANDLING ==========
+
+export async function handleDialog({ action = "accept", text }) {
+  if (text !== undefined) {
+    const safeText = escJsSingleQuote(text);
+    await runJS(
+      `window.__mcp_dialog_response='${safeText}';window.__origPrompt=window.prompt;window.prompt=function(){var r=window.__mcp_dialog_response;window.prompt=window.__origPrompt;return r;}`
+    );
+  }
+  if (action === "accept") {
+    await runJS(
+      "window.__origConfirm=window.__origConfirm||window.confirm;window.confirm=function(){window.confirm=window.__origConfirm;return true;};window.__origAlert=window.__origAlert||window.alert;window.alert=function(){window.alert=window.__origAlert;};"
+    );
+  } else {
+    await runJS(
+      "window.__origConfirm=window.__origConfirm||window.confirm;window.confirm=function(){window.confirm=window.__origConfirm;return false;};"
+    );
+  }
+  return `Dialog handler set: ${action}${text ? ' with "' + text + '"' : ""}`;
+}
+
+// ========== WINDOW ==========
+
+export async function resizeWindow({ width, height }) {
+  await refreshTargetWindow();
+  await osascript(
+    `tell application "Safari" to set bounds of ${getTargetWindowRef()} to {0, 0, ${Number(width)}, ${Number(height)}}`
+  );
+  return `Resized to ${width}x${height}`;
+}
+
+// ========== COOKIES & STORAGE ==========
+
+export async function getCookies() {
+  return runJS("document.cookie");
+}
+
+export async function getLocalStorage({ key }) {
+  if (key) {
+    const safeKey = escJsSingleQuote(key);
+    return runJS(`localStorage.getItem('${safeKey}')`);
+  }
+  return runJS(
+    "JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(function(k){var v=localStorage.getItem(k);return[k,v==null?null:v.substring(0,200)]})))"
+  );
+}
+
+// ========== NETWORK (via Performance API) ==========
+
+export async function getNetworkRequests({ limit = 50 } = {}) {
+  return runJS(
+    `JSON.stringify(performance.getEntriesByType('resource').slice(-${Number(limit)}).map(function(r){return{name:r.name,type:r.initiatorType,duration:Math.round(r.duration),size:r.transferSize||0}}))`
+  );
+}
+
+// ========== DRAG ==========
+
+export async function drag({ sourceSelector, targetSelector, sourceX, sourceY, targetX, targetY }) {
+  if (sourceSelector && targetSelector) {
+    const srcSel = escJsSingleQuote(sourceSelector);
+    const tgtSel = escJsSingleQuote(targetSelector);
+    return runJS(
+      `(function(){` +
+      `var src=document.querySelector('${srcSel}');var tgt=document.querySelector('${tgtSel}');` +
+      `if(!src)return 'Source not found: ${srcSel}';if(!tgt)return 'Target not found: ${tgtSel}';` +
+      `var sr=src.getBoundingClientRect();var tr=tgt.getBoundingClientRect();` +
+      `var sx=sr.x+sr.width/2,sy=sr.y+sr.height/2,tx=tr.x+tr.width/2,ty=tr.y+tr.height/2;` +
+      `var dt=new DataTransfer();` +
+      `src.dispatchEvent(new DragEvent('dragstart',{clientX:sx,clientY:sy,bubbles:true,cancelable:true,dataTransfer:dt}));` +
+      `src.dispatchEvent(new MouseEvent('mousedown',{clientX:sx,clientY:sy,bubbles:true}));` +
+      `src.dispatchEvent(new MouseEvent('mousemove',{clientX:sx,clientY:sy,bubbles:true}));` +
+      `tgt.dispatchEvent(new DragEvent('dragover',{clientX:tx,clientY:ty,bubbles:true,cancelable:true,dataTransfer:dt}));` +
+      `tgt.dispatchEvent(new MouseEvent('mousemove',{clientX:tx,clientY:ty,bubbles:true}));` +
+      `tgt.dispatchEvent(new MouseEvent('mouseup',{clientX:tx,clientY:ty,bubbles:true}));` +
+      `tgt.dispatchEvent(new DragEvent('drop',{clientX:tx,clientY:ty,bubbles:true,cancelable:true,dataTransfer:dt}));` +
+      `src.dispatchEvent(new DragEvent('dragend',{bubbles:true}));` +
+      `return 'Dragged from '+src.tagName+' to '+tgt.tagName;})()`
+    );
+  }
+  if (sourceX !== undefined && sourceY !== undefined && targetX !== undefined && targetY !== undefined) {
+    return runJS(
+      `(function(){` +
+      `var src=document.elementFromPoint(${Number(sourceX)},${Number(sourceY)});` +
+      `if(!src)return 'No element at source';` +
+      `src.dispatchEvent(new MouseEvent('mousedown',{clientX:${Number(sourceX)},clientY:${Number(sourceY)},bubbles:true}));` +
+      `src.dispatchEvent(new MouseEvent('mousemove',{clientX:${Number(sourceX)},clientY:${Number(sourceY)},bubbles:true}));` +
+      `document.elementFromPoint(${Number(targetX)},${Number(targetY)})?.dispatchEvent(new MouseEvent('mousemove',{clientX:${Number(targetX)},clientY:${Number(targetY)},bubbles:true}));` +
+      `document.elementFromPoint(${Number(targetX)},${Number(targetY)})?.dispatchEvent(new MouseEvent('mouseup',{clientX:${Number(targetX)},clientY:${Number(targetY)},bubbles:true}));` +
+      `return 'Dragged from (${Number(sourceX)},${Number(sourceY)}) to (${Number(targetX)},${Number(targetY)})';})()`
+    );
+  }
+  throw new Error("drag requires sourceSelector+targetSelector or sourceX/Y+targetX/Y");
+}
+
+// ========== FILE PATH SAFETY ==========
+// Prevent reading sensitive system files via upload/paste tools
+function _validateFilePath(filePath) {
+  const resolved = resolvePath(filePath);
+  // resolve() already collapses "..", so checking the RESOLVED path for it is a dead no-op.
+  // Reject traversal sequences in the RAW input instead; the allowlist below is the real guard.
+  if (/(^|[/\\])\.\.([/\\]|$)/.test(filePath)) throw new Error("Path traversal not allowed: " + filePath);
+  const blocked = ['.ssh', '.gnupg', '.aws', '.config/gcloud', 'credentials', '.env', '.npmrc', '.netrc', 'id_rsa', 'id_ed25519', '.keychain'];
+  // Resolve symlinks when the target exists, so a symlink under /Users/ pointing at /etc
+  // can't slip past the allowlist. Falls back to the lexical path when the file doesn't
+  // exist yet (e.g. savePDF's output path).
+  let real = resolved;
+  try { real = realpathSync(resolved); } catch { /* not created yet — keep lexical path */ }
+  for (const checkPath of new Set([resolved, real])) {
+    const lower = checkPath.toLowerCase();
+    for (const b of blocked) {
+      if (lower.includes(b)) throw new Error("Blocked: sensitive path " + filePath);
+    }
+    // realpathSync resolves /var/folders/... to /private/var/folders/... on macOS —
+    // without the /private form an EXISTING file under /var/folders was rejected.
+    if (!checkPath.startsWith('/Users/') && !checkPath.startsWith('/tmp/') && !checkPath.startsWith('/var/folders/') && !checkPath.startsWith('/private/tmp/') && !checkPath.startsWith('/private/var/folders/')) {
+      throw new Error("File path must be under /Users/, /tmp/, or /var/folders/: " + filePath);
+    }
+  }
+}
+
+// ========== UPLOAD FILE ==========
+
+export async function uploadFile({ selector, filePath }) {
+  _validateFilePath(filePath);
+  // Read file in Node.js, send as base64 to Safari JS, create File + DataTransfer
+  // NO file dialog, NO System Events, NO focus stealing
+
+  // Safety: close any open file dialog first (in case Claude clicked the input before calling this)
+  await osascript(
+    `tell application "System Events"
+      tell process "Safari"
+        repeat with w in every window
+          if exists sheet 1 of w then
+            try
+              click button "Cancel" of sheet 1 of w
+            on error
+              try
+                click button "\u05D1\u05D9\u05D8\u05D5\u05DC" of sheet 1 of w  -- "Cancel" in Hebrew locale
+              on error
+                key code 53
+              end try
+            end try
+            exit repeat
+          end if
+        end repeat
+      end tell
+    end tell`
+  ).catch(() => {}); // Ignore if no dialog open
+
+  const sel = escJsSingleQuote(selector);
+  const { basename, extname } = await import("node:path");
+  let fileName = basename(filePath);
+  let ext = extname(filePath).toLowerCase().replace(".", "");
+  let resolvedPath = filePath;
+
+  // Auto-convert images that the target input rejects.
+  // Quora is the canonical case — declares accept="image/png,image/jpeg" and silently
+  // ignores webp drops. Convert webp/heic to PNG via macOS sips (no extra deps).
+  const imageFormats = new Set(['webp', 'heic', 'heif', 'tiff', 'tif']);
+  if (imageFormats.has(ext)) {
+    const accept = await runJS(
+      `(function(){var el=document.querySelector('${sel}');if(!el){var roots=window.mcpCollectRoots?window.mcpCollectRoots():[document];for(var i=0;i<roots.length;i++){el=roots[i].querySelector('${sel}');if(el)break;}}return el?(el.getAttribute('accept')||''):'';})()`
+    ).catch(() => '');
+    const acceptStr = String(accept || '').toLowerCase();
+    const accepted = !acceptStr ||
+      acceptStr.includes('image/*') ||
+      acceptStr.includes(`image/${ext}`) ||
+      acceptStr.includes(`.${ext}`);
+    if (!accepted) {
+      const tmpPng = join(tmpdir(), `safari-mcp-upload-${Date.now()}.png`);
+      try {
+        await execFileAsync('sips', ['-s', 'format', 'png', resolvedPath, '--out', tmpPng], { timeout: 15000 });
+        resolvedPath = tmpPng;
+        fileName = basename(tmpPng);
+        ext = 'png';
+      } catch (sipsErr) {
+        console.error(`[Safari MCP] sips conversion failed (${ext}→png): ${sipsErr.message}. Continuing with original.`);
+      }
+    }
+  }
+
+  // Read file as base64
+  const fileData = await readFile(resolvedPath);
+  const base64 = fileData.toString("base64");
+
+  // Determine MIME type
+  const mimeMap = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+    webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf",
+    mp4: "video/mp4", mp3: "audio/mpeg", txt: "text/plain", csv: "text/csv",
+    json: "application/json", zip: "application/zip", doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+  const mime = mimeMap[ext] || "application/octet-stream";
+  const safeName = fileName.replace(/'/g, "\\'");
+
+  // Send to Safari via runJSLarge (handles files >260KB via temp file).
+  // Fully synchronous IIFE — `do JavaScript` can't await a Promise, so an `async`
+  // wrapper would hand back "[object Promise]" before the body settled.
+  const result = await runJSLarge(
+    `(function(){
+      // Deep query: main document → shadow DOM → iframes
+      function deepQuery(sel) {
+        var el = document.querySelector(sel);
+        if (el) return el;
+        var all = document.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {
+          var sr = all[i].shadowRoot;
+          if (sr) { el = sr.querySelector(sel); if (el) return el; }
+        }
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+          try { var doc = iframes[i].contentDocument; if (doc) { el = doc.querySelector(sel); if (el) return el; } } catch(_) {}
+        }
+        return null;
+      }
+      var el = deepQuery('${sel}');
+      if (!el) return 'Element not found: ${sel}';
+
+      // Decode base64 to binary
+      var b64 = '${base64}';
+      var binary = atob(b64);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+      var file = new File([bytes], '${safeName}', { type: '${mime}' });
+      var dt = new DataTransfer();
+      dt.items.add(file);
+
+      // Strategy 1: Direct files assignment (works on most inputs)
+      try { el.files = dt.files; } catch(_) {}
+
+      if (el.files && el.files.length > 0) {
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return 'Uploaded: ${safeName} (' + Math.round(bytes.length / 1024) + ' KB, verified ' + el.files.length + ' file(s))';
+      }
+
+      // Strategy 2: Drop event on the input or its container (works when files property is read-only)
+      var dropTarget = el.closest('[class*="upload"], [class*="drop"], [class*="file"]') || el.parentElement || el;
+      var dropEvent = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt });
+      dropTarget.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: dt }));
+      dropTarget.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      dropTarget.dispatchEvent(dropEvent);
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // No await here: do-JavaScript cannot await a Promise, and the drop events above
+      // already dispatched synchronously. A framework that needs a tick is surfaced by the hint below.
+
+      // Re-check after drop
+      if (el.files && el.files.length > 0) {
+        return 'Uploaded via drop: ${safeName} (' + Math.round(bytes.length / 1024) + ' KB, verified ' + el.files.length + ' file(s))';
+      }
+      // Check if any new images/files appeared on the page after the drop
+      var newImgs = document.querySelectorAll('img[src*="blob:"], img[src*="data:"], [style*="background-image"]');
+      var hint = newImgs.length > 0 ? ' (detected ' + newImgs.length + ' blob/data images on page — upload likely succeeded)' : '';
+      return 'Upload attempted: ${safeName} (' + Math.round(bytes.length / 1024) + ' KB) — drop event dispatched. el.files is empty (normal for custom upload handlers).' + hint + ' Verify with safari_snapshot.';
+    })()`,
+    { timeout: 30000 }
+  );
+
+  // Clean up the temp PNG produced by any sips image conversion above (was leaked before).
+  if (resolvedPath !== filePath) await unlink(resolvedPath).catch(() => {});
+  return result;
+}
+
+// ========== PASTE IMAGE FROM FILE ==========
+
+export async function pasteImageFromFile({ filePath }) {
+  _validateFilePath(filePath);
+  // Paste image via JS ClipboardEvent — NO clipboard touch, NO System Events, NO focus steal
+  const { extname } = await import("node:path");
+  const ext = extname(filePath).toLowerCase().replace(".", "");
+  const mimeMap = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+  const mime = mimeMap[ext] || "image/png";
+
+  // Read image as base64
+  const fileData = await readFile(filePath);
+  const base64 = fileData.toString("base64");
+  const fileName = filePath.split("/").pop().replace(/'/g, "\\'");
+
+  // Use runJSLarge — images are often >260KB as base64
+  const result = await runJSLarge(
+    `(function(){
+      var el = document.activeElement;
+      if (!el) return 'No focused element';
+
+      // Decode base64 to blob
+      var b64 = '${base64}';
+      var binary = atob(b64);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      var blob = new Blob([bytes], { type: '${mime}' });
+      var file = new File([blob], '${fileName}', { type: '${mime}' });
+
+      // Method 1: Synthetic paste event with DataTransfer (works on Medium, dev.to, etc.)
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      var pasteEvent = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+      var handled = el.dispatchEvent(pasteEvent);
+
+      // Method 2: If paste didn't work, try drop event (works on drag-drop zones)
+      if (!handled || !document.querySelector('img[src^="blob:"],img[src^="data:"]')) {
+        var dropDt = new DataTransfer();
+        dropDt.items.add(file);
+        var dropEvent = new DragEvent('drop', { dataTransfer: dropDt, bubbles: true, cancelable: true });
+        el.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dropDt, bubbles: true }));
+        el.dispatchEvent(new DragEvent('dragover', { dataTransfer: dropDt, bubbles: true }));
+        el.dispatchEvent(dropEvent);
+      }
+
+      return 'Pasted image: ${fileName} (' + Math.round(bytes.length / 1024) + ' KB)';
+    })()`,
+    { timeout: 30000 }
+  );
+
+  return result;
+}
+
+// ========== EMULATE (VIEWPORT) ==========
+
+export async function emulate({ device, width, height, userAgent, scale = 1 }) {
+  await refreshTargetWindow();
+  const devices = {
+    "iphone-14": { width: 390, height: 844, ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" },
+    "iphone-14-pro-max": { width: 430, height: 932, ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" },
+    "ipad": { width: 820, height: 1180, ua: "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" },
+    "ipad-pro": { width: 1024, height: 1366, ua: "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" },
+    "pixel-7": { width: 412, height: 915, ua: "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" },
+    "galaxy-s24": { width: 412, height: 915, ua: "Mozilla/5.0 (Linux; Android 14; SM-S921B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36" },
+  };
+
+  const d = device ? devices[device.toLowerCase()] : null;
+  const w = d ? d.width : (width || 375);
+  const h = d ? d.height : (height || 812);
+  const ua = d ? d.ua : (userAgent || "");
+
+  // Resize Safari window to match device
+  await osascript(
+    `tell application "Safari" to set bounds of ${getTargetWindowRef()} to {0, 0, ${w}, ${h + 100}}`
+  );
+
+  // Override viewport meta and user agent if specified
+  if (ua) {
+    await runJS(
+      `Object.defineProperty(navigator,'userAgent',{get:function(){return '${ua.replace(/'/g, "\\'")}'},configurable:true})`
+    );
+  }
+
+  // Set viewport meta tag
+  await runJS(
+    `(function(){var m=document.querySelector('meta[name=viewport]');if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}m.content='width=${w},initial-scale=${scale}';})()`
+  );
+
+  // Reload to apply changes, then wait for load — polled from Node (`do JavaScript`
+  // can't await an in-page loop).
+  const navIndex = _activeTabIndex;
+  await runJS("location.reload()", { tabIndex: navIndex });
+  await new Promise(r => setTimeout(r, 200));
+  await _pollReadyAndRead(navIndex);
+
+  return JSON.stringify({
+    device: device || "custom",
+    width: w,
+    height: h,
+    userAgent: ua ? ua.substring(0, 60) + "..." : "(default)",
+  });
+}
+
+export async function resetEmulation() {
+  await refreshTargetWindow();
+  // Reset user agent — remove the defineProperty override set by emulate()
+  await runJS(
+    "try{var d=Object.getOwnPropertyDescriptor(Navigator.prototype,'userAgent');if(d){Object.defineProperty(navigator,'userAgent',d);}else{delete navigator.userAgent;}}catch(_){}"
+  );
+  // Maximize window
+  await osascript(
+    `tell application "Safari" to set bounds of ${getTargetWindowRef()} to {0, 0, 1440, 900}`
+  );
+  // Reload + wait for load — polled from Node (`do JavaScript` can't await an in-page loop).
+  const navIndex = _activeTabIndex;
+  await runJS("location.reload()", { tabIndex: navIndex });
+  await new Promise(r => setTimeout(r, 200));
+  await _pollReadyAndRead(navIndex);
+  return "Emulation reset to desktop";
+}
+
+// ========== CONSOLE CAPTURE ==========
+
+export async function startConsoleCapture() {
+  await runJS(
+    "if(!window.__mcp_console){window.__mcp_console=[];var orig={log:console.log,warn:console.warn,error:console.error,info:console.info};['log','warn','error','info'].forEach(function(level){console[level]=function(){window.__mcp_console.push({level:level,message:[].slice.call(arguments).map(String).join(' '),time:Date.now()});if(window.__mcp_console.length>2000)window.__mcp_console.shift();orig[level].apply(console,arguments);};});window.addEventListener('error',function(e){window.__mcp_console.push({level:'error',message:e.message,time:Date.now()});if(window.__mcp_console.length>2000)window.__mcp_console.shift();});}"
+  );
+  return "Console capture started";
+}
+
+export async function getConsoleMessages() {
+  return runJS("JSON.stringify(window.__mcp_console||[])");
+}
+
+export async function clearConsoleCapture() {
+  return runJS("window.__mcp_console=[]; 'Console cleared'");
+}
+
+// ========== PDF SAVE ==========
+
+export async function savePDF({ path: pdfPath }) {
+  await refreshTargetWindow();
+  _validateFilePath(pdfPath);  // allowlist (/Users//tmp//var-folders) + block sensitive paths — prevents arbitrary overwrite
+  // NO focus stealing — uses screencapture + Python Quartz to generate PDF
+
+  // Step 1: Get full page dimensions
+  const dims = await runJS("JSON.stringify({h:document.documentElement.scrollHeight,w:document.documentElement.scrollWidth})");
+  const { h, w } = JSON.parse(dims);
+
+  // Step 2: Save current bounds and resize to capture full page
+  const origBounds = await osascript(
+    `tell application "Safari" to return bounds of ${getTargetWindowRef()}`
+  );
+  const captureHeight = Math.min(Number(h) + 100, 16000);
+  await osascript(
+    `tell application "Safari" to set bounds of ${getTargetWindowRef()} to {0, 0, ${Number(w)}, ${captureHeight}}`
+  );
+  await new Promise(r => setTimeout(r, 500)); // Let page reflow
+
+  // Step 3: Take screenshot via screencapture -l (window-targeted, NO focus steal)
+  const windowIdRaw = await osascript(
+    `tell application "Safari" to return id of ${getTargetWindowRef()}`
+  );
+  const windowId = windowIdRaw != null && /^\d+$/.test(String(windowIdRaw).trim()) ? String(windowIdRaw).trim() : null;
+  if (!windowId) throw new Error("Cannot get Safari window ID for PDF capture");
+  const tmpPng = join(tmpdir(), `safari-mcp-pdf-${Date.now()}.png`);
+  try {
+    // Use do shell script to inherit osascript's Screen Recording permission
+    await osascript(
+      `do shell script "screencapture -l${windowId} -o -x '${tmpPng}'"`,
+      { timeout: 15000 }
+    );
+  } catch (err) {
+    // Restore bounds on failure
+    await osascript(`tell application "Safari" to set bounds of ${getTargetWindowRef()} to {${origBounds}}`).catch(() => {});
+    throw new Error(`PDF screenshot capture failed: ${err.message}`);
+  }
+
+  // Step 4: Restore original bounds
+  await osascript(
+    `tell application "Safari" to set bounds of ${getTargetWindowRef()} to {${origBounds}}`
+  ).catch(() => {});
+
+  // Step 5: Convert screenshot to PDF using Python3 + macOS Quartz (no external deps).
+  // Paths are passed as argv — NOT interpolated into the source — so there is no shell
+  // or Python string-escaping to get wrong, and no code-injection surface.
+  try {
+    await execFileAsync("python3", ["-c", `
+import sys
+from Quartz import CGImageSourceCreateWithURL, CGImageSourceCreateImageAtIndex, CGImageGetWidth, CGImageGetHeight, CGPDFContextCreateWithURL, CGRectMake, CGPDFContextBeginPage, CGPDFContextEndPage, CGContextDrawImage
+from CoreFoundation import CFURLCreateFromFileSystemRepresentation
+
+png_path = sys.argv[1].encode('utf-8')
+pdf_path = sys.argv[2].encode('utf-8')
+
+src_url = CFURLCreateFromFileSystemRepresentation(None, png_path, len(png_path), False)
+img_src = CGImageSourceCreateWithURL(src_url, None)
+if not img_src:
+    print("ERROR: failed to read screenshot", file=sys.stderr); sys.exit(1)
+img = CGImageSourceCreateImageAtIndex(img_src, 0, None)
+if not img:
+    print("ERROR: failed to decode image", file=sys.stderr); sys.exit(1)
+w = CGImageGetWidth(img)
+h = CGImageGetHeight(img)
+
+pdf_url = CFURLCreateFromFileSystemRepresentation(None, pdf_path, len(pdf_path), False)
+ctx = CGPDFContextCreateWithURL(pdf_url, CGRectMake(0, 0, w, h), None)
+CGPDFContextBeginPage(ctx, None)
+CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img)
+CGPDFContextEndPage(ctx)
+del ctx
+print(f"OK {w}x{h}")
+`.trim(), tmpPng, pdfPath], { timeout: 15000 });
+  } catch (err) {
+    throw new Error(`PDF conversion failed: ${err.message}`);
+  } finally {
+    unlink(tmpPng).catch(() => {});
+  }
+
+  return `PDF saved to: ${pdfPath} (image-based, no focus stealing)`;
+}
+
+// ========== SNAPSHOT — ref-based interaction (like Chrome DevTools MCP) ==========
+// Assigns numeric refs to interactive/visible elements so Claude can say "click ref 5"
+// instead of guessing CSS selectors. Much faster, no hallucination risk.
+
+let _snapshotGen = 0;
+// getNextSnapshotGen is used by the MCP tool path (index.js) to reserve a gen for the extension.
+// If the extension fails and falls back to takeSnapshot(), takeSnapshot uses _snapshotGen directly
+// (which was already incremented by getNextSnapshotGen) — so no double-increment occurs.
+export function getNextSnapshotGen() { return _snapshotGen++; }
+
+export async function takeSnapshot({ selector, _gen } = {}) {
+  // Use provided gen (from tool path) or allocate a new one (direct call)
+  const gen = _gen != null ? _gen : _snapshotGen++;
+  const root = selector ? `document.querySelector('${selector.replace(/'/g, "\\'")}')` : "document.body";
+
+  const result = await runJS(
+    `(function(){
+      var gen = ${gen};
+      var id = 0;
+      var lines = [];
+      // Clear old refs
+      document.querySelectorAll('[data-mcp-ref]').forEach(function(el){ el.removeAttribute('data-mcp-ref'); });
+
+      function getRole(el) {
+        var role = el.getAttribute('role');
+        if (role) return role;
+        var tag = el.tagName.toLowerCase();
+        var map = {
+          a:'link', button:'button', input:'textbox', textarea:'textbox',
+          select:'combobox', img:'img', h1:'heading', h2:'heading', h3:'heading',
+          h4:'heading', h5:'heading', h6:'heading', nav:'navigation', main:'main',
+          header:'banner', footer:'contentinfo', form:'form', table:'table',
+          tr:'row', th:'columnheader', td:'cell', ul:'list', ol:'list', li:'listitem',
+          dialog:'dialog', details:'group', summary:'button', label:'label',
+          iframe:'document', video:'video', audio:'audio', canvas:'canvas',
+          progress:'progressbar', meter:'meter'
+        };
+        if (tag === 'input') {
+          var type = (el.type || 'text').toLowerCase();
+          if (type === 'checkbox') return 'checkbox';
+          if (type === 'radio') return 'radio';
+          if (type === 'submit' || type === 'button') return 'button';
+          if (type === 'file') return 'file';
+          if (type === 'range') return 'slider';
+          return 'textbox';
+        }
+        return map[tag] || null;
+      }
+
+      function getName(el) {
+        var ariaLabel = el.getAttribute('aria-label');
+        if (ariaLabel) return ariaLabel;
+        var ariaLabelledBy = el.getAttribute('aria-labelledby');
+        if (ariaLabelledBy) {
+          var ref = document.getElementById(ariaLabelledBy);
+          if (ref) return ref.textContent.trim().substring(0,80);
+        }
+        if (el.tagName === 'IMG') return el.alt || '';
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+          var label = el.closest('label') || (el.id && document.querySelector('label[for=\"'+el.id+'\"]'));
+          if (label) return label.textContent.trim().substring(0,80);
+          if (el.placeholder) return el.placeholder;
+          if (el.name) return el.name;
+        }
+        if (el.title) return el.title;
+        // For links/buttons, use text content
+        if (['A','BUTTON','LABEL','SUMMARY'].includes(el.tagName)) {
+          return el.textContent.trim().substring(0,80);
+        }
+        return '';
+      }
+
+      function isInteractive(el) {
+        var tag = el.tagName;
+        if (['A','BUTTON','INPUT','TEXTAREA','SELECT','SUMMARY','DETAILS'].includes(tag)) return true;
+        if (el.getAttribute('role')) return true;
+        if (el.getAttribute('tabindex') !== null) return true;
+        if (el.onclick || el.getAttribute('onclick')) return true;
+        if (el.isContentEditable) return true;
+        return false;
+      }
+
+      function isStyleVisible(el) {
+        var style = window.getComputedStyle(el);
+        if (!style || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+        if (el.getAttribute('aria-hidden') === 'true') return false;
+        return true;
+      }
+
+      function isVisible(el) {
+        if (!isStyleVisible(el)) return false;
+        var r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      }
+
+      function walk(el, depth) {
+        if (depth > 20 || id > 800) return;
+        if (!isStyleVisible(el)) return;
+
+        var role = getRole(el);
+        var interactive = isInteractive(el);
+        var isHeading = /^H[1-6]$/.test(el.tagName);
+        var isText = !role && el.children.length === 0 && el.textContent.trim().length > 0 && el.textContent.trim().length < 200;
+        var visible = isVisible(el);
+
+        // Include: interactive elements, headings, images, text nodes with content
+        if (visible && (role || interactive || isHeading || isText)) {
+          var ref = gen + '_' + (id++);
+          el.setAttribute('data-mcp-ref', ref);
+          var rect=el.getBoundingClientRect();
+          var meta={tag:el.tagName};var nm=getName(el);if(nm)meta.text=nm.substring(0,80);
+          if(el.id)meta.id=el.id;
+          if(el.getAttribute('name'))meta.nameAttr=el.getAttribute('name');
+          var _ti=el.getAttribute('data-testid');if(_ti)meta.testid=_ti;
+          if(el.href)meta.href=el.href;
+          var _al=el.getAttribute('aria-label');if(_al)meta.al=_al;
+          if(el.placeholder)meta.ph=el.placeholder;
+          meta.cx=Math.round(window.scrollX+rect.left+rect.width/2);
+          meta.cy=Math.round(window.scrollY+rect.top+rect.height/2);
+          window.__mcpRefs[ref]=meta;
+          var indent = '  '.repeat(depth);
+          var line = indent + 'ref=' + ref + ' ';
+
+          if (role) line += role;
+          else if (isText) line += 'text';
+          else line += el.tagName.toLowerCase();
+
+          var name = getName(el);
+          if (name) line += ' "' + name.replace(/"/g, "'") + '"';
+
+          // Value for inputs
+          if (el.value !== undefined && el.value !== '' && el.tagName !== 'BUTTON') {
+            line += ' value="' + String(el.value).substring(0,50).replace(/"/g, "'") + '"';
+          }
+          // Checked state
+          if (el.checked) line += ' checked';
+          // Disabled
+          if (el.disabled) line += ' disabled';
+          // Required
+          if (el.required) line += ' required';
+          // Selected (option)
+          if (el.selected) line += ' selected';
+          // Expanded (details, aria-expanded)
+          if (el.open !== undefined) line += el.open ? ' expanded' : ' collapsed';
+          if (el.getAttribute('aria-expanded') === 'true') line += ' expanded';
+          if (el.getAttribute('aria-expanded') === 'false') line += ' collapsed';
+          // Heading level
+          if (isHeading) line += ' level=' + el.tagName[1];
+          // Focusable
+          if (el.tabIndex >= 0) line += ' focusable';
+          // Link href
+          if (el.tagName === 'A' && el.href) line += ' href="' + el.href.substring(0,100) + '"';
+          // Content editable
+          if (el.isContentEditable && el.getAttribute('contenteditable') !== 'inherit') line += ' editable';
+
+          lines.push(line);
+        }
+
+        // Recurse into children
+        for (var i = 0; i < el.children.length; i++) {
+          walk(el.children[i], depth + (role ? 1 : 0));
+        }
+        if (el.shadowRoot) {
+          for (var j = 0; j < el.shadowRoot.children.length; j++) {
+            walk(el.shadowRoot.children[j], depth + (role ? 1 : 0));
+          }
+        }
+      }
+
+      window.__mcpRefs = {};
+      window.__mcpRefsTime = Date.now();
+      var root = ${root};
+      if (!root) return 'Element not found';
+      walk(root, 0);
+      return lines.join('\\n');
+    })()`
+  );
+
+  return result;
+}
+
+// Click/fill/type by ref — resolves data-mcp-ref attribute
+export function refSelector(ref) {
+  return `[data-mcp-ref="${ref}"]`;
+}
+
+// ========== RUN SCRIPT (multi-step automation in one call) ==========
+
+// Execute multiple safari.js operations in a single tool call
+// Avoids round-trip overhead of calling tools one by one
+// script is a JSON array of steps: [{action: "navigate", args: {url: "..."}}, {action: "click", args: {selector: "..."}}, ...]
+export async function runScript({ steps, onStep }) {
+  const results = [];
+  for (const step of steps) {
+    const { action, args = {} } = step;
+    // Safety callback (tab-ownership, wired by index.js) runs OUTSIDE the per-step
+    // try/catch: a refusal must abort the whole batch, not be recorded as a step
+    // error and silently continue to the next step.
+    if (onStep) onStep(action, args);
+    try {
+      // Map action names to safari.js functions
+      const actions = {
+        navigate, click, doubleClick, rightClick, fill, clearField, typeText,
+        pressKey, scroll, scrollTo, scrollToElement, readPage, getPageSource,
+        screenshot, screenshotElement, evaluate, waitFor, waitForTime, hover,
+        selectOption, fillForm, fillAndSubmit, navigateAndRead, clickAndWait,
+        goBack, goForward, reload, newTab, closeTab, switchTab, listTabs,
+        getLocalStorage, setLocalStorage, deleteLocalStorage,
+        getSessionStorage, setSessionStorage, deleteSessionStorage,
+        getCookies, setCookie, deleteCookies, getElementInfo, querySelectorAll,
+        extractTables, extractMeta, extractImages, extractLinks,
+        analyzePage, detectForms, getAccessibilityTree, getPerformanceMetrics,
+        // Previously-missing actions — these tools existed but couldn't be batched.
+        verifyState, reactSelectSet, reactSelectListOptions,
+        nativeClick, nativeHover, nativeType, nativeKeyboard,
+        replaceEditorContent, uploadFile, mockNetworkRoute,
+      };
+      const fn = actions[action];
+      if (!fn) {
+        results.push({ action, error: `Unknown action: ${action}` });
+        continue;
+      }
+      const result = await fn(args);
+      results.push({ action, result: typeof result === "string" ? result.substring(0, 2000) : result });
+    } catch (err) {
+      results.push({ action, error: err.message });
+    }
+  }
+  return JSON.stringify(results);
+}
+
+// ========== ACCESSIBILITY SNAPSHOT ==========
+
+export async function getAccessibilityTree({ selector, maxDepth = 5 }) {
+  const sel = selector ? `'${selector.replace(/'/g, "\\'")}'` : "null";
+  return runJS(
+    `(function(){
+      function buildTree(el, depth) {
+        if (!el || depth > ${Number(maxDepth)}) return null;
+        var role = el.getAttribute('role') || el.tagName.toLowerCase();
+        var ariaLabel = el.getAttribute('aria-label') || '';
+        var ariaDescribedBy = el.getAttribute('aria-describedby') || '';
+        var ariaExpanded = el.getAttribute('aria-expanded');
+        var ariaChecked = el.getAttribute('aria-checked');
+        var ariaSelected = el.getAttribute('aria-selected');
+        var ariaDisabled = el.getAttribute('aria-disabled');
+        var ariaHidden = el.getAttribute('aria-hidden');
+        var tabIndex = el.tabIndex;
+        var text = '';
+        if (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3) {
+          text = el.childNodes[0].textContent.trim().substring(0, 100);
+        }
+        var node = { role: role };
+        if (ariaLabel) node.name = ariaLabel;
+        if (text) node.text = text;
+        if (el.id) node.id = el.id;
+        if (ariaExpanded !== null) node.expanded = ariaExpanded;
+        if (ariaChecked !== null) node.checked = ariaChecked;
+        if (ariaSelected !== null) node.selected = ariaSelected;
+        if (ariaDisabled !== null) node.disabled = ariaDisabled;
+        if (ariaHidden === 'true') node.hidden = true;
+        if (tabIndex >= 0) node.focusable = true;
+        if (el.tagName === 'A' && el.href) node.href = el.href;
+        if (el.tagName === 'IMG') { node.alt = el.alt || '(missing)'; node.src = el.src; }
+        if (['INPUT','TEXTAREA','SELECT'].includes(el.tagName)) {
+          node.type = el.type || el.tagName.toLowerCase();
+          node.value = (el.value || '').substring(0, 100);
+          if (el.required) node.required = true;
+          if (el.placeholder) node.placeholder = el.placeholder;
+        }
+        var children = [];
+        for (var i = 0; i < el.children.length; i++) {
+          if (el.children[i].getAttribute('aria-hidden') === 'true') continue;
+          var child = buildTree(el.children[i], depth + 1);
+          if (child) children.push(child);
+        }
+        if (children.length > 0) node.children = children;
+        return node;
+      }
+      var root = ${sel} ? document.querySelector(${sel}) : document.body;
+      if (!root) return JSON.stringify({ error: 'Element not found' });
+      return JSON.stringify(buildTree(root, 0));
+    })()`,
+    { timeout: 30000 }
+  );
+}
+
+// ========== COOKIE CRUD ==========
+
+export async function setCookie({ name, value, domain, path: cookiePath, expires, secure, sameSite, httpOnly }) {
+  const safeName = escJsSingleQuote(name);
+  const safeValue = escJsSingleQuote(value);
+  // Every interpolated attribute goes through escJsSingleQuote — path/domain/expires
+  // used to be embedded raw and then "escaped" with a quote-only replace (no
+  // backslash-first), which both broke legitimate values and re-opened the literal.
+  let cookie = `${safeName}=${safeValue}`;
+  if (cookiePath) cookie += `; path=${escJsSingleQuote(cookiePath)}`;
+  if (domain) cookie += `; domain=${escJsSingleQuote(domain)}`;
+  if (expires) cookie += `; expires=${escJsSingleQuote(expires)}`;
+  if (secure) cookie += '; secure';
+  if (sameSite) cookie += `; samesite=${sameSite}`;
+  return runJS(`document.cookie='${cookie}'; 'Cookie set: ${safeName}'`);
+}
+
+export async function deleteCookies({ name, all }) {
+  if (all) {
+    return runJS(
+      `(function(){var cookies=document.cookie.split(';');var count=0;cookies.forEach(function(c){var name=c.split('=')[0].trim();document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';count++;});return 'Deleted '+count+' cookies';})()`
+    );
+  }
+  if (name) {
+    const safeName = escJsSingleQuote(name);
+    return runJS(
+      `document.cookie='${safeName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; 'Deleted cookie: ${safeName}'`
+    );
+  }
+  throw new Error("deleteCookies requires name or all:true");
+}
+
+// ========== SESSION STORAGE ==========
+
+export async function getSessionStorage({ key }) {
+  if (key) {
+    const safeKey = escJsSingleQuote(key);
+    return runJS(`sessionStorage.getItem('${safeKey}')`);
+  }
+  return runJS(
+    "JSON.stringify(Object.fromEntries(Object.keys(sessionStorage).map(function(k){var v=sessionStorage.getItem(k);return[k,v==null?null:v.substring(0,200)]})))"
+  );
+}
+
+export async function setSessionStorage({ key, value }) {
+  const safeKey = escJsSingleQuote(key);
+  const safeValue = escJsSingleQuote(value);
+  return runJS(`sessionStorage.setItem('${safeKey}','${safeValue}'); 'Set sessionStorage: ${safeKey}'`);
+}
+
+export async function setLocalStorage({ key, value }) {
+  const safeKey = escJsSingleQuote(key);
+  const safeValue = escJsSingleQuote(value);
+  return runJS(`localStorage.setItem('${safeKey}','${safeValue}'); 'Set localStorage: ${safeKey}'`);
+}
+
+export async function deleteLocalStorage({ key }) {
+  if (key) {
+    const safeKey = escJsSingleQuote(key);
+    return runJS(`localStorage.removeItem('${safeKey}'); 'Deleted localStorage: ${safeKey}'`);
+  }
+  return runJS("var n=localStorage.length; localStorage.clear(); 'Cleared localStorage: '+n+' items'");
+}
+
+export async function deleteSessionStorage({ key }) {
+  if (key) {
+    const safeKey = escJsSingleQuote(key);
+    return runJS(`sessionStorage.removeItem('${safeKey}'); 'Deleted sessionStorage: ${safeKey}'`);
+  }
+  return runJS("var n=sessionStorage.length; sessionStorage.clear(); 'Cleared sessionStorage: '+n+' items'");
+}
+
+// Export all storage state (cookies + localStorage + sessionStorage) as JSON
+export async function exportStorageState() {
+  return runJS(
+    `JSON.stringify({
+      url: location.href,
+      cookies: document.cookie,
+      localStorage: Object.fromEntries(Object.keys(localStorage).map(function(k){return[k,localStorage.getItem(k)]})),
+      sessionStorage: Object.fromEntries(Object.keys(sessionStorage).map(function(k){return[k,sessionStorage.getItem(k)]}))
+    })`
+  );
+}
+
+// Import storage state from JSON
+export async function importStorageState({ state }) {
+  const parsed = typeof state === "string" ? JSON.parse(state) : state;
+  const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "");
+  const cmds = [];
+  // Cookies must be set one at a time — document.cookie only accepts one cookie per assignment
+  if (parsed.cookies) {
+    const cookiePairs = String(parsed.cookies).split(/;\s*/);
+    for (const pair of cookiePairs) {
+      if (pair.trim()) cmds.push(`document.cookie='${esc(pair.trim())}'`);
+    }
+  }
+  if (parsed.localStorage) {
+    for (const [k, v] of Object.entries(parsed.localStorage)) {
+      cmds.push(`localStorage.setItem('${esc(k)}','${esc(v)}')`);
+    }
+  }
+  if (parsed.sessionStorage) {
+    for (const [k, v] of Object.entries(parsed.sessionStorage)) {
+      cmds.push(`sessionStorage.setItem('${esc(k)}','${esc(v)}')`);
+    }
+  }
+  // Use runJSLarge for large sessions (many cookies/localStorage keys can exceed 260KB limit of runJS)
+  const script = cmds.join(";") + "; 'Imported ' + " + cmds.length + " + ' items'";
+  if (script.length > 200000) {
+    return runJSLarge(script, { timeout: 30000 });
+  }
+  return runJS(script);
+}
+
+// ========== CLIPBOARD ==========
+
+export async function clipboardRead() {
+  // Acquire lock to avoid reading during a write/restore cycle
+  await _acquireClipboardLock(3000); // Short timeout — reads are fast
+  try {
+    const text = await execFileAsync("pbpaste", []);
+    return text.stdout;
+  } catch {
+    return "(clipboard empty or contains non-text data)";
+  } finally {
+    _releaseClipboardLock();
+  }
+}
+
+export async function clipboardWrite({ text, restore = true }) {
+  await _acquireClipboardLock();
+  try {
+    // Save current clipboard
+    const oldClipboard = restore ? await _saveClipboard() : null;
+
+    // Use spawn + stdin pipe — safe from shell injection (no shell involved)
+    await _pbcopy(text);
+
+    // Restore clipboard after 2 seconds (reduced from 5s — shorter exposure window)
+    if (restore && oldClipboard !== null) {
+      if (_clipboardRestoreTimer) clearTimeout(_clipboardRestoreTimer);
+      // Stash the content so flushClipboardRestore() can restore it synchronously if the
+      // process is signalled to exit inside this 2s window — otherwise the user is left
+      // holding the tool's pasted text (violates the clipboard-safety guarantee).
+      _pendingClipboardRestore = oldClipboard;
+      _clipboardRestoreTimer = setTimeout(async () => {
+        await _restoreClipboard(oldClipboard);
+        _pendingClipboardRestore = undefined;
+        _clipboardRestoreTimer = null;
+        _releaseClipboardLock();
+      }, 2000);
+      return `Copied ${text.length} chars to clipboard (will restore in 2s)`;
+    }
+
+    _releaseClipboardLock();
+    return `Copied ${text.length} chars to clipboard`;
+  } catch (err) {
+    _releaseClipboardLock();
+    throw err;
+  }
+}
+
+// Synchronously flush a pending clipboard restore — called from the shutdown handler so the
+// user never inherits the tool's pasted text if the process exits inside the 2s restore
+// window. Uses spawnSync (blocking) because we're on the exit path and can't await a Promise.
+export function flushClipboardRestore() {
+  if (_clipboardRestoreTimer) {
+    clearTimeout(_clipboardRestoreTimer);
+    _clipboardRestoreTimer = null;
+  }
+  if (_pendingClipboardRestore === undefined) return;
+  const content = _pendingClipboardRestore;
+  _pendingClipboardRestore = undefined;
+  try {
+    spawnSync("pbcopy", [], { input: content });
+  } catch { /* best effort — we're exiting anyway */ }
+  _releaseClipboardLock();
+}
+
+// ========== NETWORK MOCKING ==========
+
+// Intercept fetch/XHR requests matching a URL pattern and return mock responses
+export async function mockNetworkRoute({ urlPattern, response }) {
+  // Escape backslash FIRST, then quotes — the reverse order double-escapes the quote
+  // (\' → \\') and breaks out of the JS string literal.
+  const safePattern = escJsSingleQuote(urlPattern);
+  const safeBody = (response.body || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n");
+  const status = Number(response.status) || 200;
+  // contentType reaches the injected JS literal — escape it like every other field.
+  const contentType = escJsSingleQuote(response.contentType || "application/json");
+
+  return runJS(
+    `(function(){
+      if (!window.__mcp_mocks) window.__mcp_mocks = [];
+      window.__mcp_mocks.push({pattern: '${safePattern}', status: ${status}, body: '${safeBody}', contentType: '${contentType}'});
+
+      // Patch fetch (once)
+      if (!window.__mcp_fetch_patched) {
+        window.__mcp_fetch_patched = true;
+        var origFetch = window.fetch;
+        window.fetch = function(url, opts) {
+          var reqUrl = typeof url === 'string' ? url : url.url;
+          var mock = window.__mcp_mocks.find(function(m) {
+            return reqUrl.includes(m.pattern) || new RegExp(m.pattern).test(reqUrl);
+          });
+          if (mock) {
+            return Promise.resolve(new Response(mock.body, {
+              status: mock.status,
+              headers: {'Content-Type': mock.contentType}
+            }));
+          }
+          return origFetch.apply(this, arguments);
+        };
+
+        // Patch XHR
+        var origOpen = XMLHttpRequest.prototype.open;
+        var origSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          this.__mcp_url = url;
+          this.__mcp_method = method;
+          return origOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function(body) {
+          var mock = (window.__mcp_mocks || []).find(function(m) {
+            return this.__mcp_url && (this.__mcp_url.includes(m.pattern) || new RegExp(m.pattern).test(this.__mcp_url));
+          }.bind(this));
+          if (mock) {
+            Object.defineProperty(this, 'status', {get: function(){return mock.status;}});
+            Object.defineProperty(this, 'responseText', {get: function(){return mock.body;}});
+            Object.defineProperty(this, 'response', {get: function(){return mock.body;}});
+            Object.defineProperty(this, 'readyState', {get: function(){return 4;}});
+            this.dispatchEvent(new Event('readystatechange'));
+            this.dispatchEvent(new Event('load'));
+            return;
+          }
+          return origSend.apply(this, arguments);
+        };
+      }
+      return 'Mock added: ' + '${safePattern}' + ' → ' + ${status} + ' (' + window.__mcp_mocks.length + ' total mocks)';
+    })()`
+  );
+}
+
+// Remove all network mocks
+export async function clearNetworkMocks() {
+  return runJS(
+    "window.__mcp_mocks=[]; 'All network mocks cleared'"
+  );
+}
+
+// ========== WAIT FOR TIME ==========
+
+export async function waitForTime({ ms }) {
+  const capped = Math.min(Number(ms) || 0, 60000); // Cap at 60 seconds
+  await new Promise((r) => setTimeout(r, capped));
+  return capped < Number(ms) ? `Waited ${capped}ms (capped from ${ms}ms — max 60s)` : `Waited ${ms}ms`;
+}
+
+// ========== NETWORK CAPTURE (Detailed) ==========
+
+export async function startNetworkCapture() {
+  await runJS(
+    `if(!window.__mcp_network){window.__mcp_network=[];
+    var origFetch=window.fetch;
+    window.fetch=function(){var url=arguments[0];var opts=arguments[1]||{};var start=Date.now();
+      return origFetch.apply(this,arguments).then(function(resp){
+        var entry={url:typeof url==='string'?url:url.url,method:opts.method||'GET',status:resp.status,statusText:resp.statusText,
+          type:'fetch',duration:Date.now()-start,headers:Object.fromEntries([...resp.headers.entries()].slice(0,20)),time:new Date().toISOString()};
+        window.__mcp_network.push(entry);if(window.__mcp_network.length>5000)window.__mcp_network.shift();return resp;
+      }).catch(function(err){
+        window.__mcp_network.push({url:typeof url==='string'?url:url.url,method:opts.method||'GET',error:err.message,type:'fetch',time:new Date().toISOString()});if(window.__mcp_network.length>5000)window.__mcp_network.shift();
+        throw err;
+      });
+    };
+    var origXHR=XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open=function(method,url){
+      this.__mcp_method=method;this.__mcp_url=url;this.__mcp_start=Date.now();
+      this.addEventListener('load',function(){
+        window.__mcp_network.push({url:this.__mcp_url,method:this.__mcp_method,status:this.status,statusText:this.statusText,
+          type:'xhr',duration:Date.now()-this.__mcp_start,responseSize:this.responseText.length,time:new Date().toISOString()});if(window.__mcp_network.length>5000)window.__mcp_network.shift();
+      });
+      this.addEventListener('error',function(){
+        window.__mcp_network.push({url:this.__mcp_url,method:this.__mcp_method,error:'Network error',type:'xhr',time:new Date().toISOString()});if(window.__mcp_network.length>5000)window.__mcp_network.shift();
+      });
+      return origXHR.apply(this,arguments);
+    };}`
+  );
+  return "Network capture started (fetch + XHR interception)";
+}
+
+export async function clearNetworkCapture() {
+  return runJS("window.__mcp_network=[]; 'Network capture cleared'");
+}
+
+export async function getNetworkDetails({ limit = 50, filter } = {}) {
+  const filterStr = filter ? `.filter(function(r){return r.url.includes('${filter.replace(/'/g, "\\'")}')})` : "";
+  return runJS(
+    `JSON.stringify((window.__mcp_network||[])${filterStr}.slice(-${Number(limit)}))`
+  );
+}
+
+// ========== PERFORMANCE METRICS ==========
+
+export async function getPerformanceMetrics() {
+  return runJS(
+    `(function(){
+      var nav = performance.getEntriesByType('navigation')[0] || {};
+      var paint = performance.getEntriesByType('paint');
+      var fcp = paint.find(function(p){return p.name==='first-contentful-paint'});
+      var lcp = null;
+      try {
+        var entries = performance.getEntriesByType('largest-contentful-paint');
+        if (entries.length) lcp = entries[entries.length - 1];
+      } catch(e) {}
+      var cls = 0;
+      try {
+        var entries = performance.getEntriesByType('layout-shift');
+        entries.forEach(function(e){ if (!e.hadRecentInput) cls += e.value; });
+      } catch(e) {}
+      var resources = performance.getEntriesByType('resource');
+      var totalTransfer = resources.reduce(function(sum, r){ return sum + (r.transferSize || 0); }, 0);
+      return JSON.stringify({
+        navigation: {
+          dns: Math.round(nav.domainLookupEnd - nav.domainLookupStart),
+          tcp: Math.round(nav.connectEnd - nav.connectStart),
+          ttfb: Math.round(nav.responseStart - nav.requestStart),
+          download: Math.round(nav.responseEnd - nav.responseStart),
+          domInteractive: Math.round(nav.domInteractive),
+          domComplete: Math.round(nav.domComplete),
+          loadEvent: Math.round(nav.loadEventEnd),
+        },
+        webVitals: {
+          fcp: fcp ? Math.round(fcp.startTime) : null,
+          lcp: lcp ? Math.round(lcp.startTime) : null,
+          cls: Math.round(cls * 1000) / 1000,
+        },
+        resources: {
+          total: resources.length,
+          totalTransferKB: Math.round(totalTransfer / 1024),
+          byType: resources.reduce(function(acc, r) {
+            var type = r.initiatorType || 'other';
+            if (!acc[type]) acc[type] = { count: 0, sizeKB: 0 };
+            acc[type].count++;
+            acc[type].sizeKB += Math.round((r.transferSize || 0) / 1024);
+            return acc;
+          }, {}),
+        },
+        memory: window.performance.memory ? {
+          usedMB: Math.round(performance.memory.usedJSHeapSize / 1048576),
+          totalMB: Math.round(performance.memory.totalJSHeapSize / 1048576),
+          limitMB: Math.round(performance.memory.jsHeapSizeLimit / 1048576),
+        } : null,
+      });
+    })()`
+  );
+}
+
+// ========== NETWORK THROTTLING ==========
+
+export async function throttleNetwork({ profile, latency, downloadKbps, uploadKbps }) {
+  const profiles = {
+    "slow-3g": { latency: 2000, download: 50, upload: 50 },
+    "fast-3g": { latency: 560, download: 150, upload: 75 },
+    "4g": { latency: 170, download: 400, upload: 150 },
+    offline: { latency: 0, download: 0, upload: 0 },
+  };
+  const p = profile ? profiles[profile.toLowerCase()] : null;
+  const lat = p ? p.latency : (latency || 0);
+  const dl = p ? p.download : (downloadKbps || 0);
+
+  if (profile === "offline") {
+    await runJS(
+      `window.__mcp_throttle={active:true,profile:'offline'};
+      var origFetch=window.__mcp_origFetch||window.fetch;
+      window.__mcp_origFetch=origFetch;
+      window.fetch=function(){return Promise.reject(new TypeError('Network request failed (simulated offline)'));};`
+    );
+    return "Network throttled: offline";
+  }
+
+  if (lat > 0) {
+    await runJS(
+      `window.__mcp_throttle={active:true,profile:'${profile || "custom"}',latency:${lat},downloadKbps:${dl}};
+      var origFetch=window.__mcp_origFetch||window.fetch;
+      window.__mcp_origFetch=origFetch;
+      window.fetch=function(){var args=arguments;return new Promise(function(resolve){
+        setTimeout(function(){resolve(origFetch.apply(window,args));},${lat});
+      });};`
+    );
+    return JSON.stringify({ profile: profile || "custom", latency: lat, downloadKbps: dl });
+  }
+
+  // Reset
+  await runJS(
+    `if(window.__mcp_origFetch){window.fetch=window.__mcp_origFetch;delete window.__mcp_origFetch;}
+    delete window.__mcp_throttle; 'Throttle removed'`
+  );
+  return "Network throttle removed";
+}
+
+// ========== CONSOLE FILTER ==========
+
+export async function getConsoleByLevel({ level }) {
+  const safeLevel = level.replace(/'/g, "\\'");
+  return runJS(
+    `JSON.stringify((window.__mcp_console||[]).filter(function(m){return m.level==='${safeLevel}'}))`
+  );
+}
+
+// ========== DATA EXTRACTION ==========
+
+export async function extractTables({ selector, limit = 10 }) {
+  const sel = selector ? `'${selector.replace(/'/g, "\\'")}'` : "'table'";
+  return runJS(
+    `(function(){
+      var tables = [...document.querySelectorAll(${sel})].slice(0, ${Number(limit)});
+      return JSON.stringify(tables.map(function(table, ti) {
+        var headers = [...table.querySelectorAll('thead th, thead td, tr:first-child th')].map(function(th){ return th.textContent.trim(); });
+        var rows = [...table.querySelectorAll('tbody tr, tr')].slice(headers.length ? 0 : 1).map(function(tr) {
+          return [...tr.querySelectorAll('td, th')].map(function(td){ return td.textContent.trim().substring(0, 200); });
+        });
+        return { index: ti, headers: headers, rows: rows.slice(0, 100), rowCount: rows.length };
+      }));
+    })()`
+  );
+}
+
+export async function extractMeta() {
+  return runJS(
+    `(function(){
+      var meta = {};
+      meta.title = document.title;
+      meta.description = (document.querySelector('meta[name="description"]') || {}).content || '';
+      meta.canonical = (document.querySelector('link[rel="canonical"]') || {}).href || '';
+      meta.robots = (document.querySelector('meta[name="robots"]') || {}).content || '';
+      meta.viewport = (document.querySelector('meta[name="viewport"]') || {}).content || '';
+      meta.charset = (document.querySelector('meta[charset]') || {}).getAttribute('charset') || document.characterSet;
+      meta.language = document.documentElement.lang || '';
+      meta.og = {};
+      document.querySelectorAll('meta[property^="og:"]').forEach(function(m) {
+        meta.og[m.getAttribute('property').replace('og:','')] = m.content;
+      });
+      meta.twitter = {};
+      document.querySelectorAll('meta[name^="twitter:"]').forEach(function(m) {
+        meta.twitter[m.getAttribute('name').replace('twitter:','')] = m.content;
+      });
+      meta.jsonLd = [...document.querySelectorAll('script[type="application/ld+json"]')].map(function(s) {
+        try { return JSON.parse(s.textContent); } catch(e) { return null; }
+      }).filter(Boolean);
+      meta.alternateLanguages = [...document.querySelectorAll('link[rel="alternate"][hreflang]')].map(function(l) {
+        return { lang: l.hreflang, href: l.href };
+      });
+      meta.feeds = [...document.querySelectorAll('link[type="application/rss+xml"], link[type="application/atom+xml"]')].map(function(l) {
+        return { title: l.title, href: l.href, type: l.type };
+      });
+      return JSON.stringify(meta);
+    })()`
+  );
+}
+
+export async function extractImages({ limit = 50 }) {
+  return runJS(
+    `JSON.stringify([...document.querySelectorAll('img')].slice(0,${Number(limit)}).map(function(img){
+      var r = img.getBoundingClientRect();
+      return {
+        src: img.src, alt: img.alt || '(missing)', width: img.naturalWidth, height: img.naturalHeight,
+        displayWidth: Math.round(r.width), displayHeight: Math.round(r.height),
+        loading: img.loading || 'eager', srcset: img.srcset || '',
+        inViewport: r.top < window.innerHeight && r.bottom > 0,
+        decoded: img.complete,
+      };
+    }))`
+  );
+}
+
+export async function extractLinks({ limit = 100, filter }) {
+  const filterStr = filter
+    ? `.filter(function(a){return a.href.includes('${filter.replace(/'/g, "\\'")}')||a.textContent.includes('${filter.replace(/'/g, "\\'")}')})`
+    : "";
+  return runJS(
+    `JSON.stringify([...document.querySelectorAll('a[href]')]${filterStr}.slice(0,${Number(limit)}).map(function(a){
+      return {
+        href: a.href, text: a.textContent.trim().substring(0,100),
+        rel: a.rel || '', target: a.target || '',
+        isExternal: a.hostname !== location.hostname,
+        isNofollow: a.rel.includes('nofollow'),
+      };
+    }))`
+  );
+}
+
+// ========== GEOLOCATION OVERRIDE ==========
+
+export async function overrideGeolocation({ latitude, longitude, accuracy = 100 }) {
+  return runJS(
+    `navigator.geolocation.getCurrentPosition = function(success) {
+      success({ coords: { latitude: ${Number(latitude)}, longitude: ${Number(longitude)}, accuracy: ${Number(accuracy)}, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() });
+    };
+    navigator.geolocation.watchPosition = function(success) {
+      success({ coords: { latitude: ${Number(latitude)}, longitude: ${Number(longitude)}, accuracy: ${Number(accuracy)}, altitude: null, altitudeAccuracy: null, heading: null, speed: null }, timestamp: Date.now() });
+      return 1;
+    };
+    'Geolocation set to: ${Number(latitude)}, ${Number(longitude)}'`
+  );
+}
+
+// ========== COMPUTED STYLES ==========
+
+export async function getComputedStyles({ selector, properties }) {
+  const sel = escJsSingleQuote(selector);
+  const propsFilter = properties
+    ? `.filter(function(p){return [${properties.map((p) => `'${String(p).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`).join(",")}].includes(p)})`
+    : "";
+  return runJS(
+    `(function(){
+      var el = document.querySelector('${sel}');
+      if (!el) return JSON.stringify({ error: 'Element not found' });
+      var styles = window.getComputedStyle(el);
+      var result = {};
+      var props = [...styles]${propsFilter};
+      props.forEach(function(p) { result[p] = styles.getPropertyValue(p); });
+      return JSON.stringify(result);
+    })()`
+  );
+}
+
+// ========== INDEXEDDB ==========
+
+export async function getIndexedDB({ dbName, storeName, limit = 20 }) {
+  const safeDb = dbName.replace(/'/g, "\\'");
+  const safeStore = storeName.replace(/'/g, "\\'");
+  // `do JavaScript` can't await a Promise — route async work through the Node-side poller.
+  return _evaluateAsync(
+    `(async function(){
+      return new Promise(function(resolve, reject) {
+        var request = indexedDB.open('${safeDb}');
+        request.onerror = function() { resolve(JSON.stringify({ error: 'Cannot open database: ${safeDb}' })); };
+        request.onsuccess = function(e) {
+          var db = e.target.result;
+          if (!db.objectStoreNames.contains('${safeStore}')) {
+            resolve(JSON.stringify({ error: 'Store not found: ${safeStore}', stores: [...db.objectStoreNames] }));
+            db.close(); return;
+          }
+          var tx = db.transaction('${safeStore}', 'readonly');
+          var store = tx.objectStore('${safeStore}');
+          var results = [];
+          var cursor = store.openCursor();
+          cursor.onsuccess = function(e) {
+            var c = e.target.result;
+            if (c && results.length < ${Number(limit)}) { results.push({ key: c.key, value: c.value }); c.continue(); }
+            else { resolve(JSON.stringify({ database: '${safeDb}', store: '${safeStore}', count: results.length, records: results })); db.close(); }
+          };
+          cursor.onerror = function() { resolve(JSON.stringify({ error: 'Cursor error' })); db.close(); };
+        };
+      });
+    })()`
+  );
+}
+
+export async function listIndexedDBs() {
+  return _evaluateAsync(
+    `(async function(){
+      try {
+        var dbs = await indexedDB.databases();
+        return JSON.stringify(dbs.map(function(db){ return { name: db.name, version: db.version }; }));
+      } catch(e) {
+        return JSON.stringify({ error: 'indexedDB.databases() not supported, try getIndexedDB with a known db name' });
+      }
+    })()`
+  );
+}
+
+// ========== CSS COVERAGE ==========
+
+export async function getCSSCoverage() {
+  return evalReturningJSON(
+    `
+      var results = [];
+      for (var i = 0; i < document.styleSheets.length; i++) {
+        try {
+          var sheet = document.styleSheets[i];
+          var rules = sheet.cssRules || sheet.rules;
+          var total = rules.length;
+          var used = 0;
+          var unused = [];
+          for (var j = 0; j < rules.length; j++) {
+            var rule = rules[j];
+            if (rule.selectorText) {
+              try {
+                if (document.querySelector(rule.selectorText)) { used++; }
+                else { unused.push(rule.selectorText); }
+              } catch(e) { used++; }
+            } else { used++; }
+          }
+          results.push({
+            href: sheet.href || '(inline)',
+            totalRules: total,
+            usedRules: used,
+            unusedRules: total - used,
+            coveragePercent: total > 0 ? Math.round(used / total * 100) : 100,
+            unusedSelectors: unused.slice(0, 20),
+          });
+        } catch(e) {
+          results.push({ href: sheet.href || '(inline)', error: 'CORS blocked' });
+        }
+      }
+      return JSON.stringify(results);
+    `
+  );
+}
+
+// ========== WEBKIT / iOS WEB-DEV VALIDATION ==========
+
+// Validate <meta name="viewport"> against iOS Safari best practices.
+// Pure read-only DOM inspection — returns parsed attrs + severity-tagged issues.
+export async function inspectViewport() {
+  return runJS(VIEWPORT_SCRIPT);
+}
+
+// Read live CSS safe-area-inset values via a hidden probe element, check
+// viewport-fit=cover, and scan stylesheets for env(safe-area-inset-*) usage.
+export async function getSafeAreaInsets() {
+  return runJS(SAFE_AREA_SCRIPT);
+}
+
+// Audit the page for iOS "Add to Home Screen" / PWA readiness.
+export async function checkPWA() {
+  return runJS(PWA_SCRIPT);
+}
+
+// Check every CSS property used on the page against THIS Safari via
+// CSS.supports() — no regex guessing, tested in the live engine.
+export async function checkWebKitCompat() {
+  return runJS(WEBKIT_COMPAT_SCRIPT);
+}
+
+// ========== DOCTOR (PREFLIGHT DIAGNOSTICS) ==========
+
+// One-shot check of the whole macOS permission + daemon chain, so the
+// "it doesn't work even with permissions granted" failures (#14/#15/#29)
+// surface as one actionable checklist instead of scattered cryptic errors.
+// ========== macOS NATIVE-INPUT COMPAT ==========
+// CGEvent.postToPid (native clicks/keys/hover) can silently no-op on macOS 26+ (Tahoe) even
+// with Accessibility granted — the events are accepted by the API but never cross into Safari's
+// WebContent process (issue #29). doctor() prints the OS version so a bug report carries the
+// single most relevant fact, and flags the known-risky range so users reach for safari_evaluate
+// or extension-based clicks on trust-gated forms instead of chasing a phantom permission grant.
+// Pure (no I/O) so it's unit-tested directly — see test/macos-compat.test.mjs.
+export function macosCompatNote(productVersion) {
+  const raw = String(productVersion ?? "").trim();
+  const major = parseInt(raw.split(".")[0], 10);
+  if (!Number.isFinite(major)) {
+    return {
+      version: "unknown",
+      major: null,
+      risky: false,
+      line: "macOS version: unknown (sw_vers gave no parseable version)",
+    };
+  }
+  const risky = major >= 26;
+  const line = risky
+    ? `macOS ${raw} ⚠ CGEvent native clicks/keys may silently no-op on macOS 26+ even with Accessibility granted (issue #29) — for trust-gated forms prefer safari_evaluate or extension-based safari_click.`
+    : `macOS ${raw} — CGEvent native input supported.`;
+  return { version: raw, major, risky, line };
+}
+
+export async function doctor() {
+  const checks = [];
+  const add = (ok, label, detail, fix) => checks.push({ ok, label, detail, fix: ok ? null : fix });
+
+  // 1. Safari running
+  let safariUp = false;
+  try {
+    const { stdout } = await execFileAsync("pgrep", ["-x", "Safari"], { timeout: 2000 });
+    safariUp = stdout.trim().length > 0;
+  } catch { safariUp = false; }
+  add(safariUp, "Safari running", safariUp ? "Safari process is up" : "Safari is not running", "Open Safari, then retry.");
+
+  // 2. Apple Events / Automation — the bridge every AppleScript tool uses
+  let aeOk = false, aeDetail = "";
+  try {
+    const out = await osascript(`tell application "Safari" to return (count of windows) as string`, { timeout: 5000 });
+    aeOk = /^\d+$/.test(String(out).trim());
+    aeDetail = aeOk ? `OK (${String(out).trim()} window(s) visible)` : `unexpected reply: ${String(out).slice(0, 60)}`;
+  } catch (e) {
+    const m = e.message || "";
+    if (m.includes("-1743") || /not authoriz/i.test(m)) aeDetail = "Automation permission denied (-1743)";
+    else if (m.includes("-600") || /isn.t running/i.test(m)) aeDetail = "Safari not running";
+    else aeDetail = m.slice(0, 80);
+  }
+  add(aeOk, "Apple Events / Automation", aeDetail,
+    "System Settings > Privacy & Security > Automation → enable Safari for your terminal/host app; and Safari > Develop > Allow JavaScript from Apple Events.");
+
+  // 3-5. Native helper daemon + Accessibility + Screen Recording (one preflight round-trip)
+  let pf = null, pfErr = "";
+  try { pf = await _helperPreflight(); } catch (e) { pfErr = e.message || String(e); }
+  add(!!pf, "Native helper daemon", pf ? "safari-helper responding" : `not responding: ${pfErr}`,
+    "It auto-restarts; if this persists, reinstall safari-mcp.");
+  add(!!pf && pf.accessibility === true, "Accessibility (native clicks)",
+    pf ? (pf.accessibility ? "CGEvent posting permitted" : "NOT permitted — native clicks silently no-op (the #29 root cause)") : "unknown (helper not responding)",
+    "System Settings > Privacy & Security > Accessibility → enable safari-helper, then retry.");
+  add(!!pf && pf.screenRecording === true, "Screen Recording (screenshots)",
+    pf ? (pf.screenRecording ? "permitted" : "NOT permitted — screenshots will be blank/blocked") : "unknown (helper not responding)",
+    "System Settings > Privacy & Security > Screen Recording → enable your terminal/host app.");
+
+  // 6. Helper codesign identity — a stale/ad-hoc id breaks the Accessibility grant on reinstall
+  let idOk = false, idDetail = "";
+  const helperPath = join(__dirname, "safari-helper");
+  try {
+    const res = await execFileAsync("codesign", ["-d", "--verbose=2", helperPath], { timeout: 4000 })
+      .catch((e) => ({ stdout: "", stderr: e.stderr || "" }));
+    const text = (res.stdout || "") + (res.stderr || "");
+    const m = /Identifier=(.+)/.exec(text);
+    const id = m ? m[1].trim() : "(unknown)";
+    idOk = id === "com.achiya-automation.safari-mcp";
+    idDetail = idOk ? `stable identifier: ${id}` : `unstable identifier "${id}" — Accessibility grant won't persist across reinstalls`;
+  } catch (e) { idDetail = "could not read codesign identity: " + (e.message || "").slice(0, 60); }
+  add(idOk, "Helper codesign identity", idDetail,
+    `Re-sign: codesign -s - -f --identifier com.achiya-automation.safari-mcp --entitlements safari-helper.entitlements "${helperPath}"`);
+
+  // macOS version — the single most relevant fact for #29-class "native clicks silently fail"
+  // reports. Best-effort: sw_vers is macOS-only and absent in sandboxes/CI, so never block doctor.
+  let osLine = null;
+  try {
+    const { stdout } = await execFileAsync("sw_vers", ["-productVersion"], { timeout: 2000 });
+    osLine = macosCompatNote(stdout).line;
+  } catch { /* sw_vers unavailable — skip the line, the permission checks still stand */ }
+
+  const passed = checks.filter((c) => c.ok).length;
+  const lines = [`Safari MCP doctor — ${passed}/${checks.length} checks passed`, ""];
+  if (osLine) lines.push(osLine, "");
+  for (const c of checks) {
+    lines.push(`${c.ok ? "✅" : "❌"} ${c.label}: ${c.detail}`);
+    if (!c.ok && c.fix) lines.push(`   → ${c.fix}`);
+  }
+  return lines.join("\n");
+}
+
+// ========== FORM AUTO-DETECT ==========
+
+export async function detectForms() {
+  return runJS(
+    `(function(){
+      var forms = [...document.querySelectorAll('form')];
+      if (forms.length === 0) {
+        var inputs = document.querySelectorAll('input, textarea, select');
+        if (inputs.length > 0) {
+          return JSON.stringify([{
+            index: 0, action: '(no form tag)', method: '', fields: [...inputs].slice(0, 30).map(function(el) {
+              return { tag: el.tagName, type: el.type || '', name: el.name || '', id: el.id || '',
+                placeholder: el.placeholder || '', required: el.required, value: (el.value || '').substring(0, 50),
+                selector: el.id ? '#' + el.id : (el.name ? '[name="' + el.name + '"]' : el.tagName.toLowerCase() + '[type="' + el.type + '"]') };
+            })
+          }]);
+        }
+        return JSON.stringify([]);
+      }
+      return JSON.stringify(forms.map(function(form, i) {
+        var fields = [...form.querySelectorAll('input, textarea, select')].map(function(el) {
+          return { tag: el.tagName, type: el.type || '', name: el.name || '', id: el.id || '',
+            placeholder: el.placeholder || '', required: el.required, value: (el.value || '').substring(0, 50),
+            selector: el.id ? '#' + el.id : (el.name ? '[name="' + el.name + '"]' : el.tagName.toLowerCase()) };
+        });
+        return { index: i, action: form.action || '', method: form.method || 'GET', id: form.id || '',
+          fieldCount: fields.length, fields: fields.slice(0, 30),
+          hasSubmit: !!form.querySelector('[type="submit"], button:not([type])') };
+      }));
+    })()`
+  );
+}
+
+// ========== SCROLL TO ELEMENT ==========
+
+export async function scrollToElement({ selector, text, block = "center", timeout = 10000 }) {
+  if (selector) {
+    const sel = escJsSingleQuote(selector);
+    return runJS(
+      `(function(){var el=document.querySelector('${sel}');if(!el)return 'Element not found: ${sel}';el.scrollIntoView({behavior:'smooth',block:'${block}'});var r=el.getBoundingClientRect();return 'Scrolled to: '+el.tagName+' at y='+Math.round(r.y);})()`
+    );
+  }
+  if (text) {
+    // Virtual DOM scroll: scroll down repeatedly until text appears (for Airtable, etc.).
+    // Each check+scroll is one synchronous step; the loop is driven from Node because
+    // `do JavaScript` can't await an in-page delay (see _evaluateAsync).
+    const safeText = escJsSingleQuote(text);
+    const safeBlock = String(block).replace(/[^a-z]/gi, '') || 'center';
+    const navIndex = _activeTabIndex;
+    const stepJs =
+      `(function(){` +
+      `var scrollable=document.querySelector('[class*="grid"],[class*="virtual"],[class*="scroll"],[role="grid"],[role="table"]')||document.scrollingElement||document.documentElement;` +
+      `var tw=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);` +
+      `while(tw.nextNode()){if(tw.currentNode.textContent.trim().includes('${safeText}')){var el=tw.currentNode.parentElement;el.scrollIntoView({behavior:'smooth',block:'${safeBlock}'});return 'Found and scrolled to: "'+el.textContent.trim().substring(0,50)+'"';}}` +
+      `var curY=scrollable.scrollTop;scrollable.scrollBy(0,500);return 'SCROLL:'+curY;})()`;
+    const deadline = Date.now() + Number(timeout);
+    let lastY = -1;
+    while (Date.now() < deadline) {
+      const r = await runJS(stepJs, { tabIndex: navIndex, timeout: 5000 }).catch(() => '');
+      if (typeof r === 'string' && r.startsWith('Found')) return r;
+      if (typeof r === 'string' && r.startsWith('SCROLL:')) {
+        const curY = parseInt(r.slice(7), 10);
+        if (curY === lastY) return `Text not found: ${text} (scrolled to bottom)`;
+        lastY = curY;
+      }
+      await new Promise(res => setTimeout(res, 300));
+    }
+    return `Timeout: text not found within ${timeout}ms`;
+  }
+  throw new Error("scrollToElement requires selector or text");
+}
+
+// ========== COMBO TOOLS (multi-step operations in a single call) ==========
+
+// Navigate + wait + read — the most common 3-step workflow
+export async function navigateAndRead(url, { maxLength = 50000 } = {}) {
+  await refreshTargetWindow();
+  // Suppress onbeforeunload dialogs (same as navigate())
+  await runJS("window.onbeforeunload=null", { timeout: 2000 }).catch(() => {});
+  let targetUrl = url;
+  if (!/^https?:\/\//i.test(targetUrl)) targetUrl = "https://" + targetUrl;
+  // Escape backslash first, then quotes; strip CR/LF — a newline would break out of
+  // the AppleScript string literal and allow AppleScript injection.
+  const safeUrl = targetUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, '');
+  if (_activeTabURL) await resolveActiveTab();
+  _assertNotFallingBackToUserTab('navigateAndRead');
+  const navIndex = _activeTabIndex;
+  const navTarget = navIndex ? `tab ${navIndex} of ${getTargetWindowRef()}` : getFallbackTarget();
+  await osascriptFast(`tell application "Safari" to set URL of ${navTarget} to "${safeUrl}"`);
+  _activeTabURL = targetUrl;
+  // Poll readyState from Node, then read — `do JavaScript` can't await an async IIFE.
+  const navResult = await _pollReadyAndRead(navIndex, { maxLength });
+  // Update _activeTabURL with the actual URL after navigation
+  try {
+    const parsed = JSON.parse(navResult);
+    if (parsed.url && parsed.url !== 'about:blank') _activeTabURL = parsed.url;
+  } catch {}
+  return navResult;
+}
+
+// Click + wait for navigation or element — common after clicking a link/button
+export async function clickAndWait({ selector, text, waitFor: waitSelector, timeout = 10000 }) {
+  const esc = (s) => escJsSingleQuote(s);
+  const safeSel = selector ? esc(selector) : "";
+  const safeText = text ? esc(text) : "";
+  const safeWait = waitSelector ? esc(waitSelector) : "";
+  const navIndex = _activeTabIndex;
+  // Step 1: find + click — fully synchronous, so it runs inside one `do JavaScript`.
+  const clickResult = await runJS(
+    `(function(){
+      var el;
+      ${safeSel ? `el = document.querySelector('${safeSel}');` : ""}
+      ${safeText && !safeSel ? `
+        el = [...document.querySelectorAll('a,button,[role=button],label,[onclick]')].find(function(e){return e.textContent.trim().includes('${safeText}');});
+        if(!el) el = [...document.querySelectorAll('*')].filter(function(e){var r=e.getBoundingClientRect();return r.width>0&&r.height>0&&e.textContent.trim().includes('${safeText}');}).sort(function(a,b){return a.textContent.length-b.textContent.length;})[0];
+      ` : ""}
+      if(!el) return JSON.stringify({error:'Element not found'});
+      el.scrollIntoView({block:'center'});
+      el.click();
+      return JSON.stringify({clicked:el.tagName+' "'+el.textContent.trim().substring(0,50)+'"'});
+    })()`,
+    { tabIndex: navIndex, timeout: 10000 }
+  );
+  let clickedInfo = '';
+  try { const c = JSON.parse(clickResult); if (c.error) return clickResult; clickedInfo = c.clicked || ''; } catch {}
+  // Step 2: wait from Node — `do JavaScript` can't await an in-page loop.
+  const deadline = Date.now() + Number(timeout);
+  await new Promise(r => setTimeout(r, 300));
+  while (Date.now() < deadline) {
+    try {
+      if (safeWait) {
+        if (await runJS(`document.querySelector('${safeWait}')?'1':''`, { tabIndex: navIndex, timeout: 5000 }) === '1') break;
+      } else if (await runJS('document.readyState', { tabIndex: navIndex, timeout: 5000 }) === 'complete') {
+        break;
+      }
+    } catch { /* page navigating */ }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  const final = await runJS(`JSON.stringify({title:document.title,url:location.href})`, { tabIndex: navIndex, timeout: 5000 });
+  try { const p = JSON.parse(final); p.clicked = clickedInfo; return JSON.stringify(p); } catch { return final; }
+}
+
+// Fill form + submit — common for login, search, etc.
+export async function fillAndSubmit({ fields, submitSelector }) {
+  await fillForm({ fields });
+  const navIndex = _activeTabIndex;
+  if (submitSelector) {
+    const sel = escJsSingleQuote(submitSelector);
+    await runJS(
+      `(function(){var el=document.querySelector('${sel}');if(el)el.click();})()`
+    );
+  } else {
+    // Auto-find and click submit button
+    await runJS(
+      `(function(){var btn=document.querySelector('[type=submit],button:not([type])');if(btn)btn.click();})()`
+    );
+  }
+  // Wait for navigation/reload — polled from Node (`do JavaScript` can't await).
+  await new Promise(r => setTimeout(r, 300));
+  return _pollReadyAndRead(navIndex);
+}
+
+// Full page analysis — extracts everything in ONE call
+export async function analyzePage() {
+  return runJS(
+    `(function(){
+      var result = {};
+      result.title = document.title;
+      result.url = location.href;
+      result.meta = {};
+      result.meta.description = (document.querySelector('meta[name="description"]')||{}).content||'';
+      result.meta.canonical = (document.querySelector('link[rel="canonical"]')||{}).href||'';
+      result.meta.robots = (document.querySelector('meta[name="robots"]')||{}).content||'';
+      result.meta.og = {};
+      document.querySelectorAll('meta[property^="og:"]').forEach(function(m){result.meta.og[m.getAttribute('property').replace('og:','')]=m.content;});
+      result.headings = {};
+      for(var i=1;i<=3;i++){result.headings['h'+i]=[...document.querySelectorAll('h'+i)].map(function(h){return h.textContent.trim().substring(0,100);});}
+      result.links = {internal:0,external:0,nofollow:0};
+      document.querySelectorAll('a[href]').forEach(function(a){
+        if(a.hostname===location.hostname)result.links.internal++;
+        else result.links.external++;
+        if(a.rel&&a.rel.includes('nofollow'))result.links.nofollow++;
+      });
+      result.images = {total:document.querySelectorAll('img').length,withoutAlt:[...document.querySelectorAll('img:not([alt]),img[alt=""]')].length};
+      result.forms = document.querySelectorAll('form').length;
+      result.text = document.body.innerText.substring(0,5000);
+      return JSON.stringify(result);
+    })()`
+  );
+}
+
+// ========== GRACEFUL SHUTDOWN ==========
+// NOTE: Signal handlers are registered at the top of the file (cleanupHelper + process.exit).
+// _drainHelperQueue is called from cleanupHelper via process.on("exit").
+process.on("exit", () => { _drainHelperQueue("shutting down"); });
