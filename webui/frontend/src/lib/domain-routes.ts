@@ -86,17 +86,17 @@ export function applyDomainPrefix(path: string, domainPrefix: string | null | un
 
 /**
  * Build a domain-prefixed href for an experimental LifeAdmin route, e.g.
- * `caseHref("PAP", "PAP-C5")` → `/PAP/life-admin/PAP-C5`.
+ * `lifeAdminHref("PAP", "PAP-C5")` → `/PAP/life-admin/PAP-C5`.
  *
  * LifeAdmin paths carry identifiers like `PAP-C5` in the first segment, which the
  * generic {@link applyDomainPrefix} mistakes for a domain prefix ("CASES") and
- * therefore leaves `/life-admin/...` unprefixed — every case link then only resolves
+ * therefore leaves `/life-admin/...` unprefixed — every life-admin link then only resolves
  * via the PAP-13002 unprefixed→prefixed redirect. This builder emits the
- * prefixed href directly so case-to-case navigation matches the rest of the app.
+ * prefixed href directly so life-admin-to-life-admin navigation matches the rest of the app.
  * Falls back to the unprefixed path (still valid via the redirect) when no
  * domain is active.
  */
-export function caseHref(
+export function lifeAdminHref(
   domainPrefix: string | null | undefined,
   ...segments: string[]
 ): string {

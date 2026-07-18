@@ -18,7 +18,7 @@ import { formatAssigneeUserLabel } from "./assignees";
 export const RECENT_ISSUES_LIMIT = 100;
 export const FAILED_RUN_STATUSES = new Set(["failed", "timed_out"]);
 export const ACTIONABLE_APPROVAL_STATUSES = new Set(["pending", "revision_requested"]);
-export const DISMISSED_KEY = "paperclip:inbox:dismissed";
+export const DISMISSED_KEY = "ares:inbox:dismissed";
 export const READ_ITEMS_KEY = "paperclip:inbox:read-items";
 export const INBOX_LAST_TAB_KEY = "paperclip:inbox:last-tab";
 export const INBOX_ISSUE_COLUMNS_KEY = "paperclip:inbox:issue-columns";

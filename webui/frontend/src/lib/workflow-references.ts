@@ -1,5 +1,5 @@
 /**
- * Typed work references for workflow cases.
+ * Typed work references for workflow life-admin items.
  *
  * LifeAdmin carry references to the actual work — a workspace folder, an external
  * URL, a linked issue — inside `fields` (and the dedicated `workspaceRef`

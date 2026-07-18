@@ -1,4 +1,4 @@
-export const SELECTION_DEBUG_STORAGE_KEY = "paperclipDebugSelection";
+export const SELECTION_DEBUG_STORAGE_KEY = "aresDebugSelection";
 
 type SelectionDebugEvent = {
   at: number;
@@ -26,7 +26,7 @@ type SelectionDebugState = {
 
 declare global {
   interface Window {
-    __paperclipSelectionDebug?: SelectionDebugState;
+    __aresSelectionDebug?: SelectionDebugState;
   }
 }
 
@@ -97,11 +97,11 @@ export function isSelectionDebugEnabled(): boolean {
 }
 
 export function initializeSelectionDebug(): SelectionDebugState {
-  if (!window.__paperclipSelectionDebug) {
-    window.__paperclipSelectionDebug = createState();
+  if (!window.__aresSelectionDebug) {
+    window.__aresSelectionDebug = createState();
     console.info(`[paperclip selection debug] enabled; set localStorage.${SELECTION_DEBUG_STORAGE_KEY} = "0" and reload to disable`);
   }
-  return window.__paperclipSelectionDebug;
+  return window.__aresSelectionDebug;
 }
 
 function record(type: string, details: SelectionDebugEvent["details"]): void {

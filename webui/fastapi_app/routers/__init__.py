@@ -43,6 +43,7 @@ from .uploads import router as uploads_router
 from .workspaces import router as workspaces_router
 from .wiki import router as wiki_router
 from .research import router as research_router
+from .astronomy import router as astronomy_router
 
 
 def install_core_routers(application: FastAPI) -> None:
@@ -87,6 +88,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(backends_router)
     application.include_router(realtime_router)
     application.include_router(research_router)
+    application.include_router(astronomy_router)
 
 
 __all__ = ["install_core_routers"]

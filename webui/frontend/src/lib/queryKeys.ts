@@ -144,15 +144,15 @@ export const queryKeys = {
   workflows: {
     list: (domainId: string) => ["workflows", domainId] as const,
     detail: (workflowId: string) => ["workflows", "detail", workflowId] as const,
-    cases: (workflowId: string) => ["workflows", "life-admin", workflowId] as const,
-    caseDetail: (caseId: string) => ["workflows", "item", caseId] as const,
-    caseChildren: (caseId: string) => ["workflows", "item", caseId, "children"] as const,
-    caseEvents: (caseId: string) => ["workflows", "item", caseId, "events"] as const,
-    caseIssueLinks: (caseId: string) => ["workflows", "item", caseId, "issue-links"] as const,
-    caseOutputs: (caseId: string) => ["workflows", "item", caseId, "outputs"] as const,
-    caseDocument: (caseId: string, key: string) => ["workflows", "item", caseId, "document", key] as const,
-    caseDocumentRevisions: (caseId: string, key: string) =>
-      ["workflows", "item", caseId, "document-revisions", key] as const,
+lifeAdmins: (workflowId: string) => ["workflows", "life-admin", workflowId] as const,
+lifeAdminDetail: (lifeAdminId: string) => ["workflows", "item", lifeAdminId] as const,
+lifeAdminChildren: (lifeAdminId: string) => ["workflows", "item", lifeAdminId, "children"] as const,
+lifeAdminEvents: (lifeAdminId: string) => ["workflows", "item", lifeAdminId, "events"] as const,
+lifeAdminIssueLinks: (lifeAdminId: string) => ["workflows", "item", lifeAdminId, "issue-links"] as const,
+lifeAdminOutputs: (lifeAdminId: string) => ["workflows", "item", lifeAdminId, "outputs"] as const,
+lifeAdminDocument: (lifeAdminId: string, key: string) => ["workflows", "item", lifeAdminId, "document", key] as const,
+lifeAdminDocumentRevisions: (lifeAdminId: string, key: string) =>
+      ["workflows", "item", lifeAdminId, "document-revisions", key] as const,
     intakeForm: (workflowId: string) => ["workflows", "intake-form", workflowId] as const,
     health: (workflowId: string) => ["workflows", "health", workflowId] as const,
     document: (workflowId: string, key: string) => ["workflows", "document", workflowId, key] as const,
@@ -185,12 +185,12 @@ export const queryKeys = {
     list: (domainId: string) => ["projects", domainId] as const,
     detail: (id: string) => ["projects", "detail", id] as const,
   },
-  cases: {
+  lifeAdmin: {
     list: (domainId: string) => ["life-admin", domainId] as const,
     detail: (id: string) => ["life-admin", "detail", id] as const,
     documents: (id: string) => ["life-admin", "documents", id] as const,
-    documentAnnotations: (caseId: string, key: string, status: "open" | "resolved" | "all" = "all") =>
-      ["life-admin", "document-annotations", caseId, key, status] as const,
+documentAnnotations: (lifeAdminId: string, key: string, status: "open" | "resolved" | "all" = "all") =>
+      ["life-admin", "document-annotations", lifeAdminId, key, status] as const,
     events: (id: string) => ["life-admin", "events", id] as const,
     children: (parentId: string) => ["life-admin", "children", parentId] as const,
     revisions: (id: string, key: string) => ["life-admin", "revisions", id, key] as const,

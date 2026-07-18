@@ -265,7 +265,7 @@ function toTime(value: string | Date): number {
  *   marked primary) comes first, then remaining artifacts by most-recent.
  */
 export function getIssueOutputs(workProducts: IssueWorkProduct[] | null | undefined): IssueOutputs {
-  const artifacts = (workProducts ?? []).filter((wp) => wp.type === "artifact" && wp.provider === "paperclip");
+  const artifacts = (workProducts ?? []).filter((wp) => wp.type === "artifact" && wp.provider === "ares");
 
   const items: IssueOutputItem[] = artifacts.flatMap((wp) => {
     const parsed = attachmentArtifactWorkProductMetadataSchema.safeParse(wp.metadata);

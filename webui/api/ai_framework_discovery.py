@@ -179,12 +179,30 @@ def _find_mcp_servers(config_dir: Path) -> list[dict[str, Any]]:
     return servers
 
 
+def _fetch_ollama_default_model() -> str | None:
+    try:
+        import requests
+        r = requests.get("http://127.0.0.1:11434/api/tags", timeout=3)
+        if r.status_code == 200:
+            models = [m.get("name") for m in r.json().get("models", [])]
+            preferred = [m for m in models if "qwen" in m.lower() or "kai" in m.lower() or "llama" in m.lower()]
+            return preferred[0] if preferred else (models[0] if models else None)
+    except Exception:
+        pass
+    return None
+
+
 def _extract_model_info(adapter_id: str, config_dir: Path) -> dict[str, Any]:
     info: dict[str, Any] = {}
     if adapter_id == "pi_local":
         settings = _read_json(config_dir / "agent" / "settings.json")
         if settings:
-            info["default_model"] = settings.get("defaultModel")
+            configured = settings.get("defaultModel")
+            # If the configured model isn't actually available locally, override with a real Ollama tag
+            available = _fetch_ollama_default_model()
+            if configured:
+                info["configured_model"] = configured
+            info["default_model"] = available or configured
             info["default_provider"] = settings.get("defaultProvider")
     elif adapter_id == "codex_local":
         cfg = _read_yaml_front(config_dir / "config.toml")
@@ -201,6 +219,8 @@ def _extract_model_info(adapter_id: str, config_dir: Path) -> dict[str, Any]:
             model = cfg.get("model", {})
             info["default_model"] = model.get("default")
             info["default_provider"] = model.get("provider")
+    elif adapter_id == "ollama_local":
+        info["default_model"] = _fetch_ollama_default_model()
     return info
 
 

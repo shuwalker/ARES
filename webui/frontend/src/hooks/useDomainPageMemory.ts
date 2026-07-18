@@ -8,7 +8,7 @@ import {
   sanitizeRememberedPathForDomain,
 } from "../lib/domain-page-memory";
 
-const STORAGE_KEY = "paperclip.domainPaths";
+const STORAGE_KEY = "ares.domainPaths";
 
 function getDomainPaths(): Record<string, string> {
   try {

@@ -1,6 +1,6 @@
-// Linkify bare case identifiers (e.g. `PAP-C7`) inside markdown so they render
-// as clickable chips pointing at the case detail page. Mirrors the sibling
-// issue-reference plugin, but the `-C<n>` infix keeps case tokens from ever
+// Linkify bare life-admin identifiers (e.g. `PAP-C7`) inside markdown so they render
+// as clickable chips pointing at the life-admin detail page. Mirrors the sibling
+// issue-reference plugin, but the `-C<n>` infix keeps life-admin tokens from ever
 // colliding with plain issue identifiers (`PREFIX-<n>`), so the two plugins can
 // run side by side on the same tree. (PAP-12969 — LifeAdmin P4 comment chips.)
 
@@ -11,16 +11,16 @@ type MarkdownNode = {
   children?: MarkdownNode[];
 };
 
-const BARE_CASE_IDENTIFIER_RE = /^[A-Z][A-Z0-9]*-C\d+$/i;
-const CASE_REFERENCE_TOKEN_RE = /\b[A-Z][A-Z0-9]*-C\d+\b/gi;
+const BARE_LIFE_ADMIN_IDENTIFIER_RE = /^[A-Z][A-Z0-9]*-C\d+$/i;
+const LIFE_ADMIN_REFERENCE_TOKEN_RE = /\b[A-Z][A-Z0-9]*-C\d+\b/gi;
 
-export function parseCaseReferenceFromHref(
+export function parseLifeAdminReferenceFromHref(
   value: string | null | undefined,
   knownPrefixes?: Set<string>,
 ): { identifier: string; href: string } | null {
   if (!value) return null;
   const trimmed = value.trim();
-  if (!BARE_CASE_IDENTIFIER_RE.test(trimmed)) return null;
+  if (!BARE_LIFE_ADMIN_IDENTIFIER_RE.test(trimmed)) return null;
   const normalized = trimmed.toUpperCase();
   // Only auto-link when the prefix belongs to a known domain (mirrors the
   // issue-reference gate). An empty/omitted set stays permissive so provider-less
@@ -32,7 +32,7 @@ export function parseCaseReferenceFromHref(
   return { identifier: normalized, href: `/life-admin/${encodeURIComponent(normalized)}` };
 }
 
-function createCaseLinkNode(
+function createLifeAdminLinkNode(
   value: string,
   href: string,
   childType: "text" | "inlineCode" = "text",
@@ -40,19 +40,19 @@ function createCaseLinkNode(
   return { type: "link", url: href, children: [{ type: childType, value }] };
 }
 
-function linkifyCaseReferencesInText(value: string, knownPrefixes?: Set<string>): MarkdownNode[] | null {
+function linkifyLifeAdminReferencesInText(value: string, knownPrefixes?: Set<string>): MarkdownNode[] | null {
   const nodes: MarkdownNode[] = [];
   let cursor = 0;
   let matched = false;
-  for (const match of value.matchAll(CASE_REFERENCE_TOKEN_RE)) {
+  for (const match of value.matchAll(LIFE_ADMIN_REFERENCE_TOKEN_RE)) {
     const raw = match[0];
     if (!raw) continue;
-    const caseRef = parseCaseReferenceFromHref(raw, knownPrefixes);
-    if (!caseRef) continue;
+    const lifeAdminRef = parseLifeAdminReferenceFromHref(raw, knownPrefixes);
+    if (!lifeAdminRef) continue;
     const start = match.index ?? 0;
     matched = true;
     if (start > cursor) nodes.push({ type: "text", value: value.slice(cursor, start) });
-    nodes.push(createCaseLinkNode(raw, caseRef.href));
+    nodes.push(createLifeAdminLinkNode(raw, lifeAdminRef.href));
     cursor = start + raw.length;
   }
   if (!matched) return null;
@@ -74,14 +74,14 @@ function rewriteMarkdownTree(node: MarkdownNode, knownPrefixes?: Set<string>) {
   const nextChildren: MarkdownNode[] = [];
   for (const child of node.children) {
     if (child.type === "inlineCode" && typeof child.value === "string") {
-      const caseRef = parseCaseReferenceFromHref(child.value, knownPrefixes);
-      if (caseRef) {
-        nextChildren.push(createCaseLinkNode(child.value, caseRef.href, "inlineCode"));
+      const lifeAdminRef = parseLifeAdminReferenceFromHref(child.value, knownPrefixes);
+      if (lifeAdminRef) {
+        nextChildren.push(createLifeAdminLinkNode(child.value, lifeAdminRef.href, "inlineCode"));
         continue;
       }
     }
     if (child.type === "text" && typeof child.value === "string") {
-      const linked = linkifyCaseReferencesInText(child.value, knownPrefixes);
+      const linked = linkifyLifeAdminReferencesInText(child.value, knownPrefixes);
       if (linked) {
         nextChildren.push(...linked);
         continue;
@@ -93,12 +93,12 @@ function rewriteMarkdownTree(node: MarkdownNode, knownPrefixes?: Set<string>) {
   node.children = nextChildren;
 }
 
-export interface RemarkLinkCaseReferencesOptions {
-  /** Domain prefixes eligible for auto-linking (see parseCaseReferenceFromHref). */
+export interface RemarkLinkLifeAdminReferencesOptions {
+  /** Domain prefixes eligible for auto-linking (see parseLifeAdminReferenceFromHref). */
   knownPrefixes?: string[];
 }
 
-export function remarkLinkCaseReferences(options?: RemarkLinkCaseReferencesOptions) {
+export function remarkLinkLifeAdminReferences(options?: RemarkLinkLifeAdminReferencesOptions) {
   const knownPrefixes =
     options?.knownPrefixes && options.knownPrefixes.length > 0
       ? new Set(options.knownPrefixes.map((prefix) => prefix.toUpperCase()))

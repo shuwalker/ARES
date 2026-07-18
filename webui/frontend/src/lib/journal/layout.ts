@@ -53,7 +53,7 @@ export interface PositionedBar {
 
 /**
  * Instant human/actor actions are deliberately not plotted in the main chart.
- * The shape remains in the layout model so call sites do not need special cases,
+ * The shape remains in the layout model so call sites do not need special handling,
  * but rows now stay focused on actors with actual run participation.
  */
 export interface PositionedMarker {

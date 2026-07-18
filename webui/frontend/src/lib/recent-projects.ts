@@ -3,7 +3,7 @@ import {
   trackRecentSelectionId,
 } from "./recent-selections";
 
-const STORAGE_KEY = "paperclip:recent-projects";
+const STORAGE_KEY = "ares:recent-projects";
 
 export function getRecentProjectIds(): string[] {
   return readRecentSelectionIds(STORAGE_KEY);

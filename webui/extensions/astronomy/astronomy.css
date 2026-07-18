@@ -1,0 +1,336 @@
+/* ── ARES Astronomy · Dark theme (Graphite skin) ── */
+
+.astronomy-root {
+  --astro-accent: #7c8cf8;
+  --astro-accent-dim: #5a67d8;
+  --astro-success: #48bb78;
+  --astro-warning: #ecc94b;
+  --astro-danger: #fc8181;
+  --astro-surface: #1e1e2e;
+  --astro-surface2: #2a2a3c;
+  --astro-border: #3a3a4f;
+  --astro-text: #e2e2f0;
+  --astro-text-dim: #9898b0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  height: 100%;
+  overflow-y: auto;
+  color: var(--astro-text);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* ── Section headings ── */
+
+.astronomy-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--astro-accent);
+  margin: 8px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.astronomy-section-title::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--astro-accent);
+}
+
+/* ── Equipment cards ── */
+
+.astronomy-equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.astronomy-card {
+  background: var(--astro-surface);
+  border: 1px solid var(--astro-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.2s;
+}
+
+.astronomy-card:hover {
+  border-color: var(--astro-accent-dim);
+}
+
+.astronomy-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.astronomy-card-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--astro-text);
+}
+
+.astronomy-card-type {
+  font-size: 11px;
+  color: var(--astro-text-dim);
+  background: var(--astro-surface2);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* ── Connection indicator ── */
+
+.astronomy-conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.astronomy-conn-dot.connected {
+  background: var(--astro-success);
+  box-shadow: 0 0 6px var(--astro-success);
+}
+
+.astronomy-conn-dot.disconnected {
+  background: var(--astro-danger);
+}
+
+.astronomy-conn-dot.connecting {
+  background: var(--astro-warning);
+  animation: astronomy-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes astronomy-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.astronomy-conn-status {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--astro-text-dim);
+}
+
+/* ── Card detail rows ── */
+
+.astronomy-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--astro-text-dim);
+}
+
+.astronomy-card-detail-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.astronomy-card-detail-label {
+  color: var(--astro-text-dim);
+}
+
+.astronomy-card-detail-value {
+  color: var(--astro-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Connect / disconnect button ── */
+
+.astronomy-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--astro-border);
+  background: var(--astro-surface2);
+  color: var(--astro-text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.astronomy-btn:hover {
+  background: var(--astro-accent-dim);
+  border-color: var(--astro-accent);
+}
+
+.astronomy-btn--danger {
+  border-color: var(--astro-danger);
+  color: var(--astro-danger);
+}
+
+.astronomy-btn--danger:hover {
+  background: rgba(252, 129, 129, 0.15);
+}
+
+/* ── Night planning section ── */
+
+.astronomy-night-panel {
+  background: var(--astro-surface);
+  border: 1px solid var(--astro-border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.astronomy-night-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+
+.astronomy-night-location {
+  font-size: 12px;
+  color: var(--astro-text-dim);
+}
+
+/* ── Twilight timeline ── */
+
+.astronomy-timeline {
+  position: relative;
+  height: 40px;
+  background: var(--astro-surface2);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.astronomy-timeline-night {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(124, 140, 248, 0.15);
+  border-left: 2px solid var(--astro-accent-dim);
+  border-right: 2px solid var(--astro-accent-dim);
+}
+
+.astronomy-timeline-label {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--astro-text-dim);
+  white-space: nowrap;
+}
+
+/* ── Moon phase ── */
+
+.astronomy-moon-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.astronomy-moon-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.astronomy-moon-info {
+  font-size: 12px;
+  color: var(--astro-text-dim);
+  line-height: 1.6;
+}
+
+/* ── Target table ── */
+
+.astronomy-target-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.astronomy-target-table th {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--astro-border);
+  color: var(--astro-text-dim);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.astronomy-target-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--astro-surface2);
+  color: var(--astro-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.astronomy-target-table tr:hover td {
+  background: var(--astro-surface2);
+}
+
+.astronomy-target-alt {
+  display: inline-block;
+  width: 36px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--astro-surface2);
+  position: relative;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.astronomy-target-alt-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--astro-accent);
+  opacity: 0.6;
+}
+
+/* ── Loading skeleton ── */
+
+.astronomy-skeleton {
+  background: linear-gradient(90deg, var(--astro-surface2) 25%, var(--astro-surface) 50%, var(--astro-surface2) 75%);
+  background-size: 200% 100%;
+  animation: astronomy-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+  height: 20px;
+  width: 100%;
+}
+
+@keyframes astronomy-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Error state ── */
+
+.astronomy-error-banner {
+  background: rgba(252, 129, 129, 0.1);
+  border: 1px solid rgba(252, 129, 129, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--astro-danger);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 600px) {
+  .astronomy-equipment-grid {
+    grid-template-columns: 1fr;
+  }
+}

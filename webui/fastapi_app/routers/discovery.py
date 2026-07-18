@@ -69,3 +69,13 @@ def apply_discovered_frameworks(
         "adapter_ids": list(connections.keys()),
         "settings": saved,
     }
+
+@router.get("/api/connections/verify", response_model=ExtensibleResponse)
+def verify_connections(
+    identity: Annotated[RequestIdentity, Depends(require_identity)],
+    service: Annotated[AresCoreService, Depends(get_core_service)],
+):
+    """Run a one-word prompt through each detected backend and report status."""
+    from api.backend_verification import verify_all_backends
+
+    return verify_all_backends()
