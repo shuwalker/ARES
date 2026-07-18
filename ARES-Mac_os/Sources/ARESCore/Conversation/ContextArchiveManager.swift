@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 /// ContextArchiveManager.swift
 /// SAM Long-Term Memory System for Archived Conversation Context
@@ -18,8 +18,6 @@
 import Foundation
 import SQLite
 import Logging
-import ConfigurationSystem
-import MCPFramework
 
 // MARK: - Data Types
 

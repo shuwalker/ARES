@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 /// LongTermMemory.swift - Structured long-term memory for SAM
 /// Ported from CLIO's Memory::LongTerm module.
@@ -11,7 +11,6 @@
 
 import Foundation
 import Logging
-import ConfigurationSystem
 
 private let ltmLogger = Logger(label: "com.sam.ltm")
 

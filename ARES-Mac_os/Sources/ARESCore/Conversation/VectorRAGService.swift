@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 /// VectorRAGService.swift SAM Enhanced Vector RAG System for sophisticated document processing and retrieval ARCHITECTURE OVERVIEW: - Document Ingestion: Chunks documents and generates 768-dimensional embeddings - Semantic Search: Cosine similarity matching for relevant content retrieval - Memory Integration: Stores processed chunks in MemoryManager with RAG tags - Cross-Conversation Search: Enhanced search across all stored memories KEY COMPONENTS: - DocumentChunker: Intelligent content segmentation preserving context - EmbeddingGenerator: 768-dimensional vector generation using NaturalLanguage - ProcessedChunk: Container for chunk content, embeddings, and metadata - SemanticSearchResult: Search results with similarity scores and context INTEGRATION POINTS: - MemoryManagerAdapter: Enhanced search with Vector RAG fallback - ConversationManager: Service lifecycle and initialization management - MCP Tools: Memory search integration for conversational access.
 

@@ -1,9 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 import Foundation
 import Logging
-import ConfigurationSystem
 
 /// ReadFileTool - Read file contents with optional pagination Reads the contents of a file and returns it as a string.
 /// Supports binary file detection with helpful error messages and ToolResultStorage for large files.

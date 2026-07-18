@@ -1,12 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 /// ConversationImportExportService.swift
 /// SAM Conversation Import/Export System
 /// Handles JSON export/import with full metadata and optional memory data
 
 import Foundation
-import ConfigurationSystem
 import Logging
 
 // MARK: - Export Data Structures

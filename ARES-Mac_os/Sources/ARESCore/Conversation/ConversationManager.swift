@@ -1,11 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 import Combine
 import Foundation
 import Logging
-import MCPFramework
-import ConfigurationSystem
 
 // MARK: - Notification Names
 

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 /// AppleNLEmbeddingGenerator.swift SAM Apple NLEmbedding-based semantic embedding generator Uses Apple's NaturalLanguage framework for offline, native embedding generation Created: October 15, 2025 Purpose: Replace hash-based mock embeddings with real semantic understanding.
 

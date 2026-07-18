@@ -1,10 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 /// YaRNContextProcessor.swift SAM YaRN (Yet another RoPE extensioN) Context Extension Implementation Dynamic attention patterns, scaling factors, and compression ratios for intelligent context management ARCHITECTURE OVERVIEW: - Dynamic Context Windows: Scales from 8K-65K tokens based on conversation complexity - Attention Scaling: Intelligent attention pattern management for extended contexts.
 
 import Foundation
-import ConfigurationSystem
 
 /// Type alias for compatibility during migration.
 public typealias Message = ConfigurationSystem.EnhancedMessage

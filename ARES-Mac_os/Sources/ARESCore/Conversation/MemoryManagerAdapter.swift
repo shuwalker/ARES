@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-only
-// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius)
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
 import Foundation
-import MCPFramework
 
 /// Adapter to bridge MemoryManager with MemoryManagerProtocol This adapter allows the existing MemoryManager to work with the MCP memory tools without circular dependencies or major refactoring.
 public class MemoryManagerAdapter: MemoryManagerProtocol, @unchecked Sendable {
