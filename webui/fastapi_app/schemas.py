@@ -420,3 +420,10 @@ class McpToolsResponse(ExtensibleResponse):
     tools: list[dict[str, Any]]
     total: int
     unavailable_servers: list[str]
+
+class AIFrameworkDiscoveryResponse(ExtensibleResponse):
+    scanned_at: str
+    adapters: list[dict[str, Any]]
+    detected_count: int
+    available_ids: list[str]
+    profile: str | None = None

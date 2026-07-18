@@ -9154,7 +9154,7 @@ def load_settings() -> dict:
     return settings
 
 
-_SETTINGS_ALLOWED_KEYS = set(_SETTINGS_DEFAULTS.keys()) - {
+_SETTINGS_ALLOWED_KEYS = set(_SETTINGS_DEFAULTS.keys()) | {"connections"} - {
     "password_hash",
     "default_model",
     "simplified_tool_calling",
@@ -9339,6 +9339,21 @@ def save_settings(settings: dict) -> dict:
         settings["default_message_mode"] = settings.get("busy_input_mode")
     settings.pop("busy_input_mode", None)
     settings.pop("simplified_tool_calling", None)
+    # Deep-merge discovered connections config
+    _connections = settings.get("connections")
+    if isinstance(_connections, dict):
+        current_connections = current.get("connections", {})
+        if isinstance(current_connections, dict):
+            for conn_id, conn_cfg in _connections.items():
+                existing = current_connections.get(conn_id, {})
+                if isinstance(conn_cfg, dict) and isinstance(existing, dict):
+                    merged = dict(existing)
+                    merged.update(conn_cfg)
+                    current_connections[conn_id] = merged
+                else:
+                    current_connections[conn_id] = conn_cfg
+            current["connections"] = current_connections
+    settings.pop("connections", None)
     pending_theme = current.get("theme")
     pending_skin = current.get("skin")
     theme_was_explicit = False

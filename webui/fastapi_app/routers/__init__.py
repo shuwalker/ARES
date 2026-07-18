@@ -7,6 +7,7 @@ from .analytics import router as analytics_router
 from .auth import router as auth_router
 from .ares import router as ares_router
 from .controls import router as controls_router
+from .discovery import router as discovery_router
 from .env import router as env_router
 from .webhooks import router as webhooks_router
 from .secrets import router as secrets_router
@@ -63,6 +64,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(mcp_router)
     application.include_router(auth_router)
     application.include_router(controls_router)
+    application.include_router(discovery_router)
     application.include_router(email_router)
     application.include_router(ares_router)
     application.include_router(secrets_router)
