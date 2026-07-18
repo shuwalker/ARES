@@ -546,3 +546,64 @@ def run_ollama_streaming(
         _finish(accumulated)
     except Exception as exc:
         _finish(error=f"Ollama streaming error: {exc}")
+
+
+class AppAutomationBackend:
+    """For apps that have no CLI but expose a UI; uses AppleScript to push a prompt."""
+    name = "app_automation"
+    display_label = "App Automation"
+    supports_tools = False
+
+    def __init__(self, app_name: str, command_sequence: list):
+        self.app_name = app_name
+        self.command_sequence = command_sequence
+
+    def is_available(self) -> bool:
+        import shutil
+        return shutil.which("osascript") is not None
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> dict:
+        import subprocess
+        # Build AppleScript: activate app and type the prompt, then submit
+        steps = [f'activate application "{self.app_name}"']
+        for step in self.command_sequence:
+            if step == "type_message":
+                escaped = message.replace('"', '\"')
+                steps.append(f'tell application "System Events" to keystroke "{escaped}"')
+            elif step == "return":
+                steps.append('tell application "System Events" to key code 36')
+            elif step == "tab":
+                steps.append('tell application "System Events" to key code 48')
+        script = "\n".join(steps)
+        try:
+            r = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, text=True, timeout=30
+            )
+            return {"text": "", "error": r.stderr.strip() if r.returncode != 0 else None, "tool_activity": []}
+        except Exception as exc:
+            return {"text": "", "error": str(exc), "tool_activity": []}
+
+
+class AntigravityGeminiBackend(AppAutomationBackend):
+    name = "gemini_antigravity"
+    display_label = "Gemini (Antigravity IDE)"
+
+    def __init__(self):
+        super().__init__("Antigravity IDE", ["type_message", "return"])
+
+
+class CursorAppBackend(AppAutomationBackend):
+    name = "cursor_app"
+    display_label = "Cursor (App Automation)"
+
+    def __init__(self):
+        super().__init__("Cursor", ["type_message", "return"])
+
+
+class OpenCodeAppBackend(AppAutomationBackend):
+    name = "opencode_app"
+    display_label = "OpenCode (App Automation)"
+
+    def __init__(self):
+        super().__init__("OpenCode", ["type_message", "return"])

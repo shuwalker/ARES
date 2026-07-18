@@ -217,11 +217,11 @@ public struct ConversationData: Codable, Sendable {
     public let title: String
     public let created: Date
     public let updated: Date
-    public let messages: [ConfigurationSystem.EnhancedMessage]
+    public let messages: [EnhancedMessage]
     public let settings: ConversationSettings?
     public let sessionId: String?
     public let lastGitHubCopilotResponseId: String?
-    public let contextMessages: [ConfigurationSystem.EnhancedMessage]?
+    public let contextMessages: [EnhancedMessage]?
     public let isPinned: Bool?
     public let workingDirectory: String?
     public let workingDirectoryBookmark: Data?
@@ -234,9 +234,9 @@ public struct ConversationData: Codable, Sendable {
     public let isFromAPI: Bool?
     
     /// Performance metrics for this conversation (cost tracking)
-    public let performanceMetrics: [ConfigurationSystem.APIPerformanceMetrics]?
+    public let performanceMetrics: [APIPerformanceMetrics]?
 
-    public init(id: UUID, title: String, created: Date, updated: Date, messages: [ConfigurationSystem.EnhancedMessage], settings: ConversationSettings, sessionId: String? = nil, lastGitHubCopilotResponseId: String? = nil, contextMessages: [ConfigurationSystem.EnhancedMessage]? = nil, isPinned: Bool = false, workingDirectory: String? = nil, workingDirectoryBookmark: Data? = nil, enabledMiniPromptIds: [UUID]? = nil, folderId: String? = nil, isFromAPI: Bool = false, performanceMetrics: [ConfigurationSystem.APIPerformanceMetrics]? = nil) {
+    public init(id: UUID, title: String, created: Date, updated: Date, messages: [EnhancedMessage], settings: ConversationSettings, sessionId: String? = nil, lastGitHubCopilotResponseId: String? = nil, contextMessages: [EnhancedMessage]? = nil, isPinned: Bool = false, workingDirectory: String? = nil, workingDirectoryBookmark: Data? = nil, enabledMiniPromptIds: [UUID]? = nil, folderId: String? = nil, isFromAPI: Bool = false, performanceMetrics: [APIPerformanceMetrics]? = nil) {
         self.id = id
         self.title = title
         self.created = created
@@ -272,7 +272,7 @@ public class ConversationModel: ObservableObject, Identifiable {
 
     /// Messages synced from MessageBus (single source of truth)
     /// This property is automatically kept in sync with MessageBus
-    @Published public var messages: [ConfigurationSystem.EnhancedMessage] = []
+    @Published public var messages: [EnhancedMessage] = []
 
     @Published public var title: String = "New Conversation"
     @Published public var isProcessing = false
@@ -283,7 +283,7 @@ public class ConversationModel: ObservableObject, Identifiable {
     @Published public var lastGitHubCopilotResponseId: String?
 
     /// Context messages for LLM (may be pruned/summarized) This is separate from 'messages' to allow context pruning without affecting UI display When nil, use 'messages' for LLM context (no pruning has occurred).
-    @Published public var contextMessages: [ConfigurationSystem.EnhancedMessage]?
+    @Published public var contextMessages: [EnhancedMessage]?
 
     /// Pinned conversations stay at top of list and are never auto-pruned.
     @Published public var isPinned: Bool = false
@@ -299,7 +299,7 @@ public class ConversationModel: ObservableObject, Identifiable {
     
     /// Performance metrics for this conversation (cost tracking)
     /// Persisted per-conversation so cost data survives app restart/conversation switch
-    @Published public var performanceMetrics: [ConfigurationSystem.APIPerformanceMetrics] = []
+    @Published public var performanceMetrics: [APIPerformanceMetrics] = []
 
     /// Working directory for file access Default: {basePath}/<conversation-id>/ (per-conversation isolation, App Store compliant, user can select different folder via picker).
     public var workingDirectory: String
@@ -389,7 +389,7 @@ public class ConversationModel: ObservableObject, Identifiable {
         return ConversationModel.from(data: data)
     }
 
-    private init(id: UUID, created: Date, title: String, updated: Date, messages: [ConfigurationSystem.EnhancedMessage], settings: ConversationSettings, sessionId: String? = nil, lastGitHubCopilotResponseId: String? = nil, contextMessages: [ConfigurationSystem.EnhancedMessage]? = nil, isPinned: Bool = false, workingDirectory: String? = nil, workingDirectoryBookmark: Data? = nil, enabledMiniPromptIds: Set<UUID> = [], folderId: String? = nil, isFromAPI: Bool = false, performanceMetrics: [ConfigurationSystem.APIPerformanceMetrics] = []) {
+    private init(id: UUID, created: Date, title: String, updated: Date, messages: [EnhancedMessage], settings: ConversationSettings, sessionId: String? = nil, lastGitHubCopilotResponseId: String? = nil, contextMessages: [EnhancedMessage]? = nil, isPinned: Bool = false, workingDirectory: String? = nil, workingDirectoryBookmark: Data? = nil, enabledMiniPromptIds: Set<UUID> = [], folderId: String? = nil, isFromAPI: Bool = false, performanceMetrics: [APIPerformanceMetrics] = []) {
         self.id = id
         self.created = created
         self.title = title
@@ -469,7 +469,7 @@ public class ConversationModel: ObservableObject, Identifiable {
     /// This method is maintained for backward compatibility but will be removed in future versions.
     /// New code should use: conversation.messageBus?.addUserMessage() or conversation.messageBus?.addAssistantMessage()
     @available(*, deprecated, message: "Use conversation.messageBus?.addUserMessage() or addAssistantMessage() instead")
-    public func addMessage(text: String, isUser: Bool, performanceMetrics: ConfigurationSystem.MessagePerformanceMetrics? = nil, githubCopilotResponseId: String? = nil, isPinned: Bool? = nil, importance: Double? = nil) {
+    public func addMessage(text: String, isUser: Bool, performanceMetrics: MessagePerformanceMetrics? = nil, githubCopilotResponseId: String? = nil, isPinned: Bool? = nil, importance: Double? = nil) {
 
         /// Extract reasoning content if present in the text.
         let (reasoning, messageType) = extractReasoningContent(from: text, isUser: isUser)
@@ -483,7 +483,7 @@ public class ConversationModel: ObservableObject, Identifiable {
         /// Calculate importance score (or use provided value)
         let finalImportance = importance ?? calculateMessageImportance(text: text, isUser: isUser)
 
-        let message = ConfigurationSystem.EnhancedMessage(
+        let message = EnhancedMessage(
             id: UUID(),
             type: messageType,
             content: text,
@@ -505,8 +505,8 @@ public class ConversationModel: ObservableObject, Identifiable {
     /// This method is maintained for backward compatibility but will be removed in future versions.
     /// New code should use: conversation.messageBus?.addToolMessage(...)
     @available(*, deprecated, message: "Use conversation.messageBus?.addToolMessage() instead")
-    public func addToolMessage(toolName: String, content: String, status: ConfigurationSystem.ToolStatus, duration: TimeInterval? = nil, icon: String? = nil, details: [String]? = nil, toolCallId: String? = nil) {
-        let message = ConfigurationSystem.EnhancedMessage(
+    public func addToolMessage(toolName: String, content: String, status: ToolStatus, duration: TimeInterval? = nil, icon: String? = nil, details: [String]? = nil, toolCallId: String? = nil) {
+        let message = EnhancedMessage(
             id: UUID(),
             type: .toolExecution,
             content: content,
@@ -534,7 +534,7 @@ public class ConversationModel: ObservableObject, Identifiable {
     }
 
     /// Extract reasoning content from message text Returns: (reasoningContent, messageType).
-    private func extractReasoningContent(from text: String, isUser: Bool) -> (String?, ConfigurationSystem.MessageType) {
+    private func extractReasoningContent(from text: String, isUser: Bool) -> (String?, MessageType) {
         /// User messages don't have reasoning.
         guard !isUser else {
             return (nil, .user)

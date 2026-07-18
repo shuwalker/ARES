@@ -26,7 +26,7 @@ public protocol PersonaProvider: AnyObject, Sendable {
     func getBehavioralPreferences() async throws -> BehavioralPreferences
 
     /// Get system prompt (injected into reasoning gateway).
-    func getSystemPrompt(context: ConversationContext) async throws -> String
+    func getSystemPrompt(context: SAMConversationContext) async throws -> String
 
     /// Update persona from learning experience.
     /// Called after interactions to evolve personality over time.

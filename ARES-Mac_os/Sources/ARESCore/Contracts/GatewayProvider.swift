@@ -24,14 +24,14 @@ public protocol GatewayProvider: AnyObject, Sendable {
     /// May stream or return all at once depending on backend.
     func prompt(
         _ message: String,
-        context: ConversationContext,
+        context: SAMConversationContext,
         options: GatewayOptions
     ) async throws -> GatewayResponse
 
     /// Stream a response token-by-token.
     func promptStream(
         _ message: String,
-        context: ConversationContext,
+        context: SAMConversationContext,
         options: GatewayOptions
     ) -> AsyncStream<StreamedToken>
 
@@ -39,7 +39,7 @@ public protocol GatewayProvider: AnyObject, Sendable {
     /// Gateway may validate, route, or execute directly.
     func executeToolCall(
         _ call: ToolCall,
-        context: ConversationContext
+        context: SAMConversationContext
     ) async throws -> ToolResult
 
     /// Get gateway configuration and limits.

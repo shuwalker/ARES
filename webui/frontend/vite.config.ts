@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@paperclipai/shared": path.resolve(__dirname, "./src/shared/index.ts"),
     },
   },
   server: {

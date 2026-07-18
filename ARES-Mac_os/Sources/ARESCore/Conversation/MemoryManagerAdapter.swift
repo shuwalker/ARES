@@ -49,9 +49,9 @@ public class MemoryManagerAdapter: MemoryManagerProtocol, @unchecked Sendable {
         }
     }
 
-    public func storeMemory(content: String, contentType: MCPFramework.MemoryContentType, context: String, conversationId: String?, tags: [String]) async throws -> UUID {
-        /// Map MCPFramework.MemoryContentType to ConversationEngine.ConversationMemoryContentType.
-        let engineContentType: ConversationEngine.ConversationMemoryContentType
+    public func storeMemory(content: String, contentType: MemoryContentType, context: String, conversationId: String?, tags: [String]) async throws -> UUID {
+        /// Map MemoryContentType to ConversationMemoryContentType.
+        let engineContentType: ConversationMemoryContentType
         switch contentType {
         case .interaction:
             engineContentType = .message
@@ -80,7 +80,7 @@ public class MemoryManagerAdapter: MemoryManagerProtocol, @unchecked Sendable {
         )
     }
 
-    public func getMemoryStatistics() async throws -> any MCPFramework.MemoryStatistics {
+    public func getMemoryStatistics() async throws -> any MemoryStatistics {
         /// Get actual global statistics from database.
         let stats = try await memoryManager.getGlobalMemoryStatistics()
 
@@ -127,8 +127,8 @@ public class MemoryManagerAdapter: MemoryManagerProtocol, @unchecked Sendable {
 
 // MARK: - Supporting Types
 
-/// Simple implementation of MCPFramework.MemoryStatistics protocol.
-private struct SimpleMemoryStatistics: MCPFramework.MemoryStatistics {
+/// Simple implementation of MemoryStatistics protocol.
+private struct SimpleMemoryStatistics: MemoryStatistics {
     let totalMemories: Int
     let interactionCount: Int
     let factCount: Int
@@ -146,8 +146,8 @@ private struct ConversationMemoryAdapter: MemoryEntry {
     var id: UUID { memory.id }
     var content: String { memory.content }
     var context: String { "" }
-    var contentType: MCPFramework.MemoryContentType {
-        /// Map from ConversationEngine.ConversationMemoryContentType to MCPFramework.MemoryContentType.
+    var contentType: MemoryContentType {
+        /// Map from ConversationMemoryContentType to MemoryContentType.
         switch memory.contentType {
         case .message:
             return .interaction
@@ -187,7 +187,7 @@ public struct SemanticMemoryAdapter: MemoryEntry {
 
     public var id: UUID { semanticResult.id }
     public var content: String { semanticResult.content }
-    public var contentType: MCPFramework.MemoryContentType {
+    public var contentType: MemoryContentType {
         /// Map based on metadata tags or default to fact.
         let tags = semanticResult.metadata["tags"] as? [String] ?? []
         if tags.contains("document") || tags.contains("rag") {

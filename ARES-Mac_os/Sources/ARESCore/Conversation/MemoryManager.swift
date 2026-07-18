@@ -344,7 +344,7 @@ public class MemoryManager: ObservableObject {
    }
 
     /// Get memory statistics for a conversation.
-    public func getMemoryStatistics(for conversationId: UUID) async throws -> MemoryStatistics {
+    public func getMemoryStatistics(for conversationId: UUID) async throws -> SAMMemoryStatistics {
         /// Use per-conversation database (not legacy shared database).
         let db = try getDatabaseConnection(for: conversationId)
 
@@ -359,7 +359,7 @@ public class MemoryManager: ObservableObject {
 
             logger.debug("Memory statistics for \(conversationId): \(totalCount) memories, \(totalAccesses) accesses, avg importance \(String(format: "%.2f", averageImportance))")
 
-            return MemoryStatistics(
+            return SAMMemoryStatistics(
                 totalMemories: totalCount,
                 averageImportance: averageImportance,
                 totalAccesses: totalAccesses,
@@ -691,7 +691,9 @@ public struct ConversationMemory: Identifiable, Sendable {
 }
 
 /// Statistics about memories for a conversation.
-public struct MemoryStatistics {
+/// Renamed from MemoryStatistics to SAMMemoryStatistics to avoid collision
+/// with the MemoryStatistics protocol in MCPTypes.swift.
+public struct SAMMemoryStatistics {
     public let totalMemories: Int
     public let averageImportance: Double
     public let totalAccesses: Int

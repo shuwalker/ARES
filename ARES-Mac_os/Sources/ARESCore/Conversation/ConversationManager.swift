@@ -807,7 +807,7 @@ public class ConversationManager: ObservableObject {
                         /// Pin first 3 user messages if not already pinned
                         if userMessageCount <= 3 && !message.isPinned {
                             /// Create updated message with isPinned = true
-                            let updatedMessage = ConfigurationSystem.EnhancedMessage(
+                            let updatedMessage = EnhancedMessage(
                                 id: message.id,
                                 type: message.type,
                                 content: message.content,
@@ -1216,7 +1216,7 @@ public class ConversationManager: ObservableObject {
     }
 
     /// Get memory statistics for the active conversation.
-    public func getActiveConversationMemoryStats() async -> MemoryStatistics? {
+    public func getActiveConversationMemoryStats() async -> SAMMemoryStatistics? {
         guard memoryInitialized, let conversation = activeConversation else { return nil }
 
         do {

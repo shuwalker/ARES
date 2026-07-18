@@ -15,7 +15,7 @@ public protocol ReasoningBrain: AnyObject, Sendable {
     /// Supports optional streaming via the `onToken` callback.
     func respond(
         to input: String,
-        context: ConversationContext,
+        context: SAMConversationContext,
         onToken: (@Sendable (_ partial: String, _ isFinished: Bool) -> Void)?
     ) async throws -> String
 
@@ -99,7 +99,9 @@ public struct SceneUnderstanding: Codable, Sendable, Equatable {
 }
 
 /// Conversation context: previous messages, user info, tone.
-public struct ConversationContext: Codable, Sendable {
+/// Renamed from ConversationContext to SAMConversationContext to avoid collision
+/// with the ConversationContext in ConversationSession.swift.
+public struct SAMConversationContext: Codable, Sendable {
     public let messages: [Message]
     public let userInfo: [String: AnyCodable]
     public let tone: String                        // "formal", "casual", "technical", etc.

@@ -6,7 +6,7 @@
 import Foundation
 
 /// Type alias for compatibility during migration.
-public typealias Message = ConfigurationSystem.EnhancedMessage
+public typealias Message = EnhancedMessage
 /// - Compression Algorithms: Multiple strategies for context compression while preserving meaning - Message Importance: Analyzes message significance for retention/compression decisions KEY ALGORITHMS: - Sliding Window Compression: Recent context with compressed historical context - Importance-Based Filtering: Retains high-importance messages across conversation - Semantic Clustering: Groups related messages for efficient representation - Progressive Compression: Increases compression ratio for older content CONFIGURATION PROFILES: - Default: 8K→32K scaling with 4.0x factor and 0.8 compression threshold - Extended: 16K→65K scaling with 8.0x factor and 0.85 compression threshold INTEGRATION POINTS: - ConversationManager: Context processing for LLM requests - Memory System: Coordination with Vector RAG for enhanced context awareness - Sequential Thinking: Maintains context continuity across tool interactions.
 
 import Logging
