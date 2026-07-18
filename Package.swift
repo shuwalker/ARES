@@ -12,13 +12,16 @@ let package = Package(
         .executable(name: "ARES", targets: ["ARES"]),
     ],
     dependencies: [
-        .package(path: "ARES-Desktop/Vendor/SwiftTerm"),
+        .package(path: "ARES-Mac_os/Vendor/SwiftTerm"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
     ],
     targets: [
         .target(
             name: "ARESCore",
-            dependencies: [],
-            path: "ARES-Desktop/Sources/ARESCore"
+            dependencies: [
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            path: "ARES-Mac_os/Sources/ARESCore"
         ),
         .executableTarget(
             name: "ARES",
@@ -26,7 +29,7 @@ let package = Package(
                 "ARESCore",
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
-            path: "ARES-Desktop/Sources/ARES",
+            path: "ARES-Mac_os/Sources/ARES",
             resources: [
                 .process("Resources")
             ]
@@ -34,7 +37,7 @@ let package = Package(
         .testTarget(
             name: "ARESTests",
             dependencies: ["ARESCore", "ARES"],
-            path: "ARES-Desktop/Tests/ARESTests"
+            path: "ARES-Mac_os/Tests/ARESTests"
         ),
     ]
 )
