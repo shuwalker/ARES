@@ -109,6 +109,8 @@ describe("ARES backend translators", () => {
         date: "2026-07-01", inputTokens: 100, outputTokens: 50,
         cacheReadTokens: 5, sessions: 2, cost: 0.5, durationSeconds: 60,
       }],
+      activityByDay: [],
+      activityByHour: [],
     });
   });
 
@@ -120,6 +122,8 @@ describe("ARES backend translators", () => {
       models: [],
       providers: [],
       dailyTokens: [],
+      activityByDay: [],
+      activityByHour: [],
     }));
     expect(translateInsights({ models: [{}], providers: [{}] })).toEqual(expect.objectContaining({
       models: [expect.objectContaining({ key: "unknown", sessions: 0 })],

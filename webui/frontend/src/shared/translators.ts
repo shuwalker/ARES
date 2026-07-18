@@ -201,6 +201,14 @@ export function translateInsights(value: unknown): UsageInsights {
     models: (Array.isArray(raw.models) ? raw.models : []).map((row) => translateBreakdownRow(row, "model")),
     providers: (Array.isArray(raw.providers) ? raw.providers : []).map((row) => translateBreakdownRow(row, "provider")),
     dailyTokens: (Array.isArray(raw.daily_tokens) ? raw.daily_tokens : []).map(translateDailyPoint),
+    activityByDay: (Array.isArray(raw.activity_by_day) ? raw.activity_by_day : []).map((item: unknown) => {
+      const d = record(item);
+      return { day: String(d.day || ""), sessions: Number(d.sessions || 0) };
+    }),
+    activityByHour: (Array.isArray(raw.activity_by_hour) ? raw.activity_by_hour : []).map((item: unknown) => {
+      const h = record(item);
+      return { hour: Number(h.hour ?? 0), sessions: Number(h.sessions || 0) };
+    }),
   };
 }
 

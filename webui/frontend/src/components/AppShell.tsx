@@ -8,6 +8,7 @@ import {
   FolderKanban,
   Gauge,
   House,
+  Kanban,
   Menu,
   MessageCircle,
   Moon,
@@ -53,6 +54,7 @@ const aresNavigation: NavItem[] = [
   { to: "/conversation", label: "Chat", icon: MessageCircle },
   { to: "/search", label: "Search", icon: Search },
   { to: "/workspace", label: "Workspace", icon: FolderKanban },
+  { to: "/board", label: "Board", icon: Kanban },
   { to: "/canvas", label: "Canvas", icon: Layers },
   { to: "/terminal", label: "Terminal", icon: SquareTerminal },
 ];

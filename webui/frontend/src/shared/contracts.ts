@@ -165,6 +165,32 @@ export interface UsageDailyPoint {
   durationSeconds: number;
 }
 
+export interface ActivityDayBucket {
+  day: string;
+  sessions: number;
+}
+
+export interface ActivityHourBucket {
+  hour: number;
+  sessions: number;
+}
+
+export interface ProviderQuotaInfo {
+  ok: boolean;
+  provider: string | null;
+  displayName: string | null;
+  supported: boolean;
+  status: string;
+  label?: string;
+  quota?: {
+    remaining?: number;
+    total?: number;
+    usage?: number;
+    rateLimits?: Record<string, { limit: number; remaining: number; reset: number }>;
+  } | null;
+  message: string;
+}
+
 export interface UsageInsights {
   periodDays: number;
   totalSessions: number;
@@ -180,6 +206,8 @@ export interface UsageInsights {
   models: UsageBreakdownRow[];
   providers: UsageBreakdownRow[];
   dailyTokens: UsageDailyPoint[];
+  activityByDay: ActivityDayBucket[];
+  activityByHour: ActivityHourBucket[];
 }
 
 export const EMPTY_USAGE_INSIGHTS: UsageInsights = {
@@ -197,6 +225,8 @@ export const EMPTY_USAGE_INSIGHTS: UsageInsights = {
   models: [],
   providers: [],
   dailyTokens: [],
+  activityByDay: [],
+  activityByHour: [],
 };
 
 
