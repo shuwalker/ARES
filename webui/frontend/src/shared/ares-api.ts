@@ -218,25 +218,26 @@ export const aresApi = {
     const payload = await apiFetch<Record<string, unknown>>(`/api/session?session_id=${encodeURIComponent(sessionId)}&messages=1&msg_limit=200`);
     return translateConversation(payload.session);
   },
-  async createSession(input: { workspace?: string; profile?: string; previousSessionId?: string } = {}) {
+  async createSession(input: { workspace?: string; profile?: string; previousSessionId?: string; model_provider?: string } = {}) {
     const payload = await apiFetch<Record<string, unknown>>("/api/session/new", {
       method: "POST",
       body: JSON.stringify({
         workspace: input.workspace || undefined,
         profile: input.profile || undefined,
         prev_session_id: input.previousSessionId || undefined,
+        model_provider: input.model_provider || undefined,
       }),
     });
     return translateConversation(payload.session);
   },
-  async startChat(sessionId: string, message: string, session: { model?: string; provider?: string; workspace?: string; profile?: string; backendId?: string }) {
+  async startChat(sessionId: string, message: string, session: { model?: string; provider?: string; workspace?: string; profile?: string; backendId?: string }, backendId?: string) {
     return apiFetch<{ stream_id: string; session_id: string; title?: string }>("/api/chat/start", {
       method: "POST",
       body: JSON.stringify({
         session_id: sessionId,
         message,
         model: session.model || undefined,
-        model_provider: session.provider || session.backendId || undefined,
+        model_provider: backendId || session.backendId || session.provider || undefined,
         workspace: session.workspace || undefined,
         profile: session.profile || "default",
       }),

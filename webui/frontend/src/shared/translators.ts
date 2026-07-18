@@ -60,17 +60,25 @@ export function translateMessage(value: unknown, index = 0): ConversationMessage
 export function translateSessionSummary(value: unknown): SessionSummary {
   const raw = record(value);
   const id = String(raw.session_id || raw.id || "");
+  const backendId = String(raw.ares_backend || raw.backend_id || raw.backend || raw.model_provider || "");
+  const source = String(
+    raw.source_tag || raw.session_source || raw.source_label || raw.raw_source ||
+    (raw.is_cli_session ? "cli" : "")
+  ) || "webui";
   return {
     id,
     title: String(raw.title || "New conversation"),
     workspace: String(raw.workspace || ""),
     model: String(raw.model || ""),
     provider: String(raw.model_provider || raw.provider || ""),
+    backendId,
     profile: String(raw.profile || "default"),
+    source,
     updatedAt: timestamp(raw.last_message_at || raw.updated_at || raw.created_at),
     activeStreamId: String(raw.active_stream_id || "") || undefined,
     messageCount: Number(raw.message_count || 0),
     pinned: Boolean(raw.pinned),
+    archived: Boolean(raw.archived),
     isStreaming: Boolean(raw.is_streaming || raw.active_stream_id),
     readOnly: Boolean(raw.read_only || raw.is_read_only),
   };

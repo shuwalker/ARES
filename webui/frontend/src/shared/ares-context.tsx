@@ -25,6 +25,7 @@ const EMPTY_SNAPSHOT: AresSnapshot = {
   settings: null,
   sessions: [],
   workspaces: [],
+  backends: [],
   terminalRemoteBackend: false,
   agentHealth: { availability: "unknown", detail: "Runtime status has not been checked." },
   tools: { total: 0, names: [], unavailableServers: [] },
@@ -43,8 +44,8 @@ interface AresContextValue {
   chatNotice: string;
   refresh: () => Promise<void>;
   selectSession: (id: string) => void;
-  createSession: (workspace?: string) => Promise<ConversationSession>;
-  sendMessage: (message: string) => Promise<void>;
+  createSession: (workspace?: string, backendId?: string) => Promise<ConversationSession>;
+  sendMessage: (message: string, backendId?: string) => Promise<void>;
   cancelResponse: () => Promise<void>;
   saveAssistantName: (name: string) => Promise<void>;
 }
@@ -64,8 +65,8 @@ export function AresProvider({ children }: { children: ReactNode }) {
   const closeStream = useRef<null | (() => void)>(null);
 
   const refresh = useCallback(async () => {
-    const [health, settings, sessions, workspaces, agentHealth, tools, connections] = await Promise.allSettled([
-      aresApi.health(), aresApi.settings(), aresApi.sessions(), aresApi.workspaces(), aresApi.agentHealth(), aresApi.tools(), aresApi.connections(),
+    const [health, settings, sessions, workspaces, backends, agentHealth, tools, connections] = await Promise.allSettled([
+      aresApi.health(), aresApi.settings(), aresApi.sessions(), aresApi.workspaces(), aresApi.backends(), aresApi.agentHealth(), aresApi.tools(), aresApi.connections(),
     ]);
     const apiAvailable = health.status === "fulfilled";
     const failures = [settings, sessions, workspaces].filter((item) => item.status === "rejected");
@@ -75,6 +76,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       settings: settings.status === "fulfilled" ? settings.value : previous.settings,
       sessions: sessions.status === "fulfilled" ? sessions.value : previous.sessions,
       workspaces: workspaces.status === "fulfilled" ? workspaces.value.workspaces : previous.workspaces,
+      backends: backends.status === "fulfilled" ? backends.value : previous.backends,
       terminalRemoteBackend: workspaces.status === "fulfilled" ? workspaces.value.terminalRemoteBackend : previous.terminalRemoteBackend,
       agentHealth: agentHealth.status === "fulfilled" ? agentHealth.value : previous.agentHealth,
       tools: tools.status === "fulfilled" ? tools.value : previous.tools,
@@ -115,10 +117,11 @@ export function AresProvider({ children }: { children: ReactNode }) {
     setSelectedSessionId(id);
   }, []);
 
-  const createSession = useCallback(async (workspace?: string) => {
+  const createSession = useCallback(async (workspace?: string, backendId?: string) => {
     const session = await aresApi.createSession({
       workspace: workspace || snapshot.workspaces[0]?.path,
       previousSessionId: selectedSessionId || undefined,
+      model_provider: backendId || undefined,
     });
     setSnapshot((previous) => ({ ...previous, sessions: [session, ...previous.sessions.filter((item) => item.id !== session.id)] }));
     setCurrentSession(session);
@@ -213,7 +216,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
     );
   }, [attachStream, refresh, selectedSessionId]);
 
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, backendId?: string) => {
     const clean = message.trim();
     if (!clean || streamState !== "idle") return;
     setChatNotice("");
@@ -226,7 +229,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       if (session.readOnly) throw new Error("This conversation is read-only. Start a new conversation to send a message.");
       const optimistic: ConversationMessage = { id: `local-${Date.now()}`, role: "user", text: clean, createdAt: new Date().toISOString() };
       setCurrentSession({ ...session, messages: [...session.messages, optimistic] });
-      const started = await aresApi.startChat(session.id, clean, session);
+      const started = await aresApi.startChat(session.id, clean, session, backendId);
       attachStream(started.stream_id, session.id);
     } catch (error) {
       setStreamState("idle");

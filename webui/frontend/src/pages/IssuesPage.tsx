@@ -62,11 +62,7 @@ export default function IssuesPage() {
 
   return (
     <div className="page-stack">
-      <PageHeader title="Issues" description="Track tasks and work items.">
-        <Button size="sm">
-          <Plus /> New issue
-        </Button>
-      </PageHeader>
+      <PageHeader title="Issues" description="Track tasks and work items." action={<Button size="sm"><Plus /> New issue</Button>} />
 
       <div className="flex items-center gap-4">
         <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as IssueStatus | "all")}>

@@ -45,11 +45,14 @@ export interface SessionSummary {
   workspace: string;
   model: string;
   provider: string;
+  backendId: string;
   profile: string;
+  source: string;
   updatedAt?: string;
   activeStreamId?: string;
   messageCount: number;
   pinned: boolean;
+  archived?: boolean;
   isStreaming: boolean;
   readOnly: boolean;
 }
@@ -122,6 +125,7 @@ export interface AresSnapshot {
   settings: BackendSettings | null;
   sessions: SessionSummary[];
   workspaces: WorkspaceSummary[];
+  backends: BackendInfo[];
   terminalRemoteBackend: boolean;
   agentHealth: AgentHealth;
   tools: ToolInventory;
@@ -194,3 +198,13 @@ export const EMPTY_USAGE_INSIGHTS: UsageInsights = {
   providers: [],
   dailyTokens: [],
 };
+
+
+export interface BackendInfo {
+  id: string;
+  name: string;
+  deployment: string;
+  available: boolean;
+  adapter?: string;
+  description?: string;
+}

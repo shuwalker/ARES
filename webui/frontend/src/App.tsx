@@ -18,6 +18,7 @@ import RoutinesPage from "@/pages/RoutinesPage";
 import SkillStudioPage from "@/pages/SkillStudioPage";
 import SecretsPage from "@/pages/SecretsPage";
 import HatcheryPage from "@/pages/HatcheryPage";
+import CronPage from "@/pages/CronPage";
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="skills" element={<SkillStudioPage />} />
         <Route path="secrets" element={<SecretsPage />} />
         <Route path="hatchery" element={<HatcheryPage />} />
+        <Route path="cron" element={<CronPage />} />
         <Route path="*" element={<Navigate to="/today" replace />} />
       </Route>
     </Routes>
