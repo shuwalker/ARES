@@ -16,6 +16,8 @@ import { WorkspacePage } from "@/pages/WorkspacePage";
 import { CanvasPage } from "@/pages/CanvasPage";
 import { GoalsPage } from "@/pages/GoalsPage";
 import { TimelinePage } from "@/pages/TimelinePage";
+import { ProjectsPage } from "@/pages/ProjectsPage";
+import { CasesPage } from "@/pages/CasesPage";
 import InboxPage from "@/pages/InboxPage";
 import IssuesPage from "@/pages/IssuesPage";
 import RoutinesPage from "@/pages/RoutinesPage";
@@ -27,6 +29,8 @@ import WebhooksPage from "@/pages/WebhooksPage";
 import PairingPage from "@/pages/PairingPage";
 import ConfigPage from "@/pages/ConfigPage";
 import McpPage from "@/pages/McpPage";
+import AgentsPage from "@/pages/AgentsPage";
+import AgentDetailPage from "@/pages/AgentDetailPage";
 
 export default function App() {
   return (
@@ -43,6 +47,8 @@ export default function App() {
         <Route path="canvas" element={<CanvasPage />} />
         <Route path="goals" element={<GoalsPage />} />
         <Route path="timeline" element={<TimelinePage />} />
+        <Route path="projects" element={<ProjectsPage />} />
+        <Route path="cases" element={<CasesPage />} />
         <Route path="usage" element={<UsageCostPage />} />
         <Route path="connections" element={<ConnectionsPage />} />
         <Route path="channels" element={<ChannelsPage />} />
@@ -57,6 +63,8 @@ export default function App() {
         <Route path="webhooks" element={<WebhooksPage />} />
         <Route path="pairing" element={<PairingPage />} />
         <Route path="mcp" element={<McpPage />} />
+        <Route path="agents" element={<AgentsPage />} />
+        <Route path="agents/:id" element={<AgentDetailPage />} />
         <Route path="config" element={<ConfigPage />} />
         <Route path="*" element={<Navigate to="/today" replace />} />
       </Route>

@@ -207,4 +207,6 @@ export interface BackendInfo {
   available: boolean;
   adapter?: string;
   description?: string;
+  kind?: string;
+  models?: { id: string; label?: string; available?: boolean; [k: string]: unknown }[];
 }

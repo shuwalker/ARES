@@ -4,6 +4,7 @@ import {
   ChevronRight,
   CircleUserRound,
   Command,
+  Cpu,
   FolderKanban,
   Gauge,
   House,
@@ -27,6 +28,8 @@ import {
   Smartphone,
   Webhook,
   Server,
+  Briefcase,
+  ClipboardList,
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -57,6 +60,8 @@ const aresNavigation: NavItem[] = [
 const paperclipNavigation: NavItem[] = [
   { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/issues", label: "Issues", icon: ListTodo },
+  { to: "/projects", label: "Projects", icon: Briefcase },
+  { to: "/cases", label: "Life Admin", icon: ClipboardList },
   { to: "/goals", label: "Goals", icon: Target },
   { to: "/timeline", label: "Timeline", icon: CalendarClock },
   { to: "/routines", label: "Routines", icon: CalendarClock },
@@ -66,6 +71,7 @@ const paperclipNavigation: NavItem[] = [
 
 const systemNavigation: NavItem[] = [
   { to: "/activity", label: "Activity", icon: Activity },
+  { to: "/agents", label: "Agents", icon: Cpu },
   { to: "/usage", label: "Usage", icon: Gauge },
   { to: "/connections", label: "Connections", icon: Cable },
   { to: "/channels", label: "Channels", icon: Radio },

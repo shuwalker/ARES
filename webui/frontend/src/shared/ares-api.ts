@@ -876,6 +876,10 @@ export const aresApi = {
     return payload.backends ?? [];
   },
 
+  async listAdapters() {
+    return apiFetch<Record<string, Record<string, unknown>>>("/api/ares/adapters");
+  },
+
   // ══════════════════════════════════════════════════════════════════
   // Insights
   // ══════════════════════════════════════════════════════════════════
