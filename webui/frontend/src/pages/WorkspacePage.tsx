@@ -9,7 +9,9 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import Editor, { type BeforeMount } from "@monaco-editor/react";
+import { Suspense, lazy, type ComponentProps } from "react";
+const Editor = lazy(() => import("@monaco-editor/react"));
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -52,7 +54,7 @@ function isTextFile(name: string): boolean {
   return !binary.has(ext);
 }
 
-const defineAresTheme: BeforeMount = (monaco) => {
+const defineAresTheme = (monaco: Parameters<NonNullable<ComponentProps<typeof Editor>["beforeMount"]>>[0]) => {
   monaco.editor.defineTheme("ares-dark", {
     base: "vs-dark",
     inherit: true,
@@ -386,27 +388,33 @@ export function WorkspacePage() {
                     <LoaderCircle size={16} className="animate-spin" /> Loading…
                   </div>
                 ) : (
-                  <Editor
-                    height="100%"
-                    path={selectedPath}
-                    defaultLanguage={languageFromPath(selectedPath)}
-                    value={editorContent}
-                    theme="ares-dark"
-                    beforeMount={defineAresTheme}
-                    onChange={(value) => {
-                      setEditorContent(value || "");
-                      setDirty(true);
-                    }}
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      lineNumbers: "on",
-                      roundedSelection: false,
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                      padding: { top: 12 },
-                    }}
-                  />
+                  <Suspense fallback={
+                    <div className="flex h-full items-center justify-center gap-2 text-sm" style={{ color: G.muted }}>
+                      <LoaderCircle size={16} className="animate-spin" /> Loading editor…
+                    </div>
+                  }>
+                    <Editor
+                      height="100%"
+                      path={selectedPath}
+                      defaultLanguage={languageFromPath(selectedPath)}
+                      value={editorContent}
+                      theme="ares-dark"
+                      beforeMount={defineAresTheme}
+                      onChange={(value) => {
+                        setEditorContent(value || "");
+                        setDirty(true);
+                      }}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: "on",
+                        roundedSelection: false,
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        padding: { top: 12 },
+                      }}
+                    />
+                  </Suspense>
                 )}
               </div>
             </>

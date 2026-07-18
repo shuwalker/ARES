@@ -1,86 +1,90 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
-  CheckCircle2,
-  FlaskConical,
+  FileCode2,
   LoaderCircle,
-  Search,
-  Wrench,
+  RotateCw,
+  Save,
 } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ToggleSwitch } from "@/components/ui/toggle-switch";
-import { useAres } from "@/shared/ares-context";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { aresApi } from "@/shared/ares-api";
+import { readableError } from "@/shared/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface SkillEntry {
+interface SkillDetail {
   name: string;
-  description: string;
+  content: string;
   category: string;
   disabled: boolean;
-}
-
-interface SkillsResponse {
-  skills: SkillEntry[];
-  skill_runtime_available: boolean;
-  message?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function matchesSearch(skill: SkillEntry, query: string): boolean {
-  if (!query) return true;
-  const q = query.toLowerCase();
-  return (
-    skill.name.toLowerCase().includes(q) ||
-    skill.description.toLowerCase().includes(q) ||
-    skill.category.toLowerCase().includes(q)
-  );
+function extractFrontmatterField(content: string, field: string): string {
+  const match = content.match(new RegExp(`^${field}:\\s*(.+)$`, "m"));
+  return match ? match[1].trim().replace(/^["']|["']$/g, "") : "";
+}
+
+function buildSkillYaml(name: string, category: string, description: string, trigger: string, instructions: string): string {
+  const lines: string[] = ["---"];
+  if (name) lines.push(`name: "${name}"`);
+  if (category) lines.push(`category: "${category}"`);
+  if (description) lines.push(`description: "${description}"`);
+  if (trigger) lines.push(`trigger: "${trigger}"`);
+  lines.push("---");
+  lines.push("");
+  if (instructions) lines.push(instructions);
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// Skill Studio Page
 // ---------------------------------------------------------------------------
 
 export default function SkillStudioPage() {
-  const { snapshot } = useAres();
-  const [skills, setSkills] = useState<SkillEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [togglingName, setTogglingName] = useState<string | null>(null);
-  const [runtimeAvailable, setRuntimeAvailable] = useState(true);
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const editName = searchParams.get("name") ?? "";
+  const isEditing = Boolean(editName);
 
-  // ---- Fetch skills on mount ----
+  // ---- Form state ----
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
+  const [content, setContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(isEditing);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // ---- Load skill for editing ----
 
   useEffect(() => {
+    if (!editName) return;
     let active = true;
     setLoading(true);
     setError(null);
-    fetch("/api/skills")
-      .then((r) => {
-        if (!r.ok) throw new Error(`Request failed (${r.status})`);
-        return r.json() as Promise<SkillsResponse>;
-      })
-      .then((data) => {
+    aresApi
+      .skillsGet(editName)
+      .then((data: SkillDetail) => {
         if (!active) return;
-        setSkills(data.skills ?? []);
-        setRuntimeAvailable(data.skill_runtime_available !== false);
-        if (data.message && !data.skill_runtime_available) {
-          setError(data.message);
-        }
+        setName(data.name);
+        setCategory(data.category || "");
+        setContent(data.content || "");
       })
       .catch((err) => {
-        if (!active) return;
-        setSkills([]);
-        setError(err instanceof Error ? err.message : "Failed to load skills");
+        if (active) setError(readableError(err, "Failed to load skill."));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -88,222 +92,219 @@ export default function SkillStudioPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [editName]);
 
-  // ---- Toggle handler ----
+  // ---- Save handler ----
 
-  const handleToggle = useCallback(async (name: string, currentlyDisabled: boolean) => {
-    const enabled = !currentlyDisabled;
-    setTogglingName(name);
-    // Optimistic update
-    setSkills((prev) =>
-      prev.map((s) => (s.name === name ? { ...s, disabled: !enabled } : s)),
-    );
-    try {
-      const res = await fetch("/api/skills/toggle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, enabled }),
-      });
-      if (!res.ok) {
-        // Revert on failure
-        setSkills((prev) =>
-          prev.map((s) => (s.name === name ? { ...s, disabled: currentlyDisabled } : s)),
-        );
-      }
-    } catch {
-      // Revert on network error
-      setSkills((prev) =>
-        prev.map((s) => (s.name === name ? { ...s, disabled: currentlyDisabled } : s)),
-      );
+  const handleSave = useCallback(async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Skill name is required.");
+      return;
     }
-    setTogglingName(null);
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await aresApi.skillsSave(trimmedName, content, category.trim() || undefined);
+      setSuccess("Skill saved successfully.");
+      if (!isEditing) {
+        // After creating, switch to edit mode so we don't create duplicates
+        navigate(`/skills/studio?name=${encodeURIComponent(trimmedName)}`, { replace: true });
+      }
+    } catch (err) {
+      setError(readableError(err, "Failed to save skill."));
+    } finally {
+      setSaving(false);
+    }
+  }, [name, category, content, isEditing, navigate]);
+
+  // ---- Load template ----
+
+  const loadTemplate = useCallback(() => {
+    setName("my-new-skill");
+    setCategory("productivity");
+    setContent(buildSkillYaml("my-new-skill", "productivity", "A brief description of what this skill does.", "When the user asks about X", "Step-by-step instructions for the AI to follow:\n\n1. First, do this.\n2. Then, do that.\n3. Finally, present the result.\n\nPitfalls:\n- Watch out for edge case Y.\n- Don't forget to handle Z."));
   }, []);
-
-  // ---- Derived state ----
-
-  const filtered = useMemo(
-    () => skills.filter((s) => matchesSearch(s, search)),
-    [skills, search],
-  );
-
-  const enabledSkills = useMemo(
-    () => filtered.filter((s) => !s.disabled),
-    [filtered],
-  );
-
-  const disabledSkills = useMemo(
-    () => filtered.filter((s) => s.disabled),
-    [filtered],
-  );
-
-  const enabledCount = skills.filter((s) => !s.disabled).length;
-  const connected = snapshot.connection !== "unavailable";
 
   // ---- Render ----
+
+  if (loading) {
+    return (
+      <div className="page-stack">
+        <PageHeader title="Skill Studio" description="Loading skill…" />
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <LoaderCircle className="mb-4 size-8 animate-spin text-muted-foreground/40" />
+          <p className="text-sm text-muted-foreground">Loading skill definition…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-stack">
       <PageHeader
-        title="Skill Studio"
-        description="Manage installed skills and plugins. Enable or disable skills to control what capabilities are available."
+        title={isEditing ? `Edit: ${editName}` : "Skill Studio"}
+        description={
+          isEditing
+            ? "Edit the YAML definition for this skill."
+            : "Create a new skill by defining its YAML frontmatter and instructions."
+        }
+        action={
+          <div className="flex gap-2">
+            {!isEditing && (
+              <Button variant="outline" size="sm" onClick={loadTemplate}>
+                <FileCode2 className="size-4" />
+                Load Template
+              </Button>
+            )}
+            <Button
+              size="sm"
+              disabled={saving || !name.trim()}
+              onClick={() => void handleSave()}
+            >
+              {saving ? <LoaderCircle className="size-4 animate-spin" /> : <Save className="size-4" />}
+              {saving ? "Saving…" : "Save Skill"}
+            </Button>
+          </div>
+        }
       />
 
-      {error && !runtimeAvailable ? (
-        <div className="rounded-md border border-status-limited/40 bg-status-limited/10 px-4 py-3 text-sm text-status-limited">
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <span className="inline-flex items-center gap-2">
             <AlertCircle className="size-4" />
             {error}
           </span>
         </div>
-      ) : null}
+      )}
 
-      {/* Stats + search row */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium text-foreground">
-          {enabledCount} of {skills.length} enabled
-        </span>
-        {connected && runtimeAvailable && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-(--status-task-done)">
-            <CheckCircle2 className="size-3.5" />
-            Saved
-          </span>
-        )}
-        <div className="ml-auto w-full sm:w-auto">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+      {success && (
+        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+          {success}
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+        {/* Metadata panel */}
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="skill-name">Skill Name</Label>
             <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search skills…"
-              className="h-8 w-full pl-8 sm:w-56"
-              aria-label="Search skills"
+              id="skill-name"
+              placeholder="e.g. my-custom-skill"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={isEditing}
+              className={isEditing ? "opacity-60" : ""}
             />
+            {isEditing && (
+              <p className="text-xs text-muted-foreground">
+                Skill name cannot be changed after creation.
+              </p>
+            )}
           </div>
-        </div>
-      </div>
+          <div className="grid gap-2">
+            <Label htmlFor="skill-category">Category</Label>
+            <Input
+              id="skill-category"
+              placeholder="e.g. productivity, devops"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional category for organizing skills.
+            </p>
+          </div>
 
-      {/* Loading state */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <LoaderCircle className="mb-4 size-8 animate-spin text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">Loading skills…</p>
-        </div>
-      ) : skills.length === 0 ? (
-        /* Empty state */
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-4 grid size-12 place-items-center rounded-lg bg-muted">
-            <FlaskConical className="size-6 text-muted-foreground/50" />
+          {/* Quick reference */}
+          <div className="rounded-lg border border-border bg-muted/30 p-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              YAML Frontmatter
+            </h3>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>
+                <code className="rounded bg-muted px-1 font-mono">---</code> marks the start/end of frontmatter.
+              </p>
+              <p>
+                Supported fields: <code className="rounded bg-muted px-1 font-mono">name</code>,{" "}
+                <code className="rounded bg-muted px-1 font-mono">category</code>,{" "}
+                <code className="rounded bg-muted px-1 font-mono">description</code>,{" "}
+                <code className="rounded bg-muted px-1 font-mono">trigger</code>.
+              </p>
+              <p>
+                Everything after the closing <code className="rounded bg-muted px-1 font-mono">---</code> is the skill body (Markdown instructions).
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            No skills found. Skills are discovered from your ARES skills directory.
+
+          {/* Parsed preview */}
+          {content && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Parsed Preview
+              </h3>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Name</span>
+                  <span className="font-medium">{extractFrontmatterField(content, "name") || "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Category</span>
+                  <Badge variant="outline">
+                    {extractFrontmatterField(content, "category") || "none"}
+                  </Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Trigger</span>
+                  <span className="truncate max-w-[160px] text-xs">
+                    {extractFrontmatterField(content, "trigger") || "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Editor */}
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="skill-content" className="text-base font-semibold">
+              Skill Content
+            </Label>
+            <div className="flex gap-1.5">
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => {
+                  navigator.clipboard.writeText(content).catch(() => undefined);
+                }}
+                disabled={!content}
+              >
+                Copy
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => setContent("")}
+                disabled={!content}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+          <Textarea
+            id="skill-content"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder={`---\nname: "my-skill"\ncategory: "productivity"\ndescription: "What this skill does"\ntrigger: "When the user asks about X"\n---\n\nStep-by-step instructions for the AI...`}
+            className="min-h-[400px] font-mono text-sm leading-relaxed"
+          />
+          <p className="text-xs text-muted-foreground">
+            Edit the full skill YAML above. Include frontmatter between <code>---</code> delimiters, followed by the skill body in Markdown.
           </p>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="py-8 text-center">
-          <p className="text-sm text-muted-foreground">No skills match your search.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {/* Enabled section */}
-          {enabledSkills.length > 0 && (
-            <SkillSection title="Enabled" count={enabledSkills.length}>
-              {enabledSkills.map((skill) => (
-                <SkillCard
-                  key={skill.name}
-                  skill={skill}
-                  toggling={togglingName === skill.name}
-                  onToggle={() => handleToggle(skill.name, skill.disabled)}
-                />
-              ))}
-            </SkillSection>
-          )}
-
-          {/* Disabled section */}
-          {disabledSkills.length > 0 && (
-            <SkillSection title="Disabled" count={disabledSkills.length}>
-              {disabledSkills.map((skill) => (
-                <SkillCard
-                  key={skill.name}
-                  skill={skill}
-                  toggling={togglingName === skill.name}
-                  onToggle={() => handleToggle(skill.name, skill.disabled)}
-                />
-              ))}
-            </SkillSection>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function SkillSection({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center gap-2 bg-muted/50 px-3 py-2">
-        <span className="text-xs font-medium text-muted-foreground">{title}</span>
-        <span className="text-xs text-muted-foreground/70">{count}</span>
       </div>
-      <div>{children}</div>
-    </section>
-  );
-}
-
-function SkillCard({
-  skill,
-  toggling,
-  onToggle,
-}: {
-  skill: SkillEntry;
-  toggling: boolean;
-  onToggle: () => void;
-}) {
-  const enabled = !skill.disabled;
-
-  return (
-    <div className="flex min-h-11 items-center gap-3 border-b border-border px-3 py-2.5 last:border-b-0 transition-colors hover:bg-accent/50">
-      <div className="grid size-8 shrink-0 place-items-center rounded-md bg-muted">
-        <Wrench className="size-4 text-muted-foreground" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {skill.name}
-          </span>
-          {skill.category ? (
-            <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
-              {skill.category}
-            </Badge>
-          ) : null}
-        </div>
-        {skill.description ? (
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-            {skill.description}
-          </p>
-        ) : null}
-      </div>
-      {toggling ? (
-        <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-      ) : (
-        <ToggleSwitch
-          checked={enabled}
-          onCheckedChange={onToggle}
-          aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
-        />
-      )}
     </div>
   );
 }

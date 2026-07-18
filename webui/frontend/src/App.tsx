@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { AuthGate } from "@/components/AuthGate";
 import { ActivityPage } from "@/pages/ActivityPage";
 import { ConnectionsPage } from "@/pages/ConnectionsPage";
+import { ChannelsPage } from "@/pages/ChannelsPage";
 import { ConversationPage } from "@/pages/ConversationPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SharePage } from "@/pages/SharePage";
@@ -19,6 +20,10 @@ import SkillStudioPage from "@/pages/SkillStudioPage";
 import SecretsPage from "@/pages/SecretsPage";
 import HatcheryPage from "@/pages/HatcheryPage";
 import CronPage from "@/pages/CronPage";
+import WebhooksPage from "@/pages/WebhooksPage";
+import PairingPage from "@/pages/PairingPage";
+import ConfigPage from "@/pages/ConfigPage";
+import McpPage from "@/pages/McpPage";
 
 export default function App() {
   return (
@@ -34,6 +39,7 @@ export default function App() {
         <Route path="canvas" element={<CanvasPage />} />
         <Route path="usage" element={<UsageCostPage />} />
         <Route path="connections" element={<ConnectionsPage />} />
+        <Route path="channels" element={<ChannelsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="inbox" element={<InboxPage />} />
         <Route path="issues" element={<IssuesPage />} />
@@ -42,6 +48,10 @@ export default function App() {
         <Route path="secrets" element={<SecretsPage />} />
         <Route path="hatchery" element={<HatcheryPage />} />
         <Route path="cron" element={<CronPage />} />
+        <Route path="webhooks" element={<WebhooksPage />} />
+        <Route path="pairing" element={<PairingPage />} />
+        <Route path="mcp" element={<McpPage />} />
+        <Route path="config" element={<ConfigPage />} />
         <Route path="*" element={<Navigate to="/today" replace />} />
       </Route>
     </Routes>

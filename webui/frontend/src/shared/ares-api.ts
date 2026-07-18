@@ -131,6 +131,15 @@ export interface WebhookEntry {
   secret?: string;
 }
 
+// ── Pairing types ───────────────────────────────────────────────────
+export interface PairingEntry {
+  id: string;
+  name: string;
+  kind: string;
+  status: "pending" | "approved" | "revoked";
+  created_at: string;
+}
+
 // ── MCP server types ────────────────────────────────────────────────
 export interface McpServerEntry {
   name: string;
@@ -629,6 +638,40 @@ export const aresApi = {
     return apiFetch<WebhookEntry[]>("/api/gateway/webhooks", {
       method: "DELETE",
       body: JSON.stringify({ id }),
+    });
+  },
+
+  // ══════════════════════════════════════════════════════════════════
+  // Pairing
+  // ══════════════════════════════════════════════════════════════════
+  async pairingList() {
+    return apiFetch<PairingEntry[]>("/api/connections/pairing");
+  },
+
+  async pairingCreate(entry: { name: string; kind?: string }) {
+    return apiFetch<PairingEntry>("/api/connections/pairing/create", {
+      method: "POST",
+      body: JSON.stringify(entry),
+    });
+  },
+
+  async pairingApprove(id: string) {
+    return apiFetch<PairingEntry[]>("/api/connections/pairing/approve", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    });
+  },
+
+  async pairingRevoke(id: string) {
+    return apiFetch<PairingEntry[]>("/api/connections/pairing/revoke", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    });
+  },
+
+  async pairingClear() {
+    return apiFetch<PairingEntry[]>("/api/connections/pairing/clear", {
+      method: "POST",
     });
   },
 

@@ -40,39 +40,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { apiFetch, readableError } from "@/shared/api-client";
+import { aresApi } from "@/shared/ares-api";
+import type { SecretEntry } from "@/shared/ares-api";
+import { readableError } from "@/shared/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface SecretEntry {
-  id: string;
-  name: string;
-  key: string;
-  value_preview: string;
-  provider: string;
-  status: "active" | "disabled" | "archived" | "deleted";
-  description: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-}
-
-interface SecretListResponse {
-  secrets: SecretEntry[];
-}
+type SecretScope = "all" | "global" | "profile" | "session";
 
 interface CreateSecretPayload {
-  name: string;
   key: string;
   value: string;
-  provider: string;
-  description?: string | null;
 }
 
 interface UpdateSecretPayload {
   name?: string;
-  description?: string | null;
+  description?: string;
   value?: string;
 }
 
@@ -82,10 +67,10 @@ interface UpdateSecretPayload {
 
 const EMPTY_SECRETS: SecretEntry[] = [];
 
-function maskValue(preview: string): string {
-  if (!preview) return "••••••••";
-  if (preview.length <= 4) return "••••";
-  return preview.slice(0, 2) + "••••" + preview.slice(-2);
+function maskValue(value: string): string {
+  if (!value) return "••••••••";
+  if (value.length <= 4) return "••••";
+  return value.slice(0, 2) + "••••" + value.slice(-2);
 }
 
 function formatRelative(value: string | null | undefined): string {
@@ -103,6 +88,14 @@ function formatRelative(value: string | null | undefined): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
   return date.toLocaleDateString();
+}
+
+function deriveScope(key: string): SecretScope {
+  const upper = key.toUpperCase();
+  if (upper.startsWith("ARES_") || upper === "PATH" || upper === "HOME" || upper === "LANG")
+    return "global";
+  if (upper.includes("_PROFILE_") || upper.startsWith("PROFILE_")) return "profile";
+  return "session";
 }
 
 function providerLabel(provider: string): string {
@@ -140,33 +133,6 @@ function statusLabel(status: SecretEntry["status"]): string {
 }
 
 // ---------------------------------------------------------------------------
-// API helpers
-// ---------------------------------------------------------------------------
-
-async function fetchSecrets(): Promise<SecretEntry[]> {
-  const data = await apiFetch<SecretListResponse>("/api/secrets");
-  return data.secrets ?? [];
-}
-
-async function createSecret(payload: CreateSecretPayload): Promise<SecretEntry> {
-  return apiFetch<SecretEntry>("/api/secrets", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-async function updateSecret(id: string, payload: UpdateSecretPayload): Promise<SecretEntry> {
-  return apiFetch<SecretEntry>(`/api/secrets/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
-}
-
-async function deleteSecret(id: string): Promise<void> {
-  await apiFetch(`/api/secrets/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-// ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
@@ -190,6 +156,26 @@ function StatusBadge({ status }: { status: SecretEntry["status"] }) {
   );
 }
 
+function ScopeBadge({ scope }: { scope: SecretScope }) {
+  const SCOPE_COLORS: Record<string, string> = {
+    global: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/25",
+    profile: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/25",
+    session: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25",
+  };
+  const SCOPE_LABELS: Record<string, string> = {
+    global: "Global",
+    profile: "Profile",
+    session: "Session",
+  };
+  const colour = SCOPE_COLORS[scope] ?? "bg-muted text-muted-foreground border-border";
+  const label = SCOPE_LABELS[scope] ?? scope;
+  return (
+    <Badge variant="outline" className={`font-mono text-[10px] uppercase tracking-wider ${colour}`}>
+      {label}
+    </Badge>
+  );
+}
+
 function SecretCard({
   secret,
   onEdit,
@@ -200,7 +186,33 @@ function SecretCard({
   onDelete: (secret: SecretEntry) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
-  const displayValue = revealed ? (secret.value_preview || "—") : maskValue(secret.value_preview);
+  const [revealedValue, setRevealedValue] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+
+  async function handleReveal() {
+    if (revealed) {
+      setRevealed(false);
+      setRevealedValue(null);
+      return;
+    }
+    setRevealing(true);
+    try {
+      const full = await aresApi.secretGetByKey(secret.key);
+      setRevealedValue(full.value ?? full.value_preview ?? "");
+      setRevealed(true);
+    } catch {
+      // Fallback: show the preview/masked value
+      setRevealed(true);
+    } finally {
+      setRevealing(false);
+    }
+  }
+
+  const displayValue = revealed
+    ? (revealedValue ?? secret.value_preview ?? secret.value ?? "—")
+    : maskValue(secret.value_preview ?? secret.value ?? "");
+
+  const scope = deriveScope(secret.key);
 
   return (
     <Card className="group transition-shadow hover:shadow-md">
@@ -211,12 +223,15 @@ function SecretCard({
               <KeyRound className="size-4" />
             </div>
             <div className="min-w-0">
-              <CardTitle className="truncate text-base">{secret.name}</CardTitle>
-              <p className="truncate text-xs text-muted-foreground">{secret.key}</p>
+              <CardTitle className="truncate text-base">{secret.name || secret.key}</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <p className="truncate text-xs text-muted-foreground font-mono">{secret.key}</p>
+                <ScopeBadge scope={scope} />
+              </div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <StatusBadge status={secret.status} />
+            {secret.status && <StatusBadge status={secret.status} />}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -248,10 +263,17 @@ function SecretCard({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => setRevealed((prev) => !prev)}
+                onClick={() => void handleReveal()}
+                disabled={revealing}
                 aria-label={revealed ? "Mask value" : "Reveal value"}
               >
-                {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                {revealing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : revealed ? (
+                  <EyeOff className="size-3.5" />
+                ) : (
+                  <Eye className="size-3.5" />
+                )}
               </Button>
             </div>
           </div>
@@ -278,40 +300,27 @@ function AddSecretDialog({
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
 }) {
-  const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
-  const [provider, setProvider] = useState("local_encrypted");
-  const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
-    setName("");
     setKey("");
     setValue("");
-    setProvider("local_encrypted");
-    setDescription("");
     setSaving(false);
     setError(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmedName = name.trim();
     const trimmedKey = key.trim();
     const trimmedValue = value.trim();
-    if (!trimmedName || !trimmedKey || !trimmedValue) return;
+    if (!trimmedKey || !trimmedValue) return;
     setSaving(true);
     setError(null);
     try {
-      await createSecret({
-        name: trimmedName,
-        key: trimmedKey,
-        value: trimmedValue,
-        provider,
-        description: description.trim() || null,
-      });
+      await aresApi.saveSecret(trimmedKey, trimmedValue);
       reset();
       onOpenChange(false);
       onCreated();
@@ -332,22 +341,13 @@ function AddSecretDialog({
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="grid gap-4 py-2">
           <div className="grid gap-2">
-            <Label htmlFor="secret-name">Name</Label>
-            <Input
-              id="secret-name"
-              placeholder="e.g. OpenAI API Key"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="grid gap-2">
             <Label htmlFor="secret-key">Key</Label>
             <Input
               id="secret-key"
               placeholder="e.g. OPENAI_API_KEY"
               value={key}
               onChange={(e) => setKey(e.target.value)}
+              autoFocus
             />
           </div>
           <div className="grid gap-2">
@@ -360,33 +360,12 @@ function AddSecretDialog({
               onChange={(e) => setValue(e.target.value)}
             />
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="secret-provider">Provider</Label>
-            <Select value={provider} onValueChange={setProvider}>
-              <SelectTrigger id="secret-provider"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="local_encrypted">Local Encrypted</SelectItem>
-                <SelectItem value="aws_secrets_manager">AWS Secrets Manager</SelectItem>
-                <SelectItem value="gcp_secret_manager">GCP Secret Manager</SelectItem>
-                <SelectItem value="vault">HashiCorp Vault</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="secret-desc">Description (optional)</Label>
-            <Input
-              id="secret-desc"
-              placeholder="What this key is for"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => { reset(); onOpenChange(false); }}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || !name.trim() || !key.trim() || !value.trim()}>
+            <Button type="submit" disabled={saving || !key.trim() || !value.trim()}>
               {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
               Add Secret
             </Button>
@@ -414,7 +393,7 @@ function EditSecretDialog({
 
   useEffect(() => {
     if (secret) {
-      setName(secret.name);
+      setName(secret.name ?? "");
       setDescription(secret.description ?? "");
       setNewValue("");
       setError(null);
@@ -430,9 +409,9 @@ function EditSecretDialog({
       const payload: UpdateSecretPayload = {};
       const trimmedName = name.trim();
       if (trimmedName && trimmedName !== secret.name) payload.name = trimmedName;
-      if (description.trim() !== (secret.description ?? "")) payload.description = description.trim() || null;
+      if (description.trim() !== (secret.description ?? "")) payload.description = description.trim() || undefined;
       if (newValue.trim()) payload.value = newValue.trim();
-      await updateSecret(secret.id, payload);
+      await aresApi.updateSecret(secret.id, payload);
       onOpenChange(false);
       onSaved();
     } catch (err) {
@@ -451,6 +430,10 @@ function EditSecretDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => void handleSubmit(e)} className="grid gap-4 py-2">
+          <div className="grid gap-2">
+            <Label htmlFor="edit-key">Key</Label>
+            <Input id="edit-key" value={secret?.key ?? ""} disabled className="bg-muted" />
+          </div>
           <div className="grid gap-2">
             <Label htmlFor="edit-name">Name</Label>
             <Input
@@ -510,7 +493,7 @@ function DeleteConfirmDialog({
     setDeleting(true);
     setError(null);
     try {
-      await deleteSecret(secret.id);
+      await aresApi.deleteSecret(secret.key);
       onOpenChange(false);
       onDeleted();
     } catch (err) {
@@ -525,7 +508,7 @@ function DeleteConfirmDialog({
         <DialogHeader>
           <DialogTitle>Delete Secret</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete <strong>{secret?.name}</strong>? This action cannot be undone.
+            Are you sure you want to delete <strong>{secret?.name || secret?.key}</strong>? This action cannot be undone.
           </DialogDescription>
         </DialogHeader>
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -552,6 +535,7 @@ export default function SecretsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [scopeFilter, setScopeFilter] = useState<SecretScope>("all");
   const [addOpen, setAddOpen] = useState(false);
   const [editingSecret, setEditingSecret] = useState<SecretEntry | null>(null);
   const [deletingSecret, setDeletingSecret] = useState<SecretEntry | null>(null);
@@ -560,8 +544,8 @@ export default function SecretsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchSecrets();
-      setSecrets(data);
+      const data = await aresApi.secrets();
+      setSecrets(data ?? []);
     } catch (err) {
       setError(readableError(err, "Failed to load secrets."));
     } finally {
@@ -574,16 +558,33 @@ export default function SecretsPage() {
   }, [loadSecrets]);
 
   const filtered = useMemo(() => {
+    let result = secrets;
+    // Scope filter
+    if (scopeFilter !== "all") {
+      result = result.filter((s) => deriveScope(s.key) === scopeFilter);
+    }
+    // Search filter
     const needle = search.trim().toLowerCase();
-    if (!needle) return secrets;
-    return secrets.filter(
-      (s) =>
-        s.name.toLowerCase().includes(needle) ||
-        s.key.toLowerCase().includes(needle) ||
-        (s.description ?? "").toLowerCase().includes(needle) ||
-        providerLabel(s.provider).toLowerCase().includes(needle),
-    );
-  }, [secrets, search]);
+    if (needle) {
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(needle) ||
+          s.key.toLowerCase().includes(needle) ||
+          (s.description ?? "").toLowerCase().includes(needle) ||
+          providerLabel(s.provider).toLowerCase().includes(needle),
+      );
+    }
+    return result;
+  }, [secrets, search, scopeFilter]);
+
+  const scopeCounts = useMemo(() => {
+    const counts: Record<SecretScope, number> = { all: secrets.length, global: 0, profile: 0, session: 0 };
+    for (const s of secrets) {
+      const scope = deriveScope(s.key);
+      counts[scope] = (counts[scope] ?? 0) + 1;
+    }
+    return counts;
+  }, [secrets]);
 
   return (
     <div className="page-stack">
@@ -614,6 +615,17 @@ export default function SecretsPage() {
             className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
+        <Select value={scopeFilter} onValueChange={(v) => setScopeFilter(v as SecretScope)}>
+          <SelectTrigger className="h-9 w-[140px]">
+            <SelectValue placeholder="Scope" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All ({scopeCounts.all})</SelectItem>
+            <SelectItem value="global">Global ({scopeCounts.global})</SelectItem>
+            <SelectItem value="profile">Profile ({scopeCounts.profile})</SelectItem>
+            <SelectItem value="session">Session ({scopeCounts.session})</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {error && (
@@ -633,14 +645,14 @@ export default function SecretsPage() {
               <KeyRound className="size-5 text-muted-foreground" />
             </div>
             <p className="mt-4 text-lg font-semibold">
-              {search ? "No matching secrets" : "No secrets yet"}
+              {search || scopeFilter !== "all" ? "No matching secrets" : "No secrets yet"}
             </p>
             <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-              {search
-                ? "Try a different search term or clear the filter."
+              {search || scopeFilter !== "all"
+                ? "Try a different search term or change the scope filter."
                 : "Add an API key or credential to get started."}
             </p>
-            {!search && (
+            {!search && scopeFilter === "all" && (
               <Button className="mt-4" size="sm" onClick={() => setAddOpen(true)}>
                 <Plus className="size-3.5" /> Add Secret
               </Button>

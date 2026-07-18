@@ -20,6 +20,10 @@ import {
   CalendarClock,
   Wrench,
   Key,
+  Sliders,
+  Radio,
+  Smartphone,
+  Webhook,
 } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -58,6 +62,11 @@ const systemNavigation: NavItem[] = [
   { to: "/activity", label: "Activity", icon: Activity },
   { to: "/usage", label: "Usage", icon: Gauge },
   { to: "/connections", label: "Connections", icon: Cable },
+  { to: "/channels", label: "Channels", icon: Radio },
+  { to: "/cron", label: "Schedules", icon: CalendarClock },
+  { to: "/webhooks", label: "Webhooks", icon: Webhook },
+  { to: "/pairing", label: "Pairing", icon: Smartphone },
+  { to: "/config", label: "Config", icon: Sliders },
 ];
 
 function SidebarSection({ label, items, onNavigate }: { label: string; items: NavItem[]; onNavigate?: () => void }) {
