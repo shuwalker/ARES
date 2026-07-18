@@ -18,6 +18,7 @@ from .cli_backends import (
     PiLocalBackend,
     XAICloudBackend,
 )
+from .ollama_hatchery import HatchedSIBackend, hatchery_autoload
 from .router import get_router, get_default_router, BackendRouter
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "BackendRouter",
     "HermesBackend",
     "JROSBackend",
+    "HatchedSIBackend",
     "ClaudeLocalBackend",
     "CodexLocalBackend",
     "CursorLocalBackend",
@@ -37,4 +39,5 @@ __all__ = [
     "XAICloudBackend",
     "get_router",
     "get_default_router",
+    "hatchery_autoload",
 ]

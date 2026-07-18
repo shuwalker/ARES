@@ -13,6 +13,7 @@ from .interactions import router as interactions_router
 from .kanban import router as kanban_router
 from .git import legacy_router as legacy_git_router, router as git_router
 from .gateway import router as gateway_router
+from .hatchery import router as hatchery_router
 from .files import router as files_router
 from .file_delivery import router as file_delivery_router
 from .models import router as models_router
@@ -45,6 +46,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(git_router)
     application.include_router(legacy_git_router)
     application.include_router(gateway_router)
+    application.include_router(hatchery_router)
     application.include_router(files_router)
     application.include_router(file_delivery_router)
     application.include_router(models_router)

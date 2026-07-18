@@ -14,6 +14,15 @@ from fastapi import FastAPI
 logger = logging.getLogger(__name__)
 
 
+def _autoload_hatched_sis() -> None:
+    """Auto-register any previously hatched SIs from the hatchery directory."""
+    try:
+        from api.backends.ollama_hatchery import hatchery_autoload
+        hatchery_autoload()
+    except Exception:
+        logger.warning("Hatchery auto-load failed", exc_info=True)
+
+
 async def _best_effort(label: str, function, *args, timeout: float | None = None):
     try:
         call = asyncio.to_thread(function, *args)
@@ -100,6 +109,9 @@ async def startup_runtime() -> None:
     await _best_effort("Background completion drain", start_drain_thread)
     await _best_effort("Session activity reaper", start_session_channel_reaper)
     await _best_effort("Plugin loading", load_plugins)
+
+    # Auto-register any previously hatched SIs
+    await _best_effort("Hatchery auto-load", _autoload_hatched_sis)
 
     if os.environ.get("ARES_WEBUI_RELOAD", "").strip().lower() in {"1", "true", "yes"}:
         try:
