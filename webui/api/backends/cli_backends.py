@@ -336,7 +336,7 @@ class OllamaLocalBackend(AgenticBackend):
             r = requests.post(
                 "http://127.0.0.1:11434/api/generate",
                 json={
-                    "model": kwargs.get("model") or "llama3.2",
+                    "model": kwargs.get("model") or "qwen3.6:35b-mlx",
                     "prompt": message,
                     "stream": False,
                 },
@@ -346,6 +346,10 @@ class OllamaLocalBackend(AgenticBackend):
             return {"text": data.get("response", ""), "error": None, "tool_activity": []}
         except Exception as exc:
             return {"text": "", "error": str(exc), "tool_activity": []}
+
+    def get_worker_target(self):
+        """Return the direct Ollama streaming worker target."""
+        return run_ollama_streaming, False, False
 
 
 # ---------------------------------------------------------------------------
@@ -359,3 +363,101 @@ def _cfg_str(config: dict, key: str) -> str | None:
 def _cfg_int(config: dict, key: str) -> int | None:
     val = config.get(key)
     return int(val) if isinstance(val, (int, float)) else None
+
+
+
+def run_ollama_streaming(
+    session_id: str,
+    message: str,
+    model: str,
+    workspace: str,
+    stream_id: str,
+    attachments: list,
+    *,
+    model_provider: str | None = None,
+    goal_related: bool = False,
+) -> None:
+    """Stream a chat turn directly from the local Ollama /api/generate endpoint."""
+    import json as _json
+    import queue
+    import threading
+    import time
+
+    import requests
+
+    from api.streaming import (
+        CANCEL_FLAGS,
+        STREAMS,
+        STREAMS_LOCK,
+        register_active_run,
+        unregister_stream_owner,
+    )
+
+    q = STREAMS.get(stream_id)
+    if q is None:
+        unregister_stream_owner(stream_id)
+        return
+
+    register_active_run(stream_id, session_id=session_id, started_at=time.time(), phase="ollama")
+    cancel_event = CANCEL_FLAGS.get(stream_id)
+
+    model_name = model or "qwen3.6:35b-mlx"
+    accumulated = ""
+    event_seq = 0
+
+    def _put(event: str, data: dict, terminal: bool = False):
+        nonlocal event_seq
+        event_seq += 1
+        try:
+            q.put(
+                {
+                    "schema_version": 1,
+                    "event": event,
+                    "data": data,
+                    "event_id": f"{stream_id}:{event_seq}",
+                    "seq": event_seq,
+                    "stream_id": stream_id,
+                    "session_id": session_id,
+                    "terminal": terminal,
+                },
+                timeout=5,
+            )
+        except queue.Full:
+            pass
+
+    def _finish(text: str = "", error: str | None = None):
+        if error:
+            _put("error", {"error": error, "message": error}, terminal=True)
+        else:
+            _put("stream_end", {"text": text}, terminal=True)
+        with STREAMS_LOCK:
+            STREAMS.pop(stream_id, None)
+        unregister_stream_owner(stream_id)
+
+    try:
+        with requests.post(
+            "http://127.0.0.1:11434/api/generate",
+            json={"model": model_name, "prompt": message, "stream": True, "options": {"temperature": 0.7}},
+            stream=True,
+            timeout=120,
+        ) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if cancel_event and cancel_event.is_set():
+                    _finish(error="Cancelled")
+                    return
+                if not line:
+                    continue
+                try:
+                    chunk = _json.loads(line)
+                except Exception:
+                    continue
+                token = chunk.get("response", "")
+                if token:
+                    accumulated += token
+                    _put("token", {"text": accumulated, "delta": token})
+                if chunk.get("done"):
+                    break
+        _finish(accumulated)
+    except Exception as exc:
+        _finish(error=f"Ollama streaming error: {exc}")

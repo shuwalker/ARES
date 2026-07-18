@@ -172,12 +172,12 @@ class HermesBackend(AgenticBackend):
                 "model": {
                     "type": "string",
                     "title": "Model",
-                    "description": "Hermes model name (e.g. gpt-5.6-sol, grok-3)",
+                    "description": "Hermes model name (default: qwen3.6:35b-mlx)",
                 },
                 "provider": {
                     "type": "string",
                     "title": "Provider",
-                    "description": "Inference provider (e.g. openai-codex, xai, ollama-cloud)",
+                    "description": "Inference provider (default: ollama-cloud for local Ollama)",
                 },
                 "toolsets": {
                     "type": "string",
@@ -206,8 +206,8 @@ class HermesBackend(AgenticBackend):
             return {"text": "", "error": "Hermes CLI not found.", "tool_activity": []}
 
         config = kwargs.get("config") or kwargs.get("adapter_config") or {}
-        model = _cfg_str(config, "model") or ""
-        provider = _cfg_str(config, "provider") or ""
+        model = _cfg_str(config, "model") or "qwen3.6:35b-mlx"
+        provider = _cfg_str(config, "provider") or "ollama-cloud"
         toolsets = _cfg_str(config, "toolsets") or ""
         max_turns = _cfg_int(config, "max_turns") or 150
         timeout_sec = _cfg_int(config, "timeout_sec") or 300

@@ -202,11 +202,14 @@ def run_hermes_streaming(
         _finish_hermes_stream(stream_id, session_id, q, run_journal, cancel_event, accumulated_text="", user_message=msg_text)
         return
 
-    args = [cli, "chat", "-q", msg_text, "-Q", "--yolo", "--source", "webui"]
-    if model:
-        args.extend(["-m", model])
-    if model_provider:
-        args.extend(["--provider", model_provider])
+    effective_model = model or "qwen3.6:35b-mlx"
+    # model_provider is often the ARES backend id (hermes_local, ollama_local); only use it if it looks like a Hermes provider.
+    ares_backend_ids = {"hermes_local", "jros_local", "claude_local", "codex_local", "gemini_local", "grok_local", "opencode_local", "cursor_local", "pi_local", "openai_cloud", "xai_cloud", "ollama_local"}
+    if model_provider and model_provider not in ares_backend_ids:
+        effective_provider = model_provider
+    else:
+        effective_provider = "ollama-cloud"
+    args = [cli, "chat", "-q", msg_text, "-Q", "--yolo", "--source", "webui", "-m", effective_model, "--provider", effective_provider]
 
     # Resume session if we have a previous hermes session ID
     hermes_session_id = _get_hermes_session_id(session_id)
