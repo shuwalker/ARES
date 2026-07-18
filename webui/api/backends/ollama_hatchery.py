@@ -17,22 +17,26 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from api.backends.base import AgenticBackend
 from api.backends.router import get_router
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 HATCHERY_DIR = Path(os.environ.get("ARES_HATCHERY_DIR", str(Path.home() / ".ares" / "hatchery")))
-
 MODelfILE_TEMPLATE = """FROM {base_model}
 
 SYSTEM \"\"\"{system_prompt}\"\"\"
@@ -42,9 +46,16 @@ PARAMETER top_p {top_p}
 PARAMETER num_ctx {num_ctx}
 {think_line}"""
 
+# ---------------------------------------------------------------------------
+# Hardware Scanner
+# ---------------------------------------------------------------------------
 
 def scan_hardware() -> Dict[str, Any]:
-    """Detect hardware specs and recommend the best local LLM."""
+    """Detect hardware specs and return a recommendation dict.
+
+    Probes: total RAM, Apple Silicon GPU cores, SSD read speed (approximate),
+    available Ollama models, and recommends the best model for the hardware.
+    """
     import platform
 
     info: Dict[str, Any] = {
@@ -59,26 +70,47 @@ def scan_hardware() -> Dict[str, Any]:
         "recommended": {},
     }
 
+    # --- RAM ---
     try:
         if platform.system() == "Darwin":
-            result = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True, text=True, timeout=5,
+            )
             if result.returncode == 0:
                 info["ram_gb"] = round(int(result.stdout.strip()) / (1024 ** 3))
+        elif platform.system() == "Linux":
+            result = subprocess.run(
+                ["free", "-g", "-b"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if line.startswith("Mem:"):
+                        info["ram_gb"] = round(int(line.split()[1]) / (1024 ** 3))
+                        break
     except Exception:
         pass
 
+    # --- Apple Silicon GPU ---
     try:
         if platform.system() == "Darwin" and platform.machine() == "arm64":
-            result = subprocess.run(["sysctl", "-n", "hw.gpucores"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["sysctl", "-n", "hw.gpucores"],
+                capture_output=True, text=True, timeout=5,
+            )
             if result.returncode == 0:
                 info["gpu_cores"] = int(result.stdout.strip())
+            # Unified memory = GPU memory on Apple Silicon
             info["gpu_memory_gb"] = info["ram_gb"]
     except Exception:
         pass
 
+    # --- SSD speed (approximate via Hypura-style sequential read test) ---
     try:
         import tempfile
         test_file = Path(tempfile.gettempdir()) / "ares_ssdbench"
+        # Write 256MB then read it back
         size_mb = 256
         with open(test_file, "wb") as f:
             f.write(b"\0" * (size_mb * 1024 * 1024))
@@ -91,12 +123,15 @@ def scan_hardware() -> Dict[str, Any]:
     except Exception:
         info["ssd_speed_gbs"] = 0.0
 
+    # --- Ollama status and models ---
     info["ollama_running"] = _ollama_is_running()
     info["ollama_models"] = _ollama_list_models()
 
+    # --- Recommendation ---
     ram = info["ram_gb"]
     models = info["ollama_models"]
 
+    # Known model sizes (approximate GGUF/MLX disk sizes)
     model_recommendations = [
         {"id": "qwen3.6:35b-mlx", "name": "Qwen 3.6 35B (MLX)", "size_gb": 21, "min_ram_gb": 24, "speed": "fast", "quality": "high", "engine": "mlx"},
         {"id": "qwen3.6:35b-a3b", "name": "Qwen 3.6 35B-A3B (MoE)", "size_gb": 23, "min_ram_gb": 28, "speed": "fast", "quality": "medium", "engine": "gguf"},
@@ -104,10 +139,17 @@ def scan_hardware() -> Dict[str, Any]:
         {"id": "qwen3:8b", "name": "Qwen 3 8B", "size_gb": 5, "min_ram_gb": 8, "speed": "very fast", "quality": "basic", "engine": "gguf"},
     ]
 
+    # Pick the best model that fits in RAM and is already downloaded
     downloaded = [m for m in model_recommendations if m["id"] in models and m["min_ram_gb"] <= ram]
     can_pull = [m for m in model_recommendations if m["min_ram_gb"] <= ram]
 
-    info["recommended"] = downloaded[0] if downloaded else (can_pull[0] if can_pull else model_recommendations[-1])
+    if downloaded:
+        info["recommended"] = downloaded[0]
+    elif can_pull:
+        info["recommended"] = can_pull[0]
+    else:
+        info["recommended"] = model_recommendations[-1]  # smallest
+
     info["recommendations_all"] = model_recommendations
     info["downloaded_recommendations"] = [m["id"] for m in downloaded]
     info["pullable_recommendations"] = [m["id"] for m in can_pull]
@@ -115,20 +157,30 @@ def scan_hardware() -> Dict[str, Any]:
     return info
 
 
+# ---------------------------------------------------------------------------
+# Ollama helpers
+# ---------------------------------------------------------------------------
+
 def _ollama_is_running() -> bool:
+    """Check if Ollama is reachable."""
     try:
         import requests
         r = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=2)
         return r.status_code == 200
     except Exception:
+        # Fallback: try curl
         try:
-            result = subprocess.run(["curl", "-sf", f"{OLLAMA_HOST}/api/tags"], capture_output=True, timeout=3)
+            result = subprocess.run(
+                ["curl", "-sf", f"{OLLAMA_HOST}/api/tags"],
+                capture_output=True, timeout=3,
+            )
             return result.returncode == 0
         except Exception:
             return False
 
 
 def _ollama_list_models() -> List[str]:
+    """List locally available Ollama model names."""
     try:
         import requests
         r = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=5)
@@ -137,11 +189,15 @@ def _ollama_list_models() -> List[str]:
             return [m.get("name", "") for m in data.get("models", []) if m.get("name")]
     except Exception:
         pass
+    # Fallback: CLI
     try:
-        result = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True, text=True, timeout=10,
+        )
         if result.returncode == 0:
             models = []
-            for line in result.stdout.strip().splitlines()[1:]:
+            for line in result.stdout.strip().splitlines()[1:]:  # skip header
                 parts = line.split()
                 if parts:
                     models.append(parts[0])
@@ -152,11 +208,16 @@ def _ollama_list_models() -> List[str]:
 
 
 def _ollama_create(model_name: str, modelfile_content: str) -> bool:
+    """Create an Ollama model from a Modelfile. Returns True on success."""
     import tempfile
+
     modelfile_path = Path(tempfile.mktemp(suffix=".modelfile"))
     try:
         modelfile_path.write_text(modelfile_content)
-        result = subprocess.run(["ollama", "create", model_name, "-f", str(modelfile_path)], capture_output=True, text=True, timeout=120)
+        result = subprocess.run(
+            ["ollama", "create", model_name, "-f", str(modelfile_path)],
+            capture_output=True, text=True, timeout=120,
+        )
         if result.returncode != 0:
             logger.error("ollama create failed: %s", result.stderr)
             return False
@@ -169,8 +230,12 @@ def _ollama_create(model_name: str, modelfile_content: str) -> bool:
 
 
 def _ollama_pull(model_id: str) -> bool:
+    """Pull a model from Ollama registry. Returns True on success."""
     try:
-        result = subprocess.run(["ollama", "pull", model_id], capture_output=True, text=True, timeout=600)
+        result = subprocess.run(
+            ["ollama", "pull", model_id],
+            capture_output=True, text=True, timeout=600,
+        )
         return result.returncode == 0
     except Exception:
         logger.exception("ollama pull exception for %s", model_id)
@@ -178,71 +243,139 @@ def _ollama_pull(model_id: str) -> bool:
 
 
 def _ollama_delete(model_name: str) -> bool:
+    """Delete an Ollama model. Returns True on success."""
     try:
-        result = subprocess.run(["ollama", "rm", model_name], capture_output=True, text=True, timeout=30, input="y\n")
+        result = subprocess.run(
+            ["ollama", "rm", model_name],
+            capture_output=True, text=True, timeout=30,
+            input="y\n",
+        )
         return result.returncode == 0
     except Exception:
         return False
 
 
-def mold_si(name: str, base_model: str, system_prompt: str = "", temperature: float = 0.7,
-            top_p: float = 0.9, num_ctx: int = 32768, thinking: bool = True) -> Dict[str, Any]:
-    if not re.match(r"^[a-z0-9][a-z0-9._-]{0,63}$", name):
-        raise ValueError("Name must start with a letter or number, lowercase, no spaces (3-64 chars).")
+# ---------------------------------------------------------------------------
+# Hatchery: Mold and Hatch
+# ---------------------------------------------------------------------------
 
+def mold_si(
+    name: str,
+    base_model: str,
+    system_prompt: str = "",
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    num_ctx: int = 32768,
+    thinking: bool = True,
+) -> Dict[str, Any]:
+    """Mold a Synthetic Intelligence personality configuration.
+
+    This doesn't create anything yet — it returns the configuration that
+    will be used when hatching. The frontend calls this to validate and
+    preview the Modelfile.
+    """
+    # Validate name: must be a valid Ollama model name
+    if not re.match(r"^[a-z0-9][a-z0-9._-]{0,63}$", name):
+        raise ValueError(
+            "Name must start with a letter or number, contain only lowercase letters, "
+            "numbers, dots, hyphens, and underscores (max 64 chars)."
+        )
+
+    # Validate base model exists or can be pulled
     available = _ollama_list_models()
     needs_pull = base_model not in available
 
-    think_line = "" if thinking else 'PARAMETER stop "<|think_start|>"\nPARAMETER stop "<|think_end|>"'
+    # Build Modelfile content
+    think_line = "" if thinking else "PARAMETER stop \"<|think_start|>\"\nPARAMETER stop \"<|think_end|>\""
     modelfile = MODelfILE_TEMPLATE.format(
         base_model=base_model,
         system_prompt=system_prompt or f"You are {name}, a helpful Synthetic Intelligence.",
-        temperature=temperature, top_p=top_p, num_ctx=num_ctx, think_line=think_line,
+        temperature=temperature,
+        top_p=top_p,
+        num_ctx=num_ctx,
+        think_line=think_line,
     ).rstrip()
 
     return {
-        "name": name, "base_model": base_model,
+        "name": name,
+        "base_model": base_model,
         "system_prompt": system_prompt or f"You are {name}, a helpful Synthetic Intelligence.",
-        "temperature": temperature, "top_p": top_p, "num_ctx": num_ctx,
-        "thinking": thinking, "needs_pull": needs_pull, "modelfile": modelfile,
+        "temperature": temperature,
+        "top_p": top_p,
+        "num_ctx": num_ctx,
+        "thinking": thinking,
+        "needs_pull": needs_pull,
+        "modelfile": modelfile,
     }
 
 
-def hatch_si(name: str, base_model: str, system_prompt: str = "", temperature: float = 0.7,
-             top_p: float = 0.9, num_ctx: int = 32768, thinking: bool = True,
-             pull_if_missing: bool = True) -> Dict[str, Any]:
-    mold = mold_si(name=name, base_model=base_model, system_prompt=system_prompt,
-                   temperature=temperature, top_p=top_p, num_ctx=num_ctx, thinking=thinking)
+def hatch_si(
+    name: str,
+    base_model: str,
+    system_prompt: str = "",
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    num_ctx: int = 32768,
+    thinking: bool = True,
+    pull_if_missing: bool = True,
+) -> Dict[str, Any]:
+    """Hatch a Synthetic Intelligence: create the Ollama model and register it.
 
+    This is the birth. Returns a birth certificate with name, timestamp,
+    configuration, and registration status.
+    """
+    # Mold first (validates, builds Modelfile)
+    mold = mold_si(
+        name=name,
+        base_model=base_model,
+        system_prompt=system_prompt,
+        temperature=temperature,
+        top_p=top_p,
+        num_ctx=num_ctx,
+        thinking=thinking,
+    )
+
+    # Pull base model if missing
     if mold["needs_pull"]:
         if not pull_if_missing:
-            raise ValueError(f"Base model {base_model!r} not downloaded. Pull it first.")
+            raise ValueError(f"Base model {base_model!r} is not downloaded locally. Pull it first or set pull_if_missing=True.")
         logger.info("Pulling base model %s for hatching %s...", base_model, name)
         if not _ollama_pull(base_model):
             raise RuntimeError(f"Failed to pull base model {base_model!r}.")
 
+    # Create the Ollama model
     logger.info("Hatching SI '%s' from base model '%s'...", name, base_model)
     if not _ollama_create(name, mold["modelfile"]):
         raise RuntimeError(f"Failed to create Ollama model {name!r}.")
 
+    # Save birth certificate
     birth_certificate = {
-        "name": name, "born_at": datetime.now(timezone.utc).isoformat(),
-        "base_model": base_model, "system_prompt": mold["system_prompt"],
-        "temperature": temperature, "top_p": top_p, "num_ctx": num_ctx,
-        "thinking": thinking, "modelfile": mold["modelfile"],
-        "hardware": scan_hardware(), "status": "hatched",
+        "name": name,
+        "born_at": datetime.now(timezone.utc).isoformat(),
+        "base_model": base_model,
+        "system_prompt": mold["system_prompt"],
+        "temperature": temperature,
+        "top_p": top_p,
+        "num_ctx": num_ctx,
+        "thinking": thinking,
+        "modelfile": mold["modelfile"],
+        "hardware": scan_hardware(),
+        "status": "hatched",
     }
 
     HATCHERY_DIR.mkdir(parents=True, exist_ok=True)
     cert_path = HATCHERY_DIR / f"{name}.json"
     cert_path.write_text(json.dumps(birth_certificate, indent=2))
 
+    # Register in ARES backend router
     _register_hatched_backend(name, birth_certificate)
-    logger.info("SI '%s' hatched! Birth certificate at %s", name, cert_path)
+
+    logger.info("SI '%s' hatched successfully! Birth certificate at %s", name, cert_path)
     return birth_certificate
 
 
 def get_hatchery_status() -> Dict[str, Any]:
+    """Return the current hatchery status: hatched SIs and Ollama state."""
     HATCHERY_DIR.mkdir(parents=True, exist_ok=True)
     certificates = []
     for cert_file in HATCHERY_DIR.glob("*.json"):
@@ -252,55 +385,104 @@ def get_hatchery_status() -> Dict[str, Any]:
             certificates.append(cert)
         except Exception:
             pass
-    return {"ollama_running": _ollama_is_running(), "available_models": _ollama_list_models(),
-            "hatched": certificates, "hardware": scan_hardware()}
+
+    return {
+        "ollama_running": _ollama_is_running(),
+        "available_models": _ollama_list_models(),
+        "hatched": certificates,
+        "hardware": scan_hardware(),
+    }
 
 
 def delete_si(name: str) -> Dict[str, Any]:
+    """Delete a hatched SI: remove from Ollama, delete birth certificate, unregister."""
+    # Remove from Ollama
     _ollama_delete(name)
+
+    # Remove birth certificate
     cert_path = HATCHERY_DIR / f"{name}.json"
     cert_path.unlink(missing_ok=True)
+
+    # Unregister from ARES backend router
     _unregister_hatched_backend(name)
+
     return {"name": name, "status": "deleted"}
 
 
-def update_si_personality(name: str, system_prompt: str | None = None, temperature: float | None = None,
-                          top_p: float | None = None, thinking: bool | None = None) -> Dict[str, Any]:
+def update_si_personality(
+    name: str,
+    system_prompt: str | None = None,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    thinking: bool | None = None,
+) -> Dict[str, Any]:
+    """Update a hatched SI's personality by recreating the Ollama model.
+
+    This re-hatches with new parameters. The birth certificate is preserved
+    but the born_at timestamp stays the same (it's still the same SI).
+    """
     cert_path = HATCHERY_DIR / f"{name}.json"
     if not cert_path.exists():
         raise ValueError(f"No hatched SI named {name!r} found.")
 
     cert = json.loads(cert_path.read_text())
-    if system_prompt is not None: cert["system_prompt"] = system_prompt
-    if temperature is not None: cert["temperature"] = temperature
-    if top_p is not None: cert["top_p"] = top_p
-    if thinking is not None: cert["thinking"] = thinking
 
-    mold = mold_si(name=name, base_model=cert["base_model"], system_prompt=cert["system_prompt"],
-                   temperature=cert["temperature"], top_p=cert["top_p"],
-                   num_ctx=cert.get("num_ctx", 32768), thinking=cert["thinking"])
+    # Apply updates
+    if system_prompt is not None:
+        cert["system_prompt"] = system_prompt
+    if temperature is not None:
+        cert["temperature"] = temperature
+    if top_p is not None:
+        cert["top_p"] = top_p
+    if thinking is not None:
+        cert["thinking"] = thinking
+
+    # Re-mold and re-create
+    mold = mold_si(
+        name=name,
+        base_model=cert["base_model"],
+        system_prompt=cert["system_prompt"],
+        temperature=cert["temperature"],
+        top_p=cert["top_p"],
+        num_ctx=cert.get("num_ctx", 32768),
+        thinking=cert["thinking"],
+    )
 
     if not _ollama_create(name, mold["modelfile"]):
         raise RuntimeError(f"Failed to update Ollama model {name!r}.")
 
+    # Update certificate
     cert["modelfile"] = mold["modelfile"]
     cert["updated_at"] = datetime.now(timezone.utc).isoformat()
     cert_path.write_text(json.dumps(cert, indent=2))
+
+    # Re-register
     _register_hatched_backend(name, cert)
+
     return cert
 
 
+# ---------------------------------------------------------------------------
+# Backend Registration
+# ---------------------------------------------------------------------------
+
 def _register_hatched_backend(name: str, cert: Dict[str, Any]) -> None:
-    backend = HatchedSIBackend(name=name, system_prompt=cert.get("system_prompt", ""))
+    """Register a hatched SI as a backend in ARES's router."""
+    backend = HatchedSIBackend(
+        name=name,
+        system_prompt=cert.get("system_prompt", ""),
+    )
     get_router().register(f"hatched_{name}", backend)
 
 
 def _unregister_hatched_backend(name: str) -> None:
+    """Unregister a hatched SI from ARES's router."""
     get_router().unregister(f"hatched_{name}")
 
 
 class HatchedSIBackend(AgenticBackend):
     """A hatched Synthetic Intelligence — local Ollama model with custom personality."""
+
     name: str = "hatched_si"
     supports_tools = False
     supports_persona = True
@@ -320,11 +502,15 @@ class HatchedSIBackend(AgenticBackend):
         if self.is_available():
             models = _ollama_list_models()
             model_found = self.si_name in models
-            return {"status": "ok" if model_found else "degraded", "latency_ms": 0.0,
-                    "message": f"Ollama running. Model {self.si_name!r} {'found' if model_found else 'not found'}."}
+            return {
+                "status": "ok" if model_found else "degraded",
+                "latency_ms": 0.0,
+                "message": f"Ollama running. Model {self.si_name!r} {'found' if model_found else 'not found'}.",
+            }
         return {"status": "error", "latency_ms": 0.0, "message": "Ollama not running."}
 
     def identity_projection(self) -> Dict[str, Any]:
+        # Load birth certificate for name/personality
         cert_path = HATCHERY_DIR / f"{self.si_name}.json"
         display_name = self.si_name
         if cert_path.exists():
@@ -333,48 +519,94 @@ class HatchedSIBackend(AgenticBackend):
                 display_name = cert.get("system_prompt", self.si_name).split(".")[0].replace("You are ", "").strip()
             except Exception:
                 pass
-        return {"name": display_name or self.si_name,
-                "description": self.system_prompt[:200] if self.system_prompt else f"Hatched SI: {self.si_name}",
-                "avatar_state": "idle"}
+        return {
+            "name": display_name or self.si_name,
+            "description": self.system_prompt[:200] if self.system_prompt else f"Hatched SI: {self.si_name}",
+            "avatar_state": "idle",
+        }
 
     def capabilities(self) -> Dict[str, Any]:
-        return {"chat": True, "tools": False, "persona": True, "voice": False, "multimodal": False, "local": True}
+        return {
+            "chat": True,
+            "tools": False,
+            "persona": True,
+            "voice": False,
+            "multimodal": False,
+            "local": True,
+        }
 
     def chat_session_support(self) -> Dict[str, Any]:
         return {"streaming": True, "context_window": 32768, "multimodal": False}
 
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        """Send a message to the hatched SI via Ollama's chat API."""
         if not self.is_available():
             return {"text": "", "error": "Ollama not running.", "tool_activity": []}
+
         import requests
+
+        # Build messages with system prompt
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
         messages.append({"role": "user", "content": message})
+
         try:
-            r = requests.post(f"{OLLAMA_HOST}/api/chat", json={"model": self.si_name, "messages": messages, "stream": False}, timeout=120)
+            r = requests.post(
+                f"{OLLAMA_HOST}/api/chat",
+                json={
+                    "model": self.si_name,
+                    "messages": messages,
+                    "stream": False,
+                },
+                timeout=120,
+            )
             data = r.json()
-            return {"text": data.get("message", {}).get("content", "") or data.get("response", ""), "error": None, "tool_activity": []}
+            response_text = data.get("message", {}).get("content", "") or data.get("response", "")
+            return {"text": response_text, "error": None, "tool_activity": []}
         except Exception as exc:
             logger.exception("Hatched SI turn failed for %s", self.si_name)
             return {"text": "", "error": str(exc), "tool_activity": []}
 
     def get_worker_target(self) -> tuple:
+        """Return streaming worker target for SSE support."""
         from api.streaming import _run_agent_streaming
         return _run_agent_streaming, False, True
 
     def settings_schema(self) -> Dict[str, Any]:
-        return {"type": "object", "properties": {
-            "system_prompt": {"type": "string", "title": "Personality", "description": "System prompt defining this SI's personality.", "default": self.system_prompt},
-            "model": {"type": "string", "title": "Ollama Model", "description": "The Ollama model name.", "default": self.si_name}}}
+        return {
+            "type": "object",
+            "properties": {
+                "system_prompt": {
+                    "type": "string",
+                    "title": "Personality",
+                    "description": "System prompt that defines this SI's personality.",
+                    "default": self.system_prompt,
+                },
+                "model": {
+                    "type": "string",
+                    "title": "Ollama Model",
+                    "description": "The Ollama model name for this SI.",
+                    "default": self.si_name,
+                },
+            },
+        }
 
     def get_status(self) -> Dict[str, Any]:
         available = self.is_available()
-        return {"available": available, "label": self.si_name if available else f"{self.si_name} (Ollama not running)",
-                "model": self.si_name, "hatched": True}
+        return {
+            "available": available,
+            "label": self.si_name if available else f"{self.si_name} (Ollama not running)",
+            "model": self.si_name,
+            "hatched": True,
+        }
 
 
-def hatchery_autoload() -> None:
+# ---------------------------------------------------------------------------
+# Auto-register any existing hatched SIs on module load
+# ---------------------------------------------------------------------------
+
+def _autoload_hatched() -> None:
     """Scan hatchery directory and register any existing hatched SIs."""
     if not HATCHERY_DIR.exists():
         return
@@ -387,3 +619,10 @@ def hatchery_autoload() -> None:
                 logger.info("Auto-registered hatched SI: %s", name)
         except Exception:
             logger.warning("Failed to auto-register hatched SI from %s", cert_file)
+
+
+# Auto-load on import (deferred to avoid circular imports)
+# Call hatchery_autoload() from the app startup instead.
+def hatchery_autoload() -> None:
+    """Scan hatchery directory and register any existing hatched SIs."""
+    _autoload_hatched()

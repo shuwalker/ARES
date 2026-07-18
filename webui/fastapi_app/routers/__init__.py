@@ -7,6 +7,11 @@ from .analytics import router as analytics_router
 from .auth import router as auth_router
 from .ares import router as ares_router
 from .controls import router as controls_router
+from .env import router as env_router
+from .webhooks import router as webhooks_router
+from .secrets import router as secrets_router
+from .pairing import router as pairing_router
+from .backends import router as backends_router
 from .email import router as email_router
 from .health import router as health_router
 from .interactions import router as interactions_router
@@ -59,20 +64,24 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(controls_router)
     application.include_router(email_router)
     application.include_router(ares_router)
+    application.include_router(secrets_router)
     application.include_router(onboarding_router)
     application.include_router(profiles_router)
     application.include_router(projects_router)
     application.include_router(prompts_router)
     application.include_router(providers_router)
+    application.include_router(pairing_router)
     application.include_router(schedules_router)
     application.include_router(settings_router)
+    application.include_router(env_router)
     application.include_router(shares_router)
     application.include_router(skills_router)
     application.include_router(uploads_router)
     application.include_router(session_router)
+    application.include_router(webhooks_router)
     application.include_router(workspaces_router)
     application.include_router(wiki_router)
-    application.include_router(adapters_router)
+    application.include_router(backends_router)
     application.include_router(realtime_router)
 
 

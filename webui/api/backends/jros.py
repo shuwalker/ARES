@@ -18,14 +18,15 @@ class JROSBackend(AgenticBackend):
 
     def is_available(self) -> bool:
         try:
-            from api.backend_selector import backend_status
-            return bool(backend_status().get("jros_local", False))
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "JROSBackend.is_available() probe failed: %s", exc, exc_info=True
-            )
-            return False
+            from api.jros_gateway_chat import jros_gateway_health
+            return jros_gateway_health(timeout=0.5) is not None
+        except Exception:
+            # Check local path fallback
+            try:
+                from api.jros_gateway_chat import local_jros_root
+                return local_jros_root() is not None
+            except Exception:
+                return False
 
     def get_worker_target(self) -> tuple:
         """Return the JROS streaming worker target."""

@@ -1193,7 +1193,7 @@ class Session:
         self.clear_generation = clear_generation
         self.ares_backend = (
             str(ares_backend).strip().lower()
-            if str(ares_backend or "").strip().lower() in {"ares", "jros", "hybrid"}
+            if str(ares_backend or "").strip()
             else None
         )
         self.gateway_routing = gateway_routing if isinstance(gateway_routing, dict) else None
@@ -4328,6 +4328,7 @@ def new_session(workspace=None, model=None, profile=None, model_provider=None, p
         workspace=workspace_path or get_last_workspace(),
         model=effective_model,
         model_provider=effective_model_provider,
+        ares_backend=effective_model_provider,
         profile=profile,
         project_id=project_id,
         personality=None,
@@ -4336,6 +4337,7 @@ def new_session(workspace=None, model=None, profile=None, model_provider=None, p
         worktree_repo_root=wt.get('repo_root') if wt else None,
         worktree_created_at=wt.get('created_at') if wt else None,
         enabled_toolsets=enabled_toolsets,
+        source_tag="webui",
     )
     # #4985: defensive — auto-generated uuids don't collide with the
     # tombstone, but if a future caller ever passes an explicit id that
