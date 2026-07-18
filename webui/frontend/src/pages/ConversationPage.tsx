@@ -102,13 +102,9 @@ export function ConversationPage() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<string>(() => {
     if (currentSession?.backendId) return currentSession.backendId;
-    // Prefer local Ollama / hatched SI for the Synthetic Person, then Hermes, then first available
-    const preferred = ["ollama_local", "ares_local", "hermes_local", "jros_local"];
-    for (const id of preferred) {
-      const b = snapshot.backends.find((b) => b.id === id && b.available);
-      if (b) return b.id;
-    }
-    return snapshot.backends.find((b) => b.available)?.id || "";
+    // Paperclip-style: default to the Hermes Agent local adapter if available.
+    const b = snapshot.backends.find((b) => b.id === "hermes_local" && b.available);
+    return b?.id || snapshot.backends.find((b) => b.available)?.id || "";
   });
   const selectedBackendRef = useRef(selectedBackend);
   useEffect(() => {
