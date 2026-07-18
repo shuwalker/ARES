@@ -14,12 +14,14 @@ let package = Package(
     dependencies: [
         .package(path: "ARES-Mac_os/Vendor/SwiftTerm"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
+        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.0"),
     ],
     targets: [
         .target(
             name: "ARESCore",
             dependencies: [
                 .product(name: "Logging", package: "swift-log"),
+                .product(name: "SQLite", package: "SQLite.swift"),
             ],
             path: "ARES-Mac_os/Sources/ARESCore"
         ),

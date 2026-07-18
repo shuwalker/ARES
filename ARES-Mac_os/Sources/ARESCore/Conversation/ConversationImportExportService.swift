@@ -585,7 +585,7 @@ public class ConversationImportExportService {
                     _ = try await memoryManager.storeMemory(
                         content: memory.content,
                         conversationId: newId,
-                        contentType: MemoryContentType(rawValue: memory.contentType) ?? .message,
+                        contentType: ConversationMemoryContentType(rawValue: memory.contentType) ?? .message,
                         importance: memory.importance,
                         tags: memory.tags ?? []
                     )

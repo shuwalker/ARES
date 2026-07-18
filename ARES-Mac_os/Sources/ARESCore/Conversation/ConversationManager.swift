@@ -1175,7 +1175,7 @@ public class ConversationManager: ObservableObject {
         }
     }
 
-    private func storeMessageInMemory(content: String, conversationId: UUID, contentType: MemoryContentType) async {
+    private func storeMessageInMemory(content: String, conversationId: UUID, contentType: ConversationMemoryContentType) async {
         guard memoryInitialized else { return }
 
         do {

@@ -78,7 +78,7 @@ public class MemoryManager: ObservableObject {
     public func storeMemory(
         content: String,
         conversationId: UUID,
-        contentType: MemoryContentType = .message,
+        contentType: ConversationMemoryContentType = .message,
         importance: Double = 0.5,
         tags: [String] = []
     ) async throws -> UUID {
@@ -158,7 +158,7 @@ public class MemoryManager: ObservableObject {
                         id: memoryId,
                         conversationId: conversationId,
                         content: row[content],
-                        contentType: MemoryContentType(rawValue: row[contentType]) ?? .message,
+                        contentType: ConversationMemoryContentType(rawValue: row[contentType]) ?? .message,
                         importance: row[importance],
                         similarity: finalSimilarity,
                         createdAt: row[createdAt],
@@ -219,7 +219,7 @@ public class MemoryManager: ObservableObject {
                                 id: memoryId,
                                 conversationId: memoryConversationId,
                                 content: contentText,
-                                contentType: MemoryContentType(rawValue: row[contentType]) ?? .message,
+                                contentType: ConversationMemoryContentType(rawValue: row[contentType]) ?? .message,
                                 importance: row[importance],
                                 similarity: finalSimilarity,
                                 createdAt: row[createdAt],
@@ -259,7 +259,7 @@ public class MemoryManager: ObservableObject {
                                 id: memoryId,
                                 conversationId: memoryConversationId,
                                 content: contentText,
-                                contentType: MemoryContentType(rawValue: row[contentType]) ?? .message,
+                                contentType: ConversationMemoryContentType(rawValue: row[contentType]) ?? .message,
                                 importance: row[importance],
                                 similarity: finalSimilarity,
                                 createdAt: row[createdAt],
@@ -305,7 +305,7 @@ public class MemoryManager: ObservableObject {
                     id: UUID(uuidString: row[id])!,
                     conversationId: conversationId,
                     content: row[content],
-                    contentType: MemoryContentType(rawValue: row[contentType]) ?? .message,
+                    contentType: ConversationMemoryContentType(rawValue: row[contentType]) ?? .message,
                     importance: row[importance],
                     similarity: 1.0,
                     createdAt: row[createdAt],
@@ -384,8 +384,8 @@ public class MemoryManager: ObservableObject {
             let totalCount = try db.scalar(memories.count)
 
             /// Get counts by content type.
-            var byType: [MemoryContentType: Int] = [:]
-            for type in MemoryContentType.allCases {
+            var byType: [ConversationMemoryContentType: Int] = [:]
+            for type in ConversationMemoryContentType.allCases {
                 let typeMemories = memories.filter(contentType == type.rawValue)
                 let count = try db.scalar(typeMemories.count)
                 byType[type] = count
@@ -667,7 +667,7 @@ public class MemoryManager: ObservableObject {
 // MARK: - Supporting Types
 
 /// Memory content types for categorizing different types of stored content.
-public enum MemoryContentType: String, CaseIterable, Sendable {
+public enum ConversationMemoryContentType: String, CaseIterable, Sendable {
     case message = "message"
     case userInput = "user_input"
     case assistantResponse = "assistant_response"
@@ -682,7 +682,7 @@ public struct ConversationMemory: Identifiable, Sendable {
     public let id: UUID
     public let conversationId: UUID
     public let content: String
-    public let contentType: MemoryContentType
+    public let contentType: ConversationMemoryContentType
     public let importance: Double
     public let similarity: Double
     public let createdAt: Date
@@ -713,7 +713,7 @@ public struct MemoryStatistics {
 /// Global memory statistics across all conversations with content type breakdown.
 public struct GlobalMemoryStatistics: Sendable {
     public let totalCount: Int
-    public let byType: [MemoryContentType: Int]
+    public let byType: [ConversationMemoryContentType: Int]
     public let recentCount: Int
     public let averageImportance: Double
 

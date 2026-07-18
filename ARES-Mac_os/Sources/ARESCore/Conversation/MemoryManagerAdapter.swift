@@ -50,8 +50,8 @@ public class MemoryManagerAdapter: MemoryManagerProtocol, @unchecked Sendable {
     }
 
     public func storeMemory(content: String, contentType: MCPFramework.MemoryContentType, context: String, conversationId: String?, tags: [String]) async throws -> UUID {
-        /// Map MCPFramework.MemoryContentType to ConversationEngine.MemoryContentType.
-        let engineContentType: ConversationEngine.MemoryContentType
+        /// Map MCPFramework.MemoryContentType to ConversationEngine.ConversationMemoryContentType.
+        let engineContentType: ConversationEngine.ConversationMemoryContentType
         switch contentType {
         case .interaction:
             engineContentType = .message
@@ -147,7 +147,7 @@ private struct ConversationMemoryAdapter: MemoryEntry {
     var content: String { memory.content }
     var context: String { "" }
     var contentType: MCPFramework.MemoryContentType {
-        /// Map from ConversationEngine.MemoryContentType to MCPFramework.MemoryContentType.
+        /// Map from ConversationEngine.ConversationMemoryContentType to MCPFramework.MemoryContentType.
         switch memory.contentType {
         case .message:
             return .interaction
