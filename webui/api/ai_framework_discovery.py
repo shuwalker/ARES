@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass, field
+import glob
 from pathlib import Path
 from typing import Any
 
@@ -224,8 +225,16 @@ def _extract_model_info(adapter_id: str, config_dir: Path) -> dict[str, Any]:
     return info
 
 
+
+def _exists(path: Path | str) -> bool:
+    if isinstance(path, str) and '*' in path:
+        return bool(glob.glob(path))
+    return Path(path).exists()
+
 def discover_frameworks() -> list[DiscoveredAdapter]:
     discovered: list[DiscoveredAdapter] = []
+    antigravity_ide_dir = Path.home() / "Library/Application Support/Antigravity IDE"
+    gemini_dir = Path.home() / ".gemini"
     for spec in _ADAPTER_SPECS:
         binary_path = None
         for name in spec["binaries"]:
@@ -263,6 +272,44 @@ def discover_frameworks() -> list[DiscoveredAdapter]:
             mcp_servers=mcp_servers,
         ))
 
+    # App-based AI tools without a headless CLI
+    if _exists(Path("/Applications/Antigravity IDE.app")):
+        discovered.append(DiscoveredAdapter(
+            adapter_id="gemini_antigravity",
+            display_name="Gemini (Antigravity IDE)",
+            detected=True,
+            binary_path=None,
+            config_dir=str(antigravity_ide_dir) if antigravity_ide_dir.exists() else str(Path("/Applications/Antigravity IDE.app")),
+            default_provider="google",
+            default_model="gemini-1.5-flash",
+            version="",
+            details={"notes": "Google Gemini Code Assist inside Antigravity IDE (app automation)", "auth_present": _exists(gemini_dir / "oauth_creds.json")},
+        ))
+    if _exists(Path("/Applications/OpenCode.app")):
+        discovered.append(DiscoveredAdapter(
+            adapter_id="opencode_app",
+            display_name="OpenCode (App)",
+            detected=True,
+            binary_path=None,
+            config_dir=str(Path("/Applications/OpenCode.app")),
+            default_provider="opencode",
+            default_model="",
+            version="",
+            details={"notes": "OpenCode desktop app (app automation)", "auth_present": False},
+        ))
+    if _exists(Path("/Applications/Cursor.app")):
+        discovered.append(DiscoveredAdapter(
+            adapter_id="cursor_app",
+            display_name="Cursor (App)",
+            detected=True,
+            binary_path=None,
+            config_dir=str(Path("/Applications/Cursor.app")),
+            default_provider="cursor",
+            default_model="",
+            version="",
+            details={"notes": "Cursor editor desktop app (app automation)", "auth_present": False},
+        ))
+
     return discovered
 
 
@@ -274,3 +321,18 @@ def discover_summary() -> dict[str, Any]:
         "detected_count": sum(1 for a in adapters if a.detected),
         "available_ids": [a.adapter_id for a in adapters if a.detected],
     }
+
+
+_BACKEND_CLASS_MAP: dict[str, str] = {
+    "hermes_local": "api.backends:HermesBackend",
+    "claude_local": "api.backends:ClaudeLocalBackend",
+    "codex_local": "api.backends:CodexLocalBackend",
+    "gemini_local": "api.backends:GeminiLocalBackend",
+    "gemini_cloud": "api.backends:GeminiCloudBackend",
+    "gemini_antigravity": "api.backends:AntigravityGeminiBackend",
+    "grok_local": "api.backends:GrokLocalBackend",
+    "pi_local": "api.backends:PiLocalBackend",
+    "ollama_local": "api.backends:OllamaLocalBackend",
+    "cursor_app": "api.backends:CursorAppBackend",
+    "opencode_app": "api.backends:OpenCodeAppBackend",
+}

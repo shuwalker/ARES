@@ -75,3 +75,5 @@ class GeminiCloudBackend:
             return {"text": text.strip(), "error": None, "tool_activity": []}
         except Exception as exc:
             return {"text": "", "error": str(exc), "tool_activity": []}
+
+__all__ = ["GeminiCloudBackend"]
