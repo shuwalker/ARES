@@ -1,0 +1,31 @@
+export {
+  getServerAdapter,
+  listAdapterModels,
+  refreshAdapterModels,
+  listServerAdapters,
+  findServerAdapter,
+  findActiveServerAdapter,
+  detectAdapterModel,
+  listAdapterModelProfiles,
+  registerServerAdapter,
+  unregisterServerAdapter,
+  requireServerAdapter,
+} from "./registry.js";
+export type {
+  ServerAdapterModule,
+  AcpTargetDescriptor,
+  AdapterExecutionContext,
+  AdapterExecutionResult,
+  AdapterInvocationMeta,
+  AdapterModelProfileDefinition,
+  AdapterEnvironmentCheckLevel,
+  AdapterEnvironmentCheck,
+  AdapterEnvironmentTestStatus,
+  AdapterEnvironmentTestResult,
+  AdapterEnvironmentTestContext,
+  AdapterSessionCodec,
+  UsageSummary,
+  AdapterAgent,
+  AdapterRuntime,
+} from "@paperclipai/adapter-utils";
+export { runningProcesses } from "./utils.js";
