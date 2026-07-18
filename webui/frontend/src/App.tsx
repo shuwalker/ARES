@@ -6,6 +6,7 @@ import { ActivityPage } from "@/pages/ActivityPage";
 import { ConnectionsPage } from "@/pages/ConnectionsPage";
 import { ChannelsPage } from "@/pages/ChannelsPage";
 import { ConversationPage } from "@/pages/ConversationPage";
+import { SearchPage } from "@/pages/SearchPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SharePage } from "@/pages/SharePage";
 import { TerminalPage } from "@/pages/TerminalPage";
@@ -13,6 +14,8 @@ import { TodayPage } from "@/pages/TodayPage";
 import { UsageCostPage } from "@/pages/UsageCostPage";
 import { WorkspacePage } from "@/pages/WorkspacePage";
 import { CanvasPage } from "@/pages/CanvasPage";
+import { GoalsPage } from "@/pages/GoalsPage";
+import { TimelinePage } from "@/pages/TimelinePage";
 import InboxPage from "@/pages/InboxPage";
 import IssuesPage from "@/pages/IssuesPage";
 import RoutinesPage from "@/pages/RoutinesPage";
@@ -33,10 +36,13 @@ export default function App() {
         <Route index element={<Navigate to="/today" replace />} />
         <Route path="today" element={<TodayPage />} />
         <Route path="conversation" element={<ConversationPage />} />
+        <Route path="search" element={<SearchPage />} />
         <Route path="workspace" element={<WorkspacePage />} />
         <Route path="terminal" element={<TerminalPage />} />
         <Route path="activity" element={<ActivityPage />} />
         <Route path="canvas" element={<CanvasPage />} />
+        <Route path="goals" element={<GoalsPage />} />
+        <Route path="timeline" element={<TimelinePage />} />
         <Route path="usage" element={<UsageCostPage />} />
         <Route path="connections" element={<ConnectionsPage />} />
         <Route path="channels" element={<ChannelsPage />} />

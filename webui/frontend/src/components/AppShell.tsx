@@ -10,6 +10,7 @@ import {
   Menu,
   MessageCircle,
   Moon,
+  Search,
   Settings,
   Sun,
   SquareTerminal,
@@ -18,6 +19,7 @@ import {
   Inbox,
   ListTodo,
   CalendarClock,
+  Target,
   Wrench,
   Key,
   Sliders,
@@ -46,6 +48,7 @@ type NavItem = {
 const aresNavigation: NavItem[] = [
   { to: "/today", label: "Today", icon: House },
   { to: "/conversation", label: "Chat", icon: MessageCircle },
+  { to: "/search", label: "Search", icon: Search },
   { to: "/workspace", label: "Workspace", icon: FolderKanban },
   { to: "/canvas", label: "Canvas", icon: Layers },
   { to: "/terminal", label: "Terminal", icon: SquareTerminal },
@@ -54,6 +57,8 @@ const aresNavigation: NavItem[] = [
 const paperclipNavigation: NavItem[] = [
   { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/issues", label: "Issues", icon: ListTodo },
+  { to: "/goals", label: "Goals", icon: Target },
+  { to: "/timeline", label: "Timeline", icon: CalendarClock },
   { to: "/routines", label: "Routines", icon: CalendarClock },
   { to: "/skills", label: "Skills", icon: Wrench },
   { to: "/secrets", label: "Secrets", icon: Key },
