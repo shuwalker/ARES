@@ -191,6 +191,39 @@ def _remote_terminal_workspace_candidate(path: str | Path) -> Path | None:
     return None
 
 
+def _remote_terminal_workspace_blocked(path: str | Path) -> bool:
+    """Return True when *path* sits under a remote terminal.cwd but is a
+    blocked system directory (or the cwd itself is one).
+
+    Distinguishes "system directory" rejections from plain local
+    nonexistence for target-side paths this WebUI host cannot stat: a
+    remote-profile path like /etc/ssh must reject as a system directory
+    regardless of whether the WebUI host happens to have that directory.
+    """
+    cwd = _remote_terminal_cwd()
+    if not cwd:
+        return False
+    raw = _strip_surrounding_quotes(str(path)).strip()
+    if not raw or '\x00' in raw or '\x00' in cwd:
+        return False
+    normalized_raw = _normalize_posix_path(raw)
+    normalized_cwd = _normalize_posix_path(cwd)
+    if normalized_raw is not None and normalized_cwd is not None:
+        posix_candidate = PurePosixPath(normalized_raw)
+        posix_base = PurePosixPath(normalized_cwd)
+        if posix_candidate != posix_base and not _posix_is_within(posix_candidate, posix_base):
+            return False
+        return (
+            _is_blocked_workspace_path(Path(normalized_raw), normalized_raw)
+            or _is_blocked_workspace_path(Path(normalized_cwd), normalized_cwd)
+        )
+    candidate = _resolve_path(raw)
+    base = _resolve_path(cwd)
+    if candidate != base and not _is_within(candidate, base):
+        return False
+    return _is_blocked_workspace_path(candidate, raw) or _is_blocked_workspace_path(base, cwd)
+
+
 def _profile_default_workspace() -> str:
     """Read the profile's default workspace from its config.yaml.
 
@@ -833,6 +866,11 @@ def resolve_trusted_workspace(path: str | Path | None = None) -> Path:
         # update the workspace hint even though this WebUI host cannot stat
         # the target-side path.
         if remote_candidate is None:
+            # A target-side path under a remote cwd that was refused because
+            # it is a system directory must reject as such — not as a local
+            # nonexistence artifact of the WebUI host's filesystem.
+            if _remote_terminal_workspace_blocked(path):
+                raise ValueError(f"Path points to a system directory: {candidate}")
             raise ValueError(access_error)
 
     if remote_candidate is not None:
@@ -924,6 +962,10 @@ def validate_workspace_to_add(path: str) -> Path:
         # machine, not on the WebUI server. Permit target-side paths under
         # terminal.cwd.
         if remote_candidate is None:
+            # See resolve_trusted_workspace: blocked target-side paths under a
+            # remote cwd reject as system directories, not as missing paths.
+            if _remote_terminal_workspace_blocked(path):
+                raise ValueError(f"Path points to a system directory: {candidate}")
             raise ValueError(access_error)
 
     if remote_candidate is not None:

@@ -27,7 +27,12 @@ def test_conversation_transcript_is_not_a_named_region():
 
 def test_latest_assistant_landmark_helper_is_named_but_not_focusable():
     helper = _function_body(UI_JS, "_setLatestAssistantTurnLandmark")
-    assert "Latest Hermes response" in helper
+    # The label is now identity-projected: "Latest <backend label> response",
+    # where the backend label comes from window._aresIdentity.backend_label /
+    # _aresCurrentBackend and falls back to 'Hermes' when neither is set.
+    # Pin the construction and the Hermes fallback rather than a literal.
+    assert "const label='Latest '+backendName+' response'" in helper
+    assert "'Hermes'" in helper, "backend label must fall back to 'Hermes'"
     assert "setAttribute('role','region')" in helper
     assert "setAttribute('aria-label',label)" in helper
     assert "data-latest-assistant-response" in helper

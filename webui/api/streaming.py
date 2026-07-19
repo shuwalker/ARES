@@ -9948,9 +9948,6 @@ def _run_agent_streaming(
                 if decision.get('should_continue'):
                     continuation_prompt = str(decision.get('continuation_prompt') or '').strip()
                     if continuation_prompt:
-                        # #1932: mark this session as pending a goal continuation
-                        # so the next /chat/start creates a goal-related stream.
-                        PENDING_GOAL_CONTINUATION.add(session_id)
                         # Server-side wakeup parity (Option Z): persist the prompt
                         # so the turn-teardown idle-hook below can start the next
                         # turn itself if no live tab is around to catch the SSE
@@ -9967,6 +9964,12 @@ def _run_agent_streaming(
                                 session_id,
                                 exc_info=True,
                             )
+                        # #1932: mark this session as pending a goal continuation
+                        # so the next /chat/start creates a goal-related stream.
+                        # The add MUST immediately precede the goal_continue SSE
+                        # emission (stage-326): the marker has to be observable
+                        # by the time the frontend reacts to the event.
+                        PENDING_GOAL_CONTINUATION.add(session_id)
                         put('goal_continue', {
                             'session_id': session_id,
                             'continuation_prompt': continuation_prompt,

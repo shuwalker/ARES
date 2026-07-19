@@ -719,6 +719,20 @@ async function installJrosFromOnboarding(){
   }
 }
 
+async function refreshOnboardingStatus(){
+  // Re-fetch onboarding status + companion defaults mid-wizard (e.g. after a
+  // background framework install completes) without resetting form state or
+  // re-rendering the wizard. Called from nextOnboardingStep()'s install poll.
+  const status=await api('/api/onboarding/status');
+  ONBOARDING.status=status;
+  try{
+    ONBOARDING.companionDefaults=await api('/api/onboarding/companion/defaults');
+  }catch(e){
+    console.warn('companion defaults failed',e);
+    ONBOARDING.companionDefaults={available:false};
+  }
+}
+
 async function loadOnboardingWizard(){
   try{
     const status=await api('/api/onboarding/status');
