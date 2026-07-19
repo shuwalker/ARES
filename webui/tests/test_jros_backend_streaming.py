@@ -569,10 +569,10 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
     monkeypatch.setattr(backend_selector, "_jros_gateway_info", {})
-    assert backend_selector.is_jros_available() is True
+    # Checkout alone is install-detected, not execution-available.
+    assert backend_selector.is_jros_available() is False
     status = backend_selector.backend_status()
-    assert status["jros_local"] is True
-    assert status["jros_mode"] == "local"
+    assert status["jros_local"] is False
 
 
 def test_ares_capabilities_follow_external_runtime_and_shared_tools(monkeypatch):

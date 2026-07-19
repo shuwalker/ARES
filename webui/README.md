@@ -43,11 +43,18 @@ python3 -m venv .venv
 
 ## Backend Modes
 
+ARES elects **one external live adapter** at a time. IDs match
+`api.backend_selector.VALID_BACKENDS` (for example `jros_local`,
+`hermes_local`, `claude_local`, `openai_cloud`, `ollama_local`). Short
+aliases such as `jros` and `hermes` normalize to the `*_local` forms.
+Deleted product modes `ares` and `hybrid` are rejected and must not be
+written to config.
+
 | Mode | Purpose |
 | --- | --- |
-| `jros` | Embodied JROS/Jaeger runtime through an existing gateway/bridge. Best for character, voice, robotics, and body-aware workflows. |
-| `ares` | Ares Agent runtime for coding, terminal work, MCP, skills, cron, provider routing, and operations. |
-| `hybrid` | Explicit composition: one clear turn owner with extra capabilities borrowed from another runtime only when configured. |
+| `jros_local` | Embodied JROS/Jaeger runtime through a live gateway. Best for character, voice, robotics, and body-aware workflows. A checkout alone is not "available". |
+| `hermes_local` | Hermes Agent runtime for coding, terminal work, MCP, skills, cron, provider routing, and operations (optional install). |
+| CLI / cloud adapters | Other registered adapters (`claude_local`, `openai_cloud`, `ollama_local`, …) when their tools or APIs are present. |
 
 Backend selection is independent from provider/model selection. Do not add fake `jros` model entries; JROS mode still uses real configured providers/models.
 
@@ -71,7 +78,7 @@ See [`../docs/jros-integration.md`](../docs/jros-integration.md).
 ## What Changed from Ares WebUI
 
 - ARES title, favicon, manifest, skin, and server header.
-- Backend selector for Ares, JROS, and hybrid runtime modes.
+- Backend selector for external live adapters (JROS, Hermes, CLI/cloud tools).
 - JROS bridge client (`api/jros_client.py`) and streaming integration (`api/jros_bridge.py`).
 - Shared JROS path resolver (`api/jros_paths.py`) so Jaeger/JROS paths have one source of truth.
 - Provider sync helpers for keeping Ares/JROS model config aligned without copying secrets.
@@ -132,17 +139,17 @@ Order of preference: gateway first (works for remote machines and alongside
 a running gateway), local bridge fallback second (local convenience).
 
 Optional auth: set `JAEGER_GATEWAY_KEY` on the gateway and the same value in
-`ARES_JROS_GATEWAY_KEY` for ARES. The UI's JROS option lights up when the
-gateway answers `GET /v1/health` — or, with no gateway, when a local
-checkout is available for the fallback (the dropdown shows which mode
-you're in). `ARES_JROS_DIR` also still feeds the character browser and
-update checker.
+`ARES_JROS_GATEWAY_KEY` for ARES. The UI treats JROS as **available** only
+when the gateway answers `GET /v1/health`. A local checkout
+(`ARES_JROS_DIR` / `ARES_JAEGER_HOME`) enables install detection, character
+browser paths, and degraded local-bridge fallback for turns — it does not
+mark execution as ready by itself.
 
 ## Dependencies
 
 - Python 3.11+
-- Ares Agent for Ares runtime mode
-- Optional JROS install for `jros` / `hybrid` runtime modes
+- Optional JaegerAI/JROS install for `jros_local` (gateway recommended)
+- Optional Hermes Agent (or other CLI adapters) when those backends are elected
 - See `requirements.txt` for WebUI Python dependencies
 
 ## Compatibility

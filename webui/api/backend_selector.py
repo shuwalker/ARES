@@ -54,7 +54,12 @@ def get_session_backend(session: object, config: dict) -> str:
 
 
 def is_jros_available() -> bool:
-    """Bounded, cached JaegerAI presence probe shared by every adapter surface."""
+    """Bounded, cached JaegerAI *execution* probe shared by every adapter surface.
+
+    A local checkout alone is install-detected, not available. Availability
+    requires a live gateway health response so readiness cannot claim
+    execution is ready from disk presence alone.
+    """
 
     global _jros_available_cache, _jros_available_ts, _jros_gateway_info
     now = time.monotonic()
@@ -64,22 +69,18 @@ def is_jros_available() -> bool:
     available = False
     details: dict = {}
     try:
-        from api.jros_gateway_chat import jros_gateway_health, local_jros_root
+        from api.jros_gateway_chat import jros_gateway_health
 
-        if local_jros_root() is not None:
+        reply = jros_gateway_health(timeout=1.0)
+        if reply is not None:
             available = True
-            details = {"mode": "local"}
-        else:
-            reply = jros_gateway_health(timeout=1.0)
-            if reply is not None:
-                available = True
-                details = {
-                    "mode": "gateway",
-                    "model": reply.get("model"),
-                    "provider": reply.get("provider"),
-                    "booted": bool(reply.get("booted")),
-                    "instance": reply.get("instance"),
-                }
+            details = {
+                "mode": "gateway",
+                "model": reply.get("model"),
+                "provider": reply.get("provider"),
+                "booted": bool(reply.get("booted")),
+                "instance": reply.get("instance"),
+            }
     except Exception:
         logger.debug("JaegerAI availability probe failed", exc_info=True)
 

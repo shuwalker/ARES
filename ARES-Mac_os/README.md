@@ -14,7 +14,7 @@ runtime status, and approval surfaces.
 - Settings expose:
   - Web UI host, port, auto-launch, and reload/dev mode.
   - Server health and recent logs.
-  - Active backend selector for Hermes, JROS, and hybrid mode.
+  - Active backend selector for live adapters (Hermes, JROS, CLI/cloud).
   - Hermes and JROS gateway URL/key fields.
   - LAN and Tailscale URLs with QR code for phone/tablet access.
   - Browser microphone constraints for remote HTTP access.
@@ -33,7 +33,7 @@ presentation and control layer over those systems:
 ## Build And Run
 
 ```bash
-cd ~/GitHub/ARES
+cd /path/to/ARES
 swift build
 swift run ARES
 ```
@@ -48,5 +48,5 @@ Older experimental desktop plans that do not describe the current app have been
 moved out of the repo to:
 
 ```text
-/Users/matthewjenkins/Desktop/ARES-misaligned-archive/
+<path-to-local-archive>/ARES-misaligned-archive/
 ```

@@ -56,15 +56,15 @@ bash install.sh
 ```
 
 The installer handles everything automatically:
-- Detects or installs JROS (required Companion runtime)
+- Detects or installs JaegerAI/JROS when available (optional for saving a Local Profile)
 - Creates a Python virtual environment
 - Installs Python dependencies
-- Configures the backend (defaults to JROS)
+- Configures a live adapter when one is detected (defaults to `jros_local`)
 
 **Options:**
-- `--with-ares` — also install Ares Agent (optional coding/terminal addition)
+- `--with-ares` — also install Ares Agent package (optional coding addition; not a backend mode)
 - `--no-start` — skip auto-starting the server after install
-- `--backend jros|ares|hybrid` — set the default backend mode
+- `--backend auto|jros_local|hermes_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
 
 After install, run the Web UI:
 

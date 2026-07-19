@@ -3,10 +3,10 @@
 # Thin wrapper that delegates to webui/scripts/install.sh
 #
 # Usage:
-#   bash install.sh [--backend auto|ares|jros|hybrid] [--no-start]
+#   bash install.sh [--backend auto|jros_local|hermes_local|...] [--no-start]
 #
 # Options:
-#   --backend MODE  Backend mode: auto, ares, jros, or hybrid (default: auto)
+#   --backend MODE  Live adapter ID or alias (default: auto → jros_local when detected)
 #   --no-start      Skip auto-starting the server after installation
 
 set -e
@@ -30,7 +30,9 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: bash install.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --backend MODE  Backend mode: auto, ares, jros, or hybrid (default: auto)"
+            echo "  --backend MODE  Live adapter ID or alias (default: auto → jros_local"
+            echo "                  when JaegerAI is detected). Examples: jros_local,"
+            echo "                  hermes_local, claude_local. ares/hybrid are rejected."
             echo "  --no-start      Skip auto-starting the server after installation"
             echo "  -h, --help      Show this help"
             echo ""
@@ -39,7 +41,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: bash install.sh [--backend auto|ares|jros|hybrid] [--no-start]"
+            echo "Usage: bash install.sh [--backend auto|jros_local|hermes_local|...] [--no-start]"
             exit 1
             ;;
     esac

@@ -3,7 +3,7 @@
 This directory was staged from the Paperclip React/Vite UI as the starting
 point for the ARES frontend migration.
 
-- Source repository: `/Users/matthewjenkins/GitHub/paperclip`
+- Source repository: `https://github.com/paperclipai/paperclip` (or local clone path)
 - Source directory: `ui/`
 - Source commit: `2617bee422b4fc3c0be5b44636ad5071e30f5546`
 - Source license: MIT; retained in `PAPERCLIP-LICENSE`

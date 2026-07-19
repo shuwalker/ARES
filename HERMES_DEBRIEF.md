@@ -17,8 +17,8 @@ You are the **Execution Engine**. Your role is to serve as a highly capable, aut
 
 ### C. The Web UI (React + FastAPI)
 ARES operates via a modern Web UI.
-- **Frontend:** Located at `/Users/matthewjenkins/GitHub/ARES/webui/frontend`. It is a modern React + Vite SPA. 
-- **Backend:** Located at `/Users/matthewjenkins/GitHub/ARES/webui/fastapi_app`. It is a FastAPI asynchronous backend using WebSockets.
+- **Frontend:** Located at `webui/frontend`. It is a modern React + Vite SPA.
+- **Backend:** Located at `webui/fastapi_app`. It is a FastAPI asynchronous backend using WebSockets.
 - *Note:* The legacy Vanilla JS UI and Python `http.server` backend have been completely deleted. Any references to `server.py`, `api/routes.py`, or old `static` HTML files should be ignored.
 
 ## 3. The Master Roadmap

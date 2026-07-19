@@ -57,14 +57,15 @@ export const ActivationScreen: React.FC = () => {
                     return;
                 }
 
-                setStatusText("Checking execution connections...");
+                // Profile-ready alone is enough to enter the shell. Connection
+                // and execution readiness are status signals, not hard gates.
                 if (!data.connection_ready || !data.execution_available) {
-                    setStatusText("No execution connection is ready. Opening Connections...");
-                    scheduleNavigation("/connections", 800);
-                    return;
+                    setStatusText(
+                        "Profile ready. Opening the Companion (no execution connection yet)...",
+                    );
+                } else {
+                    setStatusText("Execution is available. Opening the Companion...");
                 }
-                
-                setStatusText("Execution is available. Opening the Companion...");
                 scheduleNavigation("/conversation", 600);
                 
             } catch (err: unknown) {

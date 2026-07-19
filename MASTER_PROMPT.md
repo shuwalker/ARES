@@ -6,7 +6,7 @@ Paste this into Gemini Code Assist, Claude Code, or Codex CLI. It is a complete,
 
 ## YOUR JOB
 
-You are a senior full-stack engineer. Take the ARES codebase at `/Users/matthewjenkins/GitHub/ARES` from its current porting/drain state to a **production-ready, single-user Synthetic Person application** that runs on macOS. Work on branch `wip/odysseus-import`. Push frequently.
+You are a senior full-stack engineer. Take the ARES codebase at `/path/to/ARES` from its current porting/drain state to a **production-ready, single-user Synthetic Person application** that runs on macOS. Work on branch `wip/odysseus-import`. Push frequently.
 
 **CRITICAL: There are 92 uncommitted files in the working tree from the user's VS Code session. Do not commit, stage, or modify these files unless explicitly fixing a specific finding listed below. Your work should be in new commits on top of the last committed state (`37947e52`).**
 
@@ -18,7 +18,7 @@ ARES is a Synthetic Person — a multi-agent controller with **no internal LLM c
 
 Stack:
 - **macOS app**: `ARES-Mac_os/` — 701 Swift source files, builds via `build-app.sh`
-- **Backend**: `webui/` — FastAPI on port 8787 (0.0.0.0), Tailscale `100.74.2.15:8787`
+- **Backend**: `webui/` — FastAPI on port 8787 (0.0.0.0), private network via Tailscale/LAN at `http://<tailscale-ip>:8787`
 - **Frontend**: `webui/frontend/` — React + Vite + shadcn/ui + Tailwind + framer-motion
 - **Reference sources** (drained, do not delete):
   - `reference_sources/paperclip_drained/`
@@ -30,14 +30,14 @@ Design system (locked, do not change):
 - Palette: bg `#151614`, sidebar `#242624`, surface `#1B1C1A`, surface-subtle `#20211F`, border `#343631`, border2 `#4B4D47`, text `#ECEBE4`, strong `#FAF9F3`, muted `#A7A79D`, accent `#D7D6CE`, user-bubble `#2E302D`
 - No linear transitions — use framer-motion spring physics only
 - shadcn/ui + Tailwind only
-- Visual reference: `~/Desktop/ARES_backup_20260701/webui/static/`
+- Visual reference: design tokens and screenshots under `webui/docs/` / `docs/`
 
 ---
 
 ## CURRENT STATE (AUDITED + CODE REVIEWED)
 
 ### What works (committed, verified)
-- Server runs on `127.0.0.1:8787` and Tailscale `100.74.2.15:8787`
+- Server runs on `127.0.0.1:8787` and on the private Tailscale/LAN URL when configured
 - Frontend Vite build passes (production bundle: 586 KB main chunk)
 - 36 frontend pages exist, all exported, all substantial (100-860 lines each), none are stubs
 - 43 FastAPI routers exist, all registered, all have routes

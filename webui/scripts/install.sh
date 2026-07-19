@@ -105,11 +105,15 @@ while [[ $# -gt 0 ]]; do
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
-            echo "  --backend MODE  Backend mode: auto, ares, jros, or hybrid (default: auto → jros)"
+            echo "  --backend MODE  Live adapter ID or short alias (default: auto → jros_local"
+            echo "                  when JaegerAI is detected). Examples: auto, jros,"
+            echo "                  jros_local, hermes, hermes_local, claude_local,"
+            echo "                  ollama_local, openai_cloud. Deleted modes ares/hybrid are rejected."
             echo "  --no-start      Skip auto-starting the server after installation"
-            echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — ARES has no"
-            echo "                  Companion runtime until JaegerAI is installed separately)"
-            echo "  --with-ares   Also install Ares Agent, the optional coding/terminal addition"
+            echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — profile can still"
+            echo "                  be saved without a Companion runtime)"
+            echo "  --with-ares     Also install Ares Agent package (optional coding addition;"
+            echo "                  does not select a runtime by itself)"
             echo "  -h, --help      Show this help"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -465,24 +469,39 @@ setup_config() {
     mkdir -p "$ARES_HOME"
 
     detect_jros
+    # Canonical live adapter IDs must match api.backend_selector.VALID_BACKENDS.
+    # Short aliases map at write time; deleted ares/hybrid modes fail closed.
     selected_backend="$BACKEND_MODE"
-    if [ "$selected_backend" = "auto" ]; then
-        # JaegerAI is the required Companion runtime — it is always the default,
-        # regardless of whether Ares was also installed as an addition.
-        selected_backend="jros"
-    fi
     case "$selected_backend" in
-        ares|jros|hybrid) ;;
-        *) log_error "Invalid backend mode: $selected_backend (expected auto, ares, jros, or hybrid)"; exit 1 ;;
+        auto)
+            if [ "${JROS_DETECTED:-false}" = true ]; then
+                selected_backend="jros_local"
+            else
+                # Profile can be saved without an elected runtime.
+                selected_backend=""
+                log_warn "No JaegerAI install detected; leaving ares_backend unset (profile-only)."
+                log_warn "Connect a live adapter later in Connections, or re-run with --backend jros_local."
+            fi
+            ;;
+        jros|jros_local) selected_backend="jros_local" ;;
+        hermes|hermes_local) selected_backend="hermes_local" ;;
+        claude_local|codex_local|gemini_local|grok_local|opencode_local|cursor_local|pi_local|openai_cloud|xai_cloud|gemini_cloud|gemini_antigravity|ollama_local)
+            selected_backend="$selected_backend"
+            ;;
+        ares|ares_local|hybrid)
+            log_error "Backend '$selected_backend' is no longer supported."
+            log_error "Use a live adapter ID such as jros_local or hermes_local (see --help)."
+            exit 1
+            ;;
+        *)
+            log_error "Invalid backend mode: $selected_backend"
+            log_error "Expected auto or a live adapter ID (jros_local, hermes_local, claude_local, ...)."
+            exit 1
+            ;;
     esac
-    if [ "$selected_backend" != "jros" ] && [ "$WITH_ARES" != true ]; then
-        log_warn "Backend '$selected_backend' needs the Ares addition, which was not installed."
-        log_warn "Falling back to jros. Re-run with --with-ares --backend $selected_backend to use it."
-        selected_backend="jros"
-    fi
-    if [ "$selected_backend" = "jros" ] && [ "${JROS_DETECTED:-false}" != true ]; then
-        log_error "Backend 'jros' selected but no JaegerAI install was found at $JAEGER_HOME_DETECTED."
-        log_error "Re-run without --skip-jros, or install JaegerAI manually and re-run."
+    if [ "$selected_backend" = "jros_local" ] && [ "${JROS_DETECTED:-false}" != true ]; then
+        log_error "Backend 'jros_local' selected but no JaegerAI install was found at ${JAEGER_HOME_DETECTED:-unknown}."
+        log_error "Re-run without --skip-jros, install JaegerAI manually, or choose another --backend."
         exit 1
     fi
 
@@ -499,7 +518,7 @@ import json
 import sys
 from pathlib import Path
 
-backend = sys.argv[1]
+backend = (sys.argv[1] or "").strip()
 state_home = Path(sys.argv[2]) / "webui"
 ares_home = Path(sys.argv[3])
 state_home.mkdir(parents=True, exist_ok=True)
@@ -507,11 +526,14 @@ settings = state_home / "settings.json"
 data = {}
 if settings.exists():
     try:
-        import json
         data = json.loads(settings.read_text(encoding="utf-8"))
     except Exception:
         data = {}
-data["ares_backend"] = backend
+if backend:
+    data["ares_backend"] = backend
+else:
+    # Profile-only install: do not persist a deleted or empty election.
+    data.pop("ares_backend", None)
 settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 # Runtime reads the selected backend from Ares config.yaml, not settings.json.
@@ -523,11 +545,15 @@ out = []
 seen = False
 for line in lines:
     if line.startswith("ares_backend:"):
-        out.append(f"ares_backend: {backend}")
-        seen = True
+        if backend:
+            out.append(f"ares_backend: {backend}")
+            seen = True
+        # else drop stale election line on profile-only install
+        else:
+            seen = True
     else:
         out.append(line)
-if not seen:
+if backend and not seen:
     if out and out[-1].strip():
         out.append("")
     out.append(f"ares_backend: {backend}")
@@ -564,7 +590,11 @@ env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 PY
         log_success "Persisted JaegerAI runtime path: $JAEGER_HOME_DETECTED"
     fi
-    log_success "Configured ARES backend: $selected_backend"
+    if [ -n "$selected_backend" ]; then
+        log_success "Configured ARES backend: $selected_backend"
+    else
+        log_success "ARES backend left unset (profile-only; connect a runtime later)"
+    fi
 
     log_success "Configuration ready"
 }

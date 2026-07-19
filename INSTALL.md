@@ -69,15 +69,15 @@ bash install.sh
 ```
 
 The installer:
-- Detects or installs JaegerAI (required Companion runtime)
+- Detects or installs JaegerAI when available (optional for saving a Local Profile)
 - Creates a Python virtual environment in `webui/.venv`
 - Installs Python dependencies
-- Configures the backend (defaults to jros)
+- Configures a live adapter when one is detected (defaults to `jros_local`)
 
 **Options:**
-- `--with-ares` — also install Ares Agent (optional coding/terminal addition)
+- `--with-ares` — also install Ares Agent package (optional coding addition; not a backend mode)
 - `--no-start` — skip auto-starting the server after install
-- `--backend jros|ares|hybrid` — set the default backend mode
+- `--backend auto|jros_local|hermes_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
 
 After install, use any of the run modes above (Web, Mac app, or Windows).
 
