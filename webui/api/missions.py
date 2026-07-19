@@ -133,13 +133,17 @@ def create_mission(session_id: str, prompt: str, *, profile: str | None = None) 
     }
     with _MISSIONS_LOCK:
         _MISSIONS[mission["id"]] = mission
+        # Snapshot before the worker starts: the caller gets the mission in
+        # its just-created state ("planning"), never racing the worker to
+        # "done" on fast machines.
+        payload = _mission_payload(mission)
     threading.Thread(
         target=_run_mission,
         args=(mission["id"],),
         name=f"ares-mission-{mission['id']}",
         daemon=True,
     ).start()
-    return _mission_payload(mission)
+    return payload
 
 
 def _run_mission(mission_id: str) -> None:
