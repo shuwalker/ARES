@@ -21431,10 +21431,21 @@ def _active_run_stream_for_session(session_id: str | None) -> str | None:
 def _select_chat_worker_target(session=None):
     """Return the backend worker for a normal WebUI chat turn.
 
-    This now routes strictly through the ARES Backend Adapter Registry, ensuring
-    all backends encapsulate their own routing details (e.g. gateway chat) and
-    respecting strict persona separation without silent fallbacks.
+    This routes through the ARES Backend Adapter Registry, ensuring backends
+    encapsulate their own routing details and respecting strict persona
+    separation without silent fallbacks. One transport override sits above the
+    registry: the explicit gateway-chat opt-in
+    (``HERMES_WEBUI_CHAT_BACKEND=gateway`` / config ``webui_chat_backend``).
+    That flag is off by default and unknown values are deliberately ignored,
+    so when an operator sets it they have explicitly handed execution
+    ownership to the Hermes Gateway worker — it must win over the default
+    backend selection (goal-continuation turns included, #1932).
     """
+    try:
+        if webui_gateway_chat_enabled(get_config()):
+            return _run_gateway_chat_streaming, True, False
+    except Exception:
+        logger.warning("Failed to evaluate gateway-chat opt-in; continuing with backend registry", exc_info=True)
     try:
         from api.backend_selector import get_session_backend
         from api.backends.router import get_router
@@ -21688,11 +21699,14 @@ def _start_run(
     returns no adapter is surfaced as ``{"error": str(exc), "_status": 501}``
     so both call sites can map it onto their own HTTP shape.
     """
-    # ARES product backend selection must happen before the Hermes runtime
-    # adapter/gateway. Otherwise `jros` looks selected in the UI while the
-    # active Hermes adapter still consumes the turn. Backend selection changes
-    # the runtime only; keep the shared model picker authoritative for both
-    # Hermes and JROS instead of manufacturing a fake jros/jros model route.
+    # ARES product backend selection does NOT need a pre-adapter short-circuit
+    # here: both the direct path and the legacy-journal adapter delegate into
+    # _start_chat_stream_for_session, whose _select_chat_worker_target routes
+    # the turn to the selected ARES backend (jros/hermes/hybrid). The runtime
+    # adapter env flags are explicit operator opt-ins and must be honored for
+    # EVERY entrypoint — including start_session_turn's process-wakeup path
+    # (Q-2979-A2): bypassing the block for non-hermes backends made the env
+    # flip a no-op for wakeup turns while browser turns honored it.
 
     from api.runtime_adapter import (
         LegacyJournalRuntimeAdapter,
@@ -21701,27 +21715,6 @@ def _start_run(
         runtime_adapter_enabled,
         runtime_adapter_runner_enabled,
     )
-
-    try:
-        from api.backend_selector import get_session_backend
-        from api.backends.router import get_router
-        
-        backend_name = get_session_backend(s, get_config())
-        if backend_name != "hermes":
-            return _start_chat_stream_for_session(
-                s,
-                msg=msg,
-                attachments=attachments,
-                workspace=workspace,
-                model=model,
-                model_provider=model_provider,
-                normalized_model=normalized_model,
-                diag=diag,
-                source=source,
-                moa_config=moa_config,
-            )
-    except Exception:
-        logger.warning("Failed to resolve ARES backend before runtime adapter; continuing with adapter selection", exc_info=True)
 
     if runtime_adapter_enabled() or runtime_adapter_runner_enabled():
         def _legacy_start_run(request: StartRunRequest) -> dict:
