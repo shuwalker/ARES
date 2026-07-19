@@ -13346,7 +13346,6 @@ def handle_get(handler, parsed) -> bool:
             from api.ares_identity import build_identity_payload
             from api.backend_selector import get_active_backend, get_session_backend
             from api.config import get_config as _get_cfg, load_settings as _load_settings
-            from api.profiles import get_active_profile_name as _get_active_profile_name
             qs = parse_qs(parsed.query)
             session_id = str((qs.get("session_id", [""])[0]) or "").strip()
             _cfg = _get_cfg()
