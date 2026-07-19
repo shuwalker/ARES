@@ -9,7 +9,7 @@ from .base import (
     ModelDescriptor,
     StreamSubscription,
 )
-from .frameworks import AresAdapter, HybridAdapter, JaegerAdapter
+from .frameworks import JaegerAdapter
 from .mcp import McpToolAdapter
 from .registry import AdapterRegistry
 
@@ -17,11 +17,9 @@ __all__ = [
     "AdapterError",
     "AdapterHealth",
     "AdapterRegistry",
-    "AresAdapter",
     "BaseConnectionAdapter",
     "BaseLLMAdapter",
     "BaseToolAdapter",
-    "HybridAdapter",
     "JaegerAdapter",
     "McpToolAdapter",
     "ModelDescriptor",

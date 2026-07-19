@@ -33,9 +33,6 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-pytestmark = pytest.mark.requires_agent_modules
-
-
 WORKSPACE_PREFIX = "[Workspace::v1: /workspace]\n"
 
 

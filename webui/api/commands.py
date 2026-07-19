@@ -456,8 +456,11 @@ def execute_plugin_command(command: str) -> str:
             resolve_plugin_command_result,
         )
     except ImportError as exc:
-        logger.warning("Plugin command runtime unavailable", exc_info=True)
-        raise RuntimeError("plugin command runtime unavailable") from exc
+        # No external plugin runtime means there cannot be a matching plugin
+        # command. Treat it exactly like an unknown command so deployments that
+        # use another elected backend return a safe 404 instead of a 500.
+        logger.debug("Plugin command runtime unavailable")
+        raise KeyError(cmd_base) from exc
 
     try:
         handler = get_plugin_command_handler(cmd_base)

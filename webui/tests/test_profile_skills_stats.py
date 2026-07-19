@@ -2,7 +2,6 @@ import sys
 from pathlib import Path
 import yaml
 from api import profiles
-from tests.conftest import requires_agent_modules
 
 
 def _write_skill(root: Path, name: str, platforms=None):
@@ -21,7 +20,6 @@ def _write_config(home: Path, disabled):
         encoding="utf-8",
     )
 
-@requires_agent_modules
 def test_get_profile_skills_stats(tmp_path):
     # Setup skills directory with:
     # 1 compatible & enabled skill ("alpha")
@@ -41,18 +39,10 @@ def test_get_profile_skills_stats(tmp_path):
     assert enabled == 1
     assert compatible == 2
 
-@requires_agent_modules
 def test_list_profiles_api_contains_formatted_skills(monkeypatch, tmp_path):
-    """list_profiles_api() formats skill counts for each profile.
-
-    Drives the fast path (``_build_profile_rows_fast``), which discovers
-    profiles via the cheap upstream helpers and skips the alias scan, so this
-    patches ``_get_default_ares_home`` / ``_get_profiles_root`` to point at a
-    tmp profile layout rather than monkeypatching the (now-bypassed)
-    ``list_profiles`` aggregate.
-    """
+    """ARES-owned profile discovery formats skill counts for each profile."""
     p_default = tmp_path / "default"
-    profiles_root = tmp_path / "profiles"
+    profiles_root = p_default / "profiles"
     p_fintech = profiles_root / "fintech"
 
     _write_skill(p_default, "a1")
@@ -66,12 +56,7 @@ def test_list_profiles_api_contains_formatted_skills(monkeypatch, tmp_path):
 
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
 
-    # Point the fast-path discovery helpers at our tmp layout. The base home is
-    # surfaced as "default" by _build_profile_rows_fast regardless of dir name.
-    import ares_cli.profiles as cli_p
-    monkeypatch.setattr(cli_p, "_get_default_ares_home", lambda: p_default)
-    monkeypatch.setattr(cli_p, "_get_profiles_root", lambda: profiles_root)
-    monkeypatch.setattr(cli_p, "_check_gateway_running", lambda home: False)
+    monkeypatch.setattr(profiles, "_DEFAULT_ARES_HOME", p_default)
 
     profiles._SKILLS_STATS_CACHE.clear()
     profiles._invalidate_list_profiles_cache()
@@ -101,14 +86,12 @@ def test_list_profiles_api_contains_formatted_skills(monkeypatch, tmp_path):
 
     profiles._invalidate_list_profiles_cache()
 
-@requires_agent_modules
 def test_no_skills_dir(tmp_path):
     """Profile with no skills/ directory should return (0, 0)."""
     profiles._SKILLS_STATS_CACHE.clear()
     enabled, compat = profiles._get_profile_skills_stats(tmp_path)
     assert enabled == 0 and compat == 0
 
-@requires_agent_modules
 def test_corrupt_config(tmp_path):
     """Corrupt config.yaml should not crash — disabled set stays empty."""
     profiles._SKILLS_STATS_CACHE.clear()
@@ -117,7 +100,6 @@ def test_corrupt_config(tmp_path):
     enabled, compat = profiles._get_profile_skills_stats(tmp_path)
     assert compat == 1 and enabled == 1  # no disabled parsing, all enabled
 
-@requires_agent_modules
 def test_platform_disabled_webui(tmp_path):
     """platform_disabled.webui list should be used when present."""
     profiles._SKILLS_STATS_CACHE.clear()
@@ -127,7 +109,6 @@ def test_platform_disabled_webui(tmp_path):
     enabled, compat = profiles._get_profile_skills_stats(tmp_path)
     assert compat == 1 and enabled == 0
 
-@requires_agent_modules
 def test_skills_stats_cache(tmp_path):
     """Caching avoids re-parsing SKILL.md, but the per-call mtime probe catches
     a real skill add/remove immediately (the #4783 fix — adding a skill bumps
@@ -166,52 +147,33 @@ def test_skills_stats_cache(tmp_path):
     assert enabled == 2 and compat == 2
 
 
-@requires_agent_modules
-def test_list_profiles_api_skips_alias_scan(monkeypatch, tmp_path):
-    """The fast path must NOT call find_alias_for_profile.
-
-    find_alias_for_profile reads every file in the wrapper dir (~/.local/bin),
-    including large binaries — the multi-second profile-dropdown hang. The
-    WebUI discards alias data, so the fast path must avoid that call entirely.
-    """
+def test_list_profiles_api_ignores_invalid_profile_directories(monkeypatch, tmp_path):
+    """Filesystem discovery accepts only valid ARES profile identifiers."""
     p_default = tmp_path / "default"
     _write_skill(p_default, "a1")
     _write_config(p_default, [])
+    (p_default / "profiles" / "valid-profile").mkdir(parents=True)
+    (p_default / "profiles" / ".invalid").mkdir()
 
-    import ares_cli.profiles as cli_p
-    monkeypatch.setattr(cli_p, "_get_default_ares_home", lambda: p_default)
-    monkeypatch.setattr(cli_p, "_get_profiles_root", lambda: tmp_path / "profiles")
-    monkeypatch.setattr(cli_p, "_check_gateway_running", lambda home: False)
+    monkeypatch.setattr(profiles, "_DEFAULT_ARES_HOME", p_default)
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
-
-    alias_called = []
-    if hasattr(cli_p, "find_alias_for_profile"):
-        monkeypatch.setattr(
-            cli_p, "find_alias_for_profile",
-            lambda *a, **k: alias_called.append(a) or None,
-        )
 
     profiles._SKILLS_STATS_CACHE.clear()
     profiles._invalidate_list_profiles_cache()
 
     results = profiles.list_profiles_api()
-    assert any(p["name"] == "default" for p in results)
-    assert alias_called == [], "fast path must not call find_alias_for_profile"
+    assert {p["name"] for p in results} == {"default", "valid-profile"}
 
     profiles._invalidate_list_profiles_cache()
 
 
-@requires_agent_modules
 def test_list_profiles_api_caches_and_invalidates(monkeypatch, tmp_path):
     """Repeated calls hit the TTL cache; create/delete invalidation drops it."""
     p_default = tmp_path / "default"
     _write_skill(p_default, "a1")
     _write_config(p_default, [])
 
-    import ares_cli.profiles as cli_p
-    monkeypatch.setattr(cli_p, "_get_default_ares_home", lambda: p_default)
-    monkeypatch.setattr(cli_p, "_get_profiles_root", lambda: tmp_path / "profiles")
-    monkeypatch.setattr(cli_p, "_check_gateway_running", lambda home: False)
+    monkeypatch.setattr(profiles, "_DEFAULT_ARES_HOME", p_default)
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
 
     build_calls = []
@@ -239,35 +201,23 @@ def test_list_profiles_api_caches_and_invalidates(monkeypatch, tmp_path):
     profiles._invalidate_list_profiles_cache()
 
 
-@requires_agent_modules
-def test_list_profiles_api_falls_back_when_fast_path_unavailable(monkeypatch, tmp_path):
-    """If the cheap helpers can't build rows, fall back to upstream list_profiles."""
-    class FakeProfile:
-        def __init__(self, name, path):
-            self.name = name
-            self.path = Path(path)
-            self.is_default = name == "default"
-            self.gateway_running = False
-            self.model = "gpt-4"
-            self.provider = "openai"
-            self.has_env = False
-            self.skill_count = 0
-
+def test_list_profiles_api_reads_model_metadata_without_external_cli(monkeypatch, tmp_path):
     p_default = tmp_path / "default"
     _write_skill(p_default, "a1")
     _write_config(p_default, [])
+    config = yaml.safe_load((p_default / "config.yaml").read_text(encoding="utf-8"))
+    config["model"] = {"default": "gpt-test", "provider": "external-test"}
+    (p_default / "config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
 
-    monkeypatch.setattr(profiles, "_build_profile_rows_fast", lambda: None)
+    monkeypatch.setattr(profiles, "_DEFAULT_ARES_HOME", p_default)
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
-    import ares_cli.profiles as cli_p
-    monkeypatch.setattr(cli_p, "list_profiles", lambda: [FakeProfile("default", p_default)])
 
     profiles._SKILLS_STATS_CACHE.clear()
     profiles._invalidate_list_profiles_cache()
 
     results = profiles.list_profiles_api()
     by_name = {p["name"]: p for p in results}
-    assert "default" in by_name
-    assert by_name["default"]["is_active"] is True
+    assert by_name["default"]["model"] == "gpt-test"
+    assert by_name["default"]["provider"] == "external-test"
 
     profiles._invalidate_list_profiles_cache()

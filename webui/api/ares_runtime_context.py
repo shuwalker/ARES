@@ -1,8 +1,8 @@
 """ARES Runtime Context — builds live operating state every turn.
 
-ARES projects the active backend's identity. This module produces a compact context
+ARES projects the active runtime's identity. This module produces a compact context
 packet that gets injected into the agent's system prompt every turn,
-regardless of which backend (Ares or JROS) is active.
+regardless of which external backend is active.
 
 The context tells the agent:
   - Who it is (projected backend identity)
@@ -11,9 +11,7 @@ The context tells the agent:
   - What open promises/tasks exist
   - Whether JROS embodiment is connected
 
-This is backend-agnostic — the same dict and prompt render work for
-both Ares (injected via ephemeral_system_prompt) and JROS (injected
-via JaegerAgent system_prompt).
+This is backend-agnostic and never treats ARES itself as an inference runtime.
 """
 
 from __future__ import annotations
@@ -102,7 +100,7 @@ def _ensure_db() -> sqlite3.Connection:
 # ── Build Runtime Context ─────────────────────────────────────────
 
 def build_runtime_context(
-    backend: str = "ares",
+    backend: str = "",
     *,
     session_id: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -112,7 +110,7 @@ def build_runtime_context(
     the agent knows the projected identity, backend, and available capabilities.
 
     Args:
-        backend: Active backend mode — 'ares', 'jros', or 'hybrid'.
+        backend: Canonical external runtime adapter ID.
         session_id: Optional session identifier.
 
     Returns:
@@ -127,21 +125,19 @@ def build_runtime_context(
 
     jros_up = is_jros_available()
 
-    # Determine effective backend
-    effective_backend = backend
-    if backend == "jros" and not jros_up:
-        effective_backend = "ares"
-    elif backend == "hybrid" and not jros_up:
-        effective_backend = "ares"
+    from api.backend_selector import normalize_backend
+
+    effective_backend = normalize_backend(backend)
 
     # Capability map — what each backend provides
     capabilities = {
-        "ares": {
+        "ares_resources": {
             "available": True,
             "provides": [
                 "tools", "skills", "cron", "memory",
                 "delegation", "terminal", "web_search",
-                "browser", "file_ops",
+                "browser", "file_ops", "sessions", "routing",
+                "permissions", "continuity",
             ],
         },
         "jros": {
@@ -152,12 +148,10 @@ def build_runtime_context(
                 "timeline",
             ] if jros_up else [],
         },
-        "ares": {
-            "available": True,
-            "provides": [
-                "identity_projection", "tasks", "self_audit",
-                "followthrough", "continuity",
-            ],
+        "active_runtime": {
+            "id": effective_backend,
+            "available": bool(effective_backend),
+            "provides": ["inference", "identity_projection"] if effective_backend else [],
         },
     }
 
@@ -241,11 +235,11 @@ def render_context_prompt(context: dict[str, Any]) -> str:
 
     Designed to be under 500 chars to minimize context window impact.
     """
-    backend = context.get("active_backend", "ares")
+    backend = context.get("active_backend", "")
     identity = context.get("identity_projection", {})
     if not isinstance(identity, dict):
         identity = {}
-    identity_name = str(identity.get("name") or backend.title())
+    identity_name = str(identity.get("name") or "No runtime selected")
     jros_up = context.get("capabilities", {}).get("jros", {}).get("available", False)
     lines = [
         f"Projected identity: {identity_name}. Backend: {backend}.",
@@ -276,7 +270,9 @@ def render_context_prompt(context: dict[str, Any]) -> str:
 def _identity_projection_for_backend(backend: str) -> dict[str, Any]:
     """Return the active backend identity projection without making ARES canonical."""
 
-    normalized = backend if backend in {"ares", "jros", "hybrid"} else "ares"
+    from api.backend_selector import normalize_backend
+
+    normalized = normalize_backend(backend)
     try:
         from api.backends.router import get_router
 
@@ -289,11 +285,7 @@ def _identity_projection_for_backend(backend: str) -> dict[str, Any]:
         pass
 
     return {
-        "name": {
-            "ares": "Ares",
-            "jros": "JROS",
-            "hybrid": "Hybrid",
-        }.get(normalized, normalized.title()),
-        "description": "Fallback identity projection",
+        "name": normalized.replace("_", " ").title() if normalized else "No runtime selected",
+        "description": "External runtime identity projection unavailable",
         "avatar_state": "idle",
     }

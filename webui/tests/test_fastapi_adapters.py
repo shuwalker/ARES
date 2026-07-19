@@ -14,13 +14,13 @@ from fastapi_app.adapters import (
     AdapterError,
     AdapterHealth,
     AdapterRegistry,
-    AresAdapter,
     BaseLLMAdapter,
     BaseToolAdapter,
     JaegerAdapter,
     McpToolAdapter,
     ModelDescriptor,
 )
+from fastapi_app.adapters.frameworks import HermesAdapter
 from fastapi_app.main import create_app
 from fastapi_app.realtime import RealtimeService
 from fastapi_app.request_context import (
@@ -89,7 +89,7 @@ class RecordingTools(BaseToolAdapter):
 
 
 def test_framework_and_tool_adapters_have_distinct_strict_interfaces():
-    assert isinstance(AresAdapter(turn_starter=lambda *_args, **_kwargs: {}), BaseLLMAdapter)
+    assert isinstance(HermesAdapter(turn_starter=lambda *_args, **_kwargs: {}), BaseLLMAdapter)
     assert isinstance(JaegerAdapter(turn_starter=lambda *_args, **_kwargs: {}), BaseLLMAdapter)
     assert isinstance(McpToolAdapter(), BaseToolAdapter)
     assert not isinstance(McpToolAdapter(), BaseLLMAdapter)
@@ -125,14 +125,14 @@ def test_fastapi_chat_service_and_router_have_no_framework_imports():
     assert "api.streaming" not in source
 
 
-def test_framework_adapter_contains_legacy_start_seam_and_preserves_response(monkeypatch):
+def test_framework_adapter_preserves_external_runtime_response(monkeypatch):
     captured = {}
 
     def starter(session_id, message, *, source):
         captured.update(session_id=session_id, message=message, source=source)
         return {"_status": 200, "stream_id": "run-1", "session_id": session_id}
 
-    adapter = AresAdapter(turn_starter=starter)
+    adapter = HermesAdapter(turn_starter=starter)
     monkeypatch.setattr(
         adapter,
         "check_health",
@@ -175,38 +175,6 @@ def test_unavailable_framework_returns_bounded_error(monkeypatch):
 
     assert exc.value.status_code == 400
     assert exc.value.code == "runtime_unavailable"
-
-
-def test_ares_model_discovery_normalizes_existing_catalog(monkeypatch):
-    monkeypatch.setattr(
-        "api.config.get_available_models",
-        lambda **_kwargs: {
-            "groups": [
-                {
-                    "provider": "local",
-                    "models": [{"id": "model-a", "label": "Model A"}],
-                    "extra_models": ["model-b"],
-                }
-            ]
-        },
-    )
-
-    models = AresAdapter(turn_starter=lambda *_args, **_kwargs: {}).get_models(profile="default")
-
-    assert [model.as_dict() for model in models] == [
-        {
-            "id": "model-a",
-            "label": "Model A",
-            "provider": "local",
-            "connection_id": "ares",
-        },
-        {
-            "id": "model-b",
-            "label": "model-b",
-            "provider": "local",
-            "connection_id": "ares",
-        },
-    ]
 
 
 def test_mcp_adapter_is_read_only_capability_inventory(monkeypatch):
@@ -275,6 +243,43 @@ def test_realtime_service_dispatches_start_and_cancel_through_selected_adapter(m
     assert recording.cancelled == ["recording-run"]
 
 
+def test_realtime_service_honors_explicit_connection_without_overloading_provider(monkeypatch):
+    selected = RecordingAdapter()
+    selected.adapter_id = "selected-runtime"
+    fallback = RecordingAdapter()
+    fallback.adapter_id = "fallback-runtime"
+    registry = AdapterRegistry(execution_adapters=[selected, fallback], tool_adapters=[])
+    service = RealtimeService(adapter_registry=registry)
+    session = SimpleNamespace(
+        session_id="session-1",
+        profile="default",
+        read_only=False,
+        workspace="/tmp",
+        model=None,
+        model_provider=None,
+        ares_backend="fallback-runtime",
+    )
+    monkeypatch.setattr(service, "_session_for_profile", lambda *_args, **_kwargs: session)
+
+    result = asyncio.run(
+        service.start_chat(
+            ChatStart(
+                session_id="session-1",
+                message="Hello",
+                model_provider="openai",
+                connection_id="selected-runtime",
+            ),
+            profile="default",
+        )
+    )
+
+    assert result["stream_id"] == "recording-run"
+    assert session.model_provider == "openai"
+    assert session.ares_backend == "selected-runtime"
+    assert len(selected.started) == 1
+    assert fallback.started == []
+
+
 def test_connection_model_and_mcp_routes_use_registry(tmp_path: Path, monkeypatch):
     recording = RecordingAdapter()
     tools = RecordingTools()
@@ -286,14 +291,25 @@ def test_connection_model_and_mcp_routes_use_registry(tmp_path: Path, monkeypatc
     app = create_app(frontend_root=frontend, adapter_registry=registry)
     app.dependency_overrides[require_identity] = lambda: IDENTITY
     app.dependency_overrides[require_mutation_identity] = lambda: IDENTITY
+    saved = {}
+    monkeypatch.setattr(
+        "fastapi_app.routers.ares._save_config_values",
+        lambda values: saved.update(values),
+    )
 
     with TestClient(app, client=("127.0.0.1", 50000)) as client:
         connections = client.get("/api/connections")
         models = client.get("/api/connections/recording/models")
         mcp = client.get("/api/mcp/tools")
+        selected = client.post("/api/ares/backend/set", json={"backend": "recording"})
+        rejected_legacy = client.post("/api/ares/backend/set", json={"backend": "ares"})
 
     assert connections.status_code == 200
     assert connections.json()["selected"] == "recording"
     assert connections.json()["connections"][0]["health"]["state"] == "connected"
     assert models.json()["models"][0]["id"] == "model-1"
     assert mcp.json()["tools"][0]["name"] == "read"
+    assert selected.status_code == 200
+    assert selected.json()["backend"] == "recording"
+    assert saved["ares_backend"] == "recording"
+    assert rejected_legacy.status_code == 400

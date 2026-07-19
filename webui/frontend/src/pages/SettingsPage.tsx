@@ -83,7 +83,7 @@ export function SettingsPage() {
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Runtime independence</CardTitle>
-            <CardDescription>Connecting Ares Agent, Claude, Gemini, or another framework is optional. Each integration maps its capabilities into ARES contracts. The assistant name is also synchronized with the controller when it is available.</CardDescription>
+            <CardDescription>Connecting an external execution backend such as Ares CLI, Claude, or Gemini is optional. Each integration maps its capabilities into ARES contracts. The assistant name is synchronized with the selected backend when supported.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5">
             <div className="flex items-center justify-between gap-4">

@@ -23,4 +23,21 @@ public struct Constellation: Identifiable, Equatable, Sendable {
         self.stars = []
         self.starConnections = []
     }
+
+    public static func == (lhs: Constellation, rhs: Constellation) -> Bool {
+        guard lhs.id == rhs.id,
+              lhs.name == rhs.name,
+              lhs.goesOverRaZero == rhs.goesOverRaZero,
+              lhs.stars == rhs.stars,
+              lhs.starConnections.count == rhs.starConnections.count else {
+            return false
+        }
+        for i in 0..<lhs.starConnections.count {
+            if lhs.starConnections[i].0 != rhs.starConnections[i].0 ||
+               lhs.starConnections[i].1 != rhs.starConnections[i].1 {
+                return false
+            }
+        }
+        return true
+    }
 }

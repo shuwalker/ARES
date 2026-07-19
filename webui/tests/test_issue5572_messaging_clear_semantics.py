@@ -10,9 +10,6 @@ from urllib.parse import urlparse
 
 import pytest
 
-pytestmark = pytest.mark.requires_agent_modules
-
-
 class _GetHandler:
     def __init__(self, path: str):
         self.path = path

@@ -6,6 +6,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
+from ..adapters import AdapterError, AdapterRegistry
+from ..dependencies import get_adapter_registry
 from ..errors import CoreApiError
 from ..request_context import RequestIdentity, profile_scope, require_identity, require_mutation_identity
 from .onboarding import require_onboarding_mutation
@@ -189,15 +191,22 @@ def backend(
 def set_backend(
     payload: dict[str, Any],
     identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
+    registry: Annotated[AdapterRegistry, Depends(get_adapter_registry)],
 ):
     from api.ares_capabilities import capabilities_for_backend
 
-    backend_name = str(payload.get("backend") or "").strip().lower()
-    if backend_name not in {"ares", "jros", "hybrid", "hermes"}:
+    requested = str(payload.get("backend") or "").strip().lower()
+    if not requested:
+        raise CoreApiError(400, "A runtime connection is required.")
+    try:
+        backend_name = registry.execution_adapter(requested).adapter_id
+    except AdapterError as exc:
         raise CoreApiError(
-            400,
-            f"Invalid backend: {backend_name}. Must be Ares Agent, JROS, Hermes Agent, or Hybrid.",
-        )
+            exc.status_code,
+            exc.message,
+            code=exc.code,
+            context=exc.context,
+        ) from exc
     session_id = str(payload.get("session_id") or "").strip()
     with profile_scope(identity.profile):
         if session_id:
@@ -245,7 +254,7 @@ def tools(_identity: Annotated[RequestIdentity, Depends(require_identity)]):
     # This is a JSON discovery contract, not an executable in-process JROS
     # registry. MCP-shaped schemas contain no Python classes or callables and
     # are therefore safe to serialize regardless of the active runtime.
-    return {"tools": register_ares_tools(target="ares")}
+    return {"tools": register_ares_tools(target="mcp")}
 
 
 @router.get("/api/ares/identity")

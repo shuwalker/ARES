@@ -12,7 +12,7 @@ def _install_fake_cron_modules(monkeypatch, cron_jobs):
     cron_pkg = types.ModuleType("cron")
     cron_pkg.__path__ = []
     monkeypatch.setitem(sys.modules, "cron", cron_pkg)
-    monkeypatch.setitem(sys.modules, "cron.jobs", cron_jobs)
+    monkeypatch.setitem(sys.modules, "api.schedule_jobs", cron_jobs)
 
 
 def test_cron_create_recomputes_unpinned_provider_snapshot_under_selected_profile(monkeypatch):
@@ -29,7 +29,7 @@ def test_cron_create_recomputes_unpinned_provider_snapshot_under_selected_profil
         "provider_snapshot": "openai-api",
     }
 
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
     cron_jobs.JOBS_FILE = Path("C:/owning/cron/jobs.json")
     cron_jobs.CRON_DIR = Path("C:/owning/cron")
     cron_jobs.OUTPUT_DIR = Path("C:/owning/cron/output")
@@ -128,7 +128,7 @@ def test_cron_create_with_blank_profile_keeps_ambient_snapshot_semantics(monkeyp
         "provider_snapshot": "openai-api",
     }
 
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
     cron_jobs.create_job = lambda **kwargs: calls.append(("create", kwargs)) or dict(created)
     cron_jobs.update_job = lambda *args, **kwargs: pytest.fail("blank profile should not update the job")
     cron_jobs._compute_provider_model_snapshots = (
@@ -188,7 +188,7 @@ def test_cron_create_with_explicit_provider_and_model_skips_snapshot_override(mo
         "model_snapshot": "gpt-5.4",
     }
 
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
     cron_jobs.create_job = lambda **kwargs: calls.append(("create", kwargs)) or dict(created)
     cron_jobs.update_job = lambda job_id, updates: calls.append(("update", job_id, updates)) or {
         **created,
@@ -253,7 +253,7 @@ def test_cron_create_with_explicit_provider_recomputes_only_model_snapshot(monke
         "model_snapshot": "gpt-5.4",
     }
 
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
     cron_jobs.create_job = lambda **kwargs: calls.append(("create", kwargs)) or dict(created)
     cron_jobs.update_job = lambda job_id, updates: calls.append(("update", job_id, updates)) or {
         **created,
@@ -333,7 +333,7 @@ def test_selected_profile_snapshot_helper_never_repoints_cron_store_globals(monk
     from api.schedules_store import _selected_profile_snapshot_updates
 
     profile_events = []
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
     cron_jobs.JOBS_FILE = Path("C:/owning/cron/jobs.json")
     cron_jobs.CRON_DIR = Path("C:/owning/cron")
     cron_jobs.OUTPUT_DIR = Path("C:/owning/cron/output")
@@ -419,7 +419,7 @@ def test_selected_profile_snapshot_helper_holds_lock_across_profile_env_and_comp
     import api.schedules_store as routes
 
     events = []
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
 
     class RecorderLock:
         def __enter__(self):

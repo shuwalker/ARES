@@ -12,12 +12,12 @@ public final class DummyGatewayProvider: GatewayProvider, @unchecked Sendable {
         GatewayHealth(isHealthy: true, latencyMs: 0)
     }
 
-    public func prompt(_ message: String, context: ConversationContext, options: GatewayOptions) async throws -> GatewayResponse {
+    public func prompt(_ message: String, context: SAMConversationContext, options: GatewayOptions) async throws -> GatewayResponse {
         print("🤖 [DUMMY] Gateway prompt: \(message.prefix(40))")
         return GatewayResponse(text: "🤖 Echo: \(message)")
     }
 
-    public func promptStream(_ message: String, context: ConversationContext, options: GatewayOptions) -> AsyncStream<StreamedToken> {
+    public func promptStream(_ message: String, context: SAMConversationContext, options: GatewayOptions) -> AsyncStream<StreamedToken> {
         let words = message.split(separator: " ")
         return AsyncStream { continuation in
             Task {
@@ -30,7 +30,7 @@ public final class DummyGatewayProvider: GatewayProvider, @unchecked Sendable {
         }
     }
 
-    public func executeToolCall(_ call: ToolCall, context: ConversationContext) async throws -> ToolResult {
+    public func executeToolCall(_ call: ToolCall, context: SAMConversationContext) async throws -> ToolResult {
         print("🤖 [DUMMY] ToolCall: \(call.toolName)")
         return ToolResult(success: true)
     }

@@ -76,7 +76,11 @@ class RealtimeService:
             if request.model_provider:
                 session.model_provider = request.model_provider
             try:
-                adapter = self.adapters.for_session(session, profile=requested_profile)
+                if request.connection_id:
+                    adapter = self.adapters.execution_adapter(request.connection_id)
+                    session.ares_backend = adapter.adapter_id
+                else:
+                    adapter = self.adapters.for_session(session, profile=requested_profile)
                 return await adapter.stream_chat(
                     request,
                     session=session,

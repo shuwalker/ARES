@@ -5,11 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from api.run_journal import append_run_event
-from fastapi_app.adapters.frameworks import AresAdapter
+from fastapi_app.adapters.frameworks import HermesAdapter
 
 
 def _adapter(monkeypatch):
-    adapter = AresAdapter()
+    adapter = HermesAdapter()
     monkeypatch.setattr(adapter, "check_health", lambda **_kwargs: SimpleNamespace(available=True))
     return adapter
 

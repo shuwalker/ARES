@@ -88,7 +88,7 @@ export default function AgentsPage() {
   if (loading) {
     return (
       <div className="page-stack">
-        <PageHeader title="Agents" description="View and manage ARES agent backends." />
+        <PageHeader title="Backends" description="View the external execution backends ARES can route to." />
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <LoaderCircle className="mr-2 size-5 animate-spin" />
           Loading backends…
@@ -102,8 +102,8 @@ export default function AgentsPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        title="Agents"
-        description="View and manage ARES agent backends."
+        title="Backends"
+        description="View the external execution backends ARES can route to."
         action={
           <Button variant="ghost" size="icon" onClick={() => void handleRefresh()} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />

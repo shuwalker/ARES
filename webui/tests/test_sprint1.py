@@ -161,11 +161,15 @@ def test_session_update():
         "model": "anthropic/claude-sonnet-4.6"
     })
     assert status == 200
-    assert updated["session"]["model"] == "anthropic/claude-sonnet-4.6"
+    # ARES persists the selected model and its provider in separate lanes so
+    # backend election cannot be inferred from a provider-qualified model ID.
+    assert updated["session"]["model"] == "claude-sonnet-4.6"
+    assert updated["session"]["model_provider"] == "anthropic"
 
     # Reload and verify persistence
     reloaded = get(f"/api/session?session_id={sid}")
-    assert reloaded["session"]["model"] == "anthropic/claude-sonnet-4.6"
+    assert reloaded["session"]["model"] == "claude-sonnet-4.6"
+    assert reloaded["session"]["model_provider"] == "anthropic"
 
 
 def test_session_delete():

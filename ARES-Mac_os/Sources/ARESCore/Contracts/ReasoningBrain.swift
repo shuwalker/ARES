@@ -102,7 +102,7 @@ public struct SceneUnderstanding: Codable, Sendable, Equatable {
 /// Renamed from ConversationContext to SAMConversationContext to avoid collision
 /// with the ConversationContext in ConversationSession.swift.
 public struct SAMConversationContext: Codable, Sendable {
-    public let messages: [Message]
+    public let messages: [SAMMessage]
     public let userInfo: [String: AnyCodable]
     public let tone: String                        // "formal", "casual", "technical", etc.
     public let parentTask: String?                 // Task ID this conversation belongs to
@@ -110,7 +110,7 @@ public struct SAMConversationContext: Codable, Sendable {
     public let model: String?                      // Model name or identifier
 
     public init(
-        messages: [Message] = [],
+        messages: [SAMMessage] = [],
         userInfo: [String: AnyCodable] = [:],
         tone: String = "casual",
         parentTask: String? = nil,
@@ -150,7 +150,7 @@ public struct Experience: Codable, Sendable {
 }
 
 /// A message in a conversation.
-public struct Message: Codable, Sendable, Equatable {
+public struct SAMMessage: Codable, Sendable, Equatable {
     public enum Role: String, Codable, Sendable {
         case user
         case assistant

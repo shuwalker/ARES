@@ -617,6 +617,20 @@ fi
 # Full install
 print_banner
 detect_os
+setup_cli() {
+    log_info "Setting up ARES CLI..."
+    mkdir -p ~/.local/bin
+    if [ -f "$INSTALL_DIR/bin/ares" ]; then
+        ln -sf "$INSTALL_DIR/bin/ares" ~/.local/bin/ares
+        log_success "Created symlink: ~/.local/bin/ares -> $INSTALL_DIR/bin/ares"
+        
+        if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+            log_info "NOTE: ~/.local/bin is not in your PATH."
+            log_info "Add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your shell profile."
+        fi
+    fi
+}
+
 stage_prerequisites
 clone_repo
 stage_jros
@@ -624,6 +638,7 @@ setup_venv
 install_deps
 setup_config
 run_setup_wizard
+setup_cli
 
 echo ""
 echo -e "${GREEN}${BOLD}ARES Web UI installation complete!${NC}"

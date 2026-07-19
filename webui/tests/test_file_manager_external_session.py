@@ -36,9 +36,6 @@ def test_file_operations_use_external_session_fallback():
 # Functional tests against api.models.get_session_for_file_ops
 # ---------------------------------------------------------------------------
 
-pytestmark_models = pytest.mark.requires_agent_modules
-
-
 def _make_state_db(path: Path, sid: str) -> None:
     conn = sqlite3.connect(str(path))
     conn.executescript(

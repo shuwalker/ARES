@@ -279,7 +279,7 @@ def test_realtime_service_reuses_existing_stream_channel(monkeypatch):
         "_session_for_profile",
         lambda *_args, **_kwargs: SimpleNamespace(
             session_id="session-real",
-            ares_backend="ares",
+            ares_backend="hermes_local",
             profile="default",
         ),
     )
@@ -313,7 +313,7 @@ def test_fastapi_websocket_streams_tokens_from_real_channel(tmp_path, monkeypatc
         "_session_for_profile",
         lambda *_args, **_kwargs: SimpleNamespace(
             session_id="session-real",
-            ares_backend="ares",
+            ares_backend="hermes_local",
             profile="default",
         ),
     )
@@ -361,7 +361,7 @@ def test_realtime_service_replays_run_journal_after_cursor(tmp_path, monkeypatch
         "_session_for_profile",
         lambda *_args, **_kwargs: SimpleNamespace(
             session_id="session-real",
-            ares_backend="ares",
+            ares_backend="hermes_local",
             profile="default",
         ),
     )

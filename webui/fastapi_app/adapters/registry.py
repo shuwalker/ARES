@@ -4,16 +4,16 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from .base import AdapterError, BaseConnectionAdapter, BaseLLMAdapter, BaseToolAdapter, ModelDescriptor, StreamSubscription
+from .base import AdapterError, BaseConnectionAdapter, BaseLLMAdapter, BaseToolAdapter
 from .frameworks import (
-    AresAdapter,
     ClaudeLocalAdapter,
     CodexLocalAdapter,
     CursorLocalAdapter,
     GeminiLocalAdapter,
+    GeminiCloudAdapter,
+    GeminiAntigravityAdapter,
     GrokLocalAdapter,
     HermesAdapter,
-    HybridAdapter,
     JaegerAdapter,
     OllamaLocalAdapter,
     OpenAICloudAdapter,
@@ -27,7 +27,6 @@ from ..request_context import profile_scope
 
 
 _ALIASES = {
-    "ares-agent": "ares_local",
     "jaeger": "jros_local",
     "jaegerai": "jros_local",
     "hermes-agent": "hermes_local",
@@ -46,12 +45,13 @@ class AdapterRegistry:
     ) -> None:
         if execution_adapters is None:
             execution_adapters = (
-                AresAdapter(turn_starter=turn_starter),
                 JaegerAdapter(turn_starter=turn_starter),
                 HermesAdapter(turn_starter=turn_starter),
                 ClaudeLocalAdapter(turn_starter=turn_starter),
                 CodexLocalAdapter(turn_starter=turn_starter),
                 GeminiLocalAdapter(turn_starter=turn_starter),
+                GeminiCloudAdapter(turn_starter=turn_starter),
+                GeminiAntigravityAdapter(turn_starter=turn_starter),
                 GrokLocalAdapter(turn_starter=turn_starter),
                 OpenCodeLocalAdapter(turn_starter=turn_starter),
                 CursorLocalAdapter(turn_starter=turn_starter),
@@ -59,7 +59,6 @@ class AdapterRegistry:
                 OpenAICloudAdapter(turn_starter=turn_starter),
                 XAICloudAdapter(turn_starter=turn_starter),
                 OllamaLocalAdapter(turn_starter=turn_starter),
-                HybridAdapter(turn_starter=turn_starter),
             )
         if tool_adapters is None:
             tool_adapters = (McpToolAdapter(),)
@@ -105,15 +104,19 @@ class AdapterRegistry:
         profile: str | None,
         session: Any | None = None,
     ) -> dict[str, Any]:
+        from api.profiles import profile_env_for_active_request_readonly
+
         selected = self.for_session(session, profile=profile).adapter_id if session is not None else self.default_id(profile=profile)
         connections: list[dict[str, Any]] = []
         all_adapters: list[BaseConnectionAdapter] = [*self._execution.values(), *self._tools.values()]
         for adapter in all_adapters:
             try:
-                record = adapter.connection_record(
-                    profile=profile,
-                    selected=adapter.adapter_id == selected,
-                )
+                with profile_scope(profile):
+                    with profile_env_for_active_request_readonly("adapter discovery"):
+                        record = adapter.connection_record(
+                            profile=profile,
+                            selected=adapter.adapter_id == selected,
+                        )
             except Exception:
                 record = {
                     "id": adapter.adapter_id,
@@ -139,9 +142,13 @@ class AdapterRegistry:
             return self.normalize_id(get_active_backend(get_config()))
 
     def models(self, adapter_id: str, *, profile: str | None) -> dict[str, Any]:
+        from api.profiles import profile_env_for_active_request_readonly
+
         adapter = self.execution_adapter(adapter_id)
         try:
-            models = adapter.get_models(profile=profile)
+            with profile_scope(profile):
+                with profile_env_for_active_request_readonly("adapter model discovery"):
+                    models = adapter.get_models(profile=profile)
         except Exception as exc:
             raise AdapterError(
                 503,

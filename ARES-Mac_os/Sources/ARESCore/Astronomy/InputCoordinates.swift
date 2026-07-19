@@ -26,10 +26,8 @@ public struct InputCoordinates: Equatable, Sendable {
     // MARK: - RA components
 
     public var raHours: Int {
-        Int(coordinates.ra.truncatingRemainder(dividingBy: 1) >= 0 ? coordinates.ra : coordinates.ra + 24)
-        // Simplified: just truncate
         get { Int(trunc(coordinates.ra)) }
-        set { coordinates.ra = coordinates.ra - Double(raHours) + Double(newValue) }
+        set { coordinates.ra = coordinates.ra - Double(self.raHours) + Double(newValue) }
     }
 
     public var raMinutes: Int {

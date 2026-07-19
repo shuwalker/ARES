@@ -1,4 +1,4 @@
-"""Tests for GET /api/commands -- exposes ares-agent COMMAND_REGISTRY."""
+"""Tests for optional backend commands exposed through the ARES API."""
 import json
 import urllib.error
 import urllib.request
@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fastapi_app.main import create_app
-from tests.conftest import TEST_BASE, requires_agent_modules
+from tests.conftest import TEST_BASE, requires_external_command_runtime
 
 
 def _install_fake_mcp_tool(monkeypatch, shutdown, discover, servers=None, lock=None):
@@ -126,28 +126,49 @@ def _post(path, body):
             return e.code, {}
 
 
-@requires_agent_modules
+def _sample_external_registry():
+    """Return representative elected-backend commands without importing it."""
+    def command(name, *, aliases=(), cli_only=False, gateway_only=False):
+        return SimpleNamespace(
+            name=name,
+            description=f"{name} command",
+            category="Test",
+            aliases=aliases,
+            args_hint="",
+            subcommands=(),
+            cli_only=cli_only,
+            gateway_only=gateway_only,
+        )
+
+    return [
+        command("help"),
+        command("new", aliases=("reset",)),
+        command("clear", cli_only=True),
+        command("sethome", gateway_only=True),
+        command("restart", gateway_only=True),
+        command("update", gateway_only=True),
+        command("commands"),
+    ]
+
+
 def test_commands_endpoint_returns_list():
     """GET /api/commands returns a JSON object with a 'commands' list."""
     body = _get('/api/commands')
     assert 'commands' in body
     assert isinstance(body['commands'], list)
-    assert len(body['commands']) > 0
 
 
-@requires_agent_modules
 def test_commands_endpoint_includes_help():
-    """The 'help' command must always be present (it's not cli_only)."""
-    body = _get('/api/commands')
-    names = {c['name'] for c in body['commands']}
+    """An elected backend's help command is preserved."""
+    from api.commands import list_commands
+    names = {c['name'] for c in list_commands(_registry=_sample_external_registry())}
     assert 'help' in names
 
 
-@requires_agent_modules
 def test_commands_endpoint_command_shape():
     """Each command entry has the required fields."""
-    body = _get('/api/commands')
-    cmd = next(c for c in body['commands'] if c['name'] == 'help')
+    from api.commands import list_commands
+    cmd = next(c for c in list_commands(_registry=_sample_external_registry()) if c['name'] == 'help')
     required = {
         'name', 'description', 'category', 'aliases',
         'args_hint', 'subcommands', 'cli_only', 'gateway_only',
@@ -159,25 +180,23 @@ def test_commands_endpoint_command_shape():
     assert isinstance(cmd['gateway_only'], bool)
 
 
-@requires_agent_modules
 def test_commands_endpoint_excludes_gateway_only_and_never_expose():
     """gateway_only commands and the _NEVER_EXPOSE set are filtered out."""
-    body = _get('/api/commands')
-    names = {c['name'] for c in body['commands']}
+    from api.commands import list_commands
+    names = {c['name'] for c in list_commands(_registry=_sample_external_registry())}
     # /sethome, /restart, /update are gateway_only; /commands is in _NEVER_EXPOSE
     for name in ('sethome', 'restart', 'update', 'commands'):
         assert name not in names, f"{name} must be excluded from /api/commands"
 
 
-@requires_agent_modules
 def test_commands_endpoint_keeps_new_with_reset_alias():
     """The 'new' command stays exposed and carries its 'reset' alias."""
-    body = _get('/api/commands')
-    new_cmd = next(c for c in body['commands'] if c['name'] == 'new')
+    from api.commands import list_commands
+    new_cmd = next(c for c in list_commands(_registry=_sample_external_registry()) if c['name'] == 'new')
     assert 'reset' in new_cmd['aliases']
 
 
-@requires_agent_modules
+@requires_external_command_runtime
 def test_commands_exec_runs_allowlisted_agent_command():
     """Allowed agent-side commands execute through /api/commands/exec."""
     status, body = _post('/api/commands/exec', {'command': '/reload-mcp'})
@@ -186,7 +205,7 @@ def test_commands_exec_runs_allowlisted_agent_command():
     assert isinstance(body['output'], str)
 
 
-@requires_agent_modules
+@requires_external_command_runtime
 def test_commands_exec_runs_reload_mcp_alias():
     """Telegram-style underscore alias resolves to the same allowlisted command."""
     status, body = _post('/api/commands/exec', {'command': '/reload_mcp'})
@@ -195,7 +214,7 @@ def test_commands_exec_runs_reload_mcp_alias():
     assert isinstance(body['output'], str)
 
 
-@requires_agent_modules
+@requires_external_command_runtime
 def test_commands_exec_runs_reload_skills_command():
     """`/reload-skills` executes through the same narrow shared executor path."""
     status, body = _post('/api/commands/exec', {'command': '/reload-skills'})
@@ -204,7 +223,7 @@ def test_commands_exec_runs_reload_skills_command():
     assert isinstance(body['output'], str)
 
 
-@requires_agent_modules
+@requires_external_command_runtime
 def test_commands_exec_runs_reload_skills_alias():
     """Telegram-style underscore alias resolves to reload-skills in the executor."""
     status, body = _post('/api/commands/exec', {'command': '/reload_skills'})
@@ -526,7 +545,6 @@ def test_concurrent_reload_mcp_calls_are_serialized(monkeypatch):
     assert not errors
 
 
-@requires_agent_modules
 def test_commands_exec_cli_only_command_returns_404():
     """CLI-only commands should stay blocked from the generic execution endpoint."""
     status, body = _post('/api/commands/exec', {'command': '/clear'})
@@ -534,7 +552,6 @@ def test_commands_exec_cli_only_command_returns_404():
     assert isinstance(body, dict)
 
 
-@requires_agent_modules
 def test_commands_exec_regular_agent_command_returns_404():
     """Non-allowlisted agent commands must not become generic WebUI exec targets."""
     status, body = _post('/api/commands/exec', {'command': '/help'})

@@ -11,20 +11,20 @@ import api.schedules_store as schedules
 
 
 def _runtime(monkeypatch, job, calls):
-    jobs = types.ModuleType("cron.jobs")
+    jobs = types.ModuleType("api.schedule_jobs")
     jobs.get_job = lambda job_id: job if job_id == job["id"] else None
     jobs.mark_job_run = lambda *_args, **_kwargs: None
     jobs.save_job_output = lambda *_args, **_kwargs: None
-    scheduler = types.ModuleType("cron.scheduler")
+    scheduler = types.ModuleType("api.schedule_scheduler")
     scheduler.run_job = lambda value: calls.append(("run", value["id"]))
-    monkeypatch.setitem(sys.modules, "cron.jobs", jobs)
-    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler)
+    monkeypatch.setitem(sys.modules, "api.schedule_jobs", jobs)
+    monkeypatch.setitem(sys.modules, "api.schedule_scheduler", scheduler)
     monkeypatch.setattr(schedules, "ensure_schedule_runtime", lambda: None)
     monkeypatch.setattr(
         schedules,
         "_run_cron_job_in_profile_subprocess",
         lambda value, _home: (
-            sys.modules["cron.scheduler"].run_job(value) or (True, "", "ok", "")
+            sys.modules["api.schedule_scheduler"].run_job(value) or (True, "", "ok", "")
         ),
     )
     monkeypatch.setattr(schedules, "_execution_home", lambda _job: Path("/tmp/ares-test"))
@@ -73,7 +73,7 @@ def test_worker_failure_releases_running_marker(monkeypatch):
     calls = []
     job = {"id": "job-failed"}
     _runtime(monkeypatch, job, calls)
-    sys.modules["cron.scheduler"].run_job = lambda _job: (_ for _ in ()).throw(RuntimeError("boom"))
+    sys.modules["api.schedule_scheduler"].run_job = lambda _job: (_ for _ in ()).throw(RuntimeError("boom"))
     with schedules._RUNNING_LOCK:
         schedules._RUNNING[job["id"]] = schedules.time.time()
     try:

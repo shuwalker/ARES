@@ -5,18 +5,50 @@ Each adapter is just {name}_{deployment}. No roles, no opinions.
 """
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import re
 import shutil
 import subprocess
-import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from .base import AgenticBackend
 
 logger = logging.getLogger(__name__)
+
+
+def _minimal_host_environment(credential_names: tuple[str, ...] = ()) -> dict[str, str]:
+    safe_names = {
+        "HOME", "LANG", "LC_ALL", "LOGNAME", "PATH", "SHELL",
+        "SSH_AUTH_SOCK", "SSL_CERT_FILE", "TMPDIR", "USER",
+        "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+    }
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key in safe_names or key.startswith("LC_")
+    }
+    for key in credential_names:
+        try:
+            from api.config import _thread_local_env_value
+
+            value = _thread_local_env_value(key)
+        except ImportError:
+            value = os.environ.get(key)
+        if value:
+            env[key] = value
+    return env
+
+
+def _credential_value(name: str) -> str | None:
+    try:
+        from api.config import _thread_local_env_value
+
+        return _thread_local_env_value(name).strip() or None
+    except ImportError:
+        return str(os.environ.get(name) or "").strip() or None
 
 
 class CliBackend(AgenticBackend):
@@ -142,6 +174,11 @@ class CliBackend(AgenticBackend):
     prompt_position: str = "trailing"     # "trailing" or "positional"
     extra_args: list[str] | None = None   # extra fixed flags (e.g. ["exec"] for codex)
     needs_tty: bool = False                # true if the CLI refuses to run without a pty
+    credential_env_vars: tuple[str, ...] = ()
+
+    def _runtime_environment(self) -> dict[str, str]:
+        """Give a CLI only host context and credentials intended for that adapter."""
+        return _minimal_host_environment(self.credential_env_vars)
 
     def _build_args(self, cli: str, message: str, model: str) -> list[str]:
         args: list[str] = [cli]
@@ -165,40 +202,65 @@ class CliBackend(AgenticBackend):
         timeout_sec = _cfg_int(config, "timeout_sec") or 300
 
         args = self._build_args(cli, message, model)
-        env = dict(os.environ)
+        env = self._runtime_environment()
         try:
             if self.needs_tty:
                 import pty
                 stdout_chunks: list[bytes] = []
-                stderr_chunks: list[bytes] = []
-                pid, fd = pty.fork()
-                if pid == 0:
-                    os.execvpe(args[0], args, env)
-                else:
-                    try:
-                        import select
-                        end = time.monotonic() + timeout_sec
-                        while time.monotonic() < end:
-                            ready, _, _ = select.select([fd], [], [], 1.0)
-                            if ready:
-                                try:
-                                    chunk = os.read(fd, 4096)
-                                    if not chunk:
-                                        break
-                                    stdout_chunks.append(chunk)
-                                except OSError:
-                                    break
-                            else:
+                import select
+
+                master_fd, slave_fd = pty.openpty()
+                try:
+                    proc = subprocess.Popen(
+                        args,
+                        stdin=slave_fd,
+                        stdout=slave_fd,
+                        stderr=slave_fd,
+                        env=env,
+                        close_fds=True,
+                    )
+                except Exception:
+                    os.close(master_fd)
+                    raise
+                finally:
+                    os.close(slave_fd)
+                try:
+                    deadline = time.monotonic() + timeout_sec
+                    while proc.poll() is None:
+                        if time.monotonic() >= deadline:
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=2)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                                proc.wait(timeout=2)
+                            return {
+                                "text": "",
+                                "error": f"{self.display_label} turn timed out after {timeout_sec}s.",
+                                "tool_activity": [],
+                            }
+                        ready, _, _ = select.select([master_fd], [], [], 0.2)
+                        if ready:
+                            try:
+                                chunk = os.read(master_fd, 4096)
+                            except OSError:
                                 break
-                        os.waitpid(pid, 0)
-                    finally:
+                            if chunk:
+                                stdout_chunks.append(chunk)
+                    # Drain any bytes written immediately before process exit.
+                    while select.select([master_fd], [], [], 0)[0]:
                         try:
-                            os.close(fd)
+                            chunk = os.read(master_fd, 4096)
                         except OSError:
-                            pass
+                            break
+                        if not chunk:
+                            break
+                        stdout_chunks.append(chunk)
+                finally:
+                    os.close(master_fd)
                 stdout = b"".join(stdout_chunks).decode("utf-8", errors="replace")
                 stderr = ""
-                return_code = 0
+                return_code = proc.returncode if proc.returncode is not None else 1
             else:
                 proc = subprocess.run(
                     args, capture_output=True, text=True,
@@ -236,6 +298,7 @@ class ClaudeLocalBackend(CliBackend):
     display_label = "Claude Code"
     supports_tools = True
     prompt_flag = "-p"
+    credential_env_vars = ("ANTHROPIC_API_KEY",)
 
 class CodexLocalBackend(CliBackend):
     name = "codex_local"
@@ -243,6 +306,7 @@ class CodexLocalBackend(CliBackend):
     display_label = "OpenAI Codex"
     supports_tools = True
     extra_args = ["exec", "--skip-git-repo-check"]
+    credential_env_vars = ("OPENAI_API_KEY",)
 
 class GeminiLocalBackend(CliBackend):
     name = "gemini_local"
@@ -251,6 +315,7 @@ class GeminiLocalBackend(CliBackend):
     supports_tools = True
     prompt_flag = "-p"
     extra_args = ["--skip-trust"]
+    credential_env_vars = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 
 class GrokLocalBackend(CliBackend):
     name = "grok_local"
@@ -258,12 +323,17 @@ class GrokLocalBackend(CliBackend):
     display_label = "xAI Grok"
     supports_tools = True
     needs_tty = True
+    credential_env_vars = ("XAI_API_KEY",)
 
 class OpenCodeLocalBackend(CliBackend):
     name = "opencode_local"
     cli_name = "opencode"
     display_label = "OpenCode"
     supports_tools = True
+    credential_env_vars = (
+        "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
+        "OPENAI_API_KEY", "OPENROUTER_API_KEY", "XAI_API_KEY",
+    )
 
 class CursorLocalBackend(CliBackend):
     name = "cursor_local"
@@ -302,11 +372,9 @@ class OpenAICloudBackend(AgenticBackend):
     supports_persona = False
 
     def is_available(self) -> bool:
-        try:
-            import openai
-            return bool(os.environ.get("OPENAI_API_KEY"))
-        except ImportError:
-            return False
+        return importlib.util.find_spec("openai") is not None and bool(
+            _credential_value("OPENAI_API_KEY")
+        )
 
     def get_backend_name(self) -> str:
         return "OpenAI"
@@ -324,15 +392,16 @@ class OpenAICloudBackend(AgenticBackend):
             return {"text": "", "error": "OpenAI API key not configured.", "tool_activity": []}
         try:
             import openai
-            client = openai.OpenAI()
+            client = openai.OpenAI(api_key=_credential_value("OPENAI_API_KEY"))
             response = client.chat.completions.create(
                 model=kwargs.get("model") or "gpt-4o",
                 messages=[{"role": "user", "content": message}],
             )
             text = response.choices[0].message.content or ""
             return {"text": text, "error": None, "tool_activity": []}
-        except Exception as exc:
-            return {"text": "", "error": str(exc), "tool_activity": []}
+        except Exception:
+            logger.exception("OpenAI cloud turn failed")
+            return {"text": "", "error": "OpenAI request failed.", "tool_activity": []}
 
 
 class XAICloudBackend(AgenticBackend):
@@ -342,7 +411,7 @@ class XAICloudBackend(AgenticBackend):
     supports_persona = False
 
     def is_available(self) -> bool:
-        return bool(os.environ.get("XAI_API_KEY"))
+        return bool(_credential_value("XAI_API_KEY"))
 
     def get_backend_name(self) -> str:
         return "xAI Grok"
@@ -361,7 +430,7 @@ class XAICloudBackend(AgenticBackend):
         try:
             import openai
             client = openai.OpenAI(
-                api_key=os.environ["XAI_API_KEY"],
+                api_key=_credential_value("XAI_API_KEY"),
                 base_url="https://api.x.ai/v1",
             )
             response = client.chat.completions.create(
@@ -370,8 +439,44 @@ class XAICloudBackend(AgenticBackend):
             )
             text = response.choices[0].message.content or ""
             return {"text": text, "error": None, "tool_activity": []}
-        except Exception as exc:
-            return {"text": "", "error": str(exc), "tool_activity": []}
+        except Exception:
+            logger.exception("xAI cloud turn failed")
+            return {"text": "", "error": "xAI request failed.", "tool_activity": []}
+
+
+class GeminiCloudBackend(AgenticBackend):
+    """Google Gemini API backend."""
+    name = "gemini_cloud"
+    supports_tools = True
+    supports_persona = True
+
+    def is_available(self) -> bool:
+        return bool(_credential_value("GEMINI_API_KEY") or _credential_value("GOOGLE_API_KEY"))
+
+    def get_backend_name(self) -> str:
+        return "Google Gemini Cloud"
+
+    def health(self) -> Dict[str, Any]:
+        if self.is_available():
+            return {"status": "ok", "latency_ms": 0.0, "message": "Gemini API key configured."}
+        return {"status": "error", "latency_ms": 0.0, "message": "GEMINI_API_KEY not found."}
+
+    def get_status(self) -> Dict[str, Any]:
+        return {"available": self.is_available(), "label": "Google Gemini"}
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        if not self.is_available():
+            return {"text": "", "error": "GEMINI_API_KEY not configured.", "tool_activity": []}
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=_credential_value("GEMINI_API_KEY") or _credential_value("GOOGLE_API_KEY"))
+            model_name = kwargs.get("model") or "gemini-2.5-pro"
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(message)
+            return {"text": response.text, "error": None, "tool_activity": []}
+        except Exception:
+            logger.exception("Gemini cloud turn failed")
+            return {"text": "", "error": "Gemini request failed.", "tool_activity": []}
 
 
 class OllamaLocalBackend(AgenticBackend):
@@ -456,10 +561,9 @@ def run_ollama_streaming(
 ) -> None:
     """Stream a chat turn directly from the local Ollama /api/generate endpoint.
 
-    Matches the Ares worker contract used by chat_runtime._select_chat_worker_target.
+    Matches the ARES stream contract used by chat_runtime._select_chat_worker_target.
     """
     import json as _json
-    import queue
     import threading
     import time
 
@@ -467,12 +571,15 @@ def run_ollama_streaming(
 
     from api.streaming import (
         CANCEL_FLAGS,
+        STREAM_LAST_EVENT_ID,
         STREAM_PARTIAL_TEXT,
         STREAMS,
         STREAMS_LOCK,
         register_active_run,
+        unregister_active_run,
         unregister_stream_owner,
     )
+    from api.run_journal import RunJournalWriter
 
     q = STREAMS.get(stream_id)
     if q is None:
@@ -480,43 +587,91 @@ def run_ollama_streaming(
         return
 
     register_active_run(stream_id, session_id=session_id, started_at=time.time(), phase="ollama")
-    cancel_event = CANCEL_FLAGS.get(stream_id)
+    cancel_event = CANCEL_FLAGS.get(stream_id) or threading.Event()
+    with STREAMS_LOCK:
+        CANCEL_FLAGS[stream_id] = cancel_event
+        STREAM_PARTIAL_TEXT[stream_id] = ""
+    try:
+        run_journal = RunJournalWriter(session_id, stream_id)
+    except Exception:
+        run_journal = None
+        logger.debug("Failed to initialize Ollama run journal for %s", stream_id, exc_info=True)
 
     # Pick model: prefer the model name, else the installed model (qwen3.6:35b-mlx)
     model_name = model or "qwen3.6:35b-mlx"
 
     accumulated = ""
-    event_seq = 0
-    last_partial_time = time.time()
-
     def _put(event: str, data: dict):
-        nonlocal event_seq
-        event_seq += 1
+        event_id = None
+        if run_journal is not None:
+            try:
+                journaled = run_journal.append_sse_event(event, data)
+                event_id = str((journaled or {}).get("event_id") or "") or None
+            except Exception:
+                logger.debug("Failed to journal Ollama event %s", event, exc_info=True)
+        if event_id:
+            STREAM_LAST_EVENT_ID[stream_id] = event_id
         try:
-            q.put(
-                {
-                    "schema_version": 1,
-                    "event": event,
-                    "data": data,
-                    "event_id": f"{stream_id}:{event_seq}",
-                    "seq": event_seq,
-                    "stream_id": stream_id,
-                    "session_id": session_id,
-                    "terminal": event in {"stream_end", "error", "cancel"},
-                },
-                timeout=5,
-            )
-        except queue.Full:
-            pass
+            item = (event, data, event_id) if hasattr(q, "subscribe_with_snapshot") else (event, data)
+            q.put_nowait(item)
+        except Exception:
+            logger.debug("Failed to publish Ollama event %s", event, exc_info=True)
 
-    def _finish(text: str = "", error: str | None = None):
-        if error:
+    def _finish(text: str = "", error: str | None = None, *, cancelled: bool = False):
+        try:
+            from api.models import get_session
+
+            session = get_session(session_id)
+            existing = list(getattr(session, "messages", None) or [])
+            latest = existing[-1] if existing and isinstance(existing[-1], dict) else {}
+            if message.strip() and not (
+                latest.get("role") == "user"
+                and " ".join(str(latest.get("content") or "").split())
+                == " ".join(message.split())
+            ):
+                session.messages.append({
+                    "role": "user",
+                    "content": message,
+                    "timestamp": int(time.time()),
+                })
+            if not error and not cancelled:
+                if text.strip():
+                    session.messages.append({
+                        "role": "assistant",
+                        "content": text.strip(),
+                        "timestamp": int(time.time()),
+                    })
+            if getattr(session, "active_stream_id", None) == stream_id:
+                session.active_stream_id = None
+                session.pending_user_message = None
+                session.pending_attachments = []
+                session.pending_started_at = None
+                session.pending_user_source = None
+            session.save()
+        except Exception:
+            logger.exception("Ollama worker failed to finalize session %s", session_id)
+        if cancelled:
+            _put("cancel", {"message": "Cancelled by user"})
+        elif error:
             _put("error", {"error": error, "message": error})
         else:
             _put("stream_end", {"text": text})
+        try:
+            q.put_nowait(("done", {"session_id": session_id, "stream_id": stream_id}))
+        except Exception:
+            logger.debug("Failed to publish Ollama completion marker", exc_info=True)
         with STREAMS_LOCK:
             STREAMS.pop(stream_id, None)
+            CANCEL_FLAGS.pop(stream_id, None)
+            STREAM_PARTIAL_TEXT.pop(stream_id, None)
+            STREAM_LAST_EVENT_ID.pop(stream_id, None)
+        unregister_active_run(stream_id)
         unregister_stream_owner(stream_id)
+        if run_journal is not None:
+            try:
+                run_journal.close()
+            except Exception:
+                logger.debug("Failed to close Ollama run journal", exc_info=True)
 
     try:
         with requests.post(
@@ -528,7 +683,7 @@ def run_ollama_streaming(
             r.raise_for_status()
             for line in r.iter_lines():
                 if cancel_event and cancel_event.is_set():
-                    _finish(error="Cancelled")
+                    _finish(cancelled=True)
                     return
                 if not line:
                     continue
@@ -539,16 +694,17 @@ def run_ollama_streaming(
                 token = chunk.get("response", "")
                 if token:
                     accumulated += token
-                    _put(STREAM_PARTIAL_TEXT, {"text": accumulated, "delta": token})
-                    last_partial_time = time.time()
+                    STREAM_PARTIAL_TEXT[stream_id] = accumulated
+                    _put("token", {"text": token})
                 if chunk.get("done"):
                     break
         _finish(accumulated)
-    except Exception as exc:
-        _finish(error=f"Ollama streaming error: {exc}")
+    except Exception:
+        logger.exception("Ollama streaming request failed")
+        _finish(error="Ollama request failed.")
 
 
-class AppAutomationBackend:
+class AppAutomationBackend(AgenticBackend):
     """For apps that have no CLI but expose a UI; uses AppleScript to push a prompt."""
     name = "app_automation"
     display_label = "App Automation"
@@ -564,12 +720,35 @@ class AppAutomationBackend:
 
     def run_turn(self, message: str, session_id: str, **kwargs) -> dict:
         import subprocess
-        # Build AppleScript: activate app and type the prompt, then submit
+
+        # System-category OS automation requires explicit user consent. Deny by
+        # default: if the user does not approve (timeout, denial, or no approval
+        # channel), the osascript is never executed.
+        from api.os_automation_consent import require_os_automation_consent
+
+        if not require_os_automation_consent(
+            session_id,
+            f'Send input to "{self.app_name}" via AppleScript',
+        ):
+            return {
+                "text": "",
+                "error": "OS automation denied: user consent was not granted.",
+                "tool_activity": [],
+            }
+
+        # Build AppleScript and pass it over stdin so prompts do not appear in
+        # the osascript process arguments. Escape the string literal to prevent
+        # prompt content from injecting AppleScript statements.
+        escaped_message = (
+            message.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+        )
         steps = [f'activate application "{self.app_name}"']
         for step in self.command_sequence:
             if step == "type_message":
-                escaped = message.replace('"', '\"')
-                steps.append(f'tell application "System Events" to keystroke "{escaped}"')
+                steps.append(f'tell application "System Events" to keystroke "{escaped_message}"')
             elif step == "return":
                 steps.append('tell application "System Events" to key code 36')
             elif step == "tab":
@@ -577,8 +756,12 @@ class AppAutomationBackend:
         script = "\n".join(steps)
         try:
             r = subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True, text=True, timeout=30
+                ["osascript"],
+                input=script,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=_minimal_host_environment(),
             )
             return {"text": "", "error": r.stderr.strip() if r.returncode != 0 else None, "tool_activity": []}
         except Exception as exc:

@@ -329,39 +329,37 @@ VENV_PYTHON  = _discover_python(ARES_AGENT)
 # Work dir: agent dir if found, else repo root
 WORKDIR = str(ARES_AGENT) if ARES_AGENT else str(REPO_ROOT)
 
-# ── Agent availability detection ─────────────────────────────────────────────
-# Tests that require ares-agent modules (cron, skills, approval, chat/stream)
-# are skipped when the agent isn't installed, instead of failing with 500 errors.
+# ── Optional external-runtime availability detection ────────────────────────
+# ARES owns schedules, skills metadata, sessions, and routing. Tests are only
+# gated here when they exercise commands implemented by an optional external
+# runtime package rather than the ARES resource plane itself.
 AGENT_AVAILABLE = ARES_AGENT is not None
 
-def _check_agent_modules():
-    """Verify ares-agent Python modules are actually importable."""
-    if not ARES_AGENT:
-        return False
+def _check_external_command_runtime():
+    """Return whether the optional command implementation is importable."""
     try:
         import importlib
-        # These are the modules that cause 500 errors when missing
-        for mod in ['cron.jobs', 'tools.skills_tool']:
+        for mod in ('ares_cli.commands', 'tools.mcp_tool', 'agent.skill_commands'):
             importlib.import_module(mod)
         return True
     except (ImportError, ModuleNotFoundError):
         return False
 
-AGENT_MODULES_AVAILABLE = _check_agent_modules()
+EXTERNAL_COMMAND_RUNTIME_AVAILABLE = _check_external_command_runtime()
 
 # pytest marker: skip tests that need ares-agent when it's not present
 requires_agent = pytest.mark.skipif(
     not AGENT_AVAILABLE,
     reason="ares-agent not found (skipping agent-dependent test)"
 )
-requires_agent_modules = pytest.mark.skipif(
-    not AGENT_MODULES_AVAILABLE,
-    reason="ares-agent Python modules not importable (cron, skills_tool)"
+requires_external_command_runtime = pytest.mark.skipif(
+    not EXTERNAL_COMMAND_RUNTIME_AVAILABLE,
+    reason="optional external command runtime is not installed"
 )
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "requires_agent: skip when ares-agent dir is not found")
-    config.addinivalue_line("markers", "requires_agent_modules: skip when ares-agent Python modules are not importable")
+    config.addinivalue_line("markers", "requires_external_command_runtime: skip when optional external command packages are unavailable")
     config.addinivalue_line("markers", "requires_fcntl: skip when fcntl-backed file-descriptor operations are unavailable")
     config.addinivalue_line("markers", "requires_fork: skip when the platform lacks multiprocessing fork support")
 
@@ -578,69 +576,6 @@ def _strip_skip_onboarding_env():
     yield
     if prior is not None:
         os.environ["ARES_WEBUI_SKIP_ONBOARDING"] = prior
-
-def pytest_collection_modifyitems(config, items):
-    """Auto-skip agent-dependent tests when ares-agent is not available.
-
-    Instead of requiring markers on every test function, we pattern-match
-    test names to known categories that depend on ares-agent modules.
-    This keeps the test files clean and ensures new cron/skills tests
-    get auto-skipped without manual annotation.
-    """
-    if AGENT_MODULES_AVAILABLE:
-        return  # everything available, run all tests
-
-    # Exact list of tests known to fail without ares-agent.
-    # These hit server endpoints that import cron.jobs, tools.skills_tool,
-    # or require a running agent backend — returning 500 without the agent.
-    _AGENT_DEPENDENT_TESTS = {
-        # Cron endpoints (need cron.jobs module)
-        'test_crons_list',
-        'test_crons_list_has_required_fields',
-        'test_crons_output_requires_job_id',
-        'test_crons_output_real_job',
-        'test_crons_run_nonexistent',
-        'test_cron_create_success',
-        'test_cron_update_unknown_job_404',
-        'test_cron_delete_unknown_404',
-        'test_crons_output_limit_param',
-        'test_delivery_options_returns_200',
-        'test_delivery_options_has_platforms',
-        'test_delivery_options_structure',
-        'test_delivery_options_includes_common_platforms',
-        'test_delivery_options_local_label',
-        # Skills endpoints (need tools.skills_tool module)
-        'test_skills_list',
-        'test_skills_list_has_required_fields',
-        'test_skills_content_known',
-        'test_skills_content_requires_name',
-        'test_skills_search_returns_subset',
-        'test_skill_save_delete_roundtrip',
-        'test_skill_delete_unknown_404',
-        # Agent backend (need running AIAgent)
-        'test_chat_stream_opens_successfully',
-        'test_approval_submit_and_respond',
-        # Security redaction (flaky — session state varies across test ordering)
-        'test_api_sessions_list_redacts_titles',
-        # Workspace path (macOS /tmp -> /private/tmp symlink)
-        'test_new_session_inherits_workspace',
-        'test_workspace_add_valid',
-        'test_workspace_rename',
-        'test_last_workspace_updates_on_session_update',
-        'test_new_session_inherits_last_workspace',
-    }
-
-    skip_marker = pytest.mark.skip(reason="requires ares-agent (not installed)")
-    skipped = 0
-
-    for item in items:
-        if item.name in _AGENT_DEPENDENT_TESTS:
-            item.add_marker(skip_marker)
-            skipped += 1
-
-    if skipped:
-        print(f"\nWARNING: ares-agent not found; {skipped} agent-dependent tests will be skipped\n")
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

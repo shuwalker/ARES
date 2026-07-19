@@ -36,9 +36,24 @@ CAPABILITIES: dict[str, dict[str, bool]] = {
 }
 
 
+def _jros_ares_tools_enabled() -> bool:
+    try:
+        from api.config import get_config
+
+        return bool(get_config().get("jros_ares_tools_enabled"))
+    except Exception:
+        return False
+
+
 def capabilities_for_backend(backend: str) -> dict[str, bool]:
     """Return UI capability flags for one normalized ARES backend."""
     selected = normalize_backend(backend)
     if selected not in VALID_BACKENDS:
-        selected = "hermes_local"
-    return {capability: bool(matrix.get(selected, False)) for capability, matrix in CAPABILITIES.items()}
+        return {capability: False for capability in CAPABILITIES}
+    result = {
+        capability: bool(matrix.get(selected, False))
+        for capability, matrix in CAPABILITIES.items()
+    }
+    if selected == "jros_local" and _jros_ares_tools_enabled():
+        result["kanban"] = True
+    return result

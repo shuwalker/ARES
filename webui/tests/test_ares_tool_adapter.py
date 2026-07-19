@@ -1,7 +1,7 @@
 """Tests for ARES Tool Adapter and Runtime Context.
 
-These modules let ARES register callable tools and inject live state
-into either Ares or JROS without forking either backend.
+These modules let ARES expose shared tools and inject live state into an
+explicitly selected external runtime.
 
 RED phase: all tests should FAIL until implementation is written.
 """
@@ -9,8 +9,7 @@ RED phase: all tests should FAIL until implementation is written.
 from __future__ import annotations
 
 import json
-import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -45,29 +44,29 @@ class TestRuntimeContext:
         assert isinstance(ctx["identity_projection"], dict)
         assert "name" in ctx["identity_projection"]
 
-    def test_backend_ares_when_jros_down(self):
-        """When JROS is unavailable, backend defaults to ares."""
+    def test_no_runtime_is_not_silently_replaced_when_jros_is_down(self):
         from api.ares_runtime_context import build_runtime_context
 
         with patch(
             "api.ares_runtime_context.is_jros_available",
             return_value=False,
         ):
-            ctx = build_runtime_context(backend="ares")
-            assert ctx["active_backend"] == "ares"
+            ctx = build_runtime_context(backend="")
+            assert ctx["active_backend"] == ""
+            assert ctx["capabilities"]["active_runtime"]["available"] is False
             assert ctx["capabilities"]["jros"]["available"] is False
 
-    def test_backend_hybrid_when_jros_up(self):
-        """When JROS is available and backend is hybrid, both show capabilities."""
+    def test_external_runtime_and_ares_resources_are_distinct(self):
         from api.ares_runtime_context import build_runtime_context
 
         with patch(
             "api.ares_runtime_context.is_jros_available",
             return_value=True,
         ):
-            ctx = build_runtime_context(backend="hybrid")
-            assert ctx["active_backend"] == "hybrid"
-            assert ctx["capabilities"]["ares"]["available"] is True
+            ctx = build_runtime_context(backend="claude_local")
+            assert ctx["active_backend"] == "claude_local"
+            assert ctx["capabilities"]["ares_resources"]["available"] is True
+            assert ctx["capabilities"]["active_runtime"]["available"] is True
             assert ctx["capabilities"]["jros"]["available"] is True
 
     def test_render_context_prompt_compact(self):
@@ -77,7 +76,7 @@ class TestRuntimeContext:
             render_context_prompt,
         )
 
-        ctx = build_runtime_context(backend="ares")
+        ctx = build_runtime_context(backend="claude_local")
         prompt = render_context_prompt(ctx)
         assert isinstance(prompt, str)
         assert "Projected identity" in prompt
@@ -113,11 +112,11 @@ class TestToolAdapter:
             assert "description" in tdef, f"Tool missing description: {tdef}"
             assert "fn" in tdef, f"Tool missing fn: {tdef}"
 
-    def test_register_into_ares_mcp_format(self):
-        """register_ares_tools produces MCP-compatible tool schemas for Ares."""
+    def test_register_into_mcp_format(self):
+        """register_ares_tools produces MCP-compatible tool schemas."""
         from api.ares_tool_adapter import register_ares_tools
 
-        schemas = register_ares_tools(target="ares")
+        schemas = register_ares_tools(target="mcp")
         assert isinstance(schemas, list)
         for schema in schemas:
             assert "name" in schema
@@ -205,10 +204,10 @@ class TestStreamingIntegration:
             render_context_prompt,
         )
 
-        ctx = build_runtime_context(backend="ares")
+        ctx = build_runtime_context(backend="claude_local")
         prompt = render_context_prompt(ctx)
         # Must contain backend designation
-        assert "ares" in prompt.lower()
+        assert "claude_local" in prompt.lower()
 
     def test_context_injectable_into_jros_prompt(self):
         """Runtime context can be rendered for JROS system_prompt."""
@@ -217,7 +216,7 @@ class TestStreamingIntegration:
             render_context_prompt,
         )
 
-        ctx = build_runtime_context(backend="jros")
+        ctx = build_runtime_context(backend="jros_local")
         prompt = render_context_prompt(ctx)
         # Must contain backend designation
         assert "jros" in prompt.lower()
@@ -235,12 +234,11 @@ class TestStreamingIntegration:
             "api.ares_runtime_context.is_jros_available",
             return_value=True,
         ):
-            ctx = build_runtime_context(backend="hybrid")
+            ctx = build_runtime_context(backend="jros_local")
         prompt = render_context_prompt(ctx)
-        # In hybrid mode, prompt should mention JROS embodiment
+        # JROS presence is an optional managed capability.
         assert "jros" in prompt.lower()
-        # The context dict should have both backends
-        assert ctx["capabilities"]["ares"]["available"] is True
+        assert ctx["capabilities"]["ares_resources"]["available"] is True
         assert ctx["capabilities"]["jros"]["available"] is True
 
 

@@ -9,13 +9,13 @@ import types
 def test_schedule_create_preserves_optional_profile_and_notification_fields(monkeypatch):
     from api.schedules_store import create_schedule
 
-    jobs = types.ModuleType("cron.jobs")
+    jobs = types.ModuleType("api.schedule_jobs")
     jobs.create_job = lambda **values: {"id": "job-1", **values}
     jobs.update_job = lambda job_id, values: {"id": job_id, **values}
     cron = types.ModuleType("cron")
     cron.__path__ = []
     monkeypatch.setitem(sys.modules, "cron", cron)
-    monkeypatch.setitem(sys.modules, "cron.jobs", jobs)
+    monkeypatch.setitem(sys.modules, "api.schedule_jobs", jobs)
     monkeypatch.setattr("api.schedules_store.ensure_schedule_runtime", lambda: None)
     monkeypatch.setattr(
         "api.profiles.list_profiles_api",

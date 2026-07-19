@@ -5,18 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from contextlib import closing
 import datetime
-import os
 import re
 import sqlite3
-import sys
 import threading
 import time
 from typing import Any
 import logging
 
 
-_IMPORT_LOCK = threading.Lock()
-_IMPORT_PATH_READY: str | None = None
 _RUNNING_LOCK = threading.Lock()
 _RUNNING: dict[str, float] = {}
 _OUTPUT_CONTENT_LIMIT = 8_000
@@ -32,35 +28,17 @@ class ScheduleStoreError(ValueError):
 
 
 def ensure_schedule_runtime() -> None:
-    """Prefer ARES Agent's schedule package over unrelated `cron` packages."""
+    """Import the ARES-owned schedule package.
 
-    from api import config
-
-    agent_dir = getattr(config, "_AGENT_DIR", None)
-    if not agent_dir:
-        return
-    agent_path = str(Path(agent_dir).expanduser().resolve())
-    expected = str(Path(agent_path) / "cron")
-    global _IMPORT_PATH_READY
-    with _IMPORT_LOCK:
-        module = sys.modules.get("cron")
-        module_file = str(getattr(module, "__file__", "") or "") if module else ""
-        is_agent = bool(module and module_file.startswith(expected + os.sep))
-        if _IMPORT_PATH_READY == agent_path and (module is None or is_agent):
-            return
-        while agent_path in sys.path:
-            sys.path.remove(agent_path)
-        sys.path.append(agent_path)
-        _IMPORT_PATH_READY = agent_path
-        if module is not None and module_file and not is_agent:
-            for name in list(sys.modules):
-                if name == "cron" or name.startswith("cron."):
-                    sys.modules.pop(name, None)
+    Kept as a seam for callers that previously loaded a separate agent package.
+    """
+    import api.schedule_jobs  # noqa: F401
 
 
 def _job_for_api(job: dict) -> dict:
     result = dict(job or {})
     result.setdefault("profile", None)
+    result.setdefault("schedule_display", str(result.get("schedule") or ""))
     result["toast_notifications"] = result.get("toast_notifications") is not False
     return result
 
@@ -102,7 +80,7 @@ def selected_profile_snapshot_updates(
         return {}
     try:
         from api.profiles import profile_env_for_background_worker
-        from cron.jobs import _compute_provider_model_snapshots
+        from api.schedule_jobs import _compute_provider_model_snapshots
     except Exception:
         logger.warning(
             "Selected-profile schedule snapshot repair unavailable; saving ambient snapshots",
@@ -143,9 +121,9 @@ _selected_profile_snapshot_updates = selected_profile_snapshot_updates
 def list_schedules(*, all_profiles: bool = False) -> dict:
     ensure_schedule_runtime()
     try:
-        from cron.jobs import list_jobs
+        from api.schedule_jobs import list_jobs
     except ModuleNotFoundError as exc:
-        if exc.name in {"cron", "cron.jobs"}:
+        if exc.name == "api.schedule_jobs":
             return {"jobs": [], "cron_unavailable": True}
         raise
     from api.profiles import (
@@ -198,7 +176,7 @@ def list_schedules(*, all_profiles: bool = False) -> dict:
 
 def create_schedule(payload: dict[str, Any]) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import create_job, update_job
+    from api.schedule_jobs import create_job, update_job
 
     profile = _normalize_profile(payload.get("profile"))
     requested_model = payload.get("model") or None
@@ -234,7 +212,7 @@ def create_schedule(payload: dict[str, Any]) -> dict:
 
 def update_schedule(job_id: str, updates: dict[str, Any]) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import update_job
+    from api.schedule_jobs import update_job
 
     cleaned = {}
     for key, value in updates.items():
@@ -252,7 +230,7 @@ def update_schedule(job_id: str, updates: dict[str, Any]) -> dict:
 
 def delete_schedule(job_id: str) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import remove_job
+    from api.schedule_jobs import remove_job
 
     if not remove_job(job_id):
         raise ScheduleStoreError("Job not found", 404)
@@ -296,7 +274,7 @@ def _is_cron_running(job_id: str) -> tuple[bool, float]:
 def _cron_job_subprocess_main(job, execution_profile_home, result_queue) -> None:
     try:
         def run():
-            from cron.scheduler import run_job
+            from api.schedule_scheduler import run_job
 
             return run_job(job)
 
@@ -328,7 +306,12 @@ def _cron_subprocess_result_timeout_seconds(job) -> float:
     return 6 * 60 * 60.0
 
 
-def _run_cron_job_in_profile_subprocess(job, execution_profile_home):
+def _run_cron_job_in_profile_subprocess(
+    job,
+    execution_profile_home,
+    *,
+    process_target=None,
+):
     """Run one schedule in a spawned process so profile globals stay isolated."""
 
     import multiprocessing
@@ -337,7 +320,7 @@ def _run_cron_job_in_profile_subprocess(job, execution_profile_home):
     context = multiprocessing.get_context("spawn")
     result_queue = context.Queue(maxsize=1)
     process = context.Process(
-        target=_cron_job_subprocess_main,
+        target=process_target or _cron_job_subprocess_main,
         args=(job, execution_profile_home, result_queue),
     )
     process.start()
@@ -382,9 +365,9 @@ def _run_cron_tracked(
     """Execute and persist a manual schedule without holding profile locks."""
 
     import importlib
-    from cron.jobs import mark_job_run, save_job_output
+    from api.schedule_jobs import mark_job_run, save_job_output
 
-    scheduler = importlib.import_module("cron.scheduler")
+    scheduler = importlib.import_module("api.schedule_scheduler")
     silent_marker = getattr(scheduler, "SILENT_MARKER", "[SILENT]")
     deliver_result = getattr(scheduler, "_deliver_result", None)
     job_id = str((job or {}).get("id") or "")
@@ -446,7 +429,7 @@ def _run_schedule_worker(job: dict, home: Path) -> None:
 
 def run_schedule(job_id: str) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import get_job
+    from api.schedule_jobs import get_job
 
     job = get_job(job_id)
     if not job:
@@ -485,7 +468,7 @@ def schedule_status(job_id: str | None = None) -> dict:
 
 def pause_schedule(job_id: str, reason: str | None = None) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import pause_job
+    from api.schedule_jobs import pause_job
 
     result = pause_job(job_id, reason=reason)
     if not result:
@@ -495,7 +478,7 @@ def pause_schedule(job_id: str, reason: str | None = None) -> dict:
 
 def resume_schedule(job_id: str) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import resume_job
+    from api.schedule_jobs import resume_job
 
     result = resume_job(job_id)
     if not result:
@@ -506,7 +489,7 @@ def resume_schedule(job_id: str) -> dict:
 def delivery_options() -> dict:
     ensure_schedule_runtime()
     try:
-        from cron.scheduler import _KNOWN_DELIVERY_PLATFORMS
+        from api.schedule_scheduler import _KNOWN_DELIVERY_PLATFORMS
     except Exception:
         _KNOWN_DELIVERY_PLATFORMS = frozenset()
     platforms = [
@@ -609,7 +592,7 @@ def _output_usage(text: str) -> dict:
 
 def schedule_outputs(job_id: str, limit: Any = 5) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import OUTPUT_DIR
+    from api.schedule_jobs import OUTPUT_DIR
 
     job_id = _valid_job_id(job_id)
     try:
@@ -635,7 +618,7 @@ def schedule_outputs(job_id: str, limit: Any = 5) -> dict:
 
 def schedule_history(job_id: str, offset: Any = 0, limit: Any = 50) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import OUTPUT_DIR
+    from api.schedule_jobs import OUTPUT_DIR
 
     job_id = _valid_job_id(job_id)
     try:
@@ -667,7 +650,7 @@ def schedule_history(job_id: str, offset: Any = 0, limit: Any = 50) -> dict:
 
 def schedule_run_detail(job_id: str, filename: str) -> dict:
     ensure_schedule_runtime()
-    from cron.jobs import OUTPUT_DIR
+    from api.schedule_jobs import OUTPUT_DIR
 
     job_id = _valid_job_id(job_id)
     output_root = OUTPUT_DIR.resolve()
@@ -735,7 +718,7 @@ def recent_schedules(since: Any = 0) -> dict:
     except (TypeError, ValueError):
         parsed_since = 0.0
     try:
-        from cron.jobs import list_jobs
+        from api.schedule_jobs import list_jobs
     except ImportError:
         return {"completions": [], "since": parsed_since}
     jobs = list_jobs(include_disabled=True)

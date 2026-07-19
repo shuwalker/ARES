@@ -126,14 +126,11 @@ public class WeatherTool: ConsolidatedMCP, @unchecked Sendable {
             }
         }
 
-        // 3. SAM's configured location
-        let locationManager = LocationManager.shared
-        if let location = locationManager.getEffectiveLocation() {
-            if let coords = await geocodeCity(location) {
-                return coords
-            }
+        // 3. System Location
+        let loc = ConfigurationSystem.LocationManager.shared
+        if loc.currentLatitude != 0.0 || loc.currentLongitude != 0.0 {
+            return Coordinates(latitude: loc.currentLatitude, longitude: loc.currentLongitude, name: "Current Location")
         }
-
         return nil
     }
 

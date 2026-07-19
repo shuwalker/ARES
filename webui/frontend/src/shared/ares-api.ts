@@ -227,14 +227,13 @@ export const aresApi = {
     const payload = await apiFetch<Record<string, unknown>>(`/api/session?session_id=${encodeURIComponent(sessionId)}&messages=1&msg_limit=200`);
     return translateConversation(payload.session);
   },
-  async createSession(input: { workspace?: string; profile?: string; previousSessionId?: string; model_provider?: string } = {}) {
+  async createSession(input: { workspace?: string; profile?: string; previousSessionId?: string } = {}) {
     const payload = await apiFetch<Record<string, unknown>>("/api/session/new", {
       method: "POST",
       body: JSON.stringify({
         workspace: input.workspace || undefined,
         profile: input.profile || undefined,
         prev_session_id: input.previousSessionId || undefined,
-        model_provider: input.model_provider || undefined,
       }),
     });
     return translateConversation(payload.session);
@@ -246,7 +245,8 @@ export const aresApi = {
         session_id: sessionId,
         message,
         model: session.model || undefined,
-        model_provider: backendId || session.backendId || session.provider || undefined,
+        model_provider: session.provider || undefined,
+        connection_id: backendId || session.backendId || undefined,
         workspace: session.workspace || undefined,
         profile: session.profile || "default",
       }),
@@ -870,6 +870,12 @@ export const aresApi = {
   },
   async connections() {
     return translateConnections(await apiFetch("/api/connections"));
+  },
+  async setDefaultBackend(backend: string) {
+    return apiFetch<{ ok: boolean; backend: string }>("/api/ares/backend/set", {
+      method: "POST",
+      body: JSON.stringify({ backend }),
+    });
   },
   async backends() {
     const payload = await apiFetch<{ backends: BackendInfo[] }>("/api/backends");

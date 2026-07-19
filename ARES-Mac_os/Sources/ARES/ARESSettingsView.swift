@@ -30,8 +30,16 @@ struct AuditLogResponse: Codable {
     let logs: [AuditLogEntry]
 }
 
-struct BackendStatusResponse: Codable {
-    let current: String
+struct RuntimeConnectionOption: Codable, Identifiable {
+    let id: String
+    let name: String
+    let kind: String
+    let selected: Bool
+}
+
+struct RuntimeConnectionsResponse: Codable {
+    let selected: String
+    let connections: [RuntimeConnectionOption]
 }
 
 struct BackendSetResponse: Codable {
@@ -50,7 +58,8 @@ public struct ARESSettingsView: View {
     @State private var tailscaleIP: String? = nil
     
     // Backends status
-    @State private var activeBackend = UserDefaults.standard.string(forKey: "ares.backend.selected") ?? "hermes"
+    @State private var activeBackend = UserDefaults.standard.string(forKey: "ares.backend.selected") ?? ""
+    @State private var runtimeOptions: [RuntimeConnectionOption] = []
     @State private var backendSelectionError: String? = nil
     @State private var jrosLive = false
     @State private var hermesLive = false
@@ -214,12 +223,15 @@ public struct ARESSettingsView: View {
                         writeBackendSelection(val)
                     }
                 )) {
-                    Text("Hermes Agent (In-Process)").tag("hermes")
-                    Text("JROS gateway (Jaeger)").tag("jros")
-                    Text("Hybrid (Hermes loop + JROS)").tag("hybrid")
+                    if activeBackend.isEmpty {
+                        Text("Choose a runtime").tag("")
+                    }
+                    ForEach(runtimeOptions.filter { $0.kind == "runtime" }) { runtime in
+                        Text(runtime.name).tag(runtime.id)
+                    }
                 }
                 .pickerStyle(.radioGroup)
-                .disabled(!serverManager.isRunning)
+                .disabled(!serverManager.isRunning || runtimeOptions.isEmpty)
 
                 if !serverManager.isRunning {
                     Text("Start the Web UI server to change the default runtime.")
@@ -647,11 +659,17 @@ public struct ARESSettingsView: View {
         let body = ["backend": val]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 if let error {
                     activeBackend = previous
                     backendSelectionError = "Failed to save default runtime: \(error.localizedDescription)"
+                    return
+                }
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    activeBackend = previous
+                    backendSelectionError = "Failed to save default runtime."
                     return
                 }
                 if let data,
@@ -672,14 +690,15 @@ public struct ARESSettingsView: View {
         guard serverManager.isRunning else { return }
         let host = config.webuiHost
         let port = config.webuiPort
-        guard let url = URL(string: "http://\(host):\(port)/api/ares/backend") else { return }
+        guard let url = URL(string: "http://\(host):\(port)/api/connections") else { return }
 
         URLSession.shared.dataTask(with: url) { data, _, _ in
             if let data,
-               let decoded = try? JSONDecoder().decode(BackendStatusResponse.self, from: data) {
+               let decoded = try? JSONDecoder().decode(RuntimeConnectionsResponse.self, from: data) {
                 DispatchQueue.main.async {
-                    activeBackend = decoded.current
-                    UserDefaults.standard.set(decoded.current, forKey: "ares.backend.selected")
+                    runtimeOptions = decoded.connections.filter { $0.kind == "runtime" }
+                    activeBackend = decoded.selected
+                    UserDefaults.standard.set(decoded.selected, forKey: "ares.backend.selected")
                 }
             }
         }.resume()

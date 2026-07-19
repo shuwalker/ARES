@@ -1,9 +1,5 @@
 import pathlib
 
-from tests.conftest import requires_agent_modules
-
-pytestmark = requires_agent_modules
-
 
 def _write_skill(root: pathlib.Path, *parts: str) -> pathlib.Path:
     skill_dir = root.joinpath(*parts)

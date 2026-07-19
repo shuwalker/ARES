@@ -1,12 +1,12 @@
 """Regression test: /api/crons must read jobs.json from the *active profile*.
 
-Before the fix, `cron.jobs.list_jobs()` resolved ARES_HOME from os.environ
+Before the fix, `api.schedule_jobs.list_jobs()` resolved ARES_HOME from os.environ
 at call time, ignoring the WebUI's per-request thread-local profile. So the
 Scheduled Jobs panel showed the process-default profile's jobs regardless of
 which profile the user had selected in the cookie.
 
 This test writes two distinct jobs.json files (default + a named profile),
-then verifies `cron_profile_context` pins the cron.jobs call to the named
+then verifies `cron_profile_context` pins the api.schedule_jobs call to the named
 profile's file.
 """
 import json
@@ -14,7 +14,6 @@ import os
 import pathlib
 import sys
 import threading
-from unittest import mock
 
 import pytest
 
@@ -35,8 +34,8 @@ def _write_jobs(home: pathlib.Path, jobs: list):
 
 
 def test_cron_profile_context_pins_profile_home(tmp_path, monkeypatch):
-    """The context manager should swap cron.jobs to read from the named profile."""
-    pytest.importorskip("cron.jobs")  # auto-skip when ares-agent is unavailable
+    """The context manager should swap api.schedule_jobs to read from the named profile."""
+    pytest.importorskip("api.schedule_jobs")  # auto-skip when ares-agent is unavailable
 
     default_home = tmp_path / "default_home"
     meow_home = tmp_path / "default_home" / "profiles" / "meow"
@@ -52,9 +51,9 @@ def test_cron_profile_context_pins_profile_home(tmp_path, monkeypatch):
     monkeypatch.setattr(p, "_DEFAULT_ARES_HOME", default_home)
 
     # Baseline: no context → default profile.
-    from cron.jobs import list_jobs
-    # Force cron.jobs to re-evaluate its cached constants for this test run.
-    import cron.jobs as _cj
+    from api.schedule_jobs import list_jobs
+    # Force api.schedule_jobs to re-evaluate its cached constants for this test run.
+    import api.schedule_jobs as _cj
     _cj.ARES_DIR = default_home
     _cj.CRON_DIR = default_home / "cron"
     _cj.JOBS_FILE = _cj.CRON_DIR / "jobs.json"
@@ -84,7 +83,7 @@ def test_cron_profile_context_pins_profile_home(tmp_path, monkeypatch):
 
 def test_cron_profile_context_for_home_pins_explicit_home(tmp_path):
     """Thread variant: pin by explicit path (no TLS)."""
-    pytest.importorskip("cron.jobs")  # auto-skip when ares-agent is unavailable
+    pytest.importorskip("api.schedule_jobs")  # auto-skip when ares-agent is unavailable
 
     home_a = tmp_path / "a"
     home_b = tmp_path / "b"
@@ -95,13 +94,13 @@ def test_cron_profile_context_for_home_pins_explicit_home(tmp_path):
     prev = os.environ.get("ARES_HOME")
     os.environ["ARES_HOME"] = str(home_a)
     try:
-        import cron.jobs as _cj
+        import api.schedule_jobs as _cj
         _cj.ARES_DIR = home_a
         _cj.CRON_DIR = home_a / "cron"
         _cj.JOBS_FILE = _cj.CRON_DIR / "jobs.json"
         _cj.OUTPUT_DIR = _cj.CRON_DIR / "output"
 
-        from cron.jobs import list_jobs
+        from api.schedule_jobs import list_jobs
         from api.profiles import cron_profile_context_for_home
 
         assert any(j["id"] == "a1" for j in list_jobs(include_disabled=True))
@@ -195,10 +194,11 @@ def test_manual_cron_event_profile_uses_job_profile(monkeypatch):
 
 
 def test_webui_installs_profile_context_on_in_process_scheduler_run_job(tmp_path, monkeypatch):
-    """If WebUI ever runs cron.scheduler.tick in-process, scheduled run_job calls
+    """If WebUI ever runs api.schedule_scheduler.tick in-process, scheduled run_job calls
     must execute under the job's selected profile home, not the process-global
     ARES_HOME that happened to be active when the scheduler thread fired.
     """
+    import api
     import types
 
     from api import profiles as p
@@ -222,11 +222,12 @@ def test_webui_installs_profile_context_on_in_process_scheduler_run_job(tmp_path
 
     cron_pkg = types.ModuleType("cron")
     cron_pkg.__path__ = []
-    cron_scheduler = types.ModuleType("cron.scheduler")
+    cron_scheduler = types.ModuleType("api.schedule_scheduler")
     cron_scheduler.run_job = lambda job: events.append(("run", job["id"])) or "ok"
 
     monkeypatch.setitem(sys.modules, "cron", cron_pkg)
-    monkeypatch.setitem(sys.modules, "cron.scheduler", cron_scheduler)
+    monkeypatch.setitem(sys.modules, "api.schedule_scheduler", cron_scheduler)
+    monkeypatch.setattr(api, "schedule_scheduler", cron_scheduler)
     monkeypatch.setattr(p, "_DEFAULT_ARES_HOME", default_home)
     monkeypatch.setattr(p, "cron_profile_context_for_home", Ctx)
     monkeypatch.setattr(p, "publish_session_list_changed", lambda reason: events.append(("publish", reason)))
@@ -269,11 +270,11 @@ def test_scheduler_run_job_wrapper_does_not_reenter_manual_cron_context(tmp_path
 
     cron_pkg = types.ModuleType("cron")
     cron_pkg.__path__ = []
-    cron_scheduler = types.ModuleType("cron.scheduler")
+    cron_scheduler = types.ModuleType("api.schedule_scheduler")
     cron_scheduler.run_job = lambda job: events.append(("run", job["id"])) or "ok"
 
     monkeypatch.setitem(sys.modules, "cron", cron_pkg)
-    monkeypatch.setitem(sys.modules, "cron.scheduler", cron_scheduler)
+    monkeypatch.setitem(sys.modules, "api.schedule_scheduler", cron_scheduler)
     monkeypatch.setattr(p, "_DEFAULT_ARES_HOME", tmp_path / "home")
     monkeypatch.setattr(p, "cron_profile_context_for_home", Ctx)
     monkeypatch.setattr(p, "publish_session_list_changed", lambda reason: events.append(("unexpected-publish", reason)))
@@ -312,7 +313,7 @@ def test_cron_worker_does_not_silently_fall_back_on_profile_context_failure():
 def test_streaming_cronjob_wrapper_uses_profile_context_only_for_tool_call(tmp_path, monkeypatch):
     """The chat cronjob fix must use the cron profile context at call time.
 
-    Holding cron.jobs module globals for an entire streaming run would race with
+    Holding api.schedule_jobs module globals for an entire streaming run would race with
     other profiles. The wrapper should instead enter the existing locked cron
     context only while the cronjob tool handler itself executes.
     """

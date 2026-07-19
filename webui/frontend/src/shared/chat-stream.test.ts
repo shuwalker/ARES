@@ -25,6 +25,7 @@ class FakeWebSocket {
 
   open() { this.onopen?.(); }
   message(payload: unknown) { this.onmessage?.({ data: JSON.stringify(payload) }); }
+  rawMessage(payload: string) { this.onmessage?.({ data: payload }); }
   remoteClose() { this.onclose?.(); }
   close() { this.onclose?.(); }
 }
@@ -92,5 +93,19 @@ describe("chat stream translation", () => {
 
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(states).toEqual([{ state: "connected" }]);
+  });
+
+  it("turns malformed websocket frames into a bounded warning and keeps streaming", () => {
+    const events: ChatStreamEvent[] = [];
+    subscribeToChatStream("run-3", (event) => events.push(event), () => undefined);
+    const socket = FakeWebSocket.instances[0];
+
+    socket.rawMessage("{not-json");
+    socket.message({ event: "token", data: { text: "still alive" } });
+
+    expect(events).toEqual([
+      { type: "warning", message: "ARES received an unreadable stream event." },
+      { type: "text", text: "still alive" },
+    ]);
   });
 });

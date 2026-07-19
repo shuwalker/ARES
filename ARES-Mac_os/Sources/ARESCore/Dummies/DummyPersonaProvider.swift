@@ -23,7 +23,7 @@ public final class DummyPersonaProvider: PersonaProvider, @unchecked Sendable {
         BehavioralPreferences()
     }
 
-    public func getSystemPrompt(context: ConversationContext) async throws -> String {
+    public func getSystemPrompt(context: SAMConversationContext) async throws -> String {
         "You are ARES, a helpful assistant."
     }
 

@@ -293,7 +293,7 @@ struct ARESWebView: View {
                         .scaleEffect(0.8)
                         .colorMultiply(.white)
                         .padding(.bottom, 8)
-                    Text(serverManager.isRunning ? serverManager.serverHealth : "Starting up…")
+                    Text(serverManager.serverHealth)
                         .foregroundColor(Color.white.opacity(0.4))
                         .font(.system(size: 12))
                     Spacer().frame(height: 48)
@@ -560,7 +560,7 @@ final class ARESMenuBarController: NSObject {
     }
 
     @objc private func stopServer() {
-        WebUIServerManager.shared.stop(persistently: true)
+        WebUIServerManager.shared.stop()
     }
 
     @objc private func restartServer() {
@@ -622,7 +622,7 @@ struct MenuBarPopoverView: View {
                     }
                     .buttonStyle(.bordered)
                     Button("Stop") {
-                        serverManager.stop(persistently: true)
+                        serverManager.stop()
                     }
                     .buttonStyle(.bordered)
                 } else {

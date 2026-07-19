@@ -3,9 +3,6 @@ from pathlib import Path
 import io
 import queue
 
-from tests.conftest import requires_agent_modules
-
-
 def test_runtime_adapter_interface_and_legacy_journal_methods_exist():
     runtime = importlib.import_module("api.runtime_adapter")
 
@@ -503,4 +500,3 @@ def test_runner_runtime_adapter_controls_are_bounded_and_do_not_use_legacy_state
         assert result.accepted is False
         assert result.status == "unsupported"
         assert "not supported by this runner backend" in (result.safe_message or "")
-

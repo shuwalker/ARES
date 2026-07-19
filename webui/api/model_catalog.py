@@ -66,7 +66,7 @@ def filter_catalog_for_active_backend(catalog: dict) -> dict:
         in JROS_COMPATIBLE_MODEL_PROVIDERS
     ]
     filtered["groups"] = groups
-    filtered["ares_backend"] = "jros"
+    filtered["ares_backend"] = BACKEND_JROS
     filtered["compatible_providers"] = sorted(JROS_COMPATIBLE_MODEL_PROVIDERS)
     badges = filtered.get("configured_model_badges")
     if isinstance(badges, dict):
@@ -101,4 +101,3 @@ def filter_catalog_for_active_backend(catalog: dict) -> dict:
 
 _sync_main_model_to_jros = sync_main_model_to_jros
 _filter_model_catalog_for_active_ares_backend = filter_catalog_for_active_backend
-

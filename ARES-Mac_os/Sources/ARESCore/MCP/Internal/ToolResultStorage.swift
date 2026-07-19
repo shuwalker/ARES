@@ -6,9 +6,10 @@ import Logging
 
 /// Manages persistent storage of large tool results that exceed inline token limits.
 /// Results are stored on disk and retrieved on demand via ReadToolResultTool.
-public final class ToolResultStorage: Sendable {
+public final class ToolResultStorage: @unchecked Sendable {
     private let logger = Logger(label: "com.ares.toolresultstorage")
     private let fileManager = FileManager.default
+    private let lock = NSLock()
 
     /// Directory where tool results are persisted
     private let storageDirectory: String
@@ -37,18 +38,54 @@ public final class ToolResultStorage: Sendable {
     public init(storageDirectory: String? = nil) {
         let dir = storageDirectory ?? (NSTemporaryDirectory() + "com.ares.toolresults/")
         self.storageDirectory = dir
-        // Ensure directory exists
-        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(
+                atPath: dir,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir)
+        } catch {
+            logger.error("Failed to prepare tool result storage: \(error)")
+        }
+    }
+
+    private func withLock<T>(_ operation: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try operation()
+    }
+
+    private func validatedComponent(_ value: String, field: String) throws -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
+        guard !value.isEmpty,
+              value.utf8.count <= 180,
+              value.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            throw ToolResultStorageError.invalidIdentifier(field: field)
+        }
+        return value
+    }
+
+    private func resultURL(toolCallId: String, conversationId: String?) throws -> URL {
+        let conversation = try validatedComponent(conversationId ?? "global", field: "conversationId")
+        let call = try validatedComponent(toolCallId, field: "toolCallId")
+        return URL(fileURLWithPath: storageDirectory, isDirectory: true)
+            .appendingPathComponent("\(conversation)_\(call)", isDirectory: false)
+    }
+
+    private func write(_ result: String, to url: URL) throws {
+        try result.write(to: url, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     // MARK: - Store
 
     /// Store a tool result and return a unique ID for retrieval.
     @discardableResult
-    public func store(_ result: String, toolCallId: String) -> String {
-        let url = URL(fileURLWithPath: storageDirectory).appendingPathComponent(toolCallId)
+    public func store(_ result: String, toolCallId: String, conversationId: String? = nil) -> String {
         do {
-            try result.write(to: url, atomically: true, encoding: .utf8)
+            let url = try resultURL(toolCallId: toolCallId, conversationId: conversationId)
+            try withLock { try write(result, to: url) }
             logger.debug("Stored tool result for \(toolCallId), size=\(result.count) chars")
             return toolCallId
         } catch {
@@ -59,31 +96,52 @@ public final class ToolResultStorage: Sendable {
 
     // MARK: - Retrieve
 
+    /// Store a tool result, persist it, and return metadata.
+    public func persistResult(content: String, toolCallId: String, conversationId: String?) throws -> ToolResultMetadata {
+        let url = try resultURL(toolCallId: toolCallId, conversationId: conversationId)
+        try withLock { try write(content, to: url) }
+        return ToolResultMetadata(
+            filePath: url.path,
+            toolCallId: toolCallId,
+            conversationId: conversationId
+        )
+    }
+
     /// Retrieve a stored tool result by ID.
-    public func retrieve(toolCallId: String) throws -> String {
-        let url = URL(fileURLWithPath: storageDirectory).appendingPathComponent(toolCallId)
+    public func retrieve(toolCallId: String, conversationId: String? = nil) throws -> String {
+        let url = try resultURL(toolCallId: toolCallId, conversationId: conversationId)
         do {
-            return try String(contentsOf: url, encoding: .utf8)
+            return try withLock { try String(contentsOf: url, encoding: .utf8) }
         } catch {
+            if let storageError = error as? ToolResultStorageError { throw storageError }
             throw ToolResultStorageError.resultNotFound(toolCallId: toolCallId)
         }
     }
 
     /// Retrieve a chunk of a stored result with offset and length.
-    public func retrieveChunk(toolCallId: String, offset: Int = 0, length: Int? = nil) throws -> ToolResultChunk {
-        let fullResult = try retrieve(toolCallId: toolCallId)
-        let startIndex = fullResult.index(fullResult.startIndex, offsetBy: min(offset, fullResult.count))
+    public func retrieveChunk(toolCallId: String, offset: Int = 0, length: Int? = nil, conversationId: String? = nil) throws -> ToolResultChunk {
+        let fullResult = try retrieve(toolCallId: toolCallId, conversationId: conversationId)
+        guard offset >= 0, offset <= fullResult.count else {
+            throw ToolResultStorageError.invalidOffset(offset: offset, totalLength: fullResult.count)
+        }
+        if let length, length < 0 {
+            throw ToolResultStorageError.invalidLength(length: length)
+        }
+        let startIndex = fullResult.index(fullResult.startIndex, offsetBy: offset)
         let endIndex: String.Index
         if let length = length {
-            endIndex = fullResult.index(startIndex, offsetBy: min(length, fullResult.count - offset))
+            let clampedLength = min(length, fullResult.count - offset)
+            endIndex = fullResult.index(startIndex, offsetBy: clampedLength)
         } else {
             endIndex = fullResult.endIndex
         }
         let chunk = String(fullResult[startIndex..<endIndex])
-        let hasMore = fullResult.index(startIndex, offsetBy: chunk.count) < fullResult.endIndex
+        let hasMore = endIndex < fullResult.endIndex
         return ToolResultChunk(
+            toolCallId: toolCallId,
             content: chunk,
             offset: offset,
+            length: chunk.count,
             totalLength: fullResult.count,
             hasMore: hasMore
         )
@@ -92,30 +150,47 @@ public final class ToolResultStorage: Sendable {
     // MARK: - Delete
 
     /// Delete a stored tool result.
-    public func delete(toolCallId: String) {
-        let url = URL(fileURLWithPath: storageDirectory).appendingPathComponent(toolCallId)
-        try? FileManager.default.removeItem(at: url)
+    public func delete(toolCallId: String, conversationId: String? = nil) {
+        guard let url = try? resultURL(toolCallId: toolCallId, conversationId: conversationId) else { return }
+        withLock { try? fileManager.removeItem(at: url) }
     }
 
     /// Clean up old results older than the specified interval.
     public func cleanup(olderThan interval: TimeInterval = 3600) {
-        guard let enumerator = FileManager.default.enumerator(atPath: storageDirectory) else { return }
-        let cutoff = Date().addingTimeInterval(-interval)
-        for case let file as String in enumerator {
-            let url = URL(fileURLWithPath: storageDirectory).appendingPathComponent(file)
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-               let modDate = attrs[.modificationDate] as? Date,
-               modDate < cutoff {
-                try? FileManager.default.removeItem(at: url)
+        withLock {
+            guard let enumerator = fileManager.enumerator(atPath: storageDirectory) else { return }
+            let cutoff = Date().addingTimeInterval(-interval)
+            for case let file as String in enumerator {
+                let url = URL(fileURLWithPath: storageDirectory).appendingPathComponent(file)
+                if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
+                   let modDate = attrs[.modificationDate] as? Date,
+                   modDate < cutoff {
+                    try? fileManager.removeItem(at: url)
+                }
             }
         }
     }
 }
 
+/// Metadata for a persisted tool result.
+public struct ToolResultMetadata: Sendable {
+    public let filePath: String
+    public let toolCallId: String
+    public let conversationId: String?
+
+    public init(filePath: String, toolCallId: String, conversationId: String?) {
+        self.filePath = filePath
+        self.toolCallId = toolCallId
+        self.conversationId = conversationId
+    }
+}
+
 /// A chunk of a tool result retrieved from storage.
 public struct ToolResultChunk: Sendable {
+    public let toolCallId: String
     public let content: String
     public let offset: Int
+    public let length: Int
     public let totalLength: Int
     public let hasMore: Bool
 }
@@ -125,6 +200,8 @@ public enum ToolResultStorageError: Error, LocalizedError {
     case resultNotFound(toolCallId: String)
     case resultNotFoundWithSuggestions(toolCallId: String, suggestions: [String])
     case invalidOffset(offset: Int, totalLength: Int)
+    case invalidLength(length: Int)
+    case invalidIdentifier(field: String)
 
     public var errorDescription: String? {
         switch self {
@@ -134,6 +211,10 @@ public enum ToolResultStorageError: Error, LocalizedError {
             return "Tool result not found for ID: \(toolCallId). Did you mean: \(suggestions.joined(separator: ", "))?"
         case .invalidOffset(let offset, let totalLength):
             return "Invalid offset \(offset) for result of length \(totalLength)"
+        case .invalidLength(let length):
+            return "Invalid chunk length \(length)"
+        case .invalidIdentifier(let field):
+            return "Invalid \(field) for tool result storage"
         }
     }
 }

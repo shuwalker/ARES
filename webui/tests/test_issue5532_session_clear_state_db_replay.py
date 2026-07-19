@@ -7,9 +7,6 @@ from collections import OrderedDict
 
 import pytest
 
-pytestmark = pytest.mark.requires_agent_modules
-
-
 def _msg(role: str, content: str, ts: float, mid: str) -> dict:
     return {"id": mid, "role": role, "content": content, "timestamp": ts}
 

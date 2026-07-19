@@ -5,9 +5,6 @@ ARES_HOME.
 import yaml
 from pathlib import Path
 
-from tests.conftest import requires_agent_modules
-
-
 def _write_config(config_path: Path, data: dict) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(yaml.dump(data), encoding="utf-8")
@@ -95,7 +92,6 @@ def test_disabled_read_empty_when_no_skills_section(tmp_path, monkeypatch):
     assert result == set()
 
 
-@requires_agent_modules
 def test_skills_list_disabled_reflects_active_profile(tmp_path, monkeypatch):
     """_skills_list_from_dir marks skills as disabled based on the active
     profile's config, not the process-global ARES_HOME."""
@@ -119,7 +115,6 @@ def test_skills_list_disabled_reflects_active_profile(tmp_path, monkeypatch):
     assert skills["skill-b"]["disabled"] is False
 
 
-@requires_agent_modules
 def test_profile_switch_changes_disabled_state(tmp_path, monkeypatch):
     """Simulates switching profiles: disabled state should follow the active
     profile's config, not remain stuck on the original profile."""

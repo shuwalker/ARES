@@ -10,15 +10,12 @@ to ``hermes --version`` within a 5-second timeout.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
 import shutil
 import subprocess
-import threading
 import time
-import uuid
 from typing import Any, Dict, List
 
 from .base import AgenticBackend
@@ -152,7 +149,6 @@ class HermesBackend(AgenticBackend):
             "chat": True,
             "tools": self.supports_tools,
             "persona": self.supports_persona,
-            "hybrid": self.supports_hybrid,
             "voice": False,
             "embodiment": False,
         }

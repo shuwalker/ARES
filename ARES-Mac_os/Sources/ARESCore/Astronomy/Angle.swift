@@ -36,7 +36,7 @@ public struct Angle: Equatable, Hashable, Sendable {
 
     public static func byRadians(_ radians: Double) -> Angle {
         let deg = AstroUtil.toDegree(radians)
-        Angle(degree: deg, radians: radians, hours: AstroUtil.degreesToHours(deg))
+        return Angle(degree: deg, radians: radians, hours: AstroUtil.degreesToHours(deg))
     }
 
     public static let zero = Angle.byDegree(0)

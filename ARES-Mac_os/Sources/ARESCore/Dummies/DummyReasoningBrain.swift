@@ -22,7 +22,7 @@ public final class DummyReasoningBrain: ReasoningBrain, @unchecked Sendable {
 
     public func respond(
         to input: String,
-        context: ConversationContext,
+        context: SAMConversationContext,
         onToken: (@Sendable (_ partial: String, _ isFinished: Bool) -> Void)? = nil
     ) async throws -> String {
         print("🤖 [DUMMY] Responding to: \(input)")

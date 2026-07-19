@@ -351,6 +351,13 @@ def resolve_approval_legacy(session_id: str, approval_id: str, choice: str) -> b
         if found_target or not approval_id
         else 0
     )
+    if approval_id:
+        try:
+            from api.os_automation_consent import signal_decision
+
+            signal_decision(approval_id, choice)
+        except Exception:
+            pass
     resolved = bool(pending) or bool(gateway_resolved) or not bool(approval_id)
     if resolved:
         publish_session_list_changed("attention_resolved")

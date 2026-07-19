@@ -99,7 +99,7 @@ public class ConversationManager: ObservableObject {
     private let saveDebounceDelay: TimeInterval = 0.5
 
     public init(aiProvider: AIProviderProtocol? = nil) {
-        self.aiProvider = aiProvider
+        self.aiProvider = aiProvider ?? FastAPIProvider()
 
         /// Initialize Vector RAG Service.
         self.vectorRAGService = VectorRAGService(memoryManager: memoryManager)

@@ -72,10 +72,6 @@ async def _call(identity: RequestIdentity, operation, *args, **kwargs):
         )
     except ScheduleStoreError as exc:
         raise _error(exc) from exc
-    except ModuleNotFoundError as exc:
-        if exc.name in {"cron", "cron.jobs", "cron.scheduler"}:
-            raise CoreApiError(500, "ARES Agent cron module is unavailable") from exc
-        raise
 
 
 @router.get("")

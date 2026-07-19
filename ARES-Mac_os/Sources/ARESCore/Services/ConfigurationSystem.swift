@@ -17,6 +17,8 @@ public typealias ToolDisplayMode = ConfigurationSystem.ToolDisplayMode
 public typealias SimpleToolCall = ConfigurationSystem.SimpleToolCall
 public typealias MessageContentPart = ConfigurationSystem.MessageContentPart
 public typealias ContentPartType = ConfigurationSystem.ContentPartType
+public typealias SystemPromptManager = ConfigurationSystem.SystemPromptManager
+public typealias WorkingDirectoryConfiguration = ConfigurationSystem.WorkingDirectoryConfiguration
 
 /// Namespace for configuration and messaging types that were previously in the SAM ConfigurationSystem module.
 /// These types are now consolidated into ARESCore to eliminate the external module dependency.
@@ -238,6 +240,10 @@ extension ConfigurationSystem {
         public var lastModified: Date?
         public var isSystemGenerated: Bool
 
+        public var hasReasoning: Bool {
+            return reasoningContent != nil && !(reasoningContent?.isEmpty ?? true)
+        }
+
         public init(
             id: UUID = UUID(),
             type: MessageType = .user,
@@ -323,6 +329,10 @@ extension ConfigurationSystem {
 
         @Published public var selectedConfigurationId: UUID?
         @Published public var configurations: [SystemPromptConfiguration] = []
+
+        public var defaultSystemPromptId: String {
+            "00000000-0000-0000-0000-000000000001"
+        }
 
         private init() {}
 

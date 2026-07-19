@@ -1,15 +1,55 @@
-"""Concrete Ares Agent and JaegerAI execution adapters."""
+"""Concrete adapters for external execution runtimes."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
 from typing import Any
+import urllib.error
+import urllib.request
 
 from .base import AdapterError, AdapterHealth, BaseLLMAdapter, ModelDescriptor, StreamSubscription
 
 
 TurnStarter = Callable[..., dict[str, Any]]
+
+
+def _credential(name: str) -> str | None:
+    """Resolve a credential through the active profile's isolated env view."""
+
+    from api.config import _thread_local_env_value
+
+    return _thread_local_env_value(name).strip() or None
+
+
+def _provider_probe_health(
+    *,
+    provider: str,
+    display_name: str,
+    base_url: str,
+    api_key: str | None,
+) -> AdapterHealth:
+    """Probe an OpenAI-compatible provider without returning credential-adjacent details."""
+
+    if not api_key:
+        return AdapterHealth("offline", False, f"{display_name} API key not found.")
+
+    from api.onboarding import probe_provider_endpoint
+
+    result = probe_provider_endpoint(provider, base_url, api_key, timeout=5.0)
+    if result.get("ok"):
+        return AdapterHealth("connected", True, f"{display_name} credentials verified.")
+    error_code = str(result.get("error") or "unreachable")
+    status = result.get("status")
+    details = {"error": error_code}
+    if isinstance(status, int):
+        details["status"] = status
+    return AdapterHealth(
+        "needs_attention",
+        False,
+        f"{display_name} credential validation failed ({error_code}).",
+        details,
+    )
 
 
 def _default_turn_starter(session_id: str, message: str, *, source: str) -> dict[str, Any]:
@@ -38,13 +78,20 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
             "voice": "voice",
             "embodiment": "embodiment",
             "robotics": "device.control",
-            "hybrid": "multi-runtime",
         }
         return sorted(mapping[key] for key, enabled in raw.items() if enabled and key in mapping)
 
     async def stream_chat(self, request, *, session: Any, profile: str | None) -> dict[str, Any]:
+        def scoped_health_check() -> AdapterHealth:
+            from api.profiles import profile_env_for_active_request_readonly
+            from ..request_context import profile_scope
+
+            with profile_scope(profile):
+                with profile_env_for_active_request_readonly("adapter health check"):
+                    return self.check_health(profile=profile)
+
         try:
-            health = self.check_health(profile=profile)
+            health = await asyncio.to_thread(scoped_health_check)
         except Exception as exc:
             raise AdapterError(
                 503,
@@ -175,27 +222,6 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
         return bool(cancel_stream(stream_id))
 
 
-class AresAdapter(JournaledFrameworkAdapter):
-    adapter_id = "ares_local"
-    display_name = "Ares Agent"
-
-    def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
-        from api.backends.ares import AresBackend
-
-        super().__init__(backend=AresBackend(), turn_starter=turn_starter)
-
-    def check_health(self, *, profile: str | None) -> AdapterHealth:
-        del profile
-        from api.backend_selector import backend_status
-
-        available = bool(backend_status().get("ares_local"))
-        return AdapterHealth(
-            "connected" if available else "offline",
-            available,
-            "Ares Agent is available." if available else "Ares Agent is not installed or reachable.",
-        )
-
-
 class JaegerAdapter(JournaledFrameworkAdapter):
     adapter_id = "jros_local"
     display_name = "JaegerAI"
@@ -244,30 +270,6 @@ class JaegerAdapter(JournaledFrameworkAdapter):
         if not model_id:
             return []
         return [ModelDescriptor(model_id, model_id, provider, self.adapter_id)]
-
-
-class HybridAdapter(JournaledFrameworkAdapter):
-    adapter_id = "hybrid"
-    display_name = "Hybrid"
-
-    def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
-        from api.backends.hybrid import HybridBackend
-
-        super().__init__(backend=HybridBackend(), turn_starter=turn_starter)
-
-    def check_health(self, *, profile: str | None) -> AdapterHealth:
-        ares = AresAdapter(turn_starter=self._turn_starter).check_health(profile=profile)
-        jaeger = JaegerAdapter(turn_starter=self._turn_starter).check_health(profile=profile)
-        available = ares.available and jaeger.available
-        state = "connected" if available else "needs_attention"
-        return AdapterHealth(
-            state,
-            available,
-            "Ares Agent and JaegerAI are available."
-            if available
-            else "Hybrid execution requires both Ares Agent and a configured JaegerAI Companion.",
-            {"ares": ares.state, "jros_local": jaeger.state},
-        )
 
 
 class HermesAdapter(JournaledFrameworkAdapter):
@@ -384,10 +386,12 @@ class OpenAICloudAdapter(JournaledFrameworkAdapter):
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        available = self.backend.is_available()
-        if available:
-            return AdapterHealth("connected", True, "OpenAI API key configured.")
-        return AdapterHealth("offline", False, "OpenAI API key not found.")
+        return _provider_probe_health(
+            provider="openai",
+            display_name=self.display_name,
+            base_url="https://api.openai.com/v1",
+            api_key=_credential("OPENAI_API_KEY"),
+        )
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         return [ModelDescriptor("gpt-4o", "GPT-4o", "openai", self.adapter_id)]
@@ -403,13 +407,84 @@ class XAICloudAdapter(JournaledFrameworkAdapter):
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        available = self.backend.is_available()
-        if available:
-            return AdapterHealth("connected", True, "xAI API key configured.")
-        return AdapterHealth("offline", False, "xAI API key not found.")
+        return _provider_probe_health(
+            provider="xai",
+            display_name=self.display_name,
+            base_url="https://api.x.ai/v1",
+            api_key=_credential("XAI_API_KEY"),
+        )
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         return [ModelDescriptor("grok-3", "Grok 3", "xai", self.adapter_id)]
+
+
+class GeminiCloudAdapter(JournaledFrameworkAdapter):
+    adapter_id = "gemini_cloud"
+    display_name = "Google Gemini"
+
+    def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
+        from api.backends.cli_backends import GeminiCloudBackend
+        super().__init__(backend=GeminiCloudBackend(), turn_starter=turn_starter)
+
+    def check_health(self, *, profile: str | None) -> AdapterHealth:
+        del profile
+        api_key = _credential("GEMINI_API_KEY") or _credential("GOOGLE_API_KEY")
+        if not api_key:
+            return AdapterHealth("offline", False, "GEMINI_API_KEY not found.")
+
+        try:
+            req = urllib.request.Request(
+                "https://generativelanguage.googleapis.com/v1beta/models",
+                headers={"Accept": "application/json", "x-goog-api-key": api_key},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    return AdapterHealth("connected", True, "Gemini credentials verified.")
+                return AdapterHealth(
+                    "needs_attention",
+                    False,
+                    "Gemini credential validation failed.",
+                    {"status": int(resp.status)},
+                )
+        except urllib.error.HTTPError as exc:
+            return AdapterHealth(
+                "needs_attention",
+                False,
+                "Gemini credential validation failed.",
+                {"status": int(exc.code)},
+            )
+        except (urllib.error.URLError, TimeoutError):
+            return AdapterHealth(
+                "needs_attention",
+                False,
+                "Gemini could not be reached for credential validation.",
+                {"error": "unreachable"},
+            )
+
+    def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
+        return [
+            ModelDescriptor("gemini-2.5-pro", "Gemini 2.5 Pro", "google", self.adapter_id),
+            ModelDescriptor("gemini-2.5-flash", "Gemini 2.5 Flash", "google", self.adapter_id),
+        ]
+
+
+class GeminiAntigravityAdapter(JournaledFrameworkAdapter):
+    adapter_id = "gemini_antigravity"
+    display_name = "Gemini (Antigravity IDE)"
+
+    def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
+        from api.backends.cli_backends import AntigravityGeminiBackend
+        super().__init__(backend=AntigravityGeminiBackend(), turn_starter=turn_starter)
+
+    def check_health(self, *, profile: str | None) -> AdapterHealth:
+        del profile
+        available = self.backend.is_available()
+        if available:
+            return AdapterHealth("connected", True, "App Automation (osascript) available.")
+        return AdapterHealth("offline", False, "App Automation (osascript) not found.")
+
+    def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
+        return [ModelDescriptor("antigravity-default", "Antigravity Active Model", "google", self.adapter_id)]
 
 
 class OllamaLocalAdapter(JournaledFrameworkAdapter):

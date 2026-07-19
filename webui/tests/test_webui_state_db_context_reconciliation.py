@@ -5,9 +5,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.requires_agent_modules
-
-
 def _make_state_db(path: Path, sid: str, rows):
     conn = sqlite3.connect(path)
     conn.execute(

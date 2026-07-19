@@ -300,6 +300,15 @@ class MemoryWrite(BaseModel):
     content: str = Field(max_length=2_000_000)
 
 
+class DelegationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    prompt: str = Field(min_length=1, max_length=100_000)
+    backend: str = Field(min_length=1, max_length=128)
+    model: str | None = Field(default=None, max_length=256)
+    provider: str | None = Field(default=None, max_length=128)
+
+
 class WorkspaceRecord(ExtensibleResponse):
     path: str
     name: str | None = None
@@ -324,6 +333,7 @@ class ChatStart(BaseModel):
     message: str = Field(min_length=1, max_length=1_000_000)
     model: str | None = Field(default=None, max_length=512)
     model_provider: str | None = Field(default=None, max_length=128)
+    connection_id: str | None = Field(default=None, max_length=128)
     workspace: str | None = Field(default=None, max_length=4096)
     profile: str | None = Field(default=None, max_length=80)
 

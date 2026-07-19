@@ -15,7 +15,6 @@ import re
 import shutil
 import socket
 import subprocess
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -157,9 +156,7 @@ def detect_capabilities(config: dict[str, Any] | None = None) -> dict[str, bool]
     return {
         "mac_app": system == "darwin",
         "webui": True,
-        "jros": bool(backend.get("jros")),
-        "ares": bool(backend.get("ares")),
-        "hybrid": bool(backend.get("hybrid")),
+        "jros": bool(backend.get("jros_local")),
         "local_tools": True,
         "filesystem": True,
         "terminal": True,

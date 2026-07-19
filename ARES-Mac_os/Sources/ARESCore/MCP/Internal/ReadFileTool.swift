@@ -294,7 +294,7 @@ public class ReadFileTool: MCPTool, @unchecked Sendable {
                     let metadata = try storage.persistResult(
                         content: content,
                         toolCallId: toolCallId,
-                        conversationId: conversationId
+                        conversationId: conversationId.uuidString
                     )
 
                     logger.info("Large file persisted to disk: \(estimatedTokens) tokens -> \(metadata.filePath)")

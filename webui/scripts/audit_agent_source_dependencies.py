@@ -18,7 +18,6 @@ from typing import Iterable
 
 AGENT_MODULE_ROOTS = (
     "agent",
-    "cron",
     "ares_cli",
     "ares_constants",
     "ares_state",
@@ -110,8 +109,6 @@ def _import_kind(module_name: str) -> str:
         return "runtime_agent_execution_import"
     if module_name == "tools" or module_name.startswith("tools."):
         return "runtime_tools_import"
-    if module_name == "cron" or module_name.startswith("cron."):
-        return "runtime_cron_import"
     if module_name == "ares_state" or module_name.startswith("ares_state."):
         return "state_import"
     if module_name == "ares_constants" or module_name.startswith("ares_constants."):

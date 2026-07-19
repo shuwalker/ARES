@@ -44,7 +44,7 @@ interface AresContextValue {
   chatNotice: string;
   refresh: () => Promise<void>;
   selectSession: (id: string) => void;
-  createSession: (workspace?: string, backendId?: string) => Promise<ConversationSession>;
+  createSession: (workspace?: string) => Promise<ConversationSession>;
   sendMessage: (message: string, backendId?: string) => Promise<void>;
   cancelResponse: () => Promise<void>;
   saveAssistantName: (name: string) => Promise<void>;
@@ -63,7 +63,8 @@ export function AresProvider({ children }: { children: ReactNode }) {
   const [chatNotice, setChatNotice] = useState("");
   const activeStream = useRef("");
   const closeStream = useRef<null | (() => void)>(null);
-  const selectedBackendRef = useRef<string>("");
+  const sendInFlight = useRef(false);
+  const streamGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
     const [health, settings, sessions, workspaces, backends, agentHealth, tools, connections] = await Promise.allSettled([
@@ -107,6 +108,8 @@ export function AresProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => closeStream.current?.(), []);
 
   const selectSession = useCallback((id: string) => {
+    streamGeneration.current += 1;
+    sendInFlight.current = false;
     closeStream.current?.();
     closeStream.current = null;
     activeStream.current = "";
@@ -118,12 +121,13 @@ export function AresProvider({ children }: { children: ReactNode }) {
     setSelectedSessionId(id);
   }, []);
 
-  const createSession = useCallback(async (workspace?: string, backendId?: string) => {
+  const createSession = useCallback(async (workspace?: string) => {
+    const generation = streamGeneration.current;
     const session = await aresApi.createSession({
       workspace: workspace || snapshot.workspaces[0]?.path,
       previousSessionId: selectedSessionId || undefined,
-      model_provider: backendId || undefined,
     });
+    if (generation !== streamGeneration.current) return session;
     setSnapshot((previous) => ({ ...previous, sessions: [session, ...previous.sessions.filter((item) => item.id !== session.id)] }));
     setCurrentSession(session);
     setSelectedSessionId(session.id);
@@ -131,6 +135,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
   }, [selectedSessionId, snapshot.workspaces]);
 
   const finishStream = useCallback(async (sessionId: string) => {
+    sendInFlight.current = false;
     closeStream.current?.();
     closeStream.current = null;
     activeStream.current = "";
@@ -182,6 +187,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
     if (!streamId || (activeStream.current === streamId && closeStream.current)) return;
     closeStream.current?.();
     activeStream.current = streamId;
+    sendInFlight.current = true;
     setStreamState("streaming");
     closeStream.current = subscribeToChatStream(
       streamId,
@@ -219,23 +225,30 @@ export function AresProvider({ children }: { children: ReactNode }) {
 
   const sendMessage = useCallback(async (message: string, backendId?: string) => {
     const clean = message.trim();
-    if (!clean || streamState !== "idle") return;
+    if (!clean || streamState !== "idle" || sendInFlight.current) return;
+    sendInFlight.current = true;
+    const generation = ++streamGeneration.current;
     setChatNotice("");
     setStreamText("");
     setStreamReasoning("");
     setStreamTools([]);
     setStreamState("starting");
     try {
-      const effectiveBackend = backendId || selectedBackendRef.current;
-      const session = currentSession || await createSession(undefined, effectiveBackend);
+      const effectiveBackend = backendId || undefined;
+      const session = currentSession || await createSession();
+      if (generation !== streamGeneration.current) return;
       if (session.readOnly) throw new Error("This conversation is read-only. Start a new conversation to send a message.");
       const optimistic: ConversationMessage = { id: `local-${Date.now()}`, role: "user", text: clean, createdAt: new Date().toISOString() };
       setCurrentSession({ ...session, messages: [...session.messages, optimistic] });
       const started = await aresApi.startChat(session.id, clean, session, effectiveBackend);
+      if (generation !== streamGeneration.current) return;
       attachStream(started.stream_id, session.id);
     } catch (error) {
-      setStreamState("idle");
-      setChatNotice(readableError(error, "No assistant runtime is available. Your ARES interface is still operational."));
+      if (generation === streamGeneration.current) {
+        sendInFlight.current = false;
+        setStreamState("idle");
+        setChatNotice(readableError(error, "No assistant runtime is available. Your ARES interface is still operational."));
+      }
     }
   }, [attachStream, createSession, currentSession, streamState]);
 

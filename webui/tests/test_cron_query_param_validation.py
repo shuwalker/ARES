@@ -10,13 +10,13 @@ import types
 def _stub_cron_jobs(monkeypatch, *, output_dir=None, jobs=None):
     cron_package = types.ModuleType("cron")
     cron_package.__path__ = []
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
     if output_dir is not None:
         cron_jobs.OUTPUT_DIR = output_dir
     if jobs is not None:
         cron_jobs.list_jobs = lambda include_disabled=True: jobs
     monkeypatch.setitem(sys.modules, "cron", cron_package)
-    monkeypatch.setitem(sys.modules, "cron.jobs", cron_jobs)
+    monkeypatch.setitem(sys.modules, "api.schedule_jobs", cron_jobs)
     monkeypatch.setattr("api.schedules_store.ensure_schedule_runtime", lambda: None)
 
 

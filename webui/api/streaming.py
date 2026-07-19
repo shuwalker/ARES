@@ -15,7 +15,6 @@ import os
 import queue
 import re
 import shlex
-import sys
 import subprocess
 import threading
 import time
@@ -32,7 +31,7 @@ from api.config import (
     STREAM_REASONING_TEXT, STREAM_LIVE_TOOL_CALLS,
     STREAM_GOAL_RELATED, PENDING_GOAL_CONTINUATION,
     STREAM_LAST_EVENT_ID,
-    LOCK, SESSIONS, SESSIONS_MAX, SESSION_DIR,
+    LOCK, SESSIONS, SESSION_DIR,
     _get_session_agent_lock, _set_thread_env, _clear_thread_env,
     register_active_run, update_active_run, unregister_active_run,
     unregister_stream_owner,
@@ -219,7 +218,7 @@ def _install_streaming_cronjob_profile_wrapper() -> None:
     """Wrap the agent cronjob tool so calls run under the streaming profile.
 
     The in-chat agent run already binds per-turn contextvars for other
-    session-scoped state. Cron jobs are special because ``cron.jobs`` snapshots
+    session-scoped state. Scheduled jobs are special because ``api.schedule_jobs`` snapshots
     path constants at import time, so the model-facing ``cronjob`` tool must
     enter the existing WebUI cron profile context at the tool-call boundary.
     That context uses the cron-specific lock and restores the module caches as
@@ -1621,7 +1620,6 @@ def _aiagent_import_error_detail() -> str:
     lines.append('  Full troubleshooting: docs/troubleshooting.md ("AIAgent not available")')
     return "\n".join(lines)
 from api.models import get_session, title_from
-from api.workspace import set_last_workspace
 
 # Fields that are safe to send to LLM provider APIs.
 # Everything else (attachments, timestamp, _ts, etc.) is display-only
@@ -3663,13 +3661,11 @@ def _preserve_pre_compression_snapshot(s, old_sid: str) -> None:
         try:
             existing = json.loads(existing_text)
             existing_msgs = len(existing.get('messages') or [])
-            existing_snapshot = bool(existing.get('pre_compression_snapshot'))
         except (json.JSONDecodeError, ValueError):
             # Treat corrupt/malformed old JSON as missing history and rewrite it
             # from the in-memory pre-compression messages below. That is safer
             # than leaving an unreadable recovery snapshot behind.
             existing_msgs = -1
-            existing_snapshot = False
         if len(s.messages) > existing_msgs:
             # In-memory messages are newer than the file; save the full old
             # snapshot from the current session object while preserving its
@@ -6582,11 +6578,11 @@ def _refresh_cached_agent_primary_runtime_snapshot(agent) -> None:
 
     if getattr(agent, 'api_mode', None) == 'anthropic_messages':
         if hasattr(agent, '_anthropic_api_key'):
-            rt['anthropic_api_key'] = getattr(agent, '_anthropic_api_key')
+            rt['anthropic_api_key'] = agent._anthropic_api_key
         if hasattr(agent, '_anthropic_base_url'):
-            rt['anthropic_base_url'] = getattr(agent, '_anthropic_base_url')
+            rt['anthropic_base_url'] = agent._anthropic_base_url
         if hasattr(agent, '_is_anthropic_oauth'):
-            rt['is_anthropic_oauth'] = getattr(agent, '_is_anthropic_oauth')
+            rt['is_anthropic_oauth'] = agent._is_anthropic_oauth
 
 
 def _run_agent_streaming(
@@ -7227,7 +7223,7 @@ def _run_agent_streaming(
                 # _set_ares_home() does this for process-wide switches
                 # but per-request switches skip it (#1700). The in-chat
                 # cronjob tool is wrapped separately at its tool-call boundary
-                # with cron_profile_context_for_home (#4580) so cron.jobs path
+                # with cron_profile_context_for_home (#4580) so schedule-job paths
                 # caches are not mutated for the entire agent turn.
                 # Modules were prewarmed by _prewarm_skill_tool_modules()
                 # above, so we only do lightweight sys.modules lookups and
@@ -8385,26 +8381,6 @@ def _run_agent_streaming(
             except Exception as _exc:
                 logger.warning("ARES self-persistence prompt injection failed: %s", _exc)
 
-            # ARES: inject JROS persona into system prompt
-            # Only inject in hybrid mode (Ares loop + JROS persona).
-            # In ares mode: no injection (pure Ares behavior).
-            # In jros mode: JROS handles its own persona (not this code path).
-            _persona_prompt = ""
-            try:
-                from api.backend_selector import get_active_backend, BACKEND_HYBRID
-                _ares_backend = get_active_backend(_cfg)
-                if _ares_backend == BACKEND_HYBRID:
-                    from api.persona import get_persona_prompt as _get_persona
-                    _persona_id = str(_cfg.get("ares_persona", "") or "").strip()
-                    if _persona_id:
-                        _persona_prompt = _get_persona(_persona_id)
-                        if _persona_prompt:
-                            logger.info("ARES persona '%s' loaded (%d chars, hybrid mode)", _persona_id, len(_persona_prompt))
-                else:
-                    logger.debug("ARES backend=%s — skipping persona injection", _ares_backend)
-            except Exception as _exc:
-                logger.warning("ARES persona injection failed: %s", _exc)
-
             # ARES: inject runtime context into system prompt.
             # Live ARES operating state (backend mode, capabilities, tasks,
             # promises, embodiment) is injected every turn so the agent
@@ -8425,15 +8401,12 @@ def _run_agent_streaming(
             # Merge ARES prompts. Order matters:
             # 1. Self-persistence contract (ownership boundaries)
             # 2. Runtime context (live operating state)
-            # 3. Persona (character voice)
-            # 4. Personality (behavioral modifiers)
+            # 3. Personality (behavioral modifiers)
             _combined_prompt_parts = []
             if _self_persistence_prompt:
                 _combined_prompt_parts.append(_self_persistence_prompt)
             if _runtime_context_prompt:
                 _combined_prompt_parts.append(_runtime_context_prompt)
-            if _persona_prompt:
-                _combined_prompt_parts.append(_persona_prompt)
             if _personality_prompt:
                 _combined_prompt_parts.append(_personality_prompt)
             _combined_prompt = "\n\n".join(_combined_prompt_parts) if _combined_prompt_parts else None

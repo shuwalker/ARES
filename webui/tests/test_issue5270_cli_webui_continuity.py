@@ -8,9 +8,6 @@ from pathlib import Path
 import pytest
 
 
-pytestmark = pytest.mark.requires_agent_modules
-
-
 CLI_PROMPT = "Reply with exactly CLI-ORIGIN-OK and nothing else."
 CLI_REPLY = "CLI-ORIGIN-OK"
 WEBUI_FOLLOWUP = "What exact string did you just reply with? Answer with only that string."

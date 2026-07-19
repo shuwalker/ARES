@@ -32,13 +32,15 @@ import ConfigPage from "@/pages/ConfigPage";
 import McpPage from "@/pages/McpPage";
 import AgentsPage from "@/pages/AgentsPage";
 import AgentDetailPage from "@/pages/AgentDetailPage";
+import { ActivationScreen } from "@/pages/ActivationScreen";
 
 export default function App() {
   return (
     <Routes>
       <Route path="share/:token" element={<SharePage />} />
+      <Route path="activation" element={<AuthGate><ActivationScreen /></AuthGate>} />
       <Route element={<AuthGate><AppShell /></AuthGate>}>
-        <Route index element={<Navigate to="/today" replace />} />
+        <Route index element={<Navigate to="/activation" replace />} />
         <Route path="today" element={<TodayPage />} />
         <Route path="conversation" element={<ConversationPage />} />
         <Route path="search" element={<SearchPage />} />

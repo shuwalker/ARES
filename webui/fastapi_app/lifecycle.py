@@ -113,6 +113,22 @@ async def startup_runtime() -> None:
     # Auto-register any previously hatched SIs
     await _best_effort("Hatchery auto-load", _autoload_hatched_sis)
 
+    # First run discovery
+    from api.config import load_settings, save_settings
+    from api.ai_framework_discovery import discover_summary
+    current_settings = load_settings()
+    if not current_settings.get("connections"):
+        discovery = discover_summary()
+        connections = {}
+        for adapter in discovery.get("adapters", []):
+            connections[adapter["adapter_id"]] = {
+                "detected": adapter["detected"],
+                "default_model": adapter.get("default_model", ""),
+                "default_provider": adapter.get("default_provider", ""),
+            }
+        current_settings["connections"] = connections
+        save_settings(current_settings)
+
     if os.environ.get("ARES_WEBUI_RELOAD", "").strip().lower() in {"1", "true", "yes"}:
         try:
             from api.hot_reload import start_watcher as start_hot_reload

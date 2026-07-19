@@ -79,63 +79,36 @@ def test_crons_run_nonexistent():
     assert status == 404
 
 def test_skills_list():
-    """Verify /api/skills returns built-in skills.
-
-    Resilient to test-isolation pollution: the threshold checks > 0 with a
-    skip-on-empty escape hatch. The original > 0 threshold was correct on
-    a clean test server (which symlinks the real ~/.ares/skills with 100+
-    entries) but flaky in the full suite because some sibling test
-    can shift the server's SKILLS_DIR resolution mid-suite (sprint29
-    test-security-skill cleanup, sprint31 profile create/switch, etc.).
-    """
+    """The ARES-owned catalog is available even when the profile is empty."""
     data, status = get("/api/skills")
     assert status == 200
-    skills = data.get("skills", [])
-    if not skills:
-        import pytest
-        pytest.skip("No skills visible (likely profile-switch pollution from sibling test)")
-    assert len(skills) > 0
+    assert isinstance(data.get("skills"), list)
+    assert data.get("skill_runtime_available") is True
 
 def test_skills_list_has_required_fields():
-    """Verify each skill has the required fields.
-
-    Resilient to test-isolation pollution: skip on empty list rather than
-    IndexError. See test_skills_list for the polluter list.
-    """
-    data, _ = get("/api/skills")
-    skills = data.get("skills", [])
-    if not skills:
-        import pytest
-        pytest.skip("No skills visible (likely profile-switch pollution from sibling test)")
-    skill = skills[0]
-    assert "name" in skill and "description" in skill
+    name = "sprint3-fields-skill"
+    content = f"---\nname: {name}\ndescription: field contract\n---\n# Test\n"
+    try:
+        saved, status = post("/api/skills/save", {"name": name, "content": content})
+        assert status == 200, saved
+        data, _ = get("/api/skills")
+        skill = next(row for row in data["skills"] if row["name"] == name)
+        assert "name" in skill and "description" in skill
+    finally:
+        post("/api/skills/delete", {"name": name})
 
 def test_skills_content_known():
-    """Verify a known built-in skill is fetchable from /api/skills/content.
-
-    Resilient to test-isolation pollution: pick any skill from the live list
-    rather than hardcoding 'dogfood'. Some tests in the suite (sprint29,
-    sprint31) create/delete skills or switch profiles, which can change
-    which skills are visible by the time this test runs.
-    """
-    skills_data, _ = get("/api/skills")
-    skills = skills_data.get("skills", [])
-    if not skills:
-        # Profile-switch pollution from another test left this server pointing
-        # at a profile with no skills. Skip rather than fail — root cause is
-        # in the polluting test, not the API contract under test here.
-        import pytest
-        pytest.skip("No skills visible (likely profile-switch pollution from sibling test)")
-    skill_name = skills[0].get("name")
-    data, status = get(f"/api/skills/content?name={skill_name}")
-    assert status == 200, f"Failed to fetch known skill {skill_name!r}: {data}"
-    # Endpoint may return the content under 'content' key OR an error key
-    if "content" in data:
-        assert len(data["content"]) > 0
-    else:
-        # Skill might have been deleted between the list and content calls
-        # (test concurrency edge). Accept the not-found shape.
-        assert "error" in data, f"Unexpected response for skill {skill_name!r}: {data}"
+    """A skill saved through ARES is immediately readable through the catalog."""
+    name = "sprint3-content-skill"
+    content = f"---\nname: {name}\ndescription: content contract\n---\n# Test\n"
+    try:
+        saved, save_status = post("/api/skills/save", {"name": name, "content": content})
+        assert save_status == 200, saved
+        data, status = get(f"/api/skills/content?name={name}")
+        assert status == 200, data
+        assert data["content"] == content
+    finally:
+        post("/api/skills/delete", {"name": name})
 
 def test_skills_content_requires_name():
     try:
@@ -145,23 +118,12 @@ def test_skills_content_requires_name():
         assert e.code == 400
 
 def test_skills_search_returns_subset():
-    """Verify /api/skills returns multiple built-in skills.
-
-    Resilient to test-isolation pollution: the threshold checks > 0 with a
-    skip-on-empty escape hatch. The original > 5 threshold was correct on
-    a clean test server (which symlinks the real ~/.ares/skills with 100+
-    entries) but flaky in the full suite because some sibling test
-    (sprint29 saves a skill, sprint31 creates a profile, etc.) can shift
-    the server's SKILLS_DIR resolution mid-suite.
-    """
+    """Catalog output remains a deterministic list for empty and populated profiles."""
     data, _ = get("/api/skills")
     skills = data.get("skills", [])
-    if not skills:
-        import pytest
-        pytest.skip("No skills visible (likely profile-switch pollution from sibling test)")
-    # Without pollution we expect 5+ built-in skills; under pollution we may see
-    # only a handful left. The functional contract is non-empty.
-    assert len(skills) > 0, "/api/skills must return at least one skill"
+    assert isinstance(skills, list)
+    names = [row.get("name") for row in skills]
+    assert len(names) == len(set(names))
 
 def test_memory_returns_both_files():
     data, status = get("/api/memory")

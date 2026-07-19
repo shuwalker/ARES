@@ -7,7 +7,6 @@ import {
   Send,
   Square,
   Terminal,
-  UserRound,
   Wrench,
 } from "lucide-react";
 import {
@@ -25,6 +24,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
 import { useLocalProfile } from "@/shared/local-profile";
+import { apiFetch, readableError } from "@/shared/api-client";
+
+interface DiscoveredBackend {
+  adapter_id: string;
+  display_name: string;
+  detected: boolean;
+}
+
+interface DiscoveryResponse {
+  adapters: DiscoveredBackend[];
+}
 
 // ── Old ARES Graphite dark palette ──
 const G = {
@@ -87,7 +97,6 @@ export function ConversationPage() {
   const {
     snapshot,
     currentSession,
-    selectedSessionId,
     sendMessage,
     streamText,
     streamReasoning,
@@ -100,17 +109,31 @@ export function ConversationPage() {
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
-  const [selectedBackend, setSelectedBackend] = useState<string>(() => {
-    if (currentSession?.backendId) return currentSession.backendId;
-    // Paperclip-style: default to the Hermes Agent local adapter if available.
-    const b = snapshot.backends.find((b) => b.id === "hermes_local" && b.available);
-    return b?.id || snapshot.backends.find((b) => b.available)?.id || "";
-  });
-  const selectedBackendRef = useRef(selectedBackend);
+  const [discoveredBackends, setDiscoveredBackends] = useState<DiscoveredBackend[]>([]);
+  const [discoveryError, setDiscoveryError] = useState("");
+  const [selectedBackend, setSelectedBackend] = useState<string>(() => currentSession?.backendId || "");
+  const copiedTimer = useRef<number | undefined>(undefined);
+
   useEffect(() => {
-    selectedBackendRef.current = selectedBackend;
-  }, [selectedBackend]);
+    const controller = new AbortController();
+    void apiFetch<DiscoveryResponse>("/api/discover/frameworks", { signal: controller.signal })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setDiscoveredBackends(data.adapters || []);
+        setDiscoveryError("");
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setDiscoveryError(readableError(error, "Connections could not be discovered."));
+        }
+      });
+    return () => controller.abort();
+  }, []);
   const transcriptRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => () => {
+    if (copiedTimer.current !== undefined) window.clearTimeout(copiedTimer.current);
+  }, []);
 
   const assistantName = snapshot.settings?.assistantName || profile.assistantName || "ARES";
   const isBusy = streamState !== "idle";
@@ -121,8 +144,11 @@ export function ConversationPage() {
   useEffect(() => {
     if (currentSession?.backendId) {
       setSelectedBackend(currentSession.backendId);
+      return;
     }
-  }, [currentSession?.backendId]);
+    const elected = snapshot.connections.find((connection) => connection.selected)?.id || "";
+    setSelectedBackend(elected);
+  }, [currentSession?.backendId, snapshot.connections]);
 
   // Auto-scroll to bottom on new content
   useEffect(() => {
@@ -143,7 +169,7 @@ export function ConversationPage() {
   const submit = useCallback((event: FormEvent) => {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isBusy) return;
+    if (!message || isBusy || !selectedBackend) return;
     setDraft("");
     void sendMessage(message, selectedBackend);
   }, [draft, isBusy, sendMessage, selectedBackend]);
@@ -161,9 +187,14 @@ export function ConversationPage() {
       .find((message) => message.role !== "user")?.text;
     const text = streamText || lastAssistant;
     if (!text) return;
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (copiedTimer.current !== undefined) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard access can be denied by the browser; keep the conversation usable.
+    }
   }, [currentSession?.messages, streamText]);
 
   const lastAssistantText = useMemo(() => {
@@ -237,27 +268,32 @@ export function ConversationPage() {
 
             {/* Backend selector for new conversations */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-              {snapshot.backends.map((backend) => (
+              {discoveredBackends.map((backend) => (
                 <button
-                  key={backend.id}
+                  key={backend.adapter_id}
                   type="button"
-                  onClick={() => setSelectedBackend(backend.id)}
-                  disabled={!backend.available}
+                  onClick={() => setSelectedBackend(backend.adapter_id)}
+                  disabled={!backend.detected}
                   className="rounded-md border px-2.5 py-1 text-[11px] transition-all"
                   style={{
-                    borderColor: selectedBackend === backend.id ? G.accent : G.border,
-                    backgroundColor: selectedBackend === backend.id ? G.accentBg : G.surface,
-                    color: backend.available ? (selectedBackend === backend.id ? G.accentText : G.muted) : "rgba(255,255,255,0.3)",
-                    cursor: backend.available ? "pointer" : "not-allowed",
+                    borderColor: selectedBackend === backend.adapter_id ? G.accent : G.border,
+                    backgroundColor: selectedBackend === backend.adapter_id ? G.accentBg : G.surface,
+                    color: backend.detected ? (selectedBackend === backend.adapter_id ? G.accentText : G.muted) : "rgba(255,255,255,0.3)",
+                    cursor: backend.detected ? "pointer" : "not-allowed",
                   }}
                 >
-                  {backendLabel(backend.id)}
-                  {!backend.available && (
+                  {backendLabel(backend.adapter_id)}
+                  {!backend.detected && (
                     <span className="ml-1.5 inline-block size-1.5 rounded-full bg-red-500" />
                   )}
                 </button>
               ))}
             </div>
+            {discoveryError ? (
+              <p className="mt-3 text-center text-xs" role="status" style={{ color: G.warning }}>
+                {discoveryError} You can still use the session's configured connection.
+              </p>
+            ) : null}
           </div>
         ) : (
           /* ── Messages ── */
@@ -370,7 +406,7 @@ export function ConversationPage() {
                 color: G.text,
                 fontWeight: 430,
               }}
-              disabled={currentSession?.readOnly || isBusy}
+              disabled={currentSession?.readOnly || isBusy || !selectedBackend}
             />
             {isBusy ? (
               <Button
@@ -394,7 +430,7 @@ export function ConversationPage() {
                   color: draft.trim() ? G.bg : "rgba(255,255,255,0.4)",
                 }}
                 aria-label="Send message"
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || !selectedBackend}
               >
                 <Send size={16} />
               </Button>
@@ -406,6 +442,9 @@ export function ConversationPage() {
               <span className="rounded px-1.5 py-0.5" style={{ backgroundColor: G.accentBg, color: G.accentText }}>
                 → {backendLabel(selectedBackend)}
               </span>
+            )}
+            {!selectedBackend && (
+              <span style={{ color: G.warning }}>Choose a default runtime in Connections.</span>
             )}
           </div>
         </form>

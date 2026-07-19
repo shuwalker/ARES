@@ -46,6 +46,24 @@ public final class WebUIServerManager: ObservableObject {
         // Check if port is in use
         let inUse = await isPortInUse(port, host: host)
         if inUse {
+            let urlString = "http://\(host):\(port)/health"
+            if let url = URL(string: urlString) {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 1.0
+                do {
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                        self.isRunning = true
+                        self.process = nil
+                        self.serverHealth = "Running (External)"
+                        self.portConflict = false
+                        print("[ARES] Found running external WebUI server on http://\(host):\(port)")
+                        return
+                    }
+                } catch {
+                    // Ignore, fallback to port conflict
+                }
+            }
             portConflict = true
             serverHealth = "Port \(port) conflict detected"
             return
@@ -66,7 +84,7 @@ public final class WebUIServerManager: ObservableObject {
         let dotVenvPython = dir.appendingPathComponent(".venv/bin/python")
         let fm = FileManager.default
         process.executableURL = fm.fileExists(atPath: venvPython.path) ? venvPython : dotVenvPython
-        process.arguments = ["server.py"]
+        process.arguments = ["-m", "uvicorn", "fastapi_app.main:app", "--port", String(port), "--host", host]
         
         var env = ProcessInfo.processInfo.environment
         env["HERMES_WEBUI_HOST"] = host

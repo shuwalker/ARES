@@ -59,7 +59,7 @@ const aresNavigation: NavItem[] = [
   { to: "/terminal", label: "Terminal", icon: SquareTerminal },
 ];
 
-const paperclipNavigation: NavItem[] = [
+const resourceNavigation: NavItem[] = [
   { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/issues", label: "Issues", icon: ListTodo },
   { to: "/projects", label: "Projects", icon: Briefcase },
@@ -73,7 +73,7 @@ const paperclipNavigation: NavItem[] = [
 
 const systemNavigation: NavItem[] = [
   { to: "/activity", label: "Activity", icon: Activity },
-  { to: "/agents", label: "Agents", icon: Cpu },
+  { to: "/agents", label: "Backends", icon: Cpu },
   { to: "/usage", label: "Usage", icon: Gauge },
   { to: "/connections", label: "Connections", icon: Cable },
   { to: "/channels", label: "Channels", icon: Radio },
@@ -132,7 +132,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       
       <div className="flex-1 overflow-y-auto py-2">
         <SidebarSection label="ARES Core" items={aresNavigation} onNavigate={onNavigate} />
-        <SidebarSection label="Paperclip" items={paperclipNavigation} onNavigate={onNavigate} />
+        <SidebarSection label="Shared Resources" items={resourceNavigation} onNavigate={onNavigate} />
         <SidebarSection label="System" items={systemNavigation} onNavigate={onNavigate} />
       </div>
 
@@ -164,7 +164,7 @@ export function AppShell() {
   const location = useLocation();
   const { snapshot } = useAres();
   
-  const allNav = [...aresNavigation, ...paperclipNavigation, ...systemNavigation];
+  const allNav = [...aresNavigation, ...resourceNavigation, ...systemNavigation];
   const activeLabel =
     allNav.find(({ to }) => location.pathname.startsWith(to))?.label ??
     (location.pathname.startsWith("/settings") ? "Settings" : "ARES");

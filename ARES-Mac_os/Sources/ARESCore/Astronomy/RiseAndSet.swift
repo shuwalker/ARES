@@ -10,7 +10,7 @@ import Foundation
 /// Abstract base for rise/set event calculations.
 /// Uses a quadratic interpolation method to find rise/set times.
 @available(macOS 13.0, *)
-public class RiseAndSetEvent {
+public class RiseAndSetEvent: Equatable, @unchecked Sendable {
     public let date: Date
     public let latitude: Double
     public let longitude: Double
@@ -23,6 +23,16 @@ public class RiseAndSetEvent {
         self.latitude = latitude
         self.longitude = longitude
         self.elevation = elevation
+    }
+
+    public static func == (lhs: RiseAndSetEvent, rhs: RiseAndSetEvent) -> Bool {
+        guard type(of: lhs) == type(of: rhs) else { return false }
+        return lhs.date == rhs.date &&
+               lhs.latitude == rhs.latitude &&
+               lhs.longitude == rhs.longitude &&
+               lhs.elevation == rhs.elevation &&
+               lhs.rise == rhs.rise &&
+               lhs.set == rhs.set
     }
 
     /// Subclasses override to adjust body altitude for the specific event type
@@ -199,7 +209,7 @@ public class CustomRiseAndSet: RiseAndSetEvent {
         self.set = set
     }
 
-    public init(date: Date, latitude: Double, longitude: Double, elevation: Double) {
+    override public init(date: Date, latitude: Double, longitude: Double, elevation: Double) {
         super.init(date: date, latitude: latitude, longitude: longitude, elevation: elevation)
     }
 

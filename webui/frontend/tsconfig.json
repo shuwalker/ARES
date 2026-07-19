@@ -13,8 +13,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@paperclipai/shared": ["./src/shared/index"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]

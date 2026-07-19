@@ -55,7 +55,7 @@ function saveGoals(goals: PinnedGoal[]) {
   }
 }
 
-// ── Quick-stat card (Paperclip MetricCard style) ─────────────────────────
+// ── Compact quick-stat card ──────────────────────────────────────────────
 function QuickStatCard({
   icon: Icon,
   value,
@@ -302,7 +302,7 @@ export function TodayPage() {
         </p>
       )}
 
-      {/* ── Quick stats cards (Paperclip MetricCard style) ──────────── */}
+      {/* ── Quick stats cards ───────────────────────────────────────── */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Quick stats">
         <QuickStatCard
           icon={CheckCircle2}

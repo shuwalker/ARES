@@ -471,7 +471,7 @@ public class MemoryOperationsTool: ConsolidatedMCP, @unchecked Sendable {
                     let metadata = try storage.persistResult(
                         content: fullResult,
                         toolCallId: toolCallId,
-                        conversationId: conversationId
+                        conversationId: conversationId.uuidString
                     )
                     
                     logger.info("Memory search: Persisted result to disk (\(estimatedTokens) tokens -> \(metadata.filePath))")
@@ -496,7 +496,6 @@ public class MemoryOperationsTool: ConsolidatedMCP, @unchecked Sendable {
                     - Total Memories: \(memories.count)
                     - Total Tokens: \(estimatedTokens)
                     - Storage Path: \(metadata.filePath)
-                    - Created: \(metadata.created)
                     """
                     
                     logger.debug("Memory search: Returning persist instructions for \(memories.count) results")

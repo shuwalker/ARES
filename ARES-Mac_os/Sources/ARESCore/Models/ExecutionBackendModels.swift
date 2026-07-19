@@ -151,7 +151,7 @@ public struct ExecutionRequest: Codable, Sendable {
     public init(
         id: String = UUID().uuidString,
         userIntent: String,
-        context: ConversationContext = ConversationContext(),
+        context: ConversationContext,
         requiredCapabilities: Set<ExecutionCapability>
     ) {
         self.id = id

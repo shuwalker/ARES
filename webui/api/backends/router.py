@@ -5,15 +5,17 @@ No roles, no opinions. The UI iterates the map.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Dict
 
 from .base import AgenticBackend
 from .hermes import HermesBackend
 from .jros import JROSBackend
 from .cli_backends import (
+    AntigravityGeminiBackend,
     ClaudeLocalBackend,
     CodexLocalBackend,
     CursorLocalBackend,
+    GeminiCloudBackend,
     GeminiLocalBackend,
     GrokLocalBackend,
     OllamaLocalBackend,
@@ -26,12 +28,15 @@ from .cli_backends import (
 
 def get_default_router() -> BackendRouter:
     """Factory returning the canonical ARES router with all available backends."""
+    jros = JROSBackend()
     backends: Dict[str, AgenticBackend] = {
         "hermes_local": HermesBackend(),
-        "jros_local": JROSBackend(),
+        "jros_local": jros,
         "claude_local": ClaudeLocalBackend(),
         "codex_local": CodexLocalBackend(),
         "gemini_local": GeminiLocalBackend(),
+        "gemini_cloud": GeminiCloudBackend(),
+        "gemini_antigravity": AntigravityGeminiBackend(),
         "grok_local": GrokLocalBackend(),
         "opencode_local": OpenCodeLocalBackend(),
         "cursor_local": CursorLocalBackend(),
@@ -69,11 +74,7 @@ class BackendRouter:
         backend = self.backends.get(requested)
         if backend and backend.is_available():
             return backend.get_worker_target()
-        # Fallback: first available
-        for b in self.backends.values():
-            if b.is_available():
-                return b.get_worker_target()
-        return list(self.backends.values())[0].get_worker_target()
+        raise LookupError(f"Runtime connection is unavailable: {requested}")
 
     def register(self, name: str, backend: AgenticBackend) -> None:
         """Register a new backend at runtime (plugin pattern)."""

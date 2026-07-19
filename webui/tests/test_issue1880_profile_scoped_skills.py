@@ -7,9 +7,6 @@ import urllib.parse
 import urllib.request
 
 from tests._pytest_port import BASE
-from tests.conftest import requires_agent_modules
-
-pytestmark = requires_agent_modules
 
 
 def _state_dir() -> pathlib.Path:
@@ -149,14 +146,8 @@ def test_skill_detail_reads_resolved_file_without_skill_view_absolute_path(monke
         )
 
         from api import skills_store
-        import tools.skills_tool as skills_tool
 
         monkeypatch.setattr(skills_store, "active_skills_dir", lambda: dirs.profile_skills)
-
-        def fail_if_skill_view_called(*_args, **_kwargs):
-            raise AssertionError("WebUI local skill details must not call skill_view()")
-
-        monkeypatch.setattr(skills_tool, "skill_view", fail_if_skill_view_called)
 
         detail = skills_store.skill_content("profile-direct-skill-1880")
 

@@ -1,9 +1,8 @@
 """ARES self-persistence contract and prompt wrapper.
 
-This is the ARES-owned continuity layer above swappable backends. Ares can
-remain the agent loop and JROS can provide robotics/embodiment primitives and
-canonical persona state. ARES owns the user-facing continuity and presentation
-contract, while identity/persona APIs remain projections of the active runtime.
+This is the ARES-owned continuity layer above swappable external backends.
+ARES owns shared resources and orchestration; inference and identity remain
+projections of the explicitly elected runtime.
 
 The module is intentionally pure: no filesystem writes, no Ares/JROS imports,
 and no backend internals. It returns JSON-safe data for UI/API surfaces and a
@@ -25,20 +24,16 @@ SELF_PERSISTENCE_CAPABILITIES = (
     "embodied_presence",
 )
 
-ADAPTERS = ("ares", "jros")
-
-
 _DEFERRED_FORK_RATIONALE = (
-    "ARES talks through stable adapters so Ares Agent and JROS can be forked, "
-    "replaced, or absorbed later without rewriting the user-facing ARES layer."
+    "ARES talks through stable adapters so external runtimes can be replaced "
+    "without rewriting shared memory, tools, sessions, or policy."
 )
 
 
 def _active_backend(config: dict[str, Any] | None) -> str:
-    raw = ""
-    if isinstance(config, dict):
-        raw = str(config.get("ares_backend", "") or "").strip().lower()
-    return raw if raw in {"ares", "jros", "hybrid"} else "ares"
+    from api.backend_selector import get_active_backend
+
+    return get_active_backend(config or {})
 
 
 def should_inject_self_persistence(config: dict[str, Any] | None) -> bool:
@@ -64,12 +59,11 @@ def build_self_persistence_contract(config: dict[str, Any] | None) -> dict[str, 
         "fork_decision": "deferred",
         "prevents_redo_work": True,
         "active_backend": _active_backend(config),
-        "adapters": list(ADAPTERS),
+        "runtime_required": True,
         "capabilities": list(SELF_PERSISTENCE_CAPABILITIES),
         "backend_roles": {
-            "ares": "agent_loop_tools_memory_cron",
-            "jros": "robotics_embodiment_persona_primitives_canonical_character",
-            "ares": "presentation_permissions_task_continuity_user_experience",
+            "ares": "shared_resources_routing_permissions_and_continuity",
+            "active_runtime": "inference_and_projected_identity",
         },
         "rationale": _DEFERRED_FORK_RATIONALE,
     }
@@ -81,12 +75,11 @@ def render_self_persistence_prompt(config: dict[str, Any] | None) -> str:
     contract = build_self_persistence_contract(config)
     capabilities = ", ".join(contract["capabilities"])
     return (
-        "ARES owns the experience layer, permissions, and task continuity. "
-        "Ares supplies the agent loop. "
-        "JROS supplies robotics, embodiment, and canonical persona identity. "
+        "ARES owns shared resources, routing, permissions, and task continuity. "
+        "The explicitly selected external runtime supplies inference and projected identity. "
         "ARES identity APIs are projections of the active runtime, not a canonical soul. "
         "Do not bury task continuity inside a swappable backend.\n\n"
-        f"Active backend mode: {contract['active_backend']}\n"
+        f"Active runtime: {contract['active_backend'] or 'none selected'}\n"
         "Adapter policy: adapter-first; fork decision deferred.\n"
         f"ARES presentation/continuity capabilities: {capabilities}.\n"
         "Operational rule: promises, follow-up obligations, self-audit results, "

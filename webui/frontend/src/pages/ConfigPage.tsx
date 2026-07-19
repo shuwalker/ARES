@@ -456,7 +456,7 @@ export default function ConfigPage() {
   if (loading) {
     return (
       <div className="page-stack">
-        <PageHeader title="Configuration" description="View and edit ARES agent configuration." />
+        <PageHeader title="Configuration" description="View and edit ARES resource-plane configuration." />
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <LoaderCircle className="mb-4 size-8 animate-spin text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">Loading configuration…</p>
@@ -469,7 +469,7 @@ export default function ConfigPage() {
     <div className="page-stack">
       <PageHeader
         title="Configuration"
-        description="View and edit ARES agent configuration."
+        description="View and edit ARES resource-plane configuration."
         action={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>

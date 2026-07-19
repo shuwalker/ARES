@@ -1,4 +1,4 @@
-import React, { StrictMode } from "react";
+import React, { StrictMode, type ErrorInfo } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
@@ -20,12 +20,22 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error:
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("ARES render failed", error, info.componentStack);
+  }
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: "2rem", color: "red", fontFamily: "monospace" }}>
-          <h2>Something went wrong.</h2>
-          <pre style={{ whiteSpace: "pre-wrap" }}>{this.state.error.toString()}\n{this.state.error.stack}</pre>
+        <div role="alert" style={{ maxWidth: 640, margin: "10vh auto", padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
+          <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>ARES hit an unexpected error</h1>
+          <p style={{ opacity: 0.75 }}>
+            Your local data is unchanged. Retry this view or return to the main screen.
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+            <button type="button" onClick={() => this.setState({ error: null })}>Retry</button>
+            <button type="button" onClick={() => window.location.assign("/today")}>Go to Today</button>
+            <button type="button" onClick={() => window.location.reload()}>Reload</button>
+          </div>
         </div>
       );
     }

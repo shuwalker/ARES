@@ -6,7 +6,6 @@ HTTP, mirroring the Ares Gateway bridge; with no gateway reachable and
 ARES_JROS_DIR pointing at a local checkout, it talks to `jaeger bridge`
 instead. These tests pin:
   * routes still dispatch the jros backend to the gateway worker,
-  * hybrid still falls through to the normal Ares worker,
   * gateway URL resolution (env > config > localhost default),
   * a full turn against a REAL (in-test, faked-JROS) HTTP gateway —
     SSE relay, tool events, session persistence, stream teardown,
@@ -45,17 +44,6 @@ def test_jros_backend_selects_gateway_worker_without_health_ping(monkeypatch):
     assert worker is fake_run_jros_streaming
     assert is_gateway is False
     assert is_jros is True
-
-
-def test_hybrid_backend_keeps_normal_ares_worker(monkeypatch):
-    from api.backends.hybrid import HybridBackend
-    from api.streaming import _run_agent_streaming
-
-    worker, is_gateway, is_jros = HybridBackend().get_worker_target()
-
-    assert worker is _run_agent_streaming
-    assert is_gateway is False
-    assert is_jros is False
 
 
 def test_gateway_url_resolution_env_config_default(monkeypatch):
@@ -381,7 +369,7 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
         monkeypatch.setattr(backend_selector, "_jros_gateway_info", {})
         assert backend_selector.is_jros_available() is True
         status = backend_selector.backend_status()
-        assert status["jros"] is True
+        assert status["jros_local"] is True
         assert status["jros_model"] == "fake-model"
         assert status["jros_booted"] is True
     finally:
@@ -399,7 +387,7 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     monkeypatch.setattr(jros_gateway_chat, "discover_jros_source_root", lambda: None)
     monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
     assert backend_selector.is_jros_available() is False
-    assert backend_selector.backend_status()["jros"] is False
+    assert backend_selector.backend_status()["jros_local"] is False
 
 
 def test_reset_jros_boot_posts_reset_and_swallows_offline(monkeypatch):
@@ -583,11 +571,11 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     monkeypatch.setattr(backend_selector, "_jros_gateway_info", {})
     assert backend_selector.is_jros_available() is True
     status = backend_selector.backend_status()
-    assert status["jros"] is True
+    assert status["jros_local"] is True
     assert status["jros_mode"] == "local"
 
 
-def test_ares_capabilities_follow_backend_and_ares_tools(monkeypatch):
+def test_ares_capabilities_follow_external_runtime_and_shared_tools(monkeypatch):
     from api import ares_capabilities
 
     monkeypatch.setattr(ares_capabilities, "_jros_ares_tools_enabled", lambda: False)
@@ -602,9 +590,9 @@ def test_ares_capabilities_follow_backend_and_ares_tools(monkeypatch):
     monkeypatch.setattr(ares_capabilities, "_jros_ares_tools_enabled", lambda: True)
     assert ares_capabilities.capabilities_for_backend("jros")["kanban"] is True
 
-    ares_caps = ares_capabilities.capabilities_for_backend("ares")
-    assert ares_caps["cloud_provider_model_settings"] is True
-    assert ares_caps["mcp_server_config"] is True
-    assert ares_caps["messaging_gateway"] is True
-    assert ares_caps["delegate_task"] is True
-    assert ares_caps["character_persona_editing"] is False
+    hermes_caps = ares_capabilities.capabilities_for_backend("hermes_local")
+    assert hermes_caps["cloud_provider_model_settings"] is True
+    assert hermes_caps["mcp_server_config"] is True
+    assert hermes_caps["messaging_gateway"] is True
+    assert hermes_caps["delegate_task"] is True
+    assert hermes_caps["character_persona_editing"] is False

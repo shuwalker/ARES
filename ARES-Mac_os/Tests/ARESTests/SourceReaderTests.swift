@@ -113,8 +113,10 @@ final class SourceReaderTests: XCTestCase {
         XCTAssertLessThanOrEqual(sessions.count, 100)
         // Verify sorted newest first
         let dates = sessions.compactMap { $0.updatedAt }
-        for i in 0..<(dates.count - 1) {
-            XCTAssertGreaterThanOrEqual(dates[i], dates[i + 1])
+        if dates.count > 1 {
+            for i in 0..<(dates.count - 1) {
+                XCTAssertGreaterThanOrEqual(dates[i], dates[i + 1])
+            }
         }
         for s in sessions {
             XCTAssertEqual(s.source, "hermes")

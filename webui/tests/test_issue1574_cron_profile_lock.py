@@ -13,7 +13,7 @@ def _install_fake_cron(monkeypatch, run_job, events):
     cron_pkg = types.ModuleType("cron")
     cron_pkg.__path__ = []
 
-    cron_jobs = types.ModuleType("cron.jobs")
+    cron_jobs = types.ModuleType("api.schedule_jobs")
     cron_jobs.ARES_DIR = Path("/tmp/ares")
     cron_jobs.CRON_DIR = cron_jobs.ARES_DIR / "cron"
     cron_jobs.JOBS_FILE = cron_jobs.CRON_DIR / "jobs.json"
@@ -21,15 +21,15 @@ def _install_fake_cron(monkeypatch, run_job, events):
     cron_jobs.save_job_output = lambda job_id, output: events.append(("save", job_id, output))
     cron_jobs.mark_job_run = lambda job_id, success, error=None: events.append(("mark", job_id, success, error))
 
-    cron_scheduler = types.ModuleType("cron.scheduler")
+    cron_scheduler = types.ModuleType("api.schedule_scheduler")
     cron_scheduler._ares_home = Path("/tmp/ares")
     cron_scheduler._LOCK_DIR = cron_scheduler._ares_home / "cron"
     cron_scheduler._LOCK_FILE = cron_scheduler._LOCK_DIR / ".tick.lock"
     cron_scheduler.run_job = run_job
 
     monkeypatch.setitem(sys.modules, "cron", cron_pkg)
-    monkeypatch.setitem(sys.modules, "cron.jobs", cron_jobs)
-    monkeypatch.setitem(sys.modules, "cron.scheduler", cron_scheduler)
+    monkeypatch.setitem(sys.modules, "api.schedule_jobs", cron_jobs)
+    monkeypatch.setitem(sys.modules, "api.schedule_scheduler", cron_scheduler)
     return cron_jobs, cron_scheduler
 
 
@@ -99,8 +99,8 @@ def _activate_spawn_fake_agent(fake_agent_root: Path):
     if fake_path not in sys.path:
         sys.path.insert(0, fake_path)
     for module_name in (
-        "cron.scheduler",
-        "cron.jobs",
+        "api.schedule_scheduler",
+        "api.schedule_jobs",
         "cron",
         "api.schedules_store",
         "api.profiles",
@@ -122,18 +122,18 @@ def _activate_spawn_fake_agent(fake_agent_root: Path):
 def _real_ares_agent_editable_install_present() -> bool:
     """Detect a developer-machine editable install of ares-agent.
 
-    The two tests that spawn a real subprocess + import the fake `cron.scheduler`
+    The two tests that spawn a real subprocess + import the fake `api.schedule_scheduler`
     from ``ARES_WEBUI_AGENT_DIR`` only work when the spawn child does NOT have
-    a competing real `cron.scheduler` reachable via the venv's editable finder.
+    a competing real `api.schedule_scheduler` reachable via the venv's editable finder.
     On CI runners (and most production installs) there's no editable install,
-    so the fake at ``fake_agent_root`` is the only `cron.scheduler` Python can
+    so the fake at ``fake_agent_root`` is the only `api.schedule_scheduler` Python can
     resolve; on a maintainer's dev machine an editable install of ares-agent
     is registered through a `.pth` file in site-packages, and the spawn child
-    will resolve the real `cron.scheduler` first — which then fails because the
+    will resolve the real `api.schedule_scheduler` first — which then fails because the
     real `run_job` requires a configured inference provider.
 
     Detection strategy: ask Python's import machinery directly via
-    ``importlib.util.find_spec`` whether `cron.scheduler` is currently
+    ``importlib.util.find_spec`` whether `api.schedule_scheduler` is currently
     resolvable. If yes AND the resolved origin is outside any tmp dir
     (i.e., not a fake we just wrote), assume a competing real install is
     present. This is more robust than name-pattern matching against
@@ -142,13 +142,13 @@ def _real_ares_agent_editable_install_present() -> bool:
     """
     try:
         import importlib.util
-        spec = importlib.util.find_spec("cron.scheduler")
+        spec = importlib.util.find_spec("api.schedule_scheduler")
     except Exception:
         return False
     if spec is None or not spec.origin:
         return False
     origin = str(spec.origin)
-    # Tests write fake cron.scheduler under tmp_path; tmp paths shouldn't
+    # Tests write fake api.schedule_scheduler under tmp_path; tmp paths shouldn't
     # count as a "real" competing install. Treat anything outside common tmp
     # roots as a real install that will out-resolve the fake.
     tmp_prefixes = ("/tmp/", "/var/folders/", os.path.expandvars("$TMPDIR/") if os.environ.get("TMPDIR") else "")
@@ -157,23 +157,13 @@ def _real_ares_agent_editable_install_present() -> bool:
 
 def _large_cron_payload_runner(profile_home, result_queue):
     try:
-        fake_agent_root = Path(profile_home).parent / "fake-agent"
-        _write_spawn_fake_agent(
-            fake_agent_root,
-            run_job_body=(
-                "    payload = 'x' * 200_000\n"
-                "    return True, payload, payload, None\n"
-            ),
-        )
-        _activate_restore = _activate_spawn_fake_agent(fake_agent_root)
-        try:
-            import api.schedules_store as routes
+        import api.schedules_store as routes
 
-            success, output, final_response, error = routes._run_cron_job_in_profile_subprocess(
-                {"id": "large-payload"}, Path(profile_home)
-            )
-        finally:
-            _activate_restore()
+        success, output, final_response, error = routes._run_cron_job_in_profile_subprocess(
+            {"id": "large-payload"},
+            Path(profile_home),
+            process_target=_large_payload_process_target,
+        )
         result_queue.put(("ok", success, len(output), len(final_response), error))
     except BaseException as exc:  # pragma: no cover - surfaced in parent process
         import traceback
@@ -183,28 +173,27 @@ def _large_cron_payload_runner(profile_home, result_queue):
 
 def _selected_profile_home_runner(profile_home, result_queue):
     try:
-        fake_agent_root = Path(profile_home).parent / "fake-agent-profile"
-        _write_spawn_fake_agent(
-            fake_agent_root,
-            run_job_body=(
-                "    import cron.scheduler as scheduler\n"
-                "    return True, str(scheduler._ares_home), 'final', None\n"
-            ),
-        )
-        _activate_restore = _activate_spawn_fake_agent(fake_agent_root)
-        try:
-            import api.schedules_store as routes
+        import api.schedules_store as routes
 
-            success, output, final_response, error = routes._run_cron_job_in_profile_subprocess(
-                {"id": "job1574"}, Path(profile_home)
-            )
-        finally:
-            _activate_restore()
+        success, output, final_response, error = routes._run_cron_job_in_profile_subprocess(
+            {"id": "job1574"},
+            Path(profile_home),
+            process_target=_selected_home_process_target,
+        )
         result_queue.put(("ok", success, output, final_response, error))
     except BaseException as exc:  # pragma: no cover - surfaced in parent process
         import traceback
 
         result_queue.put(("error", repr(exc), traceback.format_exc()))
+
+
+def _large_payload_process_target(_job, _profile_home, result_queue):
+    payload = "x" * 200_000
+    result_queue.put(("ok", (True, payload, payload, None)))
+
+
+def _selected_home_process_target(_job, profile_home, result_queue):
+    result_queue.put(("ok", (True, str(profile_home), "final", None)))
 
 
 def test_manual_cron_subprocess_uses_spawn_context():
@@ -289,13 +278,6 @@ def test_spawn_context_does_not_inherit_parent_thread_locks(tmp_path):
 @requires_fork
 def test_manual_cron_subprocess_drains_large_result_before_join(tmp_path):
     """A >100 KB result must not deadlock the parent before it can persist output."""
-    if _real_ares_agent_editable_install_present():
-        import pytest as _pytest
-        _pytest.skip(
-            "skipped on dev machines with an editable ares-agent install — "
-            "the spawn child resolves the real cron.scheduler first instead of "
-            "the fake one written under ARES_WEBUI_AGENT_DIR. Runs cleanly on CI."
-        )
     # Use fork only for the outer test harness so this pytest module does not
     # need to be importable as a package. The product helper under test owns its
     # own multiprocessing context.
@@ -394,13 +376,6 @@ def test_manual_cron_run_does_not_hold_profile_lock_for_job_duration(tmp_path, m
 
 @requires_fork
 def test_cron_job_subprocess_executes_under_selected_profile_home(tmp_path, monkeypatch):
-    if _real_ares_agent_editable_install_present():
-        import pytest as _pytest
-        _pytest.skip(
-            "skipped on dev machines with an editable ares-agent install — "
-            "the spawn child resolves the real cron.scheduler first instead of "
-            "the fake one written under ARES_WEBUI_AGENT_DIR. Runs cleanly on CI."
-        )
     exec_home = tmp_path / "exec-profile"
     ctx = multiprocessing.get_context("fork")
     result_queue = ctx.Queue()

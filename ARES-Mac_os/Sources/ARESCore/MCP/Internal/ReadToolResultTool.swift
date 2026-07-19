@@ -142,9 +142,9 @@ public class ReadToolResultTool: MCPTool, @unchecked Sendable {
         do {
             let chunk = try storage.retrieveChunk(
                 toolCallId: toolCallId,
-                conversationId: conversationId,
                 offset: offset,
-                length: length
+                length: length,
+                conversationId: conversationId.uuidString
             )
 
             logger.debug("Retrieved chunk: offset=\(chunk.offset), length=\(chunk.length), hasMore=\(chunk.hasMore)")
@@ -157,7 +157,8 @@ public class ReadToolResultTool: MCPTool, @unchecked Sendable {
             responseLines.append("Length: \(chunk.length)")
             responseLines.append("Total Length: \(chunk.totalLength)")
             responseLines.append("Has More: \(chunk.hasMore)")
-            if let nextOffset = chunk.nextOffset {
+            if chunk.hasMore {
+                let nextOffset = chunk.offset + chunk.length
                 responseLines.append("Next Offset: \(nextOffset)")
             }
             responseLines.append("")
@@ -168,7 +169,7 @@ public class ReadToolResultTool: MCPTool, @unchecked Sendable {
             if chunk.hasMore {
                 responseLines.append("")
                 responseLines.append("To read next chunk:")
-                responseLines.append("file_operations(operation: \"read_tool_result\", toolCallId: \"\(chunk.toolCallId)\", offset: \(chunk.nextOffset!), length: \(length))")
+                responseLines.append("file_operations(operation: \"read_tool_result\", toolCallId: \"\(chunk.toolCallId)\", offset: \(chunk.offset + chunk.length), length: \(length))")
             } else {
                 responseLines.append("")
                 responseLines.append("SUCCESS: All content retrieved (no more chunks)")

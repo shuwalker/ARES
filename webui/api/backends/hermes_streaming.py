@@ -79,7 +79,13 @@ def _finish_hermes_stream(
             from api.models import get_session
             session = get_session(session_id)
             if session is not None:
-                if user_message.strip():
+                existing = list(getattr(session, "messages", None) or [])
+                latest = existing[-1] if existing and isinstance(existing[-1], dict) else {}
+                if user_message.strip() and not (
+                    latest.get("role") == "user"
+                    and " ".join(str(latest.get("content") or "").split())
+                    == " ".join(user_message.split())
+                ):
                     session.messages.append({
                         "role": "user",
                         "content": user_message,
@@ -91,6 +97,12 @@ def _finish_hermes_stream(
                         "content": accumulated_text.strip(),
                         "timestamp": int(time.time()),
                     })
+                if getattr(session, "active_stream_id", None) == stream_id:
+                    session.active_stream_id = None
+                    session.pending_user_message = None
+                    session.pending_attachments = []
+                    session.pending_started_at = None
+                    session.pending_user_source = None
                 session.save()
                 logger.info("Hermes worker persisted messages to session %s", session_id[:8])
         except Exception:

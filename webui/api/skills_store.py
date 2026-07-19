@@ -8,6 +8,16 @@ import shutil
 import threading
 from typing import Any
 
+from api.skill_resources import (
+    EXCLUDED_SKILL_DIRS,
+    MAX_DESCRIPTION_LENGTH,
+    iter_skill_index_files,
+    parse_frontmatter,
+    parse_tags,
+    skill_matches_platform,
+    sort_skills,
+)
+
 
 _WRITE_LOCK = threading.RLock()
 
@@ -27,12 +37,14 @@ def active_skills_dir() -> Path:
 def _search_dirs(local_dir: Path) -> list[Path]:
     directories = [local_dir]
     try:
-        from agent.skill_utils import get_external_skills_dirs
+        from api.config import get_config
 
-        directories.extend(Path(path) for path in get_external_skills_dirs())
+        skills = get_config().get("skills", {})
+        configured = skills.get("external_dirs", []) if isinstance(skills, dict) else []
+        directories.extend(Path(path).expanduser() for path in _normalize_names(configured))
     except Exception:
         pass
-    return [path for path in directories if path.exists()]
+    return list(dict.fromkeys(path for path in directories if path.exists()))
 
 
 def _within(root: Path, candidate: Path) -> bool:
@@ -92,12 +104,6 @@ def _category(skill_file: Path, roots: list[Path], local_dir: Path) -> str | Non
 
 
 def _find(name: str) -> tuple[Path | None, Path | None]:
-    try:
-        from agent.skill_utils import iter_skill_index_files
-        from tools.skills_tool import _EXCLUDED_SKILL_DIRS, _parse_frontmatter
-    except ModuleNotFoundError as exc:
-        raise SkillStoreError("Skill runtime is unavailable", 503) from exc
-
     raw_name = str(name or "").strip().strip("/")
     if not raw_name:
         return None, None
@@ -113,12 +119,12 @@ def _find(name: str) -> tuple[Path | None, Path | None]:
             if _within(root, direct) and direct.is_dir() and (direct / "SKILL.md").exists():
                 return direct, direct / "SKILL.md"
         for skill_file in iter_skill_index_files(root, "SKILL.md"):
-            if any(part in _EXCLUDED_SKILL_DIRS for part in skill_file.parts):
+            if any(part in EXCLUDED_SKILL_DIRS for part in skill_file.parts):
                 continue
             if skill_file.parent.name == raw_name:
                 return skill_file.parent, skill_file
             try:
-                frontmatter, _body = _parse_frontmatter(skill_file.read_text(encoding="utf-8")[:4000])
+                frontmatter, _body = parse_frontmatter(skill_file.read_text(encoding="utf-8")[:4000])
                 if frontmatter.get("name") == raw_name:
                     return skill_file.parent, skill_file
             except Exception:
@@ -127,22 +133,6 @@ def _find(name: str) -> tuple[Path | None, Path | None]:
 
 
 def list_skills(category: str | None = None, *, skills_dir: Path | None = None) -> dict:
-    try:
-        from agent.skill_utils import iter_skill_index_files
-        from tools.skills_tool import (
-            MAX_DESCRIPTION_LENGTH,
-            _EXCLUDED_SKILL_DIRS,
-            _parse_frontmatter,
-            _sort_skills,
-            skill_matches_platform,
-        )
-    except ModuleNotFoundError:
-        return {
-            "skills": [],
-            "skill_runtime_available": False,
-            "message": "Skill runtime is not installed; Local Profile features remain available.",
-        }
-
     local_dir = Path(skills_dir) if skills_dir is not None else active_skills_dir()
     local_dir.mkdir(parents=True, exist_ok=True)
     roots = _search_dirs(local_dir)
@@ -151,10 +141,10 @@ def list_skills(category: str | None = None, *, skills_dir: Path | None = None) 
     skills = []
     for root in roots:
         for skill_file in iter_skill_index_files(root, "SKILL.md"):
-            if any(part in _EXCLUDED_SKILL_DIRS for part in skill_file.parts):
+            if any(part in EXCLUDED_SKILL_DIRS for part in skill_file.parts):
                 continue
             try:
-                frontmatter, body = _parse_frontmatter(skill_file.read_text(encoding="utf-8")[:4000])
+                frontmatter, body = parse_frontmatter(skill_file.read_text(encoding="utf-8")[:4000])
                 if not skill_matches_platform(frontmatter):
                     continue
                 name = str(frontmatter.get("name") or skill_file.parent.name)[:64]
@@ -181,7 +171,7 @@ def list_skills(category: str | None = None, *, skills_dir: Path | None = None) 
                 continue
     if category:
         skills = [skill for skill in skills if skill.get("category") == category]
-    return {"skills": _sort_skills(skills), "skill_runtime_available": True}
+    return {"skills": sort_skills(skills), "skill_runtime_available": True}
 
 
 def list_skills_from_dir(skills_dir: Path, category: str | None = None) -> dict:
@@ -222,11 +212,6 @@ def _linked_files(skill_dir: Path) -> dict[str, list[str]]:
 
 
 def skill_content(name: str, linked_file: str | None = None) -> dict:
-    try:
-        from tools.skills_tool import _parse_frontmatter, _parse_tags, skill_matches_platform
-    except ModuleNotFoundError as exc:
-        raise SkillStoreError("Skill runtime is unavailable", 503) from exc
-
     skill_dir, skill_file = _find(name)
     if not skill_dir or not skill_file:
         available = [row["name"] for row in list_skills().get("skills", [])[:20]]
@@ -242,7 +227,7 @@ def skill_content(name: str, linked_file: str | None = None) -> dict:
             raise SkillStoreError("File not found", 404)
         return {"content": target.read_text(encoding="utf-8"), "path": linked_file}
     content = skill_file.read_text(encoding="utf-8")
-    frontmatter, _body = _parse_frontmatter(content)
+    frontmatter, _body = parse_frontmatter(content)
     if not skill_matches_platform(frontmatter):
         raise SkillStoreError("Skill is not available on this platform.", 404)
     metadata = frontmatter.get("metadata")
@@ -251,8 +236,8 @@ def skill_content(name: str, linked_file: str | None = None) -> dict:
         "success": True,
         "name": frontmatter.get("name", skill_dir.name),
         "description": frontmatter.get("description", ""),
-        "tags": _parse_tags(ares_metadata.get("tags") or frontmatter.get("tags", "")),
-        "related_skills": _parse_tags(
+        "tags": parse_tags(ares_metadata.get("tags") or frontmatter.get("tags", "")),
+        "related_skills": parse_tags(
             ares_metadata.get("related_skills") or frontmatter.get("related_skills", "")
         ),
         "content": content,

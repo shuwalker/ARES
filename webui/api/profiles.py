@@ -1,13 +1,4 @@
-"""
-Ares Web UI -- Profile state management.
-Wraps ares_cli.profiles to provide profile switching for the web UI.
-
-The web UI maintains a process-level "active profile" that determines which
-ARES_HOME directory is used for config, skills, memory, cron, and API keys.
-Profile switches update os.environ['ARES_HOME'] and monkey-patch module-level
-cached paths in ares-agent modules (skills_tool, skill_manager_tool,
-cron/jobs) that snapshot ARES_HOME at import time.
-"""
+"""ARES-owned, profile-scoped shared-resource state management."""
 
 from __future__ import annotations
 
@@ -28,7 +19,7 @@ from api.session_events import publish_session_list_changed
 
 logger = logging.getLogger(__name__)
 
-# ── Constants (match ares_cli.profiles upstream) ─────────────────────────
+# ── Profile filesystem contract ──────────────────────────────────────────
 _PROFILE_ID_RE = re.compile(r'^[a-z0-9][a-z0-9_-]{0,63}$')
 _PROFILE_DIRS = [
     'memories', 'sessions', 'skills', 'skins',
@@ -473,11 +464,11 @@ def get_active_ares_home() -> Path:
 
 
 # ── Cron-call profile isolation (issue: Scheduled jobs ignored active profile) ─
-# `cron.jobs` reads ARES_HOME from os.environ (process-global) at function-
+# `api.schedule_jobs` reads ARES_HOME from os.environ (process-global) at function-
 # call time. That bypasses our per-request thread-local profile, so the
 # `/api/crons*` endpoints always returned the process-default profile's jobs.
 # This context manager swaps ARES_HOME (and the cached module-level constants
-# in cron.jobs) for the duration of a cron call, serialized by a lock so
+# in api.schedule_jobs) for the duration of a cron call, serialized by a lock so
 # concurrent requests from different profiles don't race on the global env var.
 #
 # Thread-safety note on os.environ mutation:
@@ -544,18 +535,18 @@ def _home_for_scheduled_cron_job(job: dict) -> Path:
 
 
 def install_cron_scheduler_profile_isolation() -> None:
-    """Patch cron.scheduler.run_job for WebUI in-process scheduler safety.
+    """Patch api.schedule_scheduler.run_job for in-process scheduler safety.
 
     Standard WebUI deployments do not start the scheduler thread in-process, but
-    if a future/single-process deployment calls cron.scheduler.tick() from the
+    if a future/single-process deployment calls api.schedule_scheduler.tick() from the
     WebUI worker, tick's background job path has no request TLS context. Wrap
     run_job so each auto-fired job's persisted ``profile`` field gets the same
     ARES_HOME isolation as the manual /api/crons/run path.
     """
     try:
-        import cron.scheduler as _cs
+        import api.schedule_scheduler as _cs
     except ImportError:
-        logger.debug("install_cron_scheduler_profile_isolation: cron.scheduler unavailable")
+        logger.debug("install_cron_scheduler_profile_isolation: schedule scheduler unavailable")
         return
 
     original = getattr(_cs, 'run_job', None)
@@ -605,26 +596,26 @@ class cron_profile_context_for_home:
             self._prev_env = os.environ.get('ARES_HOME')
             os.environ['ARES_HOME'] = str(self._home)
 
-            # Re-patch cron.jobs module-level constants (see main context manager
+            # Re-patch api.schedule_jobs module-level constants (see main context manager
             # below for the rationale).
             self._prev_cj = None
             try:
-                import cron.jobs as _cj
+                import api.schedule_jobs as _cj
                 self._prev_cj = (_cj.ARES_DIR, _cj.CRON_DIR, _cj.JOBS_FILE, _cj.OUTPUT_DIR)
                 _cj.ARES_DIR = self._home
                 _cj.CRON_DIR = self._home / 'cron'
                 _cj.JOBS_FILE = _cj.CRON_DIR / 'jobs.json'
                 _cj.OUTPUT_DIR = _cj.CRON_DIR / 'output'
             except (ImportError, AttributeError):
-                logger.debug("cron_profile_context_for_home: cron.jobs unavailable")
+                logger.debug("cron_profile_context_for_home: schedule jobs unavailable")
 
-            # cron.scheduler snapshots _ares_home at import time and run_job()
+            # api.schedule_scheduler snapshots _ares_home at import time and run_job()
             # reads config/.env from that module global. Patch it alongside
-            # cron.jobs so manual WebUI runs actually execute under the selected
+            # api.schedule_jobs so manual WebUI runs execute under the selected
             # profile, not merely write output metadata there (#617).
             self._prev_cs = None
             try:
-                import cron.scheduler as _cs
+                import api.schedule_scheduler as _cs
                 self._prev_cs = (
                     getattr(_cs, '_ares_home', None),
                     getattr(_cs, '_LOCK_DIR', None),
@@ -634,7 +625,7 @@ class cron_profile_context_for_home:
                 _cs._LOCK_DIR = self._home / 'cron'
                 _cs._LOCK_FILE = _cs._LOCK_DIR / '.tick.lock'
             except (ImportError, AttributeError):
-                logger.debug("cron_profile_context_for_home: cron.scheduler unavailable")
+                logger.debug("cron_profile_context_for_home: schedule scheduler unavailable")
         except Exception:
             _pop_cron_profile_context_depth()
             _cron_env_lock.release()
@@ -649,13 +640,13 @@ class cron_profile_context_for_home:
                 os.environ['ARES_HOME'] = self._prev_env
             if self._prev_cj is not None:
                 try:
-                    import cron.jobs as _cj
+                    import api.schedule_jobs as _cj
                     _cj.ARES_DIR, _cj.CRON_DIR, _cj.JOBS_FILE, _cj.OUTPUT_DIR = self._prev_cj
                 except (ImportError, AttributeError):
                     pass
             if getattr(self, '_prev_cs', None) is not None:
                 try:
-                    import cron.scheduler as _cs
+                    import api.schedule_scheduler as _cs
                     _cs._ares_home, _cs._LOCK_DIR, _cs._LOCK_FILE = self._prev_cs
                 except (ImportError, AttributeError):
                     pass
@@ -670,7 +661,7 @@ class cron_profile_context:
 
     Usage:
         with cron_profile_context():
-            from cron.jobs import list_jobs
+            from api.schedule_jobs import list_jobs
             jobs = list_jobs(include_disabled=True)
 
     Serializes cron API calls across profiles (cron API is low-frequency;
@@ -685,24 +676,24 @@ class cron_profile_context:
             home = get_active_ares_home()
             os.environ['ARES_HOME'] = str(home)
 
-            # Re-patch cron.jobs module-level constants. They are snapshot at
-            # import time (line 68-71 of cron/jobs.py) and don't participate in
+            # Re-patch api.schedule_jobs module-level constants. They are snapshot at
+            # import time and don't participate in
             # the module's __getattr__ lazy path, so env-var alone is not enough
             # for callers that reference the module constants directly.
             self._prev_cj = None
             try:
-                import cron.jobs as _cj
+                import api.schedule_jobs as _cj
                 self._prev_cj = (_cj.ARES_DIR, _cj.CRON_DIR, _cj.JOBS_FILE, _cj.OUTPUT_DIR)
                 _cj.ARES_DIR = home
                 _cj.CRON_DIR = home / 'cron'
                 _cj.JOBS_FILE = _cj.CRON_DIR / 'jobs.json'
                 _cj.OUTPUT_DIR = _cj.CRON_DIR / 'output'
             except (ImportError, AttributeError):
-                logger.debug("cron_profile_context: cron.jobs unavailable; env-var only")
+                logger.debug("cron_profile_context: schedule jobs unavailable; env-var only")
 
             self._prev_cs = None
             try:
-                import cron.scheduler as _cs
+                import api.schedule_scheduler as _cs
                 self._prev_cs = (
                     getattr(_cs, '_ares_home', None),
                     getattr(_cs, '_LOCK_DIR', None),
@@ -712,7 +703,7 @@ class cron_profile_context:
                 _cs._LOCK_DIR = home / 'cron'
                 _cs._LOCK_FILE = _cs._LOCK_DIR / '.tick.lock'
             except (ImportError, AttributeError):
-                logger.debug("cron_profile_context: cron.scheduler unavailable; env-var only")
+                logger.debug("cron_profile_context: schedule scheduler unavailable; env-var only")
         except Exception:
             _pop_cron_profile_context_depth()
             _cron_env_lock.release()
@@ -727,16 +718,16 @@ class cron_profile_context:
             else:
                 os.environ['ARES_HOME'] = self._prev_env
 
-            # Restore cron.jobs module constants
+            # Restore api.schedule_jobs module constants
             if self._prev_cj is not None:
                 try:
-                    import cron.jobs as _cj
+                    import api.schedule_jobs as _cj
                     _cj.ARES_DIR, _cj.CRON_DIR, _cj.JOBS_FILE, _cj.OUTPUT_DIR = self._prev_cj
                 except (ImportError, AttributeError):
                     pass
             if getattr(self, '_prev_cs', None) is not None:
                 try:
-                    import cron.scheduler as _cs
+                    import api.schedule_scheduler as _cs
                     _cs._ares_home, _cs._LOCK_DIR, _cs._LOCK_FILE = self._prev_cs
                 except (ImportError, AttributeError):
                     pass
@@ -1403,23 +1394,23 @@ def _set_ares_home(home: Path):
 
     patch_skill_home_modules(home)
 
-    # Patch cron/jobs module-level cache
+    # Patch ARES-owned schedule module-level caches.
     try:
-        import cron.jobs as _cj
+        import api.schedule_jobs as _cj
         _cj.ARES_DIR = home
         _cj.CRON_DIR = home / 'cron'
         _cj.JOBS_FILE = _cj.CRON_DIR / 'jobs.json'
         _cj.OUTPUT_DIR = _cj.CRON_DIR / 'output'
     except (ImportError, AttributeError):
-        logger.debug("Failed to patch cron.jobs module")
+        logger.debug("Failed to patch schedule jobs module")
 
     try:
-        import cron.scheduler as _cs
+        import api.schedule_scheduler as _cs
         _cs._ares_home = home
         _cs._LOCK_DIR = home / 'cron'
         _cs._LOCK_FILE = _cs._LOCK_DIR / '.tick.lock'
     except (ImportError, AttributeError):
-        logger.debug("Failed to patch cron.scheduler module")
+        logger.debug("Failed to patch schedule scheduler module")
 
 
 def _reload_dotenv(home: Path):
@@ -1680,11 +1671,7 @@ def _skill_tree_max_mtime_ns(skills_dir: Path, config_path: Path) -> int:
         pass
     if not skills_dir.is_dir():
         return max_ns
-    try:
-        from agent.skill_utils import EXCLUDED_SKILL_DIRS, SKILL_SUPPORT_DIRS
-    except Exception:
-        EXCLUDED_SKILL_DIRS = frozenset()
-        SKILL_SUPPORT_DIRS = frozenset()
+    from api.skill_resources import EXCLUDED_SKILL_DIRS, SKILL_SUPPORT_DIRS
     try:
         # Directory mtimes catch nested out-of-band deletes that leave file mtimes unchanged.
         # followlinks=True mirrors agent.skill_utils.iter_skill_index_files (the compute
@@ -1750,7 +1737,7 @@ def _compute_profile_skills_stats(profile_dir: Path) -> tuple[int, int]:
         except Exception:
             pass
 
-    from agent.skill_utils import iter_skill_index_files, parse_frontmatter, skill_matches_platform
+    from api.skill_resources import iter_skill_index_files, parse_frontmatter, skill_matches_platform
 
     seen_names = set()
     enabled_count = 0
@@ -1848,52 +1835,34 @@ def _invalidate_list_profiles_cache() -> None:
 
 
 def _build_profile_rows_fast() -> list | None:
-    """Build the profile list WITHOUT the upstream alias scan.
+    """Discover profiles directly from the ARES resource directory."""
 
-    ``ares_cli.profiles.list_profiles()`` calls ``find_alias_for_profile()``
-    once per profile, which iterates every file in the wrapper dir
-    (``~/.local/bin``) and ``read_text()``s each one — including large binaries
-    (claude, node, uv, …). On a machine with big binaries on PATH that is
-    hundreds of MB of reads PER PROFILE, which makes the compose-footer profile
-    dropdown hang for many seconds.
-
-    The WebUI never uses the alias data (``list_profiles_api`` does not return
-    ``alias_name``/``alias_path``), so we replicate the cheap part of upstream's
-    ``list_profiles()`` — the same per-profile metadata, the same hardcoded
-    ``"default"`` name for the base home — and simply skip the alias scan.
-
-    Returns ``None`` if the upstream cheap helpers can't be imported, so the
-    caller can fall back to the original (slow but correct) path. Forward-
-    compatible: if upstream fixes ``find_alias_for_profile`` this stays fast and
-    correct with nothing to revert.
-    """
-    try:
-        from ares_cli.profiles import (
-            _get_default_ares_home,
-            _get_profiles_root,
-            _read_config_model,
-            _check_gateway_running,
-            _PROFILE_ID_RE as _UPSTREAM_PROFILE_ID_RE,
+    def _read_model(home: Path) -> tuple[str | None, str | None]:
+        try:
+            config = yaml.safe_load((home / "config.yaml").read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            return None, None
+        model = config.get("model") if isinstance(config, dict) else None
+        if not isinstance(model, dict):
+            return None, None
+        return (
+            str(model.get("default") or "").strip() or None,
+            str(model.get("provider") or "").strip() or None,
         )
-    except Exception:
-        return None
 
     def _row(home: Path, name: str, is_default: bool) -> dict:
         try:
-            model, provider = _read_config_model(home)
-        except Exception:
+            model, provider = _read_model(home)
+        except (OSError, ValueError):
             model, provider = None, None
-        try:
-            gateway_running = _check_gateway_running(home)
-        except Exception:
-            gateway_running = False
         enabled_count, total_count = _get_profile_skills_stats(home)
         return {
             'name': name,
             'path': str(home),
             'is_default': is_default,
             'is_active': False,  # filled in by caller (cheap, varies per request)
-            'gateway_running': gateway_running,
+            # Compatibility field: execution health now comes from connections.
+            'gateway_running': False,
             'model': model,
             'provider': provider,
             'has_env': (home / '.env').exists(),
@@ -1904,18 +1873,18 @@ def _build_profile_rows_fast() -> list | None:
         }
 
     rows: list = []
-    default_home = _get_default_ares_home()
+    default_home = _DEFAULT_ARES_HOME
     if default_home.is_dir():
         # Upstream hardcodes the base home's display name to "default" even when
         # the directory is literally ".ares" — match that exactly.
         rows.append(_row(default_home, 'default', True))
 
-    profiles_root = _get_profiles_root()
+    profiles_root = _profiles_root()
     if profiles_root.is_dir():
         for entry in sorted(profiles_root.iterdir()):
             if not entry.is_dir():
                 continue
-            if not _UPSTREAM_PROFILE_ID_RE.match(entry.name):
+            if not _PROFILE_ID_RE.fullmatch(entry.name):
                 continue
             rows.append(_row(entry, entry.name, False))
 
@@ -1928,12 +1897,8 @@ def list_profiles_api() -> list:
     In isolated profile mode (ARES_HOME points to ~/.ares/profiles/<name>),
     returns only that single profile and skips other profiles entirely.
 
-    Fast path: build the rows from upstream's cheap per-profile helpers and skip
-    ``find_alias_for_profile`` (whose result the WebUI discards) — see
-    ``_build_profile_rows_fast``. Results are cached for a short TTL so rapid
-    re-opens of the compose-footer dropdown are free; the cache is busted on
-    profile create/delete. Falls back to upstream ``list_profiles()`` if the
-    cheap helpers are unavailable.
+    Results are cached for a short TTL so rapid UI reads are inexpensive; the
+    cache is invalidated on profile create, delete, and switch.
     """
     import time
     global _LIST_PROFILES_CACHE
@@ -1943,36 +1908,6 @@ def list_profiles_api() -> list:
     if _is_isolated_profile_mode():
         active = _isolated_profile_name()
         ares_home = Path(_INITIAL_ARES_HOME).expanduser()
-        try:
-            from ares_cli.profiles import list_profiles
-            infos = list_profiles()
-            # When the isolated profile is literally named "default", upstream
-            # can surface the base-home row first. Only trust a row whose path
-            # resolves to the same directory as the isolated startup home.
-            for p in infos:
-                try:
-                    same_home = Path(p.path).expanduser().resolve() == ares_home.resolve()
-                except OSError:
-                    same_home = False
-                if p.name == active and same_home:
-                    enabled_count, total_count = _get_profile_skills_stats(p.path)
-                    return [{
-                        'name': p.name,
-                        'path': str(p.path),
-                        'is_default': p.is_default,
-                        'is_active': True,  # Always true in isolated mode
-                        'gateway_running': p.gateway_running,
-                        'model': p.model,
-                        'provider': p.provider,
-                        'has_env': p.has_env,
-                        'visible': _profile_visible_from_meta(p.path),
-                        'skill_count': enabled_count,
-                        'enabled_skills': enabled_count,
-                        'total_skills': total_count,
-                    }]
-        except (ImportError, OSError, PermissionError):
-            pass
-        # Fallback: construct profile dict with actual active name and ares_home path
         enabled_count, total_count = _get_profile_skills_stats(ares_home)
         return [{
             'name': active,
@@ -2001,41 +1936,7 @@ def list_profiles_api() -> list:
             rows = cached[0]
         else:
             rows = _build_profile_rows_fast()
-            if rows is not None:
-                _LIST_PROFILES_CACHE = (rows, now)
-
-    if rows is None:
-        # Fallback: cheap helpers unavailable — use the original (slow) path,
-        # or the default-only dict if ares_cli isn't importable at all.
-        logger.debug(
-            "list_profiles_api: fast path unavailable, falling back to "
-            "upstream list_profiles() (slower)"
-        )
-        try:
-            from ares_cli.profiles import list_profiles
-            infos = list_profiles()
-        except ImportError:
-            return [_default_profile_dict()]
-
-        active = get_active_profile_name()
-        result = []
-        for p in infos:
-            enabled_count, total_count = _get_profile_skills_stats(p.path)
-            result.append({
-                'name': p.name,
-                'path': str(p.path),
-                'is_default': p.is_default,
-                'is_active': p.name == active,
-                'gateway_running': p.gateway_running,
-                'model': p.model,
-                'provider': p.provider,
-                'has_env': p.has_env,
-                'visible': _profile_visible_from_meta(p.path),
-                'skill_count': enabled_count,
-                'enabled_skills': enabled_count,
-                'total_skills': total_count,
-            })
-        return result
+            _LIST_PROFILES_CACHE = (rows, now)
 
     active = get_active_profile_name()
     return [{**p, 'is_active': p['name'] == active} for p in rows]
@@ -2057,7 +1958,7 @@ def _profile_visible_from_meta(profile_path: Path) -> bool:
 
 
 def _default_profile_dict() -> dict:
-    """Fallback profile dict when ares_cli is not importable."""
+    """Return the base profile projection."""
     enabled_count, compatible_count = _get_profile_skills_stats(_DEFAULT_ARES_HOME)
     return {
         'name': 'default',
@@ -2076,7 +1977,7 @@ def _default_profile_dict() -> dict:
 
 
 def _validate_profile_name(name: str):
-    """Validate profile name format (matches ares_cli.profiles upstream)."""
+    """Validate the ARES profile identifier format."""
     if name == 'default':
         raise ValueError("Cannot create a profile named 'default' -- it is the built-in profile.")
     # Use fullmatch (not match) so a trailing newline can't sneak past the $ anchor
@@ -2107,7 +2008,7 @@ def _resolve_named_profile_home(name: str) -> Path:
 
 def _create_profile_fallback(name: str, clone_from: str = None,
                               clone_config: bool = False) -> Path:
-    """Create a profile directory without ares_cli (Docker/standalone fallback)."""
+    """Create an ARES resource profile and its private directory structure."""
     profile_dir = _DEFAULT_ARES_HOME / 'profiles' / name
     if profile_dir.exists():
         raise FileExistsError(f"Profile '{name}' already exists.")
@@ -2425,22 +2326,9 @@ def create_profile_api(name: str, clone_from: str = None,
     default_model, model_provider = _split_webui_provider_model_value(default_model, model_provider)
     _validate_profile_model_selection(default_model, model_provider)
 
-    try:
-        from ares_cli.profiles import create_profile
-        create_profile(
-            name,
-            clone_from=clone_from,
-            clone_config=clone_config,
-            clone_all=False,
-            no_alias=True,
-        )
-    except ImportError:
-        _create_profile_fallback(name, clone_from, clone_config)
+    _create_profile_fallback(name, clone_from, clone_config)
 
-    # Resolve the profile directory from the profile list when possible.
-    # ares_cli and the webui runtime do not always agree on the exact root,
-    # so we prefer the path returned by list_profiles_api() and fall back to the
-    # standard profile location only if the profile cannot be found there yet.
+    # Resolve the profile directory from the canonical ARES profile root.
     profile_path = _DEFAULT_ARES_HOME / 'profiles' / name
     for p in list_profiles_api():
         if p['name'] == name:
@@ -2451,27 +2339,6 @@ def create_profile_api(name: str, clone_from: str = None,
             break
 
     profile_path.mkdir(parents=True, exist_ok=True)
-
-    # Seed bundled skills for non-cloned profiles (#2305).
-    # Cloned profiles should preserve the clone-source behaviour and must not
-    # receive a second bundled-skill overlay.
-    if clone_from is None:
-        try:
-            from ares_cli.profiles import seed_profile_skills
-            seed_profile_skills(profile_path, quiet=True)
-        except ImportError:
-            logger.debug(
-                'seed_profile_skills unavailable — bundled skills not seeded '
-                'for profile %s (ares_cli not in path)',
-                name,
-            )
-        except Exception:
-            logger.warning(
-                'Bundled skills could not be seeded for profile %s; '
-                'profile created successfully anyway',
-                name,
-                exc_info=True,
-            )
 
     _write_endpoint_to_config(profile_path, base_url=base_url)
     if api_key:
@@ -2486,16 +2353,12 @@ def create_profile_api(name: str, clone_from: str = None,
         model_provider=model_provider,
     )
 
-    # Invalidate cached root-profile-name lookup; create_profile may have added
-    # a new profile that flips is_default semantics on the agent side (#1612).
+    # Invalidate profile projections after the filesystem mutation.
     _SKILLS_STATS_CACHE.clear()
     _invalidate_list_profiles_cache()
     _invalidate_root_profile_cache()
 
     # Find and return the newly created profile info.
-    # When ares_cli is not importable, list_profiles_api() also falls back
-    # to the stub default-only list and won't find the new profile by name.
-    # In that case, return a complete profile dict directly.
     for p in list_profiles_api():
         if p['name'] == name:
             return p
@@ -2531,21 +2394,15 @@ def delete_profile_api(name: str) -> dict:
             switch_profile('default')
         except RuntimeError:
             raise RuntimeError(
-                f"Cannot delete active profile '{name}' while an agent is running. "
+                f"Cannot delete active profile '{name}' while a runtime is active. "
                 "Cancel or wait for it to finish."
-            )
+            ) from None
 
-    try:
-        from ares_cli.profiles import delete_profile
-        delete_profile(name, yes=True)
-    except ImportError:
-        # Manual fallback: just remove the directory
-        import shutil
-        profile_dir = _resolve_named_profile_home(name)
-        if profile_dir.is_dir():
-            shutil.rmtree(str(profile_dir))
-        else:
-            raise ValueError(f"Profile '{name}' does not exist.")
+    profile_dir = _resolve_named_profile_home(name)
+    if profile_dir.is_dir():
+        shutil.rmtree(str(profile_dir))
+    else:
+        raise ValueError(f"Profile '{name}' does not exist.")
 
     # Drop cached root-profile-name lookup — list_profiles_api() shape changed.
     _SKILLS_STATS_CACHE.clear()

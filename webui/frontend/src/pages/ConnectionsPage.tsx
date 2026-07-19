@@ -4,9 +4,7 @@ import {
   CheckCircle2,
   CircleOff,
   Cpu,
-  LoaderCircle,
   Network,
-  PlugZap,
   RefreshCw,
   Server,
   Wrench,
@@ -22,7 +20,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { aresApi } from "@/shared/ares-api";
 import { readableError } from "@/shared/api-client";
 import { useAres } from "@/shared/ares-context";
@@ -142,60 +139,16 @@ function BackendCard({ backend }: { backend: BackendInfo }) {
 
 // ── Connection Card (runtime / tool) ─────────────────────────────────
 
-function ConnectionCard({ connection }: { connection: RuntimeConnection }) {
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    ok: boolean;
-    message: string;
-  } | null>(null);
-  const [toggling, setToggling] = useState(false);
-  const [reconnect, setReconnect] = useState(connection.state === "connected");
-
+function ConnectionCard({
+  connection,
+  selecting,
+  onSetDefault,
+}: {
+  connection: RuntimeConnection;
+  selecting: boolean;
+  onSetDefault: (connection: RuntimeConnection) => Promise<void>;
+}) {
   const isConnected = connection.state === "connected";
-
-  const handleTest = useCallback(async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const result = await aresApi.channelTest(connection.id);
-      const ok = Boolean(result.ok ?? true);
-      const message =
-        (result.message as string | undefined) ??
-        (result.error as string | undefined) ??
-        (ok ? "Connection test succeeded." : "Connection test failed.");
-      setTestResult({ ok, message });
-    } catch (err) {
-      setTestResult({
-        ok: false,
-        message: readableError(err, "Test failed."),
-      });
-    } finally {
-      setTesting(false);
-    }
-  }, [connection.id]);
-
-  const handleReconnect = useCallback(
-    async (checked: boolean) => {
-      setToggling(true);
-      setReconnect(checked);
-      try {
-        if (checked) {
-          await aresApi.channelConnect(connection.id);
-        } else {
-          await aresApi.channelDisconnect(connection.id);
-        }
-      } catch (err) {
-        setReconnect(!checked);
-        setTestResult({
-          ok: false,
-          message: readableError(err, checked ? "Connect failed." : "Disconnect failed."),
-        });
-      } finally {
-        setToggling(false);
-      }
-    },
-    [connection.id],
-  );
 
   const Icon = connection.kind === "tool" ? Wrench : Cable;
 
@@ -263,42 +216,19 @@ function ConnectionCard({ connection }: { connection: RuntimeConnection }) {
             </div>
           </div>
         )}
-        {/* Test Connection */}
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-muted-foreground">Test</span>
-          <div className="flex items-center gap-2">
-            {testResult && (
-              <span
-                className={`text-xs ${testResult.ok ? "text-status-available" : "text-status-unavailable"}`}
-              >
-                {testResult.ok ? <CheckCircle2 className="mr-1 inline size-3" /> : <CircleOff className="mr-1 inline size-3" />}
-                {testResult.message}
-              </span>
-            )}
+        {connection.kind === "runtime" && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">Default runtime</span>
             <Button
-              variant="outline"
+              variant={connection.selected ? "secondary" : "outline"}
               size="xs"
-              disabled={testing}
-              onClick={() => void handleTest()}
+              disabled={connection.selected || !connection.available || selecting}
+              onClick={() => void onSetDefault(connection)}
             >
-              {testing ? (
-                <LoaderCircle className="size-3 animate-spin" />
-              ) : (
-                <PlugZap className="size-3" />
-              )}
-              {testing ? "Testing…" : "Test"}
+              {connection.selected ? "Selected" : selecting ? "Selecting…" : "Use by default"}
             </Button>
           </div>
-        </div>
-        {/* Reconnect Toggle */}
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-muted-foreground">Connected</span>
-          <ToggleSwitch
-            checked={reconnect}
-            onCheckedChange={(checked) => void handleReconnect(checked)}
-            disabled={toggling}
-          />
-        </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -307,20 +237,34 @@ function ConnectionCard({ connection }: { connection: RuntimeConnection }) {
 // ── Page ─────────────────────────────────────────────────────────────
 
 export function ConnectionsPage() {
-  const { snapshot } = useAres();
+  const { snapshot, refresh } = useAres();
   const [refreshing, setRefreshing] = useState(false);
+  const [selecting, setSelecting] = useState("");
+  const [selectionError, setSelectionError] = useState("");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // Just re-trigger the snapshot refresh
-      await aresApi.health();
-    } catch {
-      // ignore
+      await refresh();
+    } catch (error) {
+      setSelectionError(readableError(error, "Connections could not be refreshed."));
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [refresh]);
+
+  const handleSetDefault = useCallback(async (connection: RuntimeConnection) => {
+    setSelecting(connection.id);
+    setSelectionError("");
+    try {
+      await aresApi.setDefaultBackend(connection.id);
+      await refresh();
+    } catch (error) {
+      setSelectionError(readableError(error, "The default runtime could not be changed."));
+    } finally {
+      setSelecting("");
+    }
+  }, [refresh]);
 
   const backends = snapshot.backends;
   const connections = snapshot.connections;
@@ -360,6 +304,10 @@ export function ConnectionsPage() {
           </Button>
         }
       />
+
+      {selectionError && (
+        <p className="text-sm text-status-unavailable" role="alert">{selectionError}</p>
+      )}
 
       {/* ── Summary stats ─────────────────────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -462,6 +410,8 @@ export function ConnectionsPage() {
               <ConnectionCard
                 key={connection.id}
                 connection={connection}
+                selecting={selecting === connection.id}
+                onSetDefault={handleSetDefault}
               />
             ))}
           </div>

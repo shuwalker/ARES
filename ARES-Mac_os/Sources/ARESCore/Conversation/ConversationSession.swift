@@ -81,7 +81,7 @@ public class ConversationSession {
 
 /// Context information for conversation operations
 /// Provides all necessary context for tools and async operations
-public struct ConversationContext {
+public struct ConversationContext: Codable, Sendable {
     public let conversationId: UUID
     public let workingDirectory: String
     public init(

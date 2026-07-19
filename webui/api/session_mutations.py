@@ -735,7 +735,13 @@ def update_session_execution_lane(
 ):
     """Update workspace/model routing without coupling to an HTTP transport."""
 
-    from api.config import _evict_session_agent, _get_session_agent_lock, canonical_model_provider_lane
+    from api.config import (
+        _evict_session_agent,
+        _get_session_agent_lock,
+        _is_known_model_provider,
+        _resolve_provider_alias,
+        canonical_model_provider_lane,
+    )
     from api.session_access import get_or_materialize_session
     from api.terminal import close_terminal
     from api.workspace import resolve_trusted_workspace, set_last_workspace
@@ -763,6 +769,31 @@ def update_session_execution_lane(
             requested_provider = (
                 model_provider if provider_was_set else getattr(session, "model_provider", None)
             )
+            # Older clients send ``provider/model`` in the model field without
+            # the separate model_provider lane. Normalize a known first-party
+            # prefix deterministically instead of letting the process-global
+            # active provider decide whether the prefix is stripped. Preserve
+            # namespaced IDs for routing proxies/local endpoints, where the
+            # slash is part of the model identifier (for example OpenRouter or
+            # Hugging Face-style local model IDs).
+            raw_model = str(requested_model or "").strip()
+            inherited_provider = str(requested_provider or "").strip().lower()
+            namespace_preserving_provider = (
+                inherited_provider in {"openrouter", "custom", "nous", "opencode-zen", "opencode-go", "nvidia"}
+                or inherited_provider.startswith("custom:")
+            )
+            if (
+                model_was_set
+                and not provider_was_set
+                and "/" in raw_model
+                and "://" not in raw_model
+                and not namespace_preserving_provider
+            ):
+                provider_prefix, bare_model = raw_model.split("/", 1)
+                canonical_prefix = str(_resolve_provider_alias(provider_prefix) or "").strip().lower()
+                if bare_model and _is_known_model_provider(canonical_prefix):
+                    requested_model = bare_model
+                    requested_provider = canonical_prefix
             try:
                 resolved_model, resolved_provider = canonical_model_provider_lane(
                     requested_model or "",

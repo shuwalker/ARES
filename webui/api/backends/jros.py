@@ -17,16 +17,9 @@ class JROSBackend(AgenticBackend):
     supports_persona = True
 
     def is_available(self) -> bool:
-        try:
-            from api.jros_gateway_chat import jros_gateway_health
-            return jros_gateway_health(timeout=0.5) is not None
-        except Exception:
-            # Check local path fallback
-            try:
-                from api.jros_gateway_chat import local_jros_root
-                return local_jros_root() is not None
-            except Exception:
-                return False
+        from api.backend_selector import is_jros_available
+
+        return is_jros_available()
 
     def get_worker_target(self) -> tuple:
         """Return the JROS streaming worker target."""
@@ -93,7 +86,6 @@ class JROSBackend(AgenticBackend):
             "chat": True,
             "tools": self.supports_tools,
             "persona": self.supports_persona,
-            "hybrid": self.supports_hybrid,
             "voice": True,
             "embodiment": True,
             "robotics": True,
