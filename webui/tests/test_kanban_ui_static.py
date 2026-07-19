@@ -38,7 +38,11 @@ def test_kanban_has_native_sidebar_rail_and_mobile_tab():
 
 
 def test_kanban_has_sidebar_panel_and_main_board_mounts():
-    assert '<div class="panel-view" id="panelKanban">' in INDEX
+    # The panel div now carries data-capability="kanban" (the capability-gating
+    # attribute applied by panels.js's [data-capability] handling, same as
+    # panelCharacters), so match the tag with attribute tolerance instead of an
+    # exact string.
+    assert re.search(r'<div class="panel-view" id="panelKanban"[^>]*>', INDEX)
     assert 'id="kanbanSearch"' in INDEX
     assert 'id="kanbanAssigneeFilter"' in INDEX
     assert 'id="kanbanTenantFilter"' in INDEX
