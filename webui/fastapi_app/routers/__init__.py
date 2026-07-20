@@ -44,6 +44,7 @@ from .workspaces import router as workspaces_router
 from .wiki import router as wiki_router
 from .research import router as research_router
 from .sam_conversation import router as sam_conversation_router
+from .journal import router as journal_router
 from .readiness import router as readiness_router
 from .delegation import router as delegation_router
 from .product_state import router as product_state_router
@@ -93,6 +94,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(realtime_router)
     application.include_router(research_router)
     application.include_router(sam_conversation_router)
+    application.include_router(journal_router)
     application.include_router(readiness_router)
     application.include_router(delegation_router)
     application.include_router(product_state_router)
