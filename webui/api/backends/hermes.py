@@ -27,6 +27,13 @@ _HERMES_AVAILABLE_TS: float = 0.0
 _HERMES_CACHE_TTL = 10.0
 _HERMES_VERSION_CACHE: str | None = None
 
+
+def _available_message(version: str | None) -> str:
+    label = str(version or "Hermes Agent").strip()
+    if not label.lower().startswith("hermes agent"):
+        label = f"Hermes Agent {label}"
+    return f"{label} is available."
+
 # Regex to extract session_id from Hermes quiet-mode output
 _SESSION_ID_RE = re.compile(r"^session_id:\s*(\S+)", re.MULTILINE)
 _SESSION_ID_LEGACY_RE = re.compile(r"session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)", re.IGNORECASE)
@@ -70,7 +77,11 @@ def _probe_hermes() -> tuple[bool, str | None]:
             timeout=5,
         )
         if result.returncode == 0:
-            version = (result.stdout.strip() or "").split("\n")[-1].strip()
+            lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            version = next(
+                (line for line in lines if line.lower().startswith("hermes agent")),
+                lines[0] if lines else "unknown",
+            )
             _HERMES_AVAILABLE_CACHE = True
             _HERMES_VERSION_CACHE = version or "unknown"
             _HERMES_AVAILABLE_TS = now
@@ -128,7 +139,7 @@ class HermesBackend(AgenticBackend):
             return {
                 "status": "ok",
                 "latency_ms": 0.0,
-                "message": f"Hermes Agent {version or ''} is available.",
+                "message": _available_message(version),
                 "version": version,
             }
         return {

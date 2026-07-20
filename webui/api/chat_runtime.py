@@ -407,6 +407,7 @@ def start_session_turn(
                 "workspace": effective_workspace,
                 "model": effective_model,
                 "model_provider": effective_provider,
+                "worker": getattr(selected_backend, "name", "unknown"),
                 "created_at": started_at,
             },
         )

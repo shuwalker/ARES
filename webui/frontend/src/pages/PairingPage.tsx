@@ -220,11 +220,12 @@ export default function PairingPage() {
 
   async function handleApprove(id: string) {
     setApprovingId(id);
+    setError(null);
     try {
       await aresApi.pairingApprove(id);
       await loadEntries();
-    } catch {
-      // Ignore — list refresh will show current state
+    } catch (reason) {
+      setError(readableError(reason, "Failed to approve the pairing request."));
     }
     setApprovingId(null);
   }
@@ -232,26 +233,28 @@ export default function PairingPage() {
   async function handleRevoke() {
     if (!revokeTarget) return;
     setRevoking(true);
+    setError(null);
     try {
       await aresApi.pairingRevoke(revokeTarget.id);
       setEntries((prev) => prev.map((e) =>
         e.id === revokeTarget.id ? { ...e, status: "revoked" as const } : e,
       ));
       setRevokeTarget(null);
-    } catch {
-      // Ignore
+    } catch (reason) {
+      setError(readableError(reason, `Failed to revoke ${revokeTarget.name}.`));
     }
     setRevoking(false);
   }
 
   async function handleClear() {
     setClearing(true);
+    setError(null);
     try {
       await aresApi.pairingClear();
       setEntries((prev) => prev.filter((e) => e.status !== "pending"));
       setClearOpen(false);
-    } catch {
-      // Ignore
+    } catch (reason) {
+      setError(readableError(reason, "Failed to clear pending pairing requests."));
     }
     setClearing(false);
   }

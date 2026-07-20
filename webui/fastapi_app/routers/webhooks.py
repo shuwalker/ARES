@@ -3,7 +3,6 @@
 Personal SI local registry. Stored in the ARES state directory, scoped by profile.
 """
 
-import json
 from pathlib import Path
 from typing import Annotated
 
@@ -13,6 +12,7 @@ from pydantic import BaseModel, Field
 from ..dependencies import get_core_service
 from ..request_context import RequestIdentity, require_identity, require_mutation_identity
 from ..services import AresCoreService
+from ..profile_registry import mutate_json_list, read_json_list
 
 router = APIRouter(prefix="/api/gateway/webhooks", tags=["webhooks"])
 
@@ -24,22 +24,7 @@ def _webhooks_file(profile: str | None) -> Path:
 
 
 def _load_webhooks(profile: str | None) -> list[dict]:
-    path = _webhooks_file(profile)
-    if not path.exists():
-        return []
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return []
-    return data if isinstance(data, list) else []
-
-
-def _save_webhooks(profile: str | None, data: list[dict]) -> None:
-    path = _webhooks_file(profile)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    return read_json_list(_webhooks_file(profile))
 
 
 class WebhookEntry(BaseModel):
@@ -53,6 +38,14 @@ class WebhookEntry(BaseModel):
 
 class WebhookDelete(BaseModel):
     id: str
+
+
+class WebhookUpdate(BaseModel):
+    name: str | None = None
+    url: str | None = None
+    event: str | None = None
+    enabled: bool | None = None
+    secret: str | None = None
 
 
 @router.get("", response_model=list[WebhookEntry])
@@ -69,9 +62,7 @@ def create_webhook(
     identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
     service: Annotated[AresCoreService, Depends(get_core_service)],
 ):
-    data = _load_webhooks(identity.profile)
-    data.append(entry.model_dump())
-    _save_webhooks(identity.profile, data)
+    mutate_json_list(_webhooks_file(identity.profile), lambda data: data.append(entry.model_dump()))
     return entry
 
 
@@ -81,23 +72,23 @@ def delete_webhook(
     identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
     service: Annotated[AresCoreService, Depends(get_core_service)],
 ):
-    data = _load_webhooks(identity.profile)
-    data = [w for w in data if w.get("id") != payload.id]
-    _save_webhooks(identity.profile, data)
-    return data
+    def delete(data: list[dict]) -> list[dict]:
+        data[:] = [webhook for webhook in data if webhook.get("id") != payload.id]
+        return data
+    return mutate_json_list(_webhooks_file(identity.profile), delete)
 
 
 @router.patch("/{webhook_id}", response_model=WebhookEntry)
 def update_webhook(
     webhook_id: str,
-    update: WebhookEntry,
+    update: WebhookUpdate,
     identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
     service: Annotated[AresCoreService, Depends(get_core_service)],
 ):
-    data = _load_webhooks(identity.profile)
-    for w in data:
-        if w.get("id") == webhook_id:
-            w["enabled"] = update.enabled
-            _save_webhooks(identity.profile, data)
-            return WebhookEntry(**w)
-    raise __import__("fastapi").HTTPException(status_code=404, detail="Webhook not found")
+    def patch(data: list[dict]) -> WebhookEntry:
+        for webhook in data:
+            if webhook.get("id") == webhook_id:
+                webhook.update(update.model_dump(exclude_unset=True))
+                return WebhookEntry(**webhook)
+        raise __import__("fastapi").HTTPException(status_code=404, detail="Webhook not found")
+    return mutate_json_list(_webhooks_file(identity.profile), patch)

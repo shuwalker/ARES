@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, type Dispatch, type SetStateAction } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   Type,
   Palette,
 } from "lucide-react";
+import { useProductState } from "@/shared/use-product-state";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -38,8 +39,6 @@ interface CanvasItem {
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
-
-const STORAGE_KEY = "ares-canvas-items";
 
 const STICKY_COLORS: Record<string, { bg: string; border: string; header: string }> = {
   yellow: {
@@ -95,65 +94,6 @@ const CARD_COLORS: Record<string, { bg: string; border: string }> = {
 
 const DEFAULT_STICKY_COLOR = "yellow";
 const DEFAULT_CARD_COLOR = "default";
-
-/* ------------------------------------------------------------------ */
-/*  Persistence helpers                                                */
-/* ------------------------------------------------------------------ */
-
-function loadItems(): CanvasItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as CanvasItem[];
-  } catch {
-    /* corrupted – start fresh */
-  }
-  return defaultItems();
-}
-
-function saveItems(items: CanvasItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-}
-
-function defaultItems(): CanvasItem[] {
-  return [
-    {
-      id: "welcome-1",
-      type: "sticky",
-      x: 60,
-      y: 40,
-      width: 220,
-      height: 180,
-      title: "💡 Welcome",
-      content: "This is your freeform canvas. Drag items around, double-click to edit, or use the toolbar to create new notes and cards.",
-      color: "yellow",
-      createdAt: Date.now(),
-    },
-    {
-      id: "card-1",
-      type: "card",
-      x: 340,
-      y: 60,
-      width: 280,
-      height: 160,
-      title: "🧠 Synthetic Person",
-      content: "Use this space to map out thoughts, plans, and relationships for your synthetic person.",
-      color: "default",
-      createdAt: Date.now(),
-    },
-    {
-      id: "sticky-2",
-      type: "sticky",
-      x: 680,
-      y: 40,
-      width: 200,
-      height: 150,
-      title: "📌 Quick Notes",
-      content: "Sticky notes auto-save to localStorage.",
-      color: "blue",
-      createdAt: Date.now(),
-    },
-  ];
-}
 
 let _idCounter = 0;
 function nextId(): string {
@@ -598,7 +538,13 @@ function ColorPickerPopover({
 /* ------------------------------------------------------------------ */
 
 export function CanvasPage() {
-  const [items, setItems] = useState<CanvasItem[]>(loadItems);
+  const [canvasState, setCanvasState, canvasStatus] = useProductState<{ items: CanvasItem[] }>("canvas", { items: [] });
+  const items = canvasState.items;
+  const setItems: Dispatch<SetStateAction<CanvasItem[]>> = useCallback((update) => {
+    setCanvasState((current) => ({
+      items: typeof update === "function" ? update(current.items) : update,
+    }));
+  }, [setCanvasState]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addType, setAddType] = useState<CanvasItemType | null>(null);
   const [newTitle, setNewTitle] = useState("");
@@ -608,22 +554,17 @@ export function CanvasPage() {
   const colorBtnRef = useRef<HTMLButtonElement>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  /* persist on every change */
-  useEffect(() => {
-    saveItems(items);
-  }, [items]);
-
   /* ---- CRUD ---- */
 
   const updateItem = useCallback(
     (id: string, patch: Partial<CanvasItem>) =>
       setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it))),
-    [],
+    [setItems],
   );
 
   const deleteItem = useCallback(
     (id: string) => setItems((prev) => prev.filter((it) => it.id !== id)),
-    [],
+    [setItems],
   );
 
   const moveItem = useCallback(
@@ -631,7 +572,7 @@ export function CanvasPage() {
       setItems((prev) =>
         prev.map((it) => (it.id === id ? { ...it, x: it.x + dx, y: it.y + dy } : it)),
       ),
-    [],
+    [setItems],
   );
 
   const startAdd = useCallback((type: CanvasItemType) => {
@@ -663,17 +604,13 @@ export function CanvasPage() {
     setAddType(null);
     setNewTitle("");
     setNewContent("");
-  }, [addType, newTitle, newContent, newColor]);
+  }, [addType, newTitle, newContent, newColor, setItems]);
 
   const clearAll = useCallback(() => {
     if (window.confirm("Clear all items from the canvas? This cannot be undone.")) {
       setItems([]);
     }
-  }, []);
-
-  const resetToDefaults = useCallback(() => {
-    setItems(defaultItems());
-  }, []);
+  }, [setItems]);
 
   /* ---- render ---- */
 
@@ -694,15 +631,14 @@ export function CanvasPage() {
               <Square className="size-4" />
               <span className="hidden sm:inline">Card</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={resetToDefaults}>
-              Reset
-            </Button>
             <Button variant="ghost" size="sm" className="text-destructive" onClick={clearAll}>
               <Trash2 className="size-4" />
             </Button>
           </div>
         }
       />
+      {canvasStatus.error && <p className="px-4 text-sm text-destructive" role="alert">{canvasStatus.error}</p>}
+      {canvasStatus.loading && <p className="px-4 text-sm text-muted-foreground" role="status">Loading canvas…</p>}
 
       {/* ---- Add-item bar ---- */}
       {addType && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowUpDown,
   FolderKanban,
@@ -16,7 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { apiFetch } from "@/shared/api-client";
+import { apiFetch, readableError } from "@/shared/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,8 +42,6 @@ interface Project {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const STORAGE_KEY = "ares-projects";
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   active: "Active",
@@ -83,21 +81,26 @@ const SORT_OPTIONS: { field: SortField; label: string }[] = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-function uid(): string {
-  return Math.random().toString(36).slice(2, 10);
+function timestamp(value: unknown): string {
+  if (typeof value === "number") return new Date(value * 1000).toISOString();
+  const parsed = new Date(String(value || ""));
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
-function loadFromStorage(): Project[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveToStorage(projects: Project[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+function normalizeProject(value: Record<string, unknown>): Project {
+  return {
+    id: String(value.project_id ?? value.id ?? ""),
+    name: String(value.name ?? "Untitled project"),
+    description: String(value.description ?? ""),
+    status: (["active", "on_hold", "completed", "archived"].includes(String(value.status))
+      ? String(value.status)
+      : "active") as ProjectStatus,
+    domain: String(value.domain ?? "General"),
+    color: value.color ? String(value.color) : undefined,
+    targetDate: value.target_date ? String(value.target_date) : undefined,
+    createdAt: timestamp(value.created_at),
+    updatedAt: timestamp(value.updated_at ?? value.created_at),
+  };
 }
 
 function relativeTime(value?: string | null): string {
@@ -150,34 +153,26 @@ export function ProjectsPage() {
   const [newName, setNewName] = useState("");
   const [newDomain, setNewDomain] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
 
-  // Load from API, fall back to localStorage
-  useEffect(() => {
-    let active = true;
+  const loadProjects = useCallback(async () => {
     setLoading(true);
-    apiFetch<{ projects?: Project[] }>("/api/projects")
-      .then((data) => {
-        if (active) {
-          const list = data.projects ?? (Array.isArray(data) ? data : []);
-          setProjects(list);
-          saveToStorage(list);
-        }
-      })
-      .catch(() => {
-        if (active) setProjects(loadFromStorage());
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    setError("");
+    try {
+      const data = await apiFetch<{ projects?: Record<string, unknown>[] }>("/api/projects");
+      setProjects((data.projects ?? []).map(normalizeProject));
+    } catch (cause) {
+      setProjects([]);
+      setError(readableError(cause, "Projects could not be loaded."));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Persist to localStorage on changes (for offline / fallback)
   useEffect(() => {
-    if (!loading) saveToStorage(projects);
-  }, [projects, loading]);
+    void loadProjects();
+  }, [loadProjects]);
 
   const sorted = sortProjects(
     projects.filter((p) => p.status !== "archived"),
@@ -191,37 +186,61 @@ export function ProjectsPage() {
     completed: projects.filter((p) => p.status === "completed").length,
   };
 
-  function addProject() {
+  async function addProject() {
     if (!newName.trim()) return;
-    const now = new Date().toISOString();
-    const p: Project = {
-      id: uid(),
-      name: newName.trim(),
-      description: newDesc.trim(),
-      domain: newDomain.trim() || "General",
-      status: "active",
-      createdAt: now,
-      updatedAt: now,
-    };
-    setProjects((prev) => [...prev, p]);
-    setNewName("");
-    setNewDomain("");
-    setNewDesc("");
-    setAdding(false);
+    setBusy("create");
+    setError("");
+    try {
+      await apiFetch("/api/projects/create", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newName.trim(),
+          description: newDesc.trim(),
+          domain: newDomain.trim() || "General",
+        }),
+      });
+      setNewName("");
+      setNewDomain("");
+      setNewDesc("");
+      setAdding(false);
+      await loadProjects();
+    } catch (cause) {
+      setError(readableError(cause, "The project could not be created."));
+    } finally {
+      setBusy("");
+    }
   }
 
-  function cycleStatus(project: Project) {
+  async function cycleStatus(project: Project) {
     const order: ProjectStatus[] = ["active", "on_hold", "completed", "archived"];
     const next = order[(order.indexOf(project.status) + 1) % order.length];
-    setProjects((prev) =>
-      prev.map((p) =>
-        p.id === project.id ? { ...p, status: next, updatedAt: new Date().toISOString() } : p,
-      ),
-    );
+    setBusy(project.id);
+    try {
+      await apiFetch("/api/projects/update", {
+        method: "POST",
+        body: JSON.stringify({ project_id: project.id, status: next }),
+      });
+      await loadProjects();
+    } catch (cause) {
+      setError(readableError(cause, "Project status could not be changed."));
+    } finally {
+      setBusy("");
+    }
   }
 
-  function deleteProject(id: string) {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+  async function deleteProject(id: string) {
+    setBusy(id);
+    try {
+      await apiFetch("/api/projects/delete", {
+        method: "POST",
+        body: JSON.stringify({ project_id: id }),
+      });
+      await loadProjects();
+    } catch (cause) {
+      setError(readableError(cause, "The project could not be deleted."));
+    } finally {
+      setBusy("");
+    }
   }
 
   const sortLabel = SORT_OPTIONS.find((o) => o.field === sortField)?.label ?? "Name";
@@ -238,6 +257,7 @@ export function ProjectsPage() {
           </Button>
         }
       />
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
       {/* Summary counts */}
       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
@@ -307,7 +327,7 @@ export function ProjectsPage() {
               className="space-y-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                addProject();
+                void addProject();
               }}
             >
               <div className="grid gap-2 sm:grid-cols-2">
@@ -331,8 +351,8 @@ export function ProjectsPage() {
                 placeholder="Description…"
               />
               <div className="flex items-center gap-2">
-                <Button type="submit" size="sm" disabled={!newName.trim()}>
-                  Add
+                <Button type="submit" size="sm" disabled={!newName.trim() || busy === "create"}>
+                  {busy === "create" ? "Adding…" : "Add"}
                 </Button>
                 <Button
                   type="button"
@@ -377,7 +397,8 @@ export function ProjectsPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => cycleStatus(project)}
+                        onClick={() => void cycleStatus(project)}
+                        disabled={busy === project.id}
                         className="transition-colors hover:text-foreground"
                         aria-label={`Status: ${STATUS_LABELS[project.status]}. Click to advance.`}
                       >
@@ -403,7 +424,8 @@ export function ProjectsPage() {
                     variant="ghost"
                     size="icon-sm"
                     className="shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteProject(project.id)}
+                    onClick={() => void deleteProject(project.id)}
+                    disabled={busy === project.id}
                     aria-label="Delete project"
                   >
                     ×

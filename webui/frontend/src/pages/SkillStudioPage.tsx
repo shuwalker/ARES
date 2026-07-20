@@ -127,6 +127,17 @@ export default function SkillStudioPage() {
     setContent(buildSkillYaml("my-new-skill", "productivity", "A brief description of what this skill does.", "When the user asks about X", "Step-by-step instructions for the AI to follow:\n\n1. First, do this.\n2. Then, do that.\n3. Finally, present the result.\n\nPitfalls:\n- Watch out for edge case Y.\n- Don't forget to handle Z."));
   }, []);
 
+  const copyContent = useCallback(async () => {
+    setError(null);
+    setSuccess(null);
+    try {
+      await navigator.clipboard.writeText(content);
+      setSuccess("Skill content copied to the clipboard.");
+    } catch (err) {
+      setError(readableError(err, "Clipboard access was denied. Select the skill content and copy it manually."));
+    }
+  }, [content]);
+
   // ---- Render ----
 
   if (loading) {
@@ -276,9 +287,7 @@ export default function SkillStudioPage() {
               <Button
                 variant="outline"
                 size="xs"
-                onClick={() => {
-                  navigator.clipboard.writeText(content).catch(() => undefined);
-                }}
+                onClick={() => void copyContent()}
                 disabled={!content}
               >
                 Copy

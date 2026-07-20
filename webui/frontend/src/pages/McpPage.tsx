@@ -6,7 +6,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  RotateCcw,
   Server,
   Trash2,
   X,
@@ -27,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -124,36 +124,45 @@ function EnvRow({
 
 interface ServerFormState {
   name: string;
+  transport: "stdio" | "http";
   command: string;
+  url: string;
   args: string;
-  envPairs: [string, string][];
+  configPairs: [string, string][];
+  enabled: boolean;
 }
 
 function emptyFormState(): ServerFormState {
-  return { name: "", command: "", args: "", envPairs: [] };
+  return { name: "", transport: "stdio", command: "", url: "", args: "", configPairs: [], enabled: true };
 }
 
 function serverToForm(server: McpServerEntry): ServerFormState {
   return {
     name: server.name ?? "",
+    transport: server.transport === "http" ? "http" : "stdio",
     command: server.command ?? "",
+    url: server.url ?? "",
     args: Array.isArray(server.args) ? server.args.join(" ") : "",
-    envPairs: server.env ? Object.entries(server.env) : [],
+    configPairs: server.transport === "http"
+      ? Object.entries(server.headers ?? {})
+      : Object.entries(server.env ?? {}),
+    enabled: server.enabled !== false,
   };
 }
 
 function formToPayload(form: ServerFormState): Record<string, unknown> {
   const args = form.args.trim() ? form.args.trim().split(/\s+/) : [];
-  const env: Record<string, string> = {};
-  for (const [k, v] of form.envPairs) {
-    if (k.trim()) env[k.trim()] = v;
+  const pairs: Record<string, string> = {};
+  for (const [k, v] of form.configPairs) {
+    if (k.trim()) pairs[k.trim()] = v;
   }
+  const connection = form.transport === "http"
+    ? { url: form.url.trim(), headers: pairs }
+    : { command: form.command.trim(), args, env: pairs };
   return {
     name: form.name.trim(),
-    command: form.command.trim(),
-    args,
-    env,
-    enabled: true,
+    ...connection,
+    enabled: form.enabled,
   };
 }
 
@@ -187,28 +196,28 @@ function ServerFormDialog({
   }, [open, initial]);
 
   function addEnvRow() {
-    setForm((prev) => ({ ...prev, envPairs: [...prev.envPairs, ["", ""]] }));
+    setForm((prev) => ({ ...prev, configPairs: [...prev.configPairs, ["", ""]] }));
   }
 
   function updateEnvRow(index: number, field: "key" | "value", val: string) {
     setForm((prev) => {
-      const pairs = [...prev.envPairs];
+      const pairs = [...prev.configPairs];
       if (field === "key") pairs[index] = [val, pairs[index][1]];
       else pairs[index] = [pairs[index][0], val];
-      return { ...prev, envPairs: pairs };
+      return { ...prev, configPairs: pairs };
     });
   }
 
   function removeEnvRow(index: number) {
     setForm((prev) => ({
       ...prev,
-      envPairs: prev.envPairs.filter((_, i) => i !== index),
+      configPairs: prev.configPairs.filter((_, i) => i !== index),
     }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim() || !form.command.trim()) return;
+    if (!form.name.trim() || (form.transport === "stdio" ? !form.command.trim() : !form.url.trim())) return;
     setSaving(true);
     setError(null);
     try {
@@ -248,6 +257,13 @@ function ServerFormDialog({
             </div>
           )}
           <div className="grid gap-2">
+            <Label htmlFor="mcp-transport">Transport</Label>
+            <Select value={form.transport} onValueChange={(transport: "stdio" | "http") => setForm((prev) => ({ ...prev, transport, configPairs: [] }))}>
+              <SelectTrigger id="mcp-transport"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="stdio">Local command (stdio)</SelectItem><SelectItem value="http">Remote HTTP</SelectItem></SelectContent>
+            </Select>
+          </div>
+          {form.transport === "stdio" ? <><div className="grid gap-2">
             <Label htmlFor="mcp-command">Command</Label>
             <Input
               id="mcp-command"
@@ -267,19 +283,19 @@ function ServerFormDialog({
               className="font-mono text-sm"
             />
             <p className="text-[11px] text-muted-foreground">Separate arguments with spaces. Values containing spaces should be quoted.</p>
-          </div>
+          </div></> : <div className="grid gap-2"><Label htmlFor="mcp-url">Server URL</Label><Input id="mcp-url" type="url" placeholder="https://example.com/mcp" value={form.url} onChange={(e) => setForm((prev) => ({ ...prev, url: e.target.value }))} className="font-mono text-sm" /></div>}
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <Label>Environment Variables</Label>
+              <Label>{form.transport === "http" ? "HTTP Headers" : "Environment Variables"}</Label>
               <Button type="button" variant="outline" size="sm" onClick={addEnvRow}>
                 <Plus className="mr-1 size-3" /> Add
               </Button>
             </div>
-            {form.envPairs.length === 0 && (
-              <p className="text-xs text-muted-foreground">No environment variables configured.</p>
+            {form.configPairs.length === 0 && (
+              <p className="text-xs text-muted-foreground">No {form.transport === "http" ? "headers" : "environment variables"} configured.</p>
             )}
             <div className="grid gap-2">
-              {form.envPairs.map(([k, v], i) => (
+              {form.configPairs.map(([k, v], i) => (
                 <EnvRow
                   key={i}
                   k={k}
@@ -296,7 +312,7 @@ function ServerFormDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || !form.name.trim() || !form.command.trim()}>
+            <Button type="submit" disabled={saving || !form.name.trim() || (form.transport === "stdio" ? !form.command.trim() : !form.url.trim())}>
               {saving && <LoaderCircle className="mr-2 size-4 animate-spin" />}
               {isEdit ? "Save Changes" : "Add Server"}
             </Button>
@@ -364,19 +380,15 @@ function DeleteConfirmDialog({
 function McpServerCard({
   server,
   onToggle,
-  onRestart,
   onEdit,
   onDelete,
   toggling,
-  restarting,
 }: {
   server: McpServerEntry;
   onToggle: (name: string, enabled: boolean) => void;
-  onRestart: (name: string) => void;
   onEdit: (server: McpServerEntry) => void;
   onDelete: (server: McpServerEntry) => void;
   toggling: boolean;
-  restarting: boolean;
 }) {
   const enabled = server.enabled !== false;
   const statusVariant = statusBadgeVariant(server.status);
@@ -402,9 +414,9 @@ function McpServerCard({
               <span className={`mr-1.5 inline-block size-1.5 rounded-full ${dotClass}`} />
               {statusLabel(server.status)}
             </Badge>
-            {server.tools_count !== undefined && server.tools_count > 0 && (
+            {server.tool_count != null && server.tool_count > 0 && (
               <Badge variant="secondary" className="text-[10px]">
-                {server.tools_count} tool{server.tools_count !== 1 ? "s" : ""}
+                {server.tool_count} tool{server.tool_count !== 1 ? "s" : ""}
               </Badge>
             )}
             <DropdownMenu>
@@ -416,9 +428,6 @@ function McpServerCard({
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => onEdit(server)}>
                   <Pencil className="mr-2 size-3.5" /> Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onRestart(server.name)} disabled={restarting}>
-                  <RotateCcw className="mr-2 size-3.5" /> Restart
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(server)}>
@@ -432,9 +441,9 @@ function McpServerCard({
       <CardContent className="grid gap-3 pt-0">
         <div className="grid gap-2 text-sm">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-muted-foreground">Command</span>
+            <span className="text-muted-foreground">{server.transport === "http" ? "URL" : "Command"}</span>
             <code className="rounded bg-muted px-2 py-0.5 font-mono text-xs truncate max-w-[70%]">
-              {server.command || "—"}
+              {server.transport === "http" ? server.url || "—" : server.command || "—"}
             </code>
           </div>
           {server.args && server.args.length > 0 && (
@@ -467,8 +476,8 @@ export default function McpPage() {
   const [servers, setServers] = useState<McpServerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadRequired, setReloadRequired] = useState(false);
   const [togglingServer, setTogglingServer] = useState<string | null>(null);
-  const [restartingServer, setRestartingServer] = useState<string | null>(null);
 
   // Add dialog
   const [addOpen, setAddOpen] = useState(false);
@@ -483,7 +492,8 @@ export default function McpPage() {
     setError(null);
     try {
       const data = await aresApi.mcpList();
-      setServers(Array.isArray(data) ? data : []);
+      setServers(Array.isArray(data.servers) ? data.servers : []);
+      setReloadRequired(Boolean(data.reload_required));
     } catch (err) {
       setError(readableError(err, "Failed to load MCP servers."));
     } finally {
@@ -511,31 +521,19 @@ export default function McpPage() {
     }
   }
 
-  // ── Restart ─────────────────────────────────────────────────────
-  async function handleRestart(name: string) {
-    setRestartingServer(name);
-    try {
-      await aresApi.mcpRestart(name);
-      // Refresh full list after restart
-      await load();
-    } catch (err) {
-      setError(readableError(err, `Failed to restart ${name}.`));
-    } finally {
-      setRestartingServer(null);
-    }
-  }
-
   // ── Add server ──────────────────────────────────────────────────
   async function handleAddServer(payload: Record<string, unknown>) {
     const name = String(payload.name ?? "");
-    await aresApi.mcpUpdate(name, payload);
+    const { name: _name, ...config } = payload;
+    await aresApi.mcpUpdate(name, config);
     await load();
   }
 
   // ── Edit server ─────────────────────────────────────────────────
   async function handleEditServer(payload: Record<string, unknown>) {
     const name = String(payload.name ?? "");
-    await aresApi.mcpUpdate(name, payload);
+    const { name: _name, ...config } = payload;
+    await aresApi.mcpUpdate(name, config);
     setEditServer(null);
     await load();
   }
@@ -578,6 +576,12 @@ export default function McpPage() {
         </div>
       )}
 
+      {reloadRequired && servers.length > 0 ? (
+        <p className="rounded-md border border-status-limited/30 bg-status-limited/10 px-4 py-3 text-sm text-status-limited">
+          MCP configuration changes apply when the ARES runtime reconnects. “Configured” means saved; “Active” means the runtime currently reports a live connection.
+        </p>
+      ) : null}
+
       {servers.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <CircleDot className="mb-4 size-10 text-muted-foreground/30" />
@@ -595,11 +599,9 @@ export default function McpPage() {
               key={server.name}
               server={server}
               onToggle={handleToggle}
-              onRestart={handleRestart}
               onEdit={(s) => setEditServer(s)}
               onDelete={(s) => setDeleteServer(s)}
               toggling={togglingServer === server.name}
-              restarting={restartingServer === server.name}
             />
           ))}
         </div>

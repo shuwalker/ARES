@@ -11,9 +11,10 @@ These endpoints power the Hatchery UI flow:
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..errors import CoreApiError
 from ..request_context import RequestIdentity, require_identity, require_mutation_identity
@@ -27,6 +28,48 @@ from api.backends.ollama_hatchery import (
 )
 
 router = APIRouter(prefix="/api/hatchery", tags=["hatchery"])
+
+
+class MoldRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
+    base_model: str = Field(min_length=1, max_length=256)
+    system_prompt: str = Field(default="", max_length=100_000)
+    temperature: float = Field(default=0.7, ge=0, le=2)
+    top_p: float = Field(default=0.9, ge=0, le=1)
+    num_ctx: int = Field(default=32768, ge=2048, le=131072)
+    thinking: bool = True
+
+    @field_validator("base_model")
+    @classmethod
+    def validate_base_model(cls, value: str) -> str:
+        import re
+
+        value = value.strip()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/:-]{0,255}", value):
+            raise ValueError("base_model contains unsupported characters")
+        return value
+
+
+class HatchRequest(MoldRequest):
+    pull_if_missing: bool = False
+
+
+class UpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
+    system_prompt: str | None = Field(default=None, max_length=100_000)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    thinking: bool | None = None
+
+
+class NameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 
 def _require_mutation(
@@ -60,7 +103,7 @@ def status(
 
 @router.post("/mold")
 def mold(
-    payload: dict[str, Any],
+    payload: MoldRequest,
     _identity: Annotated[RequestIdentity, Depends(require_identity)],
 ):
     """Validate and preview a SI configuration before hatching.
@@ -75,40 +118,23 @@ def mold(
       - thinking: bool (default true)
     """
     try:
-        return mold_si(
-            name=str(payload.get("name") or "").strip(),
-            base_model=str(payload.get("base_model") or "").strip(),
-            system_prompt=str(payload.get("system_prompt") or ""),
-            temperature=float(payload.get("temperature") or 0.7),
-            top_p=float(payload.get("top_p") or 0.9),
-            num_ctx=int(payload.get("num_ctx") or 32768),
-            thinking=bool(payload.get("thinking", True)),
-        )
+        return mold_si(**payload.model_dump())
     except ValueError as exc:
         raise CoreApiError(400, str(exc)) from exc
 
 
 @router.post("/hatch")
 def hatch(
-    payload: dict[str, Any],
+    payload: HatchRequest,
     _identity: Annotated[RequestIdentity, Depends(_require_mutation)],
 ):
     """Hatch a Synthetic Intelligence: create Ollama model + birth certificate.
 
     Payload: same as /mold, plus:
-      - pull_if_missing: bool (default true) — auto-pull the base model if not local
+      - pull_if_missing: bool (default false) — pull only after explicit user consent
     """
     try:
-        return hatch_si(
-            name=str(payload.get("name") or "").strip(),
-            base_model=str(payload.get("base_model") or "").strip(),
-            system_prompt=str(payload.get("system_prompt") or ""),
-            temperature=float(payload.get("temperature") or 0.7),
-            top_p=float(payload.get("top_p") or 0.9),
-            num_ctx=int(payload.get("num_ctx") or 32768),
-            thinking=bool(payload.get("thinking", True)),
-            pull_if_missing=bool(payload.get("pull_if_missing", True)),
-        )
+        return hatch_si(**payload.model_dump())
     except ValueError as exc:
         raise CoreApiError(400, str(exc)) from exc
     except RuntimeError as exc:
@@ -117,7 +143,7 @@ def hatch(
 
 @router.post("/update")
 def update(
-    payload: dict[str, Any],
+    payload: UpdateRequest,
     _identity: Annotated[RequestIdentity, Depends(_require_mutation)],
 ):
     """Update a hatched SI's personality or parameters. Re-creates the Ollama model.
@@ -129,17 +155,8 @@ def update(
       - top_p: new top_p (optional)
       - thinking: new thinking mode (optional)
     """
-    name = str(payload.get("name") or "").strip()
-    if not name:
-        raise CoreApiError(400, "name is required")
     try:
-        return update_si_personality(
-            name=name,
-            system_prompt=payload.get("system_prompt"),
-            temperature=payload.get("temperature"),
-            top_p=payload.get("top_p"),
-            thinking=payload.get("thinking"),
-        )
+        return update_si_personality(**payload.model_dump())
     except ValueError as exc:
         raise CoreApiError(400, str(exc)) from exc
     except RuntimeError as exc:
@@ -148,15 +165,12 @@ def update(
 
 @router.post("/delete")
 def delete(
-    payload: dict[str, Any],
+    payload: NameRequest,
     _identity: Annotated[RequestIdentity, Depends(_require_mutation)],
 ):
     """Delete a hatched SI: remove from Ollama, delete birth certificate, unregister."""
-    name = str(payload.get("name") or "").strip()
-    if not name:
-        raise CoreApiError(400, "name is required")
     try:
-        return delete_si(name)
+        return delete_si(payload.name)
     except Exception as exc:
         raise CoreApiError(500, f"Failed to delete SI: {exc}") from exc
 

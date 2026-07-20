@@ -22,9 +22,9 @@ def create_delegation(
     prompt = (payload.prompt or "").strip()
     backend = (payload.backend or "").strip()
     if not prompt:
-        raise CoreApiError("prompt is required", status_code=400)
+        raise CoreApiError(400, "prompt is required")
     if not backend:
-        raise CoreApiError("backend is required", status_code=400)
+        raise CoreApiError(400, "backend is required")
 
     from api.delegation_runner import delegate
 
@@ -49,7 +49,7 @@ def get_delegation(
     with profile_scope(identity.profile):
         task = get_task(task_id)
     if task is None:
-        raise CoreApiError("task not found", status_code=404)
+        raise CoreApiError(404, "task not found")
     return task
 
 

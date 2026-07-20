@@ -8,7 +8,6 @@ import {
   LoaderCircle,
   MessageCircle,
   Printer,
-  QrCode,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -60,28 +59,6 @@ function downloadBlob(blob: Blob, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
-}
-
-// ── QR Placeholder ───────────────────────────────────────────────────────────
-
-function QrPlaceholder({ url }: { url: string }) {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="flex size-28 items-center justify-center rounded-lg border border-dashed border-border bg-surface text-muted-foreground transition-colors hover:border-border2 hover:text-accent"
-            onClick={() => void navigator.clipboard.writeText(url).catch(() => {})}
-            aria-label="QR code placeholder — click to copy link"
-          >
-            <QrCode className="size-10" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>QR code coming soon — click to copy link</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
 }
 
 // ── Loading skeleton ─────────────────────────────────────────────────────────
@@ -271,7 +248,6 @@ export function SharePage() {
                   {share.messages.length} message{share.messages.length === 1 ? "" : "s"}
                 </p>
               </div>
-              <QrPlaceholder url={window.location.href} />
             </div>
 
             {/* ── Messages ─────────────────────────────────────────────────── */}

@@ -1,5 +1,7 @@
 """Canonical external-runtime router contracts."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from api.backend_selector import VALID_BACKENDS, normalize_backend
@@ -37,3 +39,40 @@ def test_runtime_selection_has_no_implicit_or_legacy_builtin_fallback():
 
     with pytest.raises(LookupError):
         get_default_router().select_worker("missing")
+
+
+def test_app_automation_requires_target_application(monkeypatch):
+    from api.backends import cli_backends
+
+    backend = cli_backends.AppAutomationBackend("Missing App", ["type_message"])
+    monkeypatch.setattr(cli_backends.shutil, "which", lambda _name: "/usr/bin/osascript")
+    monkeypatch.setattr(
+        cli_backends.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1),
+    )
+
+    assert backend.is_available() is False
+
+
+def test_hermes_probe_reports_hermes_version_line(monkeypatch):
+    from api.backends import hermes
+
+    monkeypatch.setattr(hermes, "_hermes_cli", lambda: "/tmp/hermes")
+    monkeypatch.setattr(
+        hermes.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="Hermes Agent v0.18.2\nPython: 3.11\nOpenAI SDK: 2.24.0\n",
+        ),
+    )
+    hermes._HERMES_AVAILABLE_CACHE = None
+    hermes._HERMES_VERSION_CACHE = None
+    hermes._HERMES_AVAILABLE_TS = 0.0
+
+    available, version = hermes._probe_hermes()
+
+    assert available is True
+    assert version == "Hermes Agent v0.18.2"
+    assert hermes._available_message(version) == "Hermes Agent v0.18.2 is available."

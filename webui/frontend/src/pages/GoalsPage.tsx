@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import {
   Circle,
   CircleCheck,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useProductState } from "@/shared/use-product-state";
 
 type GoalStatus = "not_started" | "in_progress" | "done";
 
@@ -27,8 +28,6 @@ interface Goal {
   createdAt: string;
   updatedAt: string;
 }
-
-const STORAGE_KEY = "ares-goals";
 
 const STATUS_LABELS: Record<GoalStatus, string> = {
   not_started: "Not Started",
@@ -50,32 +49,19 @@ function statusBadgeVariant(
   return "outline";
 }
 
-function loadGoals(): Goal[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveGoals(goals: Goal[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(goals));
-}
-
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
 export function GoalsPage() {
-  const [goals, setGoals] = useState<Goal[]>(loadGoals);
+  const [goalState, setGoalState, goalStatus] = useProductState<{ goals: Goal[] }>("goals", { goals: [] });
+  const goals = goalState.goals;
+  const setGoals: Dispatch<SetStateAction<Goal[]>> = useCallback((update) => {
+    setGoalState((current) => ({ goals: typeof update === "function" ? update(current.goals) : update }));
+  }, [setGoalState]);
   const [filter, setFilter] = useState<GoalStatus | "all">("all");
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-
-  useEffect(() => {
-    saveGoals(goals);
-  }, [goals]);
 
   const filtered = goals
     .filter((g) => filter === "all" || g.status === filter)
@@ -150,6 +136,8 @@ export function GoalsPage() {
           </Button>
         }
       />
+      {goalStatus.error && <p className="text-sm text-destructive" role="alert">{goalStatus.error}</p>}
+      {goalStatus.loading && <p className="text-sm text-muted-foreground" role="status">Loading goals…</p>}
 
       <Tabs
         value={filter}

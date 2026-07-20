@@ -120,6 +120,41 @@ def _set_password_raw(pw):
     _invalidate_password_hash_cache()
 
 
+def test_complete_local_profile_survives_a_fresh_settings_read():
+    response = _post_settings({
+        "owner_name": "Matthew",
+        "bot_name": "Nova",
+        "local_profile_voice": "disabled",
+        "local_profile_reachability": "private-network",
+        "local_profile_setup_mode": "advanced",
+        "local_profile_character": "curious",
+        "local_profile_autonomy": "observe",
+        "local_profile_life_areas": ["health", "work", "health"],
+        "context_store_enabled": True,
+        "show_cli_sessions": True,
+    })
+    assert response.status == 200
+
+    persisted, status = _get_settings()
+    assert status == 200
+    assert persisted["owner_name"] == "Matthew"
+    assert persisted["bot_name"] == "Nova"
+    assert persisted["local_profile_voice"] == "disabled"
+    assert persisted["local_profile_reachability"] == "private-network"
+    assert persisted["local_profile_setup_mode"] == "advanced"
+    assert persisted["local_profile_character"] == "curious"
+    assert persisted["local_profile_autonomy"] == "observe"
+    assert persisted["local_profile_life_areas"] == ["health", "work"]
+    assert persisted["context_store_enabled"] is True
+    assert persisted["show_cli_sessions"] is True
+
+
+def test_fresh_local_profile_does_not_import_external_history():
+    persisted, status = _get_settings()
+    assert status == 200
+    assert persisted["show_cli_sessions"] is False
+
+
 def _clear_password_raw():
     from api.config import save_settings
     from api.auth import _invalidate_password_hash_cache

@@ -112,6 +112,26 @@ def test_handle_email_all_get(mock_assistant):
     mock_assistant.scan_all.assert_called_once_with(limit=100)
 
 
+def test_handle_email_all_get_uses_bounded_default(mock_assistant):
+    mock_assistant.scan_all.return_value = []
+    handler = _MockHandler()
+
+    email_routes.handle_email_all_get(handler, SimpleNamespace(query=""))
+
+    assert handler.status == 200
+    mock_assistant.scan_all.assert_called_once_with(limit=50)
+
+
+def test_handle_email_all_get_reports_mail_unavailable(mock_assistant):
+    mock_assistant.scan_all.side_effect = TimeoutError("Mail did not respond")
+    handler = _MockHandler()
+
+    email_routes.handle_email_all_get(handler, SimpleNamespace(query=""))
+
+    assert handler.status == 503
+    assert handler.get_json()["error"] == "Mail notifications are currently unavailable"
+
+
 def test_handle_email_message_get(mock_assistant):
     msg = EmailMessage(id="42", subject="Hi", sender="alice@example.com", date_received="d", is_read=True, body_plain="content")
     mock_assistant.read_message.return_value = msg

@@ -164,6 +164,10 @@ class AgenticBackend(ABC):
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
         ...
 
+    def get_backend_name(self) -> str:
+        """Human-readable name for legacy inventory and error surfaces."""
+        return str(getattr(self, "display_label", "") or self.name)
+
     def health(self) -> Dict[str, Any]:
         return {"status": "ok" if self.is_available() else "error", "latency_ms": 0.0}
 

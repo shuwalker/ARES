@@ -287,9 +287,13 @@ def mold_si(
 
     # Build Modelfile content
     think_line = "" if thinking else "PARAMETER stop \"<|think_start|>\"\nPARAMETER stop \"<|think_end|>\""
+    # Keep user text inside the quoted SYSTEM block rather than allowing a
+    # triple quote to inject additional Modelfile instructions.
+    prompt = system_prompt or f"You are {name}, a helpful Synthetic Intelligence."
+    safe_system_prompt = prompt.replace('"""', '\\\"\\\"\\\"')
     modelfile = MODelfILE_TEMPLATE.format(
         base_model=base_model,
-        system_prompt=system_prompt or f"You are {name}, a helpful Synthetic Intelligence.",
+        system_prompt=safe_system_prompt,
         temperature=temperature,
         top_p=top_p,
         num_ctx=num_ctx,
@@ -299,7 +303,7 @@ def mold_si(
     return {
         "name": name,
         "base_model": base_model,
-        "system_prompt": system_prompt or f"You are {name}, a helpful Synthetic Intelligence.",
+        "system_prompt": prompt,
         "temperature": temperature,
         "top_p": top_p,
         "num_ctx": num_ctx,

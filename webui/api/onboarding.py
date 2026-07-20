@@ -1134,4 +1134,15 @@ def complete_onboarding() -> dict:
     # This records that the ARES Local Profile is ready. Agent frameworks are
     # optional connections and must not gate identity or configuration setup.
     save_settings({"onboarding_completed": True})
-    return get_onboarding_status()
+    settings = load_settings() or {}
+    # Completion belongs to the native ARES profile flow. Returning the legacy
+    # Hermes bootstrap diagnostic here incorrectly reports missing run_agent
+    # even when an AdapterRegistry runtime is healthy; runtime truth is exposed
+    # by /api/readiness and /api/connections.
+    return {
+        "completed": True,
+        "profile": {
+            "owner_name": str(settings.get("owner_name") or ""),
+            "bot_name": str(settings.get("bot_name") or "Ares"),
+        },
+    }

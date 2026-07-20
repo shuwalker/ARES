@@ -128,6 +128,7 @@ export default function HatcheryPage() {
   const [molding, setMolding] = useState(false);
   const [moldResult, setMoldResult] = useState<MoldResult | null>(null);
   const [hatching, setHatching] = useState(false);
+  const [allowModelDownload, setAllowModelDownload] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
@@ -197,9 +198,10 @@ export default function HatcheryPage() {
     try {
       await apiFetch<HatchedSI>("/api/hatchery/hatch", {
         method: "POST",
-        body: JSON.stringify({ ...form, pull_if_missing: true }),
+        body: JSON.stringify({ ...form, pull_if_missing: allowModelDownload }),
       });
       setMoldResult(null);
+      setAllowModelDownload(false);
       setForm(DEFAULTS);
       await refreshStatus();
     } catch (reason) {
@@ -520,10 +522,34 @@ export default function HatcheryPage() {
                 {moldResult.modelfile}
               </pre>
             </details>
+            {moldResult.needs_pull && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                <div className="font-medium">This base model is not on this Mac.</div>
+                <div className="mt-1">
+                  Hatching will download approximately{
+                    modelOptions.find((model) => model.id === moldResult.base_model)?.size_gb
+                      ? ` ${modelOptions.find((model) => model.id === moldResult.base_model)?.size_gb} GB`
+                      : " several gigabytes"
+                  } through Ollama. The download can take a while and uses disk space.
+                </div>
+                <label className="mt-2 flex cursor-pointer items-center gap-2">
+                  <ToggleSwitch
+                    checked={allowModelDownload}
+                    onCheckedChange={setAllowModelDownload}
+                  />
+                  I approve downloading this model
+                </label>
+              </div>
+            )}
+            {!status?.ollama_running && (
+              <div className="text-xs text-destructive">
+                Ollama is offline. Start Ollama, then refresh Hatchery before hatching.
+              </div>
+            )}
             <div className="flex gap-2 pt-1">
               <Button
                 size="sm"
-                disabled={hatching}
+                disabled={hatching || !status?.ollama_running || (moldResult.needs_pull && !allowModelDownload)}
                 onClick={() => void handleHatch()}
               >
                 {hatching ? (
@@ -536,7 +562,10 @@ export default function HatcheryPage() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setMoldResult(null)}
+                onClick={() => {
+                  setMoldResult(null);
+                  setAllowModelDownload(false);
+                }}
               >
                 Cancel
               </Button>

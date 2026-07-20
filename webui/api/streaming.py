@@ -7250,6 +7250,8 @@ def _run_agent_streaming(
         try:
             from tools.mcp_tool import discover_mcp_tools
             discover_mcp_tools()
+            from api.native_mcp import register_native_mcp_tools
+            register_native_mcp_tools()
         except Exception:
             pass  # MCP not available or not configured — non-fatal
 

@@ -51,20 +51,6 @@ def toggle(
     return _call(toggle_server, identity, name, payload.enabled)
 
 
-@router.post("/{name}/test")
-def test_server(
-    name: str,
-    identity: Annotated[RequestIdentity, Depends(require_identity)],
-):
-    from api.mcp_config import list_servers
-
-    servers = _call(list_servers, identity)
-    for server in servers:
-        if server.get("name") == name:
-            return {"ok": True, "server": server}
-    raise __import__("fastapi").HTTPException(status_code=404, detail="MCP server not found")
-
-
 @router.delete("/{name}")
 def delete(name: str, identity: Annotated[RequestIdentity, Depends(require_mutation_identity)]):
     from api.mcp_config import delete_server

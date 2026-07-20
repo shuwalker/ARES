@@ -186,7 +186,6 @@ def backend(
         }
 
 
-@router.get("/api/ares/backend/set")
 @router.post("/api/ares/backend/set")
 def set_backend(
     payload: dict[str, Any],
@@ -200,6 +199,7 @@ def set_backend(
         raise CoreApiError(400, "A runtime connection is required.")
     try:
         backend_name = registry.execution_adapter(requested).adapter_id
+        health = registry.test_connection(backend_name, profile=identity.profile)
     except AdapterError as exc:
         raise CoreApiError(
             exc.status_code,
@@ -207,6 +207,9 @@ def set_backend(
             code=exc.code,
             context=exc.context,
         ) from exc
+    if not health.get("ok"):
+        message = str((health.get("health") or {}).get("message") or "The runtime is unavailable.")
+        raise CoreApiError(409, f"{backend_name} cannot be selected: {message}", code="runtime_unavailable")
     session_id = str(payload.get("session_id") or "").strip()
     with profile_scope(identity.profile):
         if session_id:
@@ -306,10 +309,19 @@ def legacy_adapters(_identity: Annotated[RequestIdentity, Depends(require_identi
 
     try:
         backends = get_router().backends
-        return {
-            name: {
+    except Exception as exc:
+        raise CoreApiError(400, f"Failed to list ARES adapters: {exc}") from exc
+
+    inventory = {}
+    for name, backend in backends.items():
+        try:
+            label = backend.get_backend_name()
+        except Exception:
+            label = str(getattr(backend, "display_label", "") or name)
+        try:
+            inventory[name] = {
                 "available": backend.is_available(),
-                "label": backend.get_backend_name(),
+                "label": label,
                 "health": backend.health(),
                 "identity_projection": backend.identity_projection(),
                 "capabilities": backend.capabilities(),
@@ -317,10 +329,28 @@ def legacy_adapters(_identity: Annotated[RequestIdentity, Depends(require_identi
                 "tools": backend.tools(),
                 "settings_schema": backend.settings_schema(),
             }
-            for name, backend in backends.items()
-        }
-    except Exception as exc:
-        raise CoreApiError(400, f"Failed to list ARES adapters: {exc}") from exc
+        except Exception as exc:
+            # Optional runtimes may be only partly configured. One broken probe
+            # must not make the entire Connections inventory unavailable.
+            inventory[name] = {
+                "available": False,
+                "label": label,
+                "health": {
+                    "status": "degraded",
+                    "latency_ms": 0.0,
+                    "message": str(exc),
+                },
+                "identity_projection": {
+                    "name": label,
+                    "description": "Optional runtime is not fully configured.",
+                    "avatar_state": "idle",
+                },
+                "capabilities": {},
+                "chat_session_support": {},
+                "tools": [],
+                "settings_schema": {"type": "object", "properties": {}},
+            }
+    return inventory
 
 
 @router.get("/api/ares/approvals/pending")

@@ -186,7 +186,7 @@ function ShareBar({ percent, color }: { percent: number; color?: string }) {
 }
 
 // ── Budget status card ───────────────────────────────────────────────────────
-function BudgetCard({ quota, loading }: { quota: ProviderQuotaInfo | null; loading: boolean }) {
+function BudgetCard({ quota, loading, error }: { quota: ProviderQuotaInfo | null; loading: boolean; error: string }) {
   if (loading) return <Card><CardContent className="pt-6"><Skeleton className="h-20 w-full" /></CardContent></Card>;
   if (!quota || !quota.ok || !quota.supported || !quota.quota) {
     return (
@@ -197,7 +197,7 @@ function BudgetCard({ quota, loading }: { quota: ProviderQuotaInfo | null; loadi
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            {quota ? quota.message : "No budget data available."}
+            {error || (quota ? quota.message : "No budget data available.")}
           </p>
         </CardContent>
       </Card>
@@ -408,6 +408,7 @@ export function UsageCostPage() {
   const [error, setError] = useState("");
   const [quota, setQuota] = useState<ProviderQuotaInfo | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
+  const [quotaError, setQuotaError] = useState("");
 
   useEffect(() => {
     setLoading(true);
@@ -421,6 +422,7 @@ export function UsageCostPage() {
 
   useEffect(() => {
     setQuotaLoading(true);
+    setQuotaError("");
     aresApi
       .providerQuota()
       .then((raw) => {
@@ -455,7 +457,10 @@ export function UsageCostPage() {
           message: String(raw.message ?? ""),
         });
       })
-      .catch(() => setQuota(null))
+      .catch((reason) => {
+        setQuota(null);
+        setQuotaError(readableError(reason, "Provider budget data could not be loaded."));
+      })
       .finally(() => setQuotaLoading(false));
   }, []);
 
@@ -516,7 +521,7 @@ export function UsageCostPage() {
 
       {/* ── Budget status + top provider ──────────────────────────────── */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <BudgetCard quota={quota} loading={quotaLoading} />
+        <BudgetCard quota={quota} loading={quotaLoading} error={quotaError} />
         {topProvider ? (
           <Card>
             <CardHeader className="flex-row items-center gap-2">

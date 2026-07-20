@@ -222,7 +222,7 @@ def _discover_python(agent_dir: Path) -> str:
     Priority:
       1. ARES_WEBUI_PYTHON env var
       2. Agent venv at <agent_dir>/venv/bin/python
-      3. Local .venv inside this repo
+      3. Local installer venv or .venv inside this repo
       4. System python3
     """
     if os.getenv("ARES_WEBUI_PYTHON"):
@@ -246,11 +246,13 @@ def _discover_python(agent_dir: Path) -> str:
         if venv_py_win.exists():
             return str(venv_py_win)
 
-    # Local .venv inside this repo
-    for subdir, binary in (("bin", "python"), ("Scripts", "python.exe")):
-        local_venv = REPO_ROOT / ".venv" / subdir / binary
-        if local_venv.exists():
-            return str(local_venv)
+    # Local environment inside this repo. The installer creates `venv`;
+    # developers commonly use `.venv`.
+    for venv_name in ("venv", ".venv"):
+        for subdir, binary in (("bin", "python"), ("Scripts", "python.exe")):
+            local_venv = REPO_ROOT / venv_name / subdir / binary
+            if local_venv.exists():
+                return str(local_venv)
 
     # Fall back to system python3
     import shutil
@@ -844,6 +846,16 @@ def _ensure_workspace_dir(path: Path) -> bool:
 def resolve_default_workspace(raw: str | Path | None = None) -> Path:
     """Return the first usable workspace path, creating it when possible."""
     for candidate in _workspace_candidates(raw):
+        # A historical test-isolation bug persisted pytest's temporary
+        # workspace into real settings.json. Do not keep treating that leaked
+        # directory as user intent merely because the temp directory survives.
+        # Test processes explicitly publish ARES_WEBUI_TEST_STATE_DIR and are
+        # therefore unaffected.
+        if (
+            not os.getenv("ARES_WEBUI_TEST_STATE_DIR")
+            and "ares-webui-tests" in candidate.expanduser().parts
+        ):
+            continue
         if _ensure_workspace_dir(candidate):
             return candidate
     raise RuntimeError(
@@ -941,7 +953,8 @@ def print_startup_config() -> None:
         "  -------------------------------",
         f"  repo root   : {REPO_ROOT}",
         f"  ares dir  : {_AGENT_DIR if _AGENT_DIR else 'NOT FOUND'}  {ok if _AGENT_DIR else warn}",
-        f"  python      : {PYTHON_EXE}",
+        f"  server python: {sys.executable}",
+        f"  tool python  : {PYTHON_EXE}",
         f"  state dir   : {STATE_DIR}",
         f"  workspace   : {DEFAULT_WORKSPACE}",
         f"  host:port   : {HOST}:{PORT}",
@@ -8859,6 +8872,16 @@ def _get_session_agent_lock(session_id: str) -> threading.Lock:
 _SETTINGS_DEFAULTS = {
     "default_workspace": str(DEFAULT_WORKSPACE),
     "onboarding_completed": False,
+    # ARES Local Profile fields are server-authoritative. Browser storage is
+    # only a migration/offline cache and must not be the sole durable copy.
+    "owner_name": "",
+    "local_profile_voice": "system-default",
+    "local_profile_reachability": "this-device",
+    "local_profile_setup_mode": "quick",
+    "local_profile_character": "grounded",
+    "local_profile_autonomy": "confirm",
+    "local_profile_life_areas": [],
+    "context_store_enabled": False,
     "send_key": "enter",  # 'enter', 'ctrl+enter', or 'shift+enter'
     "show_token_usage": False,  # show input/output token badge below assistant messages
     "show_quota_chip": False,  # show ambient provider quota chip in composer footer (default off; wide desktop only when enabled, see style.css @media)
@@ -8870,7 +8893,9 @@ _SETTINGS_DEFAULTS = {
     "virtualize_transcript_optin": False,  # #4343 migration marker: True only once the user explicitly enables virtualize_transcript AFTER the default-off flip. A stored virtualize_transcript=True WITHOUT this marker is a stale pre-flip value and is reset to False on load (force-off-for-everyone migration).
     "show_tps": False,  # show tokens-per-second chip in assistant message headers
     "fade_text_effect": False,  # animate newly streamed words with a lightweight fade-in effect
-    "show_cli_sessions": True,  # merge CLI/TUI/messaging sessions from state.db into the sidebar by default (#3988); established installs are grandfathered OFF by the load_settings backfill
+    # External CLI/TUI history may contain private conversations. ARES requires
+    # an explicit Local Profile opt-in before merging it into the workspace.
+    "show_cli_sessions": False,
     "show_claude_code_sessions": True,  # allow filtering Claude Code rows without hiding other imported sources
     "show_cron_sessions": False,  # surface cron sessions in the sidebar (subordinate to show_cli_sessions)
     "show_webhook_sessions": False,  # surface webhook sessions in the sidebar (subordinate to show_cli_sessions)
@@ -9105,26 +9130,6 @@ def load_settings() -> dict:
         ):
             settings["default_message_mode"] = stored.get("busy_input_mode")
         settings.pop("busy_input_mode", None)
-        # Grandfather established installs OFF for show_cli_sessions (#3988).
-        # The default flipped True so NEW users see CLI/TUI/messaging
-        # sessions without hunting for the toggle — but an existing user
-        # who never opted in should not have their sidebar silently change.
-        # Treat the install as established (and pin the old False default)
-        # when show_cli_sessions is absent AND the file already carries
-        # real user state — either onboarding was completed, or some
-        # setting OTHER than a not-yet-completed onboarding flag has been
-        # persisted. Keying on "has saved user state" (not just
-        # onboarding_completed) also covers a CLI-configured user who
-        # tweaked a WebUI setting before running the wizard. A genuinely
-        # new / still-mid-onboarding file falls through to the True default.
-        _established_keys = [
-            k for k in stored
-            if k not in ("show_cli_sessions", "onboarding_completed")
-        ]
-        if "show_cli_sessions" not in stored and (
-            bool(stored.get("onboarding_completed")) or _established_keys
-        ):
-            settings["show_cli_sessions"] = False
         # Force-off-for-everyone migration for virtualize_transcript (#4343).
         # The feature shipped opt-OUT/default-on in #4325, then proved to
         # cause scroll-up flicker on long sessions (variable-height anchor
@@ -9164,6 +9169,11 @@ _SETTINGS_ENUM_VALUES = {
     "default_message_mode": {"queue", "interrupt", "steer"},
     "chat_activity_display_mode": {"compact_worklog", "transparent_stream", "hide_all_activity"},
     "structured_code_default_view": {"auto", "on", "off"},
+    "local_profile_voice": {"system-default", "disabled"},
+    "local_profile_reachability": {"this-device", "local-network", "private-network"},
+    "local_profile_setup_mode": {"quick", "advanced"},
+    "local_profile_character": {"grounded", "warm", "direct", "curious"},
+    "local_profile_autonomy": {"observe", "confirm", "delegated"},
 }
 _SETTINGS_INT_RANGES = {
     "pinned_sessions_limit": (1, 99),
@@ -9447,6 +9457,14 @@ def save_settings(settings: dict) -> dict:
                     seen.add(s)
                     cleaned.append(s)
                 v = cleaned
+            if k == "local_profile_life_areas":
+                if not isinstance(v, list):
+                    continue
+                allowed_life_areas = {"finance", "health", "work", "home", "projects"}
+                v = list(dict.fromkeys(
+                    area for area in v
+                    if isinstance(area, str) and area in allowed_life_areas
+                ))[:5]
             if k == "provider_cost_budget":
                 if v is None or v == "":
                     current[k] = None

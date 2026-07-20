@@ -283,14 +283,14 @@ class HermesAdapter(JournaledFrameworkAdapter):
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        from api.backends.hermes import _probe_hermes
+        from api.backends.hermes import _available_message, _probe_hermes
 
         available, version = _probe_hermes()
         if available:
             return AdapterHealth(
                 "connected",
                 True,
-                f"Hermes Agent {version or ''} is available.",
+                _available_message(version),
             )
         return AdapterHealth(
             "offline",
@@ -480,8 +480,12 @@ class GeminiAntigravityAdapter(JournaledFrameworkAdapter):
         del profile
         available = self.backend.is_available()
         if available:
-            return AdapterHealth("connected", True, "App Automation (osascript) available.")
-        return AdapterHealth("offline", False, "App Automation (osascript) not found.")
+            return AdapterHealth(
+                "available",
+                True,
+                "Antigravity IDE is installed. Each action requires explicit consent and macOS automation permission.",
+            )
+        return AdapterHealth("offline", False, "Antigravity IDE is not installed.")
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         return [ModelDescriptor("antigravity-default", "Antigravity Active Model", "google", self.adapter_id)]

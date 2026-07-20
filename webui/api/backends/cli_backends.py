@@ -676,7 +676,15 @@ def run_ollama_streaming(
     try:
         with requests.post(
             "http://127.0.0.1:11434/api/generate",
-            json={"model": model_name, "prompt": message, "stream": True, "options": {"temperature": 0.7}},
+            json={
+                "model": model_name,
+                "prompt": message,
+                "stream": True,
+                # Bound local generations so a malformed/reasoning-heavy model
+                # cannot hold the session forever. Future UI controls may lower
+                # this value, but the runtime keeps a defensive ceiling.
+                "options": {"temperature": 0.7, "num_predict": 2048},
+            },
             stream=True,
             timeout=120,
         ) as r:
@@ -716,7 +724,19 @@ class AppAutomationBackend(AgenticBackend):
 
     def is_available(self) -> bool:
         import shutil
-        return shutil.which("osascript") is not None
+        if shutil.which("osascript") is None:
+            return False
+        try:
+            result = subprocess.run(
+                ["/usr/bin/open", "-Ra", self.app_name],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                env=_minimal_host_environment(),
+            )
+            return result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
 
     def run_turn(self, message: str, session_id: str, **kwargs) -> dict:
         import subprocess

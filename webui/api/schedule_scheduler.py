@@ -49,8 +49,53 @@ def run_job(job: dict[str, Any]) -> tuple[bool, str, str, str | None]:
 
 
 def _deliver_result(job: dict[str, Any], content: str) -> str | None:
-    """Local delivery is persisted by ARES; channel delivery is adapter-owned."""
+    """Deliver a schedule's result to its destination.
+
+    Local delivery is persisted by ARES (the caller writes the output), so this
+    returns None (success) for local/origin destinations. Channel delivery is
+    dispatched to a configured delivery adapter. If the destination is a known
+    platform but no adapter is configured for it, an error string is returned so
+    the caller records the delivery failure honestly — ARES never claims a
+    channel delivery succeeded when no adapter actually sent it.
+    """
     delivery = str(job.get("deliver") or "local").strip().lower()
     if delivery in {"", "local", "origin"}:
         return None
-    return f"Delivery adapter is not configured for {delivery}."
+
+    if delivery not in _KNOWN_DELIVERY_PLATFORMS:
+        return f"Unknown delivery destination: {delivery}."
+
+    adapter = _resolve_delivery_adapter(delivery)
+    if adapter is None:
+        return (
+            f"Delivery adapter is not configured for {delivery}. "
+            f"Configure a {delivery} delivery connection to enable channel delivery."
+        )
+
+    target = str(job.get("deliver_target") or "").strip()
+    if not target:
+        return f"No delivery target configured for {delivery}."
+
+    try:
+        adapter(target=target, content=content, job=job)
+    except Exception as exc:  # pragma: no cover - adapter-specific failures
+        return f"Delivery to {delivery} failed: {type(exc).__name__}"
+    return None
+
+
+def _resolve_delivery_adapter(platform: str):
+    """Return a callable delivery adapter for a platform, or None if unconfigured.
+
+    Adapters are looked up from the optional `api.delivery_adapters` registry so
+    channel delivery stays adapter-owned and detected, never hardcoded. A missing
+    registry or missing platform adapter means "not configured" (deny/skip), not
+    a silent success.
+    """
+    try:
+        from api.delivery_adapters import get_delivery_adapter
+    except Exception:
+        return None
+    try:
+        return get_delivery_adapter(platform)
+    except Exception:
+        return None

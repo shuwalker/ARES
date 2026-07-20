@@ -187,6 +187,8 @@ def test_onboarding_complete_persists_flag():
     data, status = post("/api/onboarding/complete", {})
     assert status == 200
     assert data["completed"] is True
+    assert "system" not in data
+    assert "setup" not in data
 
     settings = json.loads(
         (_server_ares_home() / "settings.json").read_text(encoding="utf-8")

@@ -18,6 +18,7 @@ export function TerminalPage() {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
   const closeStreamRef = useRef<null | (() => void)>(null);
+  const activeSessionRef = useRef("");
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -105,8 +106,22 @@ export function TerminalPage() {
     return () => disposable.dispose();
   }, [connected, selectedSessionId]);
 
-  // ── Cleanup stream on unmount ───────────────────────────────────────
-  useEffect(() => () => closeStreamRef.current?.(), []);
+  // ── Cleanup stream and PTY on unmount ───────────────────────────────
+  useEffect(() => () => {
+    closeStreamRef.current?.();
+    if (activeSessionRef.current) void aresApi.closeTerminal(activeSessionRef.current);
+  }, []);
+
+  useEffect(() => {
+    const xterm = xtermRef.current;
+    if (!xterm || !connected) return;
+    const disposable = xterm.onResize(({ rows, cols }) => {
+      if (activeSessionRef.current) {
+        void aresApi.terminalResize(activeSessionRef.current, rows, cols).catch((reason) => setError(readableError(reason)));
+      }
+    });
+    return () => disposable.dispose();
+  }, [connected]);
 
   async function connect() {
     if (!selectedSessionId || !xtermRef.current) return;
@@ -116,6 +131,7 @@ export function TerminalPage() {
     xtermRef.current.focus();
     try {
       await aresApi.startTerminal(selectedSessionId);
+      activeSessionRef.current = selectedSessionId;
       closeStreamRef.current?.();
       closeStreamRef.current = subscribeToTerminalStream(selectedSessionId, {
         open: () => {
@@ -125,6 +141,7 @@ export function TerminalPage() {
         output: (text) => xtermRef.current?.write(text),
         closed: () => {
           setConnected(false);
+          activeSessionRef.current = "";
           closeStreamRef.current = null;
           xtermRef.current?.write("\r\n\x1b[90m[Terminal closed]\x1b[0m\r\n");
         },
@@ -144,11 +161,16 @@ export function TerminalPage() {
   }
 
   async function disconnect() {
-    if (selectedSessionId)
-      await aresApi.closeTerminal(selectedSessionId).catch(() => undefined);
-    closeStreamRef.current?.();
-    closeStreamRef.current = null;
-    setConnected(false);
+    setError("");
+    try {
+      if (activeSessionRef.current) await aresApi.closeTerminal(activeSessionRef.current);
+      closeStreamRef.current?.();
+      closeStreamRef.current = null;
+      activeSessionRef.current = "";
+      setConnected(false);
+    } catch (reason) {
+      setError(readableError(reason, "ARES could not close the terminal process."));
+    }
   }
 
   const disabled = snapshot.terminalRemoteBackend || !selectedSessionId;

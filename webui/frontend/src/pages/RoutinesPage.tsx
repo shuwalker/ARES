@@ -561,6 +561,7 @@ export default function RoutinesPage() {
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [groupMode, setGroupMode] = useState<GroupMode>("status");
   const [createOpen, setCreateOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<ScheduleEntry | null>(null);
@@ -619,10 +620,11 @@ export default function RoutinesPage() {
 
   async function handleRunNow(jobId: string) {
     setRunningId(jobId);
+    setActionError(null);
     try {
       await aresApi.scheduleRun(jobId);
-    } catch {
-      // Still refresh even if run request fails
+    } catch (reason) {
+      setActionError(readableError(reason, "Failed to run the schedule."));
     }
     setRunningId(null);
     setTimeout(() => void loadSchedules(), 1000);
@@ -630,6 +632,7 @@ export default function RoutinesPage() {
 
   async function handleToggle(job: ScheduleEntry) {
     setTogglingId(job.job_id);
+    setActionError(null);
     try {
       if (job.enabled) {
         await aresApi.schedulePause(job.job_id);
@@ -643,11 +646,11 @@ export default function RoutinesPage() {
             : s,
         ),
       );
-    } catch {
-      // Optimistic revert
+    } catch (reason) {
       setSchedules((prev) =>
         prev.map((s) => (s.job_id === job.job_id ? { ...s, enabled: job.enabled, status: job.status } : s)),
       );
+      setActionError(readableError(reason, `Failed to ${job.enabled ? "pause" : "resume"} the schedule.`));
     }
     setTogglingId(null);
   }
@@ -657,7 +660,7 @@ export default function RoutinesPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        title="Routines"
+        title="Schedules"
         description="Scheduled and automated tasks that run on your behalf."
         action={
           <div className="flex items-center gap-2">
@@ -678,6 +681,12 @@ export default function RoutinesPage() {
           </div>
         }
       />
+
+      {actionError ? (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+          {actionError}
+        </p>
+      ) : null}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">

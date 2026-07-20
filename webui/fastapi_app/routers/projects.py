@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 
 from ..errors import CoreApiError
 from ..request_context import RequestIdentity, profile_scope, require_identity, require_mutation_identity
-from ..schemas import ProjectCreate, ProjectDelete, ProjectRename
+from ..schemas import ProjectCreate, ProjectDelete, ProjectRename, ProjectUpdate
 
 
 router = APIRouter(prefix="/api", tags=["projects"])
@@ -68,8 +68,37 @@ def create_project(
             "color": _validate_color(payload.color),
             "profile": requested_profile or get_active_profile_name() or "default",
             "created_at": time.time(),
+            "updated_at": time.time(),
+            "description": payload.description.strip(),
+            "domain": payload.domain.strip() or "General",
+            "status": payload.status,
+            "target_date": payload.target_date,
         }
         rows.append(project)
+        save_projects(rows)
+    return {"ok": True, "project": project}
+
+
+@router.post("/projects/update")
+def update_project(
+    payload: ProjectUpdate,
+    identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
+):
+    from api.models import save_projects
+
+    with profile_scope(identity.profile):
+        rows, project = _owned_project(payload.project_id.strip())
+        updates = payload.model_dump(exclude_unset=True, exclude={"project_id"})
+        if "name" in updates:
+            updates["name"] = str(updates["name"]).strip()
+        if "description" in updates:
+            updates["description"] = str(updates["description"]).strip()
+        if "domain" in updates:
+            updates["domain"] = str(updates["domain"]).strip() or "General"
+        if "color" in updates:
+            updates["color"] = _validate_color(updates["color"])
+        project.update(updates)
+        project["updated_at"] = time.time()
         save_projects(rows)
     return {"ok": True, "project": project}
 

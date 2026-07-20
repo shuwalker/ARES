@@ -69,6 +69,16 @@ def _last_workspace_file() -> Path:
     return _profile_state_dir() / 'last_workspace.txt'
 
 
+def _is_leaked_test_workspace(raw: str) -> bool:
+    """Reject historical pytest paths when running the real product."""
+    if os.getenv("ARES_WEBUI_TEST_STATE_DIR"):
+        return False
+    try:
+        return "ares-webui-tests" in Path(raw).expanduser().parts
+    except (TypeError, ValueError):
+        return False
+
+
 def _expanduser_path(path: str | Path) -> Path:
     """Return *path* after shell-style home expansion.
 
@@ -396,6 +406,8 @@ def get_profile_default_workspace() -> str:
     def _valid(raw: str) -> str | None:
         if not raw:
             return None
+        if _is_leaked_test_workspace(raw):
+            return None
         if remote_cwd:
             if _remote_terminal_workspace_candidate(raw) is not None:
                 return raw
@@ -420,6 +432,8 @@ def get_last_workspace() -> str:
 
     def valid_last_workspace(raw: str) -> str | None:
         if not raw:
+            return None
+        if _is_leaked_test_workspace(raw):
             return None
         if remote_cwd:
             # For remote/SSH profiles, last_workspace is target-side state. Do
@@ -453,6 +467,8 @@ def get_last_workspace() -> str:
 
 def set_last_workspace(path: str) -> None:
     try:
+        if _is_leaked_test_workspace(path):
+            return
         lw_file = _last_workspace_file()
         lw_file.parent.mkdir(parents=True, exist_ok=True)
         lw_file.write_text(str(path), encoding='utf-8')

@@ -33,13 +33,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { aresApi } from "@/shared/ares-api";
 import type { SecretEntry } from "@/shared/ares-api";
 import { readableError } from "@/shared/api-client";
@@ -47,8 +40,6 @@ import { readableError } from "@/shared/api-client";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type SecretScope = "all" | "global" | "profile" | "session";
 
 interface CreateSecretPayload {
   key: string;
@@ -90,16 +81,9 @@ function formatRelative(value: string | null | undefined): string {
   return date.toLocaleDateString();
 }
 
-function deriveScope(key: string): SecretScope {
-  const upper = key.toUpperCase();
-  if (upper.startsWith("ARES_") || upper === "PATH" || upper === "HOME" || upper === "LANG")
-    return "global";
-  if (upper.includes("_PROFILE_") || upper.startsWith("PROFILE_")) return "profile";
-  return "session";
-}
-
 function providerLabel(provider: string): string {
   const labels: Record<string, string> = {
+    os_keychain: "OS Keychain",
     local_encrypted: "Local Encrypted",
     aws_secrets_manager: "AWS Secrets Manager",
     gcp_secret_manager: "GCP Secret Manager",
@@ -156,26 +140,6 @@ function StatusBadge({ status }: { status: SecretEntry["status"] }) {
   );
 }
 
-function ScopeBadge({ scope }: { scope: SecretScope }) {
-  const SCOPE_COLORS: Record<string, string> = {
-    global: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/25",
-    profile: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/25",
-    session: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25",
-  };
-  const SCOPE_LABELS: Record<string, string> = {
-    global: "Global",
-    profile: "Profile",
-    session: "Session",
-  };
-  const colour = SCOPE_COLORS[scope] ?? "bg-muted text-muted-foreground border-border";
-  const label = SCOPE_LABELS[scope] ?? scope;
-  return (
-    <Badge variant="outline" className={`font-mono text-[10px] uppercase tracking-wider ${colour}`}>
-      {label}
-    </Badge>
-  );
-}
-
 function SecretCard({
   secret,
   onEdit,
@@ -188,6 +152,7 @@ function SecretCard({
   const [revealed, setRevealed] = useState(false);
   const [revealedValue, setRevealedValue] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
+  const [revealError, setRevealError] = useState("");
 
   async function handleReveal() {
     if (revealed) {
@@ -196,13 +161,13 @@ function SecretCard({
       return;
     }
     setRevealing(true);
+    setRevealError("");
     try {
       const full = await aresApi.secretGetByKey(secret.key);
       setRevealedValue(full.value ?? full.value_preview ?? "");
       setRevealed(true);
-    } catch {
-      // Fallback: show the preview/masked value
-      setRevealed(true);
+    } catch (reason) {
+      setRevealError(readableError(reason, "The OS Keychain could not reveal this secret."));
     } finally {
       setRevealing(false);
     }
@@ -211,8 +176,6 @@ function SecretCard({
   const displayValue = revealed
     ? (revealedValue ?? secret.value_preview ?? secret.value ?? "—")
     : maskValue(secret.value_preview ?? secret.value ?? "");
-
-  const scope = deriveScope(secret.key);
 
   return (
     <Card className="group transition-shadow hover:shadow-md">
@@ -226,7 +189,6 @@ function SecretCard({
               <CardTitle className="truncate text-base">{secret.name || secret.key}</CardTitle>
               <div className="flex items-center gap-1.5">
                 <p className="truncate text-xs text-muted-foreground font-mono">{secret.key}</p>
-                <ScopeBadge scope={scope} />
               </div>
             </div>
           </div>
@@ -287,6 +249,7 @@ function SecretCard({
           </div>
         </div>
       </CardContent>
+      {revealError ? <p className="px-6 pb-4 text-xs text-destructive" role="alert">{revealError}</p> : null}
     </Card>
   );
 }
@@ -535,7 +498,6 @@ export default function SecretsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [scopeFilter, setScopeFilter] = useState<SecretScope>("all");
   const [addOpen, setAddOpen] = useState(false);
   const [editingSecret, setEditingSecret] = useState<SecretEntry | null>(null);
   const [deletingSecret, setDeletingSecret] = useState<SecretEntry | null>(null);
@@ -559,10 +521,6 @@ export default function SecretsPage() {
 
   const filtered = useMemo(() => {
     let result = secrets;
-    // Scope filter
-    if (scopeFilter !== "all") {
-      result = result.filter((s) => deriveScope(s.key) === scopeFilter);
-    }
     // Search filter
     const needle = search.trim().toLowerCase();
     if (needle) {
@@ -575,22 +533,13 @@ export default function SecretsPage() {
       );
     }
     return result;
-  }, [secrets, search, scopeFilter]);
-
-  const scopeCounts = useMemo(() => {
-    const counts: Record<SecretScope, number> = { all: secrets.length, global: 0, profile: 0, session: 0 };
-    for (const s of secrets) {
-      const scope = deriveScope(s.key);
-      counts[scope] = (counts[scope] ?? 0) + 1;
-    }
-    return counts;
-  }, [secrets]);
+  }, [secrets, search]);
 
   return (
     <div className="page-stack">
       <PageHeader
         title="Secrets"
-        description="Manage API keys and credentials stored for your ARES instance."
+        description="Manage profile-scoped API keys and credentials stored in the operating system Keychain."
         action={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => void loadSecrets()} disabled={loading}>
@@ -615,17 +564,6 @@ export default function SecretsPage() {
             className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
-        <Select value={scopeFilter} onValueChange={(v) => setScopeFilter(v as SecretScope)}>
-          <SelectTrigger className="h-9 w-[140px]">
-            <SelectValue placeholder="Scope" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All ({scopeCounts.all})</SelectItem>
-            <SelectItem value="global">Global ({scopeCounts.global})</SelectItem>
-            <SelectItem value="profile">Profile ({scopeCounts.profile})</SelectItem>
-            <SelectItem value="session">Session ({scopeCounts.session})</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {error && (
@@ -645,14 +583,14 @@ export default function SecretsPage() {
               <KeyRound className="size-5 text-muted-foreground" />
             </div>
             <p className="mt-4 text-lg font-semibold">
-              {search || scopeFilter !== "all" ? "No matching secrets" : "No secrets yet"}
+              {search ? "No matching secrets" : "No secrets yet"}
             </p>
             <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
-              {search || scopeFilter !== "all"
+              {search
                 ? "Try a different search term or change the scope filter."
                 : "Add an API key or credential to get started."}
             </p>
-            {!search && scopeFilter === "all" && (
+            {!search && (
               <Button className="mt-4" size="sm" onClick={() => setAddOpen(true)}>
                 <Plus className="size-3.5" /> Add Secret
               </Button>

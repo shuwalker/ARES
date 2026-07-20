@@ -217,6 +217,7 @@ export default function WebhooksPage() {
 
   async function handleToggle(wh: WebhookEntry) {
     setTogglingId(wh.id);
+    setError(null);
     try {
       await aresApi.webhookUpdate(wh.id, { enabled: !wh.enabled });
       setWebhooks((prev) =>
@@ -224,11 +225,11 @@ export default function WebhooksPage() {
           w.id === wh.id ? { ...w, enabled: !w.enabled } : w,
         ),
       );
-    } catch {
-      // Optimistic revert
+    } catch (reason) {
       setWebhooks((prev) =>
         prev.map((w) => (w.id === wh.id ? { ...w, enabled: wh.enabled } : w)),
       );
+      setError(readableError(reason, `Failed to ${wh.enabled ? "disable" : "enable"} ${wh.name}.`));
     }
     setTogglingId(null);
   }
@@ -236,12 +237,13 @@ export default function WebhooksPage() {
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
+    setError(null);
     try {
       await aresApi.webhookDelete(deleteTarget.id);
       setWebhooks((prev) => prev.filter((w) => w.id !== deleteTarget.id));
       setDeleteTarget(null);
-    } catch {
-      // Ignore
+    } catch (reason) {
+      setError(readableError(reason, `Failed to delete ${deleteTarget.name}.`));
     }
     setDeleting(false);
   }

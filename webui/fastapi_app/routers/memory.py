@@ -78,6 +78,43 @@ def context_store_reindex(
         return store_status()
 
 
+@router.get("/context-store/search")
+def context_store_search(
+    identity: Annotated[RequestIdentity, Depends(require_identity)],
+    query: str = "",
+    top_k: int = 5,
+):
+    """Semantic search over the Context Store; returns ranked matching chunks."""
+    from api.config import get_config
+    from api.context_store import is_enabled, retrieve
+
+    query = (query or "").strip()
+    if not query:
+        raise CoreApiError(400, "query is required")
+    # Clamp explicitly: `top_k or 5` would turn an explicit 0 into the default.
+    top_k = 5 if top_k is None else max(1, min(int(top_k), 50))
+
+    with profile_scope(identity.profile):
+        config_data = get_config()
+        if not is_enabled(config_data):
+            raise CoreApiError(400, "Context Store is disabled. Enable it in Settings before searching.")
+        chunks = retrieve(query, top_k=top_k, config_data=config_data)
+        return {
+            "query": query,
+            "results": [
+                {
+                    "text": chunk.text,
+                    "source_key": chunk.source_key,
+                    "source_type": chunk.source_type,
+                    "path": chunk.path,
+                    "heading": chunk.heading,
+                    "distance": chunk.distance,
+                }
+                for chunk in chunks
+            ],
+        }
+
+
 @router.post("/write")
 def update_memory(
     payload: MemoryWrite,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import {
   AlertTriangle,
   CircleDot,
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { apiFetch } from "@/shared/api-client";
+import { useProductState } from "@/shared/use-product-state";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,8 +41,6 @@ interface LifeCase {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const STORAGE_KEY = "ares-cases";
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
   draft: "Draft",
@@ -105,19 +103,6 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function loadFromStorage(): LifeCase[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveToStorage(cases: LifeCase[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cases));
-}
-
 function relativeTime(value?: string | null): string {
   if (!value) return "—";
   const elapsed = Date.now() - new Date(value).getTime();
@@ -140,42 +125,19 @@ function relativeTime(value?: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function CasesPage() {
-  const [cases, setCases] = useState<LifeCase[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [caseState, setCaseState, caseStatus] = useProductState<{ cases: LifeCase[] }>("cases", { cases: [] });
+  const cases = caseState.cases;
+  const setCases: Dispatch<SetStateAction<LifeCase[]>> = useCallback((update) => {
+    setCaseState((current) => ({
+      cases: typeof update === "function" ? update(current.cases) : update,
+    }));
+  }, [setCaseState]);
   const [statusFilter, setStatusFilter] = useState<CaseStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState("");
   const [newPriority, setNewPriority] = useState<CasePriority>("medium");
-
-  // Load from API, fall back to localStorage
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    apiFetch<{ cases?: LifeCase[] }>("/api/cases")
-      .then((data) => {
-        if (active) {
-          const list = data.cases ?? (Array.isArray(data) ? data : []);
-          setCases(list);
-          saveToStorage(list);
-        }
-      })
-      .catch(() => {
-        if (active) setCases(loadFromStorage());
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // Persist to localStorage on changes
-  useEffect(() => {
-    if (!loading) saveToStorage(cases);
-  }, [cases, loading]);
 
   const filtered = cases
     .filter((c) => statusFilter === "all" || c.status === statusFilter)
@@ -357,7 +319,8 @@ export function CasesPage() {
         </Card>
       )}
 
-      {loading ? (
+      {caseStatus.error && <p className="text-sm text-destructive" role="alert">{caseStatus.error}</p>}
+      {caseStatus.loading ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <LoaderCircle className="mb-4 size-8 animate-spin text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">Loading cases…</p>

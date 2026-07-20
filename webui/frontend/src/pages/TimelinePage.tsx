@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import {
   Calendar,
   Flag,
-  LoaderCircle,
   Plus,
 } from "lucide-react";
 
@@ -11,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useProductState } from "@/shared/use-product-state";
 
 type EventType = "milestone" | "event" | "note";
 
@@ -23,26 +23,11 @@ interface TimelineEvent {
   createdAt: string;
 }
 
-const STORAGE_KEY = "ares-timeline";
-
 const TYPE_CONFIG: Record<EventType, { label: string; color: string }> = {
   milestone: { label: "Milestone", color: "text-yellow-500 bg-yellow-500/10 border-yellow-500/30" },
   event: { label: "Event", color: "text-blue-500 bg-blue-500/10 border-blue-500/30" },
   note: { label: "Note", color: "text-muted-foreground bg-muted border-border/50" },
 };
-
-function loadEvents(): TimelineEvent[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveEvents(events: TimelineEvent[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
-}
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -66,16 +51,18 @@ function relativeDate(dateStr: string): string {
 }
 
 export function TimelinePage() {
-  const [events, setEvents] = useState<TimelineEvent[]>(loadEvents);
+  const [timeline, setTimeline, timelineStatus] = useProductState<{ events: TimelineEvent[] }>("timeline", { events: [] });
+  const events = timeline.events;
+  const setEvents: Dispatch<SetStateAction<TimelineEvent[]>> = useCallback((update) => {
+    setTimeline((current) => ({
+      events: typeof update === "function" ? update(current.events) : update,
+    }));
+  }, [setTimeline]);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<EventType>("event");
   const [newDate, setNewDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [newDescription, setNewDescription] = useState("");
-
-  useEffect(() => {
-    saveEvents(events);
-  }, [events]);
 
   // Sort chronologically, newest first
   const sorted = [...events].sort(
@@ -137,6 +124,8 @@ export function TimelinePage() {
           </Button>
         }
       />
+      {timelineStatus.error && <p className="text-sm text-destructive" role="alert">{timelineStatus.error}</p>}
+      {timelineStatus.loading && <p className="text-sm text-muted-foreground" role="status">Loading timeline…</p>}
 
       {adding && (
         <Card>

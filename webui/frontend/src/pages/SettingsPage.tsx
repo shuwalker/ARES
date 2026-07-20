@@ -15,7 +15,7 @@ import { readableError } from "@/shared/api-client";
 
 export function SettingsPage() {
   const { profile, saveProfile } = useLocalProfile();
-  const { snapshot, saveAssistantName } = useAres();
+  const { snapshot } = useAres();
   const [draft, setDraft] = useState<LocalProfile>(profile);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -25,13 +25,12 @@ export function SettingsPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
-    saveProfile(draft);
     try {
-      if (snapshot.connection !== "unavailable") await saveAssistantName(draft.assistantName);
+      await saveProfile(draft);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1800);
     } catch (reason) {
-      setError(readableError(reason, "The profile was retained locally, but the backend setting could not be saved."));
+      setError(readableError(reason, "The profile was cached locally, but could not be persisted by ARES."));
     }
   }
 
@@ -83,7 +82,7 @@ export function SettingsPage() {
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Runtime independence</CardTitle>
-            <CardDescription>Connecting an external execution backend such as Ares CLI, Claude, or Gemini is optional. Each integration maps its capabilities into ARES contracts. The assistant name is synchronized with the selected backend when supported.</CardDescription>
+            <CardDescription>Connecting an external execution backend such as Ares CLI, Claude, or Gemini is optional. Each integration maps its capabilities into ARES contracts while your Local Profile remains owned by ARES.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-5">
             <div className="flex items-center justify-between gap-4">
@@ -96,6 +95,13 @@ export function SettingsPage() {
                 checked={draft.contextStoreEnabled ?? false} 
                 onCheckedChange={(checked) => setDraft({ ...draft, contextStoreEnabled: checked })}
               />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="grid gap-1">
+                <Label htmlFor="external-history" className="text-base font-semibold">Include external AI history</Label>
+                <p className="text-sm text-muted-foreground">Show conversations discovered from supported CLI tools. Disabled by default so a new profile stays private and empty.</p>
+              </div>
+              <ToggleSwitch id="external-history" checked={draft.includeExternalHistory ?? false} onCheckedChange={(checked) => setDraft({ ...draft, includeExternalHistory: checked })} />
             </div>
           </CardContent>
         </Card>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   AlertCircle,
   ArrowDownUp,
@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useProductState } from "@/shared/use-product-state";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,8 +67,6 @@ interface Issue {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-
-const STORAGE_KEY = "ares.issues";
 
 const STATUS_OPTIONS: { value: IssueStatus; label: string }[] = [
   { value: "open", label: "Open" },
@@ -123,20 +122,6 @@ function uid(): string {
   return `issue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function loadIssues(): Issue[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as Issue[];
-  } catch {
-    return [];
-  }
-}
-
-function saveIssues(issues: Issue[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(issues));
-}
-
 function formatDate(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -169,7 +154,13 @@ const EMPTY_FORM: IssueFormData = {
 };
 
 export default function IssuesPage() {
-  const [issues, setIssues] = useState<Issue[]>(loadIssues);
+  const [issueState, setIssueState, issueStatus] = useProductState<{ issues: Issue[] }>("issues", { issues: [] });
+  const issues = issueState.issues;
+  const setIssues: Dispatch<SetStateAction<Issue[]>> = useCallback((update) => {
+    setIssueState((current) => ({
+      issues: typeof update === "function" ? update(current.issues) : update,
+    }));
+  }, [setIssueState]);
   const [statusFilter, setStatusFilter] = useState<IssueStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<IssuePriority | "all">("all");
   const [search, setSearch] = useState("");
@@ -185,11 +176,6 @@ export default function IssuesPage() {
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<Issue | null>(null);
-
-  // ── Persist ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    saveIssues(issues);
-  }, [issues]);
 
   // ── Handlers ──────────────────────────────────────────────────────────
   const openCreate = useCallback(() => {
@@ -325,6 +311,8 @@ export default function IssuesPage() {
           </Button>
         }
       />
+      {issueStatus.error && <p className="text-sm text-destructive" role="alert">{issueStatus.error}</p>}
+      {issueStatus.loading && <p className="text-sm text-muted-foreground" role="status">Loading issues…</p>}
 
       {/* ── Filters bar ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3">

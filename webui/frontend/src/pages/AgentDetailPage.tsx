@@ -14,7 +14,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { aresApi } from "@/shared/ares-api";
 import { readableError } from "@/shared/api-client";
 import type { BackendInfo } from "@/shared/contracts";
@@ -86,7 +85,6 @@ export default function AgentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [togglingTool, setTogglingTool] = useState<string | null>(null);
 
   const decodedId = decodeURIComponent(backendId ?? "");
 
@@ -131,39 +129,6 @@ export default function AgentDetailPage() {
       await load();
     } finally {
       setRefreshing(false);
-    }
-  }, [load]);
-
-  // ── Toggle tool ──────────────────────────────────────────────────────
-
-  const handleToggleTool = useCallback(async (toolName: string, currentlyEnabled: boolean) => {
-    setTogglingTool(toolName);
-    // Optimistic update
-    setAdapter((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        tools: prev.tools.map((t) =>
-          t.name === toolName ? { ...t, enabled: !currentlyEnabled } : t,
-        ),
-      };
-    });
-    try {
-      // No direct API for tool toggle yet — refresh to get server truth
-      await load();
-    } catch {
-      // Revert on failure
-      setAdapter((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          tools: prev.tools.map((t) =>
-            t.name === toolName ? { ...t, enabled: currentlyEnabled } : t,
-          ),
-        };
-      });
-    } finally {
-      setTogglingTool(null);
     }
   }, [load]);
 
@@ -426,13 +391,12 @@ export default function AgentDetailPage() {
               </Badge>
             </div>
             <CardDescription>
-              Enable or disable tools for this backend.
+              Tools reported by this backend. Tool policy is configured per session or MCP server.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
             {adapter.tools.map((tool) => {
               const enabled = tool.enabled !== false;
-              const isToggling = togglingTool === tool.name;
               return (
                 <div
                   key={tool.name}
@@ -460,15 +424,6 @@ export default function AgentDetailPage() {
                       />
                       {enabled ? "Enabled" : "Disabled"}
                     </Badge>
-                    {isToggling ? (
-                      <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-                    ) : (
-                      <ToggleSwitch
-                        checked={enabled}
-                        onCheckedChange={() => void handleToggleTool(tool.name, enabled)}
-                        aria-label={enabled ? `Disable ${tool.name}` : `Enable ${tool.name}`}
-                      />
-                    )}
                   </div>
                 </div>
               );

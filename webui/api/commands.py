@@ -271,6 +271,8 @@ def _run_reload_mcp_command() -> str:
 
             shutdown_mcp_servers()
             new_tools = discover_mcp_tools()
+            from api.native_mcp import register_native_mcp_tools
+            new_tools = register_native_mcp_tools() or new_tools
 
             with _lock:
                 connected_servers = set(_servers.keys())

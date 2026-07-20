@@ -90,6 +90,14 @@ class AdapterRegistry:
             raise AdapterError(404, "Tool connection not found", code="connection_not_found")
         return adapter
 
+    def connection_adapter(self, adapter_id: str) -> BaseConnectionAdapter:
+        """Resolve a runtime or tool adapter without guessing its kind."""
+        normalized = self.normalize_id(adapter_id)
+        adapter = self._execution.get(normalized) or self._tools.get(normalized)
+        if adapter is None:
+            raise AdapterError(404, "Connection not found", code="connection_not_found")
+        return adapter
+
     def for_session(self, session: Any, *, profile: str | None) -> BaseLLMAdapter:
         with profile_scope(profile):
             from api.backend_selector import get_session_backend
@@ -159,4 +167,28 @@ class AdapterRegistry:
         return {
             "connection_id": adapter.adapter_id,
             "models": [model.as_dict() for model in models],
+        }
+
+    def test_connection(self, adapter_id: str, *, profile: str | None) -> dict[str, Any]:
+        """Run an adapter's bounded, read-only health probe."""
+        from api.profiles import profile_env_for_active_request_readonly
+
+        adapter = self.connection_adapter(adapter_id)
+        try:
+            with profile_scope(profile):
+                with profile_env_for_active_request_readonly("adapter health test"):
+                    health = adapter.check_health(profile=profile)
+                    capabilities = adapter.capabilities(profile=profile)
+        except Exception as exc:
+            raise AdapterError(
+                503,
+                f"{adapter.display_name} could not be tested right now.",
+                code="connection_test_unavailable",
+                context={"connection_id": adapter.adapter_id},
+            ) from exc
+        return {
+            "ok": health.available,
+            "connection_id": adapter.adapter_id,
+            "health": health.as_dict(),
+            "capabilities": capabilities,
         }

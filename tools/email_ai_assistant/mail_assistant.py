@@ -468,7 +468,10 @@ class MailAssistant:
         end tell
         '''
 
-        raw = self._run_applescript(script, timeout=180)
+        # UI inventory calls must be bounded. Mail.app can otherwise leave a
+        # request hanging for three minutes while permissions or account sync
+        # are unavailable; callers can refresh after Mail becomes responsive.
+        raw = self._run_applescript(script, timeout=20)
         messages: List[EmailMessage] = []
 
         for line in raw.splitlines():

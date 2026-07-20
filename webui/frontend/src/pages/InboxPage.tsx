@@ -13,7 +13,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  X,
   XCircle,
 } from "lucide-react";
 
@@ -22,64 +21,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { aresApi } from "@/shared/ares-api";
 import type { ApprovalItem, ClarifyItem, EmailItem } from "@/shared/ares-api";
-
-// ── Local-storage mock approvals ──────────────────────────────────────
-
-const MOCK_KEY = "ares.inbox.mockApprovals";
-const MOCK_SEED: ApprovalItem[] = [
-  {
-    id: "mock-1",
-    type: "tool_use",
-    status: "pending",
-    subject: "Allow file write to /tmp/report.csv",
-    detail: "The agent requests permission to write a CSV report to /tmp/report.csv using the file_save tool.",
-    requested_by: "hermes",
-    created_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-    payload: { tool: "file_save", path: "/tmp/report.csv" },
-  },
-  {
-    id: "mock-2",
-    type: "execution",
-    status: "pending",
-    subject: "Approve scheduled task: nightly-summary",
-    detail: "A cron job 'nightly-summary' wants to run every day at 02:00 UTC. Approve to enable it.",
-    requested_by: "cron-scheduler",
-    created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    payload: { job_name: "nightly-summary", schedule: "0 2 * * *" },
-  },
-  {
-    id: "mock-3",
-    type: "network",
-    status: "revision_requested",
-    subject: "Outbound webhook to api.example.com",
-    detail: "The agent wants to POST data to api.example.com/webhooks/notify. A revision was requested — please confirm the endpoint is correct.",
-    requested_by: "hermes",
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    payload: { url: "https://api.example.com/webhooks/notify", method: "POST" },
-  },
-];
-
-function loadMockApprovals(): ApprovalItem[] {
-  try {
-    const raw = localStorage.getItem(MOCK_KEY);
-    if (raw) return JSON.parse(raw) as ApprovalItem[];
-  } catch { /* ignore */ }
-  return MOCK_SEED;
-}
-
-function saveMockApprovals(items: ApprovalItem[]) {
-  try { localStorage.setItem(MOCK_KEY, JSON.stringify(items)); } catch { /* ignore */ }
-}
+import { readableError } from "@/shared/api-client";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -133,15 +78,17 @@ export default function InboxPage() {
   // ── Clarifications state ──
   const [clarifications, setClarifications] = useState<ClarifyItem[]>([]);
   const [clarifyLoading, setClarifyLoading] = useState(true);
+  const [clarifyError, setClarifyError] = useState<string | null>(null);
 
   // ── Notifications (email) state ──
   const [notifications, setNotifications] = useState<EmailItem[]>([]);
   const [notifLoading, setNotifLoading] = useState(true);
+  const [notifError, setNotifError] = useState<string | null>(null);
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false);
 
   // ── UI state ──
   const [activeTab, setActiveTab] = useState<InboxTab>("approvals");
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | ApprovalStatus>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [clarifyInput, setClarifyInput] = useState<Record<string, string>>({});
   const [clarifySubmitting, setClarifySubmitting] = useState<string | null>(null);
@@ -154,16 +101,10 @@ export default function InboxPage() {
     try {
       const data = await aresApi.approvalPending();
       const items = data.approvals ?? [];
-      if (items.length > 0) {
-        setApprovals(items);
-      } else {
-        // Backend has no real approvals — use localStorage mock data
-        setApprovals(loadMockApprovals());
-      }
-    } catch {
-      // Backend unavailable — fall back to localStorage mock data
-      setApprovals(loadMockApprovals());
-      setApprovalsError(null);
+      setApprovals(items);
+    } catch (error) {
+      setApprovals([]);
+      setApprovalsError(readableError(error, "Approvals could not be loaded."));
     } finally {
       setApprovalsLoading(false);
     }
@@ -171,11 +112,13 @@ export default function InboxPage() {
 
   const loadClarifications = useCallback(async () => {
     setClarifyLoading(true);
+    setClarifyError(null);
     try {
       const data = await aresApi.clarifyPending();
       setClarifications(data.clarifications ?? []);
-    } catch {
+    } catch (error) {
       setClarifications([]);
+      setClarifyError(readableError(error, "Clarifications could not be loaded."));
     } finally {
       setClarifyLoading(false);
     }
@@ -183,21 +126,29 @@ export default function InboxPage() {
 
   const loadNotifications = useCallback(async () => {
     setNotifLoading(true);
+    setNotifError(null);
     try {
       const data = await aresApi.emailAll();
       setNotifications(data.emails ?? []);
-    } catch {
+    } catch (error) {
       setNotifications([]);
+      setNotifError(readableError(error, "Notifications are unavailable. Connect a supported email source to use this tab."));
     } finally {
       setNotifLoading(false);
+      setNotificationsLoaded(true);
     }
   }, []);
 
   useEffect(() => {
     void loadApprovals();
     void loadClarifications();
-    void loadNotifications();
-  }, [loadApprovals, loadClarifications, loadNotifications]);
+  }, [loadApprovals, loadClarifications]);
+
+  useEffect(() => {
+    if (activeTab === "notifications" && !notificationsLoaded) {
+      void loadNotifications();
+    }
+  }, [activeTab, loadNotifications, notificationsLoaded]);
 
   // ── Approval actions ──
 
@@ -208,25 +159,15 @@ export default function InboxPage() {
   ) {
     setActionPending(id);
     try {
-      await aresApi.approvalRespond(id, action, note);
-    } catch {
-      // Backend might not have this endpoint — update locally
+      const approval = approvals.find((item) => item.id === id);
+      if (!approval) throw new Error("Approval is no longer available.");
+      await aresApi.approvalRespond(approval.session_id, id, action);
+      setApprovals((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      setApprovalsError(readableError(error, "The approval response could not be submitted."));
+    } finally {
+      setActionPending(null);
     }
-    const newStatus: ApprovalStatus = action === "approve" ? "approved" : "rejected";
-    setApprovals((prev) => {
-      const updated = prev.map((a) => a.id === id ? { ...a, status: newStatus } : a);
-      saveMockApprovals(updated);
-      return updated;
-    });
-    setActionPending(null);
-  }
-
-  function handleDismiss(id: string) {
-    setApprovals((prev) => {
-      const updated = prev.filter((a) => a.id !== id);
-      saveMockApprovals(updated);
-      return updated;
-    });
   }
 
   async function handleClarifyRespond(id: string) {
@@ -234,26 +175,26 @@ export default function InboxPage() {
     if (!response) return;
     setClarifySubmitting(id);
     try {
-      await aresApi.clarifyRespond(id, response);
-    } catch {
-      // Backend may not support this — remove locally
+      const item = clarifications.find((candidate) => candidate.id === id);
+      if (!item?.session_id) throw new Error("Clarification session is unavailable.");
+      await aresApi.clarifyRespond(item.session_id, id, response);
+      setClarifications((prev) => prev.filter((candidate) => candidate.id !== id));
+      setClarifyInput((prev) => { const next = { ...prev }; delete next[id]; return next; });
+    } catch (error) {
+      setApprovalsError(readableError(error, "The clarification response could not be submitted."));
+    } finally {
+      setClarifySubmitting(null);
     }
-    setClarifications((prev) => prev.filter((c) => c.id !== id));
-    setClarifyInput((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    setClarifySubmitting(null);
   }
 
   // ── Derived data ──
 
-  const pendingCount = approvals.filter(
-    (a) => a.status === "pending" || a.status === "revision_requested",
-  ).length;
+  const pendingCount = approvals.length;
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
 
   const filteredApprovals = useMemo(() => {
     let items = approvals;
-    if (statusFilter !== "all") items = items.filter((a) => a.status === statusFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       items = items.filter(
@@ -267,7 +208,7 @@ export default function InboxPage() {
     return [...items].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
-  }, [approvals, statusFilter, searchQuery]);
+  }, [approvals, searchQuery]);
 
   const filteredClarifications = useMemo(() => {
     if (!searchQuery.trim()) return clarifications;
@@ -348,20 +289,6 @@ export default function InboxPage() {
         </Tabs>
 
         <div className="flex items-center gap-2">
-          {activeTab === "approvals" && (
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | ApprovalStatus)}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Filter status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="revision_requested">Revision requested</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
@@ -398,7 +325,7 @@ export default function InboxPage() {
               <Inbox className="size-6 text-muted-foreground/50" />
             </div>
             <p className="text-sm text-muted-foreground">
-              {searchQuery || statusFilter !== "all"
+              {searchQuery
                 ? "No approvals match your filters."
                 : "No pending approvals. You're all caught up!"}
             </p>
@@ -407,7 +334,6 @@ export default function InboxPage() {
           <div className="grid gap-3">
             {filteredApprovals.map((approval) => {
               const isExpanded = expandedId === approval.id;
-              const isPending = approval.status === "pending" || approval.status === "revision_requested";
               return (
                 <Card key={approval.id}>
                   <CardHeader
@@ -463,8 +389,7 @@ export default function InboxPage() {
                         </div>
                       )}
 
-                      {isPending && (
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                           <Button
                             size="sm"
                             className="bg-green-700 text-white hover:bg-green-600"
@@ -497,34 +422,7 @@ export default function InboxPage() {
                             )}
                             Reject
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDismiss(approval.id);
-                            }}
-                          >
-                            Dismiss
-                          </Button>
                         </div>
-                      )}
-
-                      {!isPending && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDismiss(approval.id);
-                            }}
-                          >
-                            <X className="mr-1.5 size-4" />
-                            Dismiss
-                          </Button>
-                        </div>
-                      )}
                     </CardContent>
                   )}
                 </Card>
@@ -541,6 +439,8 @@ export default function InboxPage() {
             <LoaderCircle className="mb-4 size-8 animate-spin text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">Loading clarifications…</p>
           </div>
+        ) : clarifyError ? (
+          <div className="grid justify-items-center gap-3 py-16 text-center"><XCircle className="size-7 text-destructive" /><p className="text-sm text-destructive">{clarifyError}</p><Button variant="outline" size="sm" onClick={() => void loadClarifications()}><RefreshCw />Retry</Button></div>
         ) : filteredClarifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-4 grid size-12 place-items-center rounded-lg bg-muted">
@@ -615,6 +515,8 @@ export default function InboxPage() {
             <LoaderCircle className="mb-4 size-8 animate-spin text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">Loading notifications…</p>
           </div>
+        ) : notifError ? (
+          <div className="grid justify-items-center gap-3 py-16 text-center"><MailOpen className="size-7 text-muted-foreground" /><p className="max-w-lg text-sm text-muted-foreground">{notifError}</p><Button variant="outline" size="sm" onClick={() => void loadNotifications()}><RefreshCw />Retry</Button></div>
         ) : filteredNotifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-4 grid size-12 place-items-center rounded-lg bg-muted">
