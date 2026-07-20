@@ -270,3 +270,57 @@ class TestArchitectureInvariants:
         results = migrate_journal_sensitivity(db)
         assert "plans_table" in results
         assert "steps_table" in results
+
+
+class TestRouting:
+    """Test the SI routing system."""
+
+    def test_route_conversation_task(self):
+        """Routing a conversation task should return a valid worker."""
+        from api.si.router import route_task
+        result = route_task("conversation", data_sensitivity="personal")
+        assert result["selected_worker"] is not None
+        assert result["intent"] == "conversation"
+
+    def test_route_code_generation_task(self):
+        """Routing a code generation task should prefer capable workers."""
+        from api.si.router import route_task
+        result = route_task("code_generation", data_sensitivity="personal")
+        assert result["selected_worker"] is not None
+        # Should select a worker with code_generation capability
+        worker_id = result["selected_worker"]["worker_id"]
+        assert worker_id in ("hermes_local", "claude_local", "codex_local")
+
+    def test_route_with_user_preference(self):
+        """User preference should be respected if the worker is eligible."""
+        from api.si.router import route_task
+        result = route_task("conversation", data_sensitivity="personal", prefer_worker="hermes_local")
+        assert result["selected_worker"]["worker_id"] == "hermes_local"
+
+    def test_route_secret_data_returns_no_worker(self):
+        """Secret data should have no eligible workers."""
+        from api.si.router import route_task
+        result = route_task("conversation", data_sensitivity="secret")
+        assert result["selected_worker"] is None
+
+    def test_route_private_data_prefers_local(self):
+        """Private data should prefer local workers."""
+        from api.si.router import route_task
+        result = route_task("conversation", data_sensitivity="private")
+        if result["selected_worker"]:
+            assert result["selected_worker"]["data_location"] == "local"
+
+    def test_route_excludes_workers(self):
+        """Excluded workers should not be selected."""
+        from api.si.router import route_task
+        result = route_task("conversation", data_sensitivity="personal",
+                            exclude_workers=["hermes_local"])
+        if result["selected_worker"]:
+            assert result["selected_worker"]["worker_id"] != "hermes_local"
+
+    def test_routing_reasons_are_provided(self):
+        """Every routing decision should explain why."""
+        from api.si.router import route_task
+        result = route_task("conversation", data_sensitivity="personal")
+        assert "routing_reasons" in result
+        assert len(result["routing_reasons"]) >= 1

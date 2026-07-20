@@ -12,6 +12,29 @@ from fastapi import APIRouter, Query
 router = APIRouter(prefix="/api/si", tags=["si"])
 
 
+# ── Routing ─────────────────────────────────────────────────────────────
+
+@router.get("/route")
+def si_route_task(
+    intent: str = Query(..., description="Task intent type"),
+    sensitivity: str = Query("personal", description="Data sensitivity level"),
+    local_only: bool = Query(False, description="Require local workers only"),
+    prefer: str | None = Query(None, description="Preferred worker ID"),
+    exclude: str | None = Query(None, description="Comma-separated worker IDs to exclude"),
+):
+    """Select the best worker for a task based on capability, privacy, effectiveness, and cost."""
+    from api.si.router import route_task
+
+    exclude_list = exclude.split(",") if exclude else None
+    return route_task(
+        intent=intent,
+        data_sensitivity=sensitivity,
+        require_local=local_only,
+        prefer_worker=prefer,
+        exclude_workers=exclude_list,
+    )
+
+
 # ── Context Compiler ──────────────────────────────────────────────────
 
 @router.get("/context/compile")
