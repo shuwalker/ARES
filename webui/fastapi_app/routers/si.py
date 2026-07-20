@@ -12,6 +12,49 @@ from fastapi import APIRouter, Query
 router = APIRouter(prefix="/api/si", tags=["si"])
 
 
+# ── Response Composer ──────────────────────────────────────────────────
+
+@router.post("/compose")
+def si_compose_response(
+    content: str = Query(..., description="Worker result content"),
+    intent: str = Query("conversation", description="Detected intent"),
+    worker_id: str | None = Query(None, description="Source worker ID"),
+    plan_id: str | None = Query(None, description="Plan ID"),
+    step_id: str | None = Query(None, description="Step ID"),
+):
+    """Compose the final SI response from a worker result."""
+    from api.si.response_composer import compose_response
+    response = compose_response(
+        worker_result=content,
+        intent=intent,
+        plan_id=plan_id,
+        step_id=step_id,
+    )
+    return {
+        "content": response.content,
+        "source_worker": response.source_worker,
+        "intent": response.intent,
+        "confidence": response.confidence,
+        "activity_summary": response.activity_summary,
+        "warnings": response.warnings,
+        "needs_approval": response.needs_approval,
+    }
+
+
+# ── Activity Audit ──────────────────────────────────────────────────────
+
+@router.get("/activity")
+def si_activity(limit: int = Query(50, ge=1, le=500)):
+    """Get the SI activity log for user inspection."""
+    from api.si.trust_engine import get_disclosure_log
+    entries = get_disclosure_log(limit=limit)
+    return {
+        "disclosures": entries,
+        "count": len(entries),
+        "note": "Every data disclosure to workers is logged here for user inspection.",
+    }
+
+
 # ── Routing ─────────────────────────────────────────────────────────────
 
 @router.get("/route")

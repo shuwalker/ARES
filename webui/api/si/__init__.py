@@ -10,6 +10,10 @@ This package implements the SI architecture defined in:
   docs/architecture/TRUST_AND_PRIVACY_MODEL.md
   docs/architecture/MEMORY_AND_CONTEXT_MODEL.md
   docs/architecture/ORCHESTRATION_MODEL.md
+
+Core invariant:
+  ARES is the codebase. The SI is the owner-named persistent intelligence.
+  Providers, agents, models, and tools are replaceable workers used by the SI.
 """
 
 from .protocols import ReasoningProvider
@@ -49,4 +53,5 @@ __all__ = [
     "CostReport", "AvailabilityStatus", "CostEstimate", "LatencyProfile",
     "Plan", "Step", "PlanStatus", "StepStatus",
     "WorkerCapability", "WorkerRecord", "PrivacyClass",
+    "ReasoningProvider",
 ]
