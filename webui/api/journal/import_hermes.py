@@ -2,17 +2,14 @@
 ARES Journal — Hermes Agent importer.
 
 Reads all sessions and messages from the Hermes state.db SQLite database
-at ~/.hermes/state.db and imports them into the journal.
+and imports them into the journal.
 """
 
 import sqlite3
-from pathlib import Path
 from typing import Optional
 
+from .paths import hermes_db
 from .schema import get_db, init_db
-
-
-HERMES_DB = Path.home() / ".hermes" / "state.db"
 
 
 def import_hermes(batch_id: str, since: Optional[float] = None) -> dict:
@@ -26,10 +23,11 @@ def import_hermes(batch_id: str, since: Optional[float] = None) -> dict:
     Returns:
         Dict with import statistics.
     """
-    if not HERMES_DB.exists():
-        return {"source": "hermes", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{HERMES_DB} not found"}
+    db_path = hermes_db()
+    if not db_path.exists():
+        return {"source": "hermes", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{db_path} not found"}
 
-    src = sqlite3.connect(str(HERMES_DB))
+    src = sqlite3.connect(str(db_path))
     src.row_factory = sqlite3.Row
     jdb = init_db()
 
@@ -76,7 +74,7 @@ def import_hermes(batch_id: str, since: Optional[float] = None) -> dict:
                 sess["started_at"],
                 sess["ended_at"] or sess["started_at"],
                 sess["message_count"] or 0,
-                str(HERMES_DB),
+                str(db_path),
                 batch_id,
                 __import__("time").time(),
                 __import__("json").dumps({

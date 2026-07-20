@@ -97,3 +97,37 @@ def journal_scan_volume(
     """Scan a mounted volume for conversation data sources."""
     from .volume_scanner import scan_volume
     return scan_volume(path)
+
+
+# --- Document endpoints ---
+
+@router.get("/documents/search")
+def journal_document_search(
+    q: str = Query(..., description="Search query"),
+    source: Optional[str] = Query(None, description="Filter by source"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Full-text search across all imported documents."""
+    from api.journal.schema import search_documents
+    results = search_documents(q, source=source, limit=limit)
+    return {"results": results, "count": len(results)}
+
+
+@router.get("/documents")
+def journal_documents(
+    source: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """List imported documents, most recently created first."""
+    from api.journal.schema import list_documents
+    return {"documents": list_documents(source=source, limit=limit)}
+
+
+@router.post("/documents/import")
+def journal_import_documents(
+    source: Optional[str] = Query(None, description="Only import documents from this source"),
+):
+    """Scan directories and import planning/evaluation documents."""
+    from api.journal.import_documents import scan_documents
+    result = scan_documents(source=source)
+    return result

@@ -24,14 +24,11 @@ from .schema import get_db, init_db
 
 
 def find_grok_exports() -> list[Path]:
-    """Find Grok export directories on Desktop and in common locations."""
-    search_paths = [
-        Path.home() / "Desktop",
-        Path.home() / "Downloads",
-        Path.home() / "Documents",
-    ]
+    """Auto-detect Grok export directories on this machine."""
+    from .paths import grok_export_search_dirs
+    search_dirs = grok_export_search_dirs()
     exports = []
-    for search_path in search_paths:
+    for search_path in search_dirs:
         if search_path.exists():
             for d in search_path.iterdir():
                 if d.is_dir() and d.name.startswith("Grok-Conversation-Export"):

@@ -1,19 +1,16 @@
 """
 ARES Journal — Schema and database management.
 
-Creates and manages the unified conversation store at ~/.ares/journal/journal.db
-with FTS5 full-text search across all imported conversations.
+Creates and manages the unified conversation store with FTS5 full-text search
+across all imported conversations. Uses ARES_HOME env var for data directory.
 """
 
 import json
-import os
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
-JOURNAL_DIR = Path(os.environ.get("ARES_HOME", Path.home() / ".ares")) / "journal"
-DB_PATH = JOURNAL_DIR / "journal.db"
+from .paths import journal_dir, journal_db
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS conversations (
@@ -80,13 +77,52 @@ CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
         COALESCE(new.content, '') || ' ' || COALESCE(new.tool_name, '')
     );
 END;
+
+-- Documents table for planning/evaluation/architecture docs
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,           -- hermes, claude, grok, gemini, codex, repo, manual
+    title TEXT,                     -- document title (from first heading or filename)
+    file_path TEXT NOT NULL,        -- absolute path to the document
+    content TEXT,                   -- full text content
+    file_type TEXT DEFAULT 'md',   -- md, txt, json, yaml
+    created_at REAL,               -- file modification time
+    imported_at REAL,              -- when we imported this
+    metadata TEXT,                  -- JSON blob for source-specific fields
+    UNIQUE(source, file_path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source);
+CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at DESC);
+
+-- FTS5 for document content search
+CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+    content,
+    content='documents',
+    content_rowid='id',
+    tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS documents_fts_insert AFTER INSERT ON documents BEGIN
+    INSERT INTO documents_fts(rowid, content) VALUES (new.id, COALESCE(new.content, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS documents_fts_delete AFTER DELETE ON documents BEGIN
+    DELETE FROM documents_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS documents_fts_update AFTER UPDATE ON documents BEGIN
+    DELETE FROM documents_fts WHERE rowid = old.id;
+    INSERT INTO documents_fts(rowid, content) VALUES (new.id, COALESCE(new.content, ''));
+END;
 """
 
 
 def get_db() -> sqlite3.Connection:
     """Get a connection to the journal database, creating it if needed."""
-    JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(str(DB_PATH))
+    jdir = journal_dir()
+    jdir.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(str(journal_db()))
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA foreign_keys=ON")
     db.row_factory = sqlite3.Row
@@ -213,3 +249,65 @@ def stats() -> dict:
         }
     except sqlite3.OperationalError:
         return {"total_conversations": 0, "total_messages": 0, "by_source": {}}
+
+
+def search_documents(query: str, source: Optional[str] = None, limit: int = 20) -> list[dict]:
+    """Full-text search across all imported documents."""
+    db = get_db()
+    matching_doc_ids = db.execute(
+        """SELECT DISTINCT d.id as did
+           FROM documents_fts fts
+           JOIN documents d ON d.id = fts.rowid
+           WHERE documents_fts MATCH ?
+        """ + (" AND d.source = ?" if source else ""),
+        [query] + ([source] if source else []),
+    ).fetchall()
+    doc_ids = [r["did"] for r in matching_doc_ids[:limit]]
+    if not doc_ids:
+        return []
+
+    results = []
+    for did in doc_ids:
+        doc = db.execute("SELECT * FROM documents WHERE id = ?", (did,)).fetchone()
+        if not doc:
+            continue
+        # Extract snippet
+        content = doc["content"] or ""
+        lower_content = content.lower()
+        lower_query = query.lower()
+        pos = lower_content.find(lower_query)
+        snippet = ""
+        if pos >= 0:
+            start = max(0, pos - 80)
+            end = min(len(content), pos + len(query) + 80)
+            snippet = content[start:end]
+            if start > 0:
+                snippet = "..." + snippet
+            if end < len(content):
+                snippet = snippet + "..."
+        elif content:
+            snippet = content[:160]
+
+        results.append({
+            "id": doc["id"],
+            "source": doc["source"],
+            "title": doc["title"],
+            "file_path": doc["file_path"],
+            "file_type": doc["file_type"],
+            "created_at": doc["created_at"],
+            "snippet": snippet,
+        })
+    return results
+
+
+def list_documents(source: Optional[str] = None, limit: int = 50) -> list[dict]:
+    """List documents, most recently created first."""
+    db = get_db()
+    sql = "SELECT * FROM documents"
+    params: list = []
+    if source:
+        sql += " WHERE source = ?"
+        params.append(source)
+    sql += " ORDER BY created_at DESC LIMIT ?"
+    params.append(str(limit))
+    return [dict(r) for r in db.execute(sql, params).fetchall()]

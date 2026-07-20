@@ -2,12 +2,8 @@
 ARES Journal — Gemini/Antigravity IDE importer.
 
 Reads Gemini conversation data from the Antigravity IDE local storage.
-Each conversation is stored as a SQLite database with protobuf-encoded steps.
-
-Since the step content is protobuf-encoded, this importer extracts what it can:
-- Trajectory metadata (IDs, types)
-- Step metadata (types, timestamps)
-- Full text from the Antigravity state.vscdb trajectory summaries
+Each conversation is stored as a SQLite database with protobuf-encoded steps
+and metadata in the Antigravity IDE global state.
 """
 
 import json
@@ -17,11 +13,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .paths import gemini_conversations_dir, gemini_state_db
 from .schema import get_db, init_db
-
-
-GEMINI_CONVERSATIONS_DIR = Path.home() / ".gemini" / "antigravity-ide" / "conversations"
-ANTIGRAVITY_STATE_DB = Path.home() / "Library" / "Application Support" / "Antigravity IDE" / "User" / "globalStorage" / "state.vscdb"
 
 
 def import_gemini(batch_id: str, since: Optional[float] = None) -> dict:
@@ -41,9 +34,10 @@ def import_gemini(batch_id: str, since: Optional[float] = None) -> dict:
 
     # First, try to get titles from the Antigravity state.vscdb
     titles = {}
-    if ANTIGRAVITY_STATE_DB.exists():
+    state_db_path = gemini_state_db()
+    if state_db_path and state_db_path.exists():
         try:
-            state_db = sqlite3.connect(str(ANTIGRAVITY_STATE_DB))
+            state_db = sqlite3.connect(str(state_db_path))
             state_db.row_factory = sqlite3.Row
             # Get trajectory summaries - these contain base64-encoded protobuf with titles
             rows = state_db.execute(
@@ -65,10 +59,11 @@ def import_gemini(batch_id: str, since: Optional[float] = None) -> dict:
             pass
 
     # Import conversation databases
-    if not GEMINI_CONVERSATIONS_DIR.exists():
-        return {"source": "gemini", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{GEMINI_CONVERSATIONS_DIR} not found"}
+    conv_dir = gemini_conversations_dir()
+    if not conv_dir.exists():
+        return {"source": "gemini", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{conv_dir} not found"}
 
-    for db_path in sorted(GEMINI_CONVERSATIONS_DIR.glob("*.db")):
+    for db_path in sorted(conv_dir.glob("*.db")):
         session_id = db_path.stem  # UUID like a5a7a951-733e-4af4-829c-7bcedc5fca51
 
         # Check if already imported

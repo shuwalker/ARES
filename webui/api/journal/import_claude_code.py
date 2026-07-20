@@ -1,9 +1,8 @@
 """
 ARES Journal — Claude Code importer.
 
-Reads all JSONL session files from ~/.claude/projects/ and imports them
-into the journal. Each project directory contains one or more .jsonl files,
-where each line is a JSON object representing a message or tool call.
+Reads all JSONL session files from Claude Code projects directory
+and imports them into the journal.
 """
 
 import json
@@ -12,28 +11,27 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .paths import claude_projects_dir
 from .schema import get_db, init_db
-
-
-CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 
 def import_claude_code(batch_id: str, since: Optional[float] = None) -> dict:
     """
     Import all Claude Code sessions into the journal.
 
-    Claude Code stores sessions as JSONL files under ~/.claude/projects/<project-dir>/.
+    Claude Code stores sessions as JSONL files under the projects directory.
     Each file is one session. Each line is a JSON object with role, content, etc.
     """
-    if not CLAUDE_PROJECTS_DIR.exists():
-        return {"source": "claude_code", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{CLAUDE_PROJECTS_DIR} not found"}
+    projects_dir = claude_projects_dir()
+    if not projects_dir.exists():
+        return {"source": "claude_code", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{projects_dir} not found"}
 
     jdb = init_db()
     conv_imported = 0
     msg_imported = 0
 
     # Walk all project directories
-    for project_dir in sorted(CLAUDE_PROJECTS_DIR.iterdir()):
+    for project_dir in sorted(projects_dir.iterdir()):
         if not project_dir.is_dir():
             continue
 

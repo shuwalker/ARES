@@ -4,7 +4,7 @@ ARES Journal — unified conversation importer and store.
 Indexes conversations from every AI tool on the machine into a single
 searchable database so the SI can reference past context across all agents.
 
-Storage: ~/.ares/journal/
+Storage: ARES_HOME/journal/ (default: ~/.ares/journal/)
 Schema:  journal.db (SQLite with FTS5)
 Imports: Hermes, Claude Code, Grok, Gemini, Codex, SAM, iMessage
 

@@ -3,7 +3,7 @@
 ARES Journal — Universal conversation importer.
 
 Indexes all AI conversations on this machine into a unified, searchable database
-at ~/.ares/journal/journal.db.
+in the ARES journal database.
 
 Usage:
     python -m api.journal.import_all              # Import everything
@@ -63,6 +63,17 @@ def import_all(sources: list[str] | None = None) -> dict:
         except Exception as e:
             results[source_name] = {"error": str(e), "skipped": True}
             print(f"  ❌ {source_name}: {e}")
+
+    # Import documents
+    print("\n📄 Scanning planning/evaluation documents...")
+    try:
+        from api.journal.import_documents import scan_documents
+        doc_result = scan_documents()
+        results["documents"] = doc_result
+        print(f"  📄 Documents: {doc_result['imported']} imported, {doc_result['skipped']} skipped, {doc_result['errored']} errors")
+    except Exception as e:
+        results["documents"] = {"error": str(e)}
+        print(f"  ❌ Documents: {e}")
 
     return results
 

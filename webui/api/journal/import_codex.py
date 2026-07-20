@@ -1,46 +1,46 @@
 """
 ARES Journal — Codex importer.
 
-Reads session data from ~/.codex/ which contains ChatGPT/Codex session data.
-Sessions are stored as JSONL files under ~/.codex/sessions/YYYY/MM/DD/ with
-metadata in ~/.codex/session_index.jsonl and databases for goals, logs, and memories.
+Reads session data from the Codex directory.
+Sessions are stored as JSONL files under sessions/YYYY/MM/DD/ with
+metadata in session_index.jsonl and databases for goals, logs, and memories.
 """
 
 import json
 import os
+import sqlite3
 import time
 from pathlib import Path
 from typing import Optional
 
+from .paths import codex_dir
 from .schema import get_db, init_db
-
-
-CODEX_DIR = Path.home() / ".codex"
-CODEX_SESSIONS_DIR = CODEX_DIR / "sessions"
-CODEX_INDEX = CODEX_DIR / "session_index.jsonl"
 
 
 def import_codex(batch_id: str, since: Optional[float] = None) -> dict:
     """
-    Import Codex sessions from ~/.codex/ into the journal.
+    Import Codex sessions into the journal.
 
-    Structure:
-      ~/.codex/session_index.jsonl — One JSON per line: {id, thread_name, updated_at}
-      ~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl — Full session JSONL
+    Layout:
+      session_index.jsonl — One JSON per line: {id, thread_name, updated_at}
+      sessions/YYYY/MM/DD/rollout-<timestamp>-<id>.jsonl — Full session JSONL
       Each JSONL line has a "type" field: session_meta, event_msg, response_item, etc.
     """
-    if not CODEX_DIR.exists():
-        return {"source": "codex", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{CODEX_DIR} not found"}
+    cdir = codex_dir()
+    if not cdir.exists():
+        return {"source": "codex", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{cdir} not found"}
 
     jdb = init_db()
     conv_imported = 0
     msg_imported = 0
 
     # Build index from session_index.jsonl
+    sessions_dir = cdir / "sessions"
+    index_path = cdir / "session_index.jsonl"
     index = {}
-    if CODEX_INDEX.exists():
+    if index_path.exists():
         try:
-            with open(CODEX_INDEX) as f:
+            with open(index_path) as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -58,8 +58,8 @@ def import_codex(batch_id: str, since: Optional[float] = None) -> dict:
             pass
 
     # Walk the date-organized session directories
-    if CODEX_SESSIONS_DIR.exists():
-        for jsonl_file in sorted(CODEX_SESSIONS_DIR.rglob("*.jsonl")):
+    if sessions_dir.exists():
+        for jsonl_file in sorted(sessions_dir.rglob("*.jsonl")):
             # Extract session_id from filename: rollout-2026-07-18T12-08-46-019f76a1-8af1-7851-beef-168972204958.jsonl
             filename = jsonl_file.stem
             # The UUID is the last part after the final hyphen-separated timestamp

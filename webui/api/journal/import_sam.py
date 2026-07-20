@@ -1,37 +1,35 @@
 """
 ARES Journal — SAM (Super Artificial Mind) importer.
 
-Reads SAM conversation data from ~/Library/Application Support/SAM/conversations/.
-Each conversation is a directory containing a conversation.json file.
+Reads SAM conversation data from the SAM conversations directory.
+Each conversation is a directory containing a conversation.json.
 """
 
 import json
-import os
 import time
 from pathlib import Path
 from typing import Optional
 
+from .paths import sam_dir
 from .schema import get_db, init_db
-
-
-SAM_DIR = Path.home() / "Library" / "Application Support" / "SAM" / "conversations"
 
 
 def import_sam(batch_id: str, since: Optional[float] = None) -> dict:
     """
     Import SAM conversations into the journal.
 
-    Each SAM conversation is stored as:
-      ~/Library/Application Support/SAM/conversations/<uuid>/conversation.json
+    Layout:
+      <uuid>/conversation.json
     """
-    if not SAM_DIR.exists():
-        return {"source": "sam", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": f"{SAM_DIR} not found"}
+    sdir = sam_dir()
+    if not sdir or not sdir.exists():
+        return {"source": "sam", "imported_conversations": 0, "imported_messages": 0, "skipped": True, "reason": "SAM directory not found or not available on this platform"}
 
     jdb = init_db()
     conv_imported = 0
     msg_imported = 0
 
-    for conv_dir in sorted(SAM_DIR.iterdir()):
+    for conv_dir in sorted(sdir.iterdir()):
         if not conv_dir.is_dir():
             continue
 
