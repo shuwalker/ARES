@@ -339,6 +339,211 @@ def si_list_plans(
     return {"plans": list_plans(status=status, limit=limit)}
 
 
+# ── Identity ────────────────────────────────────────────────────────────
+
+@router.get("/identity")
+def si_get_identity():
+    """Get the current SI identity configuration."""
+    from api.si.identity import load_identity
+    config = load_identity()
+    return {
+        "name": config.name,
+        "owner_name": config.owner_name,
+        "mission": config.mission,
+        "principles": config.principles,
+        "loyalty": config.loyalty,
+        "communication_style": config.communication_style,
+        "uncertainty_behavior": config.uncertainty_behavior,
+        "privacy_commitment": config.privacy_commitment,
+        "disagreement_conditions": config.disagreement_conditions,
+        "refusal_conditions": config.refusal_conditions,
+        "approval_conditions": config.approval_conditions,
+    }
+
+
+@router.patch("/identity")
+def si_patch_identity(
+    name: str | None = Query(None),
+    owner_name: str | None = Query(None),
+    mission: str | None = Query(None),
+    communication_style: str | None = Query(None),
+    uncertainty_behavior: str | None = Query(None),
+    privacy_commitment: str | None = Query(None),
+):
+    """Update the SI identity configuration."""
+    from api.si.identity import patch_identity
+    updates = {k: v for k, v in {
+        "name": name, "owner_name": owner_name, "mission": mission,
+        "communication_style": communication_style,
+        "uncertainty_behavior": uncertainty_behavior,
+        "privacy_commitment": privacy_commitment,
+    }.items() if v is not None}
+    config = patch_identity(updates)
+    return {"status": "updated", "name": config.name}
+
+
+# ── Memory Controls ────────────────────────────────────────────────────
+
+@router.get("/memory")
+def si_list_memories(
+    q: str = Query("", description="Search query"),
+    limit: int = Query(20, ge=1, le=100),
+    max_sensitivity: str = Query("personal", description="Max sensitivity level"),
+):
+    """Search and list memories."""
+    from api.si.memory import retrieve_memories
+    from api.si.types import DataClassification, PERSONAL as SI_PERSONAL
+    sensitivity = DataClassification(max_sensitivity) if max_sensitivity in DataClassification._value2member_map_ else SI_PERSONAL
+    memories = retrieve_memories(q or "*", limit=limit, max_sensitivity=sensitivity)
+    return {
+        "memories": [
+            {"memory_id": m.memory_id, "content": m.content, "source": m.source,
+             "sensitivity": m.sensitivity.value, "importance": m.importance}
+            for m in memories
+        ],
+        "count": len(memories),
+    }
+
+
+@router.delete("/memory/{memory_id}")
+def si_delete_memory(memory_id: str):
+    """Soft-delete a memory (marks deleted, preserves audit trail)."""
+    from api.si.memory import delete_memory
+    ok = delete_memory(memory_id)
+    return {"deleted": ok, "memory_id": memory_id}
+
+
+@router.post("/memory/{memory_id}/correct")
+def si_correct_memory(
+    memory_id: str,
+    correction: str = Query(..., description="Corrected content"),
+    reason: str = Query("user_correction", description="Reason for correction"),
+):
+    """Record a user correction to a memory."""
+    from api.si.memory import correct_memory
+    correction_id = correct_memory(memory_id, correction, reason)
+    return {"memory_id": memory_id, "correction_id": correction_id, "reason": reason}
+
+
+@router.get("/memory/{memory_id}/history")
+def si_memory_history(memory_id: str):
+    """Get the correction history for a memory."""
+    from api.si.memory import get_memory_history
+    history = get_memory_history(memory_id)
+    return {"memory_id": memory_id, "corrections": history}
+
+
+# ── User Model ──────────────────────────────────────────────────────────
+
+@router.get("/user-model")
+def si_get_user_model(category: str | None = Query(None)):
+    """Get the user model, optionally filtered by category."""
+    from api.si.user_model import load_user_model
+    model = load_user_model()
+    if category:
+        facts = getattr(model, category, [])
+        return {"category": category, "facts": [
+            {"fact_id": f.fact_id, "fact": f.fact, "source": f.source,
+             "confidence": f.confidence, "category": f.category}
+            for f in facts
+        ]}
+    return {
+        "preferences": [{"fact_id": f.fact_id, "fact": f.fact, "source": f.source, "confidence": f.confidence} for f in model.preferences],
+        "projects": [{"fact_id": f.fact_id, "fact": f.fact, "source": f.source, "confidence": f.confidence} for f in model.projects],
+        "people": [{"fact_id": f.fact_id, "fact": f.fact, "source": f.source, "confidence": f.confidence} for f in model.people],
+        "devices": [{"fact_id": f.fact_id, "fact": f.fact, "source": f.source, "confidence": f.confidence} for f in model.devices],
+        "routines": [{"fact_id": f.fact_id, "fact": f.fact, "source": f.source, "confidence": f.confidence} for f in model.routines],
+        "privacy_preferences": [{"fact_id": f.fact_id, "fact": f.fact, "source": f.source, "confidence": f.confidence} for f in model.privacy_preferences],
+        "restrictions": [{"fact_id": f.fact_id, "fact": f.fact, "source": f.source, "confidence": f.confidence} for f in model.restrictions],
+    }
+
+
+@router.post("/user-model")
+def si_add_user_fact(
+    category: str = Query(..., description="Category: preferences, projects, people, devices, routines, privacy_preferences, restrictions"),
+    fact: str = Query(..., description="The fact to add"),
+    source: str = Query("observed_behavior", description="Source: explicit_user_instruction, observed_behavior, inferred"),
+    confidence: float = Query(0.5, ge=0.0, le=1.0),
+):
+    """Add a fact to the user model."""
+    from api.si.user_model import add_fact
+    new_fact = add_fact(category, fact, source, confidence)
+    return {"fact_id": new_fact.fact_id, "fact": new_fact.fact, "source": new_fact.source, "confidence": new_fact.confidence}
+
+
+@router.delete("/user-model/{fact_id}")
+def si_delete_user_fact(fact_id: str):
+    """Delete a fact from the user model."""
+    from api.si.user_model import delete_fact
+    ok = delete_fact(fact_id)
+    return {"deleted": ok, "fact_id": fact_id}
+
+
+@router.post("/user-model/{fact_id}/confirm")
+def si_confirm_user_fact(fact_id: str):
+    """Confirm a fact, bumping its confidence to 1.0."""
+    from api.si.user_model import confirm_fact
+    updated = confirm_fact(fact_id)
+    if updated:
+        return {"fact_id": updated.fact_id, "confidence": updated.confidence, "source": updated.source}
+    return {"error": f"Fact {fact_id} not found"}
+
+
+# ── Privacy Controls ────────────────────────────────────────────────────
+
+@router.get("/privacy/rules")
+def si_get_privacy_rules():
+    """Get all privacy rules."""
+    from api.si.trust_engine import get_privacy_rules
+    return {"rules": get_privacy_rules()}
+
+
+@router.post("/privacy/rules")
+def si_add_privacy_rule(
+    rule_type: str = Query(..., description="Rule type: block_worker, require_approval, local_only"),
+    target: str = Query(..., description="Target worker_id or data_class"),
+    reason: str = Query("", description="Reason for the rule"),
+):
+    """Add a privacy rule."""
+    from api.si.trust_engine import add_privacy_rule
+    rule = add_privacy_rule(rule_type, target, reason)
+    return {"rule": rule}
+
+
+@router.delete("/privacy/rules/{rule_id}")
+def si_delete_privacy_rule(rule_id: str):
+    """Delete a privacy rule."""
+    from api.si.trust_engine import delete_privacy_rule
+    ok = delete_privacy_rule(rule_id)
+    return {"deleted": ok, "rule_id": rule_id}
+
+
+@router.post("/privacy/local-only")
+def si_toggle_local_only(enabled: bool = Query(..., description="Enable or disable local-only mode")):
+    """Toggle local-only mode. When enabled, no data leaves the device."""
+    from api.si.trust_engine import set_local_only_mode
+    set_local_only_mode(enabled)
+    return {"local_only": enabled, "note": "When enabled, all data above PUBLIC stays local."}
+
+
+# ── Worker Controls ─────────────────────────────────────────────────────
+
+@router.patch("/workers/{worker_id}/restrict")
+def si_restrict_worker(worker_id: str):
+    """Restrict a worker from receiving any data above PUBLIC."""
+    from api.si.trust_engine import restrict_worker
+    ok = restrict_worker(worker_id)
+    return {"restricted": ok, "worker_id": worker_id}
+
+
+@router.post("/workers/{worker_id}/approve")
+def si_approve_worker(worker_id: str):
+    """Approve a worker for sensitive data access."""
+    from api.si.trust_engine import approve_worker
+    ok = approve_worker(worker_id)
+    return {"approved": ok, "worker_id": worker_id}
+
+
 # ── Migration ──────────────────────────────────────────────────────────
 
 @router.post("/migrate")

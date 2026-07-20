@@ -315,3 +315,81 @@ def get_disclosure_log(limit: int = 100) -> list[dict]:
         }
         for r in rows
     ]
+
+
+# ── Privacy Rules ───────────────────────────────────────────────────────
+
+_privacy_rules: list[dict] = []
+_local_only_mode: bool = False
+_restricted_workers: set[str] = set()
+_approved_workers: set[str] = set()
+
+
+def get_privacy_rules() -> list[dict]:
+    """Get all privacy rules."""
+    rules = list(_privacy_rules)
+    if _local_only_mode:
+        rules.append({"type": "local_only", "target": "*", "reason": "Local-only mode is enabled"})
+    for w in _restricted_workers:
+        rules.append({"type": "restricted", "target": w, "reason": "Worker restricted by user"})
+    for w in _approved_workers:
+        rules.append({"type": "approved", "target": w, "reason": "Worker approved for sensitive data"})
+    return rules
+
+
+def add_privacy_rule(rule_type: str, target: str, reason: str = "") -> dict:
+    """Add a privacy rule."""
+    rule = {"type": rule_type, "target": target, "reason": reason, "created_at": time.time()}
+    _privacy_rules.append(rule)
+    return rule
+
+
+def delete_privacy_rule(rule_id: str) -> bool:
+    """Delete a privacy rule by its index or target match."""
+    try:
+        idx = int(rule_id)
+        if 0 <= idx < len(_privacy_rules):
+            _privacy_rules.pop(idx)
+            return True
+    except ValueError:
+        pass
+    # Try matching by target
+    for i, r in enumerate(_privacy_rules):
+        if r.get("target") == rule_id:
+            _privacy_rules.pop(i)
+            return True
+    return False
+
+
+def set_local_only_mode(enabled: bool) -> None:
+    """Enable or disable local-only mode."""
+    global _local_only_mode
+    _local_only_mode = enabled
+
+
+def is_local_only_mode() -> bool:
+    """Check if local-only mode is enabled."""
+    return _local_only_mode
+
+
+def restrict_worker(worker_id: str) -> bool:
+    """Restrict a worker from receiving data above PUBLIC."""
+    _restricted_workers.add(worker_id)
+    return True
+
+
+def approve_worker(worker_id: str) -> bool:
+    """Approve a worker for sensitive data access."""
+    _approved_workers.add(worker_id)
+    _restricted_workers.discard(worker_id)
+    return True
+
+
+def is_worker_restricted(worker_id: str) -> bool:
+    """Check if a worker is restricted."""
+    return worker_id in _restricted_workers
+
+
+def is_worker_approved(worker_id: str) -> bool:
+    """Check if a worker is approved for sensitive data."""
+    return worker_id in _approved_workers

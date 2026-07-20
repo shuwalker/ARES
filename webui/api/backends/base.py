@@ -86,13 +86,25 @@ def run_agentic_backend_streaming(
         ) != normalized_message:
             session.messages.append({"role": "user", "content": message, "timestamp": int(time.time())})
             session.save()
-        result = backend.run_turn(
-            message,
-            session_id,
-            model=model,
-            model_provider=model_provider,
-            cancel_event=cancel_event,
-        )
+        # ── SI Pipeline (when ARES_SI_ENABLED) ──
+        from api.si.bridge import si_enabled, si_turn
+
+        if si_enabled():
+            result = si_turn(
+                message,
+                session_id,
+                model=model,
+                model_provider=model_provider,
+                cancel_event=cancel_event,
+            )
+        else:
+            result = backend.run_turn(
+                message,
+                session_id,
+                model=model,
+                model_provider=model_provider,
+                cancel_event=cancel_event,
+            )
         if cancel_event.is_set():
             publish("cancel", {"message": "Cancelled by user"})
             return
