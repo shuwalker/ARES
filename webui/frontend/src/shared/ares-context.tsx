@@ -145,6 +145,25 @@ export function AresProvider({ children }: { children: ReactNode }) {
       setCurrentSession(session);
       setStreamText("");
       setStreamReasoning("");
+      // Companion technical intelligence: soft-record a successful turn for worker ranking.
+      // This is not LLM judgment — baseline metrics only (user can refine later).
+      const workerId = session.backendId?.trim();
+      if (workerId) {
+        void aresApi.recordWorkerEvaluation({
+          workerId,
+          sessionId: session.id,
+          taskKind: "chat",
+          metrics: {
+            task_success: 80,
+            safety: 100,
+            user_preference: 70,
+            tool_efficiency: 70,
+            faithfulness: 70,
+            latency: 70,
+            cost: 70,
+          },
+        }).catch(() => undefined);
+      }
       await refresh();
     } catch (error) {
       setChatNotice(readableError(error, "The response ended, but the conversation could not be refreshed."));
@@ -179,7 +198,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       if (!status.active) void finishStream(sessionId);
       else setChatNotice("The live response connection is interrupted. Your Companion is preserving the run and will restore it when you reopen this conversation.");
     }).catch(() => {
-      setChatNotice("The response connection was interrupted. ARES preserved the conversation state; reconnect after the backend is available.");
+      setChatNotice("The response connection was interrupted. The Companion preserved the conversation state; reconnect after the worker is available.");
     });
   }, [finishStream]);
 
@@ -247,7 +266,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       if (generation === streamGeneration.current) {
         sendInFlight.current = false;
         setStreamState("idle");
-        setChatNotice(readableError(error, "No assistant runtime is available. Your ARES interface is still operational."));
+        setChatNotice(readableError(error, "No worker is available. Your Companion interface is still operational."));
       }
     }
   }, [attachStream, createSession, currentSession, streamState]);

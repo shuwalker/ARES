@@ -243,7 +243,7 @@ public class VoiceManager: ObservableObject {
                         statusMessage = "Microphone permission denied"
                         logger.error("Voice permissions denied")
                         /// Notify UI to show user-friendly error
-                        onAuthorizationError?("Speech recognition is not enabled.\n\nPlease enable Siri & Dictation in System Settings:\n1. Open System Settings\n2. Go to Privacy & Security > Siri & Dictation\n3. Turn on \"Ask Siri\"\n\nThen restart SAM and try again.")
+                        onAuthorizationError?("Speech recognition is not enabled.\n\nPlease enable Siri & Dictation in System Settings:\n1. Open System Settings\n2. Go to Privacy & Security > Siri & Dictation\n3. Turn on \"Ask Siri\"\n\nThen restart ARES and try again.")
                         /// Disable listening mode since permission denied
                         listeningMode = false
                     }
@@ -268,7 +268,7 @@ public class VoiceManager: ObservableObject {
                     logger.error("Failed to start listening: \(error)")
                     /// Check if it's an authorization error
                     if case VoiceError.notAuthorized = error {
-                        onAuthorizationError?("Speech recognition is not enabled.\n\nPlease enable Siri & Dictation in System Settings:\n1. Open System Settings\n2. Go to Privacy & Security > Siri & Dictation\n3. Turn on \"Ask Siri\"\n\nThen restart SAM and try again.")
+                        onAuthorizationError?("Speech recognition is not enabled.\n\nPlease enable Siri & Dictation in System Settings:\n1. Open System Settings\n2. Go to Privacy & Security > Siri & Dictation\n3. Turn on \"Ask Siri\"\n\nThen restart ARES and try again.")
                     } else {
                         onAuthorizationError?(errorMessage)
                     }

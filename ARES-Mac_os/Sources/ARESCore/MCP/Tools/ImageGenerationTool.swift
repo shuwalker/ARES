@@ -105,7 +105,7 @@ public class ImageGenerationTool: ConsolidatedMCP, @unchecked Sendable {
         ]
     }
 
-    private let logger = Logger(label: "com.sam.mcp.ImageGeneration")
+    private let logger = Logger(label: "com.ares.mcp.ImageGeneration")
     private var service: ImageGenerationService?
 
     public var description: String {

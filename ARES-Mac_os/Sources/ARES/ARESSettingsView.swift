@@ -2,6 +2,12 @@ import SwiftUI
 import ARESCore
 import Network
 import CoreImage.CIFilterBuiltins
+import AppKit
+import ApplicationServices
+import AVFoundation
+import Contacts
+import EventKit
+import Speech
 
 struct PendingApproval: Identifiable, Codable {
     var id: String { approval_id }
@@ -69,6 +75,7 @@ public struct ARESSettingsView: View {
     @State private var pendingApprovals: [PendingApproval] = []
     @State private var auditLogs: [AuditLogEntry] = []
     @State private var pathMonitor: NWPathMonitor? = nil
+    @State private var permissionRefresh = 0
     
     public init() {}
     
@@ -97,6 +104,12 @@ public struct ARESSettingsView: View {
                     Label("Safety & Approvals", systemImage: "shield.checkered")
                 }
                 .tag(3)
+
+            permissionsTab
+                .tabItem {
+                    Label("Permissions", systemImage: "lock.shield")
+                }
+                .tag(4)
         }
         .frame(width: 650, height: 480)
         .padding()
@@ -105,6 +118,7 @@ public struct ARESSettingsView: View {
             refreshBackendSelection()
             startLivenessChecks()
             refreshApprovalsAndLogs()
+            refreshPermissions()
             
             let monitor = NWPathMonitor()
             monitor.pathUpdateHandler = { _ in
@@ -119,6 +133,115 @@ public struct ARESSettingsView: View {
             checkTimer?.invalidate()
             pathMonitor?.cancel()
         }
+    }
+
+    // MARK: - Native Permissions
+    private struct PermissionRow: Identifiable {
+        let id: String
+        let title: String
+        let detail: String
+        let granted: Bool?
+        let settingsAnchor: String
+    }
+
+    private var permissionsTab: some View {
+        let rows = nativePermissionRows
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("macOS Capability Permissions").font(.headline)
+                    Text("Status checks are read-only. ARES asks only when you use the corresponding capability.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Refresh") { refreshPermissions() }
+            }
+
+            List(rows) { row in
+                HStack(spacing: 12) {
+                    Image(systemName: permissionSymbol(row.granted))
+                        .foregroundColor(permissionColor(row.granted))
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.title).font(.subheadline).fontWeight(.medium)
+                        Text(row.detail).font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text(permissionLabel(row.granted))
+                        .font(.caption).fontWeight(.semibold)
+                        .foregroundColor(permissionColor(row.granted))
+                    Button("Open Settings") { openPrivacySettings(anchor: row.settingsAnchor) }
+                        .buttonStyle(.link)
+                }
+                .padding(.vertical, 3)
+            }
+            .id(permissionRefresh)
+
+            Text("Screen reading additionally requires one-time consent inside the active conversation. Apple Notes automation permission is requested by macOS on first use and appears under Automation.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+    }
+
+    private var nativePermissionRows: [PermissionRow] {
+        let accessibility = AXIsProcessTrusted()
+        let screenCapture = CGPreflightScreenCaptureAccess()
+        let contacts = CNContactStore.authorizationStatus(for: .contacts)
+        let calendars = EKEventStore.authorizationStatus(for: .event)
+        let reminders = EKEventStore.authorizationStatus(for: .reminder)
+        let microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+        let speech = SFSpeechRecognizer.authorizationStatus()
+        return [
+            PermissionRow(id: "accessibility", title: "Accessibility", detail: "Screen context and approved app automation.", granted: accessibility, settingsAnchor: "Privacy_Accessibility"),
+            PermissionRow(id: "screen", title: "Screen Recording", detail: "Window titles and visible-screen context.", granted: screenCapture, settingsAnchor: "Privacy_ScreenCapture"),
+            PermissionRow(id: "contacts", title: "Contacts", detail: "Search and manage contacts through native tools.", granted: authorizationGranted(contacts), settingsAnchor: "Privacy_Contacts"),
+            PermissionRow(id: "calendars", title: "Calendars", detail: "Read and create calendar events.", granted: eventAuthorizationGranted(calendars), settingsAnchor: "Privacy_Calendars"),
+            PermissionRow(id: "reminders", title: "Reminders", detail: "Read and manage reminders.", granted: eventAuthorizationGranted(reminders), settingsAnchor: "Privacy_Reminders"),
+            PermissionRow(id: "microphone", title: "Microphone", detail: "Voice input in the native app.", granted: mediaAuthorizationGranted(microphone), settingsAnchor: "Privacy_Microphone"),
+            PermissionRow(id: "speech", title: "Speech Recognition", detail: "Convert native voice input to text.", granted: speechAuthorizationGranted(speech), settingsAnchor: "Privacy_SpeechRecognition"),
+            PermissionRow(id: "automation", title: "Apple Events / Notes", detail: "Requested by macOS when Notes automation first runs.", granted: nil, settingsAnchor: "Privacy_Automation"),
+        ]
+    }
+
+    private func refreshPermissions() { permissionRefresh += 1 }
+
+    private func openPrivacySettings(anchor: String) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func permissionLabel(_ granted: Bool?) -> String {
+        guard let granted else { return "On first use" }
+        return granted ? "Granted" : "Not granted"
+    }
+
+    private func permissionSymbol(_ granted: Bool?) -> String {
+        guard let granted else { return "questionmark.circle" }
+        return granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+    }
+
+    private func permissionColor(_ granted: Bool?) -> Color {
+        guard let granted else { return .secondary }
+        return granted ? .green : .orange
+    }
+
+    private func authorizationGranted(_ status: CNAuthorizationStatus) -> Bool {
+        status == .authorized
+    }
+
+    private func eventAuthorizationGranted(_ status: EKAuthorizationStatus) -> Bool {
+        status == .fullAccess || status == .writeOnly
+    }
+
+    private func mediaAuthorizationGranted(_ status: AVAuthorizationStatus) -> Bool {
+        status == .authorized
+    }
+
+    private func speechAuthorizationGranted(_ status: SFSpeechRecognizerAuthorizationStatus) -> Bool {
+        status == .authorized
     }
     
     // MARK: - Server Tab
@@ -516,7 +639,10 @@ public struct ARESSettingsView: View {
                 getnameinfo(interfaceAddr, socklen_t(interfaceAddr.pointee.sa_len),
                             &hostname, socklen_t(hostname.count),
                             nil, 0, NI_NUMERICHOST)
-                let ipAddress = String(cString: hostname)
+                let ipAddress = String(
+                    decoding: hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+                    as: UTF8.self
+                )
                 
                 if name.contains("utun") {
                     if ipAddress.hasPrefix("100.") {

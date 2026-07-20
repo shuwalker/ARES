@@ -70,7 +70,7 @@ public class UserCollaborationTool: MCPTool, @unchecked Sendable {
     /// User collaboration must execute serially (one at a time).
     public var requiresSerial: Bool { true }
 
-    private let logger = Logger(label: "com.sam.mcp.UserCollaborationTool")
+    private let logger = Logger(label: "com.ares.mcp.UserCollaborationTool")
 
    /// Shared state for pending user responses Key: toolCallId (UUID string), Value: PendingResponse.
    /// Thread-safe access: ALL reads/writes MUST go through lockedRead/lockedWrite helpers.

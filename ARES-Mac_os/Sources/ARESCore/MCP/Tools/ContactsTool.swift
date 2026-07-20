@@ -14,6 +14,7 @@ public class ContactsTool: ConsolidatedMCP, @unchecked Sendable {
     Search and manage the user's Contacts using the macOS Contacts framework.
 
     OPERATIONS:
+    • permission_status - Report Contacts authorization without prompting
     • search - Search contacts by name, email, or phone (query)
     • get_contact - Get full details for a contact (contact_id)
     • create_contact - Create a new contact (first_name, optional: last_name, email, phone, organization, job_title, notes)
@@ -25,7 +26,7 @@ public class ContactsTool: ConsolidatedMCP, @unchecked Sendable {
     """
 
     public var supportedOperations: [String] {
-        return ["search", "get_contact", "create_contact", "update_contact", "list_groups", "search_group"]
+        return ["permission_status", "search", "get_contact", "create_contact", "update_contact", "list_groups", "search_group"]
     }
 
     public var parameters: [String: MCPToolParameter] {
@@ -89,7 +90,7 @@ public class ContactsTool: ConsolidatedMCP, @unchecked Sendable {
         ]
     }
 
-    private let logger = Logger(label: "com.sam.mcp.contacts")
+    private let logger = Logger(label: "com.ares.mcp.contacts")
     private let store = CNContactStore()
 
     @MainActor
@@ -111,6 +112,8 @@ public class ContactsTool: ConsolidatedMCP, @unchecked Sendable {
         context: MCPExecutionContext
     ) async -> MCPToolResult {
         switch operation {
+        case "permission_status":
+            return permissionStatus()
         case "search":
             return await searchContacts(parameters: parameters)
         case "get_contact":
@@ -129,6 +132,16 @@ public class ContactsTool: ConsolidatedMCP, @unchecked Sendable {
     }
 
     // MARK: - Authorization
+
+    private func permissionStatus() -> MCPToolResult {
+        MCPToolResult(
+            success: true,
+            output: MCPOutput(
+                content: "Contacts permission: \(authStatusDescription(contactsAuthStatus()))",
+                mimeType: "text/plain"
+            )
+        )
+    }
 
     /// Check current contacts authorization status without prompting.
     private func contactsAuthStatus() -> CNAuthorizationStatus {
@@ -162,8 +175,8 @@ public class ContactsTool: ConsolidatedMCP, @unchecked Sendable {
             logger.warning("Contacts access \(authStatusDescription(status)), cannot re-prompt")
             return MCPToolResult(success: false, output: MCPOutput(content: """
             Contacts access \(authStatusDescription(status)).
-            To grant access: Open System Settings > Privacy & Security > Contacts, then enable SAM (com.fewtarius.syntheticautonomicmind).
-            If SAM is not listed, click the + button to add it from /Applications/SAM.app.
+            To grant access: Open System Settings > Privacy & Security > Contacts, then enable ARES or ARESNativeMCP.
+            If neither is listed, launch ARES and try the contacts operation again to trigger the system prompt.
             """))
         case .notDetermined:
             // First time - show the system prompt
@@ -171,7 +184,7 @@ public class ContactsTool: ConsolidatedMCP, @unchecked Sendable {
                 let granted = try await store.requestAccess(for: .contacts)
                 if !granted {
                     logger.warning("User declined contacts access prompt")
-                    return MCPToolResult(success: false, output: MCPOutput(content: "Contacts access was declined. To enable later: System Settings > Privacy & Security > Contacts > enable SAM."))
+                    return MCPToolResult(success: false, output: MCPOutput(content: "Contacts access was declined. To enable later: System Settings > Privacy & Security > Contacts > enable ARES or ARESNativeMCP."))
                 }
                 return nil  // Success
             } catch {

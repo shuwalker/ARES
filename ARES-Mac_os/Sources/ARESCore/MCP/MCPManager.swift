@@ -4,13 +4,13 @@
 import Foundation
 import Logging
 
-/// MCP Manager for SAM - Coordinates tool registration and execution.
+/// ARES MCP manager — coordinates native tool registration and execution.
 public class MCPManager: ObservableObject {
     @Published public var isInitialized: Bool = false
     @Published public var availableTools: [any MCPTool] = []
 
     private let toolRegistry = MCPToolRegistry()
-    private let logger = Logging.Logger(label: "com.sam.mcp.MCPManager")
+    private let logger = Logging.Logger(label: "com.ares.mcp.MCPManager")
     private var builtinTools: [any MCPTool] = []
     private var memoryManager: MemoryManagerProtocol?
     
@@ -198,6 +198,10 @@ public class MCPManager: ObservableObject {
         }
 
         var candidateTools: [any MCPTool] = [
+            /// External callers receive a structured request instead of the
+            /// helper blocking without a UI response channel.
+            UserCollaborationTool(),
+
             /// Consolidated memory operations (search, store, recall_history)
             memoryOperationsTool,
 
@@ -205,16 +209,28 @@ public class MCPManager: ObservableObject {
             TodoOperationsTool(),
 
             /// Math operations (calculate, convert, formula)
-            MathOperationsTool()
+            MathOperationsTool(),
+
+            /// Workspace-scoped file operations. Authorization guards inside
+            /// the consolidated tool deny access outside the supplied working
+            /// directory unless an explicit grant exists.
+            FileOperationsTool()
         ]
 
-        /// Add image generation tool if service is available.
-        let imageGenTool = ImageGenerationTool()
+        /// Discoverable but strictly consent- and Accessibility-gated. Keeping
+        /// it registered lets runtimes explain the permission path honestly.
+        candidateTools.append(ScreenReadTool())
+
+        /// Image generation is an optional service-backed capability. Only
+        /// publish it when a concrete service has been configured.
         if let imageService = self.imageGenerationService {
+            let imageGenTool = ImageGenerationTool()
             imageGenTool.setService(imageService)
             logger.debug("ImageGenerationService injected into ImageGenerationTool")
+            candidateTools.append(imageGenTool)
+        } else {
+            logger.info("Optional image generation service is not configured")
         }
-        candidateTools.append(imageGenTool)
 
         /// Add macOS integration tools.
         candidateTools.append(CalendarTool())
@@ -230,8 +246,7 @@ public class MCPManager: ObservableObject {
             candidateTools.append(contentsOf: advancedTools)
             logger.debug("Added \(advancedTools.count) advanced tools: \(advancedTools.map { $0.name }.joined(separator: ", "))")
         } else {
-            logger.warning("CRITICAL: Advanced tools (web research, document import, automation) not yet registered")
-            logger.warning("Need to inject services: WebResearchService, AutomationService, DocumentImportSystem")
+            logger.info("Optional service-backed tools are not configured")
         }
 
         for tool in candidateTools {
@@ -271,7 +286,7 @@ public class MCPManager: ObservableObject {
 /// Simple tool registry for managing MCP tools with consistent ordering CRITICAL: Tools MUST always be returned in same order for KV cache efficiency.
 public class MCPToolRegistry {
     private var registeredTools: [String: any MCPTool] = [:]
-    private let logger = Logging.Logger(label: "com.sam.mcp.MCPToolRegistry")
+    private let logger = Logging.Logger(label: "com.ares.mcp.MCPToolRegistry")
 
     /// Explicit tool ordering for KV cache consistency Tools are returned in this exact order every time to ensure system prompts are identical This dramatically improves KV cache hit rates for MLX models.
     private let toolOrder: [String] = [
@@ -300,6 +315,9 @@ public class MCPToolRegistry {
         "notes_operations",
         "spotlight_search",
         "weather_operations",
+
+        /// Consent-gated screen awareness
+        "screen_read",
 
         /// Image generation (ALICE remote)
         "image_generation"

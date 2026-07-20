@@ -256,8 +256,8 @@ public struct ToolErrorGuidance: Sendable {
             - For Calendar: System Settings > Privacy & Security > Calendars
             - For Contacts: System Settings > Privacy & Security > Contacts
             - For Reminders: System Settings > Privacy & Security > Reminders
-            Find SAM (com.fewtarius.syntheticautonomicmind) in the list and enable it.
-            If SAM is not listed, click the + button and add it from /Applications/SAM.app.
+            Find ARES or ARESNativeMCP in the list and enable it.
+            If neither is listed, launch ARES and retry the operation to trigger the system prompt.
             NOTE: If access was previously denied, the system will not re-prompt. The user must manually enable it in System Settings.
             """
             

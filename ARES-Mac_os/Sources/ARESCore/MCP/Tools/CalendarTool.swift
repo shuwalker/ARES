@@ -14,6 +14,7 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
     Manage the user's Calendar events and Reminders using macOS EventKit.
 
     OPERATIONS:
+    • permission_status - Report Calendar and Reminders authorization without prompting
     Calendar Events:
     • list_events - List upcoming events (optional: days_ahead, calendar_name)
     • create_event - Create a calendar event (title, start_date, end_date, optional: notes, calendar_name, location)
@@ -33,6 +34,7 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
 
     public var supportedOperations: [String] {
         return [
+            "permission_status",
             "list_events", "create_event", "search_events", "delete_event",
             "list_reminders", "create_reminder", "complete_reminder", "delete_reminder",
             "list_reminder_lists"
@@ -125,7 +127,7 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
         ]
     }
 
-    private let logger = Logger(label: "com.sam.mcp.calendar")
+    private let logger = Logger(label: "com.ares.mcp.calendar")
     private let eventStore = EKEventStore()
 
     @MainActor
@@ -147,6 +149,8 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
         context: MCPExecutionContext
     ) async -> MCPToolResult {
         switch operation {
+        case "permission_status":
+            return permissionStatus()
         case "list_events":
             return await listEvents(parameters: parameters)
         case "create_event":
@@ -171,6 +175,18 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
     }
 
     // MARK: - Authorization
+
+    private func permissionStatus() -> MCPToolResult {
+        let calendars = authStatusDescription(EKEventStore.authorizationStatus(for: .event))
+        let reminders = authStatusDescription(EKEventStore.authorizationStatus(for: .reminder))
+        return MCPToolResult(
+            success: true,
+            output: MCPOutput(
+                content: "Calendar permission: \(calendars)\nReminders permission: \(reminders)",
+                mimeType: "text/plain"
+            )
+        )
+    }
 
     /// Check current calendar authorization status without prompting.
     @available(macOS 14.0, *)
@@ -213,8 +229,8 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
                 logger.warning("Calendar access \(authStatusDescription(status)), cannot re-prompt")
                 return MCPToolResult(success: false, output: MCPOutput(content: """
                 Calendar access \(authStatusDescription(status)).
-                To grant access: Open System Settings > Privacy & Security > Calendars, then enable SAM (com.fewtarius.syntheticautonomicmind).
-                If SAM is not listed, click the + button to add it from /Applications/SAM.app.
+                To grant access: Open System Settings > Privacy & Security > Calendars, then enable ARES or ARESNativeMCP.
+                If neither is listed, launch ARES and try the calendar operation again to trigger the system prompt.
                 """))
             case .notDetermined:
                 // First time - show the system prompt
@@ -222,7 +238,7 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
                     let granted = try await eventStore.requestFullAccessToEvents()
                     if !granted {
                         logger.warning("User declined calendar access prompt")
-                        return MCPToolResult(success: false, output: MCPOutput(content: "Calendar access was declined. To enable later: System Settings > Privacy & Security > Calendars > enable SAM."))
+                        return MCPToolResult(success: false, output: MCPOutput(content: "Calendar access was declined. To enable later: System Settings > Privacy & Security > Calendars > enable ARES or ARESNativeMCP."))
                     }
                     return nil  // Success
                 } catch {
@@ -289,14 +305,14 @@ public class CalendarTool: ConsolidatedMCP, @unchecked Sendable {
                 logger.warning("Reminders access \(authStatusDescription(status)), cannot re-prompt")
                 return MCPToolResult(success: false, output: MCPOutput(content: """
                 Reminders access \(authStatusDescription(status)).
-                To grant access: Open System Settings > Privacy & Security > Reminders, then enable SAM (com.fewtarius.syntheticautonomicmind).
-                If SAM is not listed, click the + button to add it from /Applications/SAM.app.
+                To grant access: Open System Settings > Privacy & Security > Reminders, then enable ARES or ARESNativeMCP.
+                If neither is listed, launch ARES and try the reminders operation again to trigger the system prompt.
                 """))
             case .notDetermined:
                 do {
                     let granted = try await eventStore.requestFullAccessToReminders()
                     if !granted {
-                        return MCPToolResult(success: false, output: MCPOutput(content: "Reminders access was declined. To enable later: System Settings > Privacy & Security > Reminders > enable SAM."))
+                        return MCPToolResult(success: false, output: MCPOutput(content: "Reminders access was declined. To enable later: System Settings > Privacy & Security > Reminders > enable ARES or ARESNativeMCP."))
                     }
                     return nil
                 } catch {

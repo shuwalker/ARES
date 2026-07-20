@@ -46,12 +46,12 @@ public class WeatherTool: ConsolidatedMCP, @unchecked Sendable {
             ),
             "latitude": MCPToolParameter(
                 type: .number,
-                description: "Location latitude (optional if city or SAM location configured)",
+                description: "Location latitude (optional if city or ARES location configured)",
                 required: false
             ),
             "longitude": MCPToolParameter(
                 type: .number,
-                description: "Location longitude (optional if city or SAM location configured)",
+                description: "Location longitude (optional if city or ARES location configured)",
                 required: false
             ),
             "city": MCPToolParameter(
@@ -249,7 +249,7 @@ public class WeatherTool: ConsolidatedMCP, @unchecked Sendable {
     @MainActor
     private func getCurrentWeather(parameters: [String: Any]) async -> MCPToolResult {
         guard let coords = await resolveLocation(parameters: parameters) else {
-            return MCPToolResult(success: false, output: MCPOutput(content: "Could not determine location. Provide city name, coordinates, or configure location in SAM Preferences."))
+            return MCPToolResult(success: false, output: MCPOutput(content: "Could not determine location. Provide city name, coordinates, or configure location in ARES Settings."))
         }
 
         let urlString = "https://api.open-meteo.com/v1/forecast?latitude=\(coords.latitude)&longitude=\(coords.longitude)&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,cloud_cover,surface_pressure&temperature_unit=celsius&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto"
@@ -297,7 +297,7 @@ public class WeatherTool: ConsolidatedMCP, @unchecked Sendable {
     @MainActor
     private func getForecast(parameters: [String: Any]) async -> MCPToolResult {
         guard let coords = await resolveLocation(parameters: parameters) else {
-            return MCPToolResult(success: false, output: MCPOutput(content: "Could not determine location. Provide city name, coordinates, or configure location in SAM Preferences."))
+            return MCPToolResult(success: false, output: MCPOutput(content: "Could not determine location. Provide city name, coordinates, or configure location in ARES Settings."))
         }
 
         let days = min(parameters["days"] as? Int ?? 7, 16)
@@ -360,7 +360,7 @@ public class WeatherTool: ConsolidatedMCP, @unchecked Sendable {
     @MainActor
     private func getHourlyForecast(parameters: [String: Any]) async -> MCPToolResult {
         guard let coords = await resolveLocation(parameters: parameters) else {
-            return MCPToolResult(success: false, output: MCPOutput(content: "Could not determine location. Provide city name, coordinates, or configure location in SAM Preferences."))
+            return MCPToolResult(success: false, output: MCPOutput(content: "Could not determine location. Provide city name, coordinates, or configure location in ARES Settings."))
         }
 
         let hours = min(parameters["hours"] as? Int ?? 24, 48)

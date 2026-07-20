@@ -114,19 +114,30 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(hermesDashboardURL, forKey: "ares.config.hermesDashboardURL") }
     }
 
-    /// Hermes Gateway API key. Stored in UserDefaults; the API_SERVER_KEY
-    /// environment variable still wins so CLI/Xcode launches can override,
-    /// but Finder launches (no shell env) fall back to the persisted value.
-    @Published public var hermesAPIKey: String = ProcessInfo.processInfo.environment["API_SERVER_KEY"]
-        ?? UserDefaults.standard.string(forKey: "ares.config.hermesAPIKey") ?? "" {
-        didSet { UserDefaults.standard.set(hermesAPIKey, forKey: "ares.config.hermesAPIKey") }
+    /// Hermes Gateway API key. Environment overrides win; persisted values
+    /// live in Keychain and legacy UserDefaults values are migrated once.
+    @Published public var hermesAPIKey: String = ARESSecretStore.loadMigratingLegacy(
+        environmentKey: "API_SERVER_KEY",
+        account: "hermes-gateway-api-key",
+        legacyDefaultsKey: "ares.config.hermesAPIKey"
+    ) {
+        didSet {
+            _ = ARESSecretStore.write(hermesAPIKey, account: "hermes-gateway-api-key")
+            UserDefaults.standard.removeObject(forKey: "ares.config.hermesAPIKey")
+        }
     }
 
     /// JROS/Jaeger Gateway API key. Stored locally for Finder-launched app
     /// sessions and exported as ARES_JROS_GATEWAY_KEY when ARES starts WebUI.
-    @Published public var jrosAPIKey: String = ProcessInfo.processInfo.environment["ARES_JROS_GATEWAY_KEY"]
-        ?? UserDefaults.standard.string(forKey: "ares.config.jrosAPIKey") ?? "" {
-        didSet { UserDefaults.standard.set(jrosAPIKey, forKey: "ares.config.jrosAPIKey") }
+    @Published public var jrosAPIKey: String = ARESSecretStore.loadMigratingLegacy(
+        environmentKey: "ARES_JROS_GATEWAY_KEY",
+        account: "jros-gateway-api-key",
+        legacyDefaultsKey: "ares.config.jrosAPIKey"
+    ) {
+        didSet {
+            _ = ARESSecretStore.write(jrosAPIKey, account: "jros-gateway-api-key")
+            UserDefaults.standard.removeObject(forKey: "ares.config.jrosAPIKey")
+        }
     }
 
     // MARK: - Parsed URLs (fall back to defaults if the stored string is malformed)
