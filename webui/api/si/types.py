@@ -229,6 +229,7 @@ class StepStatus(str, Enum):
     FAILED = "failed"
     SKIPPED = "skipped"
     AWAITING_APPROVAL = "awaiting_approval"
+    CANCELLED = "cancelled"
 
 
 @dataclass

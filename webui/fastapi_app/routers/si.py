@@ -168,6 +168,83 @@ def si_classify_intent(message: str = Query(..., description="User message")):
     return {"intent": intent, "confidence": confidence, "message": message}
 
 
+# ── Orchestration ──────────────────────────────────────────────────────
+
+@router.post("/orchestrate")
+def si_orchestrate(
+    message: str = Query(..., description="User message to orchestrate"),
+    conversation_id: str | None = Query(None, description="Conversation ID for continuity"),
+    local_only: bool = Query(False, description="Force local-only mode"),
+    si_name: str = Query("Assistant", description="SI name for identity injection"),
+    owner_name: str = Query("User", description="Owner name for identity injection"),
+):
+    """Main orchestration endpoint. Classifies intent, creates plan, compiles context, selects worker."""
+    from api.si.orchestrator import orchestrate_request
+    result = orchestrate_request(
+        user_message=message,
+        conversation_id=conversation_id,
+        local_only_mode=local_only,
+        si_name=si_name,
+        owner_name=owner_name,
+    )
+    return result
+
+
+@router.post("/orchestrate/{plan_id}/complete-step")
+def si_complete_step(
+    plan_id: str,
+    step_id: str = Query(..., description="Step ID to complete"),
+    result: str = Query(..., description="Step result"),
+    evaluation: str | None = Query(None, description="Evaluation result: pass/fail"),
+):
+    """Mark a step as completed and advance the plan."""
+    from api.si.orchestrator import complete_step
+    return complete_step(plan_id, step_id, result, evaluation)
+
+
+@router.get("/orchestrate/{plan_id}")
+def si_get_plan(plan_id: str):
+    """Get the current state of a plan."""
+    from api.si.orchestrator import load_plan
+    plan = load_plan(plan_id)
+    if not plan:
+        return {"error": f"Plan {plan_id} not found"}
+    return {
+        "plan_id": plan.plan_id,
+        "goal": plan.goal,
+        "status": plan.status.value,
+        "steps": [
+            {
+                "step_id": s.step_id,
+                "objective": s.objective,
+                "assigned_worker": s.assigned_worker,
+                "status": s.status.value,
+                "retry_count": s.retry_count,
+            }
+            for s in plan.steps
+        ],
+        "created_at": plan.created_at,
+        "updated_at": plan.updated_at,
+    }
+
+
+@router.post("/orchestrate/{plan_id}/cancel")
+def si_cancel_plan(plan_id: str):
+    """Cancel a running plan."""
+    from api.si.orchestrator import cancel_plan
+    return cancel_plan(plan_id)
+
+
+@router.get("/orchestrate")
+def si_list_plans(
+    status: str | None = Query(None, description="Filter by plan status"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """List plans, optionally filtered by status."""
+    from api.si.orchestrator import list_plans
+    return {"plans": list_plans(status=status, limit=limit)}
+
+
 # ── Migration ──────────────────────────────────────────────────────────
 
 @router.post("/migrate")
