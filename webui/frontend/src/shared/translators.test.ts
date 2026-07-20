@@ -41,6 +41,20 @@ describe("ARES backend translators", () => {
     expect(session.messages[0]).toEqual(expect.objectContaining({ role: "user", text: "hello\nworld" }));
   });
 
+  it("carries worker provenance on messages for the Companion journal", () => {
+    const session = translateConversation({
+      session_id: "s1",
+      ares_backend: "ollama_local",
+      messages: [{ role: "assistant", content: "ok", worker_id: "hermes_local" }],
+    });
+    expect(session.backendId).toBe("ollama_local");
+    expect(session.messages[0]).toEqual(expect.objectContaining({
+      role: "assistant",
+      text: "ok",
+      workerId: "hermes_local",
+    }));
+  });
+
   it("maps only the settings fields owned by the current UI", () => {
     expect(translateSettings({ bot_name: "Athena", auth_enabled: true, password_hash: "secret" })).toEqual({ assistantName: "Athena", authEnabled: true, version: undefined });
   });

@@ -27,7 +27,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error:
     if (this.state.error) {
       return (
         <div role="alert" style={{ maxWidth: 640, margin: "10vh auto", padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
-          <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>ARES hit an unexpected error</h1>
+          <h1 style={{ fontSize: "1.25rem", fontWeight: 600 }}>The ARES app hit an unexpected error</h1>
           <p style={{ opacity: 0.75 }}>
             Your local data is unchanged. Retry this view or return to the main screen.
           </p>

@@ -6,6 +6,10 @@ through ``BaseLLMAdapter``.  Inventory reads never start or probe MCP servers.
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+import subprocess
 from typing import Any
 
 from .base import AdapterHealth, BaseToolAdapter
@@ -15,6 +19,30 @@ from ..request_context import profile_scope
 class McpToolAdapter(BaseToolAdapter):
     adapter_id = "mcp"
     display_name = "MCP tools"
+
+    @staticmethod
+    def _native_tools() -> list[dict[str, Any]]:
+        """Read bundled native tool schemas without starting an MCP session."""
+
+        command = os.environ.get("ARES_NATIVE_MCP_COMMAND", "").strip()
+        if not command:
+            return []
+        executable = Path(command).expanduser()
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            return []
+        try:
+            completed = subprocess.run(
+                [str(executable), "--list-tools"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=8,
+            )
+            payload = json.loads(completed.stdout)
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+            return []
+        tools = payload.get("tools") if isinstance(payload, dict) else None
+        return [item for item in tools or [] if isinstance(item, dict) and item.get("name")]
 
     @staticmethod
     def _runtime_status() -> dict[str, dict[str, Any]]:
@@ -37,12 +65,20 @@ class McpToolAdapter(BaseToolAdapter):
         from api.config import get_config
 
         servers = get_config().get("mcp_servers", {})
-        return servers if isinstance(servers, dict) else {}
+        configured = dict(servers) if isinstance(servers, dict) else {}
+        try:
+            from api.native_mcp import native_server_config
+
+            configured.update(native_server_config())
+        except Exception:
+            pass
+        return configured
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         with profile_scope(profile):
             configured = self._configured_servers()
             runtime = self._runtime_status()
+            native_tools = self._native_tools()
         enabled = [name for name, cfg in configured.items() if not isinstance(cfg, dict) or cfg.get("enabled", True)]
         connected = [name for name in enabled if bool((runtime.get(str(name)) or {}).get("connected"))]
         if connected:
@@ -50,7 +86,18 @@ class McpToolAdapter(BaseToolAdapter):
                 "connected",
                 True,
                 f"{len(connected)} MCP server(s) connected.",
-                {"configured": len(configured), "connected": len(connected)},
+                {
+                    "configured": len(configured),
+                    "connected": len(connected),
+                    "native_tools": len(native_tools),
+                },
+            )
+        if native_tools:
+            return AdapterHealth(
+                "available",
+                True,
+                f"Bundled native MCP helper is ready with {len(native_tools)} tool(s).",
+                {"configured": len(configured), "connected": 0, "native_tools": len(native_tools)},
             )
         if enabled:
             return AdapterHealth(
@@ -72,6 +119,21 @@ class McpToolAdapter(BaseToolAdapter):
             configured = self._configured_servers()
             runtime = self._runtime_status()
             summaries: list[dict[str, Any]] = []
+            for raw in self._native_tools():
+                native_connected = bool((runtime.get("ares_native") or {}).get("connected"))
+                schema = raw.get("inputSchema") if isinstance(raw.get("inputSchema"), dict) else {}
+                properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+                summaries.append(
+                    {
+                        "name": str(raw["name"]),
+                        "server": "ares_native",
+                        "description": _redact_text(str(raw.get("description") or ""))[:360],
+                        "active": native_connected,
+                        "enabled": True,
+                        "status": "active" if native_connected else "available",
+                        "schema_summary": sorted(str(name) for name in properties),
+                    }
+                )
             for server_name, status in runtime.items():
                 raw_tools = status.get("tools")
                 if not isinstance(raw_tools, list):
@@ -128,6 +190,7 @@ class McpToolAdapter(BaseToolAdapter):
             for name, cfg in configured.items()
             if (not isinstance(cfg, dict) or cfg.get("enabled", True))
             and not bool((runtime.get(str(name)) or {}).get("connected"))
+            and str(name) != "ares_native"
         )
         return {
             "tools": summaries,

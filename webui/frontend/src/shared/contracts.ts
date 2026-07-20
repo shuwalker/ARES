@@ -8,7 +8,12 @@ export interface LocalProfile {
   assistantName: string;
   voice: string;
   reachability: "this-device" | "local-network" | "private-network";
+  setupMode: "quick" | "advanced";
+  character: "grounded" | "warm" | "direct" | "curious";
+  autonomy: "observe" | "confirm" | "delegated";
+  lifeAreas: Array<"finance" | "health" | "work" | "home" | "projects">;
   contextStoreEnabled?: boolean;
+  includeExternalHistory?: boolean;
 }
 
 export interface CapabilityStatus {
@@ -64,6 +69,18 @@ export interface ConversationMessage {
   role: ConversationRole;
   text: string;
   createdAt?: string;
+  /** Worker that produced this turn (Companion journal provenance). */
+  workerId?: string;
+}
+
+/** Rolling worker effectiveness row (Companion technical intelligence). */
+export interface WorkerRanking {
+  workerId: string;
+  sampleCount: number;
+  effectivenessAvg: number;
+  effectivenessLast: number;
+  lastEvaluatedAt?: string;
+  lastTaskKind?: string;
 }
 
 export interface ConversationSession extends SessionSummary {

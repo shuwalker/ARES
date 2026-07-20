@@ -8,78 +8,95 @@ override it.
 
 ## Product definition
 
-ARES is a simplified macOS controller application and a remotely accessible
-WebUI for operating and communicating with a personal Synthetic Intelligence
-(SI).
+### Naming (locked)
 
-The macOS application supplies a menu-bar interface and expected host
-controls: start, stop, restart, status, diagnostics, opening the WebUI, and
-useful native macOS integration. It must remain possible to start the same
-server from a terminal. The WebUI is the universal interaction surface used on
-the host Mac and from other authenticated devices over an explicitly configured
-private network.
+| Name | What it is |
+|------|------------|
+| **ARES** | **Only the application name** (product package: Mac app, WebUI, controller). Not a character, not an agent, not a second brain. |
+| **Companion** (SI) | **Everything that is not a worker.** The personal Synthetic Intelligence experience: identity, journal, context, routing, scoring, permissions, workspace, and how the person is spoken to. |
+| **Workers** | Models, agent frameworks, and tools that **execute** (Ollama, jros, Hermes, cloud LLMs, MCP servers, device tools). |
 
-ARES is Mac-first, not Mac-only. Native shells and the WebUI are interfaces to
-one product and should not acquire incompatible concepts or configuration.
+In product UI, the person talks to their **Companion**, not to “ARES.”
+Technical docs may say “the ARES app hosts the Companion.”
+
+### Architecture in one line
+
+The **ARES application** hosts your **Companion**.
+The Companion is the control plane + unified memory + technical intelligence.
+**Workers** do generative/agent execution when the Companion routes work to them.
+
+- **macOS app (primary on-device product):** full native capacity — same jobs as
+  WebUI. Primary surface for living with the Companion on the host machine.
+- **WebUI (remote / light client):** same Companion contracts; lighter shell for
+  LAN / trusted Tailscale / other devices.
+- **Controller service (FastAPI):** auth, persistence, adapters, APIs shared by
+  native and web clients. Startable from the Mac app or terminal.
+
+Mac-first, not Mac-only. Surfaces must not become incompatible products.
 
 ## Purpose
 
-Agent frameworks expose different session, model, tool, memory, and execution
-interfaces. ARES provides a stable user experience over those changing systems.
-The person communicates with one SI identity while ARES connects the runtimes,
-models, agents, tools, memory services, voice services, and devices required to
-perform work.
+People use many AI tools, agents, models, and CLIs. Without a center, each tool
+keeps its own conversations, memory, and context — quality fragments and control
+is lost. The **Companion** (hosted by the ARES app) exists to:
 
-The WebUI communicates with frameworks, providers, tools, memory services, and
-devices only through explicit integration interfaces. Streaming, recovery,
-terminal, workspace, authentication, and provider behavior are ARES product
-capabilities rather than implicit properties of one agent framework.
+1. Give one continuous SI experience over changing workers.
+2. **Centralize conversations, artifacts, tool results, approvals, and
+   preferences** so the person owns their data.
+3. Let the person pick **local or cloud models** and **agent frameworks** as
+   workers — never as the Companion’s identity.
+4. Use **technical intelligence** (rules, scores, ranking, routing — not a
+   competing chat LLM) to raise worker effectiveness on the person’s metrics.
+5. Help manage work and devices through workers when configured — without the
+   Companion pretending to be the execution engine.
 
-## What ARES owns
+A common use case: local model via **Ollama or jros** as a worker, which may
+call other agentic tools. That is one configuration, not the architecture.
 
-ARES owns the product and presentation layer:
+## What the Companion owns (everything that is not a worker)
 
-- macOS controller and other native shells;
-- WebUI navigation and interaction design;
-- Local Profile and presentation preferences;
-- assistant display identity and connection status;
-- authentication, reachability, and device access;
-- permission and approval presentation;
-- capability discovery and connection configuration;
-- normalized activity, provenance, and health presentation;
-- conventional work views and the animated 2D activity view.
+The Companion is the non-worker layer of the product:
 
-A Local Profile can be created and saved without a running agent framework. It
-contains the person's preferred name, assistant display name, avatar and
-voice preferences, permission posture, configured areas, authentication,
-reachability, and connection preferences.
+- Local Profile and how the Companion is named / presented;
+- **unified conversation journal, artifacts, searchable context** (source of
+  truth, with provenance of which worker produced each turn);
+- context compilation (what package is sent to a worker this turn);
+- capability routing and worker selection;
+- effectiveness scoring and framework ranking;
+- authentication, reachability, pairing, permissions, approvals;
+- activity, health, and honest readiness presentation;
+- workspace views and optional animated activity renderer;
+- Mac + WebUI product surfaces that host this experience.
 
-Profile readiness is not execution readiness. The UI must distinguish:
+A Local Profile can be saved without any worker online. First-run **must force
+an explicit worker choice** (Ollama, jros, Hermes, cloud, or explicit
+“organizer only for now”). Nothing is pre-selected as a default worker.
 
-- **Profile ready:** local configuration was saved;
-- **Connection ready:** a framework or provider is reachable;
-- **Execution available:** at least one connected system can perform the
+Profile readiness is not execution readiness:
+
+- **Profile ready:** Local Profile saved;
+- **Connection ready:** a worker/provider is reachable;
+- **Execution available:** at least one connected worker can perform the
   requested capability.
 
-ARES must not claim that the SI can execute work when no suitable runtime or
-provider is connected.
+The product must not claim the Companion can execute work when no suitable
+worker is connected.
 
-## What connected systems own
+## What workers own
 
-Agent frameworks own their execution loops, runtime sessions, framework-native
-tools, runtime persona behavior, and runtime memory. Providers may supply
-models, speech, vision, embeddings, search, storage, or other capabilities.
-Devices may supply perception or embodiment.
+Workers own **execution loops** and framework-native runtimes. Providers may
+supply models, speech, vision, embeddings, search, or storage. Devices may
+supply perception or embodiment.
 
-ARES may configure, select, invoke, observe, and present these systems. It must
-not silently fork their authoritative runtime persona or memory into a competing
-ARES implementation. An ARES-native execution or memory service would need to
-be explicit and governed by the same interfaces as every other connection.
+The Companion does **not** re-implement JaegerAI, Hermes, Ollama, or cloud
+agents as a competing worker. Adapters invoke them.
 
-No framework is the UI identity. JaegerAI, Ares Agent, Claude, Gemini, OpenAI,
-local models, MCP servers, and additional systems are named connections or
-capability providers. A preferred or default framework can exist without
-becoming an installation prerequisite for saving the Local Profile.
+Workers may have **session scratchpads** (Option B lease). Durable SI memory
+stays in the Companion journal (Option A source of truth). Scratchpads yield
+summaries/artifacts back; they do not become lifelong identity.
+
+No worker is the product identity. JaegerAI/jros, Hermes, Ollama, Claude,
+Gemini, OpenAI, MCP servers are **named connections / workers**.
 
 ## Integration model
 
@@ -127,7 +144,20 @@ Use clear engineering and product terms in documentation. Do not make
 metaphorical names such as "Cortex," "Orchestrator," "Meta-System," or
 "Split-Brain" canonical architecture.
 
-The primary interface areas are:
+### Surfaces (not competing products)
+
+| Surface | Role |
+|---|---|
+| **macOS app** | Primary full product on the host machine. Same capabilities as WebUI. Host lifecycle, permissions, native tools, menus. |
+| **WebUI** | Light remote client to the same controller over localhost, LAN, or trusted Tailscale. |
+| **CLI / terminal start** | Operator path to start/stop the controller without the GUI. |
+
+Historical UI experiments (Scarf, HermesDesktop, Command Center, prototypes)
+are **merge sources**, not parallel apps. Liked elements are integrated into
+one shell; superseded trees leave production after their capabilities are
+represented. Do not ship multiple entrypoints that fight each other.
+
+The primary interface areas (native and web):
 
 - **Conversation:** assistant identity, transcript, voice/text input, and
   immediate approvals or questions.
@@ -204,7 +234,9 @@ showing framework-native terminology:
 
 | Concept | Term |
 |---|---|
-| User-facing SI identity | Assistant or Companion |
+| Application / product package name | **ARES** (not a character; not spoken to as the SI) |
+| Everything that is not a worker (SI experience) | **Companion** (preferred) or Assistant |
+| Model / agent framework / executor | **Worker** (also Connection when listing links) |
 | Work to accomplish | Task |
 | Desired outcome | Goal |
 | One execution attempt | Run |
@@ -216,6 +248,13 @@ showing framework-native terminology:
 | Local user configuration | Local Profile |
 | Historical user-readable record | Activity |
 | Diagnostic output | Logs |
+| Built-in non-LLM optimization (rules, scores, ranks) | Companion scoring / routing (not “ARES agent”) |
+
+Do not:
+
+- present “ARES” as the chat persona or second brain;
+- call a worker the Companion;
+- invent a third named intelligence between Companion and workers.
 
 Use separate status families:
 
@@ -236,10 +275,16 @@ capability contract, persistence layer, and renderer affected.
 Do not:
 
 - make the main UI structurally dependent on one named framework;
+- treat ARES as an agent or re-implement a framework’s execution loop;
 - confuse a saved profile with a working execution connection;
-- duplicate framework-owned execution or memory without an explicit service;
+- pre-select a default backend at first run without an explicit user choice;
+- trap conversation history only inside a framework-private store with no
+  ARES-visible journal/provenance path;
 - create a second state store for the animated environment;
 - hide provenance for multi-agent comparison or consequential external action;
 - expose framework concepts globally when a stable ARES concept exists;
 - introduce another synonym for Task, Run, Schedule, Connection, or Capability;
-- make the native app and WebUI separate products.
+- make the native app a thin browser wrapper while claiming product parity;
+- make the native app and WebUI separate products with different concepts;
+- ship parallel UI shells (prototype vs routed app vs abandoned native trees)
+  without a single merge target.

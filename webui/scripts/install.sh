@@ -37,7 +37,6 @@ BOLD='\033[1m'
 REPO_URL_SSH="git@github.com:shuwalker/ARES.git"
 REPO_URL_HTTPS="https://github.com/shuwalker/ARES.git"
 ARES_HOME="${ARES_HOME:-$HOME/.ares}"
-ARES_HOME="${ARES_HOME:-$HOME/.ares}"
 INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME}"
 WEBUI_DIR="$INSTALL_DIR/webui"
 PYTHON_VERSION="3.11"
@@ -52,9 +51,11 @@ MANIFEST_MODE=false
 NON_INTERACTIVE=false
 BACKEND_MODE="${ARES_BACKEND:-auto}"
 NO_START=false
+SOURCE_DIR=""
+INSTALL_CLI=true
 
-# JaegerAI is ARES's required Companion runtime — the brain, memory, character,
-# and local model. ARES never forks or reimplements it; the installer only
+# JaegerAI is ARES's recommended Companion runtime for identity, memory,
+# character, voice, and embodiment. ARES never forks or reimplements it; the installer only
 # ever detects an existing install or delegates to JaegerAI's own installer,
 # the same way ares-workspace's installer delegates to Nous's upstream
 # ares-agent installer instead of reimplementing it.
@@ -87,6 +88,8 @@ while [[ $# -gt 0 ]]; do
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --backend) BACKEND_MODE="$2"; shift 2 ;;
         --no-start) NO_START=true; shift ;;
+        --source) SOURCE_DIR="$2"; shift 2 ;;
+        --no-cli) INSTALL_CLI=false; shift ;;
         --skip-jros) SKIP_JROS=true; shift ;;
         --with-ares) WITH_ARES=true; shift ;;
         -h|--help)
@@ -110,6 +113,8 @@ while [[ $# -gt 0 ]]; do
             echo "                  jros_local, hermes, hermes_local, claude_local,"
             echo "                  ollama_local, openai_cloud. Deleted modes ares/hybrid are rejected."
             echo "  --no-start      Skip auto-starting the server after installation"
+            echo "  --source PATH   Install the current local source tree instead of cloning"
+            echo "  --no-cli        Do not create or replace ~/.local/bin/ares"
             echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — profile can still"
             echo "                  be saved without a Companion runtime)"
             echo "  --with-ares     Also install Ares Agent package (optional coding addition;"
@@ -147,7 +152,7 @@ json_escape() {
 }
 
 emit_manifest() {
-    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"jros","title":"Install JaegerAI (required Companion runtime)","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
+    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"jros","title":"Connect recommended JaegerAI runtime","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
     printf '\n'
 }
 
@@ -209,8 +214,7 @@ detect_jros() {
     fi
 }
 
-# JaegerAI is ARES's required Companion runtime (the brain, memory, character,
-# local model). This stage never reimplements JaegerAI — it only detects an
+# JaegerAI is ARES's recommended full Companion runtime. This stage never reimplements JaegerAI — it only detects an
 # existing install or delegates to JaegerAI's own installer, exactly the way
 # ARES already delegates to Nous's own installer for the optional Ares
 # addition (see install_deps below).
@@ -221,27 +225,25 @@ stage_jros() {
         return 0
     fi
     if [ "$SKIP_JROS" = true ]; then
-        log_warn "Skipping JaegerAI install (--skip-jros). ARES has no Companion runtime until"
-        log_warn "JaegerAI is installed separately at $JAEGER_HOME_DETECTED."
+        log_warn "Skipping JaegerAI install (--skip-jros). Profile setup remains available;"
+        log_warn "JaegerAI capabilities remain unavailable until it is connected."
         return 0
     fi
 
     log_info "JaegerAI not found — installing the required Companion runtime..."
     log_info "  Delegating to JaegerAI's own installer: $JROS_INSTALL_URL"
     if ! curl -fsSL "$JROS_INSTALL_URL" | JAEGER_HOME="$JAEGER_HOME_DETECTED" bash; then
-        log_error "JaegerAI install failed."
-        log_error "ARES requires JaegerAI as its Companion runtime — retry manually with:"
-        log_error "  curl -fsSL $JROS_INSTALL_URL | bash"
-        log_error "or pass --skip-jros to continue without a Companion (not recommended)."
-        exit 1
+        log_warn "JaegerAI install failed; continuing with profile-only setup."
+        log_warn "Retry later with: curl -fsSL $JROS_INSTALL_URL | bash"
+        return 0
     fi
 
     detect_jros
     if [ "$JROS_DETECTED" != true ]; then
-        log_error "JaegerAI installer finished but no launcher was found at $JAEGER_HOME_DETECTED."
-        log_error "Check the installer output above, or set ARES_JAEGER_HOME/JAEGER_HOME"
-        log_error "to the location JaegerAI actually installed to."
-        exit 1
+        log_warn "JaegerAI installer finished but no launcher was found at $JAEGER_HOME_DETECTED."
+        log_warn "Profile setup will continue without execution readiness. Set"
+        log_warn "ARES_JAEGER_HOME/JAEGER_HOME after locating the installation."
+        return 0
     fi
     log_success "JaegerAI installed at $JAEGER_HOME_DETECTED"
 }
@@ -349,30 +351,76 @@ clone_repo() {
                 log_warn "Fast-forward not possible; resetting to origin/$BRANCH..."
                 git reset --hard "origin/$BRANCH"
             fi
+        elif [ -n "$SOURCE_DIR" ] && [ -f "$INSTALL_DIR/.ares-source-install" ]; then
+            install_from_source
+        elif [ -z "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+            # Secure temporary-directory APIs create the destination before
+            # invoking us. An existing *empty* directory is safe to replace;
+            # a non-empty non-repository remains protected below.
+            rmdir "$INSTALL_DIR"
+            if [ -n "$SOURCE_DIR" ]; then install_from_source; else clone_fresh_repo; fi
         else
             log_error "Directory exists but is not a git repository: $INSTALL_DIR"
             exit 1
         fi
     else
-        mkdir -p "$(dirname "$INSTALL_DIR")"
-        log_info "Trying SSH clone..."
-        if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
-           git clone --depth 1 --branch "$BRANCH" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
-            log_success "Cloned via SSH"
-        else
-            rm -rf "$INSTALL_DIR" 2>/dev/null
-            log_info "SSH failed, trying HTTPS..."
-            if git clone --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
-                log_success "Cloned via HTTPS"
-            else
-                log_error "Failed to clone repository"
-                exit 1
-            fi
-        fi
+        if [ -n "$SOURCE_DIR" ]; then install_from_source; else clone_fresh_repo; fi
     fi
 
     cd "$WEBUI_DIR"
     log_success "Repository ready"
+}
+
+install_from_source() {
+    local source_abs
+    if [ ! -d "$SOURCE_DIR" ]; then
+        log_error "Source directory not found: $SOURCE_DIR"
+        exit 1
+    fi
+    source_abs="$(cd "$SOURCE_DIR" && pwd)"
+    if [ ! -f "$source_abs/webui/fastapi_app/main.py" ] || \
+       [ ! -f "$source_abs/webui/frontend/package.json" ]; then
+        log_error "Source is not a current ARES tree: $source_abs"
+        exit 1
+    fi
+    mkdir -p "$INSTALL_DIR"
+    log_info "Staging current source from $source_abs..."
+    rsync -a \
+        --exclude '/.git/' \
+        --exclude '/.build/' \
+        --exclude '/attic/' \
+        --exclude '/ARES-Mac_os/ARES.app/' \
+        --exclude '/webui/.venv/' \
+        --exclude '/webui/venv/' \
+        --exclude '/webui/node_modules/' \
+        --exclude '/webui/frontend/node_modules/' \
+        --exclude '/webui/tests/' \
+        --exclude '/webui/docs/' \
+        --exclude '**/__pycache__/' \
+        --exclude '**/.pytest_cache/' \
+        "$source_abs/" "$INSTALL_DIR/"
+    printf '%s\n' "$source_abs" > "$INSTALL_DIR/.ares-source-install"
+    log_success "Current source staged"
+}
+
+clone_fresh_repo() {
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    log_info "Trying SSH clone..."
+    if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
+       git clone --depth 1 --branch "$BRANCH" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
+        log_success "Cloned via SSH"
+    else
+        # A failed clone can leave a partial target. The path is the exact
+        # installer destination already validated by clone_repo.
+        rm -rf "$INSTALL_DIR" 2>/dev/null
+        log_info "SSH failed, trying HTTPS..."
+        if git clone --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
+            log_success "Cloned via HTTPS"
+        else
+            log_error "Failed to clone repository"
+            exit 1
+        fi
+    fi
 }
 
 setup_venv() {
@@ -389,6 +437,13 @@ setup_venv() {
         check_python
     fi
 
+    if [ ! -d "$WEBUI_DIR" ]; then
+        log_error "WebUI directory not found: $WEBUI_DIR"
+        log_error "Run the repository stage first."
+        exit 1
+    fi
+    cd "$WEBUI_DIR"
+
     log_info "Creating virtual environment..."
 
     if [ -d "venv" ]; then
@@ -403,6 +458,13 @@ setup_venv() {
 
 install_deps() {
     log_info "Installing dependencies..."
+
+    if [ ! -f "$WEBUI_DIR/requirements.txt" ] || [ ! -d "$WEBUI_DIR/frontend" ]; then
+        log_error "Incomplete WebUI installation at $WEBUI_DIR"
+        log_error "Run the repository stage first."
+        exit 1
+    fi
+    cd "$WEBUI_DIR"
 
     if [ "$USE_VENV" = true ]; then
         export VIRTUAL_ENV="$WEBUI_DIR/venv"
@@ -648,6 +710,10 @@ fi
 print_banner
 detect_os
 setup_cli() {
+    if [ "$INSTALL_CLI" != true ]; then
+        log_info "Skipping global CLI link (--no-cli)"
+        return 0
+    fi
     log_info "Setting up ARES CLI..."
     mkdir -p ~/.local/bin
     if [ -f "$INSTALL_DIR/bin/ares" ]; then

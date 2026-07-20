@@ -6,10 +6,24 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="$(dirname "$PROJECT_DIR")/.build/arm64-apple-macosx/debug"
+REPO_DIR="$(dirname "$PROJECT_DIR")"
+CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="ARES"
 APP_BUNDLE="$PROJECT_DIR/$APP_NAME.app"
-VERSION="20260525.1"
+VERSION="$(tr -d '[:space:]' < "$REPO_DIR/VERSION")"
+
+BUILD_DIR="$(cd "$REPO_DIR" && swift build -c "$CONFIGURATION" --show-bin-path)"
+case "$BUILD_DIR" in
+    "$REPO_DIR"/.build/*) ;;
+    *) echo "Refusing unexpected Swift build directory: $BUILD_DIR" >&2; exit 1 ;;
+esac
+
+echo "Building Swift executable ($CONFIGURATION)..."
+# SwiftPM can retain removed resources in an incremental resource bundle.
+# Recreate this generated bundle so the app contains only current resources.
+rm -rf "$BUILD_DIR/ARES_ARES.bundle"
+(cd "$REPO_DIR" && swift build -c "$CONFIGURATION" --product "$APP_NAME")
+(cd "$REPO_DIR" && swift build -c "$CONFIGURATION" --product ARESNativeMCP)
 
 echo "=== Building $APP_NAME.app ==="
 
@@ -24,6 +38,8 @@ mkdir -p "$APP_BUNDLE/Contents/Frameworks"
 echo "Copying binary..."
 cp "$BUILD_DIR/ARES" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+cp "$BUILD_DIR/ARESNativeMCP" "$APP_BUNDLE/Contents/MacOS/ARESNativeMCP"
+chmod +x "$APP_BUNDLE/Contents/MacOS/ARESNativeMCP"
 
 # Step 3: Copy dynamic frameworks
 echo "Copying frameworks..."
@@ -94,7 +110,7 @@ cat >> "$APP_BUNDLE/Contents/Info.plist" << 'PLIST'
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>15.0</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
@@ -141,6 +157,17 @@ echo "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 echo "Codesigning..."
 codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || {
     echo "Warning: codesign failed (ad-hoc signing). App will work locally but may not pass Gatekeeper on other Macs."
+}
+# --deep assigns an unstable derived identifier to bare nested executables.
+# Replace it with a permanent identity, then reseal the outer bundle without
+# --deep so macOS privacy grants remain attached across rebuilds.
+codesign --force --sign - \
+    --identifier "com.jenkinsrobotics.ares-desktop.native-mcp" \
+    "$APP_BUNDLE/Contents/MacOS/ARESNativeMCP" 2>/dev/null || {
+    echo "Warning: native MCP helper codesign failed. macOS privacy grants may not persist."
+}
+codesign --force --sign - "$APP_BUNDLE" 2>/dev/null || {
+    echo "Warning: failed to reseal app after signing native MCP helper."
 }
 
 # Done

@@ -46,7 +46,7 @@ class FakeCoreService:
 
     def update_settings(self, update, *, profile):
         payload = self.settings(profile=profile)
-        payload["bot_name"] = update.bot_name
+        payload.update(update.model_dump(exclude_unset=True))
         return payload
 
     def sessions(self, *, profile, exclude_hidden, include_archived):
@@ -146,6 +146,21 @@ def test_api_health_alias_preserves_namespaced_contract(app):
     assert response.json()["status"] == "ok"
 
 
+def test_legacy_adapter_inventory_handles_app_automation_backends(app, monkeypatch):
+    # A configured instance without an optional JROS source checkout used to
+    # abort the entire inventory while resolving its identity projection.
+    monkeypatch.setenv("ARES_JROS_INSTANCE", "inventory-test")
+    monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+    response = request(app, "GET", "/api/ares/adapters")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["gemini_antigravity"]["label"] == "Gemini (Antigravity IDE)"
+    assert isinstance(payload["gemini_antigravity"]["available"], bool)
+    assert payload["jros_local"]["available"] is False
+    assert payload["jros_local"]["health"]["status"] == "degraded"
+
+
 def test_agent_health_preserves_runtime_disconnected_state(app):
     response = request(app, "GET", "/api/health/agent")
 
@@ -174,6 +189,43 @@ def test_settings_update_is_strict_and_normalizes_name(app):
     )
     assert rejected.status_code == 400
     assert rejected.json()["error"] == "Invalid request"
+
+    status_rejected = request(
+        app,
+        "POST",
+        "/api/settings",
+        json={"auth_enabled": True, "webui_version": "forged"},
+    )
+    assert status_rejected.status_code == 400
+
+
+def test_settings_update_accepts_complete_local_profile(app):
+    response = request(
+        app,
+        "POST",
+        "/api/settings",
+        json={
+            "owner_name": "Matthew",
+            "bot_name": "Ares",
+            "local_profile_voice": "disabled",
+            "local_profile_reachability": "private-network",
+            "context_store_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["owner_name"] == "Matthew"
+    assert response.json()["local_profile_voice"] == "disabled"
+    assert response.json()["local_profile_reachability"] == "private-network"
+    assert response.json()["context_store_enabled"] is True
+
+    rejected = request(
+        app,
+        "POST",
+        "/api/settings",
+        json={"local_profile_reachability": "public-internet"},
+    )
+    assert rejected.status_code == 400
 
 
 def test_upload_and_transcription_routes_parse_bounded_multipart(app, monkeypatch):

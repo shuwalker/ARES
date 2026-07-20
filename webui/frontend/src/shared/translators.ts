@@ -49,11 +49,37 @@ function role(value: unknown): ConversationRole {
 
 export function translateMessage(value: unknown, index = 0): ConversationMessage {
   const raw = record(value);
+  const workerId = String(
+    raw.worker_id || raw.ares_backend || raw.backend_id || raw.connection_id || raw.model_provider || "",
+  );
   return {
     id: String(raw.id || raw.message_id || `${raw.timestamp || "message"}-${index}`),
     role: role(raw.role || raw.type),
     text: text(raw.content ?? raw.text ?? raw.message),
     createdAt: timestamp(raw.created_at || raw.timestamp),
+    workerId: workerId || undefined,
+  };
+}
+
+export function translateWorkerRankings(value: unknown): {
+  rankings: import("@/shared/contracts").WorkerRanking[];
+  note?: string;
+} {
+  const raw = record(value);
+  const rows = Array.isArray(raw.rankings) ? raw.rankings : [];
+  return {
+    note: String(raw.note || "") || undefined,
+    rankings: rows.map((item) => {
+      const row = record(item);
+      return {
+        workerId: String(row.worker_id || ""),
+        sampleCount: Number(row.sample_count || 0),
+        effectivenessAvg: Number(row.effectiveness_avg || 0),
+        effectivenessLast: Number(row.effectiveness_last || 0),
+        lastEvaluatedAt: timestamp(row.last_evaluated_at),
+        lastTaskKind: String(row.last_task_kind || "") || undefined,
+      };
+    }).filter((row) => row.workerId),
   };
 }
 

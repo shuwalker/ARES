@@ -17,8 +17,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type FormEvent,
   type KeyboardEvent,
+  type SetStateAction,
 } from "react";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -36,8 +38,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
-import { aresApi } from "@/shared/ares-api";
 import { readableError } from "@/shared/api-client";
+import { useProductState } from "@/shared/use-product-state";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -57,30 +59,6 @@ interface BoardCard {
 
 interface BoardState {
   cards: BoardCard[];
-}
-
-// ── localStorage helpers ──────────────────────────────────────────────────
-
-const STORAGE_KEY = "ares.board-chat.state";
-
-function loadBoard(): BoardState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as BoardState;
-  } catch { /* ignore */ }
-  return {
-    cards: [
-      { id: "card-welcome-chat", kind: "chat", title: "Welcome chat", description: "Start a conversation with ARES", column: "todo", order: 0, createdAt: new Date().toISOString() },
-      { id: "card-sample-task", kind: "task", title: "Try a task card", description: "Move this card between columns", column: "todo", order: 1, createdAt: new Date().toISOString() },
-      { id: "card-sample-note", kind: "note", title: "Notes work too", description: "Jot down ideas or reminders", column: "in_progress", order: 0, createdAt: new Date().toISOString() },
-    ],
-  };
-}
-
-function saveBoard(state: BoardState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch { /* best-effort */ }
 }
 
 // ── Column config ─────────────────────────────────────────────────────────
@@ -206,7 +184,7 @@ function ChatPanel({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {displayMessages.length === 0 && !streamText && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Send a message to start chatting with ARES.
+            Send a message to start chatting with your Companion.
           </p>
         )}
         {displayMessages.map((m, i) => (
@@ -420,14 +398,10 @@ function AddCardDialog({
 // ── Main BoardChatPage ────────────────────────────────────────────────────
 
 export function BoardChatPage() {
-  const [board, setBoard] = useState<BoardState>(loadBoard);
+  const [board, setBoardState, boardStatus] = useProductState<BoardState>("board", { cards: [] });
+  const setBoard: Dispatch<SetStateAction<BoardState>> = setBoardState;
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [addColumn, setAddColumn] = useState<ColumnId | null>(null);
-
-  // Persist board state changes
-  useEffect(() => {
-    saveBoard(board);
-  }, [board]);
 
   const addCard = useCallback((column: ColumnId, input: Omit<BoardCard, "id" | "order" | "column" | "createdAt">) => {
     setBoard((prev) => {
@@ -493,10 +467,16 @@ export function BoardChatPage() {
     <div className="page-stack">
       <PageHeader
         title="Board Chat"
-        description="Organize chat sessions, tasks, and notes in a kanban board. Open any card to chat with ARES."
+        description="Organize chat sessions, tasks, and notes in a kanban board. Open any card to chat with your Companion."
       />
 
-      {/* ── Kanban columns ── */}
+      {boardStatus.error && <p className="text-sm text-destructive" role="alert">{boardStatus.error}</p>}
+
+      {boardStatus.loading ? (
+        <div className="grid min-h-64 place-items-center text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" />Loading board…</span>
+        </div>
+      ) : (
       <div className="grid gap-4 md:grid-cols-3">
         {COLUMNS.map((col) => (
           <div key={col.id} className="flex flex-col rounded-lg border bg-muted/20">
@@ -546,6 +526,7 @@ export function BoardChatPage() {
           </div>
         ))}
       </div>
+      )}
 
       {/* ── Add-card dialog ── */}
       {addColumn && (

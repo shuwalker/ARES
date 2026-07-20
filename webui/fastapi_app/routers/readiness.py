@@ -21,12 +21,16 @@ def readiness(
     Roll up readiness across Profile, Connections, and Execution Capabilities.
     """
     from api import profiles as profiles_api
+    from api.config import load_settings
     
     # 1. Profile Ready: A local profile exists and is active
     with profile_scope(identity.profile):
         try:
             active_profile = profiles_api.get_active_profile_name()
-            profile_ready = bool(active_profile)
+            # The implicit "default" profile name exists before a person has
+            # saved any Local Profile. Readiness must reflect completed profile
+            # setup, not merely the fallback name returned by profile routing.
+            profile_ready = bool(load_settings().get("onboarding_completed"))
         except Exception:
             active_profile = None
             profile_ready = False

@@ -8,7 +8,12 @@ from ..adapters import AdapterError, AdapterRegistry
 from ..dependencies import get_adapter_registry
 from ..errors import CoreApiError
 from ..request_context import RequestIdentity, require_identity
-from ..schemas import ConnectionModelsResponse, ConnectionsResponse, McpToolsResponse
+from ..schemas import (
+    ConnectionModelsResponse,
+    ConnectionsResponse,
+    ConnectionTestResponse,
+    McpToolsResponse,
+)
 
 
 router = APIRouter(tags=["connections"])
@@ -45,6 +50,21 @@ def connection_models(
 ):
     try:
         return registry.models(connection_id, profile=identity.profile)
+    except AdapterError as exc:
+        raise _translate_adapter_error(exc) from exc
+
+
+@router.get(
+    "/api/connections/{connection_id}/test",
+    response_model=ConnectionTestResponse,
+)
+def test_connection(
+    connection_id: str,
+    identity: Annotated[RequestIdentity, Depends(require_identity)],
+    registry: Annotated[AdapterRegistry, Depends(get_adapter_registry)],
+):
+    try:
+        return registry.test_connection(connection_id, profile=identity.profile)
     except AdapterError as exc:
         raise _translate_adapter_error(exc) from exc
 

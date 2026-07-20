@@ -1,12 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Cable,
   CheckCircle2,
   CircleOff,
   Cpu,
+  Gauge,
   Network,
   RefreshCw,
   Server,
+  Zap,
   Wrench,
 } from "lucide-react";
 
@@ -23,7 +25,7 @@ import {
 import { aresApi } from "@/shared/ares-api";
 import { readableError } from "@/shared/api-client";
 import { useAres } from "@/shared/ares-context";
-import type { BackendInfo, RuntimeConnection } from "@/shared/contracts";
+import type { BackendInfo, RuntimeConnection, WorkerRanking } from "@/shared/contracts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -142,11 +144,17 @@ function BackendCard({ backend }: { backend: BackendInfo }) {
 function ConnectionCard({
   connection,
   selecting,
+  testing,
+  testResult,
   onSetDefault,
+  onTest,
 }: {
   connection: RuntimeConnection;
   selecting: boolean;
+  testing: boolean;
+  testResult?: { ok: boolean; detail: string };
   onSetDefault: (connection: RuntimeConnection) => Promise<void>;
+  onTest: (connection: RuntimeConnection) => Promise<void>;
 }) {
   const isConnected = connection.state === "connected";
 
@@ -229,6 +237,32 @@ function ConnectionCard({
             </Button>
           </div>
         )}
+        <div className="flex items-center justify-between gap-4 border-t pt-3">
+          <span className="text-xs text-muted-foreground">
+            Read-only health check
+          </span>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={testing}
+            onClick={() => void onTest(connection)}
+          >
+            <Zap className={`mr-1.5 size-3 ${testing ? "animate-pulse" : ""}`} />
+            {testing ? "Testing…" : "Test"}
+          </Button>
+        </div>
+        {testResult && (
+          <p
+            className={`rounded-md border px-3 py-2 text-xs ${
+              testResult.ok
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "border-destructive/40 bg-destructive/10 text-destructive"
+            }`}
+            role="status"
+          >
+            {testResult.detail}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -241,15 +275,60 @@ export function ConnectionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selecting, setSelecting] = useState("");
   const [selectionError, setSelectionError] = useState("");
+  const [testing, setTesting] = useState("");
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; detail: string }>>({});
+  const [rankings, setRankings] = useState<WorkerRanking[]>([]);
+  const [rankingsNote, setRankingsNote] = useState("");
+  const [rankingError, setRankingError] = useState("");
+
+  const loadRankings = useCallback(async () => {
+    try {
+      const data = await aresApi.workerRankings();
+      setRankings(data.rankings);
+      setRankingsNote(data.note || "");
+      setRankingError("");
+    } catch (error) {
+      setRankingError(readableError(error, "Worker rankings could not be loaded."));
+    }
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await refresh();
+      await loadRankings();
     } catch (error) {
       setSelectionError(readableError(error, "Connections could not be refreshed."));
     } finally {
       setRefreshing(false);
+    }
+  }, [refresh, loadRankings]);
+
+  useEffect(() => {
+    void loadRankings();
+  }, [loadRankings]);
+
+  const handleTest = useCallback(async (connection: RuntimeConnection) => {
+    setTesting(connection.id);
+    setTestResults((current) => {
+      const next = { ...current };
+      delete next[connection.id];
+      return next;
+    });
+    try {
+      const result = await aresApi.connectionTest(connection.id);
+      setTestResults((current) => ({
+        ...current,
+        [connection.id]: { ok: result.ok, detail: result.health.message },
+      }));
+      await refresh();
+    } catch (error) {
+      setTestResults((current) => ({
+        ...current,
+        [connection.id]: { ok: false, detail: readableError(error, "Connection test failed.") },
+      }));
+    } finally {
+      setTesting("");
     }
   }, [refresh]);
 
@@ -292,7 +371,7 @@ export function ConnectionsPage() {
     <div className="page-stack">
       <PageHeader
         title="Connections"
-        description="Backend adapters, runtime connections, and capability status."
+        description="Workers and tools your Companion can use. Status must stay honest — available means verified, not just installed."
         action={
           <Button
             variant="ghost"
@@ -315,7 +394,7 @@ export function ConnectionsPage() {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-primary" />
-              <CardTitle className="text-sm">Backend Adapters</CardTitle>
+              <CardTitle className="text-sm">Worker adapters</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
@@ -356,6 +435,57 @@ export function ConnectionsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Worker effectiveness (Companion technical intelligence) ─ */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="grid size-9 place-items-center rounded-md bg-muted">
+                <Gauge className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Worker effectiveness</CardTitle>
+                <CardDescription>
+                  Companion scores workers on your metrics. Durable memory stays in the Companion journal — not in the workers.
+                </CardDescription>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {rankingError ? (
+            <p className="text-sm text-status-unavailable" role="alert">{rankingError}</p>
+          ) : rankings.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No evaluations yet. After chat runs, record scores so the Companion can rank Ollama, jros, Hermes, and other workers.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {rankings.map((row, index) => (
+                <div
+                  key={row.workerId}
+                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">
+                      #{index + 1} {row.workerId}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {row.sampleCount} sample{row.sampleCount === 1 ? "" : "s"}
+                      {row.lastTaskKind ? ` · last: ${row.lastTaskKind}` : ""}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="shrink-0 font-mono">
+                    {row.effectivenessAvg.toFixed(1)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+          {rankingsNote ? <p className="text-xs text-muted-foreground">{rankingsNote}</p> : null}
+        </CardContent>
+      </Card>
 
       {/* ── Fixed capabilities ───────────────────────────────────── */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -411,7 +541,10 @@ export function ConnectionsPage() {
                 key={connection.id}
                 connection={connection}
                 selecting={selecting === connection.id}
+                testing={testing === connection.id}
+                testResult={testResults[connection.id]}
                 onSetDefault={handleSetDefault}
+                onTest={handleTest}
               />
             ))}
           </div>

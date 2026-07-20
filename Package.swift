@@ -10,9 +10,9 @@ let package = Package(
     products: [
         .library(name: "ARESCore", targets: ["ARESCore"]),
         .executable(name: "ARES", targets: ["ARES"]),
+        .executable(name: "ARESNativeMCP", targets: ["ARESNativeMCP"]),
     ],
     dependencies: [
-        .package(path: "ARES-Mac_os/Vendor/SwiftTerm"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.0"),
     ],
@@ -29,12 +29,16 @@ let package = Package(
             name: "ARES",
             dependencies: [
                 "ARESCore",
-                .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
             path: "ARES-Mac_os/Sources/ARES",
             resources: [
                 .process("Resources")
             ]
+        ),
+        .executableTarget(
+            name: "ARESNativeMCP",
+            dependencies: ["ARESCore"],
+            path: "ARES-Mac_os/Sources/ARESNativeMCP"
         ),
         .testTarget(
             name: "ARESTests",

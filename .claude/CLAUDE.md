@@ -17,54 +17,22 @@ repository and implementation rules.
 
 ## What ARES Is
 
-ARES = Autonomous Reasoning & Execution System.
+**ARES** is only the **application name** (Autonomous Reasoning & Execution
+System as a product package). It is not a character and not who the user talks to.
 
-ARES is a simplified macOS controller and framework-independent WebUI for
-operating and communicating with a personal Synthetic Intelligence locally or
-from authenticated remote devices. It is not a replacement runtime. It may
-coordinate and visualize multiple agents, models, tools, and processes,
-including comparison and synthesis. A mandatory company/employment metaphor is
-not part of the platform data model.
+**Companion** = everything that is **not a worker**: the personal SI experience
+(identity, journal, context, routing, scoring, permissions, workspace).
+**Workers** = Ollama, jros, Hermes, cloud models, MCP, devices — execution only.
 
-- ARES composes runtimes, tools, perception inputs, memory providers, voice
-  services, avatar renderers, and device integrations behind one consistent
-  user-facing assistant interface.
-- JaegerAI is a first-class framework connection for agent execution,
-  characters, voice/STT/TTS, tools/skills, events, hardware abstraction,
-  robotics, and local/cloud task routing. ARES never re-implements JaegerAI.
-  The current default backend may remain `jros`, but a Local Profile can be
-  saved without JaegerAI installed or running. The UI must not claim execution
-  is available until a suitable connection is verified.
-- Hermes Agent is an optional addition ARES can call on for coding, terminal
-  work, skills, sessions, cron, model/provider routing, delegation,
-  memory-backed automation, and operations. Not installed by default —
-  `webui/scripts/install.sh` only installs it with `--with-hermes` or an
-  explicit interactive opt-in. A missing Hermes must never block onboarding
-  or degrade the Companion; it only adds capability when present.
-- OpenAI/ChatGPT-compatible services are model, reasoning, tool, or macOS
-  integration providers. They may supply capabilities, but they do not define
-  the assistant identity by themselves.
-- ARES-native services are only for the experience layer: app shell, menus,
-  onboarding, permissions, notifications, presence events, UI state, remote
-  access, and adapter configuration.
-- Persona, memory, and tool-execution ownership follows the selected runtime.
-  ARES may project, summarize, and present that identity, but must not silently
-  fork a competing persona or memory store. If an ARES-native runtime is ever
-  added, it must be explicit.
-- Hybrid means explicit capability composition, not routing every request
-  through every backend. Prefer a clear turn owner and compose extra
-  capabilities only when the task or user asks for them.
-- The product direction is Mac-first: a SwiftUI app with native menus and macOS
-  integrations launches and wraps the Web UI. The same Web UI remains available
-  over Tailscale/LAN for phones, tablets, and other devices until native apps
-  exist for them.
-- Character/avatar systems are presence renderers. They may render JaegerAI
-  characters through 2D/3D/VR sprite rigs, Live2D-style surfaces, desktop modes,
-  or future robotic bodies, while behavior comes from the active runtime.
-- The animated 2D activity environment is a renderer over real normalized
-  tasks, runs, agents, models, tools, and events. It may show multiple animated
-  counterparts working in parallel. It must not invent work or maintain a
-  separate execution database.
+Read [FOUNDATION.md](FOUNDATION.md) and [docs/product-vision.md](../docs/product-vision.md).
+
+Summary:
+
+- ARES app hosts the Companion (Mac primary, WebUI remote, FastAPI controller).
+- Companion owns unified journal (source of truth) + technical control intelligence.
+- Workers execute; no silent default worker at first run.
+- Do not present “ARES” as the chat persona. UI speaks Companion / assistant name.
+- No mandatory company/employment metaphor.
 
 ## Public repo privacy boundary
 
@@ -91,16 +59,28 @@ Do not create new top-level directories without explicit approval. Do not modify
 
 ## Native app architecture
 
-Two Swift layers under `ARES-Desktop/Sources/`:
+Two Swift layers under `ARES-Mac_os/Sources/`:
 
 - **ARESCore**
-  - `Contracts/` — protocol contracts: GatewayProvider, ReasoningBrain, MemoryStore, VoiceEngine, Perceiver, WorldModel, Identity, Mimicry, EventBus, KanbanBoard, CronScheduler, ToolProvider, PersonaProvider, Embodiment, ResourceProvider.
-  - `Dummies/` — safe no-op implementations for development/testing only.
-  - `Models/`, `Services/`, `Utilities/` — shared types, discovery, hub readers, registry, and support code.
+  - `Contracts/` — protocol contracts for providers, tools, memory, voice, etc.
+  - `Conversation/` — unified conversation/memory services (product data plane).
+  - `MCP/` — native macOS tools exposed to runtimes.
+  - `Services/` — configuration, secrets, controller HTTP client.
+  - `Dummies/` — safe no-ops for development only.
 - **ARES**
-  - `App/ARESApp.swift` — WKWebView shell: launches the WebUI through its bootstrap/Uvicorn entry point (via `webui/.venv`), wraps the web app in a native window with menu bar. The native provider layer (gateway providers, SQLite memory, voice, perception) was removed in the WKWebView pivot; product features belong in `webui/`.
+  - `ARESApp.swift` — app lifecycle, menus, boot splash.
+  - `ARESProductShell.swift` — **primary native product shell** (sidebar destinations:
+    Home, Chat, Today, Connections, Workspace, Activity, Settings). Native Home and
+    Connections first; other routes may host the shared WebUI surface while migrating.
+  - `WebUIServerManager.swift` — starts FastAPI (`fastapi_app.main:app`) for local use
+    and for remote clients on LAN/Tailscale.
+  - Full-window WebUI-only mode is not the product goal; WebUI is the **remote/light**
+    client with the same API contracts.
 
-`ExecutionBackendRouter` (ARESCore) owns product-level backend planning by capability. Prefer configured providers first, native fallbacks second, and development dummies only where explicitly allowed.
+`ExecutionBackendRouter` (ARESCore) owns product-level backend planning by capability.
+Prefer configured providers first, native fallbacks second, dummies only when explicit.
+
+See `docs/product-vision.md` for the locked product decisions.
 
 ## Code quality standards
 

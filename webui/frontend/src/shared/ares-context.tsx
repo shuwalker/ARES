@@ -177,7 +177,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
     }
     void aresApi.streamStatus(streamId).then((status) => {
       if (!status.active) void finishStream(sessionId);
-      else setChatNotice("The live response connection is interrupted. ARES is preserving the run and will restore it when you reopen this conversation.");
+      else setChatNotice("The live response connection is interrupted. Your Companion is preserving the run and will restore it when you reopen this conversation.");
     }).catch(() => {
       setChatNotice("The response connection was interrupted. ARES preserved the conversation state; reconnect after the backend is available.");
     });
@@ -215,7 +215,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
           const streamId = String(data.stream_id || "");
           if (streamId) attachStream(streamId, selectedSessionId);
         } else if (name === "bg_task_complete" || name === "process_complete") {
-          setChatNotice("Background work completed; ARES is updating this conversation.");
+          setChatNotice("Background work completed; your Companion is updating this conversation.");
           void refresh();
         }
       },

@@ -88,10 +88,10 @@ export default function AgentsPage() {
   if (loading) {
     return (
       <div className="page-stack">
-        <PageHeader title="Backends" description="View the external execution backends ARES can route to." />
+        <PageHeader title="Workers" description="View the external workers your Companion can route to." />
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <LoaderCircle className="mr-2 size-5 animate-spin" />
-          Loading backends…
+          Loading workers…
         </div>
       </div>
     );
@@ -102,8 +102,8 @@ export default function AgentsPage() {
   return (
     <div className="page-stack">
       <PageHeader
-        title="Backends"
-        description="View the external execution backends ARES can route to."
+        title="Workers"
+        description="View the external workers your Companion can route to."
         action={
           <Button variant="ghost" size="icon" onClick={() => void handleRefresh()} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -130,7 +130,7 @@ export default function AgentsPage() {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4 text-primary" />
-              <CardTitle className="text-sm">Total Backends</CardTitle>
+              <CardTitle className="text-sm">Total Workers</CardTitle>
             </div>
           </CardHeader>
           <CardContent>

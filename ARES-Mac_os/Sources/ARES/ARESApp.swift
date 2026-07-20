@@ -2,7 +2,6 @@ import SwiftUI
 import AppKit
 import WebKit
 import ARESCore
-import SwiftTerm
 
 /// Owns the SwiftUI window-opening action so AppKit menu commands can recreate
 /// the main window after the user has closed it. A WindowGroup does not retain
@@ -86,219 +85,74 @@ struct ARESApp: App {
     }
 }
 
-// MARK: - Tab Model
-
-enum TabType {
-    case companion
-    case terminal
-}
-
-struct ARESTabItem: Identifiable, Hashable {
-    let id: UUID
-    let type: TabType
-    var title: String
-    
-    var icon: String {
-        switch type {
-        case .companion: return "bubble.left.and.bubble.right.fill"
-        case .terminal: return "terminal.fill"
-        }
-    }
-    
-    static func companionTab() -> ARESTabItem {
-        ARESTabItem(id: UUID(), type: .companion, title: "Companion")
-    }
-    
-    static func newTerminalTab() -> ARESTabItem {
-        ARESTabItem(id: UUID(), type: .terminal, title: "Terminal")
-    }
-}
-
-// MARK: - Tab Bar
-
-struct ARESTabBar: View {
-    @Binding var tabs: [ARESTabItem]
-    @Binding var activeTabId: UUID
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(tabs) { tab in
-                Button(action: { activeTabId = tab.id }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 11))
-                        Text(tab.title)
-                            .font(.system(size: 12, weight: .medium))
-                        
-                        if tab.type == .terminal {
-                            Button(action: {
-                                if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
-                                    tabs.remove(at: index)
-                                    if activeTabId == tab.id {
-                                        activeTabId = tabs.first?.id ?? UUID()
-                                    }
-                                }
-                            }) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(Color.white.opacity(0.4))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.leading, 4)
-                        }
-                    }
-                    .foregroundColor(activeTabId == tab.id ? .white : Color.white.opacity(0.35))
-                    .padding(.vertical, 7)
-                    .padding(.horizontal, 14)
-                    .background(activeTabId == tab.id ? Color.white.opacity(0.1) : Color.clear)
-                    .cornerRadius(5)
-                }
-                .buttonStyle(.plain)
-            }
-            
-            Button(action: {
-                let newTab = ARESTabItem.newTerminalTab()
-                tabs.append(newTab)
-                activeTabId = newTab.id
-            }) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14))
-                    .foregroundColor(Color.white.opacity(0.5))
-                    .padding(.vertical, 7)
-                    .padding(.horizontal, 10)
-            }
-            .buttonStyle(.plain)
-            
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Color(red: 0.063, green: 0.063, blue: 0.078))
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Color.white.opacity(0.12)),
-            alignment: .bottom
-        )
-    }
-}
-
 // MARK: - Main View
 
+/// Primary on-device product entry. Full capacity lives in `ARESProductShell`
+/// (native destinations + routed shared surfaces). The WebUI alone is the
+/// remote/light client for other devices over LAN or a trusted tailnet.
 struct ARESMainView: View {
-    @State private var tabs: [ARESTabItem] = [.companionTab()]
-    @State private var activeTabId: UUID?
+    @ObservedObject private var serverManager = WebUIServerManager.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            ARESTabBar(tabs: $tabs, activeTabId: Binding(
-                get: { activeTabId ?? tabs.first!.id },
-                set: { activeTabId = $0 }
-            ))
-            
-            // ZStack keeps all views alive so terminals don't restart on tab switch
-            ZStack {
-                ForEach(tabs) { tab in
-                    if tab.type == .companion {
-                        ARESWebView()
-                            .opacity(activeTabId == tab.id ? 1 : 0)
-                            .zIndex(activeTabId == tab.id ? 1 : 0)
-                    } else {
-                        RuntimeTerminalView(title: tab.title, command: "exec /bin/zsh -l")
-                            .opacity(activeTabId == tab.id ? 1 : 0)
-                            .zIndex(activeTabId == tab.id ? 1 : 0)
-                    }
-                }
-            }
-        }
-        .onAppear {
-            if activeTabId == nil {
-                activeTabId = tabs.first?.id
-            }
+        if serverManager.isRunning {
+            ARESProductShell()
+        } else {
+            ARESBootSplashView(status: serverManager.serverHealth)
         }
     }
 }
 
-struct RuntimeTerminalView: View {
-    let title: String
-    let command: String
+/// Shown only while the local controller is starting.
+struct ARESBootSplashView: View {
+    let status: String
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(title)
-                    .font(.headline)
+        ZStack {
+            Color(red: 0.063, green: 0.063, blue: 0.078)
+                .ignoresSafeArea()
+            VStack(spacing: 0) {
                 Spacer()
+                Text("✦")
+                    .font(.system(size: 52))
+                    .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
+                    .padding(.bottom, 12)
+                Text("ARES")
+                    .font(.system(size: 32, weight: .light, design: .default))
+                    .foregroundColor(.white)
+                    .tracking(6)
+                Text("App for your Companion · workers execute")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color.white.opacity(0.45))
+                    .padding(.top, 10)
+                Spacer()
+                ProgressView()
+                    .scaleEffect(0.8)
+                    .colorMultiply(.white)
+                    .padding(.bottom, 8)
+                Text(status)
+                    .foregroundColor(Color.white.opacity(0.4))
+                    .font(.system(size: 12))
+                Spacer().frame(height: 48)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Color(nsColor: .windowBackgroundColor))
-
-            RuntimeTerminalRepresentable(command: command)
         }
-        .background(Color.black)
     }
 }
 
-struct RuntimeTerminalRepresentable: NSViewRepresentable {
-    let command: String
-
-    func makeNSView(context: Context) -> LocalProcessTerminalView {
-        let terminal = LocalProcessTerminalView(frame: .zero)
-        terminal.caretViewTracksFocus = true
-        terminal.startProcess(
-            executable: "/bin/zsh",
-            args: ["-lc", command],
-            currentDirectory: FileManager.default.homeDirectoryForCurrentUser.path
-        )
-        return terminal
-    }
-
-    func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {}
-
-    static func dismantleNSView(_ nsView: LocalProcessTerminalView, coordinator: ()) {
-        nsView.terminate()
-    }
-}
-
-// MARK: - WKWebView Wrapper
+// MARK: - Legacy full-window WebUI host (kept for diagnostics / remote-parity checks)
 
 struct ARESWebView: View {
     @ObservedObject var serverManager = WebUIServerManager.shared
     @ObservedObject var config = ARESConfiguration.shared
 
     var body: some View {
-        if serverManager.serverHealth == "Running (Healthy)" {
+        if serverManager.isRunning {
             if let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") {
                 WebViewRepresentable(url: url, serverManager: serverManager)
             } else {
                 Text("Invalid Server URL").foregroundColor(.red)
             }
         } else {
-            ZStack {
-                Color(red: 0.063, green: 0.063, blue: 0.078)
-                    .ignoresSafeArea()
-                VStack(spacing: 0) {
-                    Spacer()
-                    Text("✦")
-                        .font(.system(size: 52))
-                        .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
-                        .padding(.bottom, 12)
-                    Text("ARES")
-                        .font(.system(size: 32, weight: .light, design: .default))
-                        .foregroundColor(.white)
-                        .tracking(6)
-                    Spacer()
-                    ProgressView()
-                        .scaleEffect(0.8)
-                        .colorMultiply(.white)
-                        .padding(.bottom, 8)
-                    Text(serverManager.serverHealth)
-                        .foregroundColor(Color.white.opacity(0.4))
-                        .font(.system(size: 12))
-                    Spacer().frame(height: 48)
-                }
-            }
+            ARESBootSplashView(status: serverManager.serverHealth)
         }
     }
 }
@@ -310,9 +164,11 @@ struct WebViewRepresentable: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.applicationNameForUserAgent = "ARES/1.0"
-        // Use a non-persistent store so stale service-worker offline pages
-        // from previous sessions cannot block the fresh server load.
-        config.websiteDataStore = WKWebsiteDataStore.nonPersistent()
+        // Authentication cookies and WebUI accessibility preferences must
+        // survive a normal app restart. ARES does not register a service
+        // worker, so the default persistent store cannot serve a stale
+        // offline shell ahead of the app-managed FastAPI readiness check.
+        config.websiteDataStore = WKWebsiteDataStore.default()
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
 
@@ -322,6 +178,7 @@ struct WebViewRepresentable: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
         let isHealthy = serverManager.serverHealth == "Running (Healthy)"
+            || serverManager.serverHealth == "Running (External)"
         if !isHealthy {
             context.coordinator.hasReloadedForHealthyServer = false
         } else if !context.coordinator.hasReloadedForHealthyServer {
@@ -415,6 +272,10 @@ struct WebViewRepresentable: NSViewRepresentable {
 final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: ARESMenuBarController?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
@@ -426,11 +287,11 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         }
         setupMenuBar()
 
-        // Open the main window on first launch so the onboarding wizard is visible.
-        // The window is closed by the user, not hidden — subsequent launches stay
-        // tray-only until the user clicks "Open ARES" from the menu bar.
-        openMainWindow()
-        
+        // WindowGroup creates the initial window. Explicitly calling
+        // openMainWindow() here races the scene's onAppear registration and can
+        // create a duplicate onboarding window. Reopen and menu-bar actions use
+        // openMainWindow() only after the initial scene has been closed.
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowWillClose),

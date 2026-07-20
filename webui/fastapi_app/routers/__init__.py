@@ -43,10 +43,11 @@ from .uploads import router as uploads_router
 from .workspaces import router as workspaces_router
 from .wiki import router as wiki_router
 from .research import router as research_router
-from .astronomy import router as astronomy_router
 from .sam_conversation import router as sam_conversation_router
 from .readiness import router as readiness_router
 from .delegation import router as delegation_router
+from .product_state import router as product_state_router
+from .rankings import router as rankings_router
 
 def install_core_routers(application: FastAPI) -> None:
     application.include_router(adapters_router)
@@ -91,10 +92,11 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(backends_router)
     application.include_router(realtime_router)
     application.include_router(research_router)
-    application.include_router(astronomy_router)
     application.include_router(sam_conversation_router)
     application.include_router(readiness_router)
     application.include_router(delegation_router)
+    application.include_router(product_state_router)
+    application.include_router(rankings_router)
 
 
 __all__ = ["install_core_routers"]

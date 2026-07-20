@@ -213,6 +213,38 @@ def test_mcp_adapter_is_read_only_capability_inventory(monkeypatch):
     assert inventory["inventory_scope"] == "already_known_runtime_only"
 
 
+def test_mcp_adapter_discovers_bundled_native_helper(tmp_path, monkeypatch):
+    helper = tmp_path / "ARESNativeMCP"
+    helper.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' '{\"tools\":[{\"name\":\"calendar_operations\","
+        "\"description\":\"Calendar\",\"inputSchema\":{\"properties\":{"
+        "\"operation\":{\"type\":\"string\"}}}}]}'\n",
+        encoding="utf-8",
+    )
+    helper.chmod(0o755)
+    monkeypatch.setenv("ARES_NATIVE_MCP_COMMAND", str(helper))
+    adapter = McpToolAdapter()
+    monkeypatch.setattr(adapter, "_configured_servers", lambda: {})
+    monkeypatch.setattr(adapter, "_runtime_status", lambda: {})
+
+    health = adapter.check_health(profile="default")
+    inventory = adapter.list_tools(profile="default")
+
+    assert health.available is True
+    assert health.details["native_tools"] == 1
+    assert inventory["total"] == 1
+    assert inventory["tools"][0] == {
+        "name": "calendar_operations",
+        "server": "ares_native",
+        "description": "Calendar",
+        "active": False,
+        "enabled": True,
+        "status": "available",
+        "schema_summary": ["operation"],
+    }
+
+
 def test_realtime_service_dispatches_start_and_cancel_through_selected_adapter(monkeypatch):
     recording = RecordingAdapter()
     registry = AdapterRegistry(execution_adapters=[recording], tool_adapters=[RecordingTools()])
@@ -282,8 +314,12 @@ def test_realtime_service_honors_explicit_connection_without_overloading_provide
 
 def test_connection_model_and_mcp_routes_use_registry(tmp_path: Path, monkeypatch):
     recording = RecordingAdapter()
+    unavailable = RecordingAdapter()
+    unavailable.adapter_id = "offline"
+    unavailable.display_name = "Offline runtime"
+    unavailable.check_health = lambda *, profile: AdapterHealth("offline", False, "runtime missing")
     tools = RecordingTools()
-    registry = AdapterRegistry(execution_adapters=[recording], tool_adapters=[tools])
+    registry = AdapterRegistry(execution_adapters=[recording, unavailable], tool_adapters=[tools])
     monkeypatch.setattr(registry, "default_id", lambda **_kwargs: "recording")
     frontend = tmp_path / "dist"
     frontend.mkdir()
@@ -299,17 +335,41 @@ def test_connection_model_and_mcp_routes_use_registry(tmp_path: Path, monkeypatc
 
     with TestClient(app, client=("127.0.0.1", 50000)) as client:
         connections = client.get("/api/connections")
+        tested = client.get("/api/connections/recording/test")
+        tested_tool = client.get("/api/connections/mcp/test")
+        missing_test = client.get("/api/connections/missing/test")
         models = client.get("/api/connections/recording/models")
         mcp = client.get("/api/mcp/tools")
         selected = client.post("/api/ares/backend/set", json={"backend": "recording"})
+        unsafe_get = client.get("/api/ares/backend/set", params={"backend": "recording"})
+        rejected_offline = client.post("/api/ares/backend/set", json={"backend": "offline"})
         rejected_legacy = client.post("/api/ares/backend/set", json={"backend": "ares"})
 
     assert connections.status_code == 200
     assert connections.json()["selected"] == "recording"
     assert connections.json()["connections"][0]["health"]["state"] == "connected"
+    assert tested.status_code == 200
+    assert tested.json() == {
+        "ok": True,
+        "connection_id": "recording",
+        "health": {
+            "state": "connected",
+            "available": True,
+            "message": "ready:default",
+            "details": {},
+        },
+        "capabilities": ["conversation", "profile:default"],
+    }
+    assert tested_tool.status_code == 200
+    assert tested_tool.json()["capabilities"] == ["tool.discovery", "profile:default"]
+    assert missing_test.status_code == 404
+    assert missing_test.json()["code"] == "connection_not_found"
     assert models.json()["models"][0]["id"] == "model-1"
     assert mcp.json()["tools"][0]["name"] == "read"
     assert selected.status_code == 200
     assert selected.json()["backend"] == "recording"
+    assert unsafe_get.status_code in {404, 405}
+    assert rejected_offline.status_code == 409
+    assert rejected_offline.json()["code"] == "runtime_unavailable"
     assert saved["ares_backend"] == "recording"
     assert rejected_legacy.status_code == 400

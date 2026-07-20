@@ -27,32 +27,13 @@ import { useLocalProfile } from "@/shared/local-profile";
 import { aresApi } from "@/shared/ares-api";
 import type { ScheduleEntry } from "@/shared/ares-api";
 import { readableError } from "@/shared/api-client";
-
-// ── Pinned goals localStorage ───────────────────────────────────────────
-const PINNED_GOALS_KEY = "ares.today.pinned-goals";
+import { useProductState } from "@/shared/use-product-state";
 
 interface PinnedGoal {
   id: string;
   text: string;
   done: boolean;
   createdAt: string;
-}
-
-function loadGoals(): PinnedGoal[] {
-  try {
-    const raw = localStorage.getItem(PINNED_GOALS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveGoals(goals: PinnedGoal[]) {
-  try {
-    localStorage.setItem(PINNED_GOALS_KEY, JSON.stringify(goals));
-  } catch {
-    // Best-effort.
-  }
 }
 
 // ── Compact quick-stat card ──────────────────────────────────────────────
@@ -194,7 +175,11 @@ export function TodayPage() {
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [schedulesLoading, setSchedulesLoading] = useState(false);
   const [schedulesError, setSchedulesError] = useState<string | null>(null);
-  const [goals, setGoals] = useState<PinnedGoal[]>(loadGoals);
+  const [dailyGoalState, setDailyGoalState, dailyGoalStatus] = useProductState<{ goals: PinnedGoal[] }>("daily-goals", { goals: [] });
+  const goals = dailyGoalState.goals;
+  const setGoals = useCallback((update: React.SetStateAction<PinnedGoal[]>) => {
+    setDailyGoalState((current) => ({ goals: typeof update === "function" ? update(current.goals) : update }));
+  }, [setDailyGoalState]);
   const [newGoalText, setNewGoalText] = useState("");
 
   const greeting = profile.displayName
@@ -231,28 +216,21 @@ export function TodayPage() {
 
   // ── Goals persistence ─────────────────────────────────────────────────
   const toggleGoal = useCallback((id: string) => {
-    setGoals((prev) => {
-      const next = prev.map((g) =>
+    setGoals((prev) =>
+      prev.map((g) =>
         g.id === id ? { ...g, done: !g.done } : g,
-      );
-      saveGoals(next);
-      return next;
-    });
-  }, []);
+      ),
+    );
+  }, [setGoals]);
 
   const removeGoal = useCallback((id: string) => {
-    setGoals((prev) => {
-      const next = prev.filter((g) => g.id !== id);
-      saveGoals(next);
-      return next;
-    });
-  }, []);
+    setGoals((prev) => prev.filter((g) => g.id !== id));
+  }, [setGoals]);
 
   const addGoal = useCallback(() => {
     const text = newGoalText.trim();
     if (!text) return;
-    setGoals((prev) => {
-      const next = [
+    setGoals((prev) => [
         ...prev,
         {
           id: `goal-${Date.now()}`,
@@ -260,12 +238,9 @@ export function TodayPage() {
           done: false,
           createdAt: new Date().toISOString(),
         },
-      ];
-      saveGoals(next);
-      return next;
-    });
+      ]);
     setNewGoalText("");
-  }, [newGoalText]);
+  }, [newGoalText, setGoals]);
 
   const upcomingSchedules = schedules
     .filter((s) => s.enabled !== false)
@@ -295,6 +270,7 @@ export function TodayPage() {
           </div>
         }
       />
+      {dailyGoalStatus.error && <p className="text-sm text-destructive" role="alert">{dailyGoalStatus.error}</p>}
 
       {snapshot.error && (
         <p className="rounded-md border border-status-limited/40 bg-status-limited/10 px-4 py-3 text-sm text-status-limited">
@@ -390,7 +366,7 @@ export function TodayPage() {
               Upcoming schedules
             </CardTitle>
             <Button asChild variant="ghost" size="sm">
-              <Link to="/cron">Manage</Link>
+              <Link to="/schedules">Manage</Link>
             </Button>
           </CardHeader>
           <CardContent>
@@ -538,7 +514,7 @@ export function TodayPage() {
           </Link>
         </Button>
         <Button asChild variant="outline" className="justify-start gap-2 h-auto py-3">
-          <Link to="/cron">
+          <Link to="/schedules">
             <Timer className="size-4" />
             Manage schedules
           </Link>

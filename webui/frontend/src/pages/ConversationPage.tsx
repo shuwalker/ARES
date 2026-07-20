@@ -5,6 +5,7 @@ import {
   Copy,
   LoaderCircle,
   Send,
+  Share2,
   Square,
   Terminal,
   Wrench,
@@ -25,6 +26,7 @@ import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
 import { useLocalProfile } from "@/shared/local-profile";
 import { apiFetch, readableError } from "@/shared/api-client";
+import { aresApi } from "@/shared/ares-api";
 
 interface DiscoveredBackend {
   adapter_id: string;
@@ -111,6 +113,9 @@ export function ConversationPage() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [discoveredBackends, setDiscoveredBackends] = useState<DiscoveredBackend[]>([]);
   const [discoveryError, setDiscoveryError] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareError, setShareError] = useState("");
+  const [sharing, setSharing] = useState(false);
   const [selectedBackend, setSelectedBackend] = useState<string>(() => currentSession?.backendId || "");
   const copiedTimer = useRef<number | undefined>(undefined);
 
@@ -135,7 +140,7 @@ export function ConversationPage() {
     if (copiedTimer.current !== undefined) window.clearTimeout(copiedTimer.current);
   }, []);
 
-  const assistantName = snapshot.settings?.assistantName || profile.assistantName || "ARES";
+  const assistantName = snapshot.settings?.assistantName || profile.assistantName || "Companion";
   const isBusy = streamState !== "idle";
   const hasConversation = Boolean(currentSession?.messages.length || streamText || isBusy);
 
@@ -192,8 +197,8 @@ export function ConversationPage() {
       setCopied(true);
       if (copiedTimer.current !== undefined) window.clearTimeout(copiedTimer.current);
       copiedTimer.current = window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // Clipboard access can be denied by the browser; keep the conversation usable.
+    } catch (reason) {
+      setShareError(readableError(reason, "Clipboard access was denied. Select the response text and copy it manually."));
     }
   }, [currentSession?.messages, streamText]);
 
@@ -203,11 +208,42 @@ export function ConversationPage() {
     return last?.text;
   }, [currentSession?.messages, streamText]);
 
+  async function createShare() {
+    if (!currentSession?.id) return;
+    setSharing(true); setShareError("");
+    try {
+      const result = await aresApi.createShare(currentSession.id);
+      const absolute = new URL(result.share.url, window.location.origin).toString();
+      setShareUrl(absolute);
+      try {
+        await navigator.clipboard.writeText(absolute);
+      } catch {
+        setShareError("The share was created, but clipboard access was denied. Open or copy the visible link manually.");
+      }
+    } catch (reason) {
+      setShareError(readableError(reason, "ARES could not create the unauthenticated snapshot."));
+    } finally { setSharing(false); }
+  }
+
+  async function revokeShare() {
+    if (!currentSession?.id) return;
+    setSharing(true); setShareError("");
+    try { await aresApi.revokeShare(currentSession.id); setShareUrl(""); }
+    catch (reason) { setShareError(readableError(reason, "ARES could not revoke the shared snapshot.")); }
+    finally { setSharing(false); }
+  }
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
       style={{ backgroundColor: G.bg, color: G.text }}
     >
+      {currentSession && hasConversation ? (
+        <div className="flex flex-wrap items-center justify-end gap-2 border-b px-4 py-2" style={{ borderColor: G.border, backgroundColor: G.surface }}>
+          {shareError ? <span className="mr-auto text-xs" style={{ color: G.error }} role="alert">{shareError}</span> : null}
+          {shareUrl ? <><span className="mr-auto text-xs" style={{ color: G.warning }}>Anyone who can reach this controller and has the link can read the redacted snapshot.</span><a className="max-w-xs truncate text-xs underline" style={{ color: G.muted }} href={shareUrl} target="_blank" rel="noreferrer">Open share link</a><Button size="sm" variant="outline" disabled={sharing} onClick={() => void revokeShare()}>Revoke</Button></> : <Button size="sm" variant="outline" disabled={sharing || isBusy} onClick={() => void createShare()}>{sharing ? <LoaderCircle className="animate-spin" /> : <Share2 />}Create share link</Button>}
+        </div>
+      ) : null}
       {/* ── Messages shell ── */}
       <div
         ref={transcriptRef}
@@ -266,8 +302,11 @@ export function ConversationPage() {
               ))}
             </div>
 
-            {/* Backend selector for new conversations */}
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            {/* Worker selector for new conversations (Companion routes; workers execute) */}
+            <p className="mt-6 text-center text-[11px] uppercase tracking-wider" style={{ color: G.muted }}>
+              Worker for this chat
+            </p>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
               {discoveredBackends.map((backend) => (
                 <button
                   key={backend.adapter_id}
@@ -282,7 +321,7 @@ export function ConversationPage() {
                     cursor: backend.detected ? "pointer" : "not-allowed",
                   }}
                 >
-                  {backendLabel(backend.adapter_id)}
+                  {backend.display_name || backendLabel(backend.adapter_id)}
                   {!backend.detected && (
                     <span className="ml-1.5 inline-block size-1.5 rounded-full bg-red-500" />
                   )}
@@ -310,17 +349,25 @@ export function ConversationPage() {
                       <Bot size={16} style={{ color: G.accent }} />
                     </div>
                   )}
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-[14px] leading-[1.45] ${isUser ? "rounded-tr-sm" : "rounded-tl-sm"}`}
-                    style={{
-                      backgroundColor: isUser ? G.userBubbleBg : G.surfaceSubtle,
-                      color: isUser ? G.userBubbleText : G.text,
-                      border: isUser ? `1px solid ${G.userBubbleBorder}` : "1px solid transparent",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                    children={<Markdown content={message.text} />}
-                  />
+                  <div className={`flex max-w-[85%] flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+                    <div
+                      className={`rounded-2xl px-4 py-2.5 text-[14px] leading-[1.45] ${isUser ? "rounded-tr-sm" : "rounded-tl-sm"}`}
+                      style={{
+                        backgroundColor: isUser ? G.userBubbleBg : G.surfaceSubtle,
+                        color: isUser ? G.userBubbleText : G.text,
+                        border: isUser ? `1px solid ${G.userBubbleBorder}` : "1px solid transparent",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      <Markdown content={message.text} />
+                    </div>
+                    {!isUser && (message.workerId || currentSession?.backendId || selectedBackend) ? (
+                      <span className="px-1 font-mono text-[10px] uppercase tracking-wider" style={{ color: G.muted }}>
+                        via worker · {backendLabel(message.workerId || currentSession?.backendId || selectedBackend)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               );
             })}

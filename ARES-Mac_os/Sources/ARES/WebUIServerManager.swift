@@ -7,6 +7,8 @@ import ARESCore
 public final class WebUIServerManager: ObservableObject {
     public static let shared = WebUIServerManager()
 
+    nonisolated static let webUIEntrypoint = "fastapi_app/main.py"
+
     @Published public var isRunning = false
     @Published public var portConflict = false
     @Published public var serverHealth = "Stopped" // "Stopped", "Starting...", "Running (Healthy)", "Running (Degraded)", "Running (Unreachable)", "Failed"
@@ -80,28 +82,32 @@ public final class WebUIServerManager: ObservableObject {
         let process = Process()
         process.currentDirectoryURL = dir
         // Try both "venv" (install.sh default) and ".venv" (common alternative).
-        let venvPython = dir.appendingPathComponent("venv/bin/python")
-        let dotVenvPython = dir.appendingPathComponent(".venv/bin/python")
         let fm = FileManager.default
-        process.executableURL = fm.fileExists(atPath: venvPython.path) ? venvPython : dotVenvPython
+        guard let python = Self.pythonExecutable(in: dir, fileManager: fm) else {
+            serverHealth = "Python environment not found — run install.sh"
+            return
+        }
+        process.executableURL = python
         process.arguments = ["-m", "uvicorn", "fastapi_app.main:app", "--port", String(port), "--host", host]
         
         var env = ProcessInfo.processInfo.environment
-        env["HERMES_WEBUI_HOST"] = host
-        env["HERMES_WEBUI_PORT"] = String(port)
+        env["ARES_WEBUI_HOST"] = host
+        env["ARES_WEBUI_PORT"] = String(port)
         env["ARES_WEBUI_RELOAD"] = config.reloadDevMode ? "1" : "0"
-        env["HERMES_API_URL"] = config.hermesURL
-        env["ARES_JROS_GATEWAY_URL"] = config.jrosURL
+        env = Self.applyingGatewayEnvironment(
+            to: env,
+            hermesURL: config.hermesURL,
+            hermesAPIKey: config.hermesAPIKey,
+            jrosURL: config.jrosURL,
+            jrosAPIKey: config.jrosAPIKey
+        )
         env["ARES_ROLE"] = config.aresRole
         env["ARES_DEVICE_ID"] = config.aresDeviceID
         env["ARES_AI_ID"] = config.aresAIID
         env["ARES_PRIMARY_URL"] = config.aresPrimaryURL
         env["ARES_CONTINUITY_DIR"] = config.aresContinuityDir
-        if !config.hermesAPIKey.isEmpty {
-            env["HERMES_WEBUI_GATEWAY_API_KEY"] = config.hermesAPIKey
-        }
-        if !config.jrosAPIKey.isEmpty {
-            env["ARES_JROS_GATEWAY_KEY"] = config.jrosAPIKey
+        if let nativeMCPCommand = Self.nativeMCPExecutable() {
+            env["ARES_NATIVE_MCP_COMMAND"] = nativeMCPCommand.path
         }
         process.environment = env
 
@@ -133,6 +139,32 @@ public final class WebUIServerManager: ObservableObject {
         }
     }
 
+    nonisolated static func applyingGatewayEnvironment(
+        to base: [String: String],
+        hermesURL: String,
+        hermesAPIKey: String,
+        jrosURL: String,
+        jrosAPIKey: String
+    ) -> [String: String] {
+        var environment = base
+        // ARES_API_URL drives remote gateway health/tasks. Gateway-backed chat
+        // uses the more specific base URL variable; keep both in sync.
+        environment["ARES_API_URL"] = hermesURL
+        environment["ARES_WEBUI_GATEWAY_BASE_URL"] = hermesURL
+        environment["ARES_JROS_GATEWAY_URL"] = jrosURL
+        if hermesAPIKey.isEmpty {
+            environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_API_KEY")
+        } else {
+            environment["ARES_WEBUI_GATEWAY_API_KEY"] = hermesAPIKey
+        }
+        if jrosAPIKey.isEmpty {
+            environment.removeValue(forKey: "ARES_JROS_GATEWAY_KEY")
+        } else {
+            environment["ARES_JROS_GATEWAY_KEY"] = jrosAPIKey
+        }
+        return environment
+    }
+
     public func stop() {
         guard let p = process else { return }
         p.terminate()
@@ -155,11 +187,7 @@ public final class WebUIServerManager: ObservableObject {
             return
         }
 
-        guard isRunning, let _ = process else {
-            if process == nil && (serverHealth.hasPrefix("Running") || serverHealth == "Starting...") {
-                serverHealth = "Stopped"
-                isRunning = false
-            }
+        guard isRunning else {
             return
         }
 
@@ -173,7 +201,7 @@ public final class WebUIServerManager: ObservableObject {
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                serverHealth = "Running (Healthy)"
+                serverHealth = process == nil ? "Running (External)" : "Running (Healthy)"
             } else {
                 serverHealth = "Running (Degraded)"
             }
@@ -222,44 +250,69 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     private func findWebUIDir() -> URL? {
-        // 1. Packaged App resources check
-        if let bundlePath = Bundle.main.resourceURL {
-            let webuiPath = bundlePath.appendingPathComponent("webui")
-            if FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path) {
-                return webuiPath
-            }
-        }
-        // 2. Traversal up from executable to support swift run / Xcode dev
-        var dir = Bundle.main.executableURL?.deletingLastPathComponent()
-        for _ in 0..<5 {
-            if let currentDir = dir {
-                let webuiPath = currentDir.appendingPathComponent("webui")
-                if FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path) {
-                    return webuiPath
-                }
-                dir = currentDir.deletingLastPathComponent()
-            }
-        }
-        // 3. Production install — installer default: ~/.ares/webui
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let prodPath = home.appendingPathComponent(".ares/webui")
-        if FileManager.default.fileExists(atPath: prodPath.appendingPathComponent("server.py").path) {
-            return prodPath
-        }
-        // 4. ARES_HOME override — respect explicit install location
-        if let aresHome = ProcessInfo.processInfo.environment["ARES_HOME"],
-           !aresHome.isEmpty {
-            let overridePath = URL(fileURLWithPath: aresHome).appendingPathComponent("webui")
-            if FileManager.default.fileExists(atPath: overridePath.appendingPathComponent("server.py").path) {
-                return overridePath
-            }
-        }
-        // 5. Dev checkout fallback — only used during development
-        let devPath = home.appendingPathComponent("GitHub/ARES/webui")
-        if FileManager.default.fileExists(atPath: devPath.appendingPathComponent("server.py").path) {
-            return devPath
+        for candidate in Self.webUICandidates() where Self.containsWebUI(at: candidate) {
+            return candidate
         }
         return nil
+    }
+
+    nonisolated static func webUICandidates(
+        resourceURL: URL? = Bundle.main.resourceURL,
+        executableURL: URL? = Bundle.main.executableURL,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        currentDirectory: String = FileManager.default.currentDirectoryPath
+    ) -> [URL] {
+        var candidates: [URL] = []
+        if let resourceURL {
+            candidates.append(resourceURL.appendingPathComponent("webui"))
+        }
+        var directory = executableURL?.deletingLastPathComponent()
+        for _ in 0..<5 {
+            guard let current = directory else { break }
+            candidates.append(current.appendingPathComponent("webui"))
+            directory = current.deletingLastPathComponent()
+        }
+        // An explicit install root must beat the default per-user install.
+        if let aresHome = environment["ARES_HOME"], !aresHome.isEmpty {
+            candidates.append(URL(fileURLWithPath: aresHome).appendingPathComponent("webui"))
+        }
+        candidates.append(homeDirectory.appendingPathComponent(".ares/webui"))
+        candidates.append(URL(fileURLWithPath: currentDirectory).appendingPathComponent("webui"))
+        return candidates
+    }
+
+    nonisolated static func containsWebUI(
+        at directory: URL,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        fileManager.fileExists(
+            atPath: directory.appendingPathComponent(webUIEntrypoint).path
+        )
+    }
+
+    nonisolated static func pythonExecutable(
+        in directory: URL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        for relativePath in ["venv/bin/python", ".venv/bin/python"] {
+            let candidate = directory.appendingPathComponent(relativePath)
+            if fileManager.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    nonisolated static func nativeMCPExecutable(
+        executableURL: URL? = Bundle.main.executableURL,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        guard let executableURL else { return nil }
+        let candidate = executableURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("ARESNativeMCP")
+        return fileManager.isExecutableFile(atPath: candidate.path) ? candidate : nil
     }
 
     private func reclaimPort(_ port: Int) {
@@ -291,7 +344,7 @@ public final class WebUIServerManager: ObservableObject {
                     
                     let psData = psPipe.fileHandleForReading.readDataToEndOfFile()
                     if let command = String(data: psData, encoding: .utf8),
-                       command.contains("server.py") {
+                       Self.isManagedWebUICommand(command) {
                         print("[ARES] Reclaiming port \(port) from orphaned process \(pid)")
                         let killTask = Process()
                         killTask.executableURL = URL(fileURLWithPath: "/bin/kill")
@@ -304,5 +357,10 @@ public final class WebUIServerManager: ObservableObject {
         } catch {
             print("[ARES] Error reclaiming port \(port): \(error)")
         }
+    }
+
+    nonisolated static func isManagedWebUICommand(_ command: String) -> Bool {
+        command.contains("server.py") ||
+            (command.contains("uvicorn") && command.contains("fastapi_app.main:app"))
     }
 }

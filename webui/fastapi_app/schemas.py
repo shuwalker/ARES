@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -26,6 +26,16 @@ class AgentHealthResponse(ExtensibleResponse):
 
 class SettingsResponse(ExtensibleResponse):
     bot_name: str
+    owner_name: str = ""
+    local_profile_voice: Literal["system-default", "disabled"] = "system-default"
+    local_profile_reachability: Literal["this-device", "local-network", "private-network"] = "this-device"
+    local_profile_setup_mode: Literal["quick", "advanced"] = "quick"
+    local_profile_character: Literal["grounded", "warm", "direct", "curious"] = "grounded"
+    local_profile_autonomy: Literal["observe", "confirm", "delegated"] = "confirm"
+    local_profile_life_areas: list[
+        Literal["finance", "health", "work", "home", "projects"]
+    ] = Field(default_factory=list)
+    context_store_enabled: bool = False
     auth_enabled: bool
     webui_version: str | None = None
 
@@ -46,12 +56,30 @@ class SettingsUpdate(BaseModel):
     )
     max_tokens: int | None = Field(default=None, ge=1)
     context_store_enabled: bool | None = Field(default=None)
+    show_cli_sessions: bool | None = Field(default=None)
+    owner_name: str | None = Field(default=None, max_length=120)
+    local_profile_voice: Literal["system-default", "disabled"] | None = None
+    local_profile_reachability: Literal["this-device", "local-network", "private-network"] | None = None
+    local_profile_setup_mode: Literal["quick", "advanced"] | None = None
+    local_profile_character: Literal["grounded", "warm", "direct", "curious"] | None = None
+    local_profile_autonomy: Literal["observe", "confirm", "delegated"] | None = None
+    local_profile_life_areas: list[
+        Literal["finance", "health", "work", "home", "projects"]
+    ] | None = Field(default=None, max_length=5)
 
     @model_validator(mode="before")
     @classmethod
     def reject_server_owned_fields(cls, value):
-        if isinstance(value, dict) and "password_hash" in value:
-            raise ValueError("password_hash is server-owned")
+        server_owned = {
+            "agent_version", "auth_enabled", "logged_in", "max_tokens_effective",
+            "max_tokens_fallback", "passkeys_enabled", "password_auth_enabled",
+            "password_env_var", "password_hash", "passwordless_enabled",
+            "persisted_speech_keys", "update_channel_version", "webui_version",
+        }
+        if isinstance(value, dict):
+            protected = sorted(server_owned.intersection(value))
+            if protected:
+                raise ValueError(f"{', '.join(protected)} are server-owned")
         return value
 
     @field_validator("bot_name")
@@ -198,6 +226,10 @@ class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     color: str | None = Field(default=None, max_length=9)
     profile: str | None = Field(default=None, max_length=64)
+    description: str = Field(default="", max_length=10_000)
+    domain: str = Field(default="General", max_length=128)
+    status: Literal["active", "on_hold", "completed", "archived"] = "active"
+    target_date: str | None = Field(default=None, max_length=64)
 
 
 class ProjectRename(BaseModel):
@@ -212,6 +244,18 @@ class ProjectDelete(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     project_id: str = Field(min_length=1, max_length=256)
+
+
+class ProjectUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    project_id: str = Field(min_length=1, max_length=256)
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    color: str | None = Field(default=None, max_length=9)
+    description: str | None = Field(default=None, max_length=10_000)
+    domain: str | None = Field(default=None, max_length=128)
+    status: Literal["active", "on_hold", "completed", "archived"] | None = None
+    target_date: str | None = Field(default=None, max_length=64)
 
 
 class FileMutation(BaseModel):
@@ -424,6 +468,15 @@ class ModelRecord(BaseModel):
 class ConnectionModelsResponse(BaseModel):
     connection_id: str
     models: list[ModelRecord]
+
+
+class ConnectionTestResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    connection_id: str
+    health: AdapterHealthRecord
+    capabilities: list[str]
 
 
 class McpToolsResponse(ExtensibleResponse):

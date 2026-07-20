@@ -8,6 +8,7 @@ import {
   translateSessions,
   translateSettings,
   translateTools,
+  translateWorkerRankings,
   translateWorkspaceEntries,
   translateWorkspaces,
 } from "@/shared/translators";
@@ -143,13 +144,19 @@ export interface PairingEntry {
 // ── MCP server types ────────────────────────────────────────────────
 export interface McpServerEntry {
   name: string;
+  transport?: "stdio" | "http" | "invalid";
   command?: string;
+  url?: string;
   args?: string[];
   env?: Record<string, string>;
+  headers?: Record<string, string>;
   enabled?: boolean;
+  active?: boolean;
   status?: string;
   description?: string;
-  tools_count?: number;
+  tool_count?: number | null;
+  timeout?: number;
+  connect_timeout?: number;
 }
 
 // ── Env types ───────────────────────────────────────────────────────
@@ -176,6 +183,9 @@ export const aresApi = {
       loggedIn: Boolean(payload.logged_in),
       passwordAuthEnabled: Boolean(payload.password_auth_enabled),
       oidcEnabled: Boolean(payload.oidc_enabled),
+      passkeysEnabled: Boolean(payload.passkeys_enabled),
+      passwordlessEnabled: Boolean(payload.passwordless_enabled),
+      trustedAuthEnabled: Boolean(payload.trusted_auth_enabled),
     };
   },
   async login(password: string) {
@@ -183,6 +193,12 @@ export const aresApi = {
       method: "POST",
       body: JSON.stringify({ password }),
     });
+  },
+  async passkeyOptions() {
+    return apiFetch<{ ok: boolean; publicKey: Record<string, unknown> }>("/api/auth/passkey/options", { method: "POST", body: "{}" });
+  },
+  async passkeyLogin(payload: Record<string, unknown>) {
+    return apiFetch<{ ok: boolean }>("/api/auth/passkey/login", { method: "POST", body: JSON.stringify(payload) });
   },
 
   // ══════════════════════════════════════════════════════════════════
@@ -215,6 +231,21 @@ export const aresApi = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  async productStateGet<T extends object>(module: string) {
+    return apiFetch<{ module: string; revision: number; state: T }>(
+      `/api/product-state/${encodeURIComponent(module)}`,
+    );
+  },
+  async productStatePut<T extends object>(module: string, state: T, expectedRevision?: number) {
+    return apiFetch<{ module: string; revision: number; state: T }>(
+      `/api/product-state/${encodeURIComponent(module)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ state, expected_revision: expectedRevision }),
+      },
+    );
   },
 
   // ══════════════════════════════════════════════════════════════════
@@ -309,6 +340,18 @@ export const aresApi = {
       body: JSON.stringify({ session_id: sessionId }),
     });
   },
+  async createShare(sessionId: string) {
+    return apiFetch<{ ok: boolean; share: { token: string; url: string; title: string; message_count: number } }>("/api/share/create", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  },
+  async revokeShare(sessionId: string) {
+    return apiFetch<{ ok: boolean }>("/api/share/revoke", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  },
 
   async truncateSession(sessionId: string, keepCount: number) {
     return apiFetch<{ ok: boolean; session: Record<string, unknown> }>("/api/session/truncate", {
@@ -352,7 +395,7 @@ export const aresApi = {
   // ══════════════════════════════════════════════════════════════════
   async skillsList(category?: string) {
     const params = category ? `?category=${encodeURIComponent(category)}` : "";
-    return apiFetch<Record<string, unknown>[]>(`/api/skills${params}`);
+    return apiFetch<{ skills: Array<{ name: string; description: string; category: string | null; disabled: boolean }>; skill_runtime_available: boolean }>(`/api/skills${params}`);
   },
 
   async skillsGet(name: string, file?: string) {
@@ -565,50 +608,6 @@ export const aresApi = {
     return apiFetch<Record<string, unknown>>("/api/crons/delivery-options");
   },
 
-  // ── Legacy cron aliases (existing) ──────────────────────────────
-  async cronsStatus() {
-    return apiFetch<{ crons: CronEntry[] }>("/api/crons/status");
-  },
-  async cronsRecent(limit = 20) {
-    return apiFetch<{ runs: CronRun[] }>("/api/crons/recent", { method: "POST", body: JSON.stringify({ limit }) });
-  },
-  async cronsCreate(entry: { name: string; schedule: string; prompt: string; enabled?: boolean }) {
-    return apiFetch<CronEntry>("/api/crons/create", {
-      method: "POST",
-      body: JSON.stringify(entry),
-    });
-  },
-  async cronsUpdate(id: string, updates: Partial<{ name: string; schedule: string; prompt: string; enabled: boolean }>) {
-    return apiFetch<CronEntry>("/api/crons/update", {
-      method: "POST",
-      body: JSON.stringify({ id, ...updates }),
-    });
-  },
-  async cronsDelete(id: string) {
-    return apiFetch<{ ok: boolean }>("/api/crons/delete", {
-      method: "POST",
-      body: JSON.stringify({ id }),
-    });
-  },
-  async cronsRun(id: string) {
-    return apiFetch<{ ok: boolean; run_id: string }>("/api/crons/run", {
-      method: "POST",
-      body: JSON.stringify({ id }),
-    });
-  },
-  async cronsPause(id: string) {
-    return apiFetch<{ ok: boolean }>("/api/crons/pause", {
-      method: "POST",
-      body: JSON.stringify({ id }),
-    });
-  },
-  async cronsResume(id: string) {
-    return apiFetch<{ ok: boolean }>("/api/crons/resume", {
-      method: "POST",
-      body: JSON.stringify({ id }),
-    });
-  },
-
   // ══════════════════════════════════════════════════════════════════
   // Webhooks
   // ══════════════════════════════════════════════════════════════════
@@ -628,10 +627,6 @@ export const aresApi = {
       method: "PATCH",
       body: JSON.stringify(updates),
     });
-  },
-
-  async webhookTest(name: string) {
-    return apiFetch<{ ok: boolean; server: Record<string, unknown> }>(`/api/mcp/servers/${encodeURIComponent(name)}/test`);
   },
 
   async webhookDelete(id: string) {
@@ -679,11 +674,7 @@ export const aresApi = {
   // MCP
   // ══════════════════════════════════════════════════════════════════
   async mcpList() {
-    return apiFetch<McpServerEntry[]>("/api/mcp/servers");
-  },
-
-  async mcpStatus() {
-    return this.mcpList();
+    return apiFetch<{ servers: McpServerEntry[]; toggle_supported: boolean; reload_required: boolean }>("/api/mcp/servers");
   },
 
   async mcpUpdate(name: string, config: Record<string, unknown>) {
@@ -700,18 +691,14 @@ export const aresApi = {
     });
   },
 
-  async mcpRestart(name: string) {
-    return apiFetch<{ ok: boolean; server: Record<string, unknown> }>(`/api/mcp/servers/${encodeURIComponent(name)}/test`);
-  },
-
   async mcpDelete(name: string) {
     return apiFetch<{ ok: boolean }>(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: "DELETE" });
   },
 
   // ══════════════════════════════════════════════════════════════════
-  // Channels (Connections / Adapters)
+  // Connections / Adapters
   // ══════════════════════════════════════════════════════════════════
-  async channelsList() {
+  async connectionsList() {
     return translateConnections(await apiFetch("/api/connections"));
   },
 
@@ -719,19 +706,36 @@ export const aresApi = {
     return apiFetch<Record<string, unknown>>(`/api/connections/${encodeURIComponent(connectionId)}/models`);
   },
 
-  async channelTest(connectionId: string) {
-    return apiFetch<Record<string, unknown>>(`/api/connections/${encodeURIComponent(connectionId)}/test`);
+  async connectionTest(connectionId: string) {
+    return apiFetch<{
+      ok: boolean;
+      connection_id: string;
+      health: { state: string; available: boolean; message: string; details: Record<string, unknown> };
+      capabilities: string[];
+    }>(`/api/connections/${encodeURIComponent(connectionId)}/test`);
   },
 
-  async channelConnect(connectionId: string) {
-    return apiFetch<Record<string, unknown>>(`/api/connections/${encodeURIComponent(connectionId)}/connect`, {
-      method: "POST",
-    });
+  /** Companion technical intelligence: worker effectiveness leaderboard. */
+  async workerRankings() {
+    return translateWorkerRankings(await apiFetch("/api/workers/rankings"));
   },
 
-  async channelDisconnect(connectionId: string) {
-    return apiFetch<Record<string, unknown>>(`/api/connections/${encodeURIComponent(connectionId)}/disconnect`, {
+  async recordWorkerEvaluation(payload: {
+    workerId: string;
+    metrics: Record<string, number>;
+    sessionId?: string;
+    taskKind?: string;
+    notes?: string;
+  }) {
+    return apiFetch<{ ok: boolean; evaluation: Record<string, unknown> }>("/api/workers/evaluations", {
       method: "POST",
+      body: JSON.stringify({
+        worker_id: payload.workerId,
+        metrics: payload.metrics,
+        session_id: payload.sessionId,
+        task_kind: payload.taskKind,
+        notes: payload.notes,
+      }),
     });
   },
 
@@ -905,6 +909,9 @@ export const aresApi = {
   async terminalInput(sessionId: string, data: string) {
     return apiFetch("/api/terminal/input", { method: "POST", body: JSON.stringify({ session_id: sessionId, data }) });
   },
+  async terminalResize(sessionId: string, rows: number, cols: number) {
+    return apiFetch("/api/terminal/resize", { method: "POST", body: JSON.stringify({ session_id: sessionId, rows, cols }) });
+  },
   async closeTerminal(sessionId: string) {
     return apiFetch("/api/terminal/close", { method: "POST", body: JSON.stringify({ session_id: sessionId }) });
   },
@@ -913,28 +920,65 @@ export const aresApi = {
   // Approval / Inbox
   // ══════════════════════════════════════════════════════════════════
   async approvalPending() {
-    return apiFetch<{ approvals: ApprovalItem[] }>("/api/approval/pending");
+    const sessions = await this.sessions();
+    const snapshots = await Promise.all(sessions.map(async (session) => {
+      const result = await apiFetch<{ pending: Record<string, unknown> | null }>(
+        `/api/approval/pending?session_id=${encodeURIComponent(session.id)}`,
+      );
+      if (!result.pending) return null;
+      const item = result.pending;
+      return {
+        id: String(item.approval_id ?? item.id ?? ""),
+        session_id: session.id,
+        type: String(item.type ?? (item.command ? "execution" : "tool_use")),
+        status: "pending" as const,
+        subject: String(item.description ?? item.command ?? item.tool ?? "Approval required"),
+        detail: String(item.command ?? item.reason ?? item.description ?? "Your Companion is waiting for your decision."),
+        requested_by: String(item.requested_by ?? session.backendId ?? "companion"),
+        created_at: String(item.created_at ?? item.requested_at ?? session.updatedAt ?? new Date().toISOString()),
+        payload: item,
+      } satisfies ApprovalItem;
+    }));
+    return { approvals: snapshots.filter((item): item is NonNullable<typeof item> => item !== null) };
   },
-  async approvalRespond(id: string, action: "approve" | "reject", note?: string) {
+  async approvalRespond(sessionId: string, id: string, action: "approve" | "reject") {
     return apiFetch<{ ok: boolean }>("/api/approval/respond", {
       method: "POST",
-      body: JSON.stringify({ id, action, note }),
+      body: JSON.stringify({ session_id: sessionId, approval_id: id, choice: action === "approve" ? "once" : "deny" }),
     });
   },
   async clarifyPending() {
-    return apiFetch<{ clarifications: ClarifyItem[] }>("/api/clarify/pending");
+    const sessions = await this.sessions();
+    const snapshots = await Promise.all(sessions.map(async (session) => {
+      const result = await apiFetch<{ pending: Record<string, unknown> | null }>(
+        `/api/clarify/pending?session_id=${encodeURIComponent(session.id)}`,
+      );
+      if (!result.pending) return null;
+      const item = result.pending;
+      return {
+        id: String(item.clarify_id ?? item.id ?? ""),
+        session_id: session.id,
+        question: String(item.question ?? "ARES needs more information."),
+        context: String(item.context ?? item.reason ?? ""),
+        created_at: String(item.created_at ?? item.requested_at ?? session.updatedAt ?? new Date().toISOString()),
+      } satisfies ClarifyItem;
+    }));
+    return { clarifications: snapshots.filter((item): item is NonNullable<typeof item> => item !== null) };
   },
-  async clarifyRespond(id: string, response: string) {
+  async clarifyRespond(sessionId: string, id: string, response: string) {
     return apiFetch<{ ok: boolean }>("/api/clarify/respond", {
       method: "POST",
-      body: JSON.stringify({ id, response }),
+      body: JSON.stringify({ session_id: sessionId, clarify_id: id, response }),
     });
   },
   async emailUnread() {
     return apiFetch<{ count: number }>("/api/email/unread");
   },
   async emailAll() {
-    return apiFetch<{ emails: EmailItem[] }>("/api/email/all");
+    const result = await apiFetch<{ messages?: Record<string, unknown>[] }>("/api/email/all?limit=50", {
+      signal: AbortSignal.timeout(15_000),
+    });
+    return { emails: (result.messages ?? []).map(translateEmailItem) };
   },
 
   // ══════════════════════════════════════════════════════════════════
@@ -1005,7 +1049,7 @@ export interface SecretEntry {
   id: string;
   name: string;
   key: string;
-  value: string;
+  value?: string;
   value_preview?: string;
   provider: string;
   status: "active" | "disabled" | "archived" | "deleted";
@@ -1016,6 +1060,7 @@ export interface SecretEntry {
 
 export interface ApprovalItem {
   id: string;
+  session_id: string;
   type: string;
   status: "pending" | "approved" | "rejected" | "revision_requested";
   subject: string;
@@ -1042,6 +1087,17 @@ export interface EmailItem {
   read: boolean;
 }
 
+export function translateEmailItem(raw: Record<string, unknown>): EmailItem {
+  return {
+    id: String(raw.id ?? ""),
+    from: String(raw.from ?? raw.sender ?? "Unknown sender"),
+    subject: String(raw.subject ?? "(No subject)"),
+    snippet: String(raw.snippet ?? raw.body_text ?? ""),
+    date: String(raw.date ?? raw.date_received ?? ""),
+    read: Boolean(raw.read ?? raw.is_read),
+  };
+}
+
 export interface KanbanBoard {
   id: string;
   name: string;
@@ -1066,18 +1122,6 @@ export interface KanbanTask {
   assigned_to?: string;
   created_at: string;
   updated_at: string;
-}
-
-export interface CronEntry {
-  id: string;
-  name: string;
-  description?: string;
-  schedule: string;
-  status: "active" | "paused" | "draft" | "archived";
-  enabled: boolean;
-  last_run_at?: string;
-  next_run_at?: string;
-  prompt?: string;
 }
 
 export interface CronRun {

@@ -42,6 +42,7 @@ def _app(tmp_path: Path, registry) -> object:
 
 def test_readiness_requires_a_connected_execution_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr("api.profiles.get_active_profile_name", lambda: "default")
+    monkeypatch.setattr("api.config.load_settings", lambda: {"onboarding_completed": True})
     registry = StaticRegistry(
         [
             {
@@ -71,6 +72,7 @@ def test_readiness_requires_a_connected_execution_runtime(tmp_path, monkeypatch)
 
 def test_readiness_requires_the_elected_runtime_not_just_any_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr("api.profiles.get_active_profile_name", lambda: "default")
+    monkeypatch.setattr("api.config.load_settings", lambda: {"onboarding_completed": True})
     connected = {
         "id": "connected-runtime",
         "kind": "runtime",
@@ -94,6 +96,19 @@ def test_readiness_requires_the_elected_runtime_not_just_any_runtime(tmp_path, m
     assert response.json()["connection_ready"] is True
     assert response.json()["execution_available"] is True
     assert response.json()["capabilities"] == ["conversation", "tool.use"]
+
+
+def test_readiness_does_not_treat_implicit_default_name_as_saved_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr("api.profiles.get_active_profile_name", lambda: "default")
+    monkeypatch.setattr("api.config.load_settings", lambda: {})
+    app = _app(tmp_path, StaticRegistry([], selected=None))
+
+    with TestClient(app, client=("127.0.0.1", 50002)) as client:
+        response = client.get("/api/readiness")
+
+    assert response.status_code == 200
+    assert response.json()["profile"] == "default"
+    assert response.json()["profile_ready"] is False
 
 
 def test_discovery_apply_is_guarded_by_mutation_identity(tmp_path):
@@ -220,7 +235,11 @@ def test_ollama_stream_worker_uses_broadcast_channel_and_skips_malformed_json(
             yield json.dumps({"response": "hello", "done": False}).encode()
             yield json.dumps({"response": " world", "done": True}).encode()
 
-    monkeypatch.setattr(requests, "post", lambda *_args, **_kwargs: Response())
+    request_options = {}
+    def fake_post(*_args, **kwargs):
+        request_options.update(kwargs.get("json", {}).get("options", {}))
+        return Response()
+    monkeypatch.setattr(requests, "post", fake_post)
     monkeypatch.setattr(run_journal, "RunJournalWriter", Journal)
     monkeypatch.setattr(models, "get_session", lambda _session_id: session)
     monkeypatch.setattr(streaming, "register_active_run", lambda *_args, **_kwargs: None)
@@ -251,6 +270,7 @@ def test_ollama_stream_worker_uses_broadcast_channel_and_skips_malformed_json(
     assert [event[1]["text"] for event in events[:2]] == ["hello", " world"]
     assert session.messages[-1]["content"] == "hello world"
     assert session.active_stream_id is None
+    assert request_options["num_predict"] == 2048
 
 
 def test_ares_owned_schedule_store_round_trips_skills_with_private_permissions(

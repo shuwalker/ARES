@@ -32,6 +32,29 @@ def test_resolve_default_workspace_falls_back_to_existing_home_work(monkeypatch,
     assert resolved == preferred.resolve()
 
 
+def test_resolve_default_workspace_heals_leaked_pytest_path(monkeypatch, tmp_path):
+    preferred = tmp_path / "work"
+    preferred.mkdir()
+    leaked = tmp_path / "ares-webui-tests" / "old-run" / "test-workspace"
+    leaked.mkdir(parents=True)
+
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    monkeypatch.setattr(config, "STATE_DIR", tmp_path / "state")
+    monkeypatch.delenv("ARES_WEBUI_TEST_STATE_DIR", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_DEFAULT_WORKSPACE", raising=False)
+
+    assert config.resolve_default_workspace(leaked) == preferred.resolve()
+
+
+def test_test_process_can_use_its_isolated_workspace(monkeypatch, tmp_path):
+    isolated = tmp_path / "ares-webui-tests" / "current-run"
+    workspace = isolated / "test-workspace"
+    workspace.mkdir(parents=True)
+    monkeypatch.setenv("ARES_WEBUI_TEST_STATE_DIR", str(isolated))
+
+    assert config.resolve_default_workspace(workspace) == workspace.resolve()
+
+
 
 def test_save_settings_rewrites_bad_default_workspace_to_fallback(monkeypatch, tmp_path):
     preferred = tmp_path / "work"
