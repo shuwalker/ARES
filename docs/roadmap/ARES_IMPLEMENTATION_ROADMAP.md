@@ -11,10 +11,10 @@
 - [x] Trust and privacy model (`TRUST_AND_PRIVACY_MODEL.md`)
 - [x] Memory and context model (`MEMORY_AND_CONTEXT_MODEL.md`)
 - [x] Orchestration model (`ORCHESTRATION_MODEL.md`)
-- [ ] SI language replacement ("AI assistant" → "Companion" / "SI")
-- [ ] Update README to define ARES correctly
-- [ ] Update `config.py` personalities
-- [ ] Update tests to match corrected personalities
+- [x] SI language replacement ("AI assistant" → "Companion" / "SI")
+- [x] Update README to define ARES correctly
+- [x] Update `config.py` personalities
+- [x] Update tests to match corrected personalities
 
 ### Estimated effort: 1 session
 

@@ -80,7 +80,7 @@ def test_personalities_empty_when_none_exist():
     assert status == 200
     personalities = d.get("personalities") or []
     assert len(personalities) == 14
-    assert {"name": "helpful", "description": "You are a helpful, friendly AI assistant."} in personalities
+    assert {"name": "helpful", "description": "You are a helpful, friendly companion. Assist the user with their requests accurately and thoroughly."} in personalities
 
 
 def test_personalities_lists_from_config():

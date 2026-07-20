@@ -4,8 +4,9 @@
 </p>
 
 <p align="center">
-  A Mac-first presentation and integration layer for a user-facing AI assistant.<br>
-  Connect JROS, Ares, OpenAI-compatible providers, tools, voice, avatars, and future robotic bodies through one client experience.
+  A Mac-first platform hosting a persistent Synthetic Intelligence (SI).<br>
+  The SI knows the user, remembers history, protects data, plans work,<br>
+  delegates to workers, verifies results, and remains consistent across providers.<br>
 </p>
 
 <p align="center">
