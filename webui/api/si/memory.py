@@ -37,7 +37,7 @@ def _get_db() -> sqlite3.Connection:
 
 
 def _ensure_tables(conn: sqlite3.Connection) -> None:
-    """Ensure memory lifecycle tables exist."""
+    """Ensure memory lifecycle tables exist. Core Journal tables are created by the Journal schema."""
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS memory_labels (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

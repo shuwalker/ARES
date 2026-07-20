@@ -143,3 +143,7 @@ jobs:
 
       - name: Run tests (shard ${{ matrix.shard }} of 5)
         run: pytest tests/ -v --timeout=60 --shard-id=${{ matrix.shard }} --num-shards=5
+
+      - name: SI subsystem health check
+        if: matrix.shard == 0 && matrix.python-version == '3.12'
+        run: python ../scripts/si_doctor.py

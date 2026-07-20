@@ -297,6 +297,34 @@ def check_memory_lifecycle():
     )
     import sqlite3
 
+    # Ensure the Journal DB and tables exist (CI may not have them)
+    db_path = os.path.expanduser("~/.ares/journal/journal.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL, source TEXT NOT NULL, title TEXT,
+            model TEXT, workspace TEXT, created_at REAL, updated_at REAL,
+            message_count INTEGER DEFAULT 0, source_path TEXT,
+            import_batch TEXT, import_ts REAL, metadata TEXT,
+            UNIQUE(source, session_id)
+        );
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            seq INTEGER NOT NULL, role TEXT NOT NULL, content TEXT,
+            timestamp REAL, model TEXT, tool_name TEXT,
+            token_count INTEGER, metadata TEXT
+        );
+        CREATE TABLE IF NOT EXISTS messages_fts (
+            content TEXT
+        );
+    """)
+    conn.commit()
+    conn.close()
+
     mid = ingest_memory("si_doctor_test", "ARES SI doctor test memory unique phrase xyzzy", is_decision=True)
     assert mid.startswith("mem_")
 
@@ -306,8 +334,7 @@ def check_memory_lifecycle():
     score = score_importance(mid)
     assert 0.0 <= score <= 1.0
 
-    # Verify the memory exists via direct SQL (bypasses FTS5 timing)
-    db_path = os.path.expanduser("~/.ares/journal/journal.db")
+    # Verify via direct SQL
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     row = conn.execute(
@@ -321,7 +348,7 @@ def check_memory_lifecycle():
     assert "xyzzy" in (msg_row["content"] or ""), f"Content mismatch: {msg_row['content'][:100]}"
     conn.close()
 
-    # Also try FTS5 retrieval (may need a moment for content-sync triggers)
+    # FTS5 retrieval (may need a moment for content-sync triggers)
     mems = []
     for attempt in range(5):
         mems = retrieve_memories("xyzzy", limit=10)

@@ -232,7 +232,7 @@ def evaluate_result(
     score = passed / total if total > 0 else 0.0
 
     # Determine verdict
-    critical_failures = [c for c in check_results if not c.passed and c.check_name in ("not_empty", "no_secret_leak")]
+    critical_failures = [c for c in check_results if not c.passed and c.check_name in ("not_empty", "no_secret_leak", "no_harmful_content")]
     issues = [f"{c.check_name}: {c.message}" for c in check_results if not c.passed]
 
     if critical_failures:
