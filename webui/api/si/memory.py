@@ -192,7 +192,7 @@ def dedup_memory(content: str, *, threshold: float = 0.85) -> str | None:
         rows = conn.execute(
             """SELECT c.session_id, c.id
                FROM messages_fts
-               JOIN messages m ON messages_fts.rowid = m.rowid
+               JOIN messages m ON messages_fts.rowid = m.id
                JOIN conversations c ON m.conversation_id = c.id
                WHERE messages_fts MATCH ?
                LIMIT 5""",
@@ -290,7 +290,7 @@ def retrieve_memories(
         rows = conn.execute(
             f"""SELECT c.session_id, c.source, c.metadata, c.created_at
                FROM messages_fts
-               JOIN messages m ON messages_fts.rowid = m.rowid
+               JOIN messages m ON messages_fts.rowid = m.id
                JOIN conversations c ON m.conversation_id = c.id
                WHERE messages_fts MATCH ?
                GROUP BY c.id
