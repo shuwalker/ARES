@@ -191,6 +191,34 @@ def si_classify_intent(message: str = Query(..., description="User message")):
     return {"intent": intent, "confidence": confidence, "message": message}
 
 
+# ── Evaluation ──────────────────────────────────────────────────────────
+
+@router.post("/evaluate")
+def si_evaluate_result(
+    result: str = Query(..., description="Worker result text to evaluate"),
+    intent: str = Query("conversation", description="Task intent type"),
+    min_score: float = Query(0.5, ge=0.0, le=1.0, description="Minimum acceptable score"),
+):
+    """Evaluate a worker result using deterministic verification checks."""
+    from api.si.evaluator import evaluate_result
+    evaluation = evaluate_result(result, intent=intent, min_score=min_score)
+    return {
+        "verdict": evaluation.verdict.value,
+        "score": evaluation.overall_score,
+        "recommendation": evaluation.recommendation,
+        "issues": evaluation.issues,
+        "checks": [
+            {
+                "name": c.check_name,
+                "passed": c.passed,
+                "message": c.message,
+                "details": c.details,
+            }
+            for c in evaluation.checks
+        ],
+    }
+
+
 # ── Orchestration ──────────────────────────────────────────────────────
 
 @router.post("/orchestrate")
