@@ -38,6 +38,7 @@ from .realtime import router as realtime_router
 from .session import router as session_router
 from .settings import router as settings_router
 from .shares import router as shares_router
+from .si import router as si_router
 from .skills import router as skills_router
 from .uploads import router as uploads_router
 from .workspaces import router as workspaces_router
@@ -84,6 +85,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(settings_router)
     application.include_router(env_router)
     application.include_router(shares_router)
+    application.include_router(si_router)
     application.include_router(skills_router)
     application.include_router(uploads_router)
     application.include_router(session_router)

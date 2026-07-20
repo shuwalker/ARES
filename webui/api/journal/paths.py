@@ -70,7 +70,14 @@ def gemini_state_db() -> Path:
     return None
 
 
-def sam_dir() -> Path:
+def si_dir() -> Path:
+    """Directory for SI subsystem data (plans, disclosure ledger, etc.)."""
+    d = ares_home() / "si"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def sam_dir() -> Path | None:
     """SAM conversations directory."""
     if sys.platform == "darwin":
         app_support = os.environ.get(
