@@ -23,8 +23,16 @@ if [ -n "${ARES_JAEGER_HOME:-}" ] && [ -z "${JAEGER_HOME:-}" ]; then
   export JAEGER_HOME="$ARES_JAEGER_HOME"
 fi
 
-# Use the Ares Agent venv (Python 3.11) — the WebUI needs 3.10+
-PYBIN="$ARES_HOME/ares-agent/venv/bin/python"
+# Use the WebUI venv (installed by pip install or start_ares.sh)
+# Fall back to Ares Agent venv if the local one doesn't exist.
+if [ -x "$DIR/.venv/bin/python" ]; then
+  PYBIN="$DIR/.venv/bin/python"
+elif [ -x "$ARES_HOME/ares-agent/venv/bin/python" ]; then
+  PYBIN="$ARES_HOME/ares-agent/venv/bin/python"
+else
+  echo "ERROR: No Python venv found. Run 'python -m venv .venv && .venv/bin/pip install -e .' first." >&2
+  exit 1
+fi
 
 # Create state dir if needed
 mkdir -p "$ARES_WEBUI_STATE_DIR"
