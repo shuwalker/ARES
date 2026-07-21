@@ -8884,6 +8884,9 @@ _SETTINGS_DEFAULTS = {
     "local_profile_autonomy": "confirm",
     "local_profile_life_areas": [],
     "context_store_enabled": False,
+    # Companion SI pipeline owns chat turns (identity/context/route/evaluate).
+    # Env ARES_SI_ENABLED overrides this when set. Launchd production enables it.
+    "si_enabled": False,
     "send_key": "enter",  # 'enter', 'ctrl+enter', or 'shift+enter'
     "show_token_usage": False,  # show input/output token badge below assistant messages
     "show_quota_chip": False,  # show ambient provider quota chip in composer footer (default off; wide desktop only when enabled, see style.css @media)

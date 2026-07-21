@@ -197,9 +197,22 @@ class HermesBackend(AgenticBackend):
     def get_worker_target(self) -> tuple:
         """Return the Hermes streaming worker target.
 
-        Hermes turns run through a dedicated streaming worker that spawns
-        ``hermes chat -q`` as a subprocess and pipes output to the SSE channel.
+        When the Companion SI is enabled, use the shared agentic streaming
+        worker so turns go through ``si_turn`` (identity/context/route) and
+        then ``HermesBackend.run_turn`` with SI-owned flags.
+
+        When SI is off, keep the dedicated Hermes streaming worker.
         """
+        try:
+            from api.si.bridge import si_enabled
+
+            if si_enabled():
+                from api.backends.base import run_agentic_backend_streaming
+
+                return run_agentic_backend_streaming, False, False
+        except Exception:
+            logger.debug("SI enable check failed; using Hermes streaming", exc_info=True)
+
         from api.backends.hermes_streaming import run_hermes_streaming
 
         return run_hermes_streaming, False, False
@@ -221,6 +234,11 @@ class HermesBackend(AgenticBackend):
 
         # Build the hermes command
         args = [cli, "chat", "-q", message, "-Q", "--yolo", "--source", "webui"]
+
+        # When ARES SI owns the turn, strip Hermes SOUL/AGENTS/memory injection
+        # so the Companion identity briefing is not overridden by worker branding.
+        if kwargs.get("si_owned") or kwargs.get("ignore_worker_identity"):
+            args.append("--ignore-rules")
 
         if model:
             args.extend(["-m", model])

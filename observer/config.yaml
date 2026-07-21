@@ -1,0 +1,42 @@
+# ARES Observer Configuration
+# Autonomous task discovery service
+
+# Watch intervals (seconds)
+intervals:
+  git: 300          # Check git every 5 minutes
+  terminal: 120     # Check terminal history every 2 minutes
+  files: 600        # Scan files every 10 minutes
+  sessions: 300     # Check sessions every 5 minutes
+
+# Confidence thresholds
+confidence:
+  auto_start: 0.85      # Tasks above this start automatically
+  queue_for_approval: 0.60  # Tasks above this queue for approval
+  # Below 0.60: shown as suggestions only
+
+# Paths to watch
+watch:
+  repos:
+    - ~/GitHub/ARES
+    - ~/GitHub/JaegerAI
+  terminal_log: ~/.ares/logs/terminal-history.log
+  session_db: ~/.ares/journal.db
+
+# Local model for inference
+model:
+  provider: ollama
+  endpoint: http://localhost:11434
+  name: qwen3.6:35b-mlx
+
+# Kanban integration
+kanban:
+  api_url: http://localhost:8787/api/kanban
+  auto_create: true       # Create tasks automatically
+  default_priority: medium
+
+# Logging
+logging:
+  level: INFO
+  file: ~/.ares/observer/observer.log
+  max_size_mb: 10
+  backup_count: 3

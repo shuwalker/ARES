@@ -27,7 +27,57 @@ Commands:
   logs      Show the daemon log
   doctor    Run system diagnostic checks for ARES
   update    Pull the latest code and rebuild the application
+  tui       Companion terminal (Jaeger-method client → live controller)
+  talk      Alias for tui
+  setup     Launch native onboarding window (first-run setup)
 EOF
+}
+
+cmd_setup() {
+  # Kill any running ARES app first
+  pkill -x "ARES" 2>/dev/null || true
+  sleep 1
+  
+  # Reset onboarding state and set force flag
+  defaults delete com.shuwalker.ARES onboarding_completed 2>/dev/null || true
+  defaults delete com.shuwalker.ARES ARESForceOnboarding 2>/dev/null || true
+  defaults write com.shuwalker.ARES ARESForceOnboarding -bool true
+  
+  # Launch the native macOS onboarding window
+  local APP_PATH="${ARES_ROOT}/ARES-Mac_os/ARES.app"
+  
+  if [[ ! -d "$APP_PATH" ]]; then
+    echo "Building ARES macOS app…"
+    cd "${ARES_ROOT}/ARES-Mac_os"
+    swift build || {
+      echo "✗ Build failed. Run manually: cd ARES-Mac_os && swift build" >&2
+      exit 1
+    }
+  fi
+  
+  echo "Launching ARES onboarding…"
+  echo ""
+  echo "IMPORTANT: If no window appears:"
+  echo "  1. The app runs in tray mode by default"
+  echo "  2. Look for the ARES icon in your menu bar (top-right)"
+  echo "  3. Click it and select 'Open ARES'"
+  echo "  4. Or run: open \"$APP_PATH\""
+  echo ""
+  
+  open "$APP_PATH"
+  
+  # Try to activate
+  sleep 2
+  osascript -e 'tell application "ARES" to activate' 2>/dev/null || true
+}
+
+cmd_tui() {
+  local tui="${ARES_ROOT}/tools/ares_tui/ares_tui.py"
+  if [[ ! -f "${tui}" ]]; then
+    echo "ARES TUI not found at ${tui}" >&2
+    exit 1
+  fi
+  exec python3 "${tui}" "$@"
 }
 
 cmd_doctor() {
@@ -113,6 +163,12 @@ case "${cmd}" in
     ;;
   update)
     cmd_update
+    ;;
+  setup)
+    cmd_setup
+    ;;
+  tui|talk)
+    cmd_tui "$@"
     ;;
   -h|--help|help|"")
     usage

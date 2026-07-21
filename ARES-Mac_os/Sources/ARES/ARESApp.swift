@@ -50,10 +50,20 @@ private struct ARESMainScene: View {
 @main
 struct ARESApp: App {
     @NSApplicationDelegateAdaptor(ARESAppDelegate.self) var appDelegate
-
+    @StateObject private var onboardingManager = OnboardingManager.shared
+    
     var body: some Scene {
         WindowGroup(id: "main") {
-            ARESMainScene()
+            // Force onboarding if flag is set (from `ares setup`)
+            let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
+            if forceOnboarding || onboardingManager.needsOnboarding {
+                ARESOnboardingView(onComplete: {
+                    onboardingManager.markCompleted()
+                    UserDefaults.standard.removeObject(forKey: "ARESForceOnboarding")
+                })
+            } else {
+                ARESMainScene()
+            }
         }
         .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)
@@ -277,7 +287,16 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        // Check if onboarding should be shown
+        let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
+        let needsOnboarding = !UserDefaults.standard.bool(forKey: "onboarding_completed")
+        
+        // Regular mode if onboarding, accessory (tray) otherwise
+        if forceOnboarding || needsOnboarding {
+            NSApp.setActivationPolicy(.regular)
+        } else {
+            NSApp.setActivationPolicy(.accessory)
+        }
 
         let config = ARESConfiguration.shared
         if config.autoLaunchOnStart {

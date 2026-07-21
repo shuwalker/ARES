@@ -13,7 +13,7 @@ import { SharePage } from "@/pages/SharePage";
  *
  * Product shell: CommandCenterShell via AppShell.
  * Route table: app-navigation.ts (sidebar source of truth).
- * First-run: /activation (ActivationScreen).
+ * First-run: Use native onboarding (`ares setup` command).
  * User talks to Companion; workers execute.
  *
  * Do not re-mount HermesWorkspace here — discarded prototype.
@@ -22,14 +22,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="share/:token" element={<SharePage />} />
-      <Route
-        path="activation"
-        element={
-          <AuthGate>
-            <ActivationScreen />
-          </AuthGate>
-        }
-      />
+      {/* ActivationScreen disabled — use native onboarding (ares setup) instead */}
       <Route
         element={
           <AuthGate>

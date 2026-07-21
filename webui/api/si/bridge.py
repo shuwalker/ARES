@@ -40,8 +40,26 @@ _ENV_SI_ENABLED = "ARES_SI_ENABLED"
 
 
 def si_enabled() -> bool:
-    """Check if the SI pipeline is enabled via ARES_SI_ENABLED env var."""
-    return os.environ.get(_ENV_SI_ENABLED, "").strip().lower() in ("1", "true", "yes", "on")
+    """Whether the Companion SI pipeline should own chat turns.
+
+    Priority:
+    1. ``ARES_SI_ENABLED`` env (1/true/yes/on enables; 0/false/no/off disables)
+    2. ``settings.json`` key ``si_enabled`` (bool)
+    3. Default: disabled (direct backend path) so tests and plain installs stay
+       predictable until production enables SI via launchd or settings.
+    """
+    raw = os.environ.get(_ENV_SI_ENABLED)
+    if raw is not None and str(raw).strip() != "":
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+    try:
+        from api.config import load_settings
+
+        settings = load_settings()
+        if isinstance(settings, dict) and "si_enabled" in settings:
+            return bool(settings.get("si_enabled"))
+    except Exception:
+        logger.debug("si_enabled settings lookup failed", exc_info=True)
+    return False
 
 
 def compose_prompt_from_briefing(briefing: ContextBriefing, message: str) -> str:
@@ -51,17 +69,32 @@ def compose_prompt_from_briefing(briefing: ContextBriefing, message: str) -> str
     """
     parts: list[str] = []
 
-    # 1. Identity — who the SI is
+    # 1. Identity — Companion speaks; workers are tools (do not brand-switch)
     if briefing.si_identity:
         ident = briefing.si_identity
-        parts.append(f"You are {ident.name}.")
+        name = ident.name or "ARES"
+        owner = ident.owner_name or "the owner"
+        parts.append(
+            f"[Identity]\n"
+            f"You are {name}, the Companion SI for {owner}. "
+            f"You work only for {owner}. "
+            f"You are NOT Hermes, Claude, GPT, Grok, Gemini, Ollama, or any other worker brand. "
+            f"Workers execute tools for you; they are not your identity. "
+            f"When asked who you are, answer as {name}."
+        )
         if ident.mission:
-            parts.append(ident.mission)
-        if ident.owner_name:
-            parts.append(f"Your owner is {ident.owner_name}. You are loyal to {ident.loyalty}.")
+            parts.append(f"[Mission]\n{ident.mission}")
         if ident.principles:
             principles = "\n".join(f"- {p}" for p in ident.principles)
-            parts.append(f"Principles:\n{principles}")
+            parts.append(f"[Principles]\n{principles}")
+        parts.append(
+            f"[Loyalty]\nYour loyalty is to {owner} ({ident.loyalty}). "
+            f"Do not claim a different creator, company, or product name as yourself."
+        )
+    else:
+        parts.append(
+            "[Identity]\nYou are ARES, a Companion SI. Do not claim to be Hermes or any other agent brand."
+        )
 
     # 2. Context — what the SI knows
     context_items: list[str] = []
@@ -72,31 +105,35 @@ def compose_prompt_from_briefing(briefing: ContextBriefing, message: str) -> str
     for mem in briefing.relevant_memories:
         context_items.append(f"- [Memory] {mem.content}")
     if context_items:
-        parts.append("Context:\n" + "\n".join(context_items))
+        parts.append("[Context]\n" + "\n".join(context_items))
 
     # 3. Recent conversation
     if briefing.recent_conversation:
         conv_lines = []
         for item in briefing.recent_conversation:
             conv_lines.append(f"- {item.content}")
-        parts.append("Recent conversation:\n" + "\n".join(conv_lines))
+        parts.append("[Recent conversation]\n" + "\n".join(conv_lines))
 
     # 4. Constraints — what the worker should/shouldn't do
+    constraint_lines: list[str] = [
+        "1. [identity] Stay in ARES Companion voice for the full reply.",
+        "2. [identity] Never introduce yourself as the underlying model/agent product.",
+        "3. [style] Prefer concise, direct answers unless the user asks for depth.",
+    ]
     if briefing.constraints:
-        constraint_lines = []
-        for i, c in enumerate(briefing.constraints, 1):
+        for i, c in enumerate(briefing.constraints, 4):
             constraint_lines.append(f"{i}. [{c.kind}] {c.description}")
-        parts.append("Constraints:\n" + "\n".join(constraint_lines))
+    parts.append("[Constraints]\n" + "\n".join(constraint_lines))
 
     # 5. Privacy policy
     if briefing.privacy_policy:
         policy = briefing.privacy_policy
         redacted = policy.get("redacted_types", [])
         if redacted:
-            parts.append(f"Privacy: Do not share {', '.join(redacted)} data outside this conversation.")
+            parts.append(f"[Privacy] Do not share {', '.join(redacted)} data outside this conversation.")
 
     # 6. The user's message
-    parts.append(message)
+    parts.append(f"[User message]\n{message}")
 
     return "\n\n".join(parts)
 
@@ -196,9 +233,20 @@ def si_turn(
             model=model,
             model_provider=model_provider,
             cancel_event=cancel_event,
+            # Companion owns identity — suppress worker SOUL/AGENTS branding.
+            si_owned=True,
+            ignore_worker_identity=True,
         )
-        text = str((result or {}).get("text", ""))
-        error = str((result or {}).get("error", ""))
+        raw_text = (result or {}).get("text")
+        raw_error = (result or {}).get("error")
+        # Avoid str(None) → "None", which is truthy and poisons success paths.
+        text = "" if raw_text is None else str(raw_text)
+        if raw_error is None or raw_error is False:
+            error = ""
+        else:
+            error = str(raw_error).strip()
+            if error.lower() in ("none", "null"):
+                error = ""
     except Exception as e:
         text = ""
         error = str(e)

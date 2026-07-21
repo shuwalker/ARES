@@ -79,6 +79,7 @@ export const navigationSections: NavigationSection[] = [
     label: "System",
     routes: [
       { path: "activity", to: "/activity", label: "Activity", icon: Activity, component: named(() => import("@/pages/ActivityPage"), "ActivityPage") },
+      { path: "analytics", to: "/analytics", label: "Analytics", icon: Gauge, component: named(() => import("@/pages/AnalyticsPage"), "AnalyticsPage") },
       { path: "agents", to: "/agents", label: "Workers", icon: Cpu, component: lazy(() => import("@/pages/AgentsPage")) },
       { path: "usage", to: "/usage", label: "Usage", icon: Gauge, component: named(() => import("@/pages/UsageCostPage"), "UsageCostPage") },
       { path: "connections", to: "/connections", label: "Connections", icon: Cable, component: named(() => import("@/pages/ConnectionsPage"), "ConnectionsPage") },

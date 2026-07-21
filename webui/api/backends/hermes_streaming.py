@@ -222,6 +222,9 @@ def run_hermes_streaming(
     else:
         effective_provider = "ollama-cloud"
     args = [cli, "chat", "-q", msg_text, "-Q", "--yolo", "--source", "webui", "-m", effective_model, "--provider", effective_provider]
+    # Companion SI may still reach this worker in edge paths; strip Hermes SOUL branding.
+    if os.environ.get("ARES_SI_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
+        args.append("--ignore-rules")
 
     # Resume session if we have a previous hermes session ID
     hermes_session_id = _get_hermes_session_id(session_id)

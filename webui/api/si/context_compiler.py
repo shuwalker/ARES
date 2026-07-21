@@ -308,12 +308,30 @@ def compile_context(
     conversation_items = [i for i in packed_items if i.source == "conversation"]
     document_items = [i for i in packed_items if i.source == "document"]
 
-    # 6. Build the briefing
+    # 6. Build the briefing — load persisted Companion identity (not generic defaults)
     if si_identity is None:
-        si_identity = SIIdentity(
-            name="Assistant",
-            owner_name="User",
-        )
+        try:
+            from api.si.identity import load_identity
+
+            cfg = load_identity()
+            si_identity = SIIdentity(
+                name=cfg.name or "ARES",
+                owner_name=cfg.owner_name or "User",
+                mission=cfg.mission or "",
+                principles=list(cfg.principles or []),
+                loyalty=cfg.loyalty or "user",
+            )
+        except Exception:
+            si_identity = SIIdentity(
+                name="ARES",
+                owner_name="User",
+                mission="Assist the owner accurately, protect their data, and be honest about uncertainty.",
+                principles=[
+                    "Be honest about what you know and don't know",
+                    "Protect the owner's private data",
+                ],
+                loyalty="user",
+            )
 
     briefing = ContextBriefing(
         si_identity=si_identity,

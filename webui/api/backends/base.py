@@ -90,9 +90,15 @@ def run_agentic_backend_streaming(
         from api.si.bridge import si_enabled, si_turn
 
         if si_enabled():
+            # Honor explicit session connection when set (WebUI worker picker /
+            # connection_id). Empty/unconfigured → SI router chooses.
+            selected = str(getattr(session, "ares_backend", None) or "").strip()
+            if selected in ("", "unconfigured", "auto", "none"):
+                selected = None
             result = si_turn(
                 message,
                 session_id,
+                target_worker=selected,
                 model=model,
                 model_provider=model_provider,
                 cancel_event=cancel_event,
@@ -108,12 +114,19 @@ def run_agentic_backend_streaming(
         if cancel_event.is_set():
             publish("cancel", {"message": "Cancelled by user"})
             return
-        error = str((result or {}).get("error") or "").strip()
+        raw_error = (result or {}).get("error")
+        if raw_error is None or raw_error is False:
+            error = ""
+        else:
+            error = str(raw_error).strip()
+            if error.lower() in ("none", "null"):
+                error = ""
         if error:
-            logger.warning("%s turn failed", backend.get_backend_name())
+            logger.warning("%s turn failed: %s", backend.get_backend_name(), error[:200])
             publish("error", {"message": f"{backend.get_backend_name()} request failed."})
             return
-        text = str((result or {}).get("text") or "")
+        raw_text = (result or {}).get("text")
+        text = "" if raw_text is None else str(raw_text)
         if text:
             STREAM_PARTIAL_TEXT[stream_id] = text
             publish("token", {"text": text})

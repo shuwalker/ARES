@@ -46,6 +46,14 @@ class AresCoreService:
             last_finished = live_config.LAST_RUN_FINISHED_AT
         runs.sort(key=lambda item: float(item.get("started_at") or 0.0))
 
+        si_on = False
+        try:
+            from api.si.bridge import si_enabled as _si_enabled
+
+            si_on = bool(_si_enabled())
+        except Exception:
+            si_on = False
+
         payload: dict[str, Any] = {
             "status": "ok",
             "sessions": len(SESSIONS),
@@ -56,6 +64,8 @@ class AresCoreService:
             "server_started_at": self.started_at,
             "uptime_seconds": round(time.time() - self.started_at, 1),
             "accept_loop": {"status": "ok", "server": "uvicorn"},
+            "si_enabled": si_on,
+            "role": os.environ.get("ARES_ROLE") or "primary",
         }
         if runs:
             payload["oldest_run_age_seconds"] = runs[0]["age_seconds"]
@@ -88,6 +98,20 @@ class AresCoreService:
             except Exception as exc:
                 checks["state_db"] = {"status": "error", "error": type(exc).__name__}
                 payload["status"] = "degraded"
+            try:
+                from api.si.identity import load_identity
+                from api.si.bridge import si_enabled as _si_enabled
+
+                identity = load_identity()
+                enabled = bool(_si_enabled())
+                checks["si"] = {
+                    "status": "ok" if enabled else "disabled",
+                    "enabled": enabled,
+                    "identity_name": identity.name,
+                    "continuity_dir": os.environ.get("ARES_CONTINUITY_DIR") or "",
+                }
+            except Exception as exc:
+                checks["si"] = {"status": "error", "error": type(exc).__name__}
             payload["checks"] = checks
         status_code = 200 if payload["status"] == "ok" else 503
         return payload, status_code
