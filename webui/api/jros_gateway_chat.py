@@ -146,6 +146,111 @@ _BRIDGE_CLIENTS: dict[str, JrosClient] = {}
 _BRIDGE_TURN_LOCKS: dict[str, threading.RLock] = {}
 
 
+def _requested_jros_model(model: str | None, model_provider: str | None) -> tuple[str, str] | None:
+    """Normalize the Web UI model selection for JaegerAI's external_model config.
+
+    The local Jaeger bridge reads its provider/model when it boots; it cannot
+    hot-swap a model for one turn. Returning a normalized identity lets the
+    bridge lifecycle restart when the user changes the Web UI selection instead
+    of silently continuing with the old model.
+    """
+    raw_model = str(model or "").strip()
+    provider = str(model_provider or "").strip().lower().lstrip("@")
+    if raw_model.startswith("@") and ":" in raw_model:
+        qualified_provider, bare_model = raw_model[1:].split(":", 1)
+        if not provider:
+            provider = qualified_provider.strip().lower()
+        raw_model = bare_model.strip()
+    if not raw_model:
+        return None
+    if raw_model.lower() in {"jros", "hermes-default", "default"} and not model_provider:
+        return None
+    if not provider and "/" in raw_model:
+        maybe_provider, maybe_model = raw_model.split("/", 1)
+        if maybe_provider.strip().lower() in {"ollama", "ollama-launch", "ollama-local", "ollama-cloud", "openai", "anthropic", "gemini", "lmstudio"}:
+            provider = maybe_provider.strip().lower()
+            raw_model = maybe_model.strip()
+    return (provider or "ollama", raw_model)
+
+
+def _prepare_local_jros_model(model: str | None, model_provider: str | None, instance: str | None) -> None:
+    """Apply a Web UI model pick before starting/reusing a local bridge.
+
+    JaegerAI remains the owner of its config and model implementation. ARES
+    only uses the existing provider-sync seam, then drops its cached bridge so
+    the next request boots JaegerAI with the selected model. Unsupported
+    providers are left untouched; the bridge will report its native error.
+    """
+    requested = _requested_jros_model(model, model_provider)
+    if requested is None:
+        return
+    provider, selected_model = requested
+    try:
+        from api.ares_provider_sync import JROS_FALLBACK_PROVIDER_MAP, sync_provider
+        from api.ares_provider_sync import provider_runtime_status
+
+        mapped_provider = JROS_FALLBACK_PROVIDER_MAP.get(provider, provider)
+        if not mapped_provider:
+            logger.info("JROS cannot route provider %s; retaining JaegerAI's current model", provider)
+            return
+        if not provider_runtime_status(provider).get("available", True):
+            logger.info("JROS provider %s is not ready; retaining current model", provider)
+            return
+        with _BOOT_LOCK:
+            key = instance or "__default__"
+            existing = _BRIDGE_CLIENTS.get(key)
+            ready = existing.ready or {} if existing else {}
+            ready_model = str(ready.get("model") or "").strip()
+            # The JROS bridge ready frame currently reports only instance and
+            # model. Read the persisted external_model provider as the second
+            # half of the identity so a same-name local/cloud switch still
+            # invalidates the bridge without restarting it on every turn.
+            try:
+                from api.ares_provider_sync import load_yaml_config, resolve_jros_config_path
+
+                configured_external = load_yaml_config(resolve_jros_config_path()).get("external_model")
+            except Exception:
+                configured_external = {}
+            configured_provider = str((configured_external or {}).get("provider") or "").strip().lower()
+            configured_model = str((configured_external or {}).get("model") or "").strip()
+            # A model name alone is not an identity: Ollama local and Ollama
+            # Cloud can expose the same model string.  Require the bridge's
+            # provider to match too, otherwise switching lanes silently keeps
+            # answering from the old runtime.
+            if (
+                ready_model == selected_model
+                and configured_model == selected_model
+                and configured_provider == mapped_provider
+            ):
+                return
+            sync_provider(
+                provider=mapped_provider,
+                model=selected_model,
+                targets=["jros"],
+            )
+            # A bridge is constructed with the model at boot. Release the old
+            # process only after the config write succeeds.
+            if existing is not None:
+                try:
+                    existing.close()
+                finally:
+                    _BRIDGE_CLIENTS.pop(key, None)
+                    _BRIDGE_TURN_LOCKS.pop(key, None)
+            logger.info("Prepared local JROS model %s/%s", mapped_provider, selected_model)
+    except Exception:
+        logger.warning("Failed to apply local JROS model selection", exc_info=True)
+
+
+def local_jros_model() -> str | None:
+    """Return the model reported by the currently booted local bridge."""
+    with _BOOT_LOCK:
+        for client in _BRIDGE_CLIENTS.values():
+            model = str((client.ready or {}).get("model") or "").strip()
+            if model:
+                return model
+    return None
+
+
 def local_jros_root() -> Path | None:
     """The local JaegerAI/JROS runtime/source root for bridge fallback, or None.
 
@@ -288,12 +393,15 @@ def _run_local_jros_turn(
     cancel_event: threading.Event,
     put_jros_event=None,
     stream_id: str = "",
+    model: str | None = None,
+    model_provider: str | None = None,
 ) -> tuple[str, str, list[str]]:
     """One local JROS bridge turn. Returns (text, error, tool_activity)."""
     instance = _jros_instance_name()
     key = instance or "__default__"
     client: JrosClient | None = None
     try:
+        _prepare_local_jros_model(model, model_provider, instance)
         client = _get_or_start_bridge_client(instance)
         if cancel_event.is_set():
             return "", "", []
@@ -688,7 +796,8 @@ def _run_jros_chat_streaming(
             ran_locally = True
             update_active_run(stream_id, phase="jros-local")
             final_text, turn_error, tool_activity = _run_local_jros_turn(
-                msg_text, session_id, cancel_event, put_jros_event, stream_id
+                msg_text, session_id, cancel_event, put_jros_event, stream_id,
+                model, model_provider
             )
             if cancel_event.is_set():
                 put_jros_event("cancel", {"message": "Cancelled by user"})
@@ -723,7 +832,8 @@ def _run_jros_chat_streaming(
                 ran_locally = True
                 update_active_run(stream_id, phase="jros-local")
                 final_text, turn_error, tool_activity = _run_local_jros_turn(
-                    msg_text, session_id, cancel_event, put_jros_event, stream_id
+                    msg_text, session_id, cancel_event, put_jros_event, stream_id,
+                    model, model_provider
                 )
                 if cancel_event.is_set():
                     put_jros_event("cancel", {"message": "Cancelled by user"})
