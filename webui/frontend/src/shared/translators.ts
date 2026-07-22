@@ -83,14 +83,73 @@ export function translateWorkerRankings(value: unknown): {
   };
 }
 
+/**
+ * Collapse a backend source value into the buckets the sidebar filters on.
+ *
+ * The ControlDeck tabs only distinguish `cli` vs everything else (WebUI). Live
+ * Claude Code imports arrive as `session_source: "external_agent"` with
+ * `is_cli_session: true` — not `session_source: "cli"`. Prefer the boolean flag
+ * and fold the backend's CLI-origin buckets, never `source_label` (a human
+ * string like "Claude Code" that previously dumped every CLI session into WebUI).
+ */
+function sessionSourceBucket(raw: Record<string, unknown>): string {
+  if (raw.is_cli_session === true) return "cli";
+
+  const sessionSource = String(raw.session_source || "").trim().toLowerCase();
+  if (
+    sessionSource === "cli"
+    || sessionSource === "acp"
+    || sessionSource === "tui"
+    || sessionSource === "external_agent"
+    || sessionSource === "external-agent"
+  ) {
+    return "cli";
+  }
+  if (sessionSource === "messaging") return "messaging";
+  if (sessionSource === "webui") return "webui";
+
+  const rawSource = String(raw.source_tag || raw.raw_source || raw.source || "").trim().toLowerCase();
+  if (rawSource === "acp" || rawSource === "tui" || rawSource === "cli") return "cli";
+  if (rawSource === "webui" || rawSource === "messaging") return rawSource;
+  // Agent tool tags (claude_code, codex, …) are CLI-imported, not WebUI.
+  if (rawSource && rawSource !== "unknown") return "cli";
+
+  if (sessionSource) return sessionSource;
+  return "webui";
+}
+
+/** Map common CLI/agent source tags onto the adapter ids ControlDeck knows. */
+function resolveBackendId(raw: Record<string, unknown>): string {
+  const explicit = String(raw.ares_backend || raw.backend_id || raw.backend || raw.model_provider || "").trim();
+  if (explicit) return explicit;
+
+  const tag = String(raw.source_tag || raw.raw_source || raw.model || "").trim().toLowerCase();
+  if (!tag) return "";
+  const TAG_TO_BACKEND: Record<string, string> = {
+    claude_code: "claude_local",
+    "claude-code": "claude_local",
+    claude: "claude_local",
+    codex: "codex_local",
+    gemini: "gemini_local",
+    grok: "grok_local",
+    cursor: "cursor_local",
+    opencode: "opencode_local",
+    hermes: "hermes_local",
+    jros: "jros_local",
+    jaeger: "jros_local",
+    ollama: "ollama_local",
+  };
+  if (TAG_TO_BACKEND[tag]) return TAG_TO_BACKEND[tag];
+  if (tag.endsWith("_local") || tag.endsWith("_cloud")) return tag;
+  // e.g. source_tag "claude_code" already handled; fall back to "<tag>_local"
+  return `${tag.replace(/-/g, "_")}_local`;
+}
+
 export function translateSessionSummary(value: unknown): SessionSummary {
   const raw = record(value);
   const id = String(raw.session_id || raw.id || "");
-  const backendId = String(raw.ares_backend || raw.backend_id || raw.backend || raw.model_provider || "");
-  const source = String(
-    raw.source_tag || raw.session_source || raw.source_label || raw.raw_source ||
-    (raw.is_cli_session ? "cli" : "")
-  ) || "webui";
+  const backendId = resolveBackendId(raw);
+  const source = sessionSourceBucket(raw);
   return {
     id,
     title: String(raw.title || "New conversation"),

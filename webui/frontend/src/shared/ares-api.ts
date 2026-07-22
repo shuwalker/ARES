@@ -1,5 +1,10 @@
 import { apiFetch } from "@/shared/api-client";
-import type { BackendInfo } from "@/shared/contracts";
+import type {
+  BackendInfo,
+  LibraryCollection,
+  LibraryEntry,
+  LibraryItem,
+} from "@/shared/contracts";
 import {
   translateAgentHealth,
   translateConnections,
@@ -339,6 +344,16 @@ export const aresApi = {
       method: "POST",
       body: JSON.stringify({ session_id: sessionId }),
     });
+  },
+
+  async regenerateSessionTitle(sessionId: string, preferLatest = false) {
+    return apiFetch<{ session: Record<string, unknown>; title: string; status: string }>(
+      "/api/session/title/regenerate",
+      {
+        method: "POST",
+        body: JSON.stringify({ session_id: sessionId, prefer_latest: preferLatest }),
+      },
+    );
   },
   async createShare(sessionId: string) {
     return apiFetch<{ ok: boolean; share: { token: string; url: string; title: string; message_count: number } }>("/api/share/create", {
@@ -833,6 +848,39 @@ export const aresApi = {
   async workspaces() {
     return translateWorkspaces(await apiFetch("/api/workspaces"));
   },
+  // ── Library collections (Obsidian vaults, local folders, network shares) ──
+  async listLibraryCollections() {
+    return apiFetch<{ collections: LibraryCollection[] }>("/api/library/collections");
+  },
+  async addLibraryCollection(path: string, label = "") {
+    return apiFetch<LibraryCollection>("/api/library/collections/add", {
+      method: "POST",
+      body: JSON.stringify({ path, label }),
+    });
+  },
+  async removeLibraryCollection(collectionId: string) {
+    return apiFetch<{ ok: boolean }>("/api/library/collections/remove", {
+      method: "POST",
+      body: JSON.stringify({ collection_id: collectionId }),
+    });
+  },
+  async renameLibraryCollection(collectionId: string, label: string) {
+    return apiFetch<LibraryCollection>("/api/library/collections/rename", {
+      method: "POST",
+      body: JSON.stringify({ collection_id: collectionId, label }),
+    });
+  },
+  async browseLibrary(collectionId: string, path = ".") {
+    return apiFetch<{ collection_id: string; path: string; entries: LibraryEntry[] }>(
+      `/api/library/browse?collection_id=${encodeURIComponent(collectionId)}&path=${encodeURIComponent(path)}`,
+    );
+  },
+  async readLibraryItem(collectionId: string, path: string) {
+    return apiFetch<LibraryItem>(
+      `/api/library/item?collection_id=${encodeURIComponent(collectionId)}&path=${encodeURIComponent(path)}`,
+    );
+  },
+
   async listWorkspace(sessionId: string, path = ".") {
     return translateWorkspaceEntries(await apiFetch(`/api/list?session_id=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(path)}`));
   },

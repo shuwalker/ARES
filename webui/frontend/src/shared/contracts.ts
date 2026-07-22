@@ -93,6 +93,42 @@ export interface WorkspaceSummary {
   label: string;
 }
 
+/** A folder-backed knowledge source: Obsidian vault, local folder, network share. */
+export interface LibraryCollection {
+  id: string;
+  label: string;
+  path: string;
+  kind: "obsidian" | "folder" | "network";
+  added_at?: number;
+  available: boolean;
+  stats?: {
+    notes: number;
+    documents: number;
+    other: number;
+    truncated: boolean;
+    reachable: boolean;
+  };
+}
+
+export interface LibraryEntry {
+  name: string;
+  path: string;
+  kind: "directory" | "file";
+  readable: boolean;
+  document: boolean;
+  size: number | null;
+}
+
+export interface LibraryItem {
+  collection_id: string;
+  path: string;
+  name: string;
+  readable: boolean;
+  size: number;
+  content: string;
+  reason?: string;
+}
+
 export interface WorkspaceEntry {
   name: string;
   path: string;

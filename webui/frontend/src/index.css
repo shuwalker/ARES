@@ -180,6 +180,48 @@
   }
 }
 
+@layer base {
+  /* Thin, low-contrast scrollbars. The platform default renders an opaque
+     light track against the dark shell, which reads as a UI element rather
+     than an indicator. Firefox gets the standard properties; WebKit/Blink
+     need the vendor pseudo-elements for an overlay-style thumb. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.16);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    /* Keeps the thumb inset from the track edge without a visible border. */
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.28);
+  }
+
+  /* Utility for rails that should scroll with no visible indicator at all. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   .activation-surface {
     background:

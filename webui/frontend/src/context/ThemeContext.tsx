@@ -9,10 +9,14 @@ import {
 } from "react";
 
 type Theme = "light" | "dark";
+type ThemePreference = Theme | "system";
 
 interface ThemeContextValue {
   theme: Theme;
+  /** Effective preference: system follows OS, light/dark are explicit. */
+  preference: ThemePreference;
   setTheme: (theme: Theme) => void;
+  setPreference: (preference: ThemePreference) => void;
   toggleTheme: () => void;
 }
 
@@ -48,6 +52,11 @@ function applyTheme(theme: Theme) {
   }
 }
 
+function osTheme(): Theme {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "dark";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => resolveThemeFromDocument());
   // Track whether the user has explicitly chosen a theme. If false, the
@@ -58,6 +67,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback((nextTheme: Theme) => {
     setHasExplicitChoice(true);
     setThemeState(nextTheme);
+  }, []);
+
+  const setPreference = useCallback((preference: ThemePreference) => {
+    if (preference === "system") {
+      setHasExplicitChoice(false);
+      try {
+        localStorage.removeItem(THEME_STORAGE_KEY);
+      } catch {
+        // Ignore local storage write failures in restricted environments.
+      }
+      setThemeState(osTheme());
+      return;
+    }
+    setHasExplicitChoice(true);
+    setThemeState(preference);
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -88,13 +112,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => media.removeEventListener("change", handleChange);
   }, [hasExplicitChoice]);
 
+  const preference: ThemePreference = hasExplicitChoice ? theme : "system";
+
   const value = useMemo(
     () => ({
       theme,
+      preference,
       setTheme,
+      setPreference,
       toggleTheme,
     }),
-    [theme, setTheme, toggleTheme],
+    [theme, preference, setTheme, setPreference, toggleTheme],
   );
 
   return (

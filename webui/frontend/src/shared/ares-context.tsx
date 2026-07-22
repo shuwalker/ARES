@@ -45,7 +45,15 @@ interface AresContextValue {
   refresh: () => Promise<void>;
   selectSession: (id: string) => void;
   createSession: (workspace?: string) => Promise<ConversationSession>;
-  sendMessage: (message: string, backendId?: string) => Promise<void>;
+  sendMessage: (
+    message: string,
+    options?: {
+      backendId?: string;
+      model?: string;
+      provider?: string;
+      workspace?: string;
+    },
+  ) => Promise<void>;
   cancelResponse: () => Promise<void>;
   saveAssistantName: (name: string) => Promise<void>;
 }
@@ -67,8 +75,23 @@ export function AresProvider({ children }: { children: ReactNode }) {
   const streamGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
-    const [health, settings, sessions, workspaces, backends, agentHealth, tools, connections] = await Promise.allSettled([
-      aresApi.health(), aresApi.settings(), aresApi.sessions(), aresApi.workspaces(), aresApi.backends(), aresApi.agentHealth(), aresApi.tools(), aresApi.connections(),
+    // Two-phase boot: never block the conversation list on slow discovery
+    // endpoints (/api/backends and /api/connections often take multiple seconds).
+    // Phase 1 paints sessions immediately; phase 2 fills secondary chrome.
+    const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const timer = window.setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+        promise.then(
+          (value) => { window.clearTimeout(timer); resolve(value); },
+          (error) => { window.clearTimeout(timer); reject(error); },
+        );
+      });
+
+    const [health, settings, sessions, workspaces] = await Promise.allSettled([
+      withTimeout(aresApi.health(), 8_000, "health"),
+      withTimeout(aresApi.settings(), 8_000, "settings"),
+      withTimeout(aresApi.sessions(), 15_000, "sessions"),
+      withTimeout(aresApi.workspaces(), 8_000, "workspaces"),
     ]);
     const apiAvailable = health.status === "fulfilled";
     const failures = [settings, sessions, workspaces].filter((item) => item.status === "rejected");
@@ -78,12 +101,22 @@ export function AresProvider({ children }: { children: ReactNode }) {
       settings: settings.status === "fulfilled" ? settings.value : previous.settings,
       sessions: sessions.status === "fulfilled" ? sessions.value : previous.sessions,
       workspaces: workspaces.status === "fulfilled" ? workspaces.value.workspaces : previous.workspaces,
-      backends: backends.status === "fulfilled" ? backends.value : previous.backends,
       terminalRemoteBackend: workspaces.status === "fulfilled" ? workspaces.value.terminalRemoteBackend : previous.terminalRemoteBackend,
+      error: !apiAvailable ? readableError(health.reason, "ARES API is unavailable. The interface remains usable.") : "",
+    }));
+
+    const [backends, agentHealth, tools, connections] = await Promise.allSettled([
+      withTimeout(aresApi.backends(), 12_000, "backends"),
+      withTimeout(aresApi.agentHealth(), 8_000, "agentHealth"),
+      withTimeout(aresApi.tools(), 8_000, "tools"),
+      withTimeout(aresApi.connections(), 12_000, "connections"),
+    ]);
+    setSnapshot((previous) => ({
+      ...previous,
+      backends: backends.status === "fulfilled" ? backends.value : previous.backends,
       agentHealth: agentHealth.status === "fulfilled" ? agentHealth.value : previous.agentHealth,
       tools: tools.status === "fulfilled" ? tools.value : previous.tools,
       connections: connections.status === "fulfilled" ? connections.value : previous.connections,
-      error: !apiAvailable ? readableError(health.reason, "ARES API is unavailable. The interface remains usable.") : "",
     }));
   }, []);
 
@@ -91,19 +124,47 @@ export function AresProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!selectedSessionId) {
-      const first = snapshot.sessions[0]?.id;
-      if (first) setSelectedSessionId(first);
+      // Prefer a writable WebUI session so boot doesn't open a huge imported CLI
+      // transcript (often 100+ messages) and look "stuck loading".
+      const preferred =
+        snapshot.sessions.find((s) => s.source !== "cli" && !s.readOnly)
+        || snapshot.sessions.find((s) => s.source !== "cli")
+        || snapshot.sessions[0];
+      if (preferred?.id) setSelectedSessionId(preferred.id);
       return;
     }
+    // Drop a stale localStorage id that no longer exists in the list once we
+    // have sessions, so the chat surface doesn't hang on a 404 forever.
+    if (
+      snapshot.sessions.length > 0
+      && !snapshot.sessions.some((s) => s.id === selectedSessionId)
+    ) {
+      const fallback =
+        snapshot.sessions.find((s) => s.source !== "cli" && !s.readOnly)
+        || snapshot.sessions[0];
+      if (fallback?.id) setSelectedSessionId(fallback.id);
+      return;
+    }
+  }, [selectedSessionId, snapshot.sessions]);
+
+  useEffect(() => {
+    if (!selectedSessionId) return;
     let active = true;
+    setChatNotice("");
     aresApi.session(selectedSessionId).then((session) => {
       if (active) setCurrentSession(session);
     }).catch((error) => {
-      if (active) setChatNotice(readableError(error, "The conversation could not be loaded."));
+      if (active) {
+        setCurrentSession(null);
+        setChatNotice(readableError(error, "The conversation could not be loaded."));
+      }
     });
-    localStorage.setItem("ares.active-session", selectedSessionId);
+    try { localStorage.setItem("ares.active-session", selectedSessionId); } catch { /* private mode */ }
     return () => { active = false; };
-  }, [selectedSessionId, snapshot.sessions]);
+    // Intentionally only re-fetch when the selected id changes — not on every
+    // sessions list refresh, which used to re-download and re-render the whole
+    // transcript and made the chat feel like it never finished loading.
+  }, [selectedSessionId]);
 
   useEffect(() => () => closeStream.current?.(), []);
 
@@ -227,9 +288,20 @@ export function AresProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!selectedSessionId) return;
+    // Imported CLI / external-agent sessions are read-only: the activity socket
+    // rejects them with "read-only imported session". Skip the subscription so
+    // we never paint a false "Background activity updates are temporarily
+    // unavailable" banner over an otherwise healthy chat page.
+    if (currentSession?.id === selectedSessionId && currentSession.readOnly) return;
+
     return subscribeToSessionActivity(
       selectedSessionId,
       ({ name, data }) => {
+        if (name === "error") {
+          // Terminal permission/transport errors are handled quietly — chat
+          // still works without live background activity.
+          return;
+        }
         if (name === "server_turn_started") {
           const streamId = String(data.stream_id || "");
           if (streamId) attachStream(streamId, selectedSessionId);
@@ -240,9 +312,21 @@ export function AresProvider({ children }: { children: ReactNode }) {
       },
       () => setChatNotice((notice) => notice || "Background activity updates are temporarily unavailable."),
     );
-  }, [attachStream, refresh, selectedSessionId]);
+  }, [attachStream, currentSession?.id, currentSession?.readOnly, refresh, selectedSessionId]);
 
-  const sendMessage = useCallback(async (message: string, backendId?: string) => {
+  const sendMessage = useCallback(async (
+    message: string,
+    options?: {
+      backendId?: string;
+      model?: string;
+      provider?: string;
+      workspace?: string;
+    },
+  ) => {
+    // Back-compat: older callers passed backendId as the second arg string.
+    const opts = typeof options === "string"
+      ? { backendId: options as string }
+      : (options || {});
     const clean = message.trim();
     if (!clean || streamState !== "idle" || sendInFlight.current) return;
     sendInFlight.current = true;
@@ -253,10 +337,17 @@ export function AresProvider({ children }: { children: ReactNode }) {
     setStreamTools([]);
     setStreamState("starting");
     try {
-      const effectiveBackend = backendId || undefined;
-      const session = currentSession || await createSession();
+      const effectiveBackend = opts.backendId || undefined;
+      const sessionBase = currentSession || await createSession(opts.workspace);
       if (generation !== streamGeneration.current) return;
-      if (session.readOnly) throw new Error("This conversation is read-only. Start a new conversation to send a message.");
+      if (sessionBase.readOnly) throw new Error("This conversation is read-only. Start a new conversation to send a message.");
+      const session = {
+        ...sessionBase,
+        model: opts.model || sessionBase.model,
+        provider: opts.provider || sessionBase.provider,
+        workspace: opts.workspace || sessionBase.workspace,
+        backendId: effectiveBackend || sessionBase.backendId,
+      };
       const optimistic: ConversationMessage = { id: `local-${Date.now()}`, role: "user", text: clean, createdAt: new Date().toISOString() };
       setCurrentSession({ ...session, messages: [...session.messages, optimistic] });
       const started = await aresApi.startChat(session.id, clean, session, effectiveBackend);
