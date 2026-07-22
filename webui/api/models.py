@@ -4901,6 +4901,67 @@ def _active_state_db_path() -> Path:
     return ares_home / 'state.db'
 
 
+def _worker_state_db_path() -> Path | None:
+    """Return the connected worker's ``state.db``, or ``None`` when absent.
+
+    ARES owns its own sessions under ``ARES_HOME`` (see ``SESSION_DIR``), but
+    CLI/TUI history belongs to the *worker* that produced it and lives in that
+    worker's own home — Hermes Agent keeps it at ``$HERMES_HOME/state.db``.
+    ARES_HOME has no ``state.db`` in a normal install, so resolving the CLI
+    projection against it alone silently yields zero rows and the sidebar looks
+    empty even though the worker has history. This is read-only: ARES never
+    writes into a worker's store.
+    """
+    try:
+        from api.journal.paths import hermes_db
+        db_path = Path(hermes_db()).expanduser()
+    except Exception:
+        return None
+    return db_path if db_path.exists() else None
+
+
+def _worker_backend_id_for_db(db_path) -> str | None:
+    """Map a worker's session store back to the adapter id that owns it.
+
+    Rows in a worker's ``state.db`` carry no adapter column — Hermes records a
+    ``model`` (``glm-5.1``, ``qwen3.5:cloud``) but nothing naming the framework.
+    The store itself is the provenance: anything read from ``$HERMES_HOME`` came
+    from the Hermes Agent regardless of which model served the turn.
+    """
+    try:
+        candidate = Path(db_path).expanduser().resolve()
+    except Exception:
+        return None
+    worker_db = _worker_state_db_path()
+    if worker_db is not None:
+        try:
+            if candidate == worker_db.resolve():
+                return 'hermes_local'
+        except Exception:
+            return None
+    return None
+
+
+def _stamp_worker_backend(rows, db_path) -> None:
+    """Attach the owning adapter id to rows projected from a worker store.
+
+    Without this the frontend derives a backend from ``source_tag`` ("cli") and
+    invents a ``cli_local`` adapter that does not exist, so real Hermes history
+    lands in a phantom group instead of under HERMES.
+    """
+    backend_id = _worker_backend_id_for_db(db_path)
+    if not backend_id:
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        # Claude Code rows come from ~/.claude/projects, not this store.
+        if str(row.get('source_tag') or '') == CLAUDE_CODE_SOURCE:
+            continue
+        if not row.get('ares_backend'):
+            row['ares_backend'] = backend_id
+
+
 def _agent_state_db_path(*, profile=None) -> Path | None:
     """Return agent ``state.db`` for *profile*, or ``None`` when unavailable."""
     if isinstance(profile, str) and profile:
@@ -4910,7 +4971,8 @@ def _agent_state_db_path(*, profile=None) -> Path | None:
     else:
         db_path = _active_state_db_path()
     if not db_path.exists():
-        return None
+        # Fall back to the worker's own store for imported CLI/TUI history.
+        return _worker_state_db_path()
     return db_path
 
 
@@ -5926,11 +5988,15 @@ def _extract_claude_code_text(content) -> str:
     return str(content)[:CLAUDE_CODE_MAX_CONTENT_CHARS]
 
 
-def _parse_claude_code_jsonl(path: Path, *, max_messages: int = CLAUDE_CODE_MAX_MESSAGES_PER_FILE) -> tuple[list[dict], str | None, float | None, float | None]:
+def _parse_claude_code_jsonl(path: Path, *, max_messages: int = CLAUDE_CODE_MAX_MESSAGES_PER_FILE) -> tuple[list[dict], str | None, float | None, float | None, dict]:
     messages: list[dict] = []
     summary_title = None
     first_ts = None
     last_ts = None
+    # Claude Code records the real working directory and its own generated
+    # title. Ignoring them is why every imported row reported one fabricated
+    # workspace and a title scraped from the raw first prompt.
+    meta: dict = {}
     try:
         with path.open('r', encoding='utf-8', errors='replace') as fh:
             for line in fh:
@@ -5946,9 +6012,19 @@ def _parse_claude_code_jsonl(path: Path, *, max_messages: int = CLAUDE_CODE_MAX_
                 if not isinstance(raw, dict):
                     continue
                 if not summary_title:
-                    summary = raw.get('summary') or raw.get('title')
+                    # aiTitle is Claude Code's own summary — always better than
+                    # deriving a title from the raw first user turn.
+                    summary = raw.get('aiTitle') or raw.get('summary') or raw.get('title')
                     if isinstance(summary, str) and summary.strip():
                         summary_title = ' '.join(summary.split())[:80]
+                if 'cwd' not in meta:
+                    cwd = raw.get('cwd')
+                    if isinstance(cwd, str) and cwd.strip():
+                        meta['cwd'] = cwd.strip()
+                if 'git_branch' not in meta:
+                    branch = raw.get('gitBranch')
+                    if isinstance(branch, str) and branch.strip():
+                        meta['git_branch'] = branch.strip()
                 records = raw.get('messages') if isinstance(raw.get('messages'), list) else None
                 if records is None:
                     records = [raw.get('message') if isinstance(raw.get('message'), dict) else raw]
@@ -5980,13 +6056,13 @@ def _parse_claude_code_jsonl(path: Path, *, max_messages: int = CLAUDE_CODE_MAX_
                         item['timestamp'] = ts
                     messages.append(item)
     except Exception:
-        return [], None, None, None
-    return messages, summary_title, first_ts, last_ts
+        return [], None, None, None, {}
+    return messages, summary_title, first_ts, last_ts, meta
 
 
 def _parse_claude_code_jsonl_cached(
     path: Path, *, max_messages: int = CLAUDE_CODE_MAX_MESSAGES_PER_FILE
-) -> tuple[list[dict], str | None, float | None, float | None]:
+) -> tuple[list[dict], str | None, float | None, float | None, dict]:
     """``_parse_claude_code_jsonl`` memoized by the file's (path, mtime_ns, size, ctime_ns).
 
     The transcript files under ``~/.claude/projects`` are global and rarely
@@ -6016,11 +6092,12 @@ def _parse_claude_code_jsonl_cached(
         hit = _CLAUDE_CODE_PARSE_CACHE.get(key)
         if hit is not None:
             _CLAUDE_CODE_PARSE_CACHE.move_to_end(key)
-            messages, summary_title, first_ts, last_ts = hit
+            messages, summary_title, first_ts, last_ts, meta = hit
             # Return a shallow copy of the message list so a caller mutating it
             # can't corrupt the cached entry; the per-message dicts are treated
-            # as read-only by all current callers.
-            return list(messages), summary_title, first_ts, last_ts
+            # as read-only by all current callers. `meta` is copied for the same
+            # reason — it is small and per-file.
+            return list(messages), summary_title, first_ts, last_ts, dict(meta or {})
 
     parsed = _parse_claude_code_jsonl(path, max_messages=max_messages)
 
@@ -6033,8 +6110,8 @@ def _parse_claude_code_jsonl_cached(
             _CLAUDE_CODE_PARSE_CACHE.move_to_end(key)
             while len(_CLAUDE_CODE_PARSE_CACHE) > _CLAUDE_CODE_PARSE_CACHE_MAX:
                 _CLAUDE_CODE_PARSE_CACHE.popitem(last=False)
-    messages, summary_title, first_ts, last_ts = parsed
-    return list(messages), summary_title, first_ts, last_ts
+    messages, summary_title, first_ts, last_ts, meta = parsed
+    return list(messages), summary_title, first_ts, last_ts, dict(meta or {})
 
 
 def clear_claude_code_parse_cache() -> None:
@@ -6078,14 +6155,75 @@ def _iter_claude_code_jsonl_files(projects_dir: Path | str | None = None, *, max
         return
 
 
+# Wrapper blocks agent clients inject ahead of the real prompt. Titling on the
+# raw first user turn produced 123 unreadable sidebar rows — dozens of identical
+# "<conversation_history> …" and "# Role You are the Founding Engineer at Test
+# Co…" entries — because the injected preamble, not the person's words, led the
+# message.
+_TITLE_WRAPPER_TAGS = (
+    'conversation_history', 'local-command-caveat', 'local-command-stdout',
+    'ide_opened_file', 'ide_selection', 'system-reminder', 'command-name',
+    'command-message', 'command-args', 'user-prompt-submit-hook',
+)
+
+# Applied in order, each only kept when ≥12 chars of real content survive, so a
+# prompt that is *entirely* preamble still yields a title rather than an empty row.
+_TITLE_HEADER_RE = re.compile(r'^\s*#{1,6}\s*[A-Za-z][A-Za-z ]{0,24}?\s+(?=[A-Z])')
+_TITLE_SPEAKER_RE = re.compile(r'^\s*(?:Assistant|Human|User|System)\s*:\s*', re.IGNORECASE)
+_TITLE_ROLE_SENTENCE_RE = re.compile(
+    r'^\s*You (?:are|will be|act as)\b[^.!?]{0,120}[.!?]\s*', re.IGNORECASE
+)
+
+_TITLE_MIN_USEFUL = 12
+
+
+def sanitize_session_title(raw: str, fallback: str = 'Session') -> str:
+    """Turn a raw first-user-turn into something readable in a sidebar row.
+
+    Agent clients prepend wrapper blocks and role preambles, so titling on the
+    raw turn produced dozens of identical unreadable rows. Each strip is applied
+    only if it leaves real content behind.
+    """
+    raw_text = str(raw or '')
+    if not raw_text.strip():
+        return fallback
+
+    without_blocks = raw_text
+    unwrapped = raw_text
+    for tag in _TITLE_WRAPPER_TAGS:
+        # Preferred: drop the injected block entirely and keep the person's text.
+        without_blocks = re.sub(
+            rf'<{tag}[^>]*>.*?</{tag}>', ' ', without_blocks, flags=re.DOTALL | re.IGNORECASE,
+        )
+        without_blocks = re.sub(rf'</?{tag}[^>]*>', ' ', without_blocks, flags=re.IGNORECASE)
+        # Fallback: keep the block's contents when the turn is nothing but wrappers.
+        unwrapped = re.sub(rf'</?{tag}[^>]*>', ' ', unwrapped, flags=re.IGNORECASE)
+
+    def _flatten(value: str) -> str:
+        return ' '.join(re.sub(r'```.*?```', ' ', value, flags=re.DOTALL).split())
+
+    cleaned = _flatten(without_blocks)
+    if len(cleaned) < _TITLE_MIN_USEFUL:
+        cleaned = _flatten(unwrapped)
+    if not cleaned:
+        cleaned = ' '.join(raw_text.split())
+
+    for pattern in (_TITLE_SPEAKER_RE, _TITLE_HEADER_RE, _TITLE_ROLE_SENTENCE_RE):
+        candidate = pattern.sub('', cleaned, count=1).strip()
+        if len(candidate) >= _TITLE_MIN_USEFUL:
+            cleaned = candidate
+
+    return cleaned[:80] if cleaned else fallback
+
+
 def _claude_code_title(messages: list[dict], summary_title: str | None) -> str:
     if summary_title:
         return summary_title
     for msg in messages:
         if msg.get('role') == 'user':
-            text = ' '.join(str(msg.get('content') or '').split())
-            if text:
-                return text[:80]
+            title = sanitize_session_title(str(msg.get('content') or ''), '')
+            if title:
+                return title
     return 'Claude Code Session'
 
 
@@ -6104,7 +6242,7 @@ def get_claude_code_sessions(projects_dir: Path | str | None = None, *, max_file
     # sidebar build (#4718). Resolve it a single time.
     cc_workspace = str(get_last_workspace())
     for path in _iter_claude_code_jsonl_files(projects_dir, max_files=max_files, max_file_bytes=max_file_bytes) or []:
-        messages, summary_title, first_ts, last_ts = _parse_claude_code_jsonl_cached(path)
+        messages, summary_title, first_ts, last_ts, cc_meta = _parse_claude_code_jsonl_cached(path)
         if not messages:
             continue
         sid = _claude_code_session_id(path)
@@ -6126,7 +6264,10 @@ def get_claude_code_sessions(projects_dir: Path | str | None = None, *, max_file
         sessions.append({
             'session_id': sid,
             'title': _claude_code_title(messages, summary_title),
-            'workspace': cc_workspace,
+            # Real per-session cwd when the transcript recorded one; the shared
+            # active workspace is only a fallback.
+            'workspace': cc_meta.get('cwd') or cc_workspace,
+            'git_branch': cc_meta.get('git_branch'),
             'model': 'claude-code',
             'message_count': len(messages),
             'created_at': created_at,
@@ -6155,7 +6296,7 @@ def get_claude_code_session_messages(sid, projects_dir: Path | str | None = None
     for path in _iter_claude_code_jsonl_files(projects_dir) or []:
         if _claude_code_session_id(path) != sid:
             continue
-        messages, _summary_title, _first_ts, _last_ts = _parse_claude_code_jsonl_cached(path)
+        messages, _summary_title, _first_ts, _last_ts, _meta = _parse_claude_code_jsonl_cached(path)
         return messages
     return []
 
@@ -6520,6 +6661,15 @@ def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool 
         cli_profile = None
 
     db_path = ares_home / 'state.db'
+    if not db_path.exists():
+        # ARES owns WebUI sessions under ARES_HOME/webui/sessions and normally
+        # has no state.db of its own. CLI/TUI history belongs to the worker that
+        # produced it and lives in that worker's home ($HERMES_HOME/state.db).
+        # Without this fallback the projection reads a non-existent path and the
+        # CLI sidebar is silently empty even when the worker has history.
+        worker_db = _worker_state_db_path()
+        if worker_db is not None:
+            db_path = worker_db
     projects_dir = _default_claude_code_projects_dir()
     # #4842: while a turn streams, freeze the volatile state.db component of the
     # key so per-message writes don't bust the CLI cache and re-run the heavy
@@ -6982,6 +7132,7 @@ def _load_cli_sessions_uncached(
         except Exception:
             logger.debug("Webhook project-chip second pass failed", exc_info=True)
 
+    _stamp_worker_backend(cli_sessions, db_path)
     return cli_sessions
 
 
@@ -7166,13 +7317,8 @@ def get_state_db_session_messages(
     except ImportError:
         return []
 
-    if isinstance(profile, str) and profile:
-        db_path = _get_profile_home(profile) / 'state.db'
-        if not db_path.exists():
-            db_path = _active_state_db_path()
-    else:
-        db_path = _active_state_db_path()
-    if not db_path.exists():
+    db_path = _agent_state_db_path(profile=profile)
+    if db_path is None:
         return []
 
     try:
@@ -7312,13 +7458,8 @@ def get_state_db_session_message_keys_before_timestamp(
     except (TypeError, ValueError):
         return None
 
-    if isinstance(profile, str) and profile:
-        db_path = _get_profile_home(profile) / 'state.db'
-        if not db_path.exists():
-            db_path = _active_state_db_path()
-    else:
-        db_path = _active_state_db_path()
-    if not db_path.exists():
+    db_path = _agent_state_db_path(profile=profile)
+    if db_path is None:
         return []
 
     try:
@@ -7362,13 +7503,8 @@ def get_state_db_session_summary(sid, *, profile=None) -> dict:
     except ImportError:
         return {"message_count": 0, "last_message_at": 0.0}
 
-    if isinstance(profile, str) and profile:
-        db_path = _get_profile_home(profile) / 'state.db'
-        if not db_path.exists():
-            db_path = _active_state_db_path()
-    else:
-        db_path = _active_state_db_path()
-    if not sid or not db_path.exists():
+    db_path = _agent_state_db_path(profile=profile)
+    if not sid or db_path is None:
         return {"message_count": 0, "last_message_at": 0.0}
 
     try:

@@ -37,9 +37,48 @@ logger = logging.getLogger(__name__)
 _HERMES_SESSION_MAP: dict[str, str] = {}
 
 
+def _session_exists_in_worker_store(session_id: str) -> bool:
+    """True when the Hermes agent already owns a session with this exact id.
+
+    Sessions started in the terminal are keyed in ``state.db`` by the same id
+    ARES lists them under, so the id itself is the resume handle.
+    """
+    if not session_id:
+        return False
+    try:
+        from api.models import _agent_state_db_path, open_state_db_readonly
+        from contextlib import closing
+
+        db_path = _agent_state_db_path()
+        if db_path is None:
+            return False
+        with closing(open_state_db_readonly(db_path)) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sessions WHERE id = ? LIMIT 1", (session_id,)
+            ).fetchone()
+        return bool(row)
+    except Exception:
+        # Resume is an optimization; never block a turn on a probe failure.
+        return False
+
+
 def _get_hermes_session_id(ares_session_id: str) -> str | None:
-    """Look up the Hermes session ID for an ARES session, if any."""
-    return _HERMES_SESSION_MAP.get(ares_session_id)
+    """Look up the Hermes session ID for an ARES session, if any.
+
+    The in-memory map only covers sessions this process started, so it is empty
+    for imported terminal history and after any restart. Falling back to the
+    worker's own store is what makes a CLI session *continuable* rather than
+    forked: without it the agent silently began a brand-new session on every
+    reply, which is why continuing imported history never worked.
+    """
+    mapped = _HERMES_SESSION_MAP.get(ares_session_id)
+    if mapped:
+        return mapped
+    if _session_exists_in_worker_store(ares_session_id):
+        # Cache so the next turn skips the probe.
+        _HERMES_SESSION_MAP[ares_session_id] = ares_session_id
+        return ares_session_id
+    return None
 
 
 def _store_hermes_session_id(ares_session_id: str, hermes_session_id: str) -> None:
@@ -214,17 +253,27 @@ def run_hermes_streaming(
         _finish_hermes_stream(stream_id, session_id, q, run_journal, cancel_event, accumulated_text="", user_message=msg_text)
         return
 
-    effective_model = model or "qwen3.6:35b-mlx"
+    from api.backends.hermes import resolve_hermes_defaults
+
+    default_model, default_provider = resolve_hermes_defaults()
+    effective_model = (model or "").strip() or default_model
     # model_provider is often the ARES backend id (hermes_local, ollama_local); only use it if it looks like a Hermes provider.
-    ares_backend_ids = {"hermes_local", "jros_local", "claude_local", "codex_local", "gemini_local", "grok_local", "opencode_local", "cursor_local", "pi_local", "openai_cloud", "xai_cloud", "ollama_local"}
+    ares_backend_ids = {
+        "hermes_local", "jros_local", "claude_local", "codex_local", "gemini_local",
+        "grok_local", "opencode_local", "cursor_local", "pi_local", "openai_cloud",
+        "xai_cloud", "ollama_local",
+    }
     if model_provider and model_provider not in ares_backend_ids:
         effective_provider = model_provider
     else:
-        effective_provider = "ollama-cloud"
-    args = [cli, "chat", "-q", msg_text, "-Q", "--yolo", "--source", "webui", "-m", effective_model, "--provider", effective_provider]
-    # Companion SI may still reach this worker in edge paths; strip Hermes SOUL branding.
-    if os.environ.get("ARES_SI_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
-        args.append("--ignore-rules")
+        effective_provider = default_provider
+
+    # Chat tab is a pure worker console: send the user message unchanged.
+    # Companion SI packaging lives on the Companion surface later — not here.
+    args = [
+        cli, "chat", "-q", msg_text, "-Q", "--yolo", "--source", "webui",
+        "-m", effective_model, "--provider", effective_provider,
+    ]
 
     # Resume session if we have a previous hermes session ID
     hermes_session_id = _get_hermes_session_id(session_id)

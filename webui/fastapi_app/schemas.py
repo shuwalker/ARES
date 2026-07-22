@@ -175,6 +175,21 @@ class SessionBranch(SessionMutation):
     title: str | None = Field(default=None, max_length=80)
 
 
+class LibraryCollectionAdd(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    label: str = Field(default="", max_length=200)
+    kind: str = Field(default="", max_length=32)
+
+
+class LibraryCollectionRemove(BaseModel):
+    collection_id: str = Field(min_length=1, max_length=256)
+
+
+class LibraryCollectionRename(BaseModel):
+    collection_id: str = Field(min_length=1, max_length=256)
+    label: str = Field(min_length=1, max_length=200)
+
+
 class SessionRename(SessionMutation):
     title: str = Field(max_length=10_000)
 

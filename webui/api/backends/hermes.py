@@ -54,6 +54,28 @@ def _hermes_cli() -> str:
     return ""
 
 
+def resolve_hermes_defaults() -> tuple[str, str]:
+    """Return (model, provider) from Hermes config, with safe fallbacks.
+
+    Prefer the operator's ``~/.hermes/config.yaml`` (paperclip detect-model style)
+    so ARES matches CLI defaults instead of stale hardcodes.
+    """
+    try:
+        from api.backends.model_discovery import detect_hermes_model_config
+
+        cfg = detect_hermes_model_config()
+        model = str(cfg.get("model") or "").strip()
+        provider = str(cfg.get("provider") or "").strip()
+    except Exception:
+        logger.debug("Could not read Hermes config defaults", exc_info=True)
+        model, provider = "", ""
+    if not model:
+        model = "deepseek-v4-flash"
+    if not provider:
+        provider = "ollama-cloud"
+    return model, provider
+
+
 def _probe_hermes() -> tuple[bool, str | None]:
     """Check whether Hermes CLI is available and cache the version string."""
     global _HERMES_AVAILABLE_CACHE, _HERMES_VERSION_CACHE, _HERMES_AVAILABLE_TS
@@ -195,27 +217,15 @@ class HermesBackend(AgenticBackend):
         }
 
     def get_worker_target(self) -> tuple:
-        """Return the Hermes streaming worker target.
+        """Streaming Hermes CLI worker — pure backend, no Companion SI packaging.
 
-        When the Companion SI is enabled, use the shared agentic streaming
-        worker so turns go through ``si_turn`` (identity/context/route) and
-        then ``HermesBackend.run_turn`` with SI-owned flags.
-
-        When SI is off, keep the dedicated Hermes streaming worker.
+        Chat is a developer console to Hermes itself (its models/tools/config).
+        Companion-owned SI briefing is a separate product surface.
         """
-        try:
-            from api.si.bridge import si_enabled
-
-            if si_enabled():
-                from api.backends.base import run_agentic_backend_streaming
-
-                return run_agentic_backend_streaming, False, False
-        except Exception:
-            logger.debug("SI enable check failed; using Hermes streaming", exc_info=True)
-
         from api.backends.hermes_streaming import run_hermes_streaming
 
         return run_hermes_streaming, False, False
+
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
         """Execute one Hermes turn by spawning ``hermes chat -q``.
 
@@ -226,8 +236,24 @@ class HermesBackend(AgenticBackend):
             return {"text": "", "error": "Hermes CLI not found.", "tool_activity": []}
 
         config = kwargs.get("config") or kwargs.get("adapter_config") or {}
-        model = _cfg_str(config, "model") or "qwen3.6:35b-mlx"
-        provider = _cfg_str(config, "provider") or "ollama-cloud"
+        default_model, default_provider = resolve_hermes_defaults()
+        model = (
+            _cfg_str(config, "model")
+            or str(kwargs.get("model") or "").strip()
+            or default_model
+        )
+        provider = (
+            _cfg_str(config, "provider")
+            or str(kwargs.get("model_provider") or "").strip()
+            or default_provider
+        )
+        # ARES connection ids are not Hermes providers
+        if provider in {
+            "hermes_local", "jros_local", "claude_local", "codex_local",
+            "gemini_local", "grok_local", "opencode_local", "cursor_local",
+            "pi_local", "openai_cloud", "xai_cloud", "ollama_local",
+        }:
+            provider = default_provider
         toolsets = _cfg_str(config, "toolsets") or ""
         max_turns = _cfg_int(config, "max_turns") or 150
         timeout_sec = _cfg_int(config, "timeout_sec") or 300
@@ -332,7 +358,103 @@ class HermesBackend(AgenticBackend):
                 "supports_tools": self.supports_tools,
                 "supports_persona": self.supports_persona,
             },
+            "inventory": self.inventory(),
         }
+
+    def inventory(self) -> Dict[str, Any]:
+        """Catalog Hermes providers, models (local installs + configured), transports, MCP.
+
+        Discovery mirrors hermes-paperclip-adapter detect-model + expands with
+        auth credential pool and local Ollama tags.
+        """
+        from api.backends.catalog import (
+            finalize_inventory,
+            gateway_entry,
+            infer_model_location,
+            mcp_entry,
+            transport_entry,
+        )
+        from api.backends.model_discovery import discover_hermes_models
+
+        available, version = _probe_hermes()
+        cli = _hermes_cli()
+        discovered = discover_hermes_models()
+        models = list(discovered.get("models") or [])
+        providers = list(discovered.get("providers") or [])
+        default = discovered.get("default") or {}
+        active_model = default.get("model")
+        active_provider = default.get("provider")
+
+        transports = [
+            transport_entry(
+                id="cli_chat",
+                kind="cli",
+                label="Hermes CLI chat",
+                in_use=True,
+                endpoint=cli or "hermes",
+                notes="Active ARES path: subprocess `hermes chat -q … -Q --yolo --source webui`.",
+            ),
+            transport_entry(
+                id="mcp_serve",
+                kind="mcp",
+                label="Hermes MCP server",
+                in_use=False,
+                endpoint="hermes mcp serve",
+                notes="Often used by Claude Code / other MCP clients; not the ARES chat turn path today.",
+            ),
+        ]
+
+        gateways = [
+            gateway_entry(
+                id="hermes_webui",
+                kind="http_gateway",
+                label="Hermes WebUI server (if running)",
+                endpoint="http://127.0.0.1:* (hermes-webui/server.py)",
+                in_use=False,
+                protocol="hermes-webui",
+                notes="Separate product surface; catalogued when present on the host.",
+            ),
+        ]
+
+        mcp = [
+            mcp_entry(
+                id="hermes_mcp_serve",
+                label="Hermes MCP serve",
+                command="hermes",
+                args=["mcp", "serve", "--accept-hooks"],
+                in_use_by_ares=False,
+                used_by=["claude_code", "external_mcp_clients"],
+                notes="Tools exposed to MCP hosts; ARES /api/mcp/tools may still be empty.",
+            ),
+        ]
+
+        return finalize_inventory(
+            {
+                "worker_id": self.name,
+                "display_name": "Hermes Agent",
+                "models": models,
+                "providers": providers,
+                "default": default,
+                "transports": transports,
+                "gateways": gateways,
+                "mcp": mcp,
+                "tools_summary": self.tools(),
+                "active_execution": {
+                    "available": available,
+                    "version": version,
+                    "transport": "cli_chat",
+                    "model": active_model,
+                    "provider": active_provider,
+                    "model_location": infer_model_location(active_provider, active_model),
+                    "cli_path": cli or None,
+                },
+                "notes": (
+                    "Models = Hermes config defaults/fallbacks + installed local Ollama. "
+                    "Providers = auth.json / credential_pool + config references. "
+                    "Latency dominated by selected model/provider, not CLI transport alone."
+                ),
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

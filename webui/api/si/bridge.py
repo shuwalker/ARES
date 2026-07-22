@@ -155,39 +155,24 @@ def _backend_name_to_privacy_class(backend_name: str) -> PrivacyClass:
     return PrivacyClass.EXTERNAL_PROVIDER
 
 
-def si_turn(
+def si_prepare_message(
     user_message: str,
-    session_id: str = "",
     *,
     target_worker: str | None = None,
-    model: str = "",
-    model_provider: str | None = None,
-    cancel_event: Any = None,
 ) -> dict[str, Any]:
-    """Full SI pipeline: classify → context → route → execute → evaluate → compose.
+    """Fast SI packaging only — no worker execution.
 
-    This is the main entry point that wires the SI into the existing chat flow.
-    When ARES_SI_ENABLED is true, this replaces the direct backend call.
+    Used by streaming workers (Hermes CLI stream, etc.) so Companion identity
+    can be injected without forcing a non-streaming ``run_turn`` path.
     """
     from api.si.context_compiler import classify_intent, compile_context
     from api.si.trust_engine import classify_data, filter_briefing
     from api.si.router import route_task
-    from api.si.evaluator import evaluate_result
-    from api.si.response_composer import compose_response
-    from api.backends.router import get_router as get_backend_router
 
-    started_at = time.time()
-
-    # 1. Classify intent
     intent, confidence = classify_intent(user_message)
-
-    # 2. Compile context
     briefing = compile_context(user_message)
-
-    # 3. Classify data sensitivity
     sensitivity = classify_data(user_message)
 
-    # 4. Route to worker
     if target_worker:
         backend_name = target_worker
     else:
@@ -201,14 +186,47 @@ def si_turn(
         else:
             backend_name = "hermes_local"
 
-    # 5. Filter briefing for this worker's privacy class
     privacy_class = _backend_name_to_privacy_class(backend_name)
     filtered_briefing = filter_briefing(briefing, privacy_class)
-
-    # 6. Compose prompt from briefing sections
     prompt = compose_prompt_from_briefing(filtered_briefing, user_message)
+    return {
+        "prompt": prompt,
+        "intent": intent,
+        "confidence": confidence,
+        "worker": backend_name,
+        "sensitivity": sensitivity.value if sensitivity else "personal",
+    }
 
-    # 7. Execute via existing AgenticBackend
+
+def si_turn(
+    user_message: str,
+    session_id: str = "",
+    *,
+    target_worker: str | None = None,
+    model: str = "",
+    model_provider: str | None = None,
+    cancel_event: Any = None,
+) -> dict[str, Any]:
+    """Full SI pipeline: classify → context → route → execute → evaluate → compose.
+
+    This is the main entry point that wires the SI into the existing chat flow.
+    When ARES_SI_ENABLED is true, this replaces the direct backend call.
+    Prefer streaming workers + :func:`si_prepare_message` when possible so the
+    UI is not blocked on a full non-streaming subprocess turn.
+    """
+    from api.si.evaluator import evaluate_result
+    from api.si.response_composer import compose_response
+    from api.backends.router import get_router as get_backend_router
+
+    started_at = time.time()
+
+    prepared = si_prepare_message(user_message, target_worker=target_worker)
+    intent = prepared["intent"]
+    confidence = float(prepared.get("confidence") or 0.0)
+    backend_name = str(prepared.get("worker") or "hermes_local")
+    prompt = str(prepared.get("prompt") or user_message)
+
+    # Execute via existing AgenticBackend
     backend_router = get_backend_router()
     backend = backend_router.select(backend_name)
 

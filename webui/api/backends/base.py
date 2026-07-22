@@ -86,31 +86,16 @@ def run_agentic_backend_streaming(
         ) != normalized_message:
             session.messages.append({"role": "user", "content": message, "timestamp": int(time.time())})
             session.save()
-        # ── SI Pipeline (when ARES_SI_ENABLED) ──
-        from api.si.bridge import si_enabled, si_turn
-
-        if si_enabled():
-            # Honor explicit session connection when set (WebUI worker picker /
-            # connection_id). Empty/unconfigured → SI router chooses.
-            selected = str(getattr(session, "ares_backend", None) or "").strip()
-            if selected in ("", "unconfigured", "auto", "none"):
-                selected = None
-            result = si_turn(
-                message,
-                session_id,
-                target_worker=selected,
-                model=model,
-                model_provider=model_provider,
-                cancel_event=cancel_event,
-            )
-        else:
-            result = backend.run_turn(
-                message,
-                session_id,
-                model=model,
-                model_provider=model_provider,
-                cancel_event=cancel_event,
-            )
+        # Chat / agentic streaming is a pure worker path. Do not inject Companion
+        # SI identity prompts here — that belongs on the Companion surface.
+        # (ARES_SI_ENABLED still exists for future Companion orchestration.)
+        result = backend.run_turn(
+            message,
+            session_id,
+            model=model,
+            model_provider=model_provider,
+            cancel_event=cancel_event,
+        )
         if cancel_event.is_set():
             publish("cancel", {"message": "Cancelled by user"})
             return
@@ -219,3 +204,29 @@ class AgenticBackend(ABC):
 
     def get_status(self) -> Dict[str, Any]:
         return {"available": self.is_available(), "label": self.name}
+
+    def inventory(self) -> Dict[str, Any]:
+        """Full capability catalog for System / SI routing.
+
+        Declares models (local and cloud), transports, gateways, and MCP tools
+        even when ARES is not using every path today. Subclasses should override
+        with framework-specific discovery; the default is a minimal shell.
+        """
+        from api.backends.catalog import empty_inventory, finalize_inventory, transport_entry
+
+        base = empty_inventory(worker_id=self.name, display_name=self.get_backend_name())
+        base["transports"] = [
+            transport_entry(
+                id="default",
+                kind="other",
+                label="Default adapter path",
+                in_use=True,
+                notes="Subclass should replace with real transports.",
+            )
+        ]
+        base["tools_summary"] = list(self.tools() or [])
+        base["active_execution"] = {
+            "available": self.is_available(),
+            "capabilities": self.capabilities(),
+        }
+        return finalize_inventory(base)
