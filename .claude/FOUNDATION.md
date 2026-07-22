@@ -34,6 +34,21 @@ The Companion is the control plane + unified memory + technical intelligence.
 
 Mac-first, not Mac-only. Surfaces must not become incompatible products.
 
+### Product surfaces (UI domains)
+
+Primary navigation and domain boundaries live in
+[docs/architecture/PRODUCT_SURFACES.md](../docs/architecture/PRODUCT_SURFACES.md).
+
+Near-term top-level surfaces:
+
+`Chat | Companion | Self | Workshop | Library | System`
+
+Long-term, Chat demotes to advanced/developer mode; Companion remains the SI
+front door. **Self** (knowledge about the person) is not Library (knowledge
+owned by the person). **System** is infrastructure (including memory
+*indexing*); Library holds knowledge *content*. Do not invent parallel
+framework-branded top-level sections.
+
 ## Purpose
 
 People use many AI tools, agents, models, and CLIs. Without a center, each tool
