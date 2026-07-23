@@ -275,6 +275,25 @@ class HermesBackend(AgenticBackend):
         if max_turns:
             args.extend(["--max-turns", str(max_turns)])
 
+        # Attach images if provided
+        attachments = kwargs.get("attachments") or []
+        if attachments:
+            for att in attachments:
+                path = ""
+                mime = ""
+                if isinstance(att, dict):
+                    path = str(att.get("path") or att.get("filepath") or att.get("url") or "").strip()
+                    mime = str(att.get("mime") or att.get("type") or "").strip()
+                elif isinstance(att, str):
+                    path = att.strip()
+                if not mime and path:
+                    import mimetypes
+                    mime = mimetypes.guess_type(path)[0] or ""
+                is_img = mime.startswith("image/") or path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+                if path and is_img and os.path.exists(path):
+                    args.extend(["--image", path])
+                    logger.info("Hermes run_turn: attaching image file %s", path)
+
         # Resume session if we have a previous session ID.
         # NOTE: When ARES injects conversation history into the message
         # (LangGraph-style), we skip --resume to avoid duplicating context.
@@ -532,6 +551,44 @@ class HermesProxyBackend(AgenticBackend):
         model = _cfg_str(config, "model") or kwargs.get("model") or "grok-3"
         cancel_event = kwargs.get("cancel_event")
         publish = kwargs.get("publish")
+        attachments = kwargs.get("attachments") or []
+
+        # Build content payload (multimodal if image attachments present)
+        content_parts = []
+        has_images = False
+        if attachments:
+            import base64
+            import mimetypes
+            from pathlib import Path
+            for att in attachments:
+                path = ""
+                mime = ""
+                if isinstance(att, dict):
+                    path = str(att.get("path") or att.get("filepath") or att.get("url") or "").strip()
+                    mime = str(att.get("mime") or att.get("type") or "").strip()
+                elif isinstance(att, str):
+                    path = att.strip()
+                if not mime and path:
+                    mime = mimetypes.guess_type(path)[0] or ""
+                is_img = mime.startswith("image/") or path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+                if path and is_img and os.path.exists(path):
+                    try:
+                        img_bytes = Path(path).read_bytes()
+                        b64 = base64.b64encode(img_bytes).decode("utf-8")
+                        fmt = mime or "image/png"
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{fmt};base64,{b64}"}
+                        })
+                        has_images = True
+                    except Exception:
+                        logger.warning("Could not base64-encode image attachment %s", path, exc_info=True)
+
+        if has_images:
+            content_parts.insert(0, {"type": "text", "text": message})
+            messages_payload = [{"role": "user", "content": content_parts}]
+        else:
+            messages_payload = [{"role": "user", "content": message}]
 
         try:
             import openai
@@ -544,7 +601,7 @@ class HermesProxyBackend(AgenticBackend):
                 accumulated = ""
                 stream = client.chat.completions.create(
                     model=model,
-                    messages=[{"role": "user", "content": message}],
+                    messages=messages_payload,
                     stream=True,
                 )
                 for chunk in stream:
@@ -558,7 +615,7 @@ class HermesProxyBackend(AgenticBackend):
             else:
                 response = client.chat.completions.create(
                     model=model,
-                    messages=[{"role": "user", "content": message}],
+                    messages=messages_payload,
                 )
                 text = response.choices[0].message.content or ""
                 return {"text": text, "error": None, "tool_activity": []}

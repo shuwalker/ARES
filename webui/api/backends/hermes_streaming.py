@@ -279,10 +279,20 @@ def run_hermes_streaming(
     # Attach images if provided
     if attachments:
         for att in attachments:
-            path = att.get("path", "") if isinstance(att, dict) else ""
-            mime = att.get("mime", "") if isinstance(att, dict) else ""
-            if path and mime.startswith("image/"):
+            path = ""
+            mime = ""
+            if isinstance(att, dict):
+                path = str(att.get("path") or att.get("filepath") or att.get("url") or "").strip()
+                mime = str(att.get("mime") or att.get("type") or "").strip()
+            elif isinstance(att, str):
+                path = att.strip()
+            if not mime and path:
+                import mimetypes
+                mime = mimetypes.guess_type(path)[0] or ""
+            is_img = mime.startswith("image/") or path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+            if path and is_img and os.path.exists(path):
                 args.extend(["--image", path])
+                logger.info("Hermes streaming: attaching image file %s to command", path)
 
     # Resume session if we have a previous hermes session ID.
     # NOTE: When ARES injects conversation history into the message
