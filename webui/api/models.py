@@ -1392,8 +1392,16 @@ class Session:
             except Exception:
                 pass
             raise
-        if not skip_index:
-            _write_session_index(updates=[self])
+        if not skip_index and len(self.messages) > 0:
+            title_lower = (self.title or "").lower()
+            is_probe = (
+                "reply with" in title_lower
+                or "ares-hermes-ok" in title_lower
+                or "ares-jaeger-ok" in title_lower
+                or "si-ok" in title_lower
+            )
+            if not is_probe:
+                _write_session_index(updates=[self])
 
         # #4985 belt-and-suspenders self-heal: a successful save with at
         # least one real message on the sidecar is unconditional proof the
