@@ -17,6 +17,7 @@ const storageKey = (profileScope: string) => `${LEGACY_STORAGE_KEY}:${encodeURIC
 export const DEFAULT_LOCAL_PROFILE: LocalProfile = {
   displayName: "",
   assistantName: "Jaeger AI",
+  assistantAvatar: "",
   voice: "system-default",
   reachability: "this-device",
   setupMode: "quick",
@@ -98,7 +99,8 @@ export function LocalProfileProvider({ children }: { children: ReactNode }) {
         const ownerName = String(settings.owner_name || "").trim();
         const serverProfile: LocalProfile = {
           displayName: ownerName || cached.displayName,
-          assistantName: String(settings.bot_name || cached.assistantName || "Ares"),
+          assistantName: String(settings.bot_name || cached.assistantName || "Jaeger AI"),
+          assistantAvatar: String(settings.bot_avatar || cached.assistantAvatar || ""),
           voice: settings.local_profile_voice === "disabled" || settings.local_profile_voice === "system-default"
             ? settings.local_profile_voice
             : cached.voice,

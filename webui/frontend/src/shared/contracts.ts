@@ -6,6 +6,7 @@ export type ConnectionState = "loading" | "available" | "limited" | "unavailable
 export interface LocalProfile {
   displayName: string;
   assistantName: string;
+  assistantAvatar?: string;
   voice: string;
   reachability: "this-device" | "local-network" | "private-network";
   setupMode: "quick" | "advanced";

@@ -161,14 +161,27 @@ export function CompanionPage() {
       <Card className="border-border/80 bg-card/60">
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center justify-between text-base text-foreground font-semibold">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-primary" />
-              <span>{companionName} Status</span>
+            <div className="flex items-center gap-3">
+              {profile.assistantAvatar ? (
+                <img
+                  src={profile.assistantAvatar}
+                  alt={companionName}
+                  className="size-10 rounded-full border border-primary/50 object-cover shadow-md shadow-primary/20"
+                />
+              ) : (
+                <div className="grid size-10 place-items-center rounded-full border border-primary/40 bg-primary/10 text-primary shadow-md shadow-primary/20 font-bold text-sm">
+                  {companionName.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <span>{companionName} Status</span>
+                <p className="text-xs font-normal text-muted-foreground">Persistent SI Identity</p>
+              </div>
             </div>
             <Button asChild size="sm" variant="outline" className="h-7 text-xs">
               <Link to="/activation">
                 <UserCheck className="mr-1.5 size-3.5" />
-                Character Wizard
+                Character & Avatar Wizard
               </Link>
             </Button>
           </CardTitle>

@@ -266,6 +266,37 @@ export function ActivationScreen() {
                   <div className="grid gap-2"><Label htmlFor="setup-owner">What should ARES call you?</Label><Input id="setup-owner" autoFocus value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} placeholder="Your name" /></div>
                   <div className="grid gap-2"><Label htmlFor="setup-assistant">What should your SI be called?</Label><Input id="setup-assistant" value={draft.assistantName} onChange={(event) => setDraft({ ...draft, assistantName: event.target.value })} placeholder="Jaeger AI" /></div>
                 </div>
+
+                <div className="grid gap-3">
+                  <Label htmlFor="setup-avatar">Jaeger AI Profile Avatar (Image URL or Base64)</Label>
+                  <Input
+                    id="setup-avatar"
+                    value={draft.assistantAvatar || ""}
+                    onChange={(event) => setDraft({ ...draft, assistantAvatar: event.target.value })}
+                    placeholder="https://.../jaeger-avatar.png or data:image/png;base64,..."
+                  />
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="text-xs text-muted-foreground">Presets:</span>
+                    {[
+                      { label: "Default Core", val: "" },
+                      { label: "Cyber Holographic", val: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80" },
+                      { label: "Quantum Gold", val: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=150&auto=format&fit=crop&q=80" },
+                      { label: "Deepspace Void", val: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=150&auto=format&fit=crop&q=80" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, assistantAvatar: preset.val })}
+                        className={cn(
+                          "rounded-md border px-2.5 py-1 text-xs transition hover:border-primary/60",
+                          (draft.assistantAvatar || "") === preset.val && "border-primary bg-primary/10 text-primary font-medium"
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
                   <Button variant="ghost" onClick={() => setStep(0)}><ArrowLeft />Back</Button>
                   <Button size="lg" disabled={saving || !draft.displayName.trim() || !draft.assistantName.trim()} onClick={() => void saveIdentity()}>
