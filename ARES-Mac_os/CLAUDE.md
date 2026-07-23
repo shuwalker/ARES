@@ -1,6 +1,6 @@
 # ARES macOS App Rules
 
-Instructions and rules for AI coding agents modifying files under this folder (`ARES-Desktop/`):
+Instructions and rules for AI coding agents modifying files under this folder (`ARES-Mac_os/`):
 
 - **Platform-Specific Boundary**: This folder is strictly for the native macOS SwiftUI/AppKit desktop application and the shared Swift package target `ARESCore`. Never add Python files, node modules, or other web assets here.
 - **Background Agent Design**: ARES runs as a tray-based background agent (`LSUIElement = true`). If you modify the windowing structure, ensure that:

@@ -166,7 +166,7 @@ interface.
 ```
 ARES/
 ├── Package.swift          # Swift Package Manager manifest
-├── ARES-Desktop/          # Native macOS app + ARESCore contracts
+├── ARES-Mac_os/           # Native macOS app + ARESCore contracts
 │   ├── Sources/ARES/      # SwiftUI/WKWebView shell and native app surface
 │   ├── Sources/ARESCore/  # Shared models, contracts, discovery, utilities
 │   └── Tests/             # Native app tests
