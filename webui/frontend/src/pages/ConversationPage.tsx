@@ -78,7 +78,7 @@ const CaduceusSVG = () => (
 function IconBtn({ children, title, onClick }: { children: React.ReactNode; title: string; onClick?: () => void }) {
   return (
     <button type="button" title={title} onClick={onClick}
-      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, border: "none", background: "transparent", color: H.muted, cursor: "pointer", transition: "color 0.15s, background 0.15s" }}
+      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "1.75rem", height: "1.75rem", borderRadius: "0.375rem", border: "none", background: "transparent", color: H.muted, cursor: "pointer", transition: "color 0.15s, background 0.15s" }}
       onMouseEnter={(e) => { e.currentTarget.style.color = H.text; e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.color = H.muted; e.currentTarget.style.background = "transparent"; }}>
       {children}
@@ -90,7 +90,7 @@ function ComposerChip({ icon, label, onClick }: { icon: React.ReactNode; label: 
   const [hover, setHover] = useState(false);
   return (
     <button type="button" onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 8px", borderRadius: 6, border: `1px solid ${hover ? H.border2 : H.chipBorder}`, background: hover ? H.surfaceHover : H.chipBg, color: hover ? H.text : H.chipText, fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0, maxWidth: 130 }}>
+      style={{ display: "inline-flex", alignItems: "center", gap: "0.3125rem", height: "1.625rem", padding: "0 0.5rem", borderRadius: "0.375rem", border: `1px solid ${hover ? H.border2 : H.chipBorder}`, background: hover ? H.surfaceHover : H.chipBg, color: hover ? H.text : H.chipText, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0, maxWidth: "8.125rem" }}>
       <span style={{ opacity: 0.7, flexShrink: 0 }}>{icon}</span>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
       <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
@@ -496,26 +496,26 @@ export function ConversationPage() {
       {/* Messages area */}
       <div ref={transcriptRef} onScroll={onScroll} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }}>
         {sessionLoading ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100%", gap: 12, color: H.muted }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100%", gap: "0.75rem", color: H.muted }}>
             <LoaderCircle size={22} style={{ color: H.accentGlow }} className="animate-spin" />
-            <p style={{ fontSize: 13, margin: 0 }}>Loading conversation…</p>
+            <p style={{ fontSize: "0.8125rem", margin: "0rem" }}>Loading conversation…</p>
           </div>
         ) : !hasConversation ? (
           /* Empty state */
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100%", padding: "40px 24px", textAlign: "center", background: `radial-gradient(ellipse at 50% 25%, rgba(56,137,253,0.06) 0%, transparent 60%)` }}>
-            <div style={{ marginBottom: 20 }}><CaduceusSVG /></div>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: H.strong, margin: 0 }}>What can I help with?</h2>
-            <p style={{ fontSize: 14, color: H.muted, margin: "8px 0 28px", lineHeight: 1.6, maxWidth: 380 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100%", padding: "2.5rem 1.5rem", textAlign: "center", background: `radial-gradient(ellipse at 50% 25%, rgba(56,137,253,0.06) 0%, transparent 60%)` }}>
+            <div style={{ marginBottom: "1.25rem" }}><CaduceusSVG /></div>
+            <h2 style={{ fontSize: "1.375rem", fontWeight: 700, color: H.strong, margin: "0rem" }}>What can I help with?</h2>
+            <p style={{ fontSize: "0.875rem", color: H.muted, margin: "0.5rem 0 1.75rem", lineHeight: 1.6, maxWidth: "23.75rem" }}>
               Ask anything, run commands, explore files, or manage your scheduled tasks.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 520 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", width: "100%", maxWidth: "32.5rem" }}>
               {!hideSuggestions && [
                 { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>, text: "What files are in this workspace?" },
                 { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/></svg>, text: "What's on my schedule today?" },
                 { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>, text: "Help me plan a small project." },
               ].map((s) => (
                 <button key={s.text} type="button" onClick={() => { setDraft(s.text); textareaRef.current?.focus(); }}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", borderRadius: 10, border: `1px solid ${H.border2}`, background: H.surface, color: H.text, fontSize: 14, textAlign: "left", cursor: "pointer", transition: "all 0.15s" }}
+                  style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.6875rem 1rem", borderRadius: "0.625rem", border: `1px solid ${H.border2}`, background: H.surface, color: H.text, fontSize: "0.875rem", textAlign: "left", cursor: "pointer", transition: "all 0.15s" }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = H.surfaceHover; e.currentTarget.style.borderColor = H.accent + "55"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = H.surface; e.currentTarget.style.borderColor = H.border2; }}>
                   <span style={{ color: H.muted, flexShrink: 0 }}>{s.icon}</span>
@@ -523,22 +523,22 @@ export function ConversationPage() {
                 </button>
               ))}
             </div>
-            {discoveryError && <p style={{ marginTop: 16, fontSize: 12, color: "#fbbf24" }}>{discoveryError}</p>}
+            {discoveryError && <p style={{ marginTop: "1rem", fontSize: "0.75rem", color: "#fbbf24" }}>{discoveryError}</p>}
           </div>
         ) : (
           /* Messages */
-          <div className="conversation-messages" style={{ maxWidth: "min(760px, 100%)", margin: "0 auto", width: "100%", padding: "28px 16px 120px", display: "flex", flexDirection: "column", gap: 22 }}>
+          <div className="conversation-messages" style={{ maxWidth: "min(47.5rem, 100%)", margin: "0 auto", width: "100%", padding: "1.75rem 1rem 7.5rem", display: "flex", flexDirection: "column", gap: "1.375rem" }}>
             {(currentSession?.messages || []).map((message) => {
               const isUser = message.role === "user";
               return (
                 <div key={message.id} style={{ display: "flex", width: "100%", justifyContent: isUser ? "flex-end" : "flex-start" }}>
                   {!isUser && (
-                    <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: H.surface, border: `1px solid ${H.border2}`, display: "flex", alignItems: "center", justifyContent: "center", marginRight: 10, marginTop: 2 }}>
+                    <div style={{ width: "1.875rem", height: "1.875rem", borderRadius: "50%", flexShrink: 0, background: H.surface, border: `1px solid ${H.border2}`, display: "flex", alignItems: "center", justifyContent: "center", marginRight: "0.625rem", marginTop: "0.125rem" }}>
                       <Bot size={14} style={{ color: H.accentGlow }} />
                     </div>
                   )}
-                  <div style={{ maxWidth: "85%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4 }}>
-                    <div style={{ padding: "9px 14px", fontSize: 14, lineHeight: 1.6, background: isUser ? H.surfaceActive : "transparent", color: isUser ? H.strong : H.text, border: isUser ? `1px solid ${H.border2}` : "none", borderRadius: isUser ? "14px 14px 4px 14px" : 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  <div style={{ maxWidth: "85%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: "0.25rem" }}>
+                    <div style={{ padding: "0.5625rem 0.875rem", fontSize: "0.875rem", lineHeight: 1.6, background: isUser ? H.surfaceActive : "transparent", color: isUser ? H.strong : H.text, border: isUser ? `1px solid ${H.border2}` : "none", borderRadius: isUser ? "0.875rem 0.875rem 0.25rem 0.875rem" : 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                       <Markdown content={message.text} />
                     </div>
                   </div>
@@ -547,26 +547,26 @@ export function ConversationPage() {
             })}
             {streamState !== "idle" && (
               <div style={{ display: "flex", width: "100%" }}>
-                <div style={{ width: 30, height: 30, borderRadius: "50%", flexShrink: 0, background: H.surface, border: `1px solid ${H.border2}`, display: "flex", alignItems: "center", justifyContent: "center", marginRight: 10, marginTop: 2 }}>
+                <div style={{ width: "1.875rem", height: "1.875rem", borderRadius: "50%", flexShrink: 0, background: H.surface, border: `1px solid ${H.border2}`, display: "flex", alignItems: "center", justifyContent: "center", marginRight: "0.625rem", marginTop: "0.125rem" }}>
                   <Bot size={14} style={{ color: H.accentGlow }} />
                 </div>
-                <div style={{ maxWidth: "85%", fontSize: 14, lineHeight: 1.6, color: H.text }}>
+                <div style={{ maxWidth: "85%", fontSize: "0.875rem", lineHeight: 1.6, color: H.text }}>
                   {streamText ? <Markdown content={streamText} streaming /> : streamState === "starting" ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       <LoaderCircle size={15} style={{ color: H.accentGlow }} />
                       <span style={{ color: H.muted }}>Starting…</span>
                     </div>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: H.accentBlue, display: "inline-block" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{ width: "0.4375rem", height: "0.4375rem", borderRadius: "50%", background: H.accentBlue, display: "inline-block" }} />
                       <span style={{ color: H.muted }}>Thinking…</span>
                     </div>
                   )}
-                  {streamReasoning && <div style={{ marginTop: 10, borderLeft: `2px solid ${H.accentBlue}`, paddingLeft: 12, fontSize: 13, fontStyle: "italic", color: H.muted }}>{streamReasoning}</div>}
+                  {streamReasoning && <div style={{ marginTop: "0.625rem", borderLeft: `0.125rem solid ${H.accentBlue}`, paddingLeft: "0.75rem", fontSize: "0.8125rem", fontStyle: "italic", color: H.muted }}>{streamReasoning}</div>}
                   {streamTools.length > 0 && (
-                    <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    <div style={{ marginTop: "0.625rem", display: "flex", flexWrap: "wrap", gap: "0.375rem" }}>
                       {streamTools.map((tool) => (
-                        <span key={tool} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 500, background: H.surface, border: `1px solid ${H.border}`, color: H.text }}>
+                        <span key={tool} style={{ display: "inline-flex", alignItems: "center", gap: "0.3125rem", padding: "0.1875rem 0.5rem", borderRadius: "0.375rem", fontSize: "0.6875rem", fontWeight: 500, background: H.surface, border: `1px solid ${H.border}`, color: H.text }}>
                           <Wrench size={10} style={{ opacity: 0.7 }} />{tool}
                         </span>
                       ))}
@@ -580,16 +580,16 @@ export function ConversationPage() {
       </div>
 
       {/* Floating scroll / copy buttons */}
-      <div style={{ position: "absolute", bottom: 110, right: 20, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, pointerEvents: "none", zIndex: 10 }}>
+      <div style={{ position: "absolute", bottom: "6.875rem", right: "1.25rem", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.375rem", pointerEvents: "none", zIndex: 10 }}>
         {showScrollBottom && (
           <button type="button" onClick={() => transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" })}
-            style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 999, border: `1px solid ${H.border2}`, background: H.surface, color: H.text, fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+            style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.3125rem 0.75rem", borderRadius: "62.4375rem", border: `1px solid ${H.border2}`, background: H.surface, color: H.text, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer" }}>
             <ArrowDown size={13} /> Bottom
           </button>
         )}
         {lastAssistantText && (
           <button type="button" onClick={() => void copyLastResponse()}
-            style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 999, border: `1px solid ${H.border2}`, background: H.surface, color: H.text, fontSize: 12, fontWeight: 500, cursor: "pointer" }}>
+            style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: "0.375rem", padding: "0.3125rem 0.75rem", borderRadius: "62.4375rem", border: `1px solid ${H.border2}`, background: H.surface, color: H.text, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer" }}>
             {copied ? <Check size={13} style={{ color: "#4ade80" }} /> : <Copy size={13} />}
             {copied ? "Copied" : "Copy"}
           </button>
@@ -597,29 +597,29 @@ export function ConversationPage() {
       </div>
 
       {/* COMPOSER */}
-      <div className="conversation-composer" style={{ flexShrink: 0, padding: "0 16px 14px", background: H.bg, position: "relative", zIndex: 10 }}>
+      <div className="conversation-composer" style={{ flexShrink: 0, padding: "0 1rem 0.875rem", background: H.bg, position: "relative", zIndex: 10 }}>
 
         {/* Approval card */}
         {showApproval && (
-          <div style={{ marginBottom: 8, borderRadius: 12, border: `1px solid ${H.border2}`, background: H.surface, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", maxWidth: 740, margin: "0 auto 8px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 14px", borderBottom: `1px solid ${H.border}` }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: H.strong }}>
+          <div style={{ marginBottom: "0.5rem", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: H.surface, overflow: "hidden", boxShadow: "0 0.5rem 2rem rgba(0,0,0,0.5)", maxWidth: "46.25rem", margin: "0 auto 0.5rem" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5625rem 0.875rem", borderBottom: `1px solid ${H.border}` }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8125rem", fontWeight: 600, color: H.strong }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 Approval required
               </span>
-              <div style={{ display: "flex", gap: 4 }}>
-                <button onClick={() => setApprovalCollapsed(!approvalCollapsed)} style={{ background: "transparent", border: "none", color: H.muted, cursor: "pointer", padding: 4 }}>{approvalCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</button>
-                <button onClick={() => setShowApproval(false)} style={{ background: "transparent", border: "none", color: H.muted, cursor: "pointer", padding: 4 }}><X size={14} /></button>
+              <div style={{ display: "flex", gap: "0.25rem" }}>
+                <button onClick={() => setApprovalCollapsed(!approvalCollapsed)} style={{ background: "transparent", border: "none", color: H.muted, cursor: "pointer", padding: "0.25rem" }}>{approvalCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</button>
+                <button onClick={() => setShowApproval(false)} style={{ background: "transparent", border: "none", color: H.muted, cursor: "pointer", padding: "0.25rem" }}><X size={14} /></button>
               </div>
             </div>
             {!approvalCollapsed && (
-              <div style={{ padding: "12px 14px" }}>
-                <p style={{ fontSize: 13, color: H.muted, marginBottom: 10 }}>Agent is requesting permission to execute:</p>
-                <code style={{ display: "block", background: "#0a0c14", padding: "8px 12px", borderRadius: 7, fontFamily: "monospace", fontSize: 12, color: "#4ade80", border: `1px solid ${H.border}`, marginBottom: 12, overflowX: "auto" }}>$ rm -rf /tmp/cache/*</code>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div style={{ padding: "0.75rem 0.875rem" }}>
+                <p style={{ fontSize: "0.8125rem", color: H.muted, marginBottom: "0.625rem" }}>Agent is requesting permission to execute:</p>
+                <code style={{ display: "block", background: "#0a0c14", padding: "0.5rem 0.75rem", borderRadius: "0.4375rem", fontFamily: "monospace", fontSize: "0.75rem", color: "#4ade80", border: `1px solid ${H.border}`, marginBottom: "0.75rem", overflowX: "auto" }}>$ rm -rf /tmp/cache/*</code>
+                <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
                   {["Allow once", "Allow session", "Always allow", "Deny", "Skip all ⚡"].map((label) => (
                     <button key={label} type="button" onClick={() => setShowApproval(false)}
-                      style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12, cursor: "pointer", fontWeight: 500, background: label === "Allow once" ? H.accent : label === "Deny" ? "#3b1219" : H.surface, color: label === "Allow once" ? "#fff" : label === "Deny" ? "#fca5a5" : H.text, border: label === "Allow once" ? "none" : label === "Deny" ? "1px solid #7f1d1d" : `1px solid ${H.border2}` }}>
+                      style={{ padding: "0.3125rem 0.75rem", borderRadius: "0.4375rem", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500, background: label === "Allow once" ? H.accent : label === "Deny" ? "#3b1219" : H.surface, color: label === "Allow once" ? "#fff" : label === "Deny" ? "#fca5a5" : H.text, border: label === "Allow once" ? "none" : label === "Deny" ? "1px solid #7f1d1d" : `1px solid ${H.border2}` }}>
                       {label}
                     </button>
                   ))}
@@ -630,29 +630,29 @@ export function ConversationPage() {
         )}
 
         {isReadOnlyCli && (
-          <div style={{ marginBottom: 8, maxWidth: 740, margin: "0 auto 8px", padding: "9px 14px", borderRadius: 8, border: "1px solid rgba(56,137,253,0.35)", background: "rgba(56,137,253,0.08)", color: H.accentBlue, fontSize: 12 }}>
+          <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: "1px solid rgba(56,137,253,0.35)", background: "rgba(56,137,253,0.08)", color: H.accentBlue, fontSize: "0.75rem" }}>
             CLI / imported session (read-only). Switch to a <strong>WebUI</strong> session in the deck to talk to a backend.
           </div>
         )}
         {!isReadOnlyCli && (
-          <div style={{ marginBottom: 8, maxWidth: 740, margin: "0 auto 8px", padding: "6px 12px", borderRadius: 8, border: `1px solid ${H.border}`, background: H.surface, color: H.muted, fontSize: 11 }}>
+          <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: `1px solid ${H.border}`, background: H.surface, color: H.muted, fontSize: "0.6875rem" }}>
             Worker console — messages go to the selected backend as-is (no Companion SI prompt). Profile & app theme live in App settings.
           </div>
         )}
         {chatNotice && (
-          <div style={{ marginBottom: 8, maxWidth: 740, margin: "0 auto 8px", padding: "9px 14px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <AlertTriangle size={13} />{chatNotice}
           </div>
         )}
 
         {/* Saved Prompts Popover */}
         {showSavedPrompts && (
-          <div style={{ maxWidth: 740, margin: "0 auto 8px", padding: 10, borderRadius: 10, border: `1px solid ${H.border2}`, background: H.surface, boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${H.border}` }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: H.text }}>Saved Prompts</span>
+          <div style={{ maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.625rem", borderRadius: "0.625rem", border: `1px solid ${H.border2}`, background: H.surface, boxShadow: "0 0.5rem 1.5rem rgba(0,0,0,0.4)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.375rem", paddingBottom: "0.25rem", borderBottom: `1px solid ${H.border}` }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: H.text }}>Saved Prompts</span>
               <button type="button" onClick={() => setShowSavedPrompts(false)} style={{ background: "transparent", border: "none", color: H.muted, cursor: "pointer" }}><X size={12} /></button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.375rem" }}>
               {SAVED_PROMPT_TEMPLATES.map((item) => (
                 <button
                   key={item.label}
@@ -662,27 +662,27 @@ export function ConversationPage() {
                     setShowSavedPrompts(false);
                     textareaRef.current?.focus();
                   }}
-                  style={{ textAlign: "left", padding: "6px 8px", borderRadius: 6, border: `1px solid ${H.border2}`, background: H.chipBg, color: H.text, fontSize: 11, cursor: "pointer" }}
+                  style={{ textAlign: "left", padding: "0.375rem 0.5rem", borderRadius: "0.375rem", border: `1px solid ${H.border2}`, background: H.chipBg, color: H.text, fontSize: "0.6875rem", cursor: "pointer" }}
                 >
                   <div style={{ fontWeight: 600, color: H.accentGlow }}>{item.label}</div>
-                  <div style={{ color: H.muted, fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.prompt}</div>
+                  <div style={{ color: H.muted, fontSize: "0.625rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.prompt}</div>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        <form onSubmit={(e) => void submit(e)} style={{ maxWidth: "min(740px, 100%)", margin: "0 auto" }}>
-          <div style={{ borderRadius: 14, border: `1px solid ${H.inputBorder}`, background: H.inputBg, boxShadow: "0 2px 16px rgba(0,0,0,0.35)", transition: "border-color 0.2s" }}>
+        <form onSubmit={(e) => void submit(e)} style={{ maxWidth: "min(46.25rem, 100%)", margin: "0 auto" }}>
+          <div style={{ borderRadius: "0.875rem", border: `1px solid ${H.inputBorder}`, background: H.inputBg, boxShadow: "0 0.125rem 1rem rgba(0,0,0,0.35)", transition: "border-color 0.2s" }}>
 
             {/* Attached files tray */}
             {attachedFiles.length > 0 && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 12px 0" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem", padding: "0.5rem 0.75rem 0" }}>
                 {attachedFiles.map((file, idx) => (
-                  <span key={idx} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 8px", borderRadius: 6, background: H.surface, border: `1px solid ${H.border2}`, fontSize: 11, color: H.text }}>
+                  <span key={idx} style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", padding: "0.1875rem 0.5rem", borderRadius: "0.375rem", background: H.surface, border: `1px solid ${H.border2}`, fontSize: "0.6875rem", color: H.text }}>
                     <FileText size={11} style={{ color: H.accentGlow }} />
-                    <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
-                    <button type="button" onClick={() => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))} style={{ background: "transparent", border: "none", color: H.muted, cursor: "pointer", padding: 0 }}>
+                    <span style={{ maxWidth: "7.5rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
+                    <button type="button" onClick={() => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))} style={{ background: "transparent", border: "none", color: H.muted, cursor: "pointer", padding: "0rem" }}>
                       <X size={10} />
                     </button>
                   </span>
@@ -692,8 +692,8 @@ export function ConversationPage() {
 
             {/* Listening indicator */}
             {isListening && (
-              <div style={{ padding: "6px 14px", fontSize: 11, fontWeight: 600, color: "#f43f5e", display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#f43f5e", display: "inline-block" }} />
+              <div style={{ padding: "0.375rem 0.875rem", fontSize: "0.6875rem", fontWeight: 600, color: "#f43f5e", display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <span style={{ width: "0.375rem", height: "0.375rem", borderRadius: "50%", background: "#f43f5e", display: "inline-block" }} />
                 Listening for speech dictation…
               </div>
             )}
@@ -713,27 +713,27 @@ export function ConversationPage() {
                     : "Select a backend below to start chatting…"
               }
               disabled={isBusy || isReadOnlyCli}
-              style={{ width: "100%", padding: "13px 16px 8px", background: "transparent", border: "none", outline: "none", color: H.text, fontSize: 14.5, lineHeight: 1.5, resize: "none", fontFamily: "inherit", boxSizing: "border-box", maxHeight: 180, overflowY: "auto" }}
+              style={{ width: "100%", padding: "0.8125rem 1rem 0.5rem", background: "transparent", border: "none", outline: "none", color: H.text, fontSize: "0.9062rem", lineHeight: 1.5, resize: "none", fontFamily: "inherit", boxSizing: "border-box", maxHeight: "11.25rem", overflowY: "auto" }}
               onInput={(e) => { const el = e.currentTarget; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 180) + "px"; }}
             />
 
             {/* Toolbar — scrolls horizontally on narrow viewports (Hermes cf-burger pattern) */}
-            <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "4px 8px 8px", gap: 4, overflowX: "auto", whiteSpace: "nowrap", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", maxWidth: "100%" }}>
+            <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "0.25rem 0.5rem 0.5rem", gap: "0.25rem", overflowX: "auto", whiteSpace: "nowrap", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", maxWidth: "100%" }}>
               <IconBtn title="Attach files" onClick={() => fileInputRef.current?.click()}><Paperclip size={15} /></IconBtn>
               <IconBtn title="Saved prompts" onClick={() => setShowSavedPrompts(!showSavedPrompts)}><Bookmark size={15} /></IconBtn>
               <IconBtn title="Dictate" onClick={toggleDictation}>
                 {isListening ? <MicOff size={15} style={{ color: "#f43f5e" }} /> : <Mic size={15} />}
               </IconBtn>
 
-              <div style={{ width: 1, height: 16, background: H.border2, margin: "0 3px", flexShrink: 0 }} />
+              <div style={{ width: "0.0625rem", height: "1rem", background: H.border2, margin: "0 0.1875rem", flexShrink: 0 }} />
 
               {/* Working folder — agent cwd / project context */}
-              <div style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: 6, border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: 26, overflow: "visible", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: "0.375rem", border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: "1.625rem", overflow: "visible", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   title="Browse files in working folder"
                   onClick={workbenchPanel.toggle}
-                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px", height: "100%", border: "none", borderRight: `1px solid ${H.chipBorder}`, background: "transparent", color: H.chipText, cursor: "pointer" }}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 0.375rem", height: "100%", border: "none", borderRight: `1px solid ${H.chipBorder}`, background: "transparent", color: H.chipText, cursor: "pointer" }}
                 >
                   <Folder size={12} />
                 </button>
@@ -746,33 +746,33 @@ export function ConversationPage() {
                     setShowBackendMenu(false);
                     setShowModelMenu(false);
                   }}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: "100%", padding: "0 8px", border: "none", background: "transparent", color: H.chipText, fontSize: 12, fontWeight: 500, cursor: "pointer", maxWidth: 130 }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.3125rem", height: "100%", padding: "0 0.5rem", border: "none", background: "transparent", color: H.chipText, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer", maxWidth: "8.125rem" }}
                 >
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorkspaceLabel}</span>
                   <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </button>
 
                 {showWorkspaceMenu && (
-                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 360, maxWidth: "min(340px, 88vw)", borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
-                    <div style={{ padding: "10px 14px 6px", fontSize: 11, fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
+                  <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "22.5rem", maxWidth: "min(21.25rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
+                    <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
                       Agent working folder (cwd / context)
                     </div>
-                    <div style={{ padding: "12px 14px", background: "rgba(124,58,237,0.12)", borderBottom: `1px solid ${H.border}` }}>
-                      <div style={{ fontWeight: 600, color: H.strong, fontSize: 13, marginBottom: 2 }}>{activeWorkspaceLabel}</div>
-                      <div style={{ fontSize: 11, color: H.muted, fontFamily: "monospace", wordBreak: "break-all" }}>
+                    <div style={{ padding: "0.75rem 0.875rem", background: "rgba(124,58,237,0.12)", borderBottom: `1px solid ${H.border}` }}>
+                      <div style={{ fontWeight: 600, color: H.strong, fontSize: "0.8125rem", marginBottom: "0.125rem" }}>{activeWorkspaceLabel}</div>
+                      <div style={{ fontSize: "0.6875rem", color: H.muted, fontFamily: "monospace", wordBreak: "break-all" }}>
                         {workspacePath || "No working folder set"}
                       </div>
                     </div>
-                    <div style={{ padding: "8px 10px", borderBottom: `1px solid ${H.border}` }}>
+                    <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
                       <input
                         type="text"
                         value={wsSearchQuery}
                         onChange={(e) => setWsSearchQuery(e.target.value)}
                         placeholder="Filter known folders…"
-                        style={{ width: "100%", boxSizing: "border-box", background: "#0c0e18", border: `1px solid ${H.border}`, borderRadius: 8, padding: "6px 10px", color: H.text, fontSize: 12, outline: "none" }}
+                        style={{ width: "100%", boxSizing: "border-box", background: "#0c0e18", border: `1px solid ${H.border}`, borderRadius: "0.5rem", padding: "0.375rem 0.625rem", color: H.text, fontSize: "0.75rem", outline: "none" }}
                       />
                     </div>
-                    <div style={{ maxHeight: 160, overflowY: "auto", padding: "6px 8px" }}>
+                    <div style={{ maxHeight: "10rem", overflowY: "auto", padding: "0.375rem 0.5rem" }}>
                       {workspaceChoices
                         .filter((w) => {
                           const q = wsSearchQuery.trim().toLowerCase();
@@ -788,14 +788,14 @@ export function ConversationPage() {
                               setShowWorkspaceMenu(false);
                             }}
                             style={{
-                              display: "block", width: "100%", textAlign: "left", padding: "8px 10px", marginBottom: 4,
-                              borderRadius: 6, border: `1px solid ${workspacePath === w.path ? H.accent : H.border}`,
+                              display: "block", width: "100%", textAlign: "left", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
+                              borderRadius: "0.375rem", border: `1px solid ${workspacePath === w.path ? H.accent : H.border}`,
                               background: workspacePath === w.path ? "rgba(124,58,237,0.1)" : "transparent",
                               color: H.text, cursor: "pointer",
                             }}
                           >
-                            <div style={{ fontWeight: 600, fontSize: 12 }}>{w.label.split("/").filter(Boolean).pop() || w.label}</div>
-                            <div style={{ fontSize: 10, color: H.muted, fontFamily: "monospace", wordBreak: "break-all" }}>{w.path}</div>
+                            <div style={{ fontWeight: 600, fontSize: "0.75rem" }}>{w.label.split("/").filter(Boolean).pop() || w.label}</div>
+                            <div style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace", wordBreak: "break-all" }}>{w.path}</div>
                           </button>
                         ))}
                     </div>
@@ -807,12 +807,12 @@ export function ConversationPage() {
                           if (path?.trim()) setWorkspaceOverride(path.trim());
                           setShowWorkspaceMenu(false);
                         }}
-                        style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px", background: "transparent", border: "none", borderBottom: `1px solid ${H.border}`, color: H.text, textAlign: "left", cursor: "pointer" }}
+                        style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "transparent", border: "none", borderBottom: `1px solid ${H.border}`, color: H.text, textAlign: "left", cursor: "pointer" }}
                       >
-                        <Folder size={16} style={{ color: H.accentGlow, marginTop: 2, flexShrink: 0 }} />
+                        <Folder size={16} style={{ color: H.accentGlow, marginTop: "0.125rem", flexShrink: 0 }} />
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: 12.5, color: H.strong }}>Set working folder…</div>
-                          <div style={{ fontSize: 11, color: H.muted, marginTop: 2 }}>cwd / project context for the backend</div>
+                          <div style={{ fontWeight: 600, fontSize: "0.7812rem", color: H.strong }}>Set working folder…</div>
+                          <div style={{ fontSize: "0.6875rem", color: H.muted, marginTop: "0.125rem" }}>cwd / project context for the backend</div>
                         </div>
                       </button>
                       <button
@@ -821,12 +821,12 @@ export function ConversationPage() {
                           void createSession(workspacePath || undefined);
                           setShowWorkspaceMenu(false);
                         }}
-                        style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px", background: "transparent", border: "none", borderBottom: `1px solid ${H.border}`, color: H.text, textAlign: "left", cursor: "pointer" }}
+                        style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "transparent", border: "none", borderBottom: `1px solid ${H.border}`, color: H.text, textAlign: "left", cursor: "pointer" }}
                       >
-                        <GitBranch size={16} style={{ color: H.accentGlow, marginTop: 2, flexShrink: 0 }} />
+                        <GitBranch size={16} style={{ color: H.accentGlow, marginTop: "0.125rem", flexShrink: 0 }} />
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: 12.5, color: H.strong }}>New WebUI session here</div>
-                          <div style={{ fontSize: 11, color: H.muted, marginTop: 2 }}>Fresh conversation in this folder</div>
+                          <div style={{ fontWeight: 600, fontSize: "0.7812rem", color: H.strong }}>New WebUI session here</div>
+                          <div style={{ fontSize: "0.6875rem", color: H.muted, marginTop: "0.125rem" }}>Fresh conversation in this folder</div>
                         </div>
                       </button>
                       <button
@@ -835,12 +835,12 @@ export function ConversationPage() {
                           workbenchPanel.toggle();
                           setShowWorkspaceMenu(false);
                         }}
-                        style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px", background: "transparent", border: "none", color: H.text, textAlign: "left", cursor: "pointer" }}
+                        style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", padding: "0.625rem 0.875rem", background: "transparent", border: "none", color: H.text, textAlign: "left", cursor: "pointer" }}
                       >
-                        <Settings size={16} style={{ color: H.muted, marginTop: 2, flexShrink: 0 }} />
+                        <Settings size={16} style={{ color: H.muted, marginTop: "0.125rem", flexShrink: 0 }} />
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: 12.5, color: H.strong }}>Browse files</div>
-                          <div style={{ fontSize: 11, color: H.muted, marginTop: 2 }}>Open workspace panel</div>
+                          <div style={{ fontWeight: 600, fontSize: "0.7812rem", color: H.strong }}>Browse files</div>
+                          <div style={{ fontSize: "0.6875rem", color: H.muted, marginTop: "0.125rem" }}>Open workspace panel</div>
                         </div>
                       </button>
                     </div>
@@ -861,22 +861,22 @@ export function ConversationPage() {
                   }}
                 />
                 {showBackendMenu && !isReadOnlyCli && (
-                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 320, maxWidth: "min(320px, 88vw)", borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
-                    <div style={{ padding: "10px 14px 6px", fontSize: 11, fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
+                  <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "20rem", maxWidth: "min(20rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
+                    <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
                       Backend (worker runtime)
                     </div>
-                    <div style={{ padding: "8px 10px", borderBottom: `1px solid ${H.border}` }}>
+                    <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
                       <input
                         type="text"
                         value={backendSearchQuery}
                         onChange={(e) => setBackendSearchQuery(e.target.value)}
                         placeholder="Filter backends…"
-                        style={{ width: "100%", background: "#0c0e18", border: `1px solid ${H.border}`, borderRadius: 8, padding: "6px 10px", color: H.text, fontSize: 12, outline: "none", boxSizing: "border-box" }}
+                        style={{ width: "100%", background: "#0c0e18", border: `1px solid ${H.border}`, borderRadius: "0.5rem", padding: "0.375rem 0.625rem", color: H.text, fontSize: "0.75rem", outline: "none", boxSizing: "border-box" }}
                       />
                     </div>
-                    <div style={{ maxHeight: 240, overflowY: "auto", padding: "8px 10px" }}>
+                    <div style={{ maxHeight: "15rem", overflowY: "auto", padding: "0.5rem 0.625rem" }}>
                       {filteredBackends.length === 0 ? (
-                        <p style={{ margin: 0, padding: 8, color: H.muted, fontSize: 11 }}>No backends available.</p>
+                        <p style={{ margin: "0rem", padding: "0.5rem", color: H.muted, fontSize: "0.6875rem" }}>No backends available.</p>
                       ) : (
                         filteredBackends.map((b) => (
                           <button
@@ -889,17 +889,17 @@ export function ConversationPage() {
                               setShowBackendMenu(false);
                             }}
                             style={{
-                              display: "flex", flexDirection: "column", width: "100%", padding: "8px 10px", marginBottom: 4,
-                              borderRadius: 6, border: `1px solid ${selectedBackend === b.id ? H.accent : H.border}`,
+                              display: "flex", flexDirection: "column", width: "100%", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
+                              borderRadius: "0.375rem", border: `1px solid ${selectedBackend === b.id ? H.accent : H.border}`,
                               background: selectedBackend === b.id ? "rgba(124,58,237,0.1)" : "transparent",
                               color: H.text, textAlign: "left", cursor: "pointer",
                             }}
                           >
-                            <span style={{ fontWeight: 600, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontWeight: 600, fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}>
                               <Server size={11} style={{ opacity: 0.7 }} />
                               {b.label}
                             </span>
-                            <span style={{ fontSize: 10, color: H.muted, fontFamily: "monospace" }}>{b.id}</span>
+                            <span style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace" }}>{b.id}</span>
                           </button>
                         ))
                       )}
@@ -921,23 +921,23 @@ export function ConversationPage() {
                   }}
                 />
                 {showModelMenu && !isReadOnlyCli && modelsForBackend.length > 0 && (
-                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 340, maxWidth: "min(340px, 88vw)", borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
-                    <div style={{ padding: "10px 14px 6px", fontSize: 11, fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
+                  <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "21.25rem", maxWidth: "min(21.25rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
+                    <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
                       Models for {activeBackendLabel}
                     </div>
                     {providersForBackend.length > 0 && (
-                      <div style={{ padding: "8px 12px", borderBottom: `1px solid ${H.border}`, fontSize: 10, color: H.muted }}>
+                      <div style={{ padding: "0.5rem 0.75rem", borderBottom: `1px solid ${H.border}`, fontSize: "0.625rem", color: H.muted }}>
                         <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Providers: </span>
                         {providersForBackend.map((p) => p.label || p.id).join(" · ")}
                       </div>
                     )}
-                    <div style={{ maxHeight: 260, overflowY: "auto", padding: "8px 10px" }}>
+                    <div style={{ maxHeight: "16.25rem", overflowY: "auto", padding: "0.5rem 0.625rem" }}>
                       {(["local", "cloud", "unknown"] as const).map((loc) => {
                         const group = modelsForBackend.filter((m) => (m.location || "unknown") === loc);
                         if (!group.length) return null;
                         return (
-                          <div key={loc} style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: H.muted, margin: "4px 2px 6px" }}>
+                          <div key={loc} style={{ marginBottom: "0.5rem" }}>
+                            <div style={{ fontSize: "0.625rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: H.muted, margin: "0.25rem 0.125rem 0.375rem" }}>
                               {loc === "local" ? "Local / installed" : loc === "cloud" ? "Cloud / configured" : "Other"}
                             </div>
                             {group.map((m) => (
@@ -950,19 +950,19 @@ export function ConversationPage() {
                                   setShowModelMenu(false);
                                 }}
                                 style={{
-                                  display: "block", width: "100%", textAlign: "left", padding: "8px 10px", marginBottom: 4,
-                                  borderRadius: 6, border: `1px solid ${selectedModel === m.id ? H.accent : H.border}`,
+                                  display: "block", width: "100%", textAlign: "left", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
+                                  borderRadius: "0.375rem", border: `1px solid ${selectedModel === m.id ? H.accent : H.border}`,
                                   background: selectedModel === m.id ? "rgba(124,58,237,0.1)" : "transparent", color: H.text, cursor: "pointer",
                                 }}
                               >
-                                <div style={{ fontWeight: 600, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                <div style={{ fontWeight: 600, fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}>
                                   <Boxes size={11} style={{ opacity: 0.7 }} />
                                   {m.label || m.id}
                                   {m.in_use ? (
-                                    <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: H.accent, color: "#fff" }}>ACTIVE</span>
+                                    <span style={{ fontSize: "0.5625rem", fontWeight: 700, padding: "1px 0.3125rem", borderRadius: "0.25rem", background: H.accent, color: "#fff" }}>ACTIVE</span>
                                   ) : null}
                                 </div>
-                                <div style={{ fontSize: 10, color: H.muted, fontFamily: "monospace" }}>
+                                <div style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace" }}>
                                   {m.provider || "—"}{m.notes ? ` · ${m.notes}` : ""}
                                 </div>
                               </button>
@@ -979,12 +979,12 @@ export function ConversationPage() {
 
               {isBusy ? (
                 <button type="button" onClick={() => void cancelResponse()} title="Stop response"
-                  style={{ width: 34, height: 34, borderRadius: "50%", border: `1px solid ${H.border2}`, background: H.surface, color: H.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  style={{ width: "2.125rem", height: "2.125rem", borderRadius: "50%", border: `1px solid ${H.border2}`, background: H.surface, color: H.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Square size={14} fill="currentColor" />
                 </button>
               ) : (
                 <button type="submit" disabled={!draft.trim() && attachedFiles.length === 0} title="Send message"
-                  style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: draft.trim() || attachedFiles.length > 0 ? H.sendBtn : "rgba(255,255,255,0.06)", color: draft.trim() || attachedFiles.length > 0 ? H.sendBtnText : "rgba(255,255,255,0.25)", cursor: draft.trim() || attachedFiles.length > 0 ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s, color 0.15s" }}>
+                  style={{ width: "2.125rem", height: "2.125rem", borderRadius: "50%", border: "none", background: draft.trim() || attachedFiles.length > 0 ? H.sendBtn : "rgba(255,255,255,0.06)", color: draft.trim() || attachedFiles.length > 0 ? H.sendBtnText : "rgba(255,255,255,0.25)", cursor: draft.trim() || attachedFiles.length > 0 ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s, color 0.15s" }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                 </button>
               )}

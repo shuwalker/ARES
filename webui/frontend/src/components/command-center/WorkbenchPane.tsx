@@ -172,14 +172,14 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: "0.375rem",
                   width: "100%",
-                  padding: "4px 8px",
-                  borderRadius: 6,
+                  padding: "0.25rem 0.5rem",
+                  borderRadius: "0.375rem",
                   border: "none",
                   background: isSelected ? "rgba(124,58,237,0.18)" : "transparent",
                   color: isSelected ? H.strong : H.text,
-                  fontSize: 12,
+                  fontSize: "0.75rem",
                   cursor: "pointer",
                   textAlign: "left",
                 }}
@@ -187,7 +187,7 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
                 {isDir ? (
                   isOpen ? <ChevronDown size={13} style={{ color: H.muted }} /> : <ChevronRight size={13} style={{ color: H.muted }} />
                 ) : (
-                  <span style={{ width: 13 }} />
+                  <span style={{ width: "0.8125rem" }} />
                 )}
                 {isDir ? <Folder size={13} style={{ color: H.accentGlow }} /> : <FileText size={13} style={{ color: H.muted }} />}
                 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
@@ -203,50 +203,50 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", background: H.bg, color: H.text, borderLeft: `1px solid ${H.border}` }}>
       {/* Hermes Top Header */}
-      <header style={{ height: 44, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", borderBottom: `1px solid ${H.border}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: H.muted }}>
+      <header style={{ height: "2.75rem", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 0.75rem", borderBottom: `1px solid ${H.border}`, flexShrink: 0 }}>
+        <span style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: H.muted }}>
           WORKSPACE
         </span>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <button type="button" title="New file / folder" onClick={() => setShowNewInput(showNewInput ? null : "file")} style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.1875rem" }}>
+          <button type="button" title="New file / folder" onClick={() => setShowNewInput(showNewInput ? null : "file")} style={{ background: "transparent", border: "none", color: H.muted, padding: "0.3125rem", borderRadius: "0.25rem", cursor: "pointer" }}>
             <Plus size={14} />
           </button>
           <button
             type="button"
             title={currentSession?.workspace ? `Workspace: ${currentSession.workspace}` : "No workspace for this session"}
             onClick={() => setShowNewInput(showNewInput ? null : "folder")}
-            style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}
+            style={{ background: "transparent", border: "none", color: H.muted, padding: "0.3125rem", borderRadius: "0.25rem", cursor: "pointer" }}
           >
             <Folder size={14} />
           </button>
-          <button type="button" title="Refresh files" onClick={() => void loadDirectory(".")} style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}>
+          <button type="button" title="Refresh files" onClick={() => void loadDirectory(".")} style={{ background: "transparent", border: "none", color: H.muted, padding: "0.3125rem", borderRadius: "0.25rem", cursor: "pointer" }}>
             <RefreshCw size={14} />
           </button>
-          <div style={{ width: 1, height: 14, background: H.border2, margin: "0 2px" }} />
-          <button type="button" title="Close panel" aria-label="Close workspace" onClick={onCollapse} style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}>
+          <div style={{ width: "0.0625rem", height: "0.875rem", background: H.border2, margin: "0 0.125rem" }} />
+          <button type="button" title="Close panel" aria-label="Close workspace" onClick={onCollapse} style={{ background: "transparent", border: "none", color: H.muted, padding: "0.3125rem", borderRadius: "0.25rem", cursor: "pointer" }}>
             <X size={14} />
           </button>
         </div>
       </header>
 
       {/* Sub-Navigation Pill Tabs */}
-      <div style={{ padding: "8px 12px", borderBottom: `1px solid ${H.border}`, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+      <div style={{ padding: "0.5rem 0.75rem", borderBottom: `1px solid ${H.border}`, display: "flex", alignItems: "center", gap: "0.375rem", flexShrink: 0 }}>
         <button
           type="button"
           onClick={() => chooseTab("files")}
           style={{
-            padding: "4px 14px",
-            borderRadius: 20,
+            padding: "0.25rem 0.875rem",
+            borderRadius: "1.25rem",
             border: `1px solid ${tab === "files" ? H.border2 : "transparent"}`,
             background: tab === "files" ? H.surface : "transparent",
             color: tab === "files" ? H.strong : H.muted,
-            fontSize: 12,
+            fontSize: "0.75rem",
             fontWeight: 500,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: "0.375rem",
           }}
         >
           <FileCode size={13} />
@@ -257,17 +257,17 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
           type="button"
           onClick={() => chooseTab("artifacts")}
           style={{
-            padding: "4px 14px",
-            borderRadius: 20,
+            padding: "0.25rem 0.875rem",
+            borderRadius: "1.25rem",
             border: `1px solid ${tab === "artifacts" ? H.border2 : "transparent"}`,
             background: tab === "artifacts" ? H.surface : "transparent",
             color: tab === "artifacts" ? H.strong : H.muted,
-            fontSize: 12,
+            fontSize: "0.75rem",
             fontWeight: 500,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: "0.375rem",
           }}
         >
           <Box size={13} />
@@ -277,24 +277,24 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
       </div>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, minHeight: "0rem", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {tab === "files" && (
           <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
             {/* Inline New File / Folder input */}
             {showNewInput && (
-              <div style={{ padding: "8px 12px", borderBottom: `1px solid ${H.border}`, display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ padding: "0.5rem 0.75rem", borderBottom: `1px solid ${H.border}`, display: "flex", gap: "0.375rem", alignItems: "center" }}>
                 <input
                   type="text"
                   value={newItemName}
                   onChange={(e) => setNewItemName(e.target.value)}
                   placeholder={showNewInput === "file" ? "New file name..." : "New folder name..."}
-                  style={{ flex: 1, background: "#0c0e18", border: `1px solid ${H.border}`, borderRadius: 6, padding: "4px 8px", color: H.text, fontSize: 11, outline: "none" }}
+                  style={{ flex: 1, background: "#0c0e18", border: `1px solid ${H.border}`, borderRadius: "0.375rem", padding: "0.25rem 0.5rem", color: H.text, fontSize: "0.6875rem", outline: "none" }}
                   onKeyDown={(e) => { if (e.key === "Enter") void createItem(); }}
                 />
-                <button type="button" onClick={() => void createItem()} style={{ padding: "4px 8px", borderRadius: 6, border: "none", background: H.accent, color: "#fff", fontSize: 11, cursor: "pointer" }}>
+                <button type="button" onClick={() => void createItem()} style={{ padding: "0.25rem 0.5rem", borderRadius: "0.375rem", border: "none", background: H.accent, color: "#fff", fontSize: "0.6875rem", cursor: "pointer" }}>
                   Create
                 </button>
-                <button type="button" onClick={() => setShowNewInput(null)} style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${H.border}`, background: "transparent", color: H.muted, fontSize: 11, cursor: "pointer" }}>
+                <button type="button" onClick={() => setShowNewInput(null)} style={{ padding: "0.25rem 0.5rem", borderRadius: "0.375rem", border: `1px solid ${H.border}`, background: "transparent", color: H.muted, fontSize: "0.6875rem", cursor: "pointer" }}>
                   Cancel
                 </button>
               </div>
@@ -303,25 +303,25 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
             {/* If a file is selected for viewing/editing */}
             {selectedFilePath ? (
               <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-                <div style={{ height: 36, padding: "0 12px", borderBottom: `1px solid ${H.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", background: H.surface }}>
-                  <button type="button" onClick={() => setSelectedFilePath("")} style={{ display: "flex", alignItems: "center", gap: 4, background: "transparent", border: "none", color: H.muted, fontSize: 12, cursor: "pointer" }}>
+                <div style={{ height: "2.25rem", padding: "0 0.75rem", borderBottom: `1px solid ${H.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", background: H.surface }}>
+                  <button type="button" onClick={() => setSelectedFilePath("")} style={{ display: "flex", alignItems: "center", gap: "0.25rem", background: "transparent", border: "none", color: H.muted, fontSize: "0.75rem", cursor: "pointer" }}>
                     <ArrowLeft size={13} /> Back
                   </button>
-                  <span style={{ fontSize: 11, fontFamily: "monospace", color: H.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>
+                  <span style={{ fontSize: "0.6875rem", fontFamily: "monospace", color: H.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "11.25rem" }}>
                     {selectedFilePath}
                   </span>
-                  <button type="button" onClick={() => void saveFile()} disabled={!isDirty || isSaving} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 5, border: "none", background: isDirty ? H.accent : H.chipBg, color: isDirty ? "#fff" : H.muted, fontSize: 11, cursor: isDirty ? "pointer" : "default" }}>
+                  <button type="button" onClick={() => void saveFile()} disabled={!isDirty || isSaving} style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.1875rem 0.5rem", borderRadius: "0.3125rem", border: "none", background: isDirty ? H.accent : H.chipBg, color: isDirty ? "#fff" : H.muted, fontSize: "0.6875rem", cursor: isDirty ? "pointer" : "default" }}>
                     {isSaving ? <LoaderCircle size={11} className="animate-spin" /> : <Save size={11} />}
                     {isSaving ? "Saving" : "Save"}
                   </button>
                 </div>
-                <div style={{ flex: 1, minHeight: 0 }}>
+                <div style={{ flex: 1, minHeight: "0rem" }}>
                   {isLoadingFile ? (
-                    <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: H.muted, fontSize: 12 }}>
+                    <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.375rem", color: H.muted, fontSize: "0.75rem" }}>
                       <LoaderCircle size={14} className="animate-spin" /> Loading file…
                     </div>
                   ) : (
-                    <Suspense fallback={<div style={{ padding: 12, color: H.muted, fontSize: 12 }}>Loading editor…</div>}>
+                    <Suspense fallback={<div style={{ padding: "0.75rem", color: H.muted, fontSize: "0.75rem" }}>Loading editor…</div>}>
                       <Editor
                         height="100%"
                         path={selectedFilePath}
@@ -346,19 +346,19 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
               </div>
             ) : (
               /* File Tree List */
-              <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+              <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem" }}>
                 {!activeSessionId ? (
-                  <div style={{ padding: 16, color: H.muted, fontSize: 12 }}>
+                  <div style={{ padding: "1rem", color: H.muted, fontSize: "0.75rem" }}>
                     No session yet — start a conversation to get a workspace.
                   </div>
                 ) : error ? (
-                  <div style={{ padding: 16, color: H.muted, fontSize: 12 }}>
+                  <div style={{ padding: "1rem", color: H.muted, fontSize: "0.75rem" }}>
                     Couldn't load workspace: {error}
                   </div>
                 ) : tree["."] ? (
                   renderTreeNodes(".")
                 ) : (
-                  <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 6, color: H.muted, fontSize: 12 }}>
+                  <div style={{ padding: "1rem", display: "flex", alignItems: "center", gap: "0.375rem", color: H.muted, fontSize: "0.75rem" }}>
                     <LoaderCircle size={14} className="animate-spin" /> Loading workspace…
                   </div>
                 )}
@@ -368,8 +368,8 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
         )}
 
         {tab === "artifacts" && (
-          <div style={{ padding: 16, textAlign: "center", color: H.muted, fontSize: 12 }}>
-            <Box size={32} style={{ margin: "0 auto 8px", opacity: 0.5 }} />
+          <div style={{ padding: "1rem", textAlign: "center", color: H.muted, fontSize: "0.75rem" }}>
+            <Box size={32} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
             No artifacts generated in this session.
           </div>
         )}
