@@ -84,8 +84,9 @@ def _rebuild_recovery_session_index(session_dir: Path) -> None:
             continue
         title_lower = (session.title or "").lower()
         # Exclude automated verification probes and 0-message empty sessions
+        msg_count = len(session.messages) if session.messages is not None else getattr(session, '_metadata_message_count', 0)
         if (
-            session.message_count == 0
+            msg_count == 0
             or "reply with" in title_lower
             or "ares-hermes-ok" in title_lower
             or "ares-jaeger-ok" in title_lower
