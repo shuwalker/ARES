@@ -29,7 +29,9 @@ def personalities(_identity: Annotated[RequestIdentity, Depends(require_identity
             if isinstance(value, dict):
                 description = str(value.get("description") or "")
             elif isinstance(value, str):
-                description = value[:80] + ("..." if len(value) > 80 else "")
+                # Full text, same as the dict branch — clipping to an arbitrary
+                # width is the UI's call, not the API's (silent truncation).
+                description = value
             items.append({"name": name, "description": description})
     return {"personalities": items}
 
@@ -308,7 +310,9 @@ def legacy_adapters(_identity: Annotated[RequestIdentity, Depends(require_identi
     from api.backends.router import get_router
 
     try:
-        backends = get_router().backends
+        # Inventory lists every registered adapter with an availability flag;
+        # using only the available set silently hid unavailable runtimes.
+        backends = get_router().list_all()
     except Exception as exc:
         raise CoreApiError(400, f"Failed to list ARES adapters: {exc}") from exc
 

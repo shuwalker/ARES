@@ -26,8 +26,8 @@ class _AvailableAdapter(JournaledFrameworkAdapter):
 def test_framework_adapter_calls_the_transport_neutral_turn_starter():
     captured = {}
 
-    def start(session_id, message, *, source):
-        captured.update(session_id=session_id, message=message, source=source)
+    def start(session_id, message, *, source, attachments=None):
+        captured.update(session_id=session_id, message=message, source=source, attachments=attachments)
         return {"stream_id": "stream-1", "session_id": session_id}
 
     adapter = _AvailableAdapter(backend=_Backend(), turn_starter=start)
@@ -41,6 +41,7 @@ def test_framework_adapter_calls_the_transport_neutral_turn_starter():
         "session_id": "session-1",
         "message": "wake up",
         "source": "webui",
+        "attachments": None,
     }
 
 

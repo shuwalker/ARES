@@ -5,7 +5,7 @@ the "/goal" command and its Hermes-native GoalManager). A Mission takes one
 complex prompt, decomposes it into sub-tasks via a direct Anthropic/OpenAI
 call (api/llm_client.py), and dispatches each sub-task either:
   - to the existing Hermes/JROS backends, via an ephemeral sub-session and
-    api.routes.start_session_turn — reuses the full agent loop (tools,
+    api.chat_runtime.start_session_turn — reuses the full agent loop (tools,
     memory, persona) instead of reimplementing turn execution, or
   - directly to Anthropic/OpenAI (api/llm_client.py) for pure-reasoning
     sub-tasks that don't need tool use.
@@ -255,13 +255,13 @@ def _run_agentic_subtask(mission: Dict[str, Any], subtask: Dict[str, Any], backe
 
     Runs in an ephemeral sub-session so the sub-agent's tool calls, memory,
     and transcript don't pollute the user's main chat session, reusing
-    api.routes.start_session_turn — the same HTTP-handler-free entrypoint
+    api.chat_runtime.start_session_turn — the same HTTP-handler-free entrypoint
     background_process.py's Option Z wakeups and api/goals.py's server-side
     goal continuations use to start a turn with no browser round-trip.
     """
     from api.background_process import _session_has_active_turn
     from api.models import get_session, new_session
-    from api.routes import start_session_turn
+    from api.chat_runtime import start_session_turn
 
     sub_session = new_session(profile=mission.get("profile"))
     sub_session.ares_backend = backend

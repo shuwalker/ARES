@@ -23,11 +23,22 @@ class BackendRouter:
 
     def __init__(self):
         self._backends: dict[str, AgenticBackend] = {}
+        # Instances added via register() (hatched workers, plugins). Kept
+        # separately because _refresh() rebuilds _backends from the class
+        # registry — without this, every select() silently dropped them.
+        self._runtime_backends: dict[str, AgenticBackend] = {}
         self._refresh()
 
     def _refresh(self) -> None:
         """Re-scan the registry for available backends."""
-        self._backends = BackendRegistry.get_available()
+        backends = BackendRegistry.get_available()
+        for name, backend in self._runtime_backends.items():
+            try:
+                if backend.is_available():
+                    backends[name] = backend
+            except Exception:
+                continue
+        self._backends = backends
 
     def select(self, requested: str, fallbacks: list[str] | None = None) -> AgenticBackend | None:
         """Select a backend by name, with optional fallback chain.
@@ -65,9 +76,11 @@ class BackendRouter:
 
     def register(self, name: str, backend: AgenticBackend) -> None:
         """Register a backend instance at runtime (plugin pattern)."""
+        self._runtime_backends[name] = backend
         self._backends[name] = backend
 
     def unregister(self, name: str) -> None:
+        self._runtime_backends.pop(name, None)
         self._backends.pop(name, None)
 
     def list_available(self) -> Dict[str, AgenticBackend]:
@@ -78,8 +91,8 @@ class BackendRouter:
     def list_all(self) -> Dict[str, AgenticBackend]:
         """Return all registered backends (available or not)."""
         all_backends = BackendRegistry.get_all()
-        # Merge in any runtime-registered backends
-        for name, backend in self._backends.items():
+        # Merge in any runtime-registered backends (available or not).
+        for name, backend in self._runtime_backends.items():
             if name not in all_backends:
                 all_backends[name] = backend
         return all_backends

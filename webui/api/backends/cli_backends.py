@@ -501,6 +501,7 @@ class AppAutomationBackend(AgenticBackend):
 
 class AntigravityGeminiBackend(AppAutomationBackend):
     name = "gemini_antigravity"
+    display_label = "Gemini (Antigravity IDE)"
 
     def __init__(self):
         super().__init__("Antigravity IDE", ["type_message", "return"])
@@ -508,6 +509,7 @@ class AntigravityGeminiBackend(AppAutomationBackend):
 
 class CursorAppBackend(AppAutomationBackend):
     name = "cursor_app"
+    display_label = "Cursor (app)"
 
     def __init__(self):
         super().__init__("Cursor", ["type_message", "return"])
@@ -515,6 +517,7 @@ class CursorAppBackend(AppAutomationBackend):
 
 class OpenCodeAppBackend(AppAutomationBackend):
     name = "opencode_app"
+    display_label = "OpenCode (app)"
 
     def __init__(self):
         super().__init__("OpenCode", ["type_message", "return"])

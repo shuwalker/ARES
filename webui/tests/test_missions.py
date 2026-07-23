@@ -131,7 +131,7 @@ def test_cancel_mission_ownership_check(monkeypatch):
 def test_run_agentic_subtask_extracts_last_assistant_message(monkeypatch):
     fake_session = SimpleNamespace(id="sub-1", ares_backend=None, title=None, save=lambda: None)
     monkeypatch.setattr("api.models.new_session", lambda **kw: fake_session)
-    monkeypatch.setattr("api.routes.start_session_turn", lambda *a, **kw: {"_status": 200, "stream_id": "s1"})
+    monkeypatch.setattr("api.chat_runtime.start_session_turn", lambda *a, **kw: {"_status": 200, "stream_id": "s1"})
     monkeypatch.setattr("api.background_process._session_has_active_turn", lambda sid: False)
     monkeypatch.setattr(
         "api.models.get_session",
@@ -152,7 +152,7 @@ def test_run_agentic_subtask_raises_on_start_failure(monkeypatch):
     fake_session = SimpleNamespace(id="sub-2", ares_backend=None, title=None, save=lambda: None)
     monkeypatch.setattr("api.models.new_session", lambda **kw: fake_session)
     monkeypatch.setattr(
-        "api.routes.start_session_turn",
+        "api.chat_runtime.start_session_turn",
         lambda *a, **kw: {"_status": 409, "error": "session already has an active stream"},
     )
 

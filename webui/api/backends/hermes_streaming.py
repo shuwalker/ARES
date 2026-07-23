@@ -235,7 +235,11 @@ def run_hermes_streaming(
                 event_id = None
                 if run_journal is not None:
                     try:
-                        event_id = run_journal.append_sse_event(event, data)
+                        # append_sse_event returns the whole journal entry;
+                        # only its event_id string belongs in the SSE id field
+                        # (a dict repr there breaks Last-Event-ID resume).
+                        entry = run_journal.append_sse_event(event, data)
+                        event_id = (entry or {}).get("event_id") or None
                     except Exception:
                         pass
                 if event_id and hasattr(q, "note_last_event_id"):
