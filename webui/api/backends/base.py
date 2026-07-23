@@ -2,6 +2,14 @@
 
 Pure ARES code. Backends are never modified — ARES wraps them.
 Each backend is just {name}_{deployment}. No roles, no opinions.
+
+Streaming contract:
+  Backends that support real-time streaming receive a ``publish`` callable
+  in ``run_turn(**kwargs)``. They call ``publish("token", {"text": chunk})``
+  for each token as it arrives. The bridge in ``run_agentic_backend_streaming``
+  detects streaming by checking if the backend used the publish callback.
+  If the backend did NOT stream (legacy subprocess backends), the bridge
+  publishes the full text as a single token event.
 """
 from __future__ import annotations
 
@@ -26,9 +34,21 @@ def run_agentic_backend_streaming(
     model_provider: str | None = None,
     goal_related: bool = False,
 ) -> None:
-    """Bridge synchronous adapter turns into the canonical stream contract."""
+    """Bridge synchronous adapter turns into the canonical stream contract.
 
-    del workspace, attachments, goal_related
+    Passes a ``publish`` callback to ``backend.run_turn()``. SDK-based
+    backends (OpenAI, Anthropic, Gemini, Hermes proxy) stream tokens in
+    real-time through this callback. Legacy subprocess backends return the
+    full text at once — the bridge detects this and publishes it as a
+    single token event.
+
+    The ``publish`` callback is only passed when the backend's
+    ``get_worker_target()`` indicates it supports streaming (first element
+    of the tuple is this function itself).
+    """
+
+    del workspace, goal_related
+    # attachments are passed through to the backend via run_turn kwargs
     from api.run_journal import RunJournalWriter
     from api.streaming import (
         CANCEL_FLAGS,
@@ -57,7 +77,12 @@ def run_agentic_backend_streaming(
         journal = None
         logger.debug("Could not initialize adapter journal for %s", stream_id, exc_info=True)
 
+    # Track whether the backend streamed tokens via the publish callback
+    _streamed = threading.Event()
+
     def publish(event: str, data: dict) -> None:
+        if event == "token":
+            _streamed.set()
         event_id = None
         if journal is not None:
             try:
@@ -86,15 +111,30 @@ def run_agentic_backend_streaming(
         ) != normalized_message:
             session.messages.append({"role": "user", "content": message, "timestamp": int(time.time())})
             session.save()
+        # ── LangGraph-style history injection ──────────────────────────
+        # The orchestrator (ARES) owns the conversation history, not the
+        # backend. Every backend receives the full message context so that
+        # switching backends between turns preserves continuity.
+        # This mirrors LangGraph's add_messages reducer pattern.
+        from api.conversation_history import build_context_prompt
+
+        context_prompt = build_context_prompt(
+            message,
+            existing,
+            current_backend_id=getattr(backend, "name", None),
+        )
+        # ──────────────────────────────────────────────────────────────
         # Chat / agentic streaming is a pure worker path. Do not inject Companion
         # SI identity prompts here — that belongs on the Companion surface.
         # (ARES_SI_ENABLED still exists for future Companion orchestration.)
         result = backend.run_turn(
-            message,
+            context_prompt,
             session_id,
             model=model,
             model_provider=model_provider,
             cancel_event=cancel_event,
+            publish=publish,  # Pass publish callback for real-time streaming
+            attachments=attachments,  # Pass file attachments to the backend
         )
         if cancel_event.is_set():
             publish("cancel", {"message": "Cancelled by user"})
@@ -112,7 +152,12 @@ def run_agentic_backend_streaming(
             return
         raw_text = (result or {}).get("text")
         text = "" if raw_text is None else str(raw_text)
-        if text:
+
+        # Only publish the full text if the backend did NOT stream it
+        # token-by-token. SDK backends (OpenAI, Anthropic, Gemini, Hermes
+        # proxy) stream via the publish callback — the bridge must not
+        # double-publish.
+        if text and not _streamed.is_set():
             STREAM_PARTIAL_TEXT[stream_id] = text
             publish("token", {"text": text})
 
@@ -121,6 +166,7 @@ def run_agentic_backend_streaming(
                 "role": "assistant",
                 "content": text.strip(),
                 "timestamp": int(time.time()),
+                "backend_id": getattr(backend, "name", None),
             })
         session.save()
         publish("stream_end", {"text": text})

@@ -272,11 +272,15 @@ def _jaeger_roots() -> list[Path]:
         raw = os.environ.get(env_key)
         if raw:
             roots.append(Path(raw).expanduser())
+    # Generic conventional locations only. A maintainer's own clone path must
+    # never be a fallback: it leaks a username into a public repo and is dead
+    # weight for every other user. Point ARES_JAEGER_HOME/JAEGER_HOME at a
+    # non-standard checkout instead.
     roots.extend(
         [
             Path.home() / "jaeger",
-            Path("/Users/matthewjenkins/jaeger"),
-            Path("/Users/matthewjenkins/GitHub/JaegerAI"),
+            Path.home() / ".jaeger",
+            Path.home() / "JaegerAI",
         ]
     )
     # de-dupe existing

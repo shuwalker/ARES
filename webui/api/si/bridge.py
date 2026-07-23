@@ -195,6 +195,10 @@ def si_prepare_message(
         "confidence": confidence,
         "worker": backend_name,
         "sensitivity": sensitivity.value if sensitivity else "personal",
+        # si_turn needs the identity to compose its final response. Carry the
+        # *filtered* briefing's identity so the trust filter is not bypassed —
+        # the raw briefing may hold context this worker's privacy class denies.
+        "si_identity": filtered_briefing.si_identity,
     }
 
 
@@ -286,7 +290,7 @@ def si_turn(
     )
     response = compose_response(
         worker_result=worker_result,
-        si_identity=briefing.si_identity,
+        si_identity=prepared.get("si_identity"),
         intent=intent,
         verification={"verdict": verdict, "checks": checks},
         activity_summary=f"Routed to {backend_name} for {intent}",

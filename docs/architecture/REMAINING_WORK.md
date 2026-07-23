@@ -1,7 +1,7 @@
 # ARES SI — Remaining Implementation Guide
 
 **Branch**: `wip/odysseus-import`
-**Working directory**: `/Users/matthewjenkins/GitHub/ARES/webui`
+**Working directory**: `<repo>/webui`
 
 ---
 

@@ -31,7 +31,7 @@ export default function App() {
           </AuthGate>
         }
       >
-        <Route index element={<Navigate to="/companion" replace />} />
+        <Route index element={<Navigate to="/chat" replace />} />
         {workspaceRoutes.map(({ path, component: Component }) => (
           <Route key={path} path={path} element={<Component />} />
         ))}

@@ -2,24 +2,31 @@
 
 Flat registry of agnostic backends. Each backend is {name}_{deployment}.
 No roles, no opinions. Paperclip pattern.
+
+Backends register themselves via BackendRegistry at import time.
+The router queries the registry for available backends.
 """
 from .base import AgenticBackend
 from .hermes import HermesBackend
 from .jros import JROSBackend
 from .cli_backends import (
     AntigravityGeminiBackend,
-    ClaudeLocalBackend,
-    CodexLocalBackend,
+    BackendRegistry,
+    ClaudeCloudBackend,
     CursorAppBackend,
-    CursorLocalBackend,
-    GeminiLocalBackend,
-    GrokLocalBackend,
     OllamaLocalBackend,
     OpenAICloudBackend,
     OpenCodeAppBackend,
+    XAICloudBackend,
+)
+from .cli_backends_legacy import (
+    ClaudeLocalBackend,
+    CodexLocalBackend,
+    CursorLocalBackend,
+    GeminiLocalBackend,
+    GrokLocalBackend,
     OpenCodeLocalBackend,
     PiLocalBackend,
-    XAICloudBackend,
 )
 from .gemini_cloud import GeminiCloudBackend
 from .ollama_hatchery import HatchedSIBackend, hatchery_autoload
@@ -27,11 +34,12 @@ from .router import get_router, get_default_router, BackendRouter
 
 __all__ = [
     "AgenticBackend",
+    "BackendRegistry",
     "BackendRouter",
     "HermesBackend",
     "JROSBackend",
     "HatchedSIBackend",
-    "AntigravityGeminiBackend",
+    "ClaudeCloudBackend",
     "ClaudeLocalBackend",
     "CodexLocalBackend",
     "CursorAppBackend",
@@ -45,6 +53,7 @@ __all__ = [
     "OpenCodeLocalBackend",
     "PiLocalBackend",
     "XAICloudBackend",
+    "AntigravityGeminiBackend",
     "get_router",
     "get_default_router",
     "hatchery_autoload",

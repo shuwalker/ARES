@@ -275,9 +275,11 @@ class HermesBackend(AgenticBackend):
         if max_turns:
             args.extend(["--max-turns", str(max_turns)])
 
-        # Resume session if we have a previous session ID
+        # Resume session if we have a previous session ID.
+        # NOTE: When ARES injects conversation history into the message
+        # (LangGraph-style), we skip --resume to avoid duplicating context.
         prev_session_id = kwargs.get("prev_session_id")
-        if prev_session_id:
+        if prev_session_id and "--- Previous conversation ---" not in message:
             args.extend(["--resume", prev_session_id])
 
         # Determine working directory
@@ -469,3 +471,105 @@ def _cfg_str(config: dict, key: str) -> str | None:
 def _cfg_int(config: dict, key: str) -> int | None:
     val = config.get(key)
     return int(val) if isinstance(val, (int, float)) else None
+
+
+# ---------------------------------------------------------------------------
+# Hermes Proxy Backend (OpenAI-compatible HTTP, no subprocess)
+# ---------------------------------------------------------------------------
+
+class HermesProxyBackend(AgenticBackend):
+    """Hermes Agent via its OpenAI-compatible HTTP proxy.
+
+    Uses ``hermes proxy start`` to expose an OpenAI-compatible API on
+    localhost:8645 (default). This gives us:
+    - Tool use (structured tool_calls in response)
+    - Model switching per request
+    - Standard SSE streaming
+    - Provider routing (xai, nous, etc.)
+    - No subprocess overhead
+
+    Start the proxy: ``hermes proxy start --provider xai --port 8645``
+    """
+
+    name = "hermes_proxy"
+    supports_tools = True
+    supports_persona = False
+
+    def __init__(self, proxy_url: str = "http://127.0.0.1:8645"):
+        self.proxy_url = proxy_url.rstrip("/")
+
+    def is_available(self) -> bool:
+        try:
+            import urllib.request
+            req = urllib.request.Request(f"{self.proxy_url}/v1/models")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
+    def get_backend_name(self) -> str:
+        return "Hermes Proxy"
+
+    def health(self) -> Dict[str, Any]:
+        if self.is_available():
+            return {"status": "ok", "latency_ms": 0.0, "message": f"Hermes proxy at {self.proxy_url}"}
+        return {"status": "error", "latency_ms": 0.0, "message": f"Hermes proxy not reachable at {self.proxy_url}"}
+
+    def get_status(self) -> Dict[str, Any]:
+        return {"available": self.is_available(), "label": "Hermes Proxy"}
+
+    def capabilities(self) -> Dict[str, Any]:
+        return {"chat": True, "tools": True, "persona": False}
+
+    def chat_session_support(self) -> Dict[str, Any]:
+        return {"streaming": True, "context_window": 128000, "multimodal": True}
+
+    def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
+        if not self.is_available():
+            return {"text": "", "error": "Hermes proxy not running. Start with: hermes proxy start", "tool_activity": []}
+
+        config = kwargs.get("config") or kwargs.get("adapter_config") or {}
+        model = _cfg_str(config, "model") or kwargs.get("model") or "grok-3"
+        cancel_event = kwargs.get("cancel_event")
+        publish = kwargs.get("publish")
+
+        try:
+            import openai
+            client = openai.OpenAI(
+                base_url=f"{self.proxy_url}/v1",
+                api_key="unused",  # Proxy doesn't validate the key
+            )
+
+            if publish:
+                accumulated = ""
+                stream = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": message}],
+                    stream=True,
+                )
+                for chunk in stream:
+                    if cancel_event and hasattr(cancel_event, "is_set") and cancel_event.is_set():
+                        break
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    if delta and delta.content:
+                        accumulated += delta.content
+                        publish("token", {"text": delta.content})
+                return {"text": accumulated, "error": None, "tool_activity": []}
+            else:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": message}],
+                )
+                text = response.choices[0].message.content or ""
+                return {"text": text, "error": None, "tool_activity": []}
+
+        except Exception as exc:
+            logger.exception("Hermes proxy turn failed")
+            return {"text": "", "error": str(exc), "tool_activity": []}
+
+
+# Register with the dynamic backend registry
+from .cli_backends import BackendRegistry  # noqa: E402
+
+BackendRegistry.register(HermesBackend)
+BackendRegistry.register(HermesProxyBackend)

@@ -282,7 +282,16 @@ def _backend_for_session(session: Any):
     backend = router.backends.get(selected)
     if backend:
         return backend
-    raise ValueError(f"Unknown runtime connection: {selected}")
+    # Try fallback chain: if the selected backend is unavailable, try
+    # alternatives in order. This makes the system resilient to single
+    # backend failures.
+    fallbacks = ["hermes_proxy", "ollama_local", "openai_cloud", "claude_cloud", "gemini_cloud"]
+    for name in fallbacks:
+        fb = router.backends.get(name)
+        if fb is not None:
+            logger.info("Fell back from %s to %s for session %s", selected, name, session.session_id[:8])
+            return fb
+    raise ValueError(f"Runtime connection unavailable: {selected} (and no fallbacks available)")
 
 
 def start_session_turn(
@@ -426,12 +435,26 @@ def start_session_turn(
     if goal_related:
         STREAM_GOAL_RELATED[stream_id] = True
 
+    # ── LangGraph-style history injection ──────────────────────────────
+    # Inject full conversation history into the message so every worker
+    # (Hermes, JROS, etc.) sees the complete context, even when the
+    # backend changed between turns.
+    from api.conversation_history import build_context_prompt
+
+    existing_messages = list(getattr(session, "messages", None) or [])
+    context_message = build_context_prompt(
+        clean_message,
+        existing_messages,
+        current_backend_id=getattr(selected_backend, "name", None),
+    )
+    # ───────────────────────────────────────────────────────────────────
+
     worker_target, _is_gateway, _is_jros = selected_backend.get_worker_target()
     worker = threading.Thread(
         target=worker_target,
         args=(
             session.session_id,
-            clean_message,
+            context_message,
             effective_model,
             effective_workspace,
             stream_id,

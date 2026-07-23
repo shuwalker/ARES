@@ -187,6 +187,13 @@ def test_characters_list_api_endpoint_handles_missing_jros_dir(monkeypatch):
     from fastapi_app.main import create_app
 
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    # Force the missing-dir condition. Previously this test only relied on
+    # ARES_JROS_DIR being unset in the ambient environment, so it passed on a
+    # machine without JaegerAI and failed on one with a real checkout.
+    def _no_jros():
+        raise RuntimeError("ARES_JROS_DIR is not set")
+
+    monkeypatch.setattr("api.characters.list_characters", _no_jros)
     with TestClient(create_app()) as client:
         response = client.get("/api/ares/characters")
 
@@ -200,6 +207,12 @@ def test_character_detail_api_endpoint_handles_missing_jros_dir(monkeypatch):
     from fastapi_app.main import create_app
 
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    # Same isolation as the list test: assert the missing-dir error path, not
+    # whatever JaegerAI happens to be installed on the runner.
+    def _no_jros(_char_id):
+        raise RuntimeError("ARES_JROS_DIR is not set")
+
+    monkeypatch.setattr("api.characters.get_character", _no_jros)
     with TestClient(create_app()) as client:
         response = client.get("/api/ares/character?id=test-character")
 

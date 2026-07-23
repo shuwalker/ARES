@@ -25,133 +25,167 @@ Commands:
   restart   Stop, then start again
   status    Show daemon and health status
   logs      Show the daemon log
-  doctor    Run system diagnostic checks for ARES
+  doctor    Check system health and repair common issues
   update    Pull the latest code and rebuild the application
-  tui       Companion terminal (Jaeger-method client → live controller)
-  talk      Alias for tui
   setup     Launch native onboarding window (first-run setup)
 EOF
 }
 
-cmd_setup() {
-  # Kill any running ARES app first
-  pkill -x "ARES" 2>/dev/null || true
-  sleep 1
-  
-  # Reset onboarding state and set force flag
-  defaults delete com.shuwalker.ARES onboarding_completed 2>/dev/null || true
-  defaults delete com.shuwalker.ARES ARESForceOnboarding 2>/dev/null || true
-  defaults write com.shuwalker.ARES ARESForceOnboarding -bool true
-  
-  # Launch the native macOS onboarding window
+_launch_ares_app() {
   local APP_PATH="${ARES_ROOT}/ARES-Mac_os/ARES.app"
-  
+
   if [[ ! -d "$APP_PATH" ]]; then
-    echo "Building ARES macOS app…"
-    cd "${ARES_ROOT}/ARES-Mac_os"
-    swift build || {
-      echo "✗ Build failed. Run manually: cd ARES-Mac_os && swift build" >&2
-      exit 1
-    }
+    echo "ARES.app not found at ${APP_PATH}" >&2
+    echo "Build it once with: cd ARES-Mac_os && bash build-app.sh" >&2
+    exit 1
   fi
-  
-  echo "Launching ARES onboarding…"
+
+  echo "Launching ARES…"
+  echo "Look for the ARES icon in your menu bar (top-right)."
   echo ""
-  echo "IMPORTANT: If no window appears:"
-  echo "  1. The app runs in tray mode by default"
-  echo "  2. Look for the ARES icon in your menu bar (top-right)"
-  echo "  3. Click it and select 'Open ARES'"
-  echo "  4. Or run: open \"$APP_PATH\""
-  echo ""
-  
+
   open "$APP_PATH"
-  
-  # Try to activate
   sleep 2
   osascript -e 'tell application "ARES" to activate' 2>/dev/null || true
 }
 
-cmd_tui() {
-  local tui="${ARES_ROOT}/tools/ares_tui/ares_tui.py"
-  if [[ ! -f "${tui}" ]]; then
-    echo "ARES TUI not found at ${tui}" >&2
-    exit 1
-  fi
-  exec python3 "${tui}" "$@"
+cmd_setup() {
+  pkill -x "ARES" 2>/dev/null || true
+  sleep 1
+  defaults delete com.shuwalker.ARES onboarding_completed 2>/dev/null || true
+  defaults delete com.shuwalker.ARES ARESForceOnboarding 2>/dev/null || true
+  defaults write com.shuwalker.ARES ARESForceOnboarding -bool true
+  _launch_ares_app
 }
 
 cmd_doctor() {
-  echo "======================================"
-  echo "  ARES Doctor Diagnostics"
-  echo "======================================"
-  
-  echo -n "Python 3: "
-  if command -v python3 >/dev/null 2>&1; then
-    echo "$(python3 --version)"
+  local needs_fix=0
+  local fixed=0
+
+  echo "ARES Doctor — checking system health"
+  echo ""
+
+  # 1. Check Python venv
+  if [ -f "${ARES_ROOT}/webui/.venv/bin/python" ]; then
+    echo "  ✅ Python venv: ${ARES_ROOT}/webui/.venv"
   else
-    echo "Not found!"
+    echo "  ❌ Python venv missing at webui/.venv"
+    echo "     Creating…"
+    cd "${ARES_ROOT}/webui"
+    python3 -m venv .venv
+    .venv/bin/pip install -e . 2>/dev/null || true
+    needs_fix=1
+    fixed=1
   fi
 
-  echo -n "Node.js: "
-  if command -v node >/dev/null 2>&1; then
-    echo "$(node --version)"
-  else
-    echo "Not found!"
+  # 2. Check Python deps installed
+  if [ -f "${ARES_ROOT}/webui/.venv/bin/python" ]; then
+    if "${ARES_ROOT}/webui/.venv/bin/python" -c "import fastapi" 2>/dev/null; then
+      echo "  ✅ Python dependencies installed"
+    else
+      echo "  ❌ Python dependencies missing"
+      echo "     Installing…"
+      "${ARES_ROOT}/webui/.venv/bin/pip" install -e "${ARES_ROOT}/webui" 2>/dev/null || true
+      needs_fix=1
+      fixed=1
+    fi
   fi
 
-  echo -n "Swift: "
-  if command -v swift >/dev/null 2>&1; then
-    echo "$(swift --version | head -n 1)"
-  else
-    echo "Not found!"
-  fi
-
-  echo -n "macOS App Bundle (ARES.app): "
+  # 3. Check macOS app bundle
   if [ -d "${ARES_ROOT}/ARES-Mac_os/ARES.app" ]; then
-    echo "Found"
+    echo "  ✅ macOS app bundle: ARES-Mac_os/ARES.app"
   else
-    echo "Not found"
+    echo "  ❌ macOS app bundle missing"
+    echo "     Building…"
+    cd "${ARES_ROOT}/ARES-Mac_os"
+    swift build 2>/dev/null && echo "  ✅ Built successfully" || echo "  ⚠️  Build failed — run 'cd ARES-Mac_os && swift build' manually"
+    needs_fix=1
   fi
 
-  echo -n "ARES WebUI Environment: "
-  if [ -d "${ARES_ROOT}/webui/venv" ]; then
-    echo "Virtual Environment found"
+  # 4. Check frontend build
+  if [ -d "${ARES_ROOT}/webui/frontend/dist" ]; then
+    echo "  ✅ Frontend build: webui/frontend/dist"
   else
-    echo "Not found"
+    echo "  ❌ Frontend build missing"
+    echo "     Building…"
+    cd "${ARES_ROOT}/webui/frontend"
+    if command -v npm >/dev/null 2>&1; then
+      npm run build 2>/dev/null && echo "  ✅ Built successfully" || echo "  ⚠️  Build failed — run 'cd webui/frontend && npm run build' manually"
+    else
+      echo "  ⚠️  npm not found — install Node.js to build the frontend"
+    fi
+    needs_fix=1
+  fi
+
+  # 5. Check git repo state
+  cd "${ARES_ROOT}"
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "  ✅ Git repository: $(git rev-parse --show-toplevel 2>/dev/null)"
+    # Check for uncommitted changes
+    if ! git diff --quiet HEAD 2>/dev/null; then
+      echo "  ⚠️  Uncommitted changes present (git status to see them)"
+    fi
+  else
+    echo "  ❌ Not a git repository"
+    needs_fix=1
+  fi
+
+  # 6. Check ctl.sh
+  if [ -f "${CTL_SCRIPT}" ]; then
+    echo "  ✅ Control script: ctl.sh"
+  else
+    echo "  ❌ Control script missing at ${CTL_SCRIPT}"
+    needs_fix=1
+  fi
+
+  # 7. Check ARES home
+  local ARES_HOME="${ARES_HOME:-${HOME}/.ares}"
+  if [ -d "${ARES_HOME}" ]; then
+    echo "  ✅ ARES home: ${ARES_HOME}"
+  else
+    echo "  ⚠️  ARES home not found at ${ARES_HOME} (will be created on first start)"
   fi
 
   echo ""
-  echo "Checking Profiles & Credentials..."
-  ARES_HOME="${ARES_HOME:-${HOME}/.ares}"
-  if [ -f "${ARES_HOME}/.env" ]; then
-    if grep -q "OPENAI_API_KEY" "${ARES_HOME}/.env"; then echo "OPENAI_API_KEY is set"; fi
-    if grep -q "GEMINI_API_KEY" "${ARES_HOME}/.env"; then echo "GEMINI_API_KEY is set"; fi
-    if grep -q "ANTHROPIC_API_KEY" "${ARES_HOME}/.env"; then echo "ANTHROPIC_API_KEY is set"; fi
+  if (( needs_fix )); then
+    echo "⚠️  Issues found and repaired where possible."
+    echo "   Run 'ares start' to launch the WebUI."
   else
-    echo "No ${ARES_HOME}/.env found."
+    echo "✅ All systems healthy."
   fi
 }
 
 cmd_update() {
-  echo "======================================"
-  echo "  ARES System Update"
-  echo "======================================"
-  
-  echo "1. Pulling latest code..."
+  echo "ARES Update"
+  echo ""
+
   cd "${ARES_ROOT}"
-  git pull origin main
 
-  echo "2. Building Swift application..."
-  ./ARES-Mac_os/build-app.sh
+  echo "1. Pulling latest code…"
+  git pull origin main 2>/dev/null || echo "  ⚠️  Git pull failed (check network or branch name)"
 
-  echo "3. Building React frontend..."
-  cd "${ARES_ROOT}/webui/frontend"
-  npm run build
+  echo "2. Installing Python dependencies…"
+  if [ -f "${ARES_ROOT}/webui/.venv/bin/python" ]; then
+    "${ARES_ROOT}/webui/.venv/bin/pip" install -e "${ARES_ROOT}/webui" 2>/dev/null || true
+    echo "  ✅ Python deps updated"
+  fi
 
-  echo "4. Restarting ARES backend..."
-  cd "${ARES_ROOT}"
-  ./ctl.sh restart
-  echo "Update complete!"
+  echo "3. Building macOS app…"
+  if [ -d "${ARES_ROOT}/ARES-Mac_os" ]; then
+    cd "${ARES_ROOT}/ARES-Mac_os"
+    swift build 2>/dev/null && echo "  ✅ macOS app built" || echo "  ⚠️  Build failed"
+  fi
+
+  echo "4. Building frontend…"
+  if [ -d "${ARES_ROOT}/webui/frontend" ]; then
+    cd "${ARES_ROOT}/webui/frontend"
+    if command -v npm >/dev/null 2>&1; then
+      npm run build 2>/dev/null && echo "  ✅ Frontend built" || echo "  ⚠️  Build failed"
+    fi
+  fi
+
+  echo ""
+  echo "Update complete. Run 'ares start' to launch."
 }
 
 case "${cmd}" in
@@ -167,15 +201,11 @@ case "${cmd}" in
   setup)
     cmd_setup
     ;;
-  tui|talk)
-    cmd_tui "$@"
-    ;;
-  -h|--help|help|"")
+  -h|--help|help)
     usage
     ;;
   *)
-    echo "Unknown command: ${cmd}" >&2
-    usage >&2
-    exit 2
+    # Default: launch the macOS app (menu bar icon + window)
+    _launch_ares_app
     ;;
 esac

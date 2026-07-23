@@ -499,7 +499,15 @@ function BackendGroup({
 // ─────────────────────────────────────────────────────────────
 // Main ControlDeck
 // ─────────────────────────────────────────────────────────────
-export function ControlDeck() {
+export function ControlDeck({
+  onNavigate,
+  onSessionOpened,
+}: {
+  /** Called after a mode/route NavLink is activated (close mobile drawer). */
+  onNavigate?: () => void;
+  /** Called after a session is selected or a new chat is created. */
+  onSessionOpened?: () => void;
+} = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile } = useLocalProfile();
@@ -512,13 +520,17 @@ export function ControlDeck() {
       if (!location.pathname.startsWith("/chat") && !location.pathname.startsWith("/conversation")) {
         navigate("/chat");
       }
+      onSessionOpened?.();
     },
-    [location.pathname, navigate, selectSession],
+    [location.pathname, navigate, selectSession, onSessionOpened],
   );
 
   const openNewChat = useCallback(() => {
-    void createSession().then(() => navigate("/chat"));
-  }, [createSession, navigate]);
+    void createSession().then(() => {
+      navigate("/chat");
+      onSessionOpened?.();
+    });
+  }, [createSession, navigate, onSessionOpened]);
   const activeSection = navigationSections.find(({ id }) => id === activeMode);
   const routes = useMemo(
     () =>
@@ -870,7 +882,7 @@ export function ControlDeck() {
   );
 
   return (
-    <div className="flex h-full min-h-0 bg-[#111210] text-[#ecebe4] relative">
+    <div className="relative flex h-full min-h-0 bg-[#111210] text-[#ecebe4]">
       {/* ── Icon rail ── */}
       <nav
         className="flex w-14 shrink-0 flex-col items-center border-r border-[#343631] py-3"
@@ -878,6 +890,7 @@ export function ControlDeck() {
       >
         <NavLink
           to="/companion"
+          onClick={() => onNavigate?.()}
           className="mb-5 grid size-8 place-items-center rounded bg-[#ecebe4] text-[#111210]"
           aria-label="Companion home"
         >
@@ -888,10 +901,11 @@ export function ControlDeck() {
             <NavLink
               key={id}
               to={to}
+              onClick={() => onNavigate?.()}
               aria-label={label}
               title={label}
               className={cn(
-                "relative grid size-9 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4]",
+                "relative grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4] sm:size-9",
                 activeMode === id &&
                   "bg-[#292b28] text-[#faf9f3] before:absolute before:-left-2.5 before:h-5 before:w-0.5 before:bg-[#d7d6ce]",
               )}
@@ -902,11 +916,12 @@ export function ControlDeck() {
         </div>
         <NavLink
           to="/settings"
+          onClick={() => onNavigate?.()}
           aria-label="App settings"
           title="App settings — profile, theme, WebUI & Mac"
           className={({ isActive }) =>
             cn(
-              "mt-auto grid size-9 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4]",
+              "mt-auto grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4] sm:size-9",
               isActive && "bg-[#292b28] text-[#faf9f3]",
             )
           }
@@ -1198,9 +1213,10 @@ export function ControlDeck() {
                     <NavLink
                       key={to}
                       to={to}
+                      onClick={() => onNavigate?.()}
                       className={({ isActive }) =>
                         cn(
-                          "flex items-center gap-2.5 rounded-sm px-2.5 py-2 text-xs text-[#92948b] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4]",
+                          "flex min-h-11 items-center gap-2.5 rounded-sm px-2.5 py-2 text-xs text-[#92948b] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4]",
                           isActive && "bg-[#292b28] text-[#faf9f3]",
                         )
                       }

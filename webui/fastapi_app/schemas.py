@@ -385,6 +385,16 @@ class WorkspaceEntriesResponse(ExtensibleResponse):
     signature: str | None = None
 
 
+class ChatAttachment(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str = Field(min_length=1, max_length=512)
+    path: str = Field(min_length=1, max_length=4096)
+    mime: str = Field(default="", max_length=256)
+    size: int | None = Field(default=None, ge=0)
+    is_image: bool = False
+
+
 class ChatStart(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -395,6 +405,7 @@ class ChatStart(BaseModel):
     connection_id: str | None = Field(default=None, max_length=128)
     workspace: str | None = Field(default=None, max_length=4096)
     profile: str | None = Field(default=None, max_length=80)
+    attachments: list[ChatAttachment] | None = Field(default=None)
 
     @field_validator("message")
     @classmethod

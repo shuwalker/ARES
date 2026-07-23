@@ -33,6 +33,7 @@ import {
 
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
+import { aresApi } from "@/shared/ares-api";
 import { useWorkbenchPanel } from "@/shared/workbench-panel";
 import { apiFetch, readableError } from "@/shared/api-client";
 
@@ -172,6 +173,30 @@ export function ConversationPage() {
   const [wsSearchQuery, setWsSearchQuery] = useState("");
   const [backendSearchQuery, setBackendSearchQuery] = useState("");
 
+  // Composer / transcript prefs from App Settings (agent-agnostic server keys).
+  const [sendKey, setSendKey] = useState<"enter" | "ctrl+enter" | "shift+enter">("enter");
+  const [hideSuggestions, setHideSuggestions] = useState(false);
+  const [autoFollow, setAutoFollow] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void aresApi
+      .settingsGet()
+      .then((raw) => {
+        if (cancelled) return;
+        const key = String(raw.send_key || "enter");
+        if (key === "ctrl+enter" || key === "shift+enter" || key === "enter") setSendKey(key);
+        setHideSuggestions(Boolean(raw.hide_empty_state_suggestions));
+        setAutoFollow(raw.auto_scroll_follow !== false);
+      })
+      .catch(() => {
+        /* keep defaults */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const copiedTimer = useRef<number | undefined>(undefined);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -234,9 +259,10 @@ export function ConversationPage() {
   useEffect(() => {
     const el = transcriptRef.current;
     if (!el) return;
+    if (!autoFollow) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     if (nearBottom || streamText) el.scrollTo({ top: el.scrollHeight, behavior: streamText ? "auto" : "smooth" });
-  }, [currentSession?.messages.length, streamText, streamReasoning, streamTools, streamState]);
+  }, [currentSession?.messages.length, streamText, streamReasoning, streamTools, streamState, autoFollow]);
 
   const onScroll = useCallback(() => {
     const el = transcriptRef.current;
@@ -285,14 +311,11 @@ export function ConversationPage() {
 
   const submit = useCallback(async (event: FormEvent) => {
     event.preventDefault();
-    let message = draft.trim();
+    const message = draft.trim();
     if (!message && attachedFiles.length === 0) return;
     if (isBusy || isReadOnlyCli) return;
 
-    if (attachedFiles.length > 0) {
-      const fileNames = attachedFiles.map((f) => f.name).join(", ");
-      message = `[Attached files: ${fileNames}]\n\n${message}`;
-    }
+    const files = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
     setDraft("");
     setAttachedFiles([]);
@@ -307,18 +330,28 @@ export function ConversationPage() {
       model: selectedModel || undefined,
       provider: selectedModelProvider || undefined,
       workspace,
+      files,
     });
   }, [
     draft, attachedFiles, isBusy, isReadOnlyCli, sendMessage, selectedBackend,
     selectedModel, selectedModelProvider, workspaceOverride, currentSession, snapshot.workspaces,
   ]);
 
-  const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+  const handleComposerKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+      const wantsSend =
+        sendKey === "enter"
+          ? !event.shiftKey && !event.ctrlKey && !event.metaKey
+          : sendKey === "ctrl+enter"
+            ? event.ctrlKey || event.metaKey
+            : event.shiftKey; // shift+enter
+      if (!wantsSend) return;
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
-    }
-  }, []);
+    },
+    [sendKey],
+  );
 
   const copyLastResponse = useCallback(async () => {
     const lastAssistant = [...(currentSession?.messages || [])].reverse().find((m) => m.role !== "user")?.text;
@@ -440,13 +473,17 @@ export function ConversationPage() {
   }, [snapshot.workspaces, currentSession?.workspace]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: H.bg, color: H.text, position: "relative" }}>
+    <div
+      className="conversation-page"
+      style={{ display: "flex", flexDirection: "column", height: "100%", background: H.bg, color: H.text, position: "relative" }}
+    >
 
-      {/* Hidden file input for Attach button */}
+      {/* Hidden file input for Attach button — accepts images and other files */}
       <input
         ref={fileInputRef}
         type="file"
         multiple
+        accept="image/*,.pdf,.txt,.py,.js,.ts,.tsx,.md,.json,.yaml,.csv"
         style={{ display: "none" }}
         onChange={(e) => {
           if (e.target.files) {
@@ -472,7 +509,7 @@ export function ConversationPage() {
               Ask anything, run commands, explore files, or manage your scheduled tasks.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 520 }}>
-              {[
+              {!hideSuggestions && [
                 { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>, text: "What files are in this workspace?" },
                 { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/></svg>, text: "What's on my schedule today?" },
                 { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>, text: "Help me plan a small project." },
@@ -490,7 +527,7 @@ export function ConversationPage() {
           </div>
         ) : (
           /* Messages */
-          <div style={{ maxWidth: 760, margin: "0 auto", width: "100%", padding: "28px 24px 120px", display: "flex", flexDirection: "column", gap: 22 }}>
+          <div className="conversation-messages" style={{ maxWidth: "min(760px, 100%)", margin: "0 auto", width: "100%", padding: "28px 16px 120px", display: "flex", flexDirection: "column", gap: 22 }}>
             {(currentSession?.messages || []).map((message) => {
               const isUser = message.role === "user";
               return (
@@ -560,7 +597,7 @@ export function ConversationPage() {
       </div>
 
       {/* COMPOSER */}
-      <div style={{ flexShrink: 0, padding: "0 16px 14px", background: H.bg, position: "relative", zIndex: 10 }}>
+      <div className="conversation-composer" style={{ flexShrink: 0, padding: "0 16px 14px", background: H.bg, position: "relative", zIndex: 10 }}>
 
         {/* Approval card */}
         {showApproval && (
@@ -635,7 +672,7 @@ export function ConversationPage() {
           </div>
         )}
 
-        <form onSubmit={(e) => void submit(e)} style={{ maxWidth: 740, margin: "0 auto" }}>
+        <form onSubmit={(e) => void submit(e)} style={{ maxWidth: "min(740px, 100%)", margin: "0 auto" }}>
           <div style={{ borderRadius: 14, border: `1px solid ${H.inputBorder}`, background: H.inputBg, boxShadow: "0 2px 16px rgba(0,0,0,0.35)", transition: "border-color 0.2s" }}>
 
             {/* Attached files tray */}
@@ -678,8 +715,8 @@ export function ConversationPage() {
               onInput={(e) => { const el = e.currentTarget; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 180) + "px"; }}
             />
 
-            {/* Toolbar */}
-            <div style={{ display: "flex", alignItems: "center", padding: "4px 8px 8px", gap: 3, flexWrap: "wrap" }}>
+            {/* Toolbar — scrolls horizontally on narrow viewports (Hermes cf-burger pattern) */}
+            <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "4px 8px 8px", gap: 3, flexWrap: "wrap" }}>
               <IconBtn title="Attach files" onClick={() => fileInputRef.current?.click()}><Paperclip size={15} /></IconBtn>
               <IconBtn title="Saved prompts" onClick={() => setShowSavedPrompts(!showSavedPrompts)}><Bookmark size={15} /></IconBtn>
               <IconBtn title="Dictate" onClick={toggleDictation}>

@@ -52,10 +52,10 @@ def _provider_probe_health(
     )
 
 
-def _default_turn_starter(session_id: str, message: str, *, source: str) -> dict[str, Any]:
+def _default_turn_starter(session_id: str, message: str, *, source: str, attachments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     from api.chat_runtime import start_session_turn
 
-    return dict(start_session_turn(session_id, message, source=source) or {})
+    return dict(start_session_turn(session_id, message, source=source, attachments=attachments) or {})
 
 
 class JournaledFrameworkAdapter(BaseLLMAdapter):
@@ -112,6 +112,7 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
                 str(getattr(session, "session_id", request.session_id)),
                 request.message,
                 source="webui",
+                attachments=[att.model_dump() for att in request.attachments] if request.attachments else None,
             )
             or {}
         )

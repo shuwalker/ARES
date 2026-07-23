@@ -60,7 +60,7 @@ enum ARESDestination: String, CaseIterable, Identifiable, Hashable {
 struct ARESProductShell: View {
     @ObservedObject private var serverManager = WebUIServerManager.shared
     @ObservedObject private var config = ARESConfiguration.shared
-    @State private var selection: ARESDestination? = .home
+    @State private var selection: ARESDestination? = .chat
     @State private var readiness: ARESControllerClient.Readiness?
     @State private var connections: [ARESControllerClient.ConnectionRecord] = []
     @State private var lastError: String?

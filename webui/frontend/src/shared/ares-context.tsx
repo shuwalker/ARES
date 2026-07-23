@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { readableError } from "@/shared/api-client";
+import { uploadFile } from "@/shared/api-client";
 import { aresApi } from "@/shared/ares-api";
 import {
   subscribeToChatStream,
@@ -52,6 +53,7 @@ interface AresContextValue {
       model?: string;
       provider?: string;
       workspace?: string;
+      files?: File[];
     },
   ) => Promise<void>;
   cancelResponse: () => Promise<void>;
@@ -321,6 +323,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       model?: string;
       provider?: string;
       workspace?: string;
+      files?: File[];
     },
   ) => {
     // Back-compat: older callers passed backendId as the second arg string.
@@ -328,7 +331,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       ? { backendId: options as string }
       : (options || {});
     const clean = message.trim();
-    if (!clean || streamState !== "idle" || sendInFlight.current) return;
+    if (!clean && (!opts.files || opts.files.length === 0) || streamState !== "idle" || sendInFlight.current) return;
     sendInFlight.current = true;
     const generation = ++streamGeneration.current;
     setChatNotice("");
@@ -348,9 +351,23 @@ export function AresProvider({ children }: { children: ReactNode }) {
         workspace: opts.workspace || sessionBase.workspace,
         backendId: effectiveBackend || sessionBase.backendId,
       };
+      // Upload files first, then pass attachment metadata to startChat
+      let attachments: Array<{ name: string; path: string; mime: string; size?: number; is_image?: boolean }> | undefined;
+      if (opts.files && opts.files.length > 0) {
+        const results = await Promise.all(
+          opts.files.map((file) => uploadFile(session.id, file)),
+        );
+        attachments = results.map((r) => ({
+          name: r.filename,
+          path: r.path,
+          mime: r.mime,
+          size: r.size,
+          is_image: r.is_image,
+        }));
+      }
       const optimistic: ConversationMessage = { id: `local-${Date.now()}`, role: "user", text: clean, createdAt: new Date().toISOString() };
       setCurrentSession({ ...session, messages: [...session.messages, optimistic] });
-      const started = await aresApi.startChat(session.id, clean, session, effectiveBackend);
+      const started = await aresApi.startChat(session.id, clean, session, effectiveBackend, attachments);
       if (generation !== streamGeneration.current) return;
       attachStream(started.stream_id, session.id);
     } catch (error) {

@@ -151,6 +151,10 @@ def test_legacy_adapter_inventory_handles_app_automation_backends(app, monkeypat
     # abort the entire inventory while resolving its identity projection.
     monkeypatch.setenv("ARES_JROS_INSTANCE", "inventory-test")
     monkeypatch.delenv("ARES_JROS_DIR", raising=False)
+    # jros_local availability comes from the gateway, not the source checkout,
+    # so point it at an unreachable port. Without this the test asserted
+    # "unavailable" while passing only on machines with no JaegerAI running.
+    monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     response = request(app, "GET", "/api/ares/adapters")
 
     assert response.status_code == 200, response.text

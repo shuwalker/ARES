@@ -135,6 +135,7 @@ def _finish_hermes_stream(
                         "role": "assistant",
                         "content": accumulated_text.strip(),
                         "timestamp": int(time.time()),
+                        "backend_id": "hermes_local",
                     })
                 if getattr(session, "active_stream_id", None) == stream_id:
                     session.active_stream_id = None
@@ -275,9 +276,20 @@ def run_hermes_streaming(
         "-m", effective_model, "--provider", effective_provider,
     ]
 
-    # Resume session if we have a previous hermes session ID
+    # Attach images if provided
+    if attachments:
+        for att in attachments:
+            path = att.get("path", "") if isinstance(att, dict) else ""
+            mime = att.get("mime", "") if isinstance(att, dict) else ""
+            if path and mime.startswith("image/"):
+                args.extend(["--image", path])
+
+    # Resume session if we have a previous hermes session ID.
+    # NOTE: When ARES injects conversation history into the message
+    # (LangGraph-style), we skip --resume to avoid duplicating context.
+    # The orchestrator owns the history, not the model.
     hermes_session_id = _get_hermes_session_id(session_id)
-    if hermes_session_id:
+    if hermes_session_id and "--- Previous conversation ---" not in msg_text:
         args.extend(["--resume", hermes_session_id])
 
     effective_workspace = workspace or os.path.expanduser("~")

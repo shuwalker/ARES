@@ -34,6 +34,18 @@ The Companion is the control plane + unified memory + technical intelligence.
 
 Mac-first, not Mac-only. Surfaces must not become incompatible products.
 
+### Runtime architecture
+
+How the running system works — process topology, the two-store model, the chat
+round trip, and inherited assumptions still outstanding — is documented in
+[docs/architecture/RUNTIME.md](../docs/architecture/RUNTIME.md). Decisions with
+their reasoning live in [docs/architecture/decisions/](../docs/architecture/decisions/).
+
+Two load-bearing rules from those documents: ARES invokes workers as
+**subprocesses** and never absorbs their execution loop, and ARES **never writes
+another app's store** — a worker session is continued by asking the worker to
+resume it.
+
 ### Product surfaces (UI domains)
 
 Primary navigation and domain boundaries live in

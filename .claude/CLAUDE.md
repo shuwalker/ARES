@@ -82,6 +82,25 @@ Prefer configured providers first, native fallbacks second, dummies only when ex
 
 See `docs/product-vision.md` for the locked product decisions.
 
+## Runtime architecture
+
+Before changing session storage, streaming, worker invocation, or session
+provenance, read [docs/architecture/RUNTIME.md](../docs/architecture/RUNTIME.md)
+and the ADRs in [docs/architecture/decisions/](../docs/architecture/decisions/).
+
+Non-negotiable runtime rules:
+
+- ARES **never writes another app's store**. Read worker databases with a
+  read-only SQLite URI (`?mode=ro`); continuation happens by asking the worker
+  to resume its own session.
+- `ARES_HOME/state.db` normally does not exist. Do not add callers of
+  `_active_state_db_path()`; use `_agent_state_db_path()` to read worker history.
+- Resolve every external path through `api/journal/paths.py` so the
+  `HERMES_HOME` / `CLAUDE_HOME` / `CODEX_HOME` / `GEMINI_HOME` overrides apply.
+- Never branch on a display string (`source_label`); branch on machine values.
+- If code caps or truncates a listing, report what it dropped — silent
+  truncation reads to the user as "there is nothing more".
+
 ## Code quality standards
 
 - Write production-quality, tested code.

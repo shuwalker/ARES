@@ -179,12 +179,22 @@ class JROSBackend(AgenticBackend):
         model_id = default.get("model")
         provider = default.get("provider")
 
-        gateway_url = "http://127.0.0.1:8643"
+        # Use the shared resolver so ARES_JROS_GATEWAY_URL is honoured here too.
+        # This path previously read only the schema default, so a gateway
+        # configured on another host was silently ignored and probes went to
+        # localhost.
+        try:
+            from api.jros_gateway_chat import DEFAULT_JROS_GATEWAY_URL, jros_gateway_base_url
+
+            gateway_url = jros_gateway_base_url() or DEFAULT_JROS_GATEWAY_URL
+        except Exception:
+            gateway_url = "http://127.0.0.1:8643"
         try:
             schema = self.settings_schema()
             props = (schema.get("properties") or {})
             default_url = (props.get("jros_gateway_url") or {}).get("default")
-            if isinstance(default_url, str) and default_url.strip():
+            # Schema default only fills in when nothing else resolved a URL.
+            if not gateway_url and isinstance(default_url, str) and default_url.strip():
                 gateway_url = default_url.strip()
         except Exception:
             pass
@@ -272,3 +282,9 @@ class JROSBackend(AgenticBackend):
                 ),
             }
         )
+
+
+# Register with the dynamic backend registry
+from .cli_backends import BackendRegistry  # noqa: E402
+
+BackendRegistry.register(JROSBackend)
