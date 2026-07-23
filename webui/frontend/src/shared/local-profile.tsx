@@ -16,7 +16,7 @@ const storageKey = (profileScope: string) => `${LEGACY_STORAGE_KEY}:${encodeURIC
 
 export const DEFAULT_LOCAL_PROFILE: LocalProfile = {
   displayName: "",
-  assistantName: "Ares",
+  assistantName: "Jaeger AI",
   voice: "system-default",
   reachability: "this-device",
   setupMode: "quick",
