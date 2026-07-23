@@ -13,6 +13,11 @@ const SelfPage = lazy(async () => {
   return { default: mod.SelfPage };
 });
 
+const ActivationScreen = lazy(async () => {
+  const mod = await import("@/pages/ActivationScreen");
+  return { default: mod.ActivationScreen };
+});
+
 /**
  * Canonical ARES WebUI entry (ARES = app name only).
  *
@@ -24,6 +29,18 @@ export default function App() {
   return (
     <Routes>
       <Route path="share/:token" element={<SharePage />} />
+      {/* Full-window SI character/activation wizard — linked from the
+          Companion surface; lives outside the AppShell chrome on purpose. */}
+      <Route
+        path="activation"
+        element={
+          <AuthGate>
+            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading wizard…</div>}>
+              <ActivationScreen />
+            </Suspense>
+          </AuthGate>
+        }
+      />
       <Route
         element={
           <AuthGate>

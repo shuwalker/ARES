@@ -2,8 +2,6 @@ import {
   Plus,
   Folder,
   RefreshCw,
-  Download,
-  MoreVertical,
   X,
   FileCode,
   Box,
@@ -225,12 +223,6 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
           <button type="button" title="Refresh files" onClick={() => void loadDirectory(".")} style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}>
             <RefreshCw size={14} />
           </button>
-          <button type="button" title="Export workspace" onClick={() => alert("Workspace exported.")} style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}>
-            <Download size={14} />
-          </button>
-          <button type="button" title="More options" onClick={() => {}} style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}>
-            <MoreVertical size={14} />
-          </button>
           <div style={{ width: 1, height: 14, background: H.border2, margin: "0 2px" }} />
           <button type="button" title="Close panel" aria-label="Close workspace" onClick={onCollapse} style={{ background: "transparent", border: "none", color: H.muted, padding: 5, borderRadius: 4, cursor: "pointer" }}>
             <X size={14} />
@@ -355,7 +347,17 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
             ) : (
               /* File Tree List */
               <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-                {tree["."] ? renderTreeNodes(".") : (
+                {!activeSessionId ? (
+                  <div style={{ padding: 16, color: H.muted, fontSize: 12 }}>
+                    No session yet — start a conversation to get a workspace.
+                  </div>
+                ) : error ? (
+                  <div style={{ padding: 16, color: H.muted, fontSize: 12 }}>
+                    Couldn't load workspace: {error}
+                  </div>
+                ) : tree["."] ? (
+                  renderTreeNodes(".")
+                ) : (
                   <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 6, color: H.muted, fontSize: 12 }}>
                     <LoaderCircle size={14} className="animate-spin" /> Loading workspace…
                   </div>

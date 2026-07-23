@@ -708,7 +708,9 @@ export function ConversationPage() {
               placeholder={
                 isReadOnlyCli
                   ? "CLI session is read-only — open a WebUI session to chat"
-                  : `Message ${activeBackendLabel}…`
+                  : activeBackendMeta || selectedBackend
+                    ? `Message ${activeBackendLabel}…`
+                    : "Select a backend below to start chatting…"
               }
               disabled={isBusy || isReadOnlyCli}
               style={{ width: "100%", padding: "13px 16px 8px", background: "transparent", border: "none", outline: "none", color: H.text, fontSize: 14.5, lineHeight: 1.5, resize: "none", fontFamily: "inherit", boxSizing: "border-box", maxHeight: 180, overflowY: "auto" }}

@@ -513,7 +513,7 @@ export function SettingsPage() {
       await patchSettings(
         {
           owner_name: draft.displayName.trim(),
-          bot_name: draft.assistantName.trim() || "Ares",
+          bot_name: draft.assistantName.trim() || "Companion",
           local_profile_voice: draft.voice,
           local_profile_reachability: draft.reachability,
           local_profile_setup_mode: draft.setupMode,

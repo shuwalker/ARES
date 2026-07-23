@@ -28,12 +28,13 @@ import { useLocalProfile } from "@/shared/local-profile";
 export function CompanionPage() {
   const { profile } = useLocalProfile();
   const { snapshot } = useAres();
-  const companionName = profile.assistantName?.trim() || "Jaeger AI";
+  const companionName = profile.assistantName?.trim() || "Companion";
   const displayName = profile.displayName?.trim() || "operator";
   const connected = snapshot.connection === "available";
-  const workerCount =
-    snapshot.connections.filter((c) => c.selected || c.available).length ||
-    snapshot.backends.length;
+  // Only connections that are actually selected or verified-available count.
+  // Never fall back to the backend catalog size — that reports adapter
+  // *types*, not live workers, and reads as fabricated status on a fresh box.
+  const workerCount = snapshot.connections.filter((c) => c.selected || c.available).length;
 
   const quickActionMatrix = [
     {

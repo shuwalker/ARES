@@ -8960,7 +8960,9 @@ _SETTINGS_DEFAULTS = {
     "composer_control_order": [],  # user-defined composer footer control order; invalid/duplicate keys are ignored
     "language": "en",  # UI locale code; must match a key in static/i18n.js LOCALES
     "bot_name": os.getenv(
-        "ARES_WEBUI_BOT_NAME", "Ares"
+        # ARES is the app name only, never the persona (FOUNDATION.md);
+        # the UI speaks "Companion" until the user names their assistant.
+        "ARES_WEBUI_BOT_NAME", "Companion"
     ),  # display name for the assistant
     "sound_enabled": False,  # play notification sound when assistant finishes
     "rtl": False,  # right-to-left chat layout (chat messages + composer only)

@@ -188,7 +188,7 @@ export function translateSessions(value: unknown): SessionSummary[] {
 export function translateSettings(value: unknown): BackendSettings {
   const raw = record(value);
   return {
-    assistantName: String(raw.bot_name || "Ares"),
+    assistantName: String(raw.bot_name || "Companion"),
     authEnabled: Boolean(raw.auth_enabled),
     version: String(raw.webui_version || "") || undefined,
   };
