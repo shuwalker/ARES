@@ -54,110 +54,25 @@ enum ARESDestination: String, CaseIterable, Identifiable, Hashable {
 
 /// Primary macOS product shell.
 ///
-/// Full product capacity is the goal: native destinations first, shared WebUI
-/// surfaces for routes still migrating. Remote devices use WebUI alone against
-/// the same controller (LAN / Tailscale).
+/// Serves as the master native product UI on device. Renders the full-bleed
+/// unified ARES application shell without duplicate outer split view sidebars.
 struct ARESProductShell: View {
     @ObservedObject private var serverManager = WebUIServerManager.shared
     @ObservedObject private var config = ARESConfiguration.shared
-    @State private var selection: ARESDestination? = .chat
-    @State private var readiness: ARESControllerClient.Readiness?
-    @State private var connections: [ARESControllerClient.ConnectionRecord] = []
-    @State private var lastError: String?
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selection) {
-                Section("ARES") {
-                    ForEach([ARESDestination.home, .chat, .today, .connections, .workspace, .activity]) { dest in
-                        Label(dest.title, systemImage: dest.systemImage)
-                            .tag(dest)
-                    }
-                }
-                Section("System") {
-                    Label(ARESDestination.settings.title, systemImage: ARESDestination.settings.systemImage)
-                        .tag(ARESDestination.settings)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-            .listStyle(.sidebar)
-            .safeAreaInset(edge: .bottom) {
-                serverStatusBar
-            }
-        } detail: {
-            detailView
+        if serverManager.isRunning,
+           let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)/") {
+            WebViewRepresentable(url: url, serverManager: serverManager)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .task(id: serverManager.serverHealth) {
-            await refreshControllerState()
-        }
-    }
-
-    @ViewBuilder
-    private var detailView: some View {
-        switch selection ?? .home {
-        case .home:
-            ARESHomeView(
-                serverHealth: serverManager.serverHealth,
-                isRunning: serverManager.isRunning,
-                readiness: readiness,
-                connections: connections,
-                lastError: lastError,
-                onRefresh: { await refreshControllerState() },
-                onOpenChat: { selection = .chat },
-                onOpenConnections: { selection = .connections }
+                .ignoresSafeArea(.all, edges: .bottom)
+        } else {
+            ContentUnavailableView(
+                "Controller starting...",
+                systemImage: "shield",
+                description: Text(serverManager.serverHealth)
             )
-        case .connections:
-            ARESConnectionsNativeView(
-                connections: connections,
-                lastError: lastError,
-                onRefresh: { await refreshControllerState() },
-                onOpenWeb: { selection = .chat }
-            )
-        case .chat, .today, .workspace, .activity, .settings:
-            if let path = (selection ?? .chat).webPath {
-                ARESRoutedWebSurface(path: path)
-            } else {
-                Text("Unavailable")
-            }
-        }
-    }
-
-    private var serverStatusBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(serverManager.isRunning ? Color.green.opacity(0.85) : Color.orange.opacity(0.7))
-                    .frame(width: 8, height: 8)
-                Text(serverManager.serverHealth)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Text("Controller · \(config.webuiHost):\(config.webuiPort)")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-    }
-
-    @MainActor
-    private func refreshControllerState() async {
-        guard serverManager.isRunning else {
-            readiness = nil
-            connections = []
-            return
-        }
-        let client = ARESControllerClient.sharedForConfiguration()
-        do {
-            async let ready = client.fetchReadiness()
-            async let conns = client.fetchConnections()
-            readiness = try await ready
-            connections = try await conns
-            lastError = nil
-        } catch {
-            lastError = error.localizedDescription
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
