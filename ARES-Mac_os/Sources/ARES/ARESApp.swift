@@ -54,16 +54,7 @@ struct ARESApp: App {
     
     var body: some Scene {
         WindowGroup(id: "main") {
-            // Force legacy onboarding only if explicitly requested via flag
-            let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
-            if forceOnboarding {
-                ARESOnboardingView(onComplete: {
-                    onboardingManager.markCompleted()
-                    UserDefaults.standard.removeObject(forKey: "ARESForceOnboarding")
-                })
-            } else {
-                ARESMainScene()
-            }
+            ARESMainScene()
         }
         .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)

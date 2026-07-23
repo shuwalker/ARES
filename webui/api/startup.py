@@ -1,7 +1,10 @@
 """Ares Web UI -- startup helpers."""
 from __future__ import annotations
 import os, stat, subprocess, sys
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Credential files that should never be world-readable
 _SENSITIVE_FILES = (
@@ -46,11 +49,11 @@ def fix_credential_permissions() -> None:
             if declared_mode is not None:
                 if current & 0o007:  # other bits set (world-readable/writable)
                     fpath.chmod(current & ~0o007)
-                    print(f'  [security] removed world bits on {fpath.name} ({oct(current)} -> {oct(current & ~0o007)})', flush=True)
+                    logger.info(f'[security] removed world bits on {fpath.name} ({oct(current)} -> {oct(current & ~0o007)})')
             else:
                 if current & 0o077:  # group or other bits set
                     fpath.chmod(0o600)
-                    print(f'  [security] fixed permissions on {fpath.name} ({oct(current)} -> 0600)', flush=True)
+                    logger.info(f'[security] fixed permissions on {fpath.name} ({oct(current)} -> 0600)')
         except OSError:
             pass  # best-effort; don't abort startup
 
@@ -91,38 +94,38 @@ def _trusted_agent_dir(agent_dir: Path) -> bool:
 def auto_install_agent_deps() -> bool:
     enabled = os.environ.get('ARES_WEBUI_AUTO_INSTALL', '').strip().lower() in ('1', 'true', 'yes')
     if not enabled:
-        print('[!!] Auto-install disabled. Set ARES_WEBUI_AUTO_INSTALL=1 to enable.', flush=True)
+        logger.info('[!!] Auto-install disabled. Set ARES_WEBUI_AUTO_INSTALL=1 to enable.')
         return False
     agent_dir = _agent_dir()
     if agent_dir is None:
-        print('[!!] Auto-install skipped: agent directory not found.', flush=True)
+        logger.info('[!!] Auto-install skipped: agent directory not found.')
         return False
     if not _trusted_agent_dir(agent_dir):
-        print('[!!] Auto-install skipped: agent directory failed trust check (check ownership/permissions).', flush=True)
+        logger.warning('[!!] Auto-install skipped: agent directory failed trust check (check ownership/permissions).')
         return False
     req_file = agent_dir / 'requirements.txt'
     pyproject = agent_dir / 'pyproject.toml'
     if req_file.exists():
         install_args = [sys.executable, '-m', 'pip', 'install', '--quiet', '-r', str(req_file)]
-        print(f'     Installing from {req_file} ...', flush=True)
+        logger.info(f'Installing from {req_file} ...')
     elif pyproject.exists():
         install_args = [sys.executable, '-m', 'pip', 'install', '--quiet', str(agent_dir)]
-        print(f'     Installing from {agent_dir} (pyproject.toml) ...', flush=True)
+        logger.info(f'Installing from {agent_dir} (pyproject.toml) ...')
     else:
-        print('[!!] Auto-install skipped: no requirements.txt or pyproject.toml in agent dir.', flush=True)
+        logger.info('[!!] Auto-install skipped: no requirements.txt or pyproject.toml in agent dir.')
         return False
     try:
         result = subprocess.run(install_args, capture_output=True, text=True, timeout=120)
         if result.returncode != 0:
-            print(f'[!!] pip install failed (exit {result.returncode}):', flush=True)
+            logger.error(f'[!!] pip install failed (exit {result.returncode}):')
             for line in (result.stderr or '').splitlines()[-10:]:
-                print(f'     {line}', flush=True)
+                logger.error(f'     {line}')
             return False
-        print('[ok] pip install completed.', flush=True)
+        logger.info('[ok] pip install completed.')
         return True
     except subprocess.TimeoutExpired:
-        print('[!!] Auto-install timed out after 120s.', flush=True)
+        logger.error('[!!] Auto-install timed out after 120s.')
         return False
     except Exception as e:
-        print(f'[!!] Auto-install error: {e}', flush=True)
+        logger.error(f'[!!] Auto-install error: {e}')
         return False

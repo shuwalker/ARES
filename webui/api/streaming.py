@@ -6255,7 +6255,7 @@ def _build_session_db_for_stream(state_db_path):
         from ares_state import SessionDB
         return SessionDB(db_path=state_db_path)
     except Exception as _db_err:
-        print(f"[webui] WARNING: SessionDB init failed - session_search will be unavailable: {_db_err}", flush=True)
+        logger.warning(f"[webui] WARNING: SessionDB init failed - session_search will be unavailable: {_db_err}")
         return None
 
 
@@ -7903,7 +7903,7 @@ def _run_agent_streaming(
                     _rt, resolved_provider, configured_base_url
                 )
             except Exception as _e:
-                print(f"[webui] WARNING: resolve_runtime_provider failed: {_e}", flush=True)
+                logger.warning(f"resolve_runtime_provider failed: {_e}")
 
             # Named custom providers (custom:slug) may not be resolvable by
             # ares_cli.runtime_provider directly. Fall back to config.yaml
@@ -7961,7 +7961,7 @@ def _run_agent_streaming(
                     if _override:
                         _toolsets = _override
             except Exception as _ts_err:
-                print(f"[webui] WARNING: failed to read per-session toolsets for {session_id}: {_ts_err}", flush=True)
+                logger.warning(f"failed to read per-session toolsets for {session_id}: {_ts_err}")
 
             # Fallback model chain from profile config (e.g. for rate-limit or
             # provider recovery). Match Ares CLI/gateway semantics:
@@ -9632,7 +9632,7 @@ def _run_agent_streaming(
                                 "name": _skill_change.get("name") or "",
                             })
                     except Exception:
-                        logger.debug("Persistent state change detection failed for session %s", s.session_id, exc_info=True)
+                        logger.debug("Persistent state change detection failed for session %s", session_id, exc_info=True)
             # Sync to state.db for /insights (opt-in setting)
             with _stream_writeback_stage(_writeback_timings, "state_sync"):
                 try:

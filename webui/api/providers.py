@@ -671,7 +671,7 @@ def _run_worker():
             payload = _fetch_snapshot(provider, api_key, env_var=env_var)
         except Exception:
             payload = None
-        print(json.dumps(payload), flush=True)
+        logger.debug(json.dumps(payload))
 
 
 if len(sys.argv) > 1 and sys.argv[1] == "--worker":
@@ -679,7 +679,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--worker":
 else:
     provider = sys.argv[1]
     api_key = sys.argv[2] or None
-    print(json.dumps(_fetch_snapshot(provider, api_key)), flush=True)
+    logger.debug(json.dumps(_fetch_snapshot(provider, api_key)))
 """
 
 
