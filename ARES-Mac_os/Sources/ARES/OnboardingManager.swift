@@ -18,8 +18,9 @@ final class OnboardingManager: ObservableObject {
     private let onboardingCompletedKey = "onboarding_completed"
     
     private init() {
-        // Check if onboarding was already completed
-        needsOnboarding = !UserDefaults.standard.bool(forKey: onboardingCompletedKey)
+        // Default needsOnboarding to false so app opens main product shell directly
+        needsOnboarding = false
+        UserDefaults.standard.set(true, forKey: onboardingCompletedKey)
     }
     
     func markCompleted() {

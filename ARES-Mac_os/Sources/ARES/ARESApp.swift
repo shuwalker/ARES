@@ -54,9 +54,9 @@ struct ARESApp: App {
     
     var body: some Scene {
         WindowGroup(id: "main") {
-            // Force onboarding if flag is set (from `ares setup`)
+            // Force legacy onboarding only if explicitly requested via flag
             let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
-            if forceOnboarding || onboardingManager.needsOnboarding {
+            if forceOnboarding {
                 ARESOnboardingView(onComplete: {
                     onboardingManager.markCompleted()
                     UserDefaults.standard.removeObject(forKey: "ARESForceOnboarding")
