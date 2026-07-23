@@ -33,27 +33,27 @@ export function CompanionPage() {
         </Button>
       }
     >
-      <Card className="border-primary/20 bg-primary/5">
+      <Card className="border-border bg-card/60">
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-base text-foreground font-semibold">
             <Sparkles className="size-4 text-primary" />
             Relationship
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
+        <CardContent className="space-y-3 text-sm text-foreground/90 leading-relaxed">
           <p>
-            Hello, <span className="font-medium text-foreground">{displayName}</span>. You talk to{" "}
-            <span className="font-medium text-foreground">{companionName}</span> — not to a rotating
+            Hello, <span className="font-semibold text-foreground">{displayName}</span>. You talk to{" "}
+            <span className="font-semibold text-foreground">{companionName}</span> — not to a rotating
             list of brands. Workers execute; the Companion stays.
           </p>
           <div className="flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border border-border px-2.5 py-1">
+            <span className="rounded-full border border-border bg-background/60 px-2.5 py-1 text-foreground/80 font-medium">
               Link: {connected ? "online" : snapshot.connection}
             </span>
-            <span className="rounded-full border border-border px-2.5 py-1">
+            <span className="rounded-full border border-border bg-background/60 px-2.5 py-1 text-foreground/80 font-medium">
               Workers known: {workerCount || "—"}
             </span>
-            <span className="rounded-full border border-border px-2.5 py-1">
+            <span className="rounded-full border border-border bg-background/60 px-2.5 py-1 text-foreground/80 font-medium">
               Autonomy: {profile.autonomy}
             </span>
           </div>

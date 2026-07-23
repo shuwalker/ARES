@@ -90,10 +90,10 @@ function ComposerChip({ icon, label, onClick }: { icon: React.ReactNode; label: 
   const [hover, setHover] = useState(false);
   return (
     <button type="button" onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: 6, border: `1px solid ${hover ? H.border2 : H.chipBorder}`, background: hover ? H.surfaceHover : H.chipBg, color: hover ? H.text : H.chipText, fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap" }}>
-      <span style={{ opacity: 0.7 }}>{icon}</span>
-      <span>{label}</span>
-      <ChevronDown size={9} style={{ opacity: 0.5 }} />
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 8px", borderRadius: 6, border: `1px solid ${hover ? H.border2 : H.chipBorder}`, background: hover ? H.surfaceHover : H.chipBg, color: hover ? H.text : H.chipText, fontSize: 12, fontWeight: 500, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0, maxWidth: 130 }}>
+      <span style={{ opacity: 0.7, flexShrink: 0 }}>{icon}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
     </button>
   );
 }
@@ -716,17 +716,17 @@ export function ConversationPage() {
             />
 
             {/* Toolbar — scrolls horizontally on narrow viewports (Hermes cf-burger pattern) */}
-            <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "4px 8px 8px", gap: 3, flexWrap: "wrap" }}>
+            <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "4px 8px 8px", gap: 4, overflowX: "auto", whiteSpace: "nowrap", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", maxWidth: "100%" }}>
               <IconBtn title="Attach files" onClick={() => fileInputRef.current?.click()}><Paperclip size={15} /></IconBtn>
               <IconBtn title="Saved prompts" onClick={() => setShowSavedPrompts(!showSavedPrompts)}><Bookmark size={15} /></IconBtn>
               <IconBtn title="Dictate" onClick={toggleDictation}>
                 {isListening ? <MicOff size={15} style={{ color: "#f43f5e" }} /> : <Mic size={15} />}
               </IconBtn>
 
-              <div style={{ width: 1, height: 16, background: H.border2, margin: "0 3px" }} />
+              <div style={{ width: 1, height: 16, background: H.border2, margin: "0 3px", flexShrink: 0 }} />
 
               {/* Working folder — agent cwd / project context */}
-              <div style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: 6, border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: 26, overflow: "visible" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: 6, border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: 26, overflow: "visible", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   title="Browse files in working folder"
@@ -744,14 +744,14 @@ export function ConversationPage() {
                     setShowBackendMenu(false);
                     setShowModelMenu(false);
                   }}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: "100%", padding: "0 8px", border: "none", background: "transparent", color: H.chipText, fontSize: 12, fontWeight: 500, cursor: "pointer", maxWidth: 140 }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, height: "100%", padding: "0 8px", border: "none", background: "transparent", color: H.chipText, fontSize: 12, fontWeight: 500, cursor: "pointer", maxWidth: 130 }}
                 >
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorkspaceLabel}</span>
                   <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </button>
 
                 {showWorkspaceMenu && (
-                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 360, borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
+                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 360, maxWidth: "min(340px, 88vw)", borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
                     <div style={{ padding: "10px 14px 6px", fontSize: 11, fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
                       Agent working folder (cwd / context)
                     </div>
@@ -847,7 +847,7 @@ export function ConversationPage() {
               </div>
 
               {/* Backend chip — framework/runtime (distinct Server icon) */}
-              <div style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <ComposerChip
                   icon={<Server size={12} />}
                   label={activeBackendLabel}
@@ -859,7 +859,7 @@ export function ConversationPage() {
                   }}
                 />
                 {showBackendMenu && !isReadOnlyCli && (
-                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 320, borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
+                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 320, maxWidth: "min(320px, 88vw)", borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
                     <div style={{ padding: "10px 14px 6px", fontSize: 11, fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
                       Backend (worker runtime)
                     </div>
@@ -907,7 +907,7 @@ export function ConversationPage() {
               </div>
 
               {/* Model chip — only models configured for the selected backend (Boxes icon) */}
-              <div style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <ComposerChip
                   icon={<Boxes size={12} />}
                   label={activeModelLabel}
@@ -919,7 +919,7 @@ export function ConversationPage() {
                   }}
                 />
                 {showModelMenu && !isReadOnlyCli && modelsForBackend.length > 0 && (
-                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 340, borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
+                  <div style={{ position: "absolute", left: 0, bottom: 34, zIndex: 40, width: 340, maxWidth: "min(340px, 88vw)", borderRadius: 12, border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 16px 48px rgba(0,0,0,0.7)", fontSize: 12, overflow: "hidden" }}>
                     <div style={{ padding: "10px 14px 6px", fontSize: 11, fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
                       Models for {activeBackendLabel}
                     </div>
