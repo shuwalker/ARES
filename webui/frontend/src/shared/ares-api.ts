@@ -274,7 +274,7 @@ export const aresApi = {
     });
     return translateConversation(payload.session);
   },
-  async startChat(sessionId: string, message: string, session: { model?: string; provider?: string; workspace?: string; profile?: string; backendId?: string }, backendId?: string) {
+  async startChat(sessionId: string, message: string, session: { model?: string; provider?: string; workspace?: string; profile?: string; backendId?: string }, backendId?: string, attachments?: Array<{ name: string; path: string; mime: string; size?: number; is_image?: boolean }>) {
     return apiFetch<{ stream_id: string; session_id: string; title?: string }>("/api/chat/start", {
       method: "POST",
       body: JSON.stringify({
@@ -285,6 +285,7 @@ export const aresApi = {
         connection_id: backendId || session.backendId || undefined,
         workspace: session.workspace || undefined,
         profile: session.profile || "default",
+        attachments: attachments && attachments.length > 0 ? attachments : undefined,
       }),
     });
   },
@@ -365,6 +366,39 @@ export const aresApi = {
     return apiFetch<{ ok: boolean }>("/api/share/revoke", {
       method: "POST",
       body: JSON.stringify({ session_id: sessionId }),
+    });
+  },
+
+  async clearSession(sessionId: string) {
+    return apiFetch<{ ok: boolean }>("/api/session/clear", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  },
+
+  async importSession(payload: Record<string, unknown>) {
+    return apiFetch<{ session?: Record<string, unknown>; session_id?: string }>("/api/session/import", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async listPlugins() {
+    return apiFetch<{ plugins?: Array<Record<string, unknown>> }>("/api/plugins");
+  },
+
+  async listExtensions() {
+    return apiFetch<Record<string, unknown>>("/api/extensions/registry");
+  },
+
+  async extensionStatus() {
+    return apiFetch<Record<string, unknown>>("/api/extensions/status");
+  },
+
+  async toggleExtension(id: string, enabled: boolean) {
+    return apiFetch<Record<string, unknown>>("/api/extensions/toggle", {
+      method: "POST",
+      body: JSON.stringify({ id, enabled }),
     });
   },
 
@@ -913,6 +947,18 @@ export const aresApi = {
       body: JSON.stringify({ session_id: sessionId, path, recursive }),
     });
   },
+  async renameFile(sessionId: string, path: string, newName: string) {
+    return apiFetch<{ ok: boolean }>("/api/file/rename", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, path, new_name: newName }),
+    });
+  },
+  async moveFile(sessionId: string, path: string, destDir: string) {
+    return apiFetch<{ ok: boolean }>("/api/file/move", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, path, dest_dir: destDir }),
+    });
+  },
 
   // ══════════════════════════════════════════════════════════════════
   // Tools & Connections
@@ -1032,20 +1078,43 @@ export const aresApi = {
   // ══════════════════════════════════════════════════════════════════
   // Kanban / Issues
   // ══════════════════════════════════════════════════════════════════
-  async kanbanBoards() {
-    return apiFetch<{ boards: KanbanBoard[] }>("/api/kanban/boards");
+  async kanbanBoards(includeArchived = false) {
+    return apiFetch<KanbanBoardsResponse>(
+      `/api/kanban/boards?include_archived=${includeArchived ? "1" : "0"}`,
+    );
   },
-  async kanbanBoard(boardId: string) {
-    return apiFetch<KanbanBoard>(`/api/kanban/board?board_id=${encodeURIComponent(boardId)}`);
+  async kanbanBoard(boardSlug?: string, includeArchived = false) {
+    const params = new URLSearchParams();
+    if (boardSlug) params.set("board", boardSlug);
+    if (includeArchived) params.set("include_archived", "1");
+    const query = params.toString();
+    return apiFetch<KanbanBoardPayload>(`/api/kanban/board${query ? `?${query}` : ""}`);
   },
-  async kanbanTasks(boardId: string) {
-    return apiFetch<{ tasks: KanbanTask[] }>(`/api/kanban/tasks?board_id=${encodeURIComponent(boardId)}`);
-  },
-  async kanbanTaskAction(taskId: string, action: "move" | "update" | "delete", payload: Record<string, unknown> = {}) {
-    return apiFetch<{ ok: boolean }>(`/api/kanban/tasks/${encodeURIComponent(taskId)}/${action}`, {
+  async kanbanCreateTask(input: {
+    title: string;
+    body?: string;
+    status?: string;
+    priority?: number;
+    assignee?: string;
+    board?: string;
+  }) {
+    return apiFetch<{ task: KanbanTask; read_only?: boolean }>("/api/kanban/tasks", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(input),
     });
+  },
+  async kanbanPatchTask(taskId: string, payload: Record<string, unknown>, board?: string) {
+    const body = board ? { ...payload, board } : payload;
+    return apiFetch<{ task: KanbanTask; read_only?: boolean }>(
+      `/api/kanban/tasks/${encodeURIComponent(taskId)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    );
+  },
+  async kanbanTaskAction(taskId: string, action: "block" | "unblock" | "patch", payload: Record<string, unknown> = {}) {
+    return apiFetch<{ task?: KanbanTask; ok?: boolean }>(
+      `/api/kanban/tasks/${encodeURIComponent(taskId)}/${action}`,
+      { method: "POST", body: JSON.stringify(payload) },
+    );
   },
 
   // ══════════════════════════════════════════════════════════════════
@@ -1146,31 +1215,59 @@ export function translateEmailItem(raw: Record<string, unknown>): EmailItem {
   };
 }
 
-export interface KanbanBoard {
-  id: string;
-  name: string;
-  description?: string;
-  columns: KanbanColumn[];
+/** Board metadata entry from GET /api/kanban/boards */
+export interface KanbanBoardMeta {
+  slug: string;
+  name?: string;
+  title?: string;
+  is_current?: boolean;
+  archived?: boolean;
+  counts?: Record<string, number>;
 }
 
-export interface KanbanColumn {
-  id: string;
+export interface KanbanBoardsResponse {
+  boards?: KanbanBoardMeta[];
+  current?: string;
+  /** Some bridge builds return a flat list at the top level. */
+  [key: string]: unknown;
+}
+
+/** Full board payload from GET /api/kanban/board */
+export interface KanbanBoardPayload {
+  columns: KanbanColumnPayload[];
+  latest_event_id?: number;
+  changed?: boolean;
+  read_only?: boolean;
+  tenants?: string[];
+  assignees?: string[];
+  filters?: Record<string, unknown>;
+}
+
+export interface KanbanColumnPayload {
   name: string;
-  order: number;
+  tasks: KanbanTask[];
 }
 
 export interface KanbanTask {
   id: string;
-  board_id: string;
-  column_id: string;
   title: string;
-  description: string;
-  status: "open" | "in_progress" | "done" | "cancelled";
-  priority: "low" | "medium" | "high" | "critical";
-  assigned_to?: string;
-  created_at: string;
-  updated_at: string;
+  body?: string | null;
+  status: string;
+  priority?: number;
+  assignee?: string | null;
+  tenant?: string | null;
+  created_by?: string | null;
+  created_at?: number | string | null;
+  updated_at?: number | string | null;
+  age_seconds?: number | null;
+  comment_count?: number;
+  link_counts?: { parents?: number; children?: number };
+  [key: string]: unknown;
 }
+
+/** @deprecated Prefer KanbanBoardPayload — kept for older call sites. */
+export type KanbanBoard = KanbanBoardPayload;
+export type KanbanColumn = KanbanColumnPayload;
 
 export interface CronRun {
   id: string;

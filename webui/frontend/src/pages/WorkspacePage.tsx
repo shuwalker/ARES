@@ -5,6 +5,7 @@ import {
   FileCode2,
   Folder,
   LoaderCircle,
+  Pencil,
   Plus,
   Save,
   Trash2,
@@ -212,6 +213,32 @@ export function WorkspacePage() {
     [activeSession, selectedPath, loadDirectory]
   );
 
+  const renameItem = useCallback(
+    async (path: string) => {
+      if (!activeSession) return;
+      const currentName = path.split("/").pop() || path;
+      const nextName = window.prompt("Rename to:", currentName)?.trim();
+      if (!nextName || nextName === currentName) return;
+      if (nextName.includes("/") || nextName.includes("\\")) {
+        setError("New name must not contain path separators.");
+        return;
+      }
+      setError("");
+      try {
+        await aresApi.renameFile(activeSession.id, path, nextName);
+        const parent = dirname(path);
+        await loadDirectory(activeSession.id, parent === path ? "." : parent);
+        if (selectedPath === path) {
+          const renamed = parent === "." || parent === path ? nextName : `${parent}/${nextName}`;
+          setSelectedPath(renamed);
+        }
+      } catch (reason) {
+        setError(readableError(reason, "Could not rename item."));
+      }
+    },
+    [activeSession, selectedPath, loadDirectory]
+  );
+
   const renderTree = useCallback(
     (path: string, depth = 0) => {
       const nodes = tree[path] || [];
@@ -243,7 +270,19 @@ export function WorkspacePage() {
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      deleteItem(node.path, node.kind);
+                      void renameItem(node.path);
+                    }}
+                    className="opacity-0 group-hover:opacity-100"
+                    style={{ color: G.muted }}
+                    title="Rename"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void deleteItem(node.path, node.kind);
                     }}
                     className="opacity-0 group-hover:opacity-100"
                     style={{ color: G.muted }}
@@ -267,7 +306,7 @@ export function WorkspacePage() {
         </div>
       );
     },
-    [tree, expanded, selectedPath, loadingPaths, toggleDirectory, openFile, deleteItem]
+    [tree, expanded, selectedPath, loadingPaths, toggleDirectory, openFile, deleteItem, renameItem]
   );
 
   if (!workspaceSessions.length) {

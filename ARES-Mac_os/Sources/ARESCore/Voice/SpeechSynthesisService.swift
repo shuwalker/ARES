@@ -1,28 +1,31 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: Copyright (c) 2025 Andrew Wyatt (Fewtarius) & ARES Contributors
 
-import AppKit
+import AVFoundation
 import Combine
 import Logging
 
-/// Text-to-speech service using NSSpeechSynthesizer (native macOS TTS)
-/// This provides more natural sounding voices than AVSpeechSynthesizer
-/// Supports streaming TTS by queuing sentences as they arrive
+/// Text-to-speech service using AVSpeechSynthesizer (modern macOS TTS).
+/// Supports streaming TTS by queuing sentences as they arrive.
 @MainActor
-public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthesizerDelegate {
+public class SpeechSynthesisService: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published public private(set) var isSpeaking: Bool = false
 
-    private var synthesizer: NSSpeechSynthesizer?
+    private var synthesizer: AVSpeechSynthesizer
     private var currentCompletionHandler: (() -> Void)?
     private let logger = Logger(label: "com.sam.voice.synthesis")
 
-   /// Audio device manager for voice selection
-   private var audioDeviceManager: AudioDeviceManager?
-    /// Track last applied voice/rate to avoid unnecessary synthesizer recreation
+    /// Audio device manager for voice selection
+    private var audioDeviceManager: AudioDeviceManager?
+    /// Track last applied voice/rate to avoid unnecessary reconfiguration
     private var lastVoiceIdentifier: String?
     private var lastSpeechRate: Float?
 
-   /// Callbacks for TTS lifecycle events
+    /// Active utterance voice/rate applied on the next speak call
+    private var preferredVoiceIdentifier: String?
+    private var preferredRateMultiplier: Float = 1.0
+
+    /// Callbacks for TTS lifecycle events
     public var onSpeakingStarted: (() -> Void)?
     public var onSpeakingFinished: (() -> Void)?
 
@@ -32,63 +35,61 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
     private var streamingCompletionHandler: (() -> Void)?
 
     public override init() {
+        self.synthesizer = AVSpeechSynthesizer()
         super.init()
-        /// Create synthesizer with default voice
-        self.synthesizer = NSSpeechSynthesizer()
-        self.synthesizer?.delegate = self
+        self.synthesizer.delegate = self
     }
 
     /// Set the audio device manager for voice selection
     public func setAudioDeviceManager(_ manager: AudioDeviceManager) {
         self.audioDeviceManager = manager
         logger.debug("AudioDeviceManager configured for speech synthesis")
-        /// Update synthesizer with configured voice
         updateSynthesizerVoice()
     }
 
-    /// Update the synthesizer to use the selected voice
+    /// Update preferred voice/rate from the audio device manager
     private func updateSynthesizerVoice() {
-        let voiceId = audioDeviceManager?.selectedVoiceIdentifier
-        let rateMultiplier = audioDeviceManager?.speechRate ?? 1.0
+        preferredVoiceIdentifier = audioDeviceManager?.selectedVoiceIdentifier
+        preferredRateMultiplier = audioDeviceManager?.speechRate ?? 1.0
+        logger.info(
+            "updateSynthesizerVoice: voiceId=\(preferredVoiceIdentifier ?? "nil"), rate=\(preferredRateMultiplier), hasManager=\(audioDeviceManager != nil)"
+        )
+    }
 
-        logger.info("updateSynthesizerVoice: voiceId=\(voiceId ?? "nil"), rate=\(rateMultiplier), hasManager=\(audioDeviceManager != nil)")
+    private func makeUtterance(from text: String) -> AVSpeechUtterance {
+        let utterance = AVSpeechUtterance(string: text)
 
-        if let voiceId = voiceId {
-            /// Create synthesizer with selected voice
-            let voiceName = NSSpeechSynthesizer.VoiceName(rawValue: voiceId)
-            synthesizer = NSSpeechSynthesizer(voice: voiceName)
-
-            if synthesizer == nil {
-                logger.error("Failed to create synthesizer with voice: \(voiceId), falling back to default")
-                synthesizer = NSSpeechSynthesizer()
-            } else {
-                logger.info("Created synthesizer with voice: \(voiceId)")
+        if let voiceId = preferredVoiceIdentifier,
+           let voice = AVSpeechSynthesisVoice(identifier: voiceId) {
+            utterance.voice = voice
+        } else if let voiceId = preferredVoiceIdentifier {
+            // Fall back to language match if the stored identifier is from a
+            // previous NSSpeechSynthesizer-era preference.
+            let english = AVSpeechSynthesisVoice.speechVoices().first {
+                $0.language.hasPrefix("en") && ($0.name.localizedCaseInsensitiveContains(voiceId) || $0.identifier == voiceId)
+            }
+            utterance.voice = english ?? AVSpeechSynthesisVoice(language: "en-US")
+            if english == nil {
+                logger.error("Failed to resolve voice: \(voiceId), falling back to system English")
             }
         } else {
-            /// Use system default
-            logger.info("No voice selected, using system default")
-            synthesizer = NSSpeechSynthesizer()
+            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         }
 
-        synthesizer?.delegate = self
-
-        /// Set speech rate (NSSpeechSynthesizer uses different rate scale)
-        /// NSSpeechSynthesizer rate: ~180-220 words per minute is normal
-        /// The rate property is words per minute
-        let baseRate: Float = 180
-        synthesizer?.rate = baseRate * rateMultiplier
-
-        logger.info("Synthesizer configured: voice=\(synthesizer?.voice()?.rawValue ?? "default"), rate=\(synthesizer?.rate ?? 0)")
+        // AVSpeechUtterance rate is 0.0...1.0 (default ≈ 0.5). Multiply the
+        // default by the user preference multiplier and clamp to a natural range.
+        let base = AVSpeechUtteranceDefaultSpeechRate
+        let scaled = base * preferredRateMultiplier
+        utterance.rate = min(max(scaled, AVSpeechUtteranceMinimumSpeechRate), AVSpeechUtteranceMaximumSpeechRate)
+        return utterance
     }
 
     /// Speak text aloud with optional completion handler
     public func speak(_ text: String, completion: (() -> Void)? = nil) {
         logger.info("speak() called: isSpeaking=\(isSpeaking), text.count=\(text.count)")
 
-       /// Stop any existing speech
-       synthesizer?.stopSpeaking()
+        synthesizer.stopSpeaking(at: .immediate)
 
-        // Only recreate synthesizer if voice or rate settings changed
         let currentVoice = audioDeviceManager?.selectedVoiceIdentifier
         let currentRate = audioDeviceManager?.speechRate
         if currentVoice != lastVoiceIdentifier || currentRate != lastSpeechRate {
@@ -97,31 +98,19 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
             lastSpeechRate = currentRate
         }
 
-       /// Strip markdown formatting for cleaner speech
-       let cleanText = stripMarkdown(text)
-
-        /// Store completion handler
+        let cleanText = stripMarkdown(text)
         currentCompletionHandler = completion
 
-        /// Start speaking
         isSpeaking = true
         onSpeakingStarted?()
 
-        let success = synthesizer?.startSpeaking(cleanText) ?? false
-        if !success {
-            logger.error("Failed to start speaking")
-            isSpeaking = false
-            onSpeakingFinished?()
-            completion?()
-            currentCompletionHandler = nil
-        } else {
-            logger.info("Speech started successfully")
-        }
+        synthesizer.speak(makeUtterance(from: cleanText))
+        logger.info("Speech started successfully")
     }
 
     /// Stop speaking immediately
     public func stop() {
-        synthesizer?.stopSpeaking()
+        synthesizer.stopSpeaking(at: .immediate)
         currentCompletionHandler = nil
         sentenceQueue.removeAll()
         isProcessingQueue = false
@@ -131,18 +120,17 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
 
     /// Pause speaking
     public func pause() {
-        synthesizer?.pauseSpeaking(at: .wordBoundary)
+        synthesizer.pauseSpeaking(at: .word)
     }
 
     /// Resume speaking
     public func resume() {
-        synthesizer?.continueSpeaking()
+        synthesizer.continueSpeaking()
     }
 
     // MARK: - Streaming TTS Methods
 
     /// Queue a sentence for streaming TTS
-    /// Sentences are spoken in order as they are queued
     public func queueSentence(_ sentence: String) {
         let cleanText = stripMarkdown(sentence.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !cleanText.isEmpty else { return }
@@ -150,17 +138,15 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
         logger.debug("Queueing sentence for TTS: \(cleanText.prefix(50))...")
         sentenceQueue.append(cleanText)
 
-        /// Start processing queue if not already
         if !isProcessingQueue {
             processNextSentence()
         }
     }
 
-    /// Mark streaming as complete - will call completion after queue finishes
+    /// Mark streaming as complete — will call completion after queue finishes
     public func finishStreaming(completion: (() -> Void)? = nil) {
         streamingCompletionHandler = completion
 
-        /// If queue is empty and not speaking, call completion immediately
         if sentenceQueue.isEmpty && !isSpeaking {
             logger.info("Streaming complete, no sentences pending")
             onSpeakingFinished?()
@@ -188,7 +174,6 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
         guard !sentenceQueue.isEmpty else {
             isProcessingQueue = false
 
-            /// Check if streaming is complete
             if let completion = streamingCompletionHandler {
                 logger.info("Queue empty, calling streaming completion")
                 onSpeakingFinished?()
@@ -203,59 +188,41 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
 
         logger.debug("Speaking queued sentence: \(sentence.prefix(50))...")
 
-        /// Update voice settings in case they changed
         updateSynthesizerVoice()
 
         isSpeaking = true
         if sentenceQueue.isEmpty && streamingCompletionHandler == nil {
-            /// First sentence in queue - notify started
             onSpeakingStarted?()
         }
 
-        let success = synthesizer?.startSpeaking(sentence) ?? false
-        if !success {
-            logger.error("Failed to speak queued sentence")
-            /// Try next sentence
-            processNextSentence()
-        }
+        synthesizer.speak(makeUtterance(from: sentence))
     }
 
     /// Strip markdown formatting for cleaner TTS
     private func stripMarkdown(_ text: String) -> String {
         var cleaned = text
 
-        /// Remove code blocks
         cleaned = cleaned.replacingOccurrences(of: "```[^`]*```", with: "code block", options: .regularExpression)
-
-        /// Remove inline code
         cleaned = cleaned.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
-
-        /// Remove bold/italic
         cleaned = cleaned.replacingOccurrences(of: "\\*\\*([^*]+)\\*\\*", with: "$1", options: .regularExpression)
         cleaned = cleaned.replacingOccurrences(of: "\\*([^*]+)\\*", with: "$1", options: .regularExpression)
-
-        /// Remove headers
         cleaned = cleaned.replacingOccurrences(of: "^#+\\s+", with: "", options: .regularExpression)
-
-        /// Remove links
         cleaned = cleaned.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^)]+\\)", with: "$1", options: .regularExpression)
 
         return cleaned
     }
 
-    // MARK: - NSSpeechSynthesizerDelegate
+    // MARK: - AVSpeechSynthesizerDelegate
 
-    nonisolated public func speechSynthesizer(_ sender: NSSpeechSynthesizer, didFinishSpeaking finishedSpeaking: Bool) {
+    nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
-            logger.info("TTS finished: \(finishedSpeaking)")
+            logger.info("TTS finished")
             isSpeaking = false
 
-            /// Check if there are more sentences in the queue (streaming TTS)
             if !sentenceQueue.isEmpty {
                 logger.debug("Processing next queued sentence (\(sentenceQueue.count) remaining)")
                 processNextSentence()
             } else if isProcessingQueue {
-                /// Queue is empty - notify finished and check for streaming completion
                 logger.info("Sentence queue empty")
                 onSpeakingFinished?()
                 isProcessingQueue = false
@@ -266,10 +233,8 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
                     streamingCompletionHandler = nil
                 }
             } else {
-                /// Non-streaming (single speak call) completion
                 onSpeakingFinished?()
 
-                /// Execute completion handler if exists
                 if let completion = currentCompletionHandler {
                     logger.info("Executing completion handler")
                     completion()
@@ -279,7 +244,18 @@ public class SpeechSynthesisService: NSObject, ObservableObject, NSSpeechSynthes
         }
     }
 
-    nonisolated public func speechSynthesizer(_ sender: NSSpeechSynthesizer, willSpeakWord characterRange: NSRange, of string: String) {
-        /// Can be used for word highlighting in future
+    nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            logger.info("TTS cancelled")
+            isSpeaking = false
+        }
+    }
+
+    nonisolated public func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        willSpeakRangeOfSpeechString characterRange: NSRange,
+        utterance: AVSpeechUtterance
+    ) {
+        // Available for word highlighting in future
     }
 }

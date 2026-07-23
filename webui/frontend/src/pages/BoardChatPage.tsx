@@ -1,33 +1,22 @@
 import {
-  ArrowRight,
   ChevronDown,
-  GripVertical,
   LoaderCircle,
-  MessageCircle,
-  NotepadText,
   Plus,
-  Send,
-  Square,
+  RefreshCw,
   Trash2,
-  X,
 } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
-  type Dispatch,
   type FormEvent,
-  type KeyboardEvent,
-  type SetStateAction,
 } from "react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -36,272 +25,110 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Markdown } from "@/components/Markdown";
-import { useAres } from "@/shared/ares-context";
 import { readableError } from "@/shared/api-client";
-import { useProductState } from "@/shared/use-product-state";
+import {
+  aresApi,
+  type KanbanBoardMeta,
+  type KanbanTask,
+} from "@/shared/ares-api";
 
-// ── Types ────────────────────────────────────────────────────────────────
+// Matches api.kanban_bridge.BOARD_COLUMNS
+const BOARD_COLUMNS = ["triage", "todo", "ready", "running", "blocked", "done"] as const;
+type ColumnId = (typeof BOARD_COLUMNS)[number];
 
-type ColumnId = "todo" | "in_progress" | "done";
-type CardKind = "chat" | "task" | "note";
-
-interface BoardCard {
-  id: string;
-  kind: CardKind;
-  title: string;
-  description?: string;
-  column: ColumnId;
-  order: number;
-  sessionId?: string;
-  createdAt: string;
-}
-
-interface BoardState {
-  cards: BoardCard[];
-}
-
-// ── Column config ─────────────────────────────────────────────────────────
-
-const COLUMNS: { id: ColumnId; label: string; accent: string }[] = [
-  { id: "todo", label: "To Do", accent: "bg-muted-foreground/20" },
-  { id: "in_progress", label: "In Progress", accent: "bg-primary/60" },
-  { id: "done", label: "Done", accent: "bg-status-available/60" },
-];
-
-function nextId(): string {
-  return `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-const KIND_ICONS: Record<CardKind, typeof MessageCircle> = {
-  chat: MessageCircle,
-  task: ArrowRight,
-  note: NotepadText,
+const COLUMN_META: Record<ColumnId, { label: string; accent: string }> = {
+  triage: { label: "Triage", accent: "bg-muted-foreground/30" },
+  todo: { label: "To Do", accent: "bg-muted-foreground/20" },
+  ready: { label: "Ready", accent: "bg-sky-500/60" },
+  running: { label: "Running", accent: "bg-primary/60" },
+  blocked: { label: "Blocked", accent: "bg-amber-500/60" },
+  done: { label: "Done", accent: "bg-status-available/60" },
 };
 
-const KIND_LABELS: Record<CardKind, string> = {
-  chat: "Chat",
-  task: "Task",
-  note: "Note",
-};
-
-// ── Inline Chat Panel ─────────────────────────────────────────────────────
-
-function ChatPanel({
-  card,
-  onClose,
-}: {
-  card: BoardCard;
-  onClose: () => void;
-}) {
-  const { snapshot, currentSession, selectSession, createSession, sendMessage, streamText, streamState, cancelResponse } = useAres();
-  const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const isBusy = streamState !== "idle";
-
-  // Auto-scroll
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, streamText]);
-
-  // If the card has a sessionId, select it
-  useEffect(() => {
-    if (card.sessionId) {
-      selectSession(card.sessionId);
-    }
-  }, [card.sessionId, selectSession]);
-
-  // Mirror stream into local messages when stream completes
-  useEffect(() => {
-    if (streamState === "idle" && currentSession?.id === card.sessionId) {
-      if (!currentSession) return;
-      const assistant = currentSession.messages.slice(-1)[0];
-      if (assistant && assistant.role !== "user" && !messages.some((m) => m.text === assistant.text && m.role === assistant.role)) {
-        setMessages((prev) => [...prev, { role: assistant.role, text: assistant.text }]);
-      }
-    }
-  }, [streamState, currentSession, card.sessionId, messages]);
-
-  const submit = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text || isBusy) return;
-    setDraft("");
-    setError(null);
-    setMessages((prev) => [...prev, { role: "user", text }]);
-
-    try {
-      let sessionId = card.sessionId;
-      if (!sessionId) {
-        const session = await createSession();
-        sessionId = session.id;
-        // The parent will need to know the sessionId; we'll bubble up via onClose pattern or a callback
-        // For simplicity we just use the ares context's current session
-      }
-      await sendMessage(text);
-    } catch (err) {
-      setError(readableError(err, "Failed to send message."));
-    }
-  }, [draft, isBusy, card.sessionId, createSession, sendMessage]);
-
-  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      e.currentTarget.form?.requestSubmit();
-    }
-  }, []);
-
-  const displayMessages = useMemo(() => {
-    const base = [...messages];
-    // Show optimistic user messages from current session if it matches
-    if (currentSession?.id === card.sessionId) {
-      if (!currentSession) return base;
-      for (const m of currentSession.messages) {
-        if (!base.some((b) => b.text === m.text && b.role === m.role)) {
-          base.push({ role: m.role, text: m.text });
-        }
-      }
-    }
-    return base;
-  }, [messages, currentSession, card.sessionId]);
-
-  return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <MessageCircle className="size-4 text-primary" />
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{card.title}</h3>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close chat">
-          <X className="size-4" />
-        </Button>
-      </div>
-
-      {/* Messages */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {displayMessages.length === 0 && !streamText && (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Send a message to start chatting with your Companion.
-          </p>
-        )}
-        {displayMessages.map((m, i) => (
-          <div
-            key={i}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                m.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted"
-              }`}
-            >
-              {m.role !== "user" ? <Markdown content={m.text} /> : m.text}
-            </div>
-          </div>
-        ))}
-        {streamText && (
-          <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm">
-              <Markdown content={streamText} />
-            </div>
-          </div>
-        )}
-        {isBusy && !streamText && (
-          <div className="flex justify-start">
-            <div className="rounded-lg bg-muted px-3 py-2">
-              <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
-            </div>
-          </div>
-        )}
-        {error && (
-          <p className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </p>
-        )}
-      </div>
-
-      {/* Composer */}
-      <form onSubmit={submit} className="flex items-end gap-2 border-t px-4 py-3">
-        <Textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Message ARES…"
-          className="min-h-10 max-h-32 resize-none"
-          rows={1}
-          disabled={isBusy}
-        />
-        {isBusy ? (
-          <Button type="button" variant="ghost" size="icon-sm" onClick={() => void cancelResponse()} aria-label="Cancel">
-            <Square className="size-4" />
-          </Button>
-        ) : (
-          <Button type="submit" size="icon-sm" disabled={!draft.trim()}>
-            <Send className="size-4" />
-          </Button>
-        )}
-      </form>
-    </div>
-  );
+function columnLabel(status: string): string {
+  return COLUMN_META[status as ColumnId]?.label ?? status;
 }
 
-// ── Board Card Component ─────────────────────────────────────────────────
-
-function BoardCardItem({
-  card,
+function TaskCard({
+  task,
   onOpen,
   onMoveLeft,
   onMoveRight,
-  onDelete,
+  onArchive,
   canMoveLeft,
   canMoveRight,
+  busy,
 }: {
-  card: BoardCard;
+  task: KanbanTask;
   onOpen: () => void;
   onMoveLeft: () => void;
   onMoveRight: () => void;
-  onDelete: () => void;
+  onArchive: () => void;
   canMoveLeft: boolean;
   canMoveRight: boolean;
+  busy: boolean;
 }) {
-  const Icon = KIND_ICONS[card.kind];
-  const colIdx = COLUMNS.findIndex((c) => c.id === card.column);
-
   return (
     <div
-      className="group relative rounded-lg border bg-card p-3 transition-shadow hover:shadow-md cursor-pointer"
+      className="group relative cursor-pointer rounded-lg border bg-card p-3 transition-shadow hover:shadow-md"
       onClick={onOpen}
     >
       <div className="flex items-start gap-2">
-        <Icon className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-tight truncate">{card.title}</p>
-          {card.description && (
-            <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{card.description}</p>
-          )}
+          <p className="truncate text-sm font-medium leading-tight">{task.title}</p>
+          {task.body ? (
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{String(task.body)}</p>
+          ) : null}
         </div>
-        <Badge variant="outline" className="shrink-0 text-[10px]">
-          {KIND_LABELS[card.kind]}
-        </Badge>
+        {typeof task.priority === "number" && task.priority > 0 ? (
+          <Badge variant="outline" className="shrink-0 text-[10px]">
+            P{task.priority}
+          </Badge>
+        ) : null}
       </div>
-      {/* Move / delete controls */}
-      <div className="mt-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {canMoveLeft && (
-          <Button variant="ghost" size="icon-sm" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onMoveLeft(); }} aria-label="Move left">
+      <div className="mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {canMoveLeft ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-6 w-6"
+            disabled={busy}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMoveLeft();
+            }}
+            aria-label="Move left"
+          >
             <ChevronDown className="size-3 rotate-90" />
           </Button>
-        )}
-        {canMoveRight && (
-          <Button variant="ghost" size="icon-sm" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); onMoveRight(); }} aria-label="Move right">
+        ) : null}
+        {canMoveRight ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-6 w-6"
+            disabled={busy}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMoveRight();
+            }}
+            aria-label="Move right"
+          >
             <ChevronDown className="size-3 -rotate-90" />
           </Button>
-        )}
+        ) : null}
         <div className="flex-1" />
-        <Button variant="ghost" size="icon-sm" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(); }} aria-label="Delete card">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation();
+            onArchive();
+          }}
+          aria-label="Archive task"
+        >
           <Trash2 className="size-3" />
         </Button>
       </div>
@@ -309,31 +136,33 @@ function BoardCardItem({
   );
 }
 
-// ── Add Card Dialog ───────────────────────────────────────────────────────
-
-function AddCardDialog({
+function AddTaskDialog({
   open,
   onOpenChange,
   column,
   onAdd,
+  busy,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   column: ColumnId;
-  onAdd: (card: Omit<BoardCard, "id" | "order" | "column" | "createdAt">) => void;
+  onAdd: (input: { title: string; body?: string }) => Promise<void>;
+  busy: boolean;
 }) {
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [kind, setKind] = useState<CardKind>("task");
+  const [body, setBody] = useState("");
 
   useEffect(() => {
-    if (open) { setTitle(""); setDescription(""); setKind("task"); }
+    if (open) {
+      setTitle("");
+      setBody("");
+    }
   }, [open]);
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    onAdd({ kind, title: title.trim(), description: description.trim() || undefined });
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!title.trim() || busy) return;
+    await onAdd({ title: title.trim(), body: body.trim() || undefined });
     onOpenChange(false);
   };
 
@@ -341,53 +170,39 @@ function AddCardDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add card to {COLUMNS.find((c) => c.id === column)?.label}</DialogTitle>
-          <DialogDescription>Create a new chat session, task, or note on your board.</DialogDescription>
+          <DialogTitle>Add task to {columnLabel(column)}</DialogTitle>
+          <DialogDescription>
+            Create a task on the shared ARES kanban board (persisted via /api/kanban).
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4 py-2">
-          <div className="grid gap-2">
-            <label className="text-sm font-medium">Type</label>
-            <div className="flex gap-2">
-              {(["chat", "task", "note"] as CardKind[]).map((k) => {
-                const KIcon = KIND_ICONS[k];
-                return (
-                  <Button
-                    key={k}
-                    type="button"
-                    variant={kind === k ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setKind(k)}
-                    className="gap-1.5"
-                  >
-                    <KIcon className="size-3.5" />
-                    {KIND_LABELS[k]}
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
+        <form onSubmit={(event) => void submit(event)} className="grid gap-4 py-2">
           <div className="grid gap-2">
             <label className="text-sm font-medium">Title</label>
             <input
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(event) => setTitle(event.target.value)}
               className="rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus:border-ring"
-              placeholder="Enter card title…"
+              placeholder="Enter task title…"
               autoFocus
             />
           </div>
           <div className="grid gap-2">
             <label className="text-sm font-medium">Description</label>
             <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
               placeholder="Optional description…"
               rows={2}
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={!title.trim()}>Add card</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!title.trim() || busy}>
+              {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+              Add task
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -395,157 +210,293 @@ function AddCardDialog({
   );
 }
 
-// ── Main BoardChatPage ────────────────────────────────────────────────────
+function TaskDetailDialog({
+  task,
+  open,
+  onOpenChange,
+}: {
+  task: KanbanTask | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!task) return null;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{task.title}</DialogTitle>
+          <DialogDescription>
+            Status: {columnLabel(task.status)}
+            {task.assignee ? ` · Assignee: ${task.assignee}` : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          {task.body ? (
+            <p className="whitespace-pre-wrap text-muted-foreground">{String(task.body)}</p>
+          ) : (
+            <p className="text-muted-foreground">No description.</p>
+          )}
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {typeof task.priority === "number" ? <Badge variant="outline">Priority {task.priority}</Badge> : null}
+            {task.tenant ? <Badge variant="secondary">{String(task.tenant)}</Badge> : null}
+            {typeof task.comment_count === "number" && task.comment_count > 0 ? (
+              <Badge variant="outline">{task.comment_count} comments</Badge>
+            ) : null}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function BoardChatPage() {
-  const [board, setBoardState, boardStatus] = useProductState<BoardState>("board", { cards: [] });
-  const setBoard: Dispatch<SetStateAction<BoardState>> = setBoardState;
-  const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
+  const [boards, setBoards] = useState<KanbanBoardMeta[]>([]);
+  const [currentBoard, setCurrentBoard] = useState<string>("");
+  const [tasksByColumn, setTasksByColumn] = useState<Record<string, KanbanTask[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [mutating, setMutating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const [addColumn, setAddColumn] = useState<ColumnId | null>(null);
+  const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
 
-  const addCard = useCallback((column: ColumnId, input: Omit<BoardCard, "id" | "order" | "column" | "createdAt">) => {
-    setBoard((prev) => {
-      const existing = prev.cards.filter((c) => c.column === column);
-      const card: BoardCard = {
-        ...input,
-        id: nextId(),
-        column,
-        order: existing.length,
-        createdAt: new Date().toISOString(),
-      };
-      return { ...prev, cards: [...prev.cards, card] };
-    });
-  }, []);
+  const loadBoard = useCallback(async (boardSlug?: string) => {
+    setLoading(true);
+    setError(null);
+    setUnavailable(false);
+    try {
+      const listed = await aresApi.kanbanBoards();
+      const boardList: KanbanBoardMeta[] = Array.isArray(listed.boards)
+        ? listed.boards
+        : Array.isArray(listed)
+          ? (listed as KanbanBoardMeta[])
+          : [];
+      setBoards(boardList);
 
-  const moveCard = useCallback((cardId: string, targetColumn: ColumnId) => {
-    setBoard((prev) => {
-      const cards = prev.cards.map((c) => {
-        if (c.id !== cardId) return c;
-        const existingInTarget = prev.cards.filter((x) => x.column === targetColumn);
-        return { ...c, column: targetColumn, order: existingInTarget.length };
-      });
-      // Re-index order within source column after removal
-      const sourceCard = prev.cards.find((c) => c.id === cardId);
-      if (!sourceCard) return { ...prev, cards };
-      const sourceColumn = sourceCard.column;
-      const reindexed = cards
-        .filter((c) => c.column === sourceColumn)
-        .sort((a, b) => a.order - b.order)
-        .map((c, i) => ({ ...c, order: i }));
-      const otherColumns = cards.filter((c) => c.column !== sourceColumn);
-      return { ...prev, cards: [...otherColumns, ...reindexed] };
-    });
-  }, []);
+      const preferred =
+        boardSlug
+        || (typeof listed.current === "string" ? listed.current : "")
+        || boardList.find((board) => board.is_current)?.slug
+        || boardList[0]?.slug
+        || "default";
+      setCurrentBoard(preferred);
 
-  const deleteCard = useCallback((cardId: string) => {
-    setBoard((prev) => {
-      const cards = prev.cards.filter((c) => c.id !== cardId);
-      // Re-index
-      for (const col of COLUMNS) {
-        let idx = 0;
-        for (const c of cards) {
-          if (c.column === col.id) { c.order = idx++; }
-        }
+      const payload = await aresApi.kanbanBoard(preferred);
+      setReadOnly(Boolean(payload.read_only));
+      const next: Record<string, KanbanTask[]> = {};
+      for (const column of BOARD_COLUMNS) next[column] = [];
+      for (const column of payload.columns ?? []) {
+        const name = String(column.name || "").toLowerCase();
+        next[name] = Array.isArray(column.tasks) ? column.tasks : [];
       }
-      return { ...prev, cards };
-    });
-    if (activeCard?.id === cardId) setActiveCard(null);
-  }, [activeCard]);
+      setTasksByColumn(next);
+    } catch (reason) {
+      const message = readableError(reason, "Could not load kanban board.");
+      setError(message);
+      // 503 from missing ares_cli.kanban_db is an honest unavailable state.
+      if (/503|unavailable|kanban/i.test(message)) {
+        setUnavailable(true);
+      }
+      setTasksByColumn({});
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const cardsByColumn = useMemo(() => {
-    const map: Record<ColumnId, BoardCard[]> = { todo: [], in_progress: [], done: [] };
-    for (const c of board.cards) {
-      map[c.column]?.push(c);
-    }
-    for (const col of COLUMNS) {
-      map[col.id].sort((a, b) => a.order - b.order);
-    }
-    return map;
-  }, [board.cards]);
+  useEffect(() => {
+    void loadBoard();
+  }, [loadBoard]);
+
+  const totalTasks = useMemo(
+    () => Object.values(tasksByColumn).reduce((sum, tasks) => sum + tasks.length, 0),
+    [tasksByColumn],
+  );
+
+  const createTask = useCallback(
+    async (column: ColumnId, input: { title: string; body?: string }) => {
+      setMutating(true);
+      setError(null);
+      try {
+        await aresApi.kanbanCreateTask({
+          title: input.title,
+          body: input.body,
+          status: column,
+          board: currentBoard || undefined,
+        });
+        await loadBoard(currentBoard);
+      } catch (reason) {
+        setError(readableError(reason, "Could not create task."));
+      } finally {
+        setMutating(false);
+      }
+    },
+    [currentBoard, loadBoard],
+  );
+
+  const moveTask = useCallback(
+    async (task: KanbanTask, target: ColumnId) => {
+      if (task.status === target || readOnly) return;
+      setMutating(true);
+      setError(null);
+      try {
+        await aresApi.kanbanPatchTask(task.id, { status: target }, currentBoard || undefined);
+        await loadBoard(currentBoard);
+      } catch (reason) {
+        setError(readableError(reason, "Could not move task."));
+      } finally {
+        setMutating(false);
+      }
+    },
+    [currentBoard, loadBoard, readOnly],
+  );
+
+  const archiveTask = useCallback(
+    async (task: KanbanTask) => {
+      if (readOnly) return;
+      if (!confirm(`Archive task “${task.title}”?`)) return;
+      setMutating(true);
+      setError(null);
+      try {
+        await aresApi.kanbanPatchTask(task.id, { status: "archived" }, currentBoard || undefined);
+        if (activeTask?.id === task.id) setActiveTask(null);
+        await loadBoard(currentBoard);
+      } catch (reason) {
+        setError(readableError(reason, "Could not archive task."));
+      } finally {
+        setMutating(false);
+      }
+    },
+    [activeTask, currentBoard, loadBoard, readOnly],
+  );
 
   return (
     <div className="page-stack">
       <PageHeader
-        title="Board Chat"
-        description="Organize chat sessions, tasks, and notes in a kanban board. Open any card to chat with your Companion."
+        title="Board"
+        description="Shared kanban board backed by /api/kanban. Move tasks across triage → done, or archive them."
+        action={
+          <div className="flex items-center gap-2">
+            {boards.length > 1 ? (
+              <select
+                className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                value={currentBoard}
+                onChange={(event) => void loadBoard(event.target.value)}
+                disabled={loading}
+              >
+                {boards.map((board) => (
+                  <option key={board.slug} value={board.slug}>
+                    {board.name || board.title || board.slug}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={() => void loadBoard(currentBoard)} disabled={loading}>
+              <RefreshCw className={loading ? "animate-spin" : ""} />
+              Refresh
+            </Button>
+          </div>
+        }
       />
 
-      {boardStatus.error && <p className="text-sm text-destructive" role="alert">{boardStatus.error}</p>}
+      {error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
 
-      {boardStatus.loading ? (
+      {loading ? (
         <div className="grid min-h-64 place-items-center text-sm text-muted-foreground">
-          <span className="inline-flex items-center gap-2"><LoaderCircle className="size-4 animate-spin" />Loading board…</span>
+          <span className="inline-flex items-center gap-2">
+            <LoaderCircle className="size-4 animate-spin" />
+            Loading board…
+          </span>
         </div>
-      ) : (
-      <div className="grid gap-4 md:grid-cols-3">
-        {COLUMNS.map((col) => (
-          <div key={col.id} className="flex flex-col rounded-lg border bg-muted/20">
-            {/* Column header */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b">
-              <div className={`size-2.5 rounded-full ${col.accent}`} />
-              <h3 className="text-sm font-semibold">{col.label}</h3>
-              <Badge variant="secondary" className="ml-auto text-[10px]">
-                {cardsByColumn[col.id].length}
-              </Badge>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="ml-1"
-                onClick={() => setAddColumn(col.id)}
-                aria-label={`Add card to ${col.label}`}
-              >
-                <Plus className="size-3.5" />
-              </Button>
-            </div>
-
-            {/* Cards */}
-            <div className="flex-1 space-y-2 p-3 min-h-[200px]">
-              {cardsByColumn[col.id].length === 0 && (
-                <EmptyState
-                  icon={GripVertical}
-                  title="No cards"
-                  description="Add a card or move one here."
-                />
-              )}
-              {cardsByColumn[col.id].map((card) => {
-                const colIdx = COLUMNS.findIndex((c) => c.id === col.id);
-                return (
-                  <BoardCardItem
-                    key={card.id}
-                    card={card}
-                    onOpen={() => setActiveCard(card)}
-                    onMoveLeft={colIdx > 0 ? () => moveCard(card.id, COLUMNS[colIdx - 1].id) : () => {}}
-                    onMoveRight={colIdx < COLUMNS.length - 1 ? () => moveCard(card.id, COLUMNS[colIdx + 1].id) : () => {}}
-                    onDelete={() => deleteCard(card.id)}
-                    canMoveLeft={colIdx > 0}
-                    canMoveRight={colIdx < COLUMNS.length - 1}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-      )}
-
-      {/* ── Add-card dialog ── */}
-      {addColumn && (
-        <AddCardDialog
-          open={addColumn !== null}
-          onOpenChange={(open) => { if (!open) setAddColumn(null); }}
-          column={addColumn}
-          onAdd={(input) => addCard(addColumn, input)}
+      ) : unavailable ? (
+        <EmptyState
+          icon={Plus}
+          title="Kanban unavailable"
+          description="The kanban data service is not installed or not reachable. Install the ARES agent kanban package, then refresh."
         />
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {totalTasks} task{totalTasks === 1 ? "" : "s"}
+            {currentBoard ? ` on board “${currentBoard}”` : ""}
+            {readOnly ? " · read-only" : ""}
+          </p>
+          <div className="grid gap-3 overflow-x-auto pb-2 xl:grid-cols-6 md:grid-cols-3">
+            {BOARD_COLUMNS.map((columnId) => {
+              const colIdx = BOARD_COLUMNS.indexOf(columnId);
+              const tasks = tasksByColumn[columnId] ?? [];
+              return (
+                <div key={columnId} className="flex min-w-[180px] flex-col rounded-lg border bg-muted/20">
+                  <div className="flex items-center gap-2 border-b px-3 py-2">
+                    <div className={`size-2.5 rounded-full ${COLUMN_META[columnId].accent}`} />
+                    <h3 className="text-sm font-semibold">{COLUMN_META[columnId].label}</h3>
+                    <Badge variant="secondary" className="ml-auto text-[10px]">
+                      {tasks.length}
+                    </Badge>
+                    {!readOnly ? (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="ml-1"
+                        onClick={() => setAddColumn(columnId)}
+                        aria-label={`Add task to ${COLUMN_META[columnId].label}`}
+                      >
+                        <Plus className="size-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="min-h-[200px] flex-1 space-y-2 p-3">
+                    {tasks.length === 0 ? (
+                      <EmptyState
+                        icon={Plus}
+                        title="No tasks"
+                        description="Add a task or move one here."
+                      />
+                    ) : null}
+                    {tasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        busy={mutating}
+                        canMoveLeft={colIdx > 0 && !readOnly}
+                        canMoveRight={colIdx < BOARD_COLUMNS.length - 1 && !readOnly}
+                        onOpen={() => setActiveTask(task)}
+                        onMoveLeft={() => void moveTask(task, BOARD_COLUMNS[colIdx - 1])}
+                        onMoveRight={() => void moveTask(task, BOARD_COLUMNS[colIdx + 1])}
+                        onArchive={() => void archiveTask(task)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      {/* ── Chat dialog ── */}
-      {activeCard && (
-        <Dialog open={!!activeCard} onOpenChange={(open) => { if (!open) setActiveCard(null); }}>
-          <DialogContent className="sm:max-w-2xl h-[70vh] grid-rows-[auto_1fr_auto] p-0">
-            <ChatPanel card={activeCard} onClose={() => setActiveCard(null)} />
-          </DialogContent>
-        </Dialog>
-      )}
+      {addColumn ? (
+        <AddTaskDialog
+          open={addColumn !== null}
+          onOpenChange={(open) => {
+            if (!open) setAddColumn(null);
+          }}
+          column={addColumn}
+          busy={mutating}
+          onAdd={(input) => createTask(addColumn, input)}
+        />
+      ) : null}
+
+      <TaskDetailDialog
+        task={activeTask}
+        open={!!activeTask}
+        onOpenChange={(open) => {
+          if (!open) setActiveTask(null);
+        }}
+      />
     </div>
   );
 }

@@ -136,7 +136,7 @@ public struct SkillDetail: Codable, Identifiable, Hashable, SkillCatalogItem {
 }
 
 public extension SkillSource {
-    public var isLocal: Bool {
+    var isLocal: Bool {
         kind == .local
     }
 
@@ -151,11 +151,11 @@ public extension SkillSource {
 }
 
 public extension SkillSummary {
-    public var sourceLabel: String {
+    var sourceLabel: String {
         source.badgeTitle
     }
 
-    public var skillFilePath: String {
+    var skillFilePath: String {
         "\(source.rootPath)/\(relativePath)/SKILL.md"
     }
 }
@@ -411,15 +411,15 @@ Add any guardrails, references, or implementation details that matter.
 }
 
 public extension SkillDetail {
-    public var isReadOnly: Bool {
+    var isReadOnly: Bool {
         source.isReadOnly
     }
 
-    public var sourceLabel: String {
+    var sourceLabel: String {
         source.badgeTitle
     }
 
-    public var skillFilePath: String {
+    var skillFilePath: String {
         "\(source.rootPath)/\(relativePath)/SKILL.md"
     }
 

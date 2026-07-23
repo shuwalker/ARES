@@ -137,7 +137,7 @@ public struct UsageProfileSlice: Identifiable, Hashable {
 }
 
 public extension UsageSummary {
-    public var totalTokens: Int64 {
+    var totalTokens: Int64 {
         inputTokens + outputTokens
     }
 
