@@ -20,6 +20,33 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertEqual(environment["UNCHANGED"], "yes")
     }
 
+    func testLocalGatewayURLDoesNotForceRemoteHealthProbing() {
+        // A loopback Hermes URL must not export ARES_API_URL — that flips the
+        // controller's agent health into remote-HTTP probing and skips the
+        // local PID/state-file detection, reporting a healthy local gateway
+        // as permanently down (no HTTP health port exists in local installs).
+        let environment = WebUIServerManager.applyingGatewayEnvironment(
+            to: [
+                "ARES_API_URL": "http://localhost:8642",
+                "ARES_WEBUI_GATEWAY_BASE_URL": "http://localhost:8642",
+            ],
+            hermesURL: "http://localhost:8642",
+            hermesAPIKey: "",
+            jrosURL: "http://127.0.0.1:8643",
+            jrosAPIKey: ""
+        )
+
+        XCTAssertNil(environment["ARES_API_URL"])
+        XCTAssertNil(environment["ARES_WEBUI_GATEWAY_BASE_URL"])
+        // JROS gateway URL is a real local HTTP service — always exported.
+        XCTAssertEqual(environment["ARES_JROS_GATEWAY_URL"], "http://127.0.0.1:8643")
+
+        XCTAssertTrue(WebUIServerManager.isLocalGatewayURL("http://127.0.0.1:8642"))
+        XCTAssertTrue(WebUIServerManager.isLocalGatewayURL("http://localhost:8642"))
+        XCTAssertFalse(WebUIServerManager.isLocalGatewayURL("http://gateway.example:8642"))
+        XCTAssertFalse(WebUIServerManager.isLocalGatewayURL("https://ares.tailnet.example"))
+    }
+
     func testEmptyGatewayKeysDoNotLeakInheritedCredentials() {
         let environment = WebUIServerManager.applyingGatewayEnvironment(
             to: [

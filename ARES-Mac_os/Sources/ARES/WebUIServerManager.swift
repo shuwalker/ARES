@@ -149,8 +149,20 @@ public final class WebUIServerManager: ObservableObject {
         var environment = base
         // ARES_API_URL drives remote gateway health/tasks. Gateway-backed chat
         // uses the more specific base URL variable; keep both in sync.
-        environment["ARES_API_URL"] = hermesURL
-        environment["ARES_WEBUI_GATEWAY_BASE_URL"] = hermesURL
+        //
+        // Only export them for a genuinely remote gateway. Setting ARES_API_URL
+        // forces agent health into remote-HTTP probing and skips the local
+        // PID/state-file detection — with the localhost default this reported
+        // a healthy local Hermes gateway as permanently "down" because nothing
+        // serves HTTP health on that port in a local install.
+        let isLocalDefault = Self.isLocalGatewayURL(hermesURL)
+        if isLocalDefault {
+            environment.removeValue(forKey: "ARES_API_URL")
+            environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_BASE_URL")
+        } else {
+            environment["ARES_API_URL"] = hermesURL
+            environment["ARES_WEBUI_GATEWAY_BASE_URL"] = hermesURL
+        }
         environment["ARES_JROS_GATEWAY_URL"] = jrosURL
         if hermesAPIKey.isEmpty {
             environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_API_KEY")
@@ -163,6 +175,15 @@ public final class WebUIServerManager: ObservableObject {
             environment["ARES_JROS_GATEWAY_KEY"] = jrosAPIKey
         }
         return environment
+    }
+
+    /// True when the configured Hermes gateway URL points at this machine —
+    /// local installs detect the gateway via PID/state files, not HTTP.
+    nonisolated static func isLocalGatewayURL(_ raw: String) -> Bool {
+        guard let url = URL(string: raw.trimmingCharacters(in: .whitespaces)),
+              let host = url.host?.lowercased()
+        else { return true }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0.0.0.0"
     }
 
     public func stop() {

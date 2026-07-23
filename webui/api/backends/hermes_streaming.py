@@ -311,6 +311,10 @@ def run_hermes_streaming(
     # Build environment
     env = dict(os.environ)
     env["HERMES_HOME"] = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+    # Hermes is a Python CLI writing to a pipe: without this, its stdout is
+    # block-buffered (~8KB) and the whole reply lands in one burst at process
+    # exit — the UI shows nothing until the turn ends instead of streaming.
+    env["PYTHONUNBUFFERED"] = "1"
 
     logger.info("Hermes worker cmd: %s", " ".join(args))
 
