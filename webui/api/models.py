@@ -1316,6 +1316,17 @@ class Session:
                  and not k.startswith('_')}
         payload = json.dumps({**meta, **extra}, ensure_ascii=False, indent=2)
 
+        title_lower = (self.title or "").lower()
+        is_probe = (
+            "reply with" in title_lower
+            or "ares-hermes-ok" in title_lower
+            or "ares-jaeger-ok" in title_lower
+            or "si-ok" in title_lower
+        )
+        if is_probe:
+            # Do not persist automated verification probes to disk in user's session folder
+            return
+
         # ── #1558 backup safeguard ──────────────────────────────────────
         # Before overwriting the session file, copy the previous version to
         # ``<sid>.json.bak`` IFF the previous file has more messages than the
