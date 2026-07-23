@@ -324,11 +324,10 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         ARESWindowCoordinator.shared.openMainWindow()
         NSApp.activate(ignoringOtherApps: true)
 
-        // SwiftUI creates a new WindowGroup window asynchronously.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if let window = NSApp.windows.first(where: {
-                $0.title != "" && $0.className != "NSStatusBarWindow"
-            }) {
+        // SwiftUI creates or brings forward the WindowGroup window asynchronously.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            for window in NSApp.windows where window.className != "NSStatusBarWindow" {
+                window.deminiaturize(nil)
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
             }
@@ -338,9 +337,10 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func windowWillClose(_ notification: Notification) {
         DispatchQueue.main.async {
-            let visibleWindows = NSApp.windows.filter { $0.isVisible && $0.title != "" && $0.className != "NSStatusBarWindow" }
+            let visibleWindows = NSApp.windows.filter { $0.isVisible && $0.className != "NSStatusBarWindow" }
             if visibleWindows.isEmpty {
-                NSApp.setActivationPolicy(.accessory)
+                // Keep .regular policy so clicking the Dock icon or app bundle always brings back the window
+                NSApp.setActivationPolicy(.regular)
             }
         }
     }
@@ -350,9 +350,8 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            openMainWindow()
-        }
+        NSApp.setActivationPolicy(.regular)
+        openMainWindow()
         return true
     }
 
