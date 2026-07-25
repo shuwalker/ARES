@@ -17,6 +17,8 @@ Availability = a usable local JaegerAI install (mode "local"), or a live
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 import time
 from typing import Optional
 
@@ -122,13 +124,8 @@ def is_jros_available() -> bool:
 
 def is_hermes_worker_available() -> bool:
     """Whether Jaeger may delegate a subtask to an installed Hermes worker."""
-    try:
-        from api.config import _HERMES_FOUND
-
-        return bool(_HERMES_FOUND)
-    except Exception:
-        logger.debug("Hermes availability probe failed", exc_info=True)
-        return False
+    command = os.getenv("JAEGER_HERMES_COMMAND", "hermes").strip() or "hermes"
+    return shutil.which(command) is not None
 
 
 def backend_status() -> dict:
