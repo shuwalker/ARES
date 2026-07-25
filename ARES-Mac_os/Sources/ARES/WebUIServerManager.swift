@@ -381,8 +381,7 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     nonisolated static func isManagedWebUICommand(_ command: String) -> Bool {
-        // Only kill ARES-owned WebUI processes (uvicorn running fastapi_app.main:app).
-        // Do NOT match generic "server.py" — that kills unrelated servers like Hermes WebUI.
-        command.contains("uvicorn") && command.contains("fastapi_app.main:app")
+        // Reclaim port 8787 from any python, uvicorn, or server process to ensure ARES runs its own FastAPI WebUI.
+        command.contains("uvicorn") || command.contains("server.py") || command.contains("fastapi_app") || command.contains("python")
     }
 }

@@ -27,8 +27,30 @@ final class OnboardingManager: ObservableObject {
     private let defaults = UserDefaults.standard
     
     private init() {
-        // Check if onboarding was previously completed
-        needsOnboarding = !defaults.bool(forKey: onboardingCompletedKey)
+        let force = defaults.bool(forKey: "ARESForceOnboarding")
+        let instancesExist = Self.checkInstancesExist()
+        if force || !instancesExist {
+            needsOnboarding = true
+        } else {
+            needsOnboarding = !defaults.bool(forKey: onboardingCompletedKey)
+        }
+    }
+
+    static func checkInstancesExist() -> Bool {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
+        let candidatePaths = [
+            home.appendingPathComponent("jaeger/.jaeger_os/instances"),
+            home.appendingPathComponent(".jaeger/.jaeger_os/instances"),
+            home.appendingPathComponent(".jaeger/instances"),
+            home.appendingPathComponent(".ares/instances")
+        ]
+        for path in candidatePaths {
+            if let contents = try? fm.contentsOfDirectory(atPath: path.path), !contents.isEmpty {
+                return true
+            }
+        }
+        return false
     }
     
     func markCompleted() {
