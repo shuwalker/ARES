@@ -348,14 +348,29 @@ function _renderOnboardingBody(){
     body.innerHTML=`
       <div class="onboarding-hero-icon">✦</div>
       <div class="onboarding-centered-copy">
-        <h3>${t('onboarding_welcome_heading')||'Welcome to ARES'}</h3>
-        <p>${t('onboarding_welcome_body')||'ARES gives you a Synthetic Intelligence Companion — here to help you become the best version of yourself, and reachable from every device you own.'}</p>
+        <h3 style="margin-bottom:4px;">${t('onboarding_welcome_heading')||'Welcome to ARES'}</h3>
+        <div style="font-weight:600;color:#d9b256;margin-bottom:12px;font-size:14px;">Agentic Responsive Environment & System</div>
+        <p style="max-width:580px;margin:0 auto 16px auto;line-height:1.5;">${t('onboarding_welcome_body')||'As the world becomes more noisy and confusing, ARES helps you disconnect from digital overload—reshaping your relationship with technology starting directly on your Mac.'}</p>
       </div>
-      <div class="onboarding-panel-grid">
+      <div class="onboarding-panel-grid" style="gap:12px;margin-bottom:16px;">
+        <div class="onboarding-check ok" style="align-items:flex-start;">
+          <strong>🌿 Reshape Your Relationship with Tech</strong>
+          <span>Move away from endless digital distraction. Delegate repetitive tasks to your local companion and regain your focus.</span>
+        </div>
+        <div class="onboarding-check ok" style="align-items:flex-start;">
+          <strong>🧠 Natural UI for LLMs (Large Language Models)</strong>
+          <span>LLMs are AI reasoning engines—both private models on your Mac and 3rd-party cloud APIs—given an intuitive interface to turn your natural language into action.</span>
+        </div>
+        <div class="onboarding-check ok" style="align-items:flex-start;">
+          <strong>🔄 Symbiotic Growth with JaegerAI</strong>
+          <span>Powered by JaegerAI, your local companion manages your digital life and agents—creating a space where you, your agents, and yourself learn and grow together.</span>
+        </div>
+      </div>
+      <div class="onboarding-panel-grid" style="margin-top:8px;">
         <div class="onboarding-check ${companionUp?'ok':'warn'}"><strong>${t('onboarding_check_companion')||'Companion runtime (JaegerAI)'}</strong><span>${companionUp?(t('onboarding_check_companion_ready')||'Installed and ready'):(t('onboarding_check_companion_missing')||'Not found — required')}</span></div>
         <div class="onboarding-check ${(settings.password_enabled?'ok':'muted')}"><strong>${t('onboarding_check_password')}</strong><span>${settings.password_enabled?t('onboarding_check_password_enabled'):t('onboarding_check_password_disabled')}</span></div>
       </div>
-      ${companionUp?'':`<div class="onboarding-command-card"><button class="onboarding-primary-wide" id="onboardingInstallJrosBtn" type="button" onclick="installJrosFromOnboarding()">${t('onboarding_install_jros_btn')||'Install JaegerAI automatically'}</button><p class="onboarding-copy" style="text-align:center;margin-top:0.5em">${t('onboarding_install_jros_help')||'Or install manually:'}</p><code>curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash</code></div><p class="onboarding-copy">${t('onboarding_companion_install_help')||'Run this on the machine that will host your Companion, then reload this page.'}</p>`}`;
+      ${companionUp?'':`<div class="onboarding-command-card" style="margin-top:12px;"><button class="onboarding-primary-wide" id="onboardingInstallJrosBtn" type="button" onclick="installJrosFromOnboarding()">${t('onboarding_install_jros_btn')||'Install JaegerAI automatically'}</button><p class="onboarding-copy" style="text-align:center;margin-top:0.5em">${t('onboarding_install_jros_help')||'Or install manually:'}</p><code>curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JROS/master/install.sh | bash</code></div><p class="onboarding-copy">${t('onboarding_companion_install_help')||'Run this on the machine that will host your Companion, then reload this page.'}</p>`}`;
     return;
   }
 

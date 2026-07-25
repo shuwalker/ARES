@@ -1330,7 +1330,7 @@ const LOCALES = {
     onboarding_step_companion_title: 'Name your Companion',
     onboarding_step_companion_desc: 'Give your Synthetic Intelligence Companion a name and a character.',
     onboarding_welcome_heading: 'Welcome to ARES',
-    onboarding_welcome_body: 'ARES gives you a Synthetic Intelligence Companion — here to help you become the best version of yourself, and reachable from every device you own.',
+    onboarding_welcome_body: 'As the world becomes more noisy and confusing, ARES helps you disconnect from digital overload—reshaping your relationship with technology starting directly on your Mac.',
     onboarding_check_companion: 'Companion runtime (JROS)',
     onboarding_check_companion_ready: 'Installed and ready',
     onboarding_check_companion_missing: 'Not found — required',
