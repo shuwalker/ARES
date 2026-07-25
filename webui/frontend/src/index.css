@@ -239,6 +239,117 @@
       var(--background);
   }
 
+  /* Island backdrop -------------------------------------------------------
+     `ares-island-wide.png` is a fully opaque 1600x672 banner. It is painted
+     once, fixed to the window, behind the whole shell, with its legibility
+     scrim baked into the SAME layer as a gradient. Keeping the scrim here is
+     deliberate: every pane stacked on top stays fully transparent, so the art
+     is dimmed exactly once. Adding a second translucent fill on a pane dims
+     the island twice over and collapses it back to near-black.
+
+     `isolation` keeps the negative-z pseudo-element inside this element's
+     stacking context, so it paints above the shell's own fill but below every
+     in-flow pane instead of escaping behind the page. */
+  .ares-island-backdrop {
+    isolation: isolate;
+  }
+
+  /* Two layers, both fixed and both behind the panes: `::before` is the art,
+     `::after` is the legibility scrim. Splitting them means the art can be
+     re-fitted per viewport (and edge-faded on phones) without disturbing the
+     scrim that keeps text readable. `::after` follows `::before` in paint
+     order, so the scrim always lands on top of the art. */
+  .ares-island-backdrop::before,
+  .ares-island-backdrop::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .ares-island-backdrop::before {
+    background-image: url("/assets/ares-island-wide.png");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+
+  .ares-island-backdrop::after {
+    background-image: linear-gradient(
+      to bottom,
+      rgba(9, 10, 14, 0.58) 0%,
+      rgba(9, 10, 14, 0.42) 38%,
+      rgba(9, 10, 14, 0.72) 100%
+    );
+  }
+
+  /* Phone: the banner is 1600x672, so `cover` against a tall portrait viewport
+     crops away ~80% of its width and leaves an unreadable vertical sliver.
+     Fit the full width instead and fade the band's top and bottom edges into
+     the shell color so it reads as art rather than a pasted-in strip. */
+  @media (max-width: 47.999rem) {
+    .ares-island-backdrop::before {
+      /* Size the layer to the band rather than the viewport, so the mask stops
+         below are measured against the art itself and its edges actually fade.
+         A viewport-height mask leaves hard band edges, because the fade points
+         land in empty space above and below the painted strip. */
+      inset: 0 0 auto 0;
+      top: 14vh;
+      height: 40vh;
+      background-size: cover;
+      background-position: center 42%;
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 26%,
+        black 68%,
+        transparent 100%
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 26%,
+        black 68%,
+        transparent 100%
+      );
+    }
+  }
+
+  /* Panes over the backdrop paint no fill of their own. */
+  .island-surface,
+  .island-surface--chat {
+    background: transparent;
+  }
+
+  /* The composer is a sticky footer over a scrolling transcript, so it cannot
+     be fully transparent — messages would slide visibly underneath it. Blur
+     plus a light tint hides the scrolled content while still letting the
+     island's color through. */
+  .island-composer {
+    background: color-mix(in oklab, #0b0d13 62%, transparent);
+    backdrop-filter: blur(1rem);
+  }
+
+  /* Respect a user's reduced-transparency setting: fall back to the original
+     opaque fills so the art never sits behind text for someone who asked the
+     system not to do that. */
+  @media (prefers-reduced-transparency: reduce) {
+    .ares-island-backdrop::before {
+      display: none;
+    }
+
+    .island-surface {
+      background: #151614;
+    }
+
+    .island-surface--chat,
+    .island-composer {
+      background: #0f1117;
+      backdrop-filter: none;
+    }
+  }
+
   .page-stack {
     display: flex;
     min-height: 100%;

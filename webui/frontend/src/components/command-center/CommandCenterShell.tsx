@@ -331,13 +331,13 @@ export function CommandCenterShell() {
       expand={expandWorkbench}
     >
       <div
-        className="h-dvh w-screen overflow-hidden bg-[#111210] text-[#ecebe4]"
+        className="ares-island-backdrop h-dvh w-screen overflow-hidden bg-[#111210] text-[#ecebe4]"
         data-compact={isCompact ? "1" : "0"}
       >
         {isCompact ? (
           <div className="relative flex h-full min-h-0 flex-col">
             <main
-              className="flex h-full min-h-0 flex-1 flex-col bg-[#151614]"
+              className="island-surface flex h-full min-h-0 flex-1 flex-col"
               data-active-surface={location.pathname}
             >
               <BrainHeader
@@ -422,7 +422,7 @@ export function CommandCenterShell() {
               <ResizeHandle id="deck-brain-handle" />
               <Panel id="brain" defaultSize="48%" minSize="280px">
                 <main
-                  className="flex h-full min-h-0 flex-col bg-[#151614]"
+                  className="island-surface flex h-full min-h-0 flex-col"
                   data-active-surface={location.pathname}
                 >
                   <BrainHeader

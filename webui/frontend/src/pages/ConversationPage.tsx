@@ -521,8 +521,8 @@ export function ConversationPage() {
 
   return (
     <div
-      className="conversation-page"
-      style={{ display: "flex", flexDirection: "column", height: "100%", background: H.bg, color: H.text, position: "relative" }}
+      className="conversation-page island-surface island-surface--chat"
+      style={{ display: "flex", flexDirection: "column", height: "100%", color: H.text, position: "relative" }}
     >
 
       {/* Hidden file input for Attach button — accepts images and other files */}
@@ -644,7 +644,7 @@ export function ConversationPage() {
       </div>
 
       {/* COMPOSER */}
-      <div className="conversation-composer" style={{ flexShrink: 0, padding: "0 1rem 0.875rem", background: H.bg, position: "relative", zIndex: 10 }}>
+      <div className="conversation-composer island-composer" style={{ flexShrink: 0, padding: "0 1rem 0.875rem", position: "relative", zIndex: 10 }}>
 
         {/* Approval card */}
         {showApproval && (
