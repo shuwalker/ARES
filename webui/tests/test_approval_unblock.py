@@ -311,7 +311,7 @@ class TestApprovalHTTPEndpoints:
 
     def test_pending_route_falls_back_to_gateway_queue(self, monkeypatch):
         """GET /api/approval/pending must surface gateway-only approvals when _pending is empty."""
-        from api import routes as r
+        from api import route_approvals as r
 
         sid = f"http-gateway-fallback-{uuid.uuid4().hex[:8]}"
         payload = {
@@ -320,24 +320,14 @@ class TestApprovalHTTPEndpoints:
             "pattern_keys": ["recursive delete"],
             "description": "recursive delete",
         }
-        captured = {}
-
-        def fake_j(handler, data, status=200, extra_headers=None):
-            captured["payload"] = data
-            captured["status"] = status
-            return data
-
-        monkeypatch.setattr(r, "j", fake_j)
         with _lock:
             r._pending.pop(sid, None)
             r._gateway_queues[sid] = [_ApprovalEntry(payload)]
 
         try:
-            parsed = urllib.parse.urlparse(f"/api/approval/pending?session_id={urllib.parse.quote(sid)}")
-            r._handle_approval_pending(object(), parsed)
-            assert captured["status"] == 200
-            assert captured["payload"]["pending"]["command"] == payload["command"]
-            assert captured["payload"]["pending_count"] == 1
+            captured = r.pending_snapshot(sid)
+            assert captured["pending"]["command"] == payload["command"]
+            assert captured["pending_count"] == 1
         finally:
             with _lock:
                 r._pending.pop(sid, None)
@@ -345,7 +335,7 @@ class TestApprovalHTTPEndpoints:
 
     def test_stale_gateway_mirror_does_not_mask_next_live_approval(self, monkeypatch):
         """A stale mirrored gateway approval must not outlive its live queue head."""
-        from api import routes as r
+        from api import route_approvals as r
         from api import route_approvals as ra
 
         sid = f"http-gateway-stale-{uuid.uuid4().hex[:8]}"
@@ -361,14 +351,6 @@ class TestApprovalHTTPEndpoints:
             "pattern_keys": ["recursive delete"],
             "description": "recursive delete",
         }
-        captured = {}
-
-        def fake_j(handler, data, status=200, extra_headers=None):
-            captured["payload"] = data
-            captured["status"] = status
-            return data
-
-        monkeypatch.setattr(r, "j", fake_j)
         with _lock:
             r._pending.pop(sid, None)
             r._gateway_queues.pop(sid, None)
@@ -380,11 +362,9 @@ class TestApprovalHTTPEndpoints:
                 r._gateway_queues[sid] = [_ApprovalEntry(approval_b)]
             ra.submit_gateway_pending_mirror(sid, approval_b)
 
-            parsed = urllib.parse.urlparse(f"/api/approval/pending?session_id={urllib.parse.quote(sid)}")
-            r._handle_approval_pending(object(), parsed)
-            assert captured["status"] == 200
-            assert captured["payload"]["pending"]["command"] == approval_b["command"]
-            assert captured["payload"]["pending_count"] == 1
+            captured = r.pending_snapshot(sid)
+            assert captured["pending"]["command"] == approval_b["command"]
+            assert captured["pending_count"] == 1
 
             with _lock:
                 queue = r._pending.get(sid)
@@ -403,7 +383,7 @@ class TestApprovalHTTPEndpoints:
 
     def test_gateway_mirror_token_stable_across_reconciles(self, monkeypatch):
         """Two reconciles of the same _ApprovalEntry must keep the same approval_id."""
-        from api import routes as r
+        from api import route_approvals as r
         from api import route_approvals as ra
 
         sid = f"http-token-stable-{uuid.uuid4().hex[:8]}"
@@ -439,7 +419,7 @@ class TestApprovalHTTPEndpoints:
 
     def test_stale_explicit_approval_id_does_not_resolve_live_gateway_head(self, monkeypatch):
         """A stale explicit approval_id must not resolve the next live gateway head."""
-        from api import routes as r
+        from api import route_approvals as r
         from api import route_approvals as ra
 
         sid = f"http-stale-id-{uuid.uuid4().hex[:8]}"
@@ -483,7 +463,7 @@ class TestApprovalHTTPEndpoints:
 
     def test_gateway_mirror_without_run_id_returns_explicit_conflict(self, monkeypatch):
         """Gateway-mirrored approvals without relayable run state must stay actionable."""
-        from api import routes as r
+        from api import route_approvals as r
         from api import route_approvals as ra
         from api.gateway_chat import _STREAM_RUN_IDS
 
@@ -495,21 +475,16 @@ class TestApprovalHTTPEndpoints:
             "pattern_keys": ["recursive delete"],
             "description": "recursive delete",
         }
-        captured = {}
-
-        def fake_j(handler, data, status=200, extra_headers=None):
-            captured["payload"] = data
-            captured["status"] = status
-            return data
-
-        monkeypatch.setattr(r, "j", fake_j)
-        monkeypatch.setattr(r, "get_session", lambda _sid: SimpleNamespace(active_stream_id=stream_id))
+        monkeypatch.setattr(
+            "api.models.get_session",
+            lambda _sid: SimpleNamespace(active_stream_id=stream_id),
+        )
         # The relay-unavailable 409 is gateway-deployment behaviour: it only
         # fires when the WebUI actually runs the gateway chat backend. On the
         # default local backend a mirrored approval is resolved locally
         # instead (see test_issue4771_local_approval_regression.py). Pin the
         # gateway backend so this test exercises the intended 409 path.
-        monkeypatch.setenv("HERMES_WEBUI_CHAT_BACKEND", "gateway")
+        monkeypatch.setenv("ARES_WEBUI_CHAT_BACKEND", "gateway")
 
         with _lock:
             r._pending.pop(sid, None)
@@ -521,18 +496,18 @@ class TestApprovalHTTPEndpoints:
             with _lock:
                 approval_id = r._pending[sid][0]["approval_id"]
 
-            r._handle_approval_respond(
-                object(),
-                {"session_id": sid, "choice": "once", "approval_id": approval_id},
-            )
+            captured, status = r.respond_approval(sid, approval_id, "once")
 
-            assert captured["status"] == 409
-            assert captured["payload"] == {
+            assert status == 409
+            assert captured == {
                 "ok": False,
                 "choice": "once",
                 "relayed": False,
                 "code": "gateway_run_unavailable",
-                "error": r._GATEWAY_APPROVAL_RELAY_UNAVAILABLE,
+                "error": (
+                    "Gateway approval could not be relayed because the active run is unavailable. "
+                    "Reopen the session or retry after it reconnects."
+                ),
             }
             with _lock:
                 pending_queue = r._pending.get(sid)

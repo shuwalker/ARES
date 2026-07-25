@@ -1,12 +1,7 @@
-import os
-import sys
 import yaml
-import pytest
-from pathlib import Path
-from types import SimpleNamespace
 
 from api.characters import list_characters, get_character, _character_dir
-from api.routes import _sync_main_model_to_jros
+from api.model_catalog import sync_main_model_to_jros
 
 
 def test_characters_api(tmp_path, monkeypatch):
@@ -126,23 +121,23 @@ def test_sync_main_model_to_jros_success(monkeypatch):
     called_sync = []
     called_reset = []
 
-    def mock_sync_provider(provider, model, targets, hermes_config_path):
-        called_sync.append((provider, model, targets, hermes_config_path))
+    def mock_sync_provider(provider, model, targets, ares_config_path):
+        called_sync.append((provider, model, targets, ares_config_path))
 
     def mock_reset_jros_boot():
         called_reset.append(True)
 
     monkeypatch.setattr("api.ares_provider_sync.sync_provider", mock_sync_provider)
     monkeypatch.setattr("api.jros_gateway_chat.reset_jros_boot", mock_reset_jros_boot)
-    monkeypatch.setattr("api.routes._active_profile_config_path", lambda: "/path/to/hermes/config.yaml")
+    monkeypatch.setattr("api.model_catalog.active_profile_config_path", lambda: "/path/to/ares/config.yaml")
 
     # Call with a model mapped in JROS_FALLBACK_PROVIDER_MAP (e.g. "openai")
     # Result contains "provider" and "model"
-    _sync_main_model_to_jros({"provider": "openai", "model": "gpt-4o"})
+    sync_main_model_to_jros({"provider": "openai", "model": "gpt-4o"})
 
     assert len(called_sync) == 1
     # "openai" maps to "openai" in JROS_FALLBACK_PROVIDER_MAP
-    assert called_sync[0] == ("openai", "gpt-4o", ["jros"], "/path/to/hermes/config.yaml")
+    assert called_sync[0] == ("openai", "gpt-4o", ["jros"], "/path/to/ares/config.yaml")
     assert len(called_reset) == 1
 
 
@@ -150,18 +145,18 @@ def test_sync_main_model_to_jros_no_mapping(monkeypatch):
     called_sync = []
     called_reset = []
 
-    def mock_sync_provider(provider, model, targets, hermes_config_path):
-        called_sync.append((provider, model, targets, hermes_config_path))
+    def mock_sync_provider(provider, model, targets, ares_config_path):
+        called_sync.append((provider, model, targets, ares_config_path))
 
     def mock_reset_jros_boot():
         called_reset.append(True)
 
     monkeypatch.setattr("api.ares_provider_sync.sync_provider", mock_sync_provider)
     monkeypatch.setattr("api.jros_gateway_chat.reset_jros_boot", mock_reset_jros_boot)
-    monkeypatch.setattr("api.routes._active_profile_config_path", lambda: "/path/to/hermes/config.yaml")
+    monkeypatch.setattr("api.model_catalog.active_profile_config_path", lambda: "/path/to/ares/config.yaml")
 
     # Call with an unmapped provider
-    _sync_main_model_to_jros({"provider": "unknown-provider", "model": "some-model"})
+    sync_main_model_to_jros({"provider": "unknown-provider", "model": "some-model"})
 
     # Should skip sync
     assert len(called_sync) == 0
@@ -171,7 +166,7 @@ def test_sync_main_model_to_jros_no_mapping(monkeypatch):
 def test_sync_main_model_to_jros_handles_exception(monkeypatch):
     called_reset = []
 
-    def mock_sync_provider_fail(provider, model, targets, hermes_config_path):
+    def mock_sync_provider_fail(provider, model, targets, ares_config_path):
         raise RuntimeError("Sync failed")
 
     def mock_reset_jros_boot():
@@ -179,44 +174,35 @@ def test_sync_main_model_to_jros_handles_exception(monkeypatch):
 
     monkeypatch.setattr("api.ares_provider_sync.sync_provider", mock_sync_provider_fail)
     monkeypatch.setattr("api.jros_gateway_chat.reset_jros_boot", mock_reset_jros_boot)
-    monkeypatch.setattr("api.routes._active_profile_config_path", lambda: "/path/to/hermes/config.yaml")
+    monkeypatch.setattr("api.model_catalog.active_profile_config_path", lambda: "/path/to/ares/config.yaml")
 
     # Should not raise exception
-    _sync_main_model_to_jros({"provider": "openai", "model": "gpt-4o"})
+    sync_main_model_to_jros({"provider": "openai", "model": "gpt-4o"})
     # Should not call reset_jros_boot if sync failed
     assert len(called_reset) == 0
 
 
-def test_characters_list_api_endpoint_handles_missing_jros_dir():
-    import json
-    import urllib.error
-    import urllib.request
-    from tests._pytest_port import BASE
+def test_characters_list_api_endpoint_handles_missing_jros_dir(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
 
-    url = f"{BASE}/api/ares/characters"
-    try:
-        with urllib.request.urlopen(url, timeout=5) as r:
-            assert False, "Endpoint should have failed when JROS repo dir is not set"
-    except urllib.error.HTTPError as e:
-        assert e.code == 400
-        data = json.loads(e.read().decode("utf-8"))
-        assert "Failed to list characters" in data["error"]
-        assert "ARES_JROS_DIR is not set" in data["error"]
+    monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    with TestClient(create_app()) as client:
+        response = client.get("/api/ares/characters")
+
+    assert response.status_code == 400
+    assert "Failed to list characters" in response.json()["error"]
+    assert "ARES_JROS_DIR is not set" in response.json()["error"]
 
 
-def test_character_detail_api_endpoint_handles_missing_jros_dir():
-    import json
-    import urllib.error
-    import urllib.request
-    from tests._pytest_port import BASE
+def test_character_detail_api_endpoint_handles_missing_jros_dir(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
 
-    url = f"{BASE}/api/ares/character?id=test-character"
-    try:
-        with urllib.request.urlopen(url, timeout=5) as r:
-            assert False, "Endpoint should have failed when JROS repo dir is not set"
-    except urllib.error.HTTPError as e:
-        assert e.code == 400
-        data = json.loads(e.read().decode("utf-8"))
-        assert "Failed to load character" in data["error"]
-        assert "ARES_JROS_DIR is not set" in data["error"]
+    monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    with TestClient(create_app()) as client:
+        response = client.get("/api/ares/character?id=test-character")
 
+    assert response.status_code == 400
+    assert "Failed to load character" in response.json()["error"]
+    assert "ARES_JROS_DIR is not set" in response.json()["error"]

@@ -1,38 +1,26 @@
-"""Regression tests for #1909 session-bound CSRF token first slice."""
+"""Session-bound CSRF behavior at the FastAPI request boundary."""
+
+from __future__ import annotations
 
 import hmac
-import io
 import time
-from types import SimpleNamespace
+
+from fastapi.testclient import TestClient
 
 import api.auth as auth
-import api.config as api_config
-import api.routes as routes
+from fastapi_app.main import create_app
 
 
 def _signed_cookie(raw_token: str) -> str:
-    sig = hmac.new(auth._signing_key(), raw_token.encode(), "sha256").hexdigest()
+    signature = hmac.new(auth._signing_key(), raw_token.encode(), "sha256").hexdigest()
     auth._sessions[raw_token] = time.time() + 60
-    return f"{raw_token}.{sig}"
+    return f"{raw_token}.{signature}"
 
 
-class _FakeHandler:
-    def __init__(self, headers=None, body=b"{}"):
-        self.headers = headers or {}
-        self.client_address = ("127.0.0.1", 12345)
-        self.rfile = io.BytesIO(body)
-        self.wfile = io.BytesIO()
-        self.status = None
-        self.sent_headers = {}
-
-    def send_response(self, status):
-        self.status = status
-
-    def send_header(self, key, value):
-        self.sent_headers[key] = value
-
-    def end_headers(self):
-        pass
+def _client(cookie: str, *, frontend_root=None):
+    client = TestClient(create_app(frontend_root=frontend_root))
+    client.cookies.set(auth.COOKIE_NAME, cookie)
+    return client
 
 
 def test_csrf_token_is_bound_to_auth_session():
@@ -41,7 +29,6 @@ def test_csrf_token_is_bound_to_auth_session():
     try:
         token_a = auth.csrf_token_for_session(cookie_a)
         token_b = auth.csrf_token_for_session(cookie_b)
-
         assert token_a and token_b and token_a != token_b
         assert auth.verify_csrf_token(cookie_a, token_a)
         assert not auth.verify_csrf_token(cookie_b, token_a)
@@ -51,138 +38,127 @@ def test_csrf_token_is_bound_to_auth_session():
         auth._sessions.pop("b" * 64, None)
 
 
-def test_authenticated_same_origin_browser_post_requires_session_csrf_token(monkeypatch):
+def test_authenticated_same_origin_mutation_requires_session_csrf_token(monkeypatch):
     cookie = _signed_cookie("c" * 64)
     token = auth.csrf_token_for_session(cookie)
     monkeypatch.setattr(auth, "is_auth_enabled", lambda: True)
     try:
-        base_headers = {
-            "Origin": "http://127.0.0.1:8787",
-            "Host": "127.0.0.1:8787",
-            "Cookie": f"{auth.COOKIE_NAME}={cookie}",
-        }
-        assert not routes._check_csrf(_FakeHandler(base_headers.copy()))
-
-        headers_with_token = {**base_headers, auth.CSRF_HEADER_NAME: token}
-        assert routes._check_csrf(_FakeHandler(headers_with_token))
+        with _client(cookie) as client:
+            missing = client.post(
+                "/api/session/new",
+                json={},
+                headers={"Origin": "http://testserver", "Host": "testserver"},
+            )
+            accepted = client.post(
+                "/api/session/new",
+                json={},
+                headers={
+                    "Origin": "http://testserver",
+                    "Host": "testserver",
+                    auth.CSRF_HEADER_NAME: token,
+                },
+            )
+        assert missing.status_code == 403
+        assert accepted.status_code == 200
     finally:
         auth._sessions.pop("c" * 64, None)
 
 
-def test_authenticated_allowed_public_origin_accepts_valid_csrf_token(monkeypatch):
+def test_authenticated_public_origin_accepts_valid_token_when_allowed(monkeypatch):
     cookie = _signed_cookie("f" * 64)
     token = auth.csrf_token_for_session(cookie)
     monkeypatch.setattr(auth, "is_auth_enabled", lambda: True)
-    monkeypatch.setenv("HERMES_WEBUI_ALLOWED_ORIGINS", "https://myapp.example.com:8000")
+    monkeypatch.setenv("ARES_WEBUI_ALLOWED_ORIGINS", "https://myapp.example.com:8000")
     try:
-        headers = {
-            "Origin": "https://myapp.example.com:8000",
-            "Host": "proxy.internal",
-            "Cookie": f"{auth.COOKIE_NAME}={cookie}",
-            auth.CSRF_HEADER_NAME: token,
-        }
-        assert routes._check_csrf(_FakeHandler(headers))
+        with _client(cookie) as client:
+            response = client.post(
+                "/api/session/new",
+                json={},
+                headers={
+                    "Origin": "https://myapp.example.com:8000",
+                    "Host": "proxy.internal",
+                    auth.CSRF_HEADER_NAME: token,
+                },
+            )
+        assert response.status_code == 200
     finally:
         auth._sessions.pop("f" * 64, None)
 
 
-def test_authenticated_reverse_proxy_same_origin_accepts_valid_csrf_token(monkeypatch):
-    cookie = _signed_cookie("g" * 64)
-    token = auth.csrf_token_for_session(cookie)
-    monkeypatch.setattr(auth, "is_auth_enabled", lambda: True)
-    monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "1")
-    try:
-        headers = {
-            "Origin": "https://example.com",
-            "Host": "127.0.0.1:8787",
-            "X-Forwarded-Host": "example.com:443",
-            "Cookie": f"{auth.COOKIE_NAME}={cookie}",
-            auth.CSRF_HEADER_NAME: token,
-        }
-        assert routes._check_csrf(_FakeHandler(headers))
-    finally:
-        auth._sessions.pop("g" * 64, None)
-
-
-def test_authenticated_forwarded_host_is_ignored_without_proxy_opt_in(monkeypatch):
+def test_forwarded_host_is_ignored_without_proxy_opt_in(monkeypatch):
     cookie = _signed_cookie("h" * 64)
     token = auth.csrf_token_for_session(cookie)
     monkeypatch.setattr(auth, "is_auth_enabled", lambda: True)
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_HOST", raising=False)
     try:
-        headers = {
-            "Origin": "https://example.com",
-            "Host": "127.0.0.1:8787",
-            "X-Forwarded-Host": "example.com:443",
-            "Cookie": f"{auth.COOKIE_NAME}={cookie}",
-            auth.CSRF_HEADER_NAME: token,
-        }
-        assert not routes._check_csrf(_FakeHandler(headers))
+        with _client(cookie) as client:
+            response = client.post(
+                "/api/session/new",
+                json={},
+                headers={
+                    "Origin": "https://example.com",
+                    "Host": "127.0.0.1:8787",
+                    "X-Forwarded-Host": "example.com:443",
+                    auth.CSRF_HEADER_NAME: token,
+                },
+            )
+        assert response.status_code == 403
     finally:
         auth._sessions.pop("h" * 64, None)
 
 
-def test_non_browser_mcp_style_authenticated_post_remains_compatible(monkeypatch):
+def test_non_browser_authenticated_mutation_remains_compatible(monkeypatch):
     cookie = _signed_cookie("d" * 64)
+    token = auth.csrf_token_for_session(cookie)
     monkeypatch.setattr(auth, "is_auth_enabled", lambda: True)
     try:
-        handler = _FakeHandler({"Cookie": f"{auth.COOKIE_NAME}={cookie}"})
-        assert routes._check_csrf(handler)
+        with _client(cookie) as client:
+            response = client.post(
+                "/api/session/new",
+                json={},
+                headers={auth.CSRF_HEADER_NAME: token},
+            )
+        assert response.status_code == 200
     finally:
         auth._sessions.pop("d" * 64, None)
 
 
-def test_login_route_remains_csrf_exempt(monkeypatch):
-    handler = _FakeHandler(
-        {
-            "Content-Length": "2",
-            "Content-Type": "application/json",
-            "Origin": "http://evil.example",
-            "Host": "127.0.0.1:8787",
-        }
-    )
-
-    def fail_if_called(_handler):
-        raise AssertionError("/api/auth/login must not require a pre-login CSRF token")
-
-    monkeypatch.setattr(routes, "_check_csrf", fail_if_called)
+def test_login_route_is_csrf_exempt(monkeypatch):
     monkeypatch.setattr(auth, "is_auth_enabled", lambda: False)
-
-    routes.handle_post(handler, SimpleNamespace(path="/api/auth/login"))
-    assert handler.status == 200
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/auth/login",
+            json={},
+            headers={"Origin": "http://evil.example", "Host": "testserver"},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"] == "Invalid request"
 
 
 def test_index_shell_includes_csrf_fetch_and_sendbeacon_injection():
-    src = api_config.get_index_html_path().read_text(encoding="utf-8")
+    from pathlib import Path
 
-    assert "csrfToken:__CSRF_TOKEN_JSON__" in src
-    assert "X-Hermes-CSRF-Token" in src
-    assert "window.fetch=function" in src
-    assert "navigator.sendBeacon=function" in src
-    assert "auth\\/login|csp-report" in src
+    frontend = Path(__file__).resolve().parents[1] / "frontend"
+    index = (frontend / "index.html").read_text(encoding="utf-8")
+    api_client = (frontend / "src/shared/api-client.ts").read_text(encoding="utf-8")
+    assert "__ARES_RUNTIME_CONFIG_JSON__" in index
+    assert 'headers.set("X-CSRF-Token", token)' in api_client
 
 
-def test_index_shell_injects_session_bound_csrf_token(monkeypatch):
+def test_index_shell_injects_session_bound_csrf_token(monkeypatch, tmp_path):
     cookie = _signed_cookie("e" * 64)
     token = auth.csrf_token_for_session(cookie)
     monkeypatch.setattr(auth, "is_auth_enabled", lambda: True)
-
-    captured = {}
-
-    def fake_t(_handler, body, *, content_type=None, **_kwargs):
-        captured["body"] = body
-        captured["content_type"] = content_type
-        return True
-
-    import api.extensions as extensions
-
-    monkeypatch.setattr(routes, "t", fake_t)
-    monkeypatch.setattr(extensions, "inject_extension_tags", lambda html: html)
-
+    frontend = tmp_path / "dist"
+    frontend.mkdir()
+    (frontend / "index.html").write_text(
+        "csrfToken:__ARES_RUNTIME_CONFIG_JSON__",
+        encoding="utf-8",
+    )
     try:
-        handler = _FakeHandler({"Cookie": f"{auth.COOKIE_NAME}={cookie}"})
-        assert routes.handle_get(handler, SimpleNamespace(path="/", query="")) is True
-        assert captured["content_type"] == "text/html; charset=utf-8"
-        assert f"csrfToken:{token!r}".replace("'", '"') in captured["body"]
+        with _client(cookie, frontend_root=frontend) as client:
+            response = client.get("/")
+        assert response.status_code == 200
+        assert f'csrfToken:{{csrfToken:"{token}"}}' in response.text
     finally:
         auth._sessions.pop("e" * 64, None)

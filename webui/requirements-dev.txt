@@ -1,4 +1,4 @@
-# Hermes WebUI local test/lint dependencies.
+# Ares WebUI local test/lint dependencies.
 #
 # Runtime dependencies stay in requirements.txt. This file mirrors the Python
 # tools CI installs for contributor validation.
@@ -8,6 +8,7 @@ pytest-timeout
 pytest-asyncio
 pytest-shard
 ruff
+httpx>=0.28.1,<1.0
 mcp
 # Optional Office parsers — runtime-optional (commented in requirements.txt), but
 # installed here so the workspace Office-preview tests (tests/test_issue540_*.py)

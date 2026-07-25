@@ -15,13 +15,12 @@ This covers the exact reproduction path:
 """
 from __future__ import annotations
 
-import json
-from io import BytesIO
-from types import SimpleNamespace
-
 import api.models as models
-import api.routes as routes
+import api.chat_runtime as chat_runtime
 from api.models import Session
+from fastapi.testclient import TestClient
+from fastapi_app.main import create_app
+from fastapi_app.request_context import RequestIdentity, require_mutation_identity
 
 
 def _msg(role: str, content: str, ts: float, mid: str) -> dict:
@@ -38,40 +37,20 @@ def _setup_session_dir(monkeypatch, tmp_path):
 
 
 def _post_truncate(monkeypatch, sid, keep_count):
-    """Call POST /api/session/truncate via the real route handler."""
-    import io
-
-    class _JSONHandler:
-        def __init__(self, body_bytes: bytes):
-            self.status = None
-            self.response_headers = []
-            self.rfile = BytesIO(body_bytes)
-            self.headers = {"Content-Length": str(len(body_bytes))}
-            self.wfile = io.BytesIO()
-
-        def send_response(self, status):
-            self.status = status
-
-        def send_header(self, key, value):
-            self.response_headers.append((key, value))
-
-        def end_headers(self):
-            pass
-
-        def payload(self):
-            return json.loads(self.wfile.getvalue().decode("utf-8"))
-
-    body_bytes = json.dumps({"session_id": sid, "keep_count": keep_count}).encode()
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    handler = _JSONHandler(body_bytes)
-    routes.handle_post(handler, SimpleNamespace(path="/api/session/truncate"))
-    return {"status": handler.status, "payload": handler.payload()}
+    """Call POST /api/session/truncate through the FastAPI contract."""
+    app = create_app()
+    app.dependency_overrides[require_mutation_identity] = lambda: RequestIdentity(None, None, False)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/session/truncate",
+            json={"session_id": sid, "keep_count": keep_count},
+        )
+    return {"status": response.status_code, "payload": response.json()}
 
 
 def _checkpoint_user(s, msg, started_at, monkeypatch):
     """Call the eager checkpoint path (simulates sending a new message)."""
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    routes._checkpoint_user_message_for_eager_session_save(
+    chat_runtime._checkpoint_user_message_for_eager_session_save(
         s, msg, None, started_at=started_at
     )
 

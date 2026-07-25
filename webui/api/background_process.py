@@ -1,6 +1,6 @@
 """Drain thread for terminal(notify_on_complete=true) agent wakeup.
 
-The hermes-agent ``tools.process_registry.ProcessRegistry`` exposes a thread-safe
+The ares-agent ``tools.process_registry.ProcessRegistry`` exposes a thread-safe
 ``completion_queue`` (a ``queue.Queue``) that any background process pushes onto
 when it exits or matches a ``watch_patterns`` rule. In the CLI and in the
 gateway adapter this queue is drained by the host's main loop; in WebUI the
@@ -22,7 +22,7 @@ The drain thread:
        ``PENDING_BG_TASK_COMPLETIONS``,
        and — Option Z PIVOT — starts the agent wakeup turn **directly
        server-side** when the session is idle (``_start_server_side_wakeup_turn``
-       → ``routes.start_session_turn``). This needs NO browser round-trip, so
+       → ``chat_runtime.start_session_turn``). This needs NO browser round-trip, so
        the closed-tab case works exactly like CLI / Telegram / gateway
        self-wake. When a turn is already active the wakeup is NOT started here;
        the ``PENDING_BG_TASK_COMPLETIONS`` marker is left for PR #2279's
@@ -262,7 +262,7 @@ def active_stream_id_for_session(session_id: str) -> Optional[str]:
     """Return the stream_id of the live run for *session_id*, or None.
 
     Used by the per-session SSE handler's on-subscribe recovery: the
-    ``server_turn_started`` fan-out in ``routes.start_session_turn`` is a
+    ``server_turn_started`` fan-out in ``chat_runtime.start_session_turn`` is a
     fire-and-forget broadcast with NO replay buffer (SessionChannel.emit
     drops to whoever is subscribed *at that instant*). A tab whose
     ``/api/session/stream`` EventSource is momentarily absent at the emit
@@ -427,7 +427,7 @@ def start_session_channel_reaper() -> bool:
         _REAPER_STOP.clear()
         _REAPER_THREAD = threading.Thread(
             target=_reaper_loop,
-            name="hermes-webui-session-channel-reaper",
+            name="ares-webui-session-channel-reaper",
             daemon=True,
         )
         _REAPER_THREAD.start()
@@ -1245,7 +1245,7 @@ def _start_server_side_wakeup_turn(
     not stall the single drain thread shared by every WebUI session.
 
     Concurrency + idempotency are enforced by the layers below, not here:
-      - ``start_session_turn`` → ``_start_chat_stream_for_session`` serializes
+      - ``start_session_turn`` → the selected backend worker serializes
         on the per-session agent lock and returns ``_status=409`` if a turn is
         already active. A human ``/api/chat/start`` racing this wakeup wins
         (one starts, the other 409s). On 409 we re-queue the prompt via
@@ -1268,7 +1268,7 @@ def _start_server_side_wakeup_turn(
 
     def _runner() -> None:
         try:
-            from api.routes import start_session_turn
+            from api.chat_runtime import start_session_turn
 
             resp = start_session_turn(
                 session_id, wakeup_prompt, source="process_wakeup"
@@ -1316,7 +1316,7 @@ def _start_server_side_wakeup_turn(
 
     threading.Thread(
         target=_runner,
-        name=f"hermes-webui-process-wakeup-{str(session_id)[:8]}",
+        name=f"ares-webui-process-wakeup-{str(session_id)[:8]}",
         daemon=True,
     ).start()
 
@@ -1366,7 +1366,7 @@ def register_process_session(session_key: str, session_id: str) -> None:
 
     Called at chat-start time, before the agent thread spawns any background
     processes. The same ``session_key`` is exported to the child via
-    ``HERMES_SESSION_KEY`` (already done by streaming.py), so when the child
+    ``ARES_SESSION_KEY`` (already done by streaming.py), so when the child
     pushes onto ``completion_queue`` it carries the key we registered.
     """
     if not session_key or not session_id:
@@ -1410,7 +1410,7 @@ def start_drain_thread() -> bool:
         _DRAIN_STOP.clear()
         _DRAIN_THREAD = threading.Thread(
             target=_drain_loop,
-            name="hermes-webui-bg-task-complete-drain",
+            name="ares-webui-bg-task-complete-drain",
             daemon=True,
         )
         _DRAIN_THREAD.start()

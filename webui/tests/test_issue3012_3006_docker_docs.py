@@ -21,14 +21,14 @@ def test_readme_common_failures_mentions_host_localhost():
 
 
 def test_docker_docs_warn_sudo_changes_home_bind_mount():
-    """#3006: sudo can render ${HOME}/.hermes as /root/.hermes."""
+    """#3006: sudo can render ${HOME}/.ares as /root/.ares."""
     assert "`sudo docker compose up -d` can make `${HOME}` expand to the root user's home" in README
-    assert "Docker mounts the wrong `.hermes` directory instead of your real `~/.hermes`" in README
-    assert "HERMES_HOME=/home/you/.hermes" in README
+    assert "Docker mounts the wrong `.ares` directory instead of your real `~/.ares`" in README
+    assert "ARES_HOME=/home/you/.ares" in README
 
     assert "sudo` often changes `$HOME` to `/root`" in DOCKER_MD
-    assert "`${HERMES_HOME:-${HOME}/.hermes}` becomes `/root/.hermes`" in DOCKER_MD
-    assert "HERMES_HOME=/home/youruser/.hermes" in DOCKER_MD
+    assert "`${ARES_HOME:-${HOME}/.ares}` becomes `/root/.ares`" in DOCKER_MD
+    assert "ARES_HOME=/home/youruser/.ares" in DOCKER_MD
     assert "docker compose config" in DOCKER_MD
 
 

@@ -1,85 +1,49 @@
-"""Regression coverage for replying to cron-origin sessions (#3975)."""
+"""Cron-origin sessions are materialized before a FastAPI chat run."""
 
-import io
-import json
+from __future__ import annotations
+
 from types import SimpleNamespace
 
-import api.routes as routes
+import pytest
+
+from fastapi_app.realtime import RealtimeService
+from fastapi_app.schemas import ChatStart
 
 
-class _FakeHandler:
-    def __init__(self):
-        self.status = None
-        self.headers = {}
-        self.response_headers = []
-        self.wfile = io.BytesIO()
-
-    def send_response(self, status):
-        self.status = status
-
-    def send_header(self, key, value):
-        self.response_headers.append((key, value))
-
-    def end_headers(self):
-        self.response_headers.append(("__end__", ""))
-
-
-def _json_body(handler):
-    return json.loads(handler.wfile.getvalue().decode("utf-8"))
-
-
-def test_chat_start_materializes_cron_session_before_reply(monkeypatch, tmp_path):
-    """Cron sessions shown from state.db must be replyable, not treated as stale."""
-    sid = "cron_job123_20260615_101544"
-    materialized = SimpleNamespace(
-        session_id=sid,
-        title="Daily cron output",
+@pytest.mark.asyncio
+async def test_chat_start_materializes_cron_session_before_reply(monkeypatch, tmp_path):
+    session_id = "cron_job123_20260615_101544"
+    session = SimpleNamespace(
+        session_id=session_id,
         workspace=str(tmp_path),
         model="gpt-5.4",
         model_provider=None,
         profile="default",
-        messages=[{"role": "user", "content": "cron prompt"}],
-        context_messages=[],
-        pending_user_message=None,
+        read_only=False,
     )
     captured = {}
 
-    def fail_get_session(_sid):
-        raise KeyError(_sid)
-
-    def materialize(_sid, **_kwargs):
-        captured["materialize_sid"] = _sid
-        return materialized
-
-    def start_run(session, **kwargs):
-        captured["session"] = session
-        captured["kwargs"] = kwargs
-        return {"stream_id": "stream-3975", "session_id": session.session_id}
-
-    monkeypatch.setattr(routes, "get_session", fail_get_session)
-    monkeypatch.setattr(routes, "_get_or_materialize_session", materialize)
-    monkeypatch.setattr(routes, "_resolve_chat_workspace_with_recovery", lambda _s, _w: str(tmp_path))
-    monkeypatch.setattr(routes, "_read_profile_model_config", lambda _s, _provider: (None, None, None))
+    monkeypatch.setattr("api.models.get_session", lambda _sid: (_ for _ in ()).throw(KeyError(_sid)))
     monkeypatch.setattr(
-        routes,
-        "_resolve_compatible_session_model_state",
-        lambda *_args, **_kwargs: ("gpt-5.4", None, "gpt-5.4"),
+        "api.session_access.get_or_materialize_session",
+        lambda sid: captured.setdefault("materialized", sid) and session,
     )
-    monkeypatch.setattr(routes, "_start_run", start_run)
+    monkeypatch.setattr("api.profiles.get_active_profile_name", lambda: "default")
 
-    handler = _FakeHandler()
-    routes._handle_chat_start(
-        handler,
-        {
-            "session_id": sid,
-            "message": "follow up on the cron output",
-            "workspace": str(tmp_path),
-            "profile": "default",
-        },
+    class Adapter:
+        async def stream_chat(self, request, *, session, profile):
+            captured.update(request=request, session=session, profile=profile)
+            return {"stream_id": "stream-3975", "session_id": session.session_id}
+
+    class Registry:
+        def for_session(self, selected, *, profile):
+            assert selected is session
+            return Adapter()
+
+    result = await RealtimeService(adapter_registry=Registry()).start_chat(
+        ChatStart(session_id=session_id, message="follow up", profile="default"),
+        profile="default",
     )
-
-    assert handler.status == 200
-    assert _json_body(handler)["stream_id"] == "stream-3975"
-    assert captured["materialize_sid"] == sid
-    assert captured["session"] is materialized
-    assert captured["kwargs"]["route"] == "/api/chat/start"
+    assert result["stream_id"] == "stream-3975"
+    assert captured["materialized"] == session_id
+    assert captured["session"] is session

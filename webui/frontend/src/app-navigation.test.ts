@@ -1,0 +1,17 @@
+import { describe, expect, it } from "vitest";
+
+import { navigationSections, workspaceRoutes } from "@/app-navigation";
+
+describe("app navigation registry", () => {
+  it("is the single unique source for routed sidebar tabs", () => {
+    expect(navigationSections.map((section) => section.id)).toEqual(["core", "resources", "system"]);
+    expect(workspaceRoutes.length).toBe(25);
+    expect(new Set(workspaceRoutes.map((route) => route.path)).size).toBe(workspaceRoutes.length);
+    expect(new Set(workspaceRoutes.map((route) => route.to)).size).toBe(workspaceRoutes.length);
+    for (const route of workspaceRoutes) {
+      expect(route.to).toBe(`/${route.path}`);
+      expect(route.label.length).toBeGreaterThan(0);
+      expect(route.component).toBeTypeOf("object");
+    }
+  });
+});

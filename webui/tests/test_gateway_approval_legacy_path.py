@@ -1,6 +1,6 @@
 """Tests for approval event handling on the gateway legacy /v1/chat/completions path (#4549).
 
-The legacy path is the default when HERMES_WEBUI_GATEWAY_USE_RUNS_API is not set.
+The legacy path is the default when ARES_WEBUI_GATEWAY_USE_RUNS_API is not set.
 PR #4495 fixed the runs API path but left the legacy path without approval handling.
 """
 from __future__ import annotations
@@ -71,11 +71,11 @@ def test_legacy_loop_checks_approval_request_event():
     )
 
 
-def test_legacy_loop_checks_hermes_approval_request_event():
-    """Legacy SSE loop must handle `hermes.approval.request` events."""
+def test_legacy_loop_checks_ares_approval_request_event():
+    """Legacy SSE loop must handle `ares.approval.request` events."""
     loop = _extract_legacy_sse_loop()
-    assert '"hermes.approval.request"' in loop, (
-        "Legacy SSE loop must check for hermes.approval.request event name"
+    assert '"ares.approval.request"' in loop, (
+        "Legacy SSE loop must check for ares.approval.request event name"
     )
 
 
@@ -114,7 +114,7 @@ def test_legacy_loop_reuses_gateway_runs_approval_event():
 def test_legacy_loop_resets_sse_event_after_approval():
     """Legacy SSE loop must reset sse_event to 'message' after handling approval."""
     loop = _extract_legacy_sse_loop()
-    approval_idx = loop.find('"hermes.approval.request"')
+    approval_idx = loop.find('"ares.approval.request"')
     assert approval_idx >= 0
     # Window sized to cover the approval handling block including the run_id
     # recording added in the #4549 follow-up (reset lands ~1360 chars in).
@@ -206,7 +206,7 @@ def test_legacy_sse_loop_relays_approval_event():
         return resp
 
     try:
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=fake_urlopen), \
                  patch("api.gateway_chat.get_session", return_value=mock_session), \
@@ -307,7 +307,7 @@ def test_legacy_approval_records_run_id_for_response_relay():
         return resp
 
     try:
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=fake_urlopen), \
                  patch("api.gateway_chat.get_session", return_value=mock_session), \
@@ -345,23 +345,22 @@ def test_legacy_approval_records_run_id_for_response_relay():
             captured["body"] = json.loads(req.data)
             return {"ok": True}
 
-        handler = MagicMock()
-        handler.wfile = io.BytesIO()
         body = {"session_id": "sess-legacy-runid", "choice": "once",
                 "approval_id": "appr-legacy-runid"}
 
-        with patch("api.routes.get_session", return_value=relay_session), \
+        with patch("api.models.get_session", return_value=relay_session), \
              patch("api.runner_client.HttpRunnerClient._request_json", new=fake_request_json), \
              patch("api.gateway_chat._gateway_base_url", return_value="http://gw:8642"), \
              patch("api.gateway_chat._gateway_api_key", return_value=""):
-            from api.routes import _handle_approval_respond
-            _handle_approval_respond(handler, body)
+            from api.route_approvals import respond_approval
+            payload, status = respond_approval(body["session_id"], body["approval_id"], body["choice"])
 
         assert captured.get("url", "") == "http://gw:8642/v1/runs/run-legacy-1/approval", (
             f"approval respond must relay to the gateway run; got {captured.get('url')!r}"
         )
         assert captured["body"] == {"choice": "once", "approval_id": "appr-legacy-runid"}
-        handler.send_response.assert_called_with(200)
+        assert status == 200
+        assert payload["ok"] is True
     finally:
         with STREAMS_LOCK:
             STREAMS.pop(stream_id, None)
@@ -416,7 +415,7 @@ def test_legacy_teardown_clears_stale_gateway_mirror_and_notifies_empty_state():
             with ra._lock:
                 ra._gateway_queues.pop(session_id, None)
 
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=_make_legacy_gateway_urlopen(approval_payload, clear_gateway_queue)), \
                  patch("api.gateway_chat.get_session", return_value=mock_session), \
@@ -491,7 +490,7 @@ def test_legacy_teardown_preserves_live_gateway_head_mirror():
         with STREAMS_LOCK:
             STREAMS[stream_id] = q
 
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=_make_legacy_gateway_urlopen(approval_payload)), \
                  patch("api.gateway_chat.get_session", return_value=mock_session), \
@@ -574,7 +573,7 @@ def test_legacy_teardown_preserves_local_pending_entry():
         with STREAMS_LOCK:
             STREAMS[stream_id] = q
 
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=_make_legacy_gateway_urlopen(approval_payload)), \
                  patch("api.gateway_chat.get_session", return_value=mock_session), \
@@ -614,7 +613,7 @@ def test_mirrored_run_id_survives_active_stream_loss():
     import threading
     from types import SimpleNamespace
     from api import route_approvals as ra
-    from api import routes
+    from api import route_approvals as routes
 
     sid = "sess-legacy-stream-loss"
     approval_id = "appr-legacy-stream-loss"
@@ -669,32 +668,29 @@ def test_mirrored_run_id_survives_active_stream_loss():
                 ra._gateway_queues.pop(session_key, None)
             return 1
 
-    handler = MagicMock()
-    handler.wfile = io.BytesIO()
     body = {"session_id": sid, "choice": "once", "approval_id": approval_id}
 
     try:
-        with patch("api.routes.get_session", return_value=relay_session), \
+        with patch("api.models.get_session", return_value=relay_session), \
              patch("api.gateway_chat.webui_gateway_chat_enabled", return_value=True), \
              patch("api.gateway_chat._gateway_base_url", return_value="http://gw:8642"), \
              patch("api.gateway_chat._gateway_api_key", return_value=""), \
              patch("api.config.get_config", return_value={}), \
-             patch("api.routes.resolve_gateway_approval", new=fake_resolve_gateway_approval), \
+             patch("api.route_approvals.resolve_gateway_approval", new=fake_resolve_gateway_approval), \
              patch("api.runner_client.HttpRunnerClient._request_json", new=fake_request_json):
-            routes._handle_approval_respond(handler, body)
+            payload, status = routes.respond_approval(sid, approval_id, "once")
 
         assert captured.get("url", "") == f"http://gw:8642/v1/runs/{run_id}/approval", (
             f"approval respond must relay to the mirrored gateway run; got {captured.get('url')!r}"
         )
         assert captured["body"] == {"choice": "once", "approval_id": approval_id}
-        handler.send_response.assert_called_with(200)
+        assert status == 200
         assert entry.event.is_set(), "mirrored gateway approval was not resolved"
         assert entry.result == "once"
         with ra._lock:
             assert sid not in ra._pending, "mirrored pending card was not cleared"
             assert sid not in ra._gateway_queues, "parked gateway entry was not drained"
-        assert handler.wfile.getvalue()
-        assert json.loads(handler.wfile.getvalue().decode("utf-8")) == {
+        assert payload == {
             "ok": True,
             "choice": "once",
             "relayed": True,
@@ -708,7 +704,7 @@ def test_mirrored_run_id_survives_active_stream_loss():
 def test_gateway_mode_no_pending_click_stays_non_409():
     """Gateway mode must still fall through when nothing is pending."""
     from api import route_approvals as ra
-    from api import routes
+    from api import route_approvals as routes
 
     sid = "sess-legacy-no-pending"
     approval_id = "appr-legacy-no-pending"
@@ -729,33 +725,22 @@ def test_gateway_mode_no_pending_click_stays_non_409():
     mock_session.pending_attachments = None
     mock_session.pending_started_at = None
 
-    captured = {}
-
-    def fake_j(handler, data, status=200, extra_headers=None):
-        captured["payload"] = data
-        captured["status"] = status
-        return data
-
-    with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}), \
-         patch("api.routes.get_session", return_value=mock_session), \
-         patch("api.routes.j", new=fake_j), \
+    with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}), \
+         patch("api.models.get_session", return_value=mock_session), \
          patch("api.runtime_adapter.runtime_adapter_enabled", return_value=False):
-        routes._handle_approval_respond(
-            object(),
-            {"session_id": sid, "choice": "once", "approval_id": approval_id},
-        )
+        captured, status = routes.respond_approval(sid, approval_id, "once")
 
-    assert captured["status"] == 200
-    assert captured["payload"]["ok"] is True
-    assert captured["payload"]["choice"] == "once"
-    assert captured["payload"]["stale_cleared"] is True
-    assert captured["payload"].get("code") != "gateway_run_unavailable"
+    assert status == 200
+    assert captured["ok"] is True
+    assert captured["choice"] == "once"
+    assert captured["stale_cleared"] is True
+    assert captured.get("code") != "gateway_run_unavailable"
 
 
 def test_legacy_approval_without_run_id_stays_actionable():
     """Legacy approvals without a run_id must fail explicitly and keep the mirror live."""
     from types import SimpleNamespace
-    from api import routes as r
+    from api import route_approvals as r
     from api import route_approvals as ra
     from api.config import STREAMS, STREAMS_LOCK
     from api.gateway_chat import _STREAM_RUN_IDS, _run_gateway_chat_streaming
@@ -811,7 +796,7 @@ def test_legacy_approval_without_run_id_stays_actionable():
         return data
 
     try:
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=fake_urlopen), \
                  patch("api.gateway_chat.get_session", return_value=mock_session), \
@@ -843,22 +828,18 @@ def test_legacy_approval_without_run_id_stays_actionable():
         # The relay-unavailable 409 is only meaningful when the WebUI is
         # actually running the gateway chat backend. On a gateway deployment
         # the backend env is process-wide (not just during the stream), so
-        # assert the 409 with HERMES_WEBUI_CHAT_BACKEND=gateway active at
+        # assert the 409 with ARES_WEBUI_CHAT_BACKEND=gateway active at
         # respond time. Without this scope the handler now (correctly) treats
         # a mirrored approval on the default LOCAL backend as locally
         # resolvable and falls through instead of 409ing — see
         # test_issue4771_local_approval_regression.py (#4771 follow-up).
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}), \
-             patch("api.routes.get_session", return_value=mock_session), \
-             patch("api.routes.j", new=fake_j):
-            r._handle_approval_respond(
-                object(),
-                {"session_id": session_id, "choice": "once", "approval_id": approval_id},
-            )
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}), \
+             patch("api.models.get_session", return_value=mock_session):
+            payload, status = r.respond_approval(session_id, approval_id, "once")
 
-        assert captured["status"] == 409
-        assert captured["payload"]["code"] == "gateway_run_unavailable"
-        assert captured["payload"]["error"] == r._GATEWAY_APPROVAL_RELAY_UNAVAILABLE
+        assert status == 409
+        assert payload["code"] == "gateway_run_unavailable"
+        assert "active run is unavailable" in payload["error"]
         with ra._lock:
             pending_queue = r._pending.get(session_id)
             assert isinstance(pending_queue, list)

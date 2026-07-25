@@ -91,28 +91,13 @@ def test_oauth_write_auth_json_source_calls_chmod():
 
 
 def test_cron_history_rejects_traversal_in_job_id():
-    """`_handle_cron_history` and `_handle_cron_run_detail` must regex-validate
-    job_id at the parameter boundary. Mirrors the rollback regex shape from
-    v0.50.255."""
-    src = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
-    # Both handlers must call the validator
-    history_idx = src.find("def _handle_cron_history(")
-    detail_idx = src.find("def _handle_cron_run_detail(")
-    assert history_idx != -1, "_handle_cron_history missing"
-    assert detail_idx != -1, "_handle_cron_run_detail missing"
+    """All schedule history readers use the shared path-safe validator."""
+    from api.schedules_store import ScheduleStoreError, _valid_job_id
 
-    history_body = src[history_idx : history_idx + 1500]
-    detail_body = src[detail_idx : detail_idx + 1500]
-
-    # Both must include the regex check
-    for body, name in [(history_body, "_handle_cron_history"), (detail_body, "_handle_cron_run_detail")]:
-        assert "_re.fullmatch" in body and "[A-Za-z0-9_-]" in body, (
-            f"{name} must validate job_id via regex — without this, "
-            f"`?job_id=../<other>` enumerates sibling directory contents."
-        )
-        assert 'job_id in (".", "..")' in body, (
-            f"{name} must explicitly reject `.` and `..` in addition to the regex."
-        )
+    for value in (".", "..", "../other", "a/b", "a\\b"):
+        with pytest.raises(ScheduleStoreError):
+            _valid_job_id(value)
+    assert _valid_job_id("job_2026-07.15") == "job_2026-07.15"
 
 
 # ── 3: int() bounds checking on offset/limit ────────────────────────────────
@@ -123,14 +108,14 @@ def test_cron_history_clamps_offset_and_limit():
     `limit` to a sane upper bound. Without this, `?offset=foo` raises a
     ValueError that surfaces as a confusing 500 from `do_GET`'s exception
     handler, and `?limit=999999999` would slice through unbounded glob output."""
-    src = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
-    history_idx = src.find("def _handle_cron_history(")
-    body = src[history_idx : history_idx + 1500]
-    assert "(ValueError, TypeError)" in body, (
+    src = (REPO / "api" / "schedules_store.py").read_text(encoding="utf-8")
+    history_idx = src.find("def schedule_history(")
+    body = src[history_idx : history_idx + 1000]
+    assert "(TypeError, ValueError)" in body, (
         "_handle_cron_history must catch ValueError from int() so malformed "
         "offset/limit return a clean 400, not a generic 500."
     )
-    assert "min(500, int(qs.get" in body, (
+    assert "min(500, int(limit))" in body, (
         "_handle_cron_history must clamp `limit` to a sane upper bound (500 chosen) "
         "to prevent DoS via `?limit=999999999`."
     )

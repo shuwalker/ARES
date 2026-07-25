@@ -19,10 +19,10 @@ def test_session_db_helper_uses_request_state_db_path():
         def close(self):
             calls["closed"] = True
 
-    fake_state = types.ModuleType("hermes_state")
+    fake_state = types.ModuleType("ares_state")
     fake_state.SessionDB = FakeSessionDB
 
-    with mock.patch.dict(sys.modules, {"hermes_state": fake_state}):
+    with mock.patch.dict(sys.modules, {"ares_state": fake_state}):
         state_db_path = Path("/tmp/profile") / "state.db"
         db = streaming._build_session_db_for_stream(state_db_path)
 
@@ -37,10 +37,10 @@ def test_session_db_helper_returns_none_when_constructor_fails():
     def failing_session_db(db_path=None):
         raise RuntimeError("SessionDB unavailable")
 
-    fake_state = types.ModuleType("hermes_state")
+    fake_state = types.ModuleType("ares_state")
     fake_state.SessionDB = mock.Mock(side_effect=failing_session_db)
 
-    with mock.patch.dict(sys.modules, {"hermes_state": fake_state}):
+    with mock.patch.dict(sys.modules, {"ares_state": fake_state}):
         db = streaming._build_session_db_for_stream(Path("/tmp/profile/state.db"))
 
     assert db is None

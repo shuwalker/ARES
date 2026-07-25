@@ -1,5 +1,5 @@
 """
-Tests for optional TLS/HTTPS support (HERMES_WEBUI_TLS_CERT / TLS_KEY).
+Tests for optional TLS/HTTPS support (ARES_WEBUI_TLS_CERT / TLS_KEY).
 
 Tests use a self-signed certificate generated at test time via openssl.
 """
@@ -110,19 +110,28 @@ def _wait_for_server(host: str, port: int, use_ssl: bool = False,
 
 
 def _start_server(port: int, cert: str = None, key: str = None) -> subprocess.Popen:
-    """Start server.py as a subprocess with the given TLS env vars."""
+    """Start the production Uvicorn application with validated TLS settings."""
     env = {k: v for k, v in os.environ.items()}
-    env["HERMES_WEBUI_HOST"] = "127.0.0.1"
-    env["HERMES_WEBUI_PORT"] = str(port)
-    env.pop("HERMES_WEBUI_TLS_CERT", None)
-    env.pop("HERMES_WEBUI_TLS_KEY", None)
+    env["ARES_WEBUI_HOST"] = "127.0.0.1"
+    env["ARES_WEBUI_PORT"] = str(port)
+    env.pop("ARES_WEBUI_TLS_CERT", None)
+    env.pop("ARES_WEBUI_TLS_KEY", None)
     if cert:
-        env["HERMES_WEBUI_TLS_CERT"] = cert
+        env["ARES_WEBUI_TLS_CERT"] = cert
     if key:
-        env["HERMES_WEBUI_TLS_KEY"] = key
-    env["HERMES_WEBUI_STATE_DIR"] = str(Path(tempfile.mkdtemp()))
+        env["ARES_WEBUI_TLS_KEY"] = key
+    env["ARES_WEBUI_STATE_DIR"] = str(Path(tempfile.mkdtemp()))
+    launcher = (
+        "import os,sys; "
+        "from bootstrap import build_uvicorn_argv,validate_tls_configuration; "
+        "c,k=validate_tls_configuration(os.getenv('ARES_WEBUI_TLS_CERT',''),"
+        "os.getenv('ARES_WEBUI_TLS_KEY','')); "
+        f"os.execv(sys.executable,build_uvicorn_argv(sys.executable,'127.0.0.1',{port},"
+        "tls_cert=c,tls_key=k))"
+    )
     proc = subprocess.Popen(
-        [os.sys.executable, str(ROOT / "server.py")],
+        [os.sys.executable, "-c", launcher],
+        cwd=str(ROOT),
         env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True,
         **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
@@ -146,7 +155,7 @@ def _start_and_wait(use_ssl: bool, cert: str = None, key: str = None,
     """Start the server and wait until it is reachable, retrying on a fresh port.
 
     Defeats the _find_free_port() TOCTOU race (the OS can hand the just-released
-    port to another process before server.py binds it, especially under the
+    port to another process before Uvicorn binds it, especially under the
     parallel suite). On a failed bring-up we tear the subprocess down and retry
     with a NEWLY chosen port. Returns the live Popen, or raises AssertionError
     with the captured server output after exhausting attempts.
@@ -176,8 +185,8 @@ class TestTLSConfigFlag(unittest.TestCase):
     def test_tls_enabled_true_when_both_env_set(self):
         code = textwrap.dedent("""\
             import os
-            os.environ['HERMES_WEBUI_TLS_CERT'] = '/tmp/cert.pem'
-            os.environ['HERMES_WEBUI_TLS_KEY'] = '/tmp/key.pem'
+            os.environ['ARES_WEBUI_TLS_CERT'] = '/tmp/cert.pem'
+            os.environ['ARES_WEBUI_TLS_KEY'] = '/tmp/key.pem'
             from api.config import TLS_ENABLED
             print(TLS_ENABLED)
         """)
@@ -186,11 +195,11 @@ class TestTLSConfigFlag(unittest.TestCase):
 
     def test_tls_enabled_false_when_env_absent(self):
         env = {k: v for k, v in os.environ.items()
-               if k not in ("HERMES_WEBUI_TLS_CERT", "HERMES_WEBUI_TLS_KEY")}
+               if k not in ("ARES_WEBUI_TLS_CERT", "ARES_WEBUI_TLS_KEY")}
         code = textwrap.dedent("""\
             import os
-            os.environ.pop('HERMES_WEBUI_TLS_CERT', None)
-            os.environ.pop('HERMES_WEBUI_TLS_KEY', None)
+            os.environ.pop('ARES_WEBUI_TLS_CERT', None)
+            os.environ.pop('ARES_WEBUI_TLS_KEY', None)
             from api.config import TLS_ENABLED
             print(TLS_ENABLED)
         """)
@@ -199,8 +208,8 @@ class TestTLSConfigFlag(unittest.TestCase):
 
     def test_tls_enabled_false_when_only_cert_set(self):
         env = {k: v for k, v in os.environ.items()
-               if k not in ("HERMES_WEBUI_TLS_CERT", "HERMES_WEBUI_TLS_KEY")}
-        env["HERMES_WEBUI_TLS_CERT"] = "/tmp/cert.pem"
+               if k not in ("ARES_WEBUI_TLS_CERT", "ARES_WEBUI_TLS_KEY")}
+        env["ARES_WEBUI_TLS_CERT"] = "/tmp/cert.pem"
         code = textwrap.dedent("""\
             from api.config import TLS_ENABLED
             print(TLS_ENABLED)

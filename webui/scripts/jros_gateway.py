@@ -269,7 +269,7 @@ def completion_response(result: dict[str, Any], model: str) -> dict[str, Any]:
 
 def sse_frames(result: dict[str, Any], model: str) -> list[str]:
     """SSE frames for a finished turn, in the dialect ARES's gateway client
-    already parses for Hermes: ``hermes.tool.progress`` events for tool
+    already parses for Ares: ``ares.tool.progress`` events for tool
     activity, then one OpenAI-style content delta, then ``[DONE]``."""
     frames: list[str] = []
     error = str(result.get("error") or "").strip()
@@ -284,7 +284,7 @@ def sse_frames(result: dict[str, Any], model: str) -> list[str]:
             continue
         payload = {"event": "tool.completed", "tool": "jros",
                    "status": "completed", "label": line}
-        frames.append("event: hermes.tool.progress\n"
+        frames.append("event: ares.tool.progress\n"
                       f"data: {json.dumps(payload, ensure_ascii=False)}\n\n")
     chunk = {
         "id": _completion_id(),

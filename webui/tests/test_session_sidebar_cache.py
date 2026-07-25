@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 import api.config as config
-import api.routes as routes
+import api.route_session_list_cache as routes
 from api import session_events
 
 
@@ -456,10 +456,10 @@ def test_session_list_cache_source_stamp_tracks_state_db_wal(tmp_path, monkeypat
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}", encoding="utf-8")
 
-    monkeypatch.setattr(routes, "_active_state_db_path", lambda: str(state_db))
-    monkeypatch.setattr(routes, "_gateway_session_metadata_path", lambda: gateway)
-    monkeypatch.setattr(routes, "SESSION_DIR", session_dir)
-    monkeypatch.setattr(routes, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(routes, "_session_list_cache_state_db_path", lambda: str(state_db))
+    monkeypatch.setattr(routes, "_session_list_cache_gateway_session_metadata_path", lambda: gateway)
+    monkeypatch.setattr(routes, "_session_list_cache_session_dir", lambda: session_dir)
+    monkeypatch.setattr(routes, "_session_list_cache_settings_file", lambda: settings_file)
 
     key = routes._session_list_cache_key(
         active_profile="default",
@@ -487,10 +487,10 @@ def test_session_list_cache_source_stamp_tracks_settings_file(tmp_path, monkeypa
     settings_file = tmp_path / "settings.json"
     settings_file.write_text('{"show_cli_sessions": false}', encoding="utf-8")
 
-    monkeypatch.setattr(routes, "_active_state_db_path", lambda: str(state_db))
-    monkeypatch.setattr(routes, "_gateway_session_metadata_path", lambda: gateway)
-    monkeypatch.setattr(routes, "SESSION_DIR", session_dir)
-    monkeypatch.setattr(routes, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(routes, "_session_list_cache_state_db_path", lambda: str(state_db))
+    monkeypatch.setattr(routes, "_session_list_cache_gateway_session_metadata_path", lambda: gateway)
+    monkeypatch.setattr(routes, "_session_list_cache_session_dir", lambda: session_dir)
+    monkeypatch.setattr(routes, "_session_list_cache_settings_file", lambda: settings_file)
 
     key = routes._session_list_cache_key(
         active_profile="default",
@@ -521,10 +521,10 @@ def test_session_list_cache_source_stamp_tracks_settings_write_version(
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}", encoding="utf-8")
 
-    monkeypatch.setattr(routes, "_active_state_db_path", lambda: str(state_db))
-    monkeypatch.setattr(routes, "_gateway_session_metadata_path", lambda: gateway)
-    monkeypatch.setattr(routes, "SESSION_DIR", session_dir)
-    monkeypatch.setattr(routes, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(routes, "_session_list_cache_state_db_path", lambda: str(state_db))
+    monkeypatch.setattr(routes, "_session_list_cache_gateway_session_metadata_path", lambda: gateway)
+    monkeypatch.setattr(routes, "_session_list_cache_session_dir", lambda: session_dir)
+    monkeypatch.setattr(routes, "_session_list_cache_settings_file", lambda: settings_file)
 
     key = routes._session_list_cache_key(
         active_profile="default",
@@ -578,7 +578,7 @@ def test_session_list_payload_to_response_overlays_live_stream_runtime(monkeypat
             pending_user_message=None,
         )
     try:
-        response = routes._session_list_payload_to_response(payload)
+        response = {"sessions": routes._session_list_cache_overlay_runtime_rows(payload["sessions"])}
     finally:
         with routes.LOCK:
             routes.SESSIONS.clear()
@@ -607,10 +607,10 @@ def _build_stamp_env(tmp_path, monkeypatch):
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}", encoding="utf-8")
 
-    monkeypatch.setattr(routes, "_active_state_db_path", lambda: str(state_db))
-    monkeypatch.setattr(routes, "_gateway_session_metadata_path", lambda: gateway)
-    monkeypatch.setattr(routes, "SESSION_DIR", session_dir)
-    monkeypatch.setattr(routes, "SETTINGS_FILE", settings_file)
+    monkeypatch.setattr(routes, "_session_list_cache_state_db_path", lambda: str(state_db))
+    monkeypatch.setattr(routes, "_session_list_cache_gateway_session_metadata_path", lambda: gateway)
+    monkeypatch.setattr(routes, "_session_list_cache_session_dir", lambda: session_dir)
+    monkeypatch.setattr(routes, "_session_list_cache_settings_file", lambda: settings_file)
     # Make the content fingerprint deterministic and unaffected by the dummy
     # text-file state.db (a real sqlite connect would just return None here).
     fingerprint = {"value": (1, 1)}

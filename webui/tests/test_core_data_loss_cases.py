@@ -429,7 +429,7 @@ def test_webui_session_db_metadata_fields_includes_boundary():
 # ─── Route-level CORE-A: default /api/session full reload must not resurrect ──
 
 
-def test_core_a_route_full_session_load_does_not_resurrect_deleted_turns(tmp_path):
+def test_core_a_route_full_session_load_does_not_resurrect_deleted_turns(tmp_path, monkeypatch):
     """The default GET /api/session full reload (no msg_limit) must pass the
     persisted truncation_boundary through to the append-only merge.
 
@@ -441,12 +441,10 @@ def test_core_a_route_full_session_load_does_not_resurrect_deleted_turns(tmp_pat
     older message was edited leaving >=2 later turns. This drives the real
     endpoint end-to-end so the boundary must reach the merge.
     """
-    import json
-    from io import BytesIO
-    from urllib.parse import urlparse
-
-    import api.routes as routes
     from api.models import Session
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_identity
 
     state = [
         _msg("user", "original prompt", 100.0),
@@ -459,38 +457,11 @@ def test_core_a_route_full_session_load_does_not_resurrect_deleted_turns(tmp_pat
         _msg("assistant", "post-edit reply", 401.0),
     ]
 
-    class _Handler:
-        def __init__(self):
-            self.status = None
-            self.response_headers = []
-            self.wfile = BytesIO()
-
-        def send_response(self, status):
-            self.status = status
-
-        def send_header(self, k, v):
-            self.response_headers.append((k, v))
-
-        def end_headers(self):
-            pass
-
-        def payload(self):
-            return json.loads(self.wfile.getvalue().decode() or "{}")
-
     sess_dir = tmp_path / "sessions"
     sess_dir.mkdir()
-    orig_dir, orig_index = models.SESSION_DIR, models.SESSION_INDEX_FILE
-    models.SESSION_DIR = sess_dir
-    models.SESSION_INDEX_FILE = sess_dir / "_index.json"
+    monkeypatch.setattr(models, "SESSION_DIR", sess_dir)
+    monkeypatch.setattr(models, "SESSION_INDEX_FILE", sess_dir / "_index.json")
     models.SESSIONS.clear()
-
-    saved = {
-        "get_state_db_session_messages": getattr(routes, "get_state_db_session_messages", None),
-        "_session_visible_to_active_profile": getattr(routes, "_session_visible_to_active_profile", None),
-        "_clear_stale_stream_state": getattr(routes, "_clear_stale_stream_state", None),
-        "_resolve_effective_session_model_for_display": getattr(routes, "_resolve_effective_session_model_for_display", None),
-        "_resolve_effective_session_model_provider_for_display": getattr(routes, "_resolve_effective_session_model_provider_for_display", None),
-    }
     try:
         s = Session(
             session_id="corea_route",
@@ -499,22 +470,25 @@ def test_core_a_route_full_session_load_does_not_resurrect_deleted_turns(tmp_pat
             truncation_boundary=101.0,
         )
         s.save()
-        routes.get_state_db_session_messages = lambda sid, profile=None: list(state)
-        routes._session_visible_to_active_profile = lambda profile, handler: True
-        routes._clear_stale_stream_state = lambda s: None
-        routes._resolve_effective_session_model_for_display = lambda s: getattr(s, "model", None)
-        routes._resolve_effective_session_model_provider_for_display = lambda s: getattr(s, "model_provider", None)
-
-        h = _Handler()
-        routes.handle_get(
-            h, urlparse("/api/session?session_id=corea_route&messages=1&resolve_model=0")
+        monkeypatch.setattr(
+            models,
+            "get_state_db_session_messages",
+            lambda sid, profile=None, **_kwargs: list(state),
+        )
+        app = create_app(frontend_root=tmp_path / "missing-dist")
+        app.dependency_overrides[require_identity] = lambda: RequestIdentity(
+            session_cookie=None, profile="default", auth_enabled=False
+        )
+        response = TestClient(app).get(
+            "/api/session",
+            params={"session_id": "corea_route", "messages": "1", "resolve_model": "0"},
         )
         contents = [
             m.get("content")
-            for m in h.payload().get("session", {}).get("messages", [])
+            for m in response.json().get("session", {}).get("messages", [])
         ]
 
-        assert h.status == 200, f"unexpected status {h.status}"
+        assert response.status_code == 200
         assert "deleted question 1" not in contents, (
             f"Deleted turn resurrected via /api/session full reload: {contents}"
         )
@@ -525,8 +499,4 @@ def test_core_a_route_full_session_load_does_not_resurrect_deleted_turns(tmp_pat
             f"Post-edit turn missing from full reload: {contents}"
         )
     finally:
-        for name, val in saved.items():
-            if val is not None:
-                setattr(routes, name, val)
-        models.SESSION_DIR, models.SESSION_INDEX_FILE = orig_dir, orig_index
         models.SESSIONS.clear()

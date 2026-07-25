@@ -10,31 +10,40 @@ let package = Package(
     products: [
         .library(name: "ARESCore", targets: ["ARESCore"]),
         .executable(name: "ARES", targets: ["ARES"]),
+        .executable(name: "ARESNativeMCP", targets: ["ARESNativeMCP"]),
     ],
     dependencies: [
-        .package(path: "ARES-Desktop/Vendor/SwiftTerm"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.6.0"),
+        .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.0"),
     ],
     targets: [
         .target(
             name: "ARESCore",
-            dependencies: [],
-            path: "ARES-Desktop/Sources/ARESCore"
+            dependencies: [
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "SQLite", package: "SQLite.swift"),
+            ],
+            path: "ARES-Mac_os/Sources/ARESCore"
         ),
         .executableTarget(
             name: "ARES",
             dependencies: [
                 "ARESCore",
-                .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
-            path: "ARES-Desktop/Sources/ARES",
+            path: "ARES-Mac_os/Sources/ARES",
             resources: [
                 .process("Resources")
             ]
         ),
+        .executableTarget(
+            name: "ARESNativeMCP",
+            dependencies: ["ARESCore"],
+            path: "ARES-Mac_os/Sources/ARESNativeMCP"
+        ),
         .testTarget(
             name: "ARESTests",
             dependencies: ["ARESCore", "ARES"],
-            path: "ARES-Desktop/Tests/ARESTests"
+            path: "ARES-Mac_os/Tests/ARESTests"
         ),
     ]
 )

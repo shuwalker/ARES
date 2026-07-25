@@ -667,8 +667,8 @@ alone subject to any of the requirements of the GNU AGPL version 3.
 
 ARES Web UI Attribution:
 
-The ARES Web UI (`webui/`) is derived from hermes-webui
-(https://github.com/nesquena/hermes-webui) by the Hermes Web UI
+The ARES Web UI (`webui/`) is derived from ares-webui
+(https://github.com/nesquena/ares-webui) by the Ares Web UI
 Contributors, originally licensed under the MIT License. The upstream
 MIT notice and copyright are preserved in `webui/LICENSE`.
 

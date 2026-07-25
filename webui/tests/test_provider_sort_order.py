@@ -22,24 +22,24 @@ import api.providers as providers_mod
 
 
 # ---------------------------------------------------------------------------
-# Helpers — lightweight stubs so we don't need a real hermes-agent install
+# Helpers — lightweight stubs so we don't need a real ares-agent install
 # ---------------------------------------------------------------------------
 
-def _install_fake_hermes_cli(monkeypatch):
-    """Stub hermes_cli so detection is deterministic in tests."""
-    fake_pkg = types.ModuleType("hermes_cli")
+def _install_fake_ares_cli(monkeypatch):
+    """Stub ares_cli so detection is deterministic in tests."""
+    fake_pkg = types.ModuleType("ares_cli")
     fake_pkg.__path__ = []
 
-    fake_models = types.ModuleType("hermes_cli.models")
+    fake_models = types.ModuleType("ares_cli.models")
     fake_models.list_available_providers = lambda: []
     fake_models.provider_model_ids = lambda pid: []
 
-    fake_auth = types.ModuleType("hermes_cli.auth")
+    fake_auth = types.ModuleType("ares_cli.auth")
     fake_auth.get_auth_status = lambda _pid: {}
 
-    monkeypatch.setitem(sys.modules, "hermes_cli", fake_pkg)
-    monkeypatch.setitem(sys.modules, "hermes_cli.models", fake_models)
-    monkeypatch.setitem(sys.modules, "hermes_cli.auth", fake_auth)
+    monkeypatch.setitem(sys.modules, "ares_cli", fake_pkg)
+    monkeypatch.setitem(sys.modules, "ares_cli.models", fake_models)
+    monkeypatch.setitem(sys.modules, "ares_cli.auth", fake_auth)
     monkeypatch.delitem(sys.modules, "agent.credential_pool", raising=False)
     monkeypatch.delitem(sys.modules, "agent", raising=False)
 
@@ -67,7 +67,7 @@ def _model_list(*ids):
 
 def _setup_config(tmp_path, monkeypatch, yaml_text, provider_models=None):
     """Write config.yaml, point config module at it, install stubs."""
-    _install_fake_hermes_cli(monkeypatch)
+    _install_fake_ares_cli(monkeypatch)
 
     cfgfile = tmp_path / "config.yaml"
     cfgfile.write_text(yaml_text, encoding="utf-8")

@@ -1,18 +1,17 @@
-"""ARES Tool Adapter — registers ARES tools into Hermes or JROS.
+"""ARES Tool Adapter — exposes shared tools through MCP or JROS.
 
 This module is the bridge that lets ARES-owned tools appear as native
 tools in whichever backend is active. It produces the right format
 for each backend:
 
-  - Hermes: MCP-compatible tool schemas (inputSchema + handler)
+  - MCP:   MCP-compatible tool schemas (inputSchema + handler)
   - JROS:  ToolDef-compatible dicts (name, description, args_model, fn)
 
 The tool implementations themselves live in ares_tools.py. This
 module only handles registration format translation.
 
 ARES tools are backend-agnostic. They operate on the ARES continuity
-DB, not on Hermes or JROS internals. The adapter just makes them
-visible to whichever agent loop is running.
+DB, not on runtime internals. The adapter translates their discovery format.
 """
 
 from __future__ import annotations
@@ -29,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 def _build_mcp_schema(tool_def: dict[str, Any]) -> dict[str, Any]:
-    """Convert an ARES tool definition to Hermes MCP format.
+    """Convert an ARES tool definition to MCP format.
 
-    Hermes MCP expects:
+    MCP discovery expects:
       - name: tool name
       - description: human-readable description
       - inputSchema: JSON Schema object for arguments
@@ -50,7 +49,7 @@ def _build_mcp_schema(tool_def: dict[str, Any]) -> dict[str, Any]:
         "name": tool_def["name"],
         "description": tool_def["description"],
         "inputSchema": schema,
-        # The handler is carried separately — Hermes MCP registration
+        # The handler is carried separately — MCP registration
         # wires it up via the server's tool dispatch table.
         "_handler": tool_def["fn"],
     }
@@ -78,27 +77,27 @@ def _build_jros_tooldef(tool_def: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def register_ares_tools(target: str = "hermes") -> list[dict[str, Any]]:
+def register_ares_tools(target: str = "mcp") -> list[dict[str, Any]]:
     """Register ARES tools into the specified backend format.
 
     Args:
-        target: Backend target — 'hermes' for MCP format,
+        target: Protocol target — 'mcp' for MCP format,
                 'jros' for ToolDef format.
 
     Returns:
         List of tool definitions in the target backend's format.
 
     Raises:
-        ValueError: If target is not 'hermes' or 'jros'.
+        ValueError: If target is not 'mcp' or 'jros'.
     """
-    if target == "hermes":
+    if target == "mcp":
         return [_build_mcp_schema(td) for td in ARES_TOOL_DEFS]
     elif target == "jros":
         return [_build_jros_tooldef(td) for td in ARES_TOOL_DEFS]
     else:
         raise ValueError(
             f"Unknown target backend: {target!r}. "
-            f"Expected 'hermes' or 'jros'."
+            f"Expected 'mcp' or 'jros'."
         )
 
 

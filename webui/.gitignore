@@ -69,4 +69,6 @@ graphify-out/
 # Dev-only lint tooling (ESLint runtime-error guard) — see TESTING.md
 node_modules/
 package-lock.json
+!frontend/package-lock.json
+*.tsbuildinfo
 docs/ui-ux/review-shots/

@@ -53,25 +53,16 @@ def test_is_safe_session_id_rejects_whitespace_and_control_chars():
 
 
 def test_session_delete_validator_accepts_hyphenated_ids():
-    """``/api/session/delete`` validator path must accept hyphens (#3023)."""
-    import inspect
-    import api.routes as routes
-    src = inspect.getsource(routes.handle_post if hasattr(routes, "handle_post") else routes)
-    # Should call the shared helper, not the old magic-string check
-    assert "is_safe_session_id" in src
-    assert "'0123456789abcdefghijklmnopqrstuvwxyz_'" not in src
+    from fastapi_app.routers.session import _mutable_session_id
+
+    assert _mutable_session_id("api-182894de593468b6") == "api-182894de593468b6"
 
 
 def test_session_worktree_remove_validator_accepts_hyphenated_ids():
     """``/api/session/worktree/remove`` validator path must accept hyphens (#3023)."""
-    routes_src = open("api/routes.py", encoding="utf-8").read()
-    # The worktree-remove block must use the shared helper
-    block_start = routes_src.find('/api/session/worktree/remove')
-    block_end = routes_src.find('/api/session/delete', block_start)
-    assert block_start != -1 and block_end != -1
-    block = routes_src[block_start:block_end]
-    assert "is_safe_session_id" in block
-    assert "'0123456789abcdefghijklmnopqrstuvwxyz_'" not in block
+    from fastapi_app.routers.session import _mutable_session_id
+
+    assert _mutable_session_id("reachy-voice-20260513-1131-d5542adf").startswith("reachy-voice-")
 
 
 def test_repair_stale_pending_validator_accepts_hyphenated_ids():
@@ -84,7 +75,7 @@ def test_repair_stale_pending_validator_accepts_hyphenated_ids():
 
 def test_no_lowercase_only_magic_string_remains_in_session_validators():
     """Repo-wide guarantee: no validator falls back to the old lowercase-only set."""
-    for path in ("api/models.py", "api/routes.py"):
+    for path in ("api/models.py", "fastapi_app/routers/session.py"):
         src = open(path, encoding="utf-8").read()
         # The old narrow class is gone everywhere; only the helper's frozenset remains.
         narrow = "'0123456789abcdefghijklmnopqrstuvwxyz_'"

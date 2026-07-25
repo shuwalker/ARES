@@ -12,8 +12,8 @@ set "PORT=8788"
 set "HOST=0.0.0.0"
 
 REM === If not inside the repo, check if installed or clone ===
-if not exist "%~dp0server.py" (
-    if exist "%WEBUI_DIR%\server.py" (
+if not exist "%~dp0fastapi_app\main.py" (
+    if exist "%WEBUI_DIR%\fastapi_app\main.py" (
         cd /d "%WEBUI_DIR%"
     ) else (
         echo.
@@ -70,6 +70,10 @@ if not exist ".venv\Scripts\python.exe" (
     "%PYTHON%" -m venv .venv
     echo [..] Installing dependencies...
     .venv\Scripts\python -m pip install -q -r "%~dp0requirements.txt"
+<<<<<<< HEAD
+=======
+    .venv\Scripts\python -m pip install -q ares-agent 2>nul
+>>>>>>> wip/multiagent-orchestrator
     if not exist ".env" if exist ".env.example" copy ".env.example" ".env" >nul
 )
 
@@ -79,5 +83,9 @@ set ARES_WEBUI_PORT=%PORT%
 echo.
 echo === ARES Web UI === Open http://localhost:%PORT%
 echo.
+<<<<<<< HEAD
 .venv\Scripts\python server.py
+=======
+.venv\Scripts\python -m uvicorn fastapi_app.main:app --host %ARES_WEBUI_HOST% --port %ARES_WEBUI_PORT% --no-server-header
+>>>>>>> wip/multiagent-orchestrator
 if errorlevel 1 ( echo [ERROR] Server crashed. & pause )

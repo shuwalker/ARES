@@ -6,7 +6,6 @@ import time
 import pytest
 
 import api.models as models
-import api.routes as routes
 from api.models import SESSIONS, STREAMS, Session, all_sessions
 
 
@@ -86,8 +85,8 @@ def test_all_sessions_exposes_state_db_lineage_metadata_for_webui_json_sessions(
     conn = _ensure_state_db(_isolate)
     t0 = time.time() - 100
     try:
-        _save_webui_session("lineage_api_root", title="Hermes WebUI", updated_at=t0)
-        _save_webui_session("lineage_api_tip", title="Hermes WebUI #2", updated_at=t0 + 10)
+        _save_webui_session("lineage_api_root", title="Ares WebUI", updated_at=t0)
+        _save_webui_session("lineage_api_tip", title="Ares WebUI #2", updated_at=t0 + 10)
         _insert_state_row(
             conn,
             "lineage_api_root",
@@ -218,7 +217,8 @@ def test_child_of_hidden_compression_segment_exposes_parent_lineage_root(_isolat
         assert child.get("parent_session_id") == "lineage_api_tip"
         assert child.get("_parent_lineage_root_id") == "lineage_api_root"
         assert child.get("_parent_lineage_tip_id") == "lineage_api_tip"
-        serialized = routes._sidebar_session_response_item(child, redact_enabled=False)
+        from api.helpers import redact_session_rows
+        serialized = redact_session_rows([child])[0]
         assert serialized.get("_parent_lineage_tip_id") == "lineage_api_tip"
         assert "_lineage_root_id" not in child
     finally:
@@ -230,8 +230,8 @@ def test_cli_close_parent_preserves_cross_surface_continuation_lineage(_isolate)
     conn = _ensure_state_db(_isolate)
     t0 = time.time() - 100
     try:
-        _save_webui_session("lineage_api_cli_parent", title="Hermes WebUI #8", updated_at=t0)
-        _save_webui_session("lineage_api_webui_child", title="Hermes WebUI #8", updated_at=t0 + 10)
+        _save_webui_session("lineage_api_cli_parent", title="Ares WebUI #8", updated_at=t0)
+        _save_webui_session("lineage_api_webui_child", title="Ares WebUI #8", updated_at=t0 + 10)
         _insert_state_row(
             conn,
             "lineage_api_cli_parent",
@@ -345,17 +345,10 @@ def test_sessions_route_keeps_state_db_webui_row_with_stale_cli_json_when_cli_hi
             started_at=t0,
         )
 
-        monkeypatch.setattr(routes, "all_sessions", models.all_sessions)
-        monkeypatch.setattr(routes, "_enrich_sidebar_lineage_metadata", models._enrich_sidebar_lineage_metadata)
-        monkeypatch.setattr(routes, "_reconcile_stale_stream_state_for_session_rows", lambda _sessions: False)
-
-        payload = routes._build_session_list_cache_payload(
-            active_profile="default",
-            all_profiles=False,
-            show_cli_sessions=False,
-            show_previous_messaging_sessions=False,
-            show_cron_sessions=False,
-            include_archived=False,
+        monkeypatch.setattr("api.config.load_settings", lambda: {"show_cli_sessions": False})
+        from fastapi_app.services import AresCoreService
+        payload = AresCoreService().sessions(
+            profile="default", exclude_hidden=False, include_archived=False
         )
 
         rows = {row["session_id"]: row for row in payload["sessions"]}
@@ -374,19 +367,19 @@ def test_generic_webui_title_gets_read_only_state_db_display_title(_isolate):
     conn = _ensure_state_db(_isolate)
     t0 = time.time() - 100
     try:
-        _save_webui_session("lineage_api_stale_title", title="Hermes WebUI #8", updated_at=t0)
+        _save_webui_session("lineage_api_stale_title", title="Ares WebUI #8", updated_at=t0)
         _insert_state_row(
             conn,
             "lineage_api_stale_title",
-            title="Hermes WebUI #177",
+            title="Ares WebUI #177",
             started_at=t0,
         )
 
         row = {row["session_id"]: row for row in all_sessions()}["lineage_api_stale_title"]
 
-        assert row["title"] == "Hermes WebUI #8"
-        assert row["display_title"] == "Hermes WebUI #177"
-        assert row["_state_db_title"] == "Hermes WebUI #177"
+        assert row["title"] == "Ares WebUI #8"
+        assert row["display_title"] == "Ares WebUI #177"
+        assert row["_state_db_title"] == "Ares WebUI #177"
     finally:
         conn.close()
 
@@ -400,7 +393,7 @@ def test_state_db_display_title_does_not_override_custom_json_title(_isolate):
         _insert_state_row(
             conn,
             "lineage_api_custom_title",
-            title="Hermes WebUI #177",
+            title="Ares WebUI #177",
             started_at=t0,
         )
 
@@ -426,14 +419,14 @@ def test_sessions_route_preserves_visible_child_lineage_when_archived_parent_fil
     try:
         archived_parent = _save_webui_session(
             "lineage_api_archived_parent",
-            title="Hermes WebUI",
+            title="Ares WebUI",
             updated_at=t0,
         )
         archived_parent.archived = True
         archived_parent.save(touch_updated_at=False)
         _save_webui_session(
             "lineage_api_visible_tip",
-            title="Hermes WebUI #2",
+            title="Ares WebUI #2",
             updated_at=t0 + 10,
         )
         _insert_state_row(
@@ -450,17 +443,11 @@ def test_sessions_route_preserves_visible_child_lineage_when_archived_parent_fil
             started_at=t0 + 6,
         )
 
-        monkeypatch.setattr(routes, "all_sessions", models.all_sessions)
-        monkeypatch.setattr(routes, "_enrich_sidebar_lineage_metadata", models._enrich_sidebar_lineage_metadata)
-        monkeypatch.setattr(routes, "_reconcile_stale_stream_state_for_session_rows", lambda _sessions: False)
-
-        default_payload = routes._build_session_list_cache_payload(
-            active_profile="default",
-            all_profiles=False,
-            show_cli_sessions=False,
-            show_previous_messaging_sessions=False,
-            show_cron_sessions=False,
-            include_archived=False,
+        monkeypatch.setattr("api.config.load_settings", lambda: {"show_cli_sessions": False})
+        from fastapi_app.services import AresCoreService
+        service = AresCoreService()
+        default_payload = service.sessions(
+            profile="default", exclude_hidden=False, include_archived=False
         )
 
         assert [row["session_id"] for row in default_payload["sessions"]] == ["lineage_api_visible_tip"]
@@ -470,13 +457,8 @@ def test_sessions_route_preserves_visible_child_lineage_when_archived_parent_fil
         assert tip.get("_lineage_root_id") == "lineage_api_archived_parent"
         assert tip.get("_compression_segment_count") == 2
 
-        archived_payload = routes._build_session_list_cache_payload(
-            active_profile="default",
-            all_profiles=False,
-            show_cli_sessions=False,
-            show_previous_messaging_sessions=False,
-            show_cron_sessions=False,
-            include_archived=True,
+        archived_payload = service.sessions(
+            profile="default", exclude_hidden=False, include_archived=True
         )
         assert [row["session_id"] for row in archived_payload["sessions"]] == [
             "lineage_api_visible_tip",

@@ -1,5 +1,7 @@
 import json
-from urllib.parse import urlparse
+from fastapi.testclient import TestClient
+
+from fastapi_app.main import create_app
 
 
 class _FakeHandler:
@@ -45,7 +47,7 @@ def test_probe_uses_official_dashboard_status_fingerprint(monkeypatch):
 
     def fake_urlopen(request, timeout):
         calls.append((request.full_url, timeout))
-        return _FakeResponse({"version": "0.12.0", "release_date": "2026-05-01", "hermes_home": "/tmp/hermes"})
+        return _FakeResponse({"version": "0.12.0", "release_date": "2026-05-01", "ares_home": "/tmp/ares"})
 
     from api import dashboard_probe
 
@@ -112,9 +114,9 @@ def test_status_tries_default_loopback_targets_until_dashboard_found(monkeypatch
     from api import dashboard_probe
 
     # This test verifies the default auto-probe sequence. Other tests exercise
-    # .env/bootstrap behavior and may leave HERMES_WEBUI_HOST at 0.0.0.0 in the
+    # .env/bootstrap behavior and may leave ARES_WEBUI_HOST at 0.0.0.0 in the
     # process env; make the default precondition explicit here.
-    monkeypatch.delenv("HERMES_WEBUI_HOST", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_HOST", raising=False)
 
     attempts = []
 
@@ -168,7 +170,7 @@ def test_status_skips_auto_probe_when_webui_bind_host_is_non_loopback(monkeypatc
     def fail_probe(*args, **kwargs):
         raise AssertionError("auto mode must not probe dashboard when WebUI binds non-loopback")
 
-    monkeypatch.setenv("HERMES_WEBUI_HOST", "0.0.0.0")
+    monkeypatch.setenv("ARES_WEBUI_HOST", "0.0.0.0")
     monkeypatch.setattr(dashboard_probe, "probe_official_dashboard", fail_probe)
 
     result = dashboard_probe.get_dashboard_status(config_data={})
@@ -178,7 +180,6 @@ def test_status_skips_auto_probe_when_webui_bind_host_is_non_loopback(monkeypatc
 
 def test_dashboard_status_route_returns_safe_payload(monkeypatch):
     from api import dashboard_probe
-    from api.routes import handle_get
 
     monkeypatch.setattr(
         dashboard_probe,
@@ -186,13 +187,10 @@ def test_dashboard_status_route_returns_safe_payload(monkeypatch):
         lambda: {"running": True, "host": "127.0.0.1", "port": 9119, "url": "http://127.0.0.1:9119", "version": "0.12.0"},
     )
 
-    handler = _FakeHandler()
-    parsed = urlparse("http://example.com/api/dashboard/status")
-    handled = handle_get(handler, parsed)
-
-    assert handled is True
-    assert handler.status == 200
-    assert handler.json_body() == {
+    with TestClient(create_app()) as client:
+        response = client.get("/api/dashboard/status")
+    assert response.status_code == 200
+    assert response.json() == {
         "running": True,
         "host": "127.0.0.1",
         "port": 9119,
@@ -202,7 +200,7 @@ def test_dashboard_status_route_returns_safe_payload(monkeypatch):
 
 
 def test_dashboard_config_roundtrip_writes_profile_config_yaml(tmp_path, monkeypatch):
-    monkeypatch.setenv("HERMES_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.setenv("ARES_CONFIG_PATH", str(tmp_path / "config.yaml"))
 
     from api.dashboard_probe import get_dashboard_config, save_dashboard_config
 

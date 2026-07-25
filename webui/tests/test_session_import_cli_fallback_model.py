@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 REPO = Path(__file__).resolve().parents[1]
-ROUTES_PY = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
+ROUTES_PY = (REPO / "api" / "cli_session_import.py").read_text(encoding="utf-8")
 
 
 class _FakeHandler:
@@ -55,11 +55,9 @@ def _extract_handler(name: str) -> str:
 
 def test_import_cli_initializes_model_from_lookup_with_unknown_fallback():
     """The metadata lookup path must still provide an explicit unknown model fallback."""
-    handler = _extract_handler("_handle_session_import_cli")
-    lookup_idx = handler.find('cli_meta = _resolve_cli_import_metadata(')
-    if lookup_idx == -1:
-        lookup_idx = handler.find('cli_meta = _lookup_cli_session_metadata(sid)')
-    model_idx = handler.find('model = cli_meta.get("model", "unknown") if cli_meta else "unknown"')
+    handler = _extract_handler("import_cli_session_record")
+    lookup_idx = handler.find("metadata = _lookup_metadata(")
+    model_idx = handler.find('model = metadata.get("model", "unknown") if metadata else "unknown"')
     assert lookup_idx != -1, "Expected metadata lookup in _handle_session_import_cli"
     assert model_idx != -1, (
         "Expected `_handle_session_import_cli` to derive `model` from cli_meta "
@@ -75,7 +73,7 @@ def test_import_cli_passes_model_to_import_helper():
     """Sanity: the handler still passes the resolved model down to
     `import_cli_session` — the regression test would not catch a refactor
     that drops the argument entirely."""
-    handler = _extract_handler("_handle_session_import_cli")
+    handler = _extract_handler("import_cli_session_record")
     assert "import_cli_session(" in handler
     # The model variable should appear as a positional or keyword arg in
     # the import_cli_session call.
@@ -93,7 +91,7 @@ def test_session_import_cli_refresh_matches_messages_despite_timestamp_type_diff
     floating-point timestamps for the same turns. This test verifies the handler
     accepts that as semantic equality and replaces with the longer, fresher tail.
     """
-    import api.routes as routes
+    import api.cli_session_import as routes
 
     session_id = "ts_type_diff_001"
 
@@ -124,9 +122,6 @@ def test_session_import_cli_refresh_matches_messages_despite_timestamp_type_diff
     ]
 
     monkeypatch.setattr(routes.Session, "load", classmethod(lambda _cls, sid: existing if sid == session_id else None))
-    monkeypatch.setattr(routes, "require", lambda body, *keys: None)
-    monkeypatch.setattr(routes, "bad", lambda _handler, msg, status=400: {"ok": False, "error": msg, "status": status})
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200, extra_headers=None: payload)
     monkeypatch.setattr(routes, "get_cli_session_messages", lambda sid, profile=None: fresh if sid == session_id else [])
     monkeypatch.setattr(routes, "get_cli_sessions", lambda source_filter=None, all_profiles=False: [{"session_id": session_id, "source_tag": "weixin", "raw_source": "weixin", "session_source": "messaging", "source_label": "WeChat"}])
 
@@ -144,7 +139,7 @@ def test_session_import_cli_refresh_rejects_prefix_if_non_timing_content_diverge
     If the refreshed message body diverges, we should keep the existing in-memory
     transcript instead of replacing it with potentially older content.
     """
-    import api.routes as routes
+    import api.cli_session_import as routes
 
     session_id = "ts_type_diverge_001"
 
@@ -176,9 +171,6 @@ def test_session_import_cli_refresh_rejects_prefix_if_non_timing_content_diverge
     ]
 
     monkeypatch.setattr(routes.Session, "load", classmethod(lambda _cls, sid: existing if sid == session_id else None))
-    monkeypatch.setattr(routes, "require", lambda body, *keys: None)
-    monkeypatch.setattr(routes, "bad", lambda _handler, msg, status=400: {"ok": False, "error": msg, "status": status})
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200, extra_headers=None: payload)
     monkeypatch.setattr(routes, "get_cli_session_messages", lambda sid, profile=None: fresh if sid == session_id else [])
     monkeypatch.setattr(routes, "get_cli_sessions", lambda source_filter=None, all_profiles=False: [{"session_id": session_id, "source_tag": "telegram", "raw_source": "telegram", "session_source": "messaging", "source_label": "Telegram"}])
 
@@ -192,7 +184,7 @@ def test_session_import_cli_refresh_rejects_prefix_if_non_timing_content_diverge
 
 def test_session_import_cli_preserves_parent_metadata_on_existing_import(monkeypatch):
     """Refreshing an already-imported CLI session must persist lineage metadata."""
-    import api.routes as routes
+    import api.cli_session_import as routes
 
     session_id = "existing_parent_lineage_001"
     parent_id = "root_parent_lineage_001"
@@ -217,8 +209,6 @@ def test_session_import_cli_preserves_parent_metadata_on_existing_import(monkeyp
     existing = FakeSession()
 
     monkeypatch.setattr(routes.Session, "load", classmethod(lambda _cls, sid: existing if sid == session_id else None))
-    monkeypatch.setattr(routes, "require", lambda body, *keys: None)
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200, extra_headers=None: payload)
     monkeypatch.setattr(routes, "get_cli_session_messages", lambda sid, profile=None: existing.messages if sid == session_id else [])
     monkeypatch.setattr(
         routes,
@@ -243,16 +233,13 @@ def test_session_import_cli_preserves_parent_metadata_on_existing_import(monkeyp
 
 def test_read_only_import_payload_includes_parent_session_id(monkeypatch):
     """Read-only CLI/session imports should also expose lineage in the payload."""
-    import api.routes as routes
+    import api.cli_session_import as routes
 
     session_id = "readonly_parent_lineage_001"
     parent_id = "readonly_root_lineage_001"
     messages = [{"role": "user", "content": "hello", "timestamp": 1.0}]
 
     monkeypatch.setattr(routes.Session, "load", classmethod(lambda _cls, sid: None))
-    monkeypatch.setattr(routes, "require", lambda body, *keys: None)
-    monkeypatch.setattr(routes, "bad", lambda _handler, msg, status=400: {"ok": False, "error": msg, "status": status})
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200, extra_headers=None: payload)
     monkeypatch.setattr(routes, "get_cli_session_messages", lambda sid, profile=None: messages if sid == session_id else [])
     monkeypatch.setattr(
         routes,
@@ -281,7 +268,7 @@ def test_read_only_import_payload_includes_parent_session_id(monkeypatch):
 
 def test_merge_cli_sidebar_metadata_keeps_larger_sidecar_message_count():
     """Sidebar metadata merge should not shrink repaired aggregate sidecar counts."""
-    import api.routes as routes
+    import api.session_projection as routes
 
     merged = routes._merge_cli_sidebar_metadata(
         {"session_id": "sid", "message_count": 535, "title": "Recovered"},
@@ -293,7 +280,7 @@ def test_merge_cli_sidebar_metadata_keeps_larger_sidecar_message_count():
 
 def test_webui_state_projection_dedupes_by_lineage_root():
     """WebUI-origin state.db projections should not be additive non-WebUI rows."""
-    import api.routes as routes
+    import api.session_listing as routes
 
     represented = {"root_sid"}
     state_projection = {
@@ -310,7 +297,7 @@ def test_webui_state_projection_dedupes_by_lineage_root():
 
 def test_external_state_projection_not_deduped_by_webui_source_guard():
     """The WebUI-source guard must not hide real external conversations."""
-    import api.routes as routes
+    import api.session_listing as routes
 
     represented = {"root_sid"}
     external_projection = {
@@ -328,10 +315,10 @@ def test_external_state_projection_not_deduped_by_webui_source_guard():
 def test_sessions_endpoint_suppresses_duplicate_webui_state_projection(monkeypatch):
     """The /api/sessions merge should not add WebUI state.db lineage duplicates."""
     import api.profiles as profiles
-    import api.routes as routes
+    import api.models as models
+    from fastapi_app.services import AresCoreService
 
-    monkeypatch.setattr(routes, "_reconcile_stale_stream_state_for_session_rows", lambda _sessions: False)
-    monkeypatch.setattr(routes, "load_settings", lambda: {"show_cli_sessions": True})
+    monkeypatch.setattr("api.config.load_settings", lambda: {"show_cli_sessions": True})
     monkeypatch.setattr(profiles, "get_active_profile_name", lambda: "default")
 
     webui_row = {
@@ -373,14 +360,13 @@ def test_sessions_endpoint_suppresses_duplicate_webui_state_projection(monkeypat
         "_lineage_tip_id": "telegram_tip",
     }
 
-    monkeypatch.setattr(routes, "all_sessions", lambda diag=None: [webui_row])
-    monkeypatch.setattr(routes, "get_cli_sessions", lambda source_filter=None, all_profiles=False: [duplicate_webui_projection, external_projection])
+    monkeypatch.setattr(models, "all_sessions", lambda diag=None: [webui_row])
+    monkeypatch.setattr(models, "get_cli_sessions", lambda source_filter=None, all_profiles=False: [duplicate_webui_projection, external_projection])
 
-    handler = _FakeHandler()
-    routes.handle_get(handler, urlparse("http://example.com/api/sessions"))
-
-    assert handler.status == 200
-    session_ids = [row["session_id"] for row in handler.json_body()["sessions"]]
+    payload = AresCoreService().sessions(
+        profile="default", exclude_hidden=False, include_archived=False
+    )
+    session_ids = [row["session_id"] for row in payload["sessions"]]
     assert "visible_tip" in session_ids
     assert "state_projection_tip" not in session_ids
     assert "telegram_tip" in session_ids
@@ -388,10 +374,12 @@ def test_sessions_endpoint_suppresses_duplicate_webui_state_projection(monkeypat
 
 def test_messaging_session_loader_prefers_longer_sidecar_transcript():
     """Pin the /api/session invariant that repaired sidecars can be longer than state.db segments."""
-    handler = _extract_handler("handle_get")
-    old = "if is_messaging_session and cli_messages:\n                    _all_msgs = cli_messages"
-    assert old not in handler
-    assert "_all_msgs = _merged_session_messages_for_display(s, cli_messages)" in handler
-    src = (REPO / "api" / "routes.py").read_text(encoding="utf-8")
-    assert "sidecar_messages = _webui_sidecar_lineage_messages_for_display(session)" in src
-    assert "len(sidecar_messages) > len(cli_messages)" in src
+    from types import SimpleNamespace
+    from api.session_projection import merged_session_messages_for_display
+
+    sidecar = [
+        {"role": "user", "content": "one", "timestamp": 1},
+        {"role": "assistant", "content": "two", "timestamp": 2},
+    ]
+    session = SimpleNamespace(messages=sidecar, parent_session_id=None)
+    assert merged_session_messages_for_display(session, sidecar[:1]) == sidecar

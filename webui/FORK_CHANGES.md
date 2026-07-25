@@ -1,6 +1,6 @@
 # ARES WebUI — Fork Change Log
 
-Tracks every modification made over the upstream [hermes-webui](https://github.com/nesquena/hermes-webui) repo.
+Tracks every modification made over the upstream [ares-webui](https://github.com/nesquena/ares-webui) repo.
 Each entry: date, what changed, which files, why, and rollback path.
 
 ---
@@ -16,8 +16,8 @@ and the plan for making the next sync cheap: `docs/upstream-sync-2026-07-12.md`
 
 **Notable ARES-side fixes bundled in:**
 - Session/model localStorage keys standardized back on upstream's
-  `hermes-webui-*` names. The partial `ares-webui-*` rename lived only in
-  boot.js while sessions.js/messages.js/ui.js read the hermes names — session
+  `ares-webui-*` names. The partial `ares-webui-*` rename lived only in
+  boot.js while sessions.js/messages.js/ui.js read the ares names — session
   and model restore were broken. `ares-identity.js` migrates any values saved
   under the short-lived `ares-*` names back to the canonical keys.
 - `webui/docs/` restored (the docs strip had deleted files the test suite
@@ -53,11 +53,11 @@ the sync doc.
 
 ---
 
-## 2026-07-10 — JROS backend rebuilt as a Hermes-style HTTP gateway bridge
+## 2026-07-10 — JROS backend rebuilt as a Ares-style HTTP gateway bridge
 
 **What:** Replaced the in-process JROS bridge (`api/jros_bridge.py`) and the ZMQ presence sidecar (`scripts/jros_presence.py`) with `api/jros_gateway_chat.py`, an HTTP/SSE client for the new JROS gateway server (`jaeger gateway`, added to the JROS repo as `jaeger_os/interfaces/http_gateway.py`). Hid the Hybrid backend option in the UI (server still accepts the value).
 
-**Why:** The in-process bridge booted JROS via `boot_for_tui()`, which takes JROS's exclusive instance lock — so with JROS already running on the machine, every ARES turn failed with "instance is locked". And a JROS on another machine was unreachable by design: the ZMQ sidecar only answered pings and never executed turns (plus `pyzmq` was never a declared dependency). Running JROS as its own gateway server — the same integration shape as the Hermes Gateway bridge in `api/gateway_chat.py` — fixes both: no lock conflict, and a remote JROS is just `ARES_JROS_GATEWAY_URL=http://<jros-host>:8643`.
+**Why:** The in-process bridge booted JROS via `boot_for_tui()`, which takes JROS's exclusive instance lock — so with JROS already running on the machine, every ARES turn failed with "instance is locked". And a JROS on another machine was unreachable by design: the ZMQ sidecar only answered pings and never executed turns (plus `pyzmq` was never a declared dependency). Running JROS as its own gateway server — the same integration shape as the Ares Gateway bridge in `api/gateway_chat.py` — fixes both: no lock conflict, and a remote JROS is just `ARES_JROS_GATEWAY_URL=http://<jros-host>:8643`.
 
 **Files changed:**
 - `webui/api/jros_gateway_chat.py` — **NEW**. Gateway chat worker (`run_jros_streaming`), health probe (`jros_gateway_health`), remote reboot (`reset_jros_boot` → `POST /v1/reset`). Env: `ARES_JROS_GATEWAY_URL`, `ARES_JROS_GATEWAY_KEY`; config: `jros_gateway_url`.
@@ -78,7 +78,7 @@ the sync doc.
 
 ## 2026-07-05 — Onboarding wizard, MCP bootstrap, provider sync, JROS bridge
 
-**What:** Expanded the first-run onboarding wizard with agent-prompt, Tailscale/iPhone, connect-test, and MCP-placement steps. Added MCP bootstrap CLIs (`tools/mcp-bootstrap/`, `tools/safari-mcp-bootstrap/`), Hermes/JROS provider sync (`api/ares_provider_sync.py`, `/api/ares/provider/sync`), and a default-off JROS chat bridge (`api/jros_bridge.py`).
+**What:** Expanded the first-run onboarding wizard with agent-prompt, Tailscale/iPhone, connect-test, and MCP-placement steps. Added MCP bootstrap CLIs (`tools/mcp-bootstrap/`, `tools/safari-mcp-bootstrap/`), Ares/JROS provider sync (`api/ares_provider_sync.py`, `/api/ares/provider/sync`), and a default-off JROS chat bridge (`api/jros_bridge.py`).
 
 **Why:** New ARES installs need a portable, backend-neutral path for private-network mobile access and correct local-vs-remote MCP placement. JROS backend mode and cross-backend provider sync should work without hardcoded machine paths.
 
@@ -143,8 +143,8 @@ the sync doc.
 - `server.py` — lines 662-672. Starts the watcher when `ARES_WEBUI_RELOAD=1`.
 - `static/messages.js` — lines ~6864-6875. Added `hot_reload` SSE event listener in `startSessionStream()` that calls `location.reload()` on static file changes.
 - `requirements.txt` — added `watchdog>=6.0`.
-- `~/.hermes/start-webui.sh` — line 23: `export ARES_WEBUI_RELOAD=1` (config, not source).
-- `~/Library/LaunchAgents/com.ares.hermes-webui.plist` — `KeepAlive=true` so launchd restarts on `os._exit(0)`.
+- `~/.ares/start-webui.sh` — line 23: `export ARES_WEBUI_RELOAD=1` (config, not source).
+- `~/Library/LaunchAgents/com.ares.ares-webui.plist` — `KeepAlive=true` so launchd restarts on `os._exit(0)`.
 
 **Rollback:** Set `ARES_WEBUI_RELOAD=0` or remove from `start-webui.sh`. Delete `api/hot_reload.py`. Revert `server.py` lines 662-672.
 
@@ -166,9 +166,9 @@ the sync doc.
 
 ## 2026-06-XX — Branding: ARES identity
 
-**What:** Rebranded the WebUI from "Hermes" to "ARES" — title, logos, favicons, PWA manifest.
+**What:** Rebranded the WebUI from "Ares" to "ARES" — title, logos, favicons, PWA manifest.
 
-**Why:** ARES is a separate product from Hermes. The WebUI is the user-facing surface for Ares. Users should see "ARES", not "Hermes".
+**Why:** ARES is a separate product from Ares. The WebUI is the user-facing surface for Ares. Users should see "ARES", not "Ares".
 
 **Files changed:**
 - `static/index.html` — page title, meta tags, PWA manifest links
@@ -177,15 +177,15 @@ the sync doc.
 - `static/apple-touch-icon.png` — ARES icon for iOS home screen
 - `webui/README.md` — updated to reference ARES and upstream fork
 
-**Rollback:** Revert to upstream hermes-webui branding files.
+**Rollback:** Revert to upstream ares-webui branding files.
 
 **License note:** MIT license — original copyright preserved, ARES copyright stacked on top. Never remove original copyright.
 
 ---
 
-## 2026-06-XX — Backend selector (Hermes/JROS/Hybrid)
+## 2026-06-XX — Backend selector (Ares/JROS/Hybrid)
 
-**What:** Phase 1+2 of backend selector — dropdown in composer footer to pick which backend (Hermes, JROS, Hybrid) processes the turn. API + streaming wiring + persona picker UI.
+**What:** Phase 1+2 of backend selector — dropdown in composer footer to pick which backend (Ares, JROS, Hybrid) processes the turn. API + streaming wiring + persona picker UI.
 
 **Why:** ARES supports multiple backends. The user picks which one to use per-conversation or per-turn.
 
@@ -214,7 +214,7 @@ the sync doc.
 
 ## Upstream sync notes
 
-- **Upstream repo:** `nesquena/hermes-webui` (master branch)
+- **Upstream repo:** `nesquena/ares-webui` (master branch)
 - **Fork point:** Commit `1d5d88b7` ("Clean baseline: ARES app + webui + tools")
 - **Sync strategy:** Pull upstream master periodically. ARES-specific changes are isolated to new files (`api/hot_reload.py`, `api/backend_selector.py`, `api/persona.py`) and small patches in `server.py` and `static/messages.js`. Conflicts should be minimal.
 - **No upstream PRs:** ARES-specific features stay in the ARES repo. If upstream wants them, they can pull from our public repo. See session `20260701_135854_26d21385` for the full reasoning.

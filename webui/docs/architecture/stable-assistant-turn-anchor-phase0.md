@@ -64,19 +64,19 @@ streaming or rendering yet.
 | Live DOM | `#liveAssistantTurn`, Worklog rows, tool cards, Thinking cards | Renderer output only; DOM survival is not semantic truth. |
 
 The same inventory is encoded in `static/assistant_turn_anchors.js` as
-`HermesAssistantTurnAnchors.stateLayers` so tests can pin the current authority
+`AresAssistantTurnAnchors.stateLayers` so tests can pin the current authority
 order.
 
 ## Slice 2 Normalizer Helper
 
-`HermesAssistantTurnAnchors.normalizeAssistantTurnAnchorSourceEvent()` converts a
+`AresAssistantTurnAnchors.normalizeAssistantTurnAnchorSourceEvent()` converts a
 single current source event into a normalized anchor event envelope without
 registering it, rendering it, or mutating browser state. It accepts live SSE-like
 events (`type`, `data`, `lastEventId`), replay/journal-like events (`event`,
 `payload`, `event_id`, `seq`), and settled/session payload events such as
 `settled_message`.
 
-`HermesAssistantTurnAnchors.normalizeAssistantTurnAnchorSourceEvents()` applies
+`AresAssistantTurnAnchors.normalizeAssistantTurnAnchorSourceEvents()` applies
 the same helper to a list and dedupes repeated live + replay observations by the
 same event-envelope key. This is still inert: `send()`, `attachLiveStream()`,
 `renderMessages()`, settlement restore, `S.messages`, `INFLIGHT`, and the DOM do
@@ -84,12 +84,12 @@ not consume the helper yet.
 
 ## Slice 3 Registry / Owner Skeleton
 
-`HermesAssistantTurnAnchors.createAssistantTurnAnchorRegistry()` creates a local
+`AresAssistantTurnAnchors.createAssistantTurnAnchorRegistry()` creates a local
 owner object for one assistant turn. The registry contains the anchor seed, a
 dedupe index, and application stats. It is not a global store and is not wired
 into current runtime, session, or renderer code.
 
-`HermesAssistantTurnAnchors.applyAssistantTurnAnchorSourceEvent()` and
+`AresAssistantTurnAnchors.applyAssistantTurnAnchorSourceEvent()` and
 `applyAssistantTurnAnchorSourceEvents()` normalize incoming source events, apply
 the same event-envelope dedupe rule, and route events into one owner:
 
@@ -113,7 +113,7 @@ This slice deliberately keeps the ownership boundary inert: `send()`,
 can replace local renderer-owned state with this owner instead of adding another
 parallel source of truth.
 
-`HermesAssistantTurnAnchors.createAssistantTurnAnchorShadowSnapshot()` is the
+`AresAssistantTurnAnchors.createAssistantTurnAnchorShadowSnapshot()` is the
 shadow wiring harness for this slice. It accepts grouped `live_events`,
 `replay_events` / `run_journal_events`, `settled_events`, and `inflight_events`,
 feeds them through one local registry, and returns the resulting snapshot plus
@@ -126,7 +126,7 @@ not stored in the anchor seed. Those choices belong in renderer state or a
 separate per-session UI preference store so replay and settlement do not carry
 historic display preferences as semantic facts.
 
-`HermesAssistantTurnAnchors.terminalStates` exposes the RFC terminal-state enum:
+`AresAssistantTurnAnchors.terminalStates` exposes the RFC terminal-state enum:
 `completed`, `cancelled`, `interrupted`, `no_response`,
 `tool_limit_reached`, `compression_exhausted`, `connection_lost`, `degraded`,
 and `error`. `normalizeAssistantTurnAnchorTerminalState()` maps current source
@@ -142,7 +142,7 @@ replay first, settled transcript second, `INFLIGHT` only for gaps.
 
 ## Slice 4 Settled Final Projection
 
-`HermesAssistantTurnAnchors.projectAssistantTurnAnchorSettledMessageFinalAnswer()`
+`AresAssistantTurnAnchors.projectAssistantTurnAnchorSettledMessageFinalAnswer()`
 projects one settled assistant transcript message through a local anchor
 registry. The settled transcript message reference remains the semantic
 authority (`content.final_message_ref`); `content.final_answer` is a derived
@@ -161,7 +161,7 @@ and DOM continuity are still not consumed by the anchor registry in this slice.
 
 ## Slice 5 Activity Scene Projection
 
-`HermesAssistantTurnAnchors.projectAssistantTurnAnchorActivityScene()` projects
+`AresAssistantTurnAnchors.projectAssistantTurnAnchorActivityScene()` projects
 an anchor or registry into `activity_scene_v1`: identity, lifecycle,
 `final_answer`, `final_message_ref`, terminal state, and an ordered
 `activity_rows` list.
@@ -179,7 +179,7 @@ This slice is still inert. No current UI module consumes the activity scene.
 
 `attachLiveStream()` now creates or reuses a per-stream local registry in
 `window._liveAnchorRegistries` and feeds current live activity events through
-`HermesAssistantTurnAnchors.applyAssistantTurnAnchorSourceEvent()`. This is a
+`AresAssistantTurnAnchors.applyAssistantTurnAnchorSourceEvent()`. This is a
 shadow feed only: Compact Worklog, Transparent Stream, `renderMessages()`,
 `S.messages`, `INFLIGHT`, and DOM continuity do not read from the registry yet.
 
@@ -214,7 +214,7 @@ they match the current session.
 
 ## Slice 7 Dual-Run Reconciler
 
-`HermesAssistantTurnAnchors.reconcileAssistantTurnAnchorActivityScene()` compares
+`AresAssistantTurnAnchors.reconcileAssistantTurnAnchorActivityScene()` compares
 the anchor-owned `activity_scene_v1` projection against a renderer-derived row
 snapshot. It is a shadow harness, not a renderer. Callers pass the current
 renderer's observed rows as plain summaries, and the helper returns
@@ -239,7 +239,7 @@ slice deliberately switches a renderer to anchor-owned rows.
 
 ## Slice 8 Renderer Snapshot Adapter
 
-`HermesAssistantTurnAnchors.createAssistantTurnAnchorRendererSnapshot()` turns
+`AresAssistantTurnAnchors.createAssistantTurnAnchorRendererSnapshot()` turns
 current renderer rows into `renderer_snapshot_v1` summaries. The helper accepts
 plain row-like objects or a DOM/root object with the existing renderer hooks:
 Transparent Stream rows (`.transparent-event-row` /
@@ -247,7 +247,7 @@ Transparent Stream rows (`.transparent-event-row` /
 `.agent-activity-thinking`, `.thinking-card-row`), and Compact Worklog tool rows
 (`.tool-card-row`).
 
-`HermesAssistantTurnAnchors.reconcileAssistantTurnAnchorRendererSnapshot()` is
+`AresAssistantTurnAnchors.reconcileAssistantTurnAnchorRendererSnapshot()` is
 the first one-call yes/no harness: it builds or accepts a renderer snapshot,
 passes its rows into `reconcileAssistantTurnAnchorActivityScene()`, and returns
 `renderer_snapshot_reconciliation_v1` with `matched: true` or `matched: false`

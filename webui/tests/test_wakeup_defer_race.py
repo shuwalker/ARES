@@ -495,7 +495,7 @@ def test_paused_process_wakeup_409_does_not_requeue(monkeypatch):
     so re-queueing would recreate the same provider-unavailable loop.
     """
     from api import background_process as bp, config as cfg
-    import api.routes as routes
+    import api.chat_runtime as chat_runtime
 
     _reset_cfg_state()
     sid = "sess-paused-409"
@@ -523,7 +523,7 @@ def test_paused_process_wakeup_409_does_not_requeue(monkeypatch):
             "proc-paused-1",
             "[IMPORTANT: Background process completed while credentials were unavailable.]",
         )
-        monkeypatch.setattr(routes, "start_session_turn", _paused_start_session_turn)
+        monkeypatch.setattr(chat_runtime, "start_session_turn", _paused_start_session_turn)
         monkeypatch.setattr(bp, "record_deferred_wakeup", _unexpected_requeue)
 
         assert bp.drain_deferred_wakeups_for_session(sid) == 1

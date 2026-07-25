@@ -1,31 +1,38 @@
-"""Regression coverage: WebUI session rename writes through to state.db (#3225).
+"""Session rename writes through to state.db before notifying subscribers."""
 
-The /api/session/rename handler must call _sync_session_title_to_insights(s),
-just like the sibling /api/session/title/regenerate handler does, so a rename
-propagates the new title to the agent's state.db. Without it the TUI and CLI
-keep showing the stale name. Static source-text assertion that mirrors
-test_regenerate_endpoint_syncs_title_to_state_db_when_enabled.
-"""
+from __future__ import annotations
 
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-ROUTES_PY = (ROOT / "api" / "routes.py").read_text(encoding="utf-8")
+from contextlib import nullcontext
 
 
-def test_rename_endpoint_syncs_title_to_state_db():
-    start_idx = ROUTES_PY.index('"/api/session/rename"')
-    end_idx = ROUTES_PY.index('"/api/session/title/regenerate"', start_idx)
-    block = ROUTES_PY[start_idx:end_idx]
-    assert "_sync_session_title_to_insights(s)" in block, (
-        "rename handler must call _sync_session_title_to_insights(s) so the "
-        "new title reaches state.db, matching the regenerate handler"
+def test_rename_syncs_title_before_session_list_event(monkeypatch):
+    from api.session_mutations import rename_session
+
+    events: list[str] = []
+
+    class Session:
+        session_id = "rename-sync"
+        title = "Old"
+        profile = "default"
+        read_only = False
+        _loaded_metadata_only = False
+
+        def save(self):
+            events.append("save")
+
+    session = Session()
+    monkeypatch.setattr("api.models.get_session", lambda _sid: session)
+    monkeypatch.setattr("api.config._get_session_agent_lock", lambda _sid: nullcontext())
+    monkeypatch.setattr(
+        "api.session_mutations._sync_session_title_to_insights",
+        lambda _session: events.append("sync"),
     )
-    assert 'publish_session_list_changed(\n            "session_rename",' in block
-    # Sync must run BEFORE the list-changed publish, matching the regenerate
-    # handler, so SSE subscribers refresh after state.db holds the new title.
-    sync_idx = block.index("_sync_session_title_to_insights(s)")
-    publish_idx = block.index('publish_session_list_changed(\n            "session_rename",')
-    assert sync_idx < publish_idx, (
-        "rename must sync to state.db before publishing the list-changed event"
+    monkeypatch.setattr(
+        "api.session_events.publish_session_list_changed",
+        lambda *_args, **_kwargs: events.append("publish"),
     )
+
+    result = rename_session("rename-sync", "New title")
+
+    assert result.title == "New title"
+    assert events == ["save", "sync", "publish"]

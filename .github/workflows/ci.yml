@@ -25,5 +25,8 @@ jobs:
       - name: Build
         run: swift build
 
+      - name: Reject orphaned source
+        run: bash tools/check-source-ownership.sh
+
       - name: Test
         run: swift test

@@ -99,7 +99,7 @@ class CapturingAgent:
 
 
 def _install_streaming_harness(monkeypatch, fake_session):
-    fake_runtime_module = types.ModuleType("hermes_cli.runtime_provider")
+    fake_runtime_module = types.ModuleType("ares_cli.runtime_provider")
     fake_runtime_module.resolve_runtime_provider = mock.Mock(
         return_value={
             "provider": "anthropic",
@@ -107,10 +107,10 @@ def _install_streaming_harness(monkeypatch, fake_session):
             "api_key": "rt-key",
         }
     )
-    fake_hermes_cli = types.ModuleType("hermes_cli")
-    fake_hermes_cli.runtime_provider = fake_runtime_module
-    fake_hermes_state = types.ModuleType("hermes_state")
-    fake_hermes_state.SessionDB = mock.Mock(return_value=object())
+    fake_ares_cli = types.ModuleType("ares_cli")
+    fake_ares_cli.runtime_provider = fake_runtime_module
+    fake_ares_state = types.ModuleType("ares_state")
+    fake_ares_state.SessionDB = mock.Mock(return_value=object())
 
     def fake_runtime_lock(resolver, **kwargs):
         return resolver(**kwargs)
@@ -129,9 +129,9 @@ def _install_streaming_harness(monkeypatch, fake_session):
     )
     monkeypatch.setattr("api.config.get_config", lambda: {})
     monkeypatch.setattr("api.config._resolve_cli_toolsets", lambda *_args, **_kwargs: [])
-    monkeypatch.setitem(sys.modules, "hermes_cli", fake_hermes_cli)
-    monkeypatch.setitem(sys.modules, "hermes_cli.runtime_provider", fake_runtime_module)
-    monkeypatch.setitem(sys.modules, "hermes_state", fake_hermes_state)
+    monkeypatch.setitem(sys.modules, "ares_cli", fake_ares_cli)
+    monkeypatch.setitem(sys.modules, "ares_cli.runtime_provider", fake_runtime_module)
+    monkeypatch.setitem(sys.modules, "ares_state", fake_ares_state)
 
 
 def _run_streaming_turn(

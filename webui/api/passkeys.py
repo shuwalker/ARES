@@ -1,4 +1,4 @@
-"""Passkey/WebAuthn helpers for Hermes WebUI.
+"""Passkey/WebAuthn helpers for Ares WebUI.
 
 Default-off: passkeys are only advertised after an authenticated user registers
 one from Settings. Password auth remains the bootstrap/recovery mechanism.
@@ -34,7 +34,7 @@ _CHALLENGE_TTL = 90
 _MAX_CHALLENGES = 128
 _MAX_CHALLENGES_PER_CONTEXT = 8
 _CHALLENGES_LOCK = threading.Lock()
-_RP_NAME = "Hermes WebUI"
+_RP_NAME = "Ares WebUI"
 
 
 class PasskeyError(ValueError):
@@ -185,6 +185,8 @@ def rp_context(handler) -> tuple[str, str]:
     host = _host_without_port(handler.headers.get("Host", "localhost"))
     proto = handler.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip().lower()
     if proto not in {"http", "https"}:
+        proto = str(getattr(getattr(handler, "url", None), "scheme", "") or "").lower()
+    if proto not in {"http", "https"}:
         try:
             from api.auth import _is_secure_context
             proto = "https" if _is_secure_context(handler) else "http"
@@ -200,7 +202,7 @@ def registration_options(handler) -> dict[str, Any]:
     return {
         "challenge": challenge,
         "rp": {"name": _RP_NAME, "id": rp_id},
-        "user": {"id": _b64u(hashlib.sha256(rp_id.encode()).digest()[:16]), "name": "Hermes WebUI", "displayName": "Hermes WebUI"},
+        "user": {"id": _b64u(hashlib.sha256(rp_id.encode()).digest()[:16]), "name": "Ares WebUI", "displayName": "Ares WebUI"},
         "pubKeyCredParams": [{"type": "public-key", "alg": -7}],
         "authenticatorSelection": {"residentKey": "preferred", "userVerification": "preferred"},
         "timeout": 60000,

@@ -13,7 +13,7 @@ needed for compound IDs.
 """
 from __future__ import annotations
 
-from api.routes import _catalog_has_provider
+from api.model_context import catalog_has_provider as _catalog_has_provider
 
 
 def test_compound_provider_exact_raw_match():

@@ -1,14 +1,11 @@
 """Read-only session lineage report endpoint tests."""
 
-import json
 import sqlite3
 import time
-from types import SimpleNamespace
-from urllib.parse import urlparse
-from unittest.mock import patch
+from fastapi.testclient import TestClient
 
 import api.agent_sessions as agent_sessions
-import api.routes as routes
+from fastapi_app.main import create_app
 
 
 def _ensure_state_db(path):
@@ -221,48 +218,37 @@ def test_lineage_report_marks_bounded_parent_walk_for_manual_review(tmp_path):
         conn.close()
 
 
-def test_lineage_report_endpoint_is_read_only_and_uses_active_state_db(tmp_path):
+def test_lineage_report_endpoint_is_read_only_and_uses_active_state_db(tmp_path, monkeypatch):
     conn = _ensure_state_db(tmp_path / "state.db")
     t0 = time.time() - 100
     try:
         _insert_state_row(conn, "lineage_report_root", started_at=t0, ended_at=t0 + 5, end_reason="compression")
         _insert_state_row(conn, "lineage_report_tip", parent="lineage_report_root", started_at=t0 + 6)
-        captured = {}
+        monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+        monkeypatch.setattr("api.models._active_state_db_path", lambda: tmp_path / "state.db")
+        with TestClient(create_app()) as client:
+            response = client.get("/api/session/lineage/report?session_id=lineage_report_tip")
 
-        def fake_j(handler, data, status=200, **_kwargs):
-            captured["status"] = status
-            captured["data"] = data
-            return data
-
-        handler = SimpleNamespace()
-        parsed = urlparse("/api/session/lineage/report?session_id=lineage_report_tip")
-        with patch.object(routes, "_active_state_db_path", return_value=tmp_path / "state.db"), patch.object(routes, "j", side_effect=fake_j):
-            routes.handle_get(handler, parsed)
-
-        assert captured["status"] == 200
-        assert captured["data"]["mutation"] is False
-        assert captured["data"]["lineage_key"] == "lineage_report_root"
-        assert captured["data"]["total_segments"] == 2
+        assert response.status_code == 200
+        assert response.json()["mutation"] is False
+        assert response.json()["lineage_key"] == "lineage_report_root"
+        assert response.json()["total_segments"] == 2
     finally:
         conn.close()
 
 
-def test_lineage_report_endpoint_returns_404_for_unknown_session(tmp_path):
+def test_lineage_report_endpoint_returns_404_for_unknown_session(tmp_path, monkeypatch):
     conn = _ensure_state_db(tmp_path / "state.db")
     conn.close()
-    captured = {}
+    monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    monkeypatch.setattr("api.models._active_state_db_path", lambda: tmp_path / "state.db")
+    with TestClient(create_app()) as client:
+        response = client.get(
+            "/api/session/lineage/report?session_id=missing_lineage_report_session"
+        )
 
-    def fake_bad(handler, message, status=400):
-        captured["status"] = status
-        captured["message"] = message
-        return {"error": message}
-
-    handler = SimpleNamespace()
-    parsed = urlparse("/api/session/lineage/report?session_id=missing_lineage_report_session")
-    with patch.object(routes, "_active_state_db_path", return_value=tmp_path / "state.db"), patch.object(routes, "bad", side_effect=fake_bad):
-        routes.handle_get(handler, parsed)
-
-    assert captured == {"status": 404, "message": "Session not found"}
+    assert response.status_code == 404
+    assert response.json() == {"error": "Session not found"}
 
 
 def test_lineage_report_preserves_child_order_for_each_segment_parent(tmp_path):

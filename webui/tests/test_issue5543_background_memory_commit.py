@@ -10,14 +10,12 @@ extraction. The gate-certifier required three guarantees this file locks in:
 2. Registry hygiene: a completed background-commit worker unregisters itself so
    ``_background_commit_threads`` does not grow without bound (Finding 2).
 3. Shutdown drain: drain_all_on_shutdown() joins in-flight background commit
-   threads AND flushes the pending generation, and the server's SIGTERM handler
-   routes the managed ``ctl.sh stop`` through the serve_forever() ``finally`` so
-   the drain actually runs (Finding 1).
+   threads AND flushes the pending generation, and the Uvicorn lifespan runs
+   that drain from its ``finally`` block (Finding 1).
 """
 
 from __future__ import annotations
 
-import ast
 import importlib
 import socket
 import threading
@@ -267,29 +265,15 @@ def test_sigterm_style_shutdown_runs_finally_drain():
 # --------------------------------------------------------------------------- #
 
 
-def test_server_installs_sigterm_handler_and_drains_in_finally():
-    """server.py must wire a SIGTERM handler and drain in serve_forever's finally."""
-    src = (REPO / "server.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
+def test_uvicorn_lifespan_drains_in_finally_and_preserves_sigpipe_policy():
+    """Uvicorn owns signals; ARES owns deterministic shutdown and process policy."""
+    lifecycle_src = (REPO / "fastapi_app" / "lifecycle.py").read_text(encoding="utf-8")
+    process_src = (REPO / "api" / "process_runtime.py").read_text(encoding="utf-8")
 
-    # A SIGTERM handler is installed via signal.signal(signal.SIGTERM, ...).
-    installs_sigterm = any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "signal"
-        and node.args
-        and ast.dump(node.args[0]).find("SIGTERM") != -1
-        for node in ast.walk(tree)
-    )
-    assert installs_sigterm, "server.py does not install a SIGTERM handler"
-
-    # httpd.shutdown() is dispatched (from a helper thread) rather than the
-    # default SIGTERM behavior that would skip the finally.
-    assert "httpd.shutdown" in src
-    # The existing shutdown drain is still wired.
-    assert "drain_all_on_shutdown" in src
-    # SIGPIPE handling must be preserved.
-    assert "SIGPIPE" in src
+    assert "finally:" in lifecycle_src
+    assert "await shutdown_runtime()" in lifecycle_src
+    assert "drain_all_on_shutdown" in lifecycle_src
+    assert "SIGPIPE" in process_src
 
 
 # --------------------------------------------------------------------------- #

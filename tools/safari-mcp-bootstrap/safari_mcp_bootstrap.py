@@ -21,7 +21,7 @@ from pathlib import Path
 
 HOME = Path.home()
 DEFAULT_SAFARI_MCP_REPO = Path(os.environ.get("ARES_SAFARI_MCP_PATH", "")).expanduser() if os.environ.get("ARES_SAFARI_MCP_PATH") else None
-HERMES_CONFIG = HOME / ".hermes" / "config.yaml"
+ARES_CONFIG = HOME / ".ares" / "config.yaml"
 
 
 def run(cmd: list[str], cwd: Path | None = None, timeout: int = 30) -> tuple[int, str]:
@@ -51,21 +51,21 @@ def check_binary(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def hermes_mcp_configured() -> bool:
-    if not HERMES_CONFIG.exists():
+def ares_mcp_configured() -> bool:
+    if not ARES_CONFIG.exists():
         return False
-    text = HERMES_CONFIG.read_text(errors="ignore")
+    text = ARES_CONFIG.read_text(errors="ignore")
     return "safari-mcp" in text and "mcp:" in text
 
 
-def configure_hermes() -> list[str]:
+def configure_ares() -> list[str]:
     logs: list[str] = []
-    if not check_binary("hermes"):
-        return ["SKIP: hermes CLI not found on PATH"]
+    if not check_binary("ares"):
+        return ["SKIP: ares CLI not found on PATH"]
     commands = [
-        ["hermes", "config", "set", "mcp.servers.safari-mcp.command", "npx"],
-        ["hermes", "config", "set", "mcp.servers.safari-mcp.args", '["safari-mcp"]'],
-        ["hermes", "config", "set", "mcp.servers.safari-mcp.env.SAFARI_MCP_BACKGROUND", "true"],
+        ["ares", "config", "set", "mcp.servers.safari-mcp.command", "npx"],
+        ["ares", "config", "set", "mcp.servers.safari-mcp.args", '["safari-mcp"]'],
+        ["ares", "config", "set", "mcp.servers.safari-mcp.env.SAFARI_MCP_BACKGROUND", "true"],
     ]
     for cmd in commands:
         code, out = run(cmd, timeout=20)
@@ -137,7 +137,7 @@ def print_report(auto_configure: bool, repo: Path | None = None) -> int:
     checks.append(("node", check_binary("node"), "Install Node.js 18+"))
     checks.append(("npm/npx", check_binary("npm") and check_binary("npx"), "Install npm/npx"))
     checks.append(("safari-mcp package/repo", check_binary("npx") or bool(repo and repo.exists()), "Install Node.js/npm or provide --safari-mcp-path PATH to a local safari-mcp clone"))
-    checks.append(("Hermes MCP config", hermes_mcp_configured(), "Run with --configure-hermes or add mcp.servers.safari-mcp manually"))
+    checks.append(("Ares MCP config", ares_mcp_configured(), "Run with --configure-ares or add mcp.servers.safari-mcp manually"))
 
     for label, ok, fix in checks:
         print(("✅" if ok else "❌"), label)
@@ -145,8 +145,8 @@ def print_report(auto_configure: bool, repo: Path | None = None) -> int:
             print("   fix:", fix)
 
     if auto_configure:
-        print("\nConfiguring Hermes MCP entry...")
-        for line in configure_hermes():
+        print("\nConfiguring Ares MCP entry...")
+        for line in configure_ares():
             print(line)
 
     if repo and repo.exists() and check_binary("npm"):
@@ -165,7 +165,7 @@ def print_report(auto_configure: bool, repo: Path | None = None) -> int:
     print(textwrap.dedent("""
     1. Safari → Settings → Advanced → Show features for web developers.
     2. Safari → Develop → Allow JavaScript from Apple Events.
-    3. System Settings → Privacy & Security → Automation → allow your terminal/Hermes host to control Safari.
+    3. System Settings → Privacy & Security → Automation → allow your terminal/Ares host to control Safari.
     4. For native clicks/keyboard only: System Settings → Privacy & Security → Accessibility → add safari-helper.
     5. For screenshots/PDF visual capture only: System Settings → Privacy & Security → Screen Recording → add the host app if requested.
 
@@ -176,12 +176,12 @@ def print_report(auto_configure: bool, repo: Path | None = None) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Configure/verify optional Safari MCP for ARES when Hermes Agent is the selected backend.")
-    parser.add_argument("--configure-hermes", action="store_true", help="Write Hermes mcp.servers.safari-mcp config using hermes config set")
+    parser = argparse.ArgumentParser(description="Configure/verify optional Safari MCP for ARES when Ares Agent is the selected backend.")
+    parser.add_argument("--configure-ares", action="store_true", help="Write Ares mcp.servers.safari-mcp config using ares config set")
     parser.add_argument("--safari-mcp-path", help="Optional local path to a safari-mcp clone. If omitted, the bootstrap uses npx -y safari-mcp.")
     args = parser.parse_args()
     repo = Path(args.safari_mcp_path).expanduser() if args.safari_mcp_path else DEFAULT_SAFARI_MCP_REPO
-    return print_report(args.configure_hermes, repo)
+    return print_report(args.configure_ares, repo)
 
 
 if __name__ == "__main__":

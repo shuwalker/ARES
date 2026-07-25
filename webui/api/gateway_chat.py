@@ -1,4 +1,4 @@
-"""Default-off Hermes Gateway bridge for browser-originated chat turns."""
+"""Default-off Ares Gateway bridge for browser-originated chat turns."""
 from __future__ import annotations
 
 import json
@@ -38,10 +38,10 @@ logger = logging.getLogger(__name__)
 # Maps stream_id -> gateway run_id for approval response relay.
 _STREAM_RUN_IDS: dict[str, str] = {}
 
-_WEBUI_CHAT_BACKEND_ENV = "HERMES_WEBUI_CHAT_BACKEND"
-_WEBUI_GATEWAY_BASE_URL_ENV = "HERMES_WEBUI_GATEWAY_BASE_URL"
-_WEBUI_GATEWAY_API_KEY_ENV = "HERMES_WEBUI_GATEWAY_API_KEY"
-_WEBUI_GATEWAY_USE_RUNS_API_ENV = "HERMES_WEBUI_GATEWAY_USE_RUNS_API"
+_WEBUI_CHAT_BACKEND_ENV = "ARES_WEBUI_CHAT_BACKEND"
+_WEBUI_GATEWAY_BASE_URL_ENV = "ARES_WEBUI_GATEWAY_BASE_URL"
+_WEBUI_GATEWAY_API_KEY_ENV = "ARES_WEBUI_GATEWAY_API_KEY"
+_WEBUI_GATEWAY_USE_RUNS_API_ENV = "ARES_WEBUI_GATEWAY_USE_RUNS_API"
 _GATEWAY_CHAT_BACKENDS = {"gateway", "api_server", "api-server"}
 
 # Total byte-silence budget (seconds) for the gateway SSE socket, applied via
@@ -62,8 +62,8 @@ _GATEWAY_CHAT_BACKENDS = {"gateway", "api_server", "api-server"}
 # The win here is that a read timeout is now TERMINAL and Stop-honoring (the old
 # flat timeout ignored Stop on a half-open gateway); the budget itself stays 600s
 # for backward compatibility. Deployments that want a tighter dead-gateway cap can
-# lower ``HERMES_WEBUI_GATEWAY_READ_TIMEOUT``.
-_GATEWAY_READ_TIMEOUT_ENV = "HERMES_WEBUI_GATEWAY_READ_TIMEOUT"
+# lower ``ARES_WEBUI_GATEWAY_READ_TIMEOUT``.
+_GATEWAY_READ_TIMEOUT_ENV = "ARES_WEBUI_GATEWAY_READ_TIMEOUT"
 _GATEWAY_READ_TIMEOUT_DEFAULT = 600.0
 
 
@@ -126,7 +126,7 @@ def webui_chat_backend_mode(config_data=None, environ: dict[str, str] | None = N
     """Return the explicitly selected browser chat backend.
 
     The default remains the in-process WebUI runtime. Only explicit gateway
-    values opt browser chat into the Hermes API server bridge; generic truthy
+    values opt browser chat into the Ares API server bridge; generic truthy
     strings are deliberately ignored so deployments do not change execution
     ownership by accident.
     """
@@ -215,10 +215,10 @@ def _gateway_http_error_event(exc: urllib.error.HTTPError, err_body: str, *, api
             "type": "gateway_auth_error",
             "message": "Gateway rejected the WebUI API key (HTTP 401).",
             "hint": (
-                "Set HERMES_WEBUI_GATEWAY_API_KEY to the same value as the Hermes Gateway "
-                "API_SERVER_KEY, or disable HERMES_WEBUI_CHAT_BACKEND=gateway."
+                "Set ARES_WEBUI_GATEWAY_API_KEY to the same value as the Ares Gateway "
+                "API_SERVER_KEY, or disable ARES_WEBUI_CHAT_BACKEND=gateway."
                 if not api_key_configured
-                else "Check that HERMES_WEBUI_GATEWAY_API_KEY matches the Hermes Gateway API_SERVER_KEY."
+                else "Check that ARES_WEBUI_GATEWAY_API_KEY matches the Ares Gateway API_SERVER_KEY."
             ),
         }
     return {
@@ -287,7 +287,7 @@ def _gateway_reasoning_delta(payload: dict) -> str:
 
 
 def _gateway_tool_progress_event(payload: dict) -> tuple[str, dict] | None:
-    """Translate Hermes Gateway tool-progress SSE payloads to WebUI events."""
+    """Translate Ares Gateway tool-progress SSE payloads to WebUI events."""
     if not isinstance(payload, dict):
         return None
     event_type = str(payload.get("event") or "").strip().lower()
@@ -366,11 +366,11 @@ def _run_gateway_runs_api_streaming(
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "X-Hermes-Session-Id": session_id,
+        "X-Ares-Session-Id": session_id,
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-        headers["X-Hermes-Session-Key"] = f"webui:{session_id}"
+        headers["X-Ares-Session-Key"] = f"webui:{session_id}"
     message_content: Any = str(msg_text or "")
     if attachments:
         try:
@@ -584,7 +584,7 @@ def _run_gateway_chat_streaming(
     model_provider=None,
     goal_related=False,
 ):
-    """Bridge a WebUI chat turn through Hermes Gateway's API server.
+    """Bridge a WebUI chat turn through Ares Gateway's API server.
 
     This default-off path keeps the browser contract unchanged: /api/chat/start
     still returns a local stream_id and /api/chat/stream still receives WebUI SSE
@@ -667,7 +667,7 @@ def _run_gateway_chat_streaming(
                 _webui_ephemeral_system_prompt,
             )
 
-            prefill_context = _load_webui_prefill_context(cfg)
+            prefill_context = _load_webui_prefill_context(cfg, context_store_query=msg_text)
             # #3324: the WebUI session/delivery context (connected platforms,
             # home channels, delivery hints, session framing) is now carried in
             # the ephemeral system prompt rather than a prefill `user` message.
@@ -732,7 +732,7 @@ def _run_gateway_chat_streaming(
                     "label": "Gateway runs API error",
                     "type": "gateway_runs_error",
                     "message": str(exc)[:400],
-                    "hint": "Check that the Hermes Gateway runs API (/v1/runs) is available.",
+                    "hint": "Check that the Ares Gateway runs API (/v1/runs) is available.",
                 })
                 return
             if final_text is None:
@@ -745,11 +745,11 @@ def _run_gateway_chat_streaming(
                 if not hasattr(s, "_approval_notice_emitted"):
                     s._approval_notice_emitted = False
                 if not s._approval_notice_emitted:
-                    approval_message = "Approvals require a newer gateway. Upgrade the connected Hermes gateway to enable this."
+                    approval_message = "Approvals require a newer gateway. Upgrade the connected Ares gateway to enable this."
                     approval_type = "approval_gateway_unsupported"
                     if approval_reason == "unreachable":
                         approval_type = "approval_gateway_offline"
-                        approval_message = "Gateway connection failed. Check that the connected Hermes gateway is running and reachable."
+                        approval_message = "Gateway connection failed. Check that the connected Ares gateway is running and reachable."
                     put_gateway_event("warning", {
                         "type": approval_type,
                         "message": approval_message,
@@ -760,13 +760,13 @@ def _run_gateway_chat_streaming(
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "text/event-stream",
-                "X-Hermes-Session-Id": session_id,
+                "X-Ares-Session-Id": session_id,
             }
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
                 # Scope Gateway long-term continuity to this WebUI conversation
                 # without exposing the browser's auth cookie or CSRF material.
-                headers["X-Hermes-Session-Key"] = f"webui:{session_id}"
+                headers["X-Ares-Session-Key"] = f"webui:{session_id}"
             message_content: Any = str(msg_text or "")
             if attachments:
                 try:
@@ -818,7 +818,7 @@ def _run_gateway_chat_streaming(
                     except json.JSONDecodeError:
                         continue
                     _payload_event = str(payload.get("event") or payload.get("type") or sse_event).strip()
-                    if _payload_event in {"hermes.approval.request", "approval.request"}:
+                    if _payload_event in {"ares.approval.request", "approval.request"}:
                         approval_data = _gateway_runs_approval_event(payload)
                         if approval_data:
                             # Record the gateway run_id so /api/approval/respond
@@ -839,7 +839,7 @@ def _run_gateway_chat_streaming(
                             logger.debug("Ignoring malformed gateway approval payload")
                         sse_event = "message"
                         continue
-                    if sse_event == "hermes.tool.progress":
+                    if sse_event == "ares.tool.progress":
                         translated = _gateway_tool_progress_event(payload)
                         if translated:
                             event_name, event_payload = translated
@@ -898,7 +898,7 @@ def _run_gateway_chat_streaming(
                 "label": "Gateway returned no response",
                 "type": "gateway_empty_response",
                 "message": "Gateway returned no assistant message for this turn.",
-                "hint": "Check that Hermes Gateway API server is running and reachable.",
+                "hint": "Check that Ares Gateway API server is running and reachable.",
             })
             return
         with _get_session_agent_lock(session_id):
@@ -1017,9 +1017,9 @@ def _run_gateway_chat_streaming(
             success_writeback_committed = True
         try:
             from api.goals import evaluate_goal_after_turn, has_active_goal
-            from api.profiles import get_hermes_home_for_profile
+            from api.profiles import get_ares_home_for_profile
 
-            profile_home = get_hermes_home_for_profile(getattr(s, "profile", None))
+            profile_home = get_ares_home_for_profile(getattr(s, "profile", None))
             if goal_related and has_active_goal(session_id, profile_home=profile_home):
                 put_gateway_event("goal", {
                     "session_id": session_id,
@@ -1083,7 +1083,7 @@ def _run_gateway_chat_streaming(
             "label": "Gateway request failed",
             "type": "gateway_error",
             "message": safe or "Gateway request failed.",
-            "hint": "Check HERMES_WEBUI_GATEWAY_BASE_URL and Gateway API server health.",
+            "hint": "Check ARES_WEBUI_GATEWAY_BASE_URL and Gateway API server health.",
         })
     finally:
         if s is not None:

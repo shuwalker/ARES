@@ -1,6 +1,6 @@
 import pytest
 
-import api.routes as routes
+from api import route_session_list_cache as routes
 from api.request_diagnostics import RequestDiagnostics
 
 

@@ -54,7 +54,7 @@ def _parse_character(data: dict, yml_path: Path) -> Optional[dict[str, Any]]:
         "voice_tone": str(identity.get("voice_tone", "")),
         "level": int(data.get("level", 1)),
         "revision": float(data.get("revision", 1.0)),
-        "card_url": f"/static/characters/{char_id}.png",
+        "card_url": "/assets/ares-app-icon.png",
         "traits": {
             "hexaco": traits.get("hexaco") or {},
             "special": traits.get("special") or {},

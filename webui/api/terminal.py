@@ -1,4 +1,4 @@
-"""Embedded workspace terminal support for Hermes Web UI.
+"""Embedded workspace terminal support for Ares Web UI.
 
 The terminal is intentionally independent from the agent execution path.  It
 starts a shell with an explicit cwd/env per process and never mutates
@@ -239,7 +239,7 @@ if _TERMINAL_SUPPORTED:
 # NOTE on parent-death-signal: a previous version of this module set
 # PR_SET_PDEATHSIG via a preexec_fn to terminate orphaned PTY shells when the
 # WebUI process crashed.  That broke every Linux user (#2853): WebUI runs a
-# ThreadingHTTPServer, so the Popen call happens on a short-lived per-request
+# The FastAPI endpoint dispatches this blocking setup off the event loop, so
 # thread, and PR_SET_PDEATHSIG is per-thread.  The PTY shell registered the
 # spawning thread as its "parent" and was killed with SIGTERM the instant that
 # thread joined — within ~10 ms of opening the terminal — surfacing as the
@@ -404,7 +404,7 @@ def start_terminal(session_id: str, workspace: Path, rows: int = 24, cols: int =
                 "COLUMNS": str(cols),
                 "LINES": str(rows),
                 "PWD": cwd,
-                "HERMES_WEBUI_TERMINAL": "1",
+                "ARES_WEBUI_TERMINAL": "1",
             }
         )
         shell = _shell_path()

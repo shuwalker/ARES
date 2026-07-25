@@ -250,7 +250,7 @@ def test_gateway_runs_api_submission():
     mock_session.pending_started_at = None
 
     try:
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway", "HERMES_WEBUI_GATEWAY_USE_RUNS_API": "1"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway", "ARES_WEBUI_GATEWAY_USE_RUNS_API": "1"}):
             with patch("api.gateway_chat.gateway_supports_approval", lambda *_args, **_kwargs: True), \
                  patch("api.gateway_chat._run_gateway_runs_api_streaming", fake_runs_streaming), \
                  patch("api.gateway_chat._gateway_reasoning_effort_for_request", return_value="high"), \
@@ -517,7 +517,7 @@ def test_gateway_runs_api_cancel_does_not_emit_empty_response():
         return None, {}
 
     try:
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway", "HERMES_WEBUI_GATEWAY_USE_RUNS_API": "1"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway", "ARES_WEBUI_GATEWAY_USE_RUNS_API": "1"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=True), \
                  patch("api.gateway_chat._run_gateway_runs_api_streaming", side_effect=fake_runs_streaming), \
                  patch("api.gateway_chat.get_session", return_value=mock_session):
@@ -560,21 +560,19 @@ def test_gateway_approval_response_relay():
         captured["body"] = json.loads(req.data)
         return {"ok": True}
 
-    handler = MagicMock()
-    handler.wfile = io.BytesIO()
-
     body = {"session_id": "sess-relay", "choice": "once", "approval_id": "appr x/y"}
 
-    with patch("api.routes.get_session", return_value=mock_session), \
+    with patch("api.models.get_session", return_value=mock_session), \
          patch("api.runner_client.HttpRunnerClient._request_json", new=fake_request_json), \
          patch("api.gateway_chat._gateway_base_url", return_value="http://gw:8642"), \
          patch("api.gateway_chat._gateway_api_key", return_value=""):
-        from api.routes import _handle_approval_respond
-        _handle_approval_respond(handler, body)
+        from api.route_approvals import respond_approval
+        payload, status = respond_approval(body["session_id"], body["approval_id"], body["choice"])
 
     assert captured.get("url", "") == "http://gw:8642/v1/runs/run%20abc%2F1/approval"
     assert captured["body"] == {"choice": "once", "approval_id": "appr x/y"}
-    handler.send_response.assert_called_with(200)
+    assert status == 200
+    assert payload["ok"] is True
 
     # Cleanup.
     _STREAM_RUN_IDS.pop("sid-relay", None)
@@ -590,20 +588,16 @@ def test_gateway_approval_response_relay_failure_returns_502():
     mock_session = MagicMock()
     mock_session.active_stream_id = "sid-relay-fail"
 
-    handler = MagicMock()
-    handler.wfile = io.BytesIO()
-
     body = {"session_id": "sess-relay", "choice": "once", "approval_id": "appr-x"}
 
-    with patch("api.routes.get_session", return_value=mock_session), \
+    with patch("api.models.get_session", return_value=mock_session), \
          patch("api.runner_client.HttpRunnerClient.respond_approval", side_effect=RunnerClientError("relay failed")), \
          patch("api.gateway_chat._gateway_base_url", return_value="http://gw:8642"), \
          patch("api.gateway_chat._gateway_api_key", return_value=""):
-        from api.routes import _handle_approval_respond
-        _handle_approval_respond(handler, body)
+        from api.route_approvals import respond_approval
+        payload, status = respond_approval(body["session_id"], body["approval_id"], body["choice"])
 
-    handler.send_response.assert_called_with(502)
-    payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert status == 502
     assert payload["ok"] is False
     assert payload["relayed"] is True
     assert "relay failed" in payload["error"]
@@ -620,19 +614,15 @@ def test_gateway_approval_response_invalid_gateway_base_returns_502():
     mock_session = MagicMock()
     mock_session.active_stream_id = "sid-relay-invalid-base"
 
-    handler = MagicMock()
-    handler.wfile = io.BytesIO()
-
     body = {"session_id": "sess-relay", "choice": "once", "approval_id": "appr-x"}
 
-    with patch("api.routes.get_session", return_value=mock_session), \
+    with patch("api.models.get_session", return_value=mock_session), \
          patch("api.gateway_chat._gateway_base_url", return_value="file:///tmp/not-http"), \
          patch("api.gateway_chat._gateway_api_key", return_value=""):
-        from api.routes import _handle_approval_respond
-        _handle_approval_respond(handler, body)
+        from api.route_approvals import respond_approval
+        payload, status = respond_approval(body["session_id"], body["approval_id"], body["choice"])
 
-    handler.send_response.assert_called_with(502)
-    payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert status == 502
     assert payload["ok"] is False
     assert payload["relayed"] is True
     assert "runner base_url must be http(s)" in payload["error"]
@@ -669,7 +659,7 @@ def test_gateway_empty_response_no_approval_banner():
         return resp
 
     try:
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=fake_urlopen), \
                  patch("api.gateway_chat.get_session", return_value=MagicMock(
@@ -744,7 +734,7 @@ def test_gateway_chat_completions_path_unchanged():
         return resp
 
     try:
-        with patch.dict("os.environ", {"HERMES_WEBUI_CHAT_BACKEND": "gateway"}):
+        with patch.dict("os.environ", {"ARES_WEBUI_CHAT_BACKEND": "gateway"}):
             with patch("api.gateway_chat.gateway_supports_approval", return_value=False), \
                  patch("urllib.request.urlopen", side_effect=fake_urlopen), \
                  patch("api.gateway_chat.get_session", return_value=mock_session), \

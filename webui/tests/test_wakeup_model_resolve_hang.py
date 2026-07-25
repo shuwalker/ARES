@@ -46,7 +46,7 @@ def test_wakeup_turn_uses_persisted_model_no_live_probe(monkeypatch):
     Copilot token-exchange HTTPS call in the proven thread-stack).
     """
     from api import config as cfg
-    import api.routes as routes
+    import api.process_wakeup as routes
 
     sid = "sess-wakeup-persisted"
     persisted_model = "anthropic/claude-sonnet-4"
@@ -81,7 +81,7 @@ def test_wakeup_turn_uses_persisted_model_no_live_probe(monkeypatch):
         model_provider = "anthropic"
 
     monkeypatch.setattr(
-        routes, "_start_chat_stream_for_session",
+        routes, "_start_run",
         _fake_start_chat_stream_for_session, raising=True,
     )
     monkeypatch.setattr(routes, "get_session", lambda _sid: _FakeSession(), raising=True)
@@ -115,7 +115,7 @@ def test_wakeup_resolve_passes_prefer_cached_catalog(monkeypatch):
     cache-only path (prefer_cached_catalog=True). Pins the wiring so a future
     refactor can't silently reintroduce the live-probe hang.
     """
-    import api.routes as routes
+    import api.process_wakeup as routes
 
     sid = "sess-wakeup-wiring"
     seen: dict = {}
@@ -138,7 +138,7 @@ def test_wakeup_resolve_passes_prefer_cached_catalog(monkeypatch):
         routes, "_resolve_compatible_session_model_state", _spy, raising=True
     )
     monkeypatch.setattr(
-        routes, "_start_chat_stream_for_session",
+        routes, "_start_run",
         lambda s, **k: {"stream_id": "x", "session_id": s.session_id, "_status": 200},
         raising=True,
     )
@@ -274,12 +274,11 @@ def test_get_available_models_has_prefer_cache_param():
 
 
 def test_start_session_turn_uses_cached_catalog():
-    src = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
-    # The wakeup entrypoint must resolve with the cache-only flag.
+    src = (REPO_ROOT / "api" / "process_wakeup.py").read_text(encoding="utf-8")
+    # The background wakeup entrypoint must resolve with the cache-only flag.
     i = src.find("def start_session_turn(")
     assert i != -1
-    j = src.find("def _handle_process_complete_ack", i)
-    body = src[i:j]
+    body = src[i:]
     assert "prefer_cached_catalog=True" in body, (
         "start_session_turn must pass prefer_cached_catalog=True"
     )

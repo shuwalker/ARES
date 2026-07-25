@@ -1,5 +1,7 @@
 """Lightweight in-process invalidation events for session sidebar state."""
 
+from __future__ import annotations
+
 import queue
 import threading
 import logging

@@ -4,6 +4,22 @@ from urllib.parse import urlsplit
 from pathlib import Path
 
 
+def _client(client_ip: str, *, auth_enabled: bool = False):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import (
+        RequestIdentity,
+        require_identity,
+        require_mutation_identity,
+    )
+
+    app = create_app(frontend_root=Path("/nonexistent-ares-test-dist"))
+    identity = RequestIdentity(session_cookie=None, profile="default", auth_enabled=auth_enabled)
+    app.dependency_overrides[require_identity] = lambda: identity
+    app.dependency_overrides[require_mutation_identity] = lambda: identity
+    return TestClient(app, client=(client_ip, 12345))
+
+
 class _Headers(dict):
     def get(self, key, default=None):
         for k, v in self.items():
@@ -33,9 +49,9 @@ class _Handler:
 
 
 def test_onboarding_local_gate_ignores_forwarded_ip_unless_trusted(monkeypatch):
-    from api import routes
+    from api import network_trust as routes
 
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
     handler = _Handler(
         client_ip="8.8.8.8",
         headers={"X-Forwarded-For": "127.0.0.1", "X-Real-IP": "10.0.0.2"},
@@ -45,18 +61,18 @@ def test_onboarding_local_gate_ignores_forwarded_ip_unless_trusted(monkeypatch):
 
 
 def test_onboarding_local_gate_uses_forwarded_ip_when_explicitly_trusted(monkeypatch):
-    """Even with HERMES_WEBUI_TRUST_FORWARDED_FOR=1, a forwarded header is only
+    """Even with ARES_WEBUI_TRUST_FORWARDED_FOR=1, a forwarded header is only
     honored when the RAW socket peer is a trusted proxy (loopback or in
-    HERMES_WEBUI_TRUSTED_PROXY_CIDRS). A PUBLIC direct client (raw peer 8.8.8.8)
+    ARES_WEBUI_TRUSTED_PROXY_CIDRS). A PUBLIC direct client (raw peer 8.8.8.8)
     that merely SETS X-Forwarded-For can NOT promote itself to local — otherwise
     a passwordless WebUI with the opt-in enabled would admit any remote attacker
     to the embedded terminal (#5764). The forwarded IP is consulted only after
     the un-spoofable socket peer is confirmed to be a trusted proxy.
     """
-    from api import routes
+    from api import network_trust as routes
 
-    monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", "1")
-    monkeypatch.delenv("HERMES_WEBUI_TRUSTED_PROXY_CIDRS", raising=False)
+    monkeypatch.setenv("ARES_WEBUI_TRUST_FORWARDED_FOR", "1")
+    monkeypatch.delenv("ARES_WEBUI_TRUSTED_PROXY_CIDRS", raising=False)
     handler = _Handler(
         client_ip="8.8.8.8",
         headers={"X-Forwarded-For": "10.0.0.2", "X-Real-IP": "203.0.113.11"},
@@ -68,14 +84,14 @@ def test_onboarding_local_gate_uses_forwarded_ip_when_explicitly_trusted(monkeyp
 
     # With the peer's own network in the trusted-proxy allowlist, the forwarded
     # client IP (private 10.0.0.2) is now honored → local.
-    monkeypatch.setenv("HERMES_WEBUI_TRUSTED_PROXY_CIDRS", "8.8.8.0/24")
+    monkeypatch.setenv("ARES_WEBUI_TRUSTED_PROXY_CIDRS", "8.8.8.0/24")
     assert routes._onboarding_request_is_local(handler) is True
 
 
 def test_onboarding_trusted_forwarded_for_uses_proxy_appended_rightmost_ip(monkeypatch):
-    from api import routes
+    from api import network_trust as routes
 
-    monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", "1")
+    monkeypatch.setenv("ARES_WEBUI_TRUST_FORWARDED_FOR", "1")
     handler = _Handler(
         client_ip="10.0.0.10",
         headers={"X-Forwarded-For": "127.0.0.1, 8.8.8.8"},
@@ -96,15 +112,14 @@ def test_docker_env_log_obfuscates_password_and_secret_names():
 
 
 def test_get_update_check_returns_cache_without_fetch(monkeypatch):
-    from api import routes, updates
+    from api import updates
 
-    monkeypatch.setattr(routes, "load_settings", lambda: {"check_for_updates": True})
+    monkeypatch.setattr("api.config.load_settings", lambda: {"check_for_updates": True})
     monkeypatch.setattr(updates, "cached_update_status", lambda include_agent=True: {"checked_at": 123, "webui": None, "agent": None, "include_agent": include_agent})
     monkeypatch.setattr(updates, "check_for_updates", lambda *a, **k: (_ for _ in ()).throw(AssertionError("GET must not fetch")))
 
-    handler = _Handler(client_ip="127.0.0.1")
-    routes.handle_get(handler, urlsplit("/api/updates/check?force=1"))
-    assert handler.status == 200
+    response = _client("127.0.0.1").get("/api/updates/check", params={"force": "1"})
+    assert response.status_code == 200
 
 
 def test_cached_update_status_does_not_drop_agent_info_when_reenabled(monkeypatch):
@@ -128,36 +143,31 @@ def test_cached_update_status_does_not_drop_agent_info_when_reenabled(monkeypatc
 
 
 def test_post_update_check_performs_forced_fetch(monkeypatch):
-    from api import routes
-
     calls = []
-    monkeypatch.setattr(routes, "load_settings", lambda: {"check_for_updates": True})
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
+    monkeypatch.setattr("api.config.load_settings", lambda: {"check_for_updates": True})
 
     def fake_check(*, force=False, include_agent=True, channel="stable"):
         calls.append((force, include_agent))
         return {"checked_at": 456, "webui": None, "agent": None}
 
     monkeypatch.setattr("api.updates.check_for_updates", fake_check)
-    body = b'{"force": true}'
-    handler = _Handler(client_ip="127.0.0.1", body=body, headers={"Content-Length": str(len(body))})
-    routes.handle_post(handler, SimpleNamespace(path="/api/updates/check", query=""))
-    assert handler.status == 200
+    response = _client("127.0.0.1").post("/api/updates/check", json={"force": True})
+    assert response.status_code == 200
     assert calls == [(True, True)]
 
 
 def test_onboarding_untrusted_forwarded_header_denies_lan_proxy_socket(monkeypatch):
     """Reverse-proxy regression (release-gate CORE fix): when forwarded headers
-    are present but HERMES_WEBUI_TRUST_FORWARDED_FOR is NOT set, the spoofable
+    are present but ARES_WEBUI_TRUST_FORWARDED_FOR is NOT set, the spoofable
     header is ignored and locality is judged by the raw socket — but a PRIVATE/LAN
     raw socket (a separate proxy box that could be forwarding an arbitrary public
     client) is NOT treated as local. A loopback raw socket is still genuine
     same-host and remains allowed (a remote attacker cannot forge a 127.0.0.1 TCP
-    source). Operators with a LAN proxy must set HERMES_WEBUI_TRUST_FORWARDED_FOR=1.
+    source). Operators with a LAN proxy must set ARES_WEBUI_TRUST_FORWARDED_FOR=1.
     """
-    from api import routes
+    from api import network_trust as routes
 
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
 
     # LAN proxy box (private raw socket) forwarding a public client → DENY
     handler = _Handler(client_ip="10.0.0.5", headers={"X-Real-IP": "203.0.113.7"})
@@ -176,18 +186,18 @@ def test_onboarding_spoofed_forwarded_header_from_public_socket_denied(monkeypat
     must NOT bypass the gate. The forwarded header is ignored; the public raw
     socket governs → denied.
     """
-    from api import routes
+    from api import network_trust as routes
 
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
     handler = _Handler(client_ip="8.8.8.8", headers={"X-Forwarded-For": "127.0.0.1"})
     assert routes._onboarding_request_is_local(handler) is False
 
 
 def test_onboarding_direct_loopback_without_forwarded_headers_is_local(monkeypatch):
     """A genuine direct local client (no proxy headers) is still allowed."""
-    from api import routes
+    from api import network_trust as routes
 
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
     handler = _Handler(client_ip="127.0.0.1", headers={})
     assert routes._onboarding_request_is_local(handler) is True
 
@@ -201,43 +211,34 @@ def test_onboarding_complete_is_gated_against_public_clients(monkeypatch):
     same local-network check as setup/oauth/probe, so an unauthenticated public
     client can't hide the wizard. (#3765 — sibling-path gap left by #3758.)
     """
-    from api import routes
-
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    monkeypatch.setenv("HERMES_WEBUI_ONBOARDING_OPEN", "")
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
+    monkeypatch.setenv("ARES_WEBUI_ONBOARDING_OPEN", "")
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
 
     called = {"n": 0}
     def fake_complete():
         called["n"] += 1
         return {"completed": True}
-    monkeypatch.setattr(routes, "complete_onboarding", fake_complete)
+    monkeypatch.setattr("api.onboarding.complete_onboarding", fake_complete)
 
     # Public client (no forwarded headers) → 403, complete_onboarding NOT called
-    pub = _Handler(client_ip="8.8.8.8", body=b"{}", headers={"Content-Length": "2"})
-    routes.handle_post(pub, SimpleNamespace(path="/api/onboarding/complete", query=""))
-    assert pub.status == 403
+    pub = _client("8.8.8.8").post("/api/onboarding/complete", json={})
+    assert pub.status_code == 403
     assert called["n"] == 0
 
     # Genuine loopback client → allowed
-    loop = _Handler(client_ip="127.0.0.1", body=b"{}", headers={"Content-Length": "2"})
-    routes.handle_post(loop, SimpleNamespace(path="/api/onboarding/complete", query=""))
-    assert loop.status == 200
+    loop = _client("127.0.0.1").post("/api/onboarding/complete", json={})
+    assert loop.status_code == 200
     assert called["n"] == 1
 
 
 def test_onboarding_complete_allowed_when_auth_enabled(monkeypatch):
     """With auth configured, onboarding endpoints are reachable normally."""
-    from api import routes
-
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: True)
-    monkeypatch.setattr(routes, "complete_onboarding", lambda: {"completed": True})
+    monkeypatch.setattr("api.onboarding.complete_onboarding", lambda: {"completed": True})
 
-    h = _Handler(client_ip="8.8.8.8", body=b"{}", headers={"Content-Length": "2"})
-    routes.handle_post(h, SimpleNamespace(path="/api/onboarding/complete", query=""))
-    assert h.status == 200
+    response = _client("8.8.8.8", auth_enabled=True).post("/api/onboarding/complete", json={})
+    assert response.status_code == 200
 
 
 def test_first_password_setup_is_gated_against_public_clients(monkeypatch):
@@ -248,124 +249,94 @@ def test_first_password_setup_is_gated_against_public_clients(monkeypatch):
     setting `_set_password`; it should be gated like onboarding setup and should
     not write settings.
     """
-    from api import routes
-
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
     monkeypatch.setattr("api.auth.parse_cookie", lambda handler: "")
     monkeypatch.setattr("api.auth.verify_session", lambda cookie: False)
-    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_WEBUI_ONBOARDING_OPEN", raising=False)
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_PASSWORD", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_ONBOARDING_OPEN", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
 
     saved = {"called": False}
     monkeypatch.setattr(
-        routes,
-        "save_settings",
+        "api.config.save_settings",
         lambda body: saved.__setitem__("called", True) or dict(body),
     )
 
-    body = b'{"_set_password":"attacker-password"}'
-    handler = _Handler(
-        client_ip="8.8.8.8",
-        body=body,
-        headers={"Content-Length": str(len(body))},
+    response = _client("8.8.8.8").post(
+        "/api/settings", json={"_set_password": "attacker-password"}
     )
-    routes.handle_post(handler, SimpleNamespace(path="/api/settings", query=""))
 
-    assert handler.status == 403
+    assert response.status_code == 403
     assert saved["called"] is False
 
 
 def test_first_password_setup_allows_genuine_loopback_client(monkeypatch):
     """A same-host first-run setup flow still works without setting the bypass env."""
-    from api import routes
-
     auth_state = {"enabled": False}
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: auth_state["enabled"])
     monkeypatch.setattr("api.auth.parse_cookie", lambda handler: "")
     monkeypatch.setattr("api.auth.verify_session", lambda cookie: False)
     monkeypatch.setattr("api.auth.create_session", lambda: "new-session")
-    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_WEBUI_ONBOARDING_OPEN", raising=False)
-    monkeypatch.delenv("HERMES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_PASSWORD", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_ONBOARDING_OPEN", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_TRUST_FORWARDED_FOR", raising=False)
 
     def fake_save_settings(body):
         auth_state["enabled"] = True
         return {"theme": "dark", "password_hash": "redacted"}
 
-    monkeypatch.setattr(routes, "save_settings", fake_save_settings)
+    monkeypatch.setattr("api.config.save_settings", fake_save_settings)
 
-    body = b'{"_set_password":"local-owner-password"}'
-    handler = _Handler(
-        client_ip="127.0.0.1",
-        body=body,
-        headers={"Content-Length": str(len(body))},
+    response = _client("127.0.0.1").post(
+        "/api/settings", json={"_set_password": "local-owner-password"}
     )
-    routes.handle_post(handler, SimpleNamespace(path="/api/settings", query=""))
 
-    assert handler.status == 200
-    assert any(key.lower() == "set-cookie" for key, _ in handler.sent_headers)
+    assert response.status_code == 200
+    assert "ares_session=" in response.headers.get("set-cookie", "")
 
 
 def test_first_password_setup_uses_initial_auth_state_for_gate(monkeypatch):
     """A public bootstrap request cannot pass just because auth flips mid-request."""
-    from api import routes
-
     auth_checks = iter([False, True])
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: next(auth_checks))
     monkeypatch.setattr("api.auth.parse_cookie", lambda handler: "")
     monkeypatch.setattr("api.auth.verify_session", lambda cookie: False)
-    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
-    monkeypatch.delenv("HERMES_WEBUI_ONBOARDING_OPEN", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_PASSWORD", raising=False)
+    monkeypatch.delenv("ARES_WEBUI_ONBOARDING_OPEN", raising=False)
 
     saved = {"called": False}
     monkeypatch.setattr(
-        routes,
-        "save_settings",
+        "api.config.save_settings",
         lambda body: saved.__setitem__("called", True) or dict(body),
     )
 
-    body = b'{"_set_password":"attacker-password"}'
-    handler = _Handler(
-        client_ip="8.8.8.8",
-        body=body,
-        headers={"Content-Length": str(len(body))},
+    response = _client("8.8.8.8").post(
+        "/api/settings", json={"_set_password": "attacker-password"}
     )
-    routes.handle_post(handler, SimpleNamespace(path="/api/settings", query=""))
 
-    assert handler.status == 403
+    assert response.status_code == 403
     assert saved["called"] is False
 
 
 def test_first_password_setup_allows_public_client_with_open_onboarding(monkeypatch):
     """The documented operator opt-in permits remote first-run bootstrap."""
-    from api import routes
-
     auth_state = {"enabled": False}
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: auth_state["enabled"])
     monkeypatch.setattr("api.auth.parse_cookie", lambda handler: "")
     monkeypatch.setattr("api.auth.verify_session", lambda cookie: False)
     monkeypatch.setattr("api.auth.create_session", lambda: "new-session")
-    monkeypatch.delenv("HERMES_WEBUI_PASSWORD", raising=False)
-    monkeypatch.setenv("HERMES_WEBUI_ONBOARDING_OPEN", "1")
+    monkeypatch.delenv("ARES_WEBUI_PASSWORD", raising=False)
+    monkeypatch.setenv("ARES_WEBUI_ONBOARDING_OPEN", "1")
 
     def fake_save_settings(body):
         auth_state["enabled"] = True
         return {"theme": "dark", "password_hash": "redacted"}
 
-    monkeypatch.setattr(routes, "save_settings", fake_save_settings)
+    monkeypatch.setattr("api.config.save_settings", fake_save_settings)
 
-    body = b'{"_set_password":"remote-owner-password"}'
-    handler = _Handler(
-        client_ip="8.8.8.8",
-        body=body,
-        headers={"Content-Length": str(len(body))},
+    response = _client("8.8.8.8").post(
+        "/api/settings", json={"_set_password": "remote-owner-password"}
     )
-    routes.handle_post(handler, SimpleNamespace(path="/api/settings", query=""))
 
-    assert handler.status == 200
-    assert any(key.lower() == "set-cookie" for key, _ in handler.sent_headers)
+    assert response.status_code == 200
+    assert "ares_session=" in response.headers.get("set-cookie", "")

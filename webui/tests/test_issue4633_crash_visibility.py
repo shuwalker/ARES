@@ -240,15 +240,11 @@ def test_exit_audit_registered_and_emits(fresh_hooks, monkeypatch, caplog):
         assert "[crash-visibility] process exit" in haystack
 
 
-# ── 5. server.py wiring ─────────────────────────────────────────────────────
-def test_server_imports_and_calls_install(fresh_hooks):
-    import server
+# ── 5. Uvicorn lifecycle wiring ─────────────────────────────────────────────
+def test_uvicorn_lifecycle_calls_install(fresh_hooks):
+    from fastapi_app import lifecycle
 
-    assert hasattr(server, "install_crash_visibility")
-    assert server.install_crash_visibility is cv.install_crash_visibility
-
-    from tests.conftest import SERVER_SCRIPT
-
-    src = SERVER_SCRIPT.read_text(encoding="utf-8")
+    src = lifecycle.__file__
+    src = __import__("pathlib").Path(src).read_text(encoding="utf-8")
     assert "from api.crash_visibility import install_crash_visibility" in src
     assert "install_crash_visibility()" in src

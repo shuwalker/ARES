@@ -1,0 +1,100 @@
+{
+  "name": "safari-mcp",
+  "version": "2.15.2",
+  "mcpName": "io.github.achiya-automation/safari-mcp",
+  "description": "Safari browser automation for AI agents — native macOS, zero Chrome overhead. 96 tools via AppleScript + JavaScript.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "safari-mcp": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test --test-force-exit tests/*.test.js test/*.test.mjs",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p jsconfig.json",
+    "postinstall": "node scripts/postinstall.cjs || true"
+  },
+  "keywords": [
+    "safari",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "browser-automation",
+    "macos",
+    "apple",
+    "webkit",
+    "claude",
+    "cursor",
+    "ai-agent",
+    "applescript",
+    "apple-silicon",
+    "web-automation",
+    "anthropic",
+    "windsurf",
+    "continue-dev",
+    "devtools",
+    "testing",
+    "scraping",
+    "screenshot",
+    "ai-automation"
+  ],
+  "author": "Achiya Automation <info@achiya-automation.com>",
+  "license": "MIT",
+  "homepage": "https://achiya-automation.com",
+  "funding": {
+    "type": "individual",
+    "url": "https://paypal.me/achiyaC123"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/achiya-automation/safari-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/achiya-automation/safari-mcp/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin"
+  ],
+  "files": [
+    "index.js",
+    "transport.js",
+    "response.js",
+    "safari.js",
+    "ownership-match.js",
+    "ownership-state.js",
+    "mcp-helpers.js",
+    "injected-validators.js",
+    "injected-escape.js",
+    "safari-helper",
+    "safari-helper.entitlements",
+    "safari-helper.swift",
+    "extension/",
+    "glama.json",
+    "LICENSE",
+    "README.md",
+    "scripts/postinstall.cjs"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "ws": "^8.19.0"
+  },
+  "overrides": {
+    "hono": "^4.12.21",
+    "@hono/node-server": "^1.19.13"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.0.0",
+    "eslint": "^10.5.0",
+    "globals": "^17.6.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.3"
+  }
+}

@@ -6,6 +6,22 @@ def _msg(role: str, content: str, ts: float, mid: str) -> dict:
     return {"id": mid, "role": role, "content": content, "timestamp": ts}
 
 
+def _post_truncate(tmp_path, body: dict):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import (
+        RequestIdentity,
+        require_identity,
+        require_mutation_identity,
+    )
+
+    app = create_app(frontend_root=tmp_path / "missing-dist")
+    identity = RequestIdentity(session_cookie=None, profile="default", auth_enabled=False)
+    app.dependency_overrides[require_identity] = lambda: identity
+    app.dependency_overrides[require_mutation_identity] = lambda: identity
+    return TestClient(app).post("/api/session/truncate", json=body)
+
+
 def test_reconciled_messages_skip_state_tail_after_sidecar_truncation():
     from api.models import Session, reconciled_state_db_messages_for_session
 
@@ -83,12 +99,7 @@ def test_truncate_endpoint_also_truncates_context_messages(monkeypatch, tmp_path
 
     Integration test: calls the real handle_post route, not a simulation.
     """
-    import json
-    from io import BytesIO
-    from types import SimpleNamespace
-
     import api.models as models
-    import api.routes as routes
     from api.models import Session
 
     session_dir = tmp_path / "sessions"
@@ -114,23 +125,10 @@ def test_truncate_endpoint_also_truncates_context_messages(monkeypatch, tmp_path
     )
     session.save()
 
-    # Call the real truncate endpoint via handle_post
     body = {"session_id": "issue2914truncate", "keep_count": 2}
-    body_bytes = json.dumps(body).encode()
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-
-    captured_response = {}
-    def fake_j(handler, payload, status=200, extra_headers=None):
-        captured_response["payload"] = payload
-    monkeypatch.setattr(routes, "j", fake_j)
-
-    handler = SimpleNamespace(
-        headers={"Content-Length": str(len(body_bytes))},
-        rfile=BytesIO(body_bytes),
-    )
-    routes.handle_post(handler, SimpleNamespace(path="/api/session/truncate"))
-
-    assert captured_response["payload"].get("ok") is True
+    response = _post_truncate(tmp_path, body)
+    assert response.status_code == 200
+    assert response.json().get("ok") is True
 
     loaded = Session.load("issue2914truncate")
     assert loaded is not None
@@ -143,12 +141,7 @@ def test_truncate_endpoint_compaction_leading_context_row(monkeypatch, tmp_path)
     """Context longer than display (leading compaction row): naive [:keep] would
     leave a stale tail; truncate must align suffix to display prefix (#5096 / C).
     """
-    import json
-    from io import BytesIO
-    from types import SimpleNamespace
-
     import api.models as models
-    import api.routes as routes
     from api.models import Session
 
     session_dir = tmp_path / "sessions"
@@ -180,23 +173,9 @@ def test_truncate_endpoint_compaction_leading_context_row(monkeypatch, tmp_path)
     session.save()
 
     body = {"session_id": "issue5096truncatectx", "keep_count": 2}
-    body_bytes = json.dumps(body).encode()
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-
-    captured_response = {}
-
-    def fake_j(handler, payload, status=200, extra_headers=None):
-        captured_response["payload"] = payload
-
-    monkeypatch.setattr(routes, "j", fake_j)
-
-    handler = SimpleNamespace(
-        headers={"Content-Length": str(len(body_bytes))},
-        rfile=BytesIO(body_bytes),
-    )
-    routes.handle_post(handler, SimpleNamespace(path="/api/session/truncate"))
-
-    assert captured_response["payload"].get("ok") is True
+    response = _post_truncate(tmp_path, body)
+    assert response.status_code == 200
+    assert response.json().get("ok") is True
     loaded = Session.load("issue5096truncatectx")
     assert loaded is not None
     assert [m["content"] for m in loaded.messages] == ["u1", "a1"]

@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -e
+
+# Resolve the directory of this script, which should be in ARES/bin
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# If it's a symlink, resolve the real path
+if [ -L "${BASH_SOURCE[0]}" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "$(readlink "${BASH_SOURCE[0]}")")" && pwd)"
+fi
+ARES_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CTL_SCRIPT="${ARES_ROOT}/ctl.sh"
+
+cmd="${1:-}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+
+usage() {
+  cat <<'EOF'
+Usage: ares <command> [args]
+
+Commands:
+  start     Start Ares WebUI as a background daemon
+  stop      Stop the daemon
+  restart   Stop, then start again
+  status    Show daemon and health status
+  logs      Show the daemon log
+  doctor    Run system diagnostic checks for ARES
+  update    Pull the latest code and rebuild the application
+  tui       Companion terminal (Jaeger-method client → live controller)
+  talk      Alias for tui
+  setup     Launch native onboarding window (first-run setup)
+EOF
+}
+
+cmd_setup() {
+  # Kill any running ARES app first
+  pkill -x "ARES" 2>/dev/null || true
+  sleep 1
+  
+  # Reset onboarding state and set force flag
+  defaults delete com.shuwalker.ARES onboarding_completed 2>/dev/null || true
+  defaults delete com.shuwalker.ARES ARESForceOnboarding 2>/dev/null || true
+  defaults write com.shuwalker.ARES ARESForceOnboarding -bool true
+  
+  # Launch the native macOS onboarding window
+  local APP_PATH="${ARES_ROOT}/ARES-Mac_os/ARES.app"
+  
+  if [[ ! -d "$APP_PATH" ]]; then
+    echo "Building ARES macOS app…"
+    cd "${ARES_ROOT}/ARES-Mac_os"
+    swift build || {
+      echo "✗ Build failed. Run manually: cd ARES-Mac_os && swift build" >&2
+      exit 1
+    }
+  fi
+  
+  echo "Launching ARES onboarding…"
+  echo ""
+  echo "IMPORTANT: If no window appears:"
+  echo "  1. The app runs in tray mode by default"
+  echo "  2. Look for the ARES icon in your menu bar (top-right)"
+  echo "  3. Click it and select 'Open ARES'"
+  echo "  4. Or run: open \"$APP_PATH\""
+  echo ""
+  
+  open "$APP_PATH"
+  
+  # Try to activate
+  sleep 2
+  osascript -e 'tell application "ARES" to activate' 2>/dev/null || true
+}
+
+cmd_tui() {
+  local tui="${ARES_ROOT}/tools/ares_tui/ares_tui.py"
+  if [[ ! -f "${tui}" ]]; then
+    echo "ARES TUI not found at ${tui}" >&2
+    exit 1
+  fi
+  exec python3 "${tui}" "$@"
+}
+
+cmd_doctor() {
+  echo "======================================"
+  echo "  ARES Doctor Diagnostics"
+  echo "======================================"
+  
+  echo -n "Python 3: "
+  if command -v python3 >/dev/null 2>&1; then
+    echo "$(python3 --version)"
+  else
+    echo "Not found!"
+  fi
+
+  echo -n "Node.js: "
+  if command -v node >/dev/null 2>&1; then
+    echo "$(node --version)"
+  else
+    echo "Not found!"
+  fi
+
+  echo -n "Swift: "
+  if command -v swift >/dev/null 2>&1; then
+    echo "$(swift --version | head -n 1)"
+  else
+    echo "Not found!"
+  fi
+
+  echo -n "macOS App Bundle (ARES.app): "
+  if [ -d "${ARES_ROOT}/ARES-Mac_os/ARES.app" ]; then
+    echo "Found"
+  else
+    echo "Not found"
+  fi
+
+  echo -n "ARES WebUI Environment: "
+  if [ -d "${ARES_ROOT}/webui/venv" ]; then
+    echo "Virtual Environment found"
+  else
+    echo "Not found"
+  fi
+
+  echo ""
+  echo "Checking Profiles & Credentials..."
+  ARES_HOME="${ARES_HOME:-${HOME}/.ares}"
+  if [ -f "${ARES_HOME}/.env" ]; then
+    if grep -q "OPENAI_API_KEY" "${ARES_HOME}/.env"; then echo "OPENAI_API_KEY is set"; fi
+    if grep -q "GEMINI_API_KEY" "${ARES_HOME}/.env"; then echo "GEMINI_API_KEY is set"; fi
+    if grep -q "ANTHROPIC_API_KEY" "${ARES_HOME}/.env"; then echo "ANTHROPIC_API_KEY is set"; fi
+  else
+    echo "No ${ARES_HOME}/.env found."
+  fi
+}
+
+cmd_update() {
+  echo "======================================"
+  echo "  ARES System Update"
+  echo "======================================"
+  
+  echo "1. Pulling latest code..."
+  cd "${ARES_ROOT}"
+  git pull origin main
+
+  echo "2. Building Swift application..."
+  ./ARES-Mac_os/build-app.sh
+
+  echo "3. Building React frontend..."
+  cd "${ARES_ROOT}/webui/frontend"
+  npm run build
+
+  echo "4. Restarting ARES backend..."
+  cd "${ARES_ROOT}"
+  ./ctl.sh restart
+  echo "Update complete!"
+}
+
+case "${cmd}" in
+  start|stop|restart|status|logs)
+    exec bash "${CTL_SCRIPT}" "${cmd}" "$@"
+    ;;
+  doctor)
+    cmd_doctor
+    ;;
+  update)
+    cmd_update
+    ;;
+  setup)
+    cmd_setup
+    ;;
+  tui|talk)
+    cmd_tui "$@"
+    ;;
+  -h|--help|help|"")
+    usage
+    ;;
+  *)
+    echo "Unknown command: ${cmd}" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

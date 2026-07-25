@@ -2,17 +2,17 @@ import sys
 import types
 from unittest.mock import patch
 
-# ── Mocking context-length/metadata and setup requirements for routes testing ──
+# ── Mocking context-length/metadata setup requirements ──
 def fake_get_model_context_length(model, base_url="", **kwargs):
     return 1048576
 
 # Ensure an 'agent' module exists in sys.modules to prevent ModuleNotFoundError
-# when api.routes is imported on a CI runner that has ONLY the WebUI repo (no
-# hermes-agent package). CRITICAL: only install the fake when the REAL agent
+# when model resolution is imported on a CI runner that has ONLY the WebUI repo (no
+# ares-agent package). CRITICAL: only install the fake when the REAL agent
 # package is not importable. Unconditionally doing `sys.modules["agent"] = fake`
 # with `fake.__path__ = []` clobbers the genuine, importable agent package for
 # the WHOLE process (this runs at collection time and is never restored) — a
-# later `from agent.<sub> import ...` in the full suite (e.g. hermes_state's
+# later `from agent.<sub> import ...` in the full suite (e.g. ares_state's
 # `from agent.memory_manager import sanitize_context`) then fails with
 # ModuleNotFoundError. Guarding on find_spec keeps the real package intact
 # locally while preserving the CI import path. Nothing in this module asserts
@@ -43,7 +43,7 @@ if not _real_agent_metadata_importable():
     sys.modules["agent"] = fake_agent
     sys.modules["agent.model_metadata"] = metadata
 
-from api.routes import _normalize_provider_id, _resolve_compatible_session_model_state
+from api.model_resolution import _normalize_provider_id, _resolve_compatible_session_model_state
 
 def test_normalize_provider_id_custom_prefix_collision():
     """Verify that _normalize_provider_id does NOT mis-normalize custom CLI/proxy prefixes.
@@ -79,7 +79,7 @@ def test_resolve_session_model_state_custom_prefix_survives():
     profile_provider = "custom:newapi"
     profile_default = "x-ai/grok-composer"
 
-    with patch("api.routes.get_available_models") as mock_gam:
+    with patch("api.model_resolution.get_available_models") as mock_gam:
         # Stub catalog return directly (mock_gam.return_value)
         mock_gam.return_value = {
             "active_provider": "custom:newapi",
@@ -125,7 +125,7 @@ def test_openai_api_session_model_not_repaired_to_default():
     """A bare non-default GPT model under an openai-api active/profile provider must be
     preserved, not silently repaired to the profile default (regression of the openai-api
     alias gap)."""
-    with patch("api.routes.get_available_models") as mock_gam:
+    with patch("api.model_resolution.get_available_models") as mock_gam:
         mock_gam.return_value = {
             "active_provider": "openai-api",
             "default_model": "gpt-5.5",

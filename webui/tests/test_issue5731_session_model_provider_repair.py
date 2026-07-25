@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import api.routes as routes
+import api.chat_runtime as chat_runtime
+import api.model_resolution as model_resolution
 
 
 def _catalog(*groups):
@@ -29,7 +30,7 @@ def _repair(
     profile_provider="kilocode",
     explicit_model_pick=False,
 ):
-    return routes._repair_foreign_session_model_provider(
+    return model_resolution._repair_foreign_session_model_provider(
         session,
         requested_model=requested_model if requested_model is not None else session.model,
         requested_provider=requested_provider if requested_provider is not None else session.model_provider,
@@ -53,27 +54,11 @@ def test_poisoned_pair_repairs_at_chat_start(monkeypatch, tmp_path):
         pending_user_message=None,
         save=lambda: None,
     )
-    captured = {}
     catalog_calls = []
 
-    def start_run(s, **kwargs):
-        captured.update(kwargs)
-        routes._prepare_chat_start_session_for_stream(
-            s,
-            msg=kwargs["msg"],
-            attachments=kwargs["attachments"],
-            workspace=kwargs["workspace"],
-            model=kwargs["model"],
-            model_provider=kwargs["model_provider"],
-            stream_id="issue-5731-stream",
-        )
-        return {"stream_id": "issue-5731-stream"}
-
-    monkeypatch.setattr(routes, "_get_or_materialize_session", lambda _sid, **_kwargs: session)
-    monkeypatch.setattr(routes, "_resolve_chat_workspace_with_recovery", lambda _s, _w: str(tmp_path))
-    monkeypatch.setattr(routes, "_read_profile_model_config", lambda _s, _p: (None, None, {"model": {"provider": "kilocode"}}))
+    monkeypatch.setattr(model_resolution, "_read_profile_model_config", lambda _s, _p: ("kilocode", None, {"model": {"provider": "kilocode"}}))
     monkeypatch.setattr(
-        routes,
+        model_resolution,
         "get_available_models",
         lambda *, prefer_cache=False: (
             catalog_calls.append(prefer_cache)
@@ -83,12 +68,23 @@ def test_poisoned_pair_repairs_at_chat_start(monkeypatch, tmp_path):
             )
         ),
     )
-    monkeypatch.setattr(routes, "_start_run", start_run)
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200: payload)
+    model, provider = model_resolution.resolve_chat_model_state(
+        session,
+        session.model,
+        session.model_provider,
+        prefer_cached_catalog=True,
+    )
+    chat_runtime._prepare_chat_start_session_for_stream(
+        session,
+        msg="continue",
+        attachments=[],
+        workspace=str(tmp_path),
+        model=model,
+        model_provider=provider,
+        stream_id="issue-5731-stream",
+    )
 
-    routes._handle_chat_start(None, {"session_id": session.session_id, "message": "continue"})
-
-    assert captured["model_provider"] == "kilocode", captured["model_provider"]
+    assert provider == "kilocode"
     assert session.model == "kilo/minimax/minimax-m3"
     assert session.model_provider == "kilocode"
     assert catalog_calls == [True]
@@ -97,7 +93,7 @@ def test_poisoned_pair_repairs_at_chat_start(monkeypatch, tmp_path):
 def test_catalog_equivalent_owner_repairs_poisoned_pair(monkeypatch):
     session = _session(model="gpt-4o-mini", provider="ollama")
     monkeypatch.setattr(
-        routes,
+        model_resolution,
         "get_available_models",
         lambda *, prefer_cache=False: _catalog(
             _group("ollama", "llama3.2"),
@@ -111,7 +107,7 @@ def test_catalog_equivalent_owner_repairs_poisoned_pair(monkeypatch):
 def test_equivalent_request_model_repairs_poisoned_pair(monkeypatch):
     session = _session(model="GPT.4O.MINI", provider="ollama")
     monkeypatch.setattr(
-        routes,
+        model_resolution,
         "get_available_models",
         lambda *, prefer_cache=False: _catalog(
             _group("ollama", "llama3.2"),
@@ -131,7 +127,7 @@ def test_equivalent_request_model_repairs_poisoned_pair(monkeypatch):
 def test_self_hosted_exact_owner_is_preserved(monkeypatch, provider):
     session = _session(model="vendor/model/with/slashes", provider=provider)
     monkeypatch.setattr(
-        routes,
+        model_resolution,
         "get_available_models",
         lambda *, prefer_cache=False: _catalog(
             _group(provider, "vendor/model/with/slashes"),
@@ -147,7 +143,7 @@ def test_stored_owner_in_extra_models_is_preserved(monkeypatch):
     stored_group = _group("ollama", "llama3.2")
     stored_group["extra_models"] = [{"id": "kilo/minimax/minimax-m3"}]
     monkeypatch.setattr(
-        routes,
+        model_resolution,
         "get_available_models",
         lambda *, prefer_cache=False: _catalog(
             stored_group,
@@ -163,7 +159,7 @@ def test_stored_provider_discovery_failure_is_preserved(monkeypatch):
     stored_group = _group("ollama", "llama3.2")
     stored_group["models_endpoint_error"] = "catalog unavailable"
     monkeypatch.setattr(
-        routes,
+        model_resolution,
         "get_available_models",
         lambda *, prefer_cache=False: _catalog(
             stored_group,
@@ -183,7 +179,7 @@ def test_stored_provider_discovery_failure_is_preserved(monkeypatch):
 )
 def test_explicit_or_qualified_model_selection_is_preserved(monkeypatch, requested_model, explicit_model_pick):
     session = _session()
-    monkeypatch.setattr(routes, "get_available_models", lambda **_kwargs: pytest.fail("catalog must not be read"))
+    monkeypatch.setattr(model_resolution, "get_available_models", lambda **_kwargs: pytest.fail("catalog must not be read"))
 
     assert _repair(
         session,
@@ -207,14 +203,14 @@ def test_explicit_or_qualified_model_selection_is_preserved(monkeypatch, request
 )
 def test_missing_or_ambiguous_catalog_evidence_is_preserved(monkeypatch, catalog):
     session = _session()
-    monkeypatch.setattr(routes, "get_available_models", lambda *, prefer_cache=False: catalog)
+    monkeypatch.setattr(model_resolution, "get_available_models", lambda *, prefer_cache=False: catalog)
 
     assert _repair(session, catalog) == "ollama"
 
 
 def test_matching_profile_provider_skips_catalog(monkeypatch):
     session = _session()
-    monkeypatch.setattr(routes, "get_available_models", lambda **_kwargs: pytest.fail("catalog must not be read"))
+    monkeypatch.setattr(model_resolution, "get_available_models", lambda **_kwargs: pytest.fail("catalog must not be read"))
 
     assert _repair(session, None, profile_provider="ollama") == "ollama"
 
@@ -247,23 +243,22 @@ def test_preservation_cases_still_reach_chat_start(monkeypatch, tmp_path, body, 
         context_messages=[],
         pending_user_message=None,
     )
-    captured = {}
-
     def get_catalog(*, prefer_cache=False):
         if isinstance(catalog, Exception):
             raise catalog
         return catalog
 
-    monkeypatch.setattr(routes, "_get_or_materialize_session", lambda _sid, **_kwargs: session)
-    monkeypatch.setattr(routes, "_resolve_chat_workspace_with_recovery", lambda _s, _w: str(tmp_path))
-    monkeypatch.setattr(routes, "_read_profile_model_config", lambda _s, _p: (None, None, {"model": {"provider": "kilocode"}}))
-    monkeypatch.setattr(routes, "get_available_models", get_catalog)
-    monkeypatch.setattr(routes, "_start_run", lambda _s, **kwargs: captured.update(kwargs) or {"ok": True})
-    monkeypatch.setattr(routes, "j", lambda _handler, payload, status=200: payload)
-
-    routes._handle_chat_start(
-        None,
-        {"session_id": session.session_id, "message": "continue", **body},
+    monkeypatch.setattr(model_resolution, "get_available_models", get_catalog)
+    selected_model = body.get("model") or session.model
+    selected_provider = session.model_provider
+    monkeypatch.setattr(model_resolution, "_read_profile_model_config", lambda _s, _p: ("kilocode", None, {"model": {"provider": "kilocode"}}))
+    model, provider = model_resolution.resolve_chat_model_state(
+        session,
+        selected_model,
+        selected_provider,
+        explicit_model_pick=bool(body.get("explicit_model_pick")),
+        prefer_cached_catalog=True,
     )
 
-    assert captured["model_provider"] == "ollama"
+    assert model
+    assert provider == "ollama"

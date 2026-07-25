@@ -1,12 +1,12 @@
 # Safari MCP Bootstrap for ARES
 
-This tool configures and verifies the optional Safari MCP path used by ARES when the selected backend is Hermes Agent.
+This tool configures and verifies the optional Safari MCP path used by ARES when the selected backend is Ares Agent.
 
 It exists because Safari automation on macOS is not a computer-vision problem. The durable solution is a native MCP server that drives the real logged-in Safari through AppleScript/WebKit tooling.
 
 ## What this gives ARES
 
-- Registers `safari-mcp` in the local Hermes Agent config when Hermes is the selected backend.
+- Registers `safari-mcp` in the local Ares Agent config when Ares is the selected backend.
 - Verifies the MCP server starts and exposes its tools.
 - Runs `safari_doctor` to detect missing macOS approvals.
 - Prints the exact one-time remediation steps for Safari / Automation / Accessibility / Screen Recording.
@@ -22,14 +22,14 @@ It exists because Safari automation on macOS is not a computer-vision problem. T
 ## Quick start
 
 ```bash
-python3 tools/safari-mcp-bootstrap/safari_mcp_bootstrap.py --configure-hermes
+python3 tools/safari-mcp-bootstrap/safari_mcp_bootstrap.py --configure-ares
 ```
 
 Expected result:
 
 - Node/npm present
 - `safari-mcp` package/repo available on this Mac
-- Hermes config contains `mcp.servers.safari-mcp`
+- Ares config contains `mcp.servers.safari-mcp`
 - `safari_doctor` runs
 
 ## One-time macOS approvals
@@ -38,7 +38,7 @@ If the doctor reports failures, perform the exact matching approval:
 
 1. Safari → Settings → Advanced → enable **Show features for web developers**.
 2. Safari → Develop → enable **Allow JavaScript from Apple Events**.
-3. System Settings → Privacy & Security → Automation → allow the Hermes/Terminal host app to control Safari.
+3. System Settings → Privacy & Security → Automation → allow the Ares/Terminal host app to control Safari.
 4. Native click/keyboard only: System Settings → Privacy & Security → Accessibility → add `safari-helper`.
 5. Screenshot/PDF visual capture only: System Settings → Privacy & Security → Screen Recording → add the host app if prompted.
 
@@ -57,7 +57,7 @@ If `safari_doctor` passes Apple Events / Automation, ARES can use the MCP tools 
 1. Use `safari-mcp` for live Safari state: tabs, pages, navigation, reading, forms.
 2. Use direct Safari file parsing only when Full Disk Access is granted and needed for bookmark/Reading List database extraction.
 3. Route extracted URLs into:
-   - Hermes Kanban for actionable tasks.
+   - Ares Kanban for actionable tasks.
    - the user's selected knowledge base or notes directory for durable knowledge.
    - the cloned ARES repo only for shareable tooling/docs/examples.
 

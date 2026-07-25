@@ -92,15 +92,15 @@ class TestProfileCreateAPIWithEndpoint:
     _PROFILE_NAME = "test-ep-sprint31"
 
     def _cleanup(self):
-        """Remove the test profile from wherever hermes_cli placed it."""
-        home_hermes = pathlib.Path.home() / ".hermes"
-        # Walk all profile roots: real ~/.hermes, and any subdirs that might be HERMES_HOME
+        """Remove the test profile from wherever ares_cli placed it."""
+        home_ares = pathlib.Path.home() / ".ares"
+        # Walk all profile roots: real ~/.ares, and any subdirs that might be ARES_HOME
         roots_to_check = set()
-        roots_to_check.add(home_hermes)
-        for root, dirs, _ in os.walk(str(home_hermes)):
+        roots_to_check.add(home_ares)
+        for root, dirs, _ in os.walk(str(home_ares)):
             if "profiles" in dirs:
                 roots_to_check.add(pathlib.Path(root))
-            if root.count(os.sep) - str(home_hermes).count(os.sep) > 4:
+            if root.count(os.sep) - str(home_ares).count(os.sep) > 4:
                 break  # don't recurse too deep
         for search_root in roots_to_check:
             candidate = search_root / "profiles" / self._PROFILE_NAME

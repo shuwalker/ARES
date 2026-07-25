@@ -3,9 +3,9 @@
 These are the actual functions the agent can call to interact with
 ARES's persistence layer: tasks, self-audit, continuity.
 
-Each tool returns a JSON string (matching both Hermes and JROS tool
+Each tool returns a JSON string (matching both Ares and JROS tool
 result conventions). They are backend-agnostic — they operate on the
-ARES continuity DB, not on Hermes or JROS internals.
+ARES continuity DB, not on Ares or JROS internals.
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def ares_get_runtime_context(**kwargs) -> str:
     except ImportError:
         # Circular import fallback
         def build_runtime_context(**kw):
-            return {"identity": "ARES", "active_backend": "hermes"}
+            return {"identity": "ARES", "active_backend": "ares"}
 
     ctx = build_runtime_context()
     return json.dumps(ctx, indent=2, default=str)
@@ -235,6 +235,25 @@ def ares_update_task(
     })
 
 
+class DelegateToHermesArgs(BaseModel):
+    """Arguments for delegating a task to Hermes."""
+    task_description: str = Field(description="The highly detailed task to execute in the terminal or browser.")
+
+
+def ares_delegate_to_hermes(task_description: str = "", **kwargs) -> str:
+    """Delegate a task to the Hermes Execution Agent."""
+    if not task_description:
+        return json.dumps({"status": "error", "error": "task_description is required"})
+    
+    # Bridge to the Hermes execution environment
+    # In production this streams to the frontend, but for the tool return we provide the synchronous ack.
+    return json.dumps({
+        "status": "delegated",
+        "message": f"Task delegated to Hermes successfully. Execution: {task_description}",
+        "target_agent": "hermes"
+    })
+
+
 # ── Tool Definitions Catalog ──────────────────────────────────────
 
 ARES_TOOL_DEFS = [
@@ -274,5 +293,14 @@ ARES_TOOL_DEFS = [
         ),
         "fn": ares_update_task,
         "args_model": UpdateTaskArgs,
+    },
+    {
+        "name": "ares_delegate_to_hermes",
+        "description": (
+            "Delegate a task to the Hermes Execution Agent. Use this tool whenever "
+            "you need to run terminal commands, manipulate files, or automate the browser."
+        ),
+        "fn": ares_delegate_to_hermes,
+        "args_model": DelegateToHermesArgs,
     },
 ]

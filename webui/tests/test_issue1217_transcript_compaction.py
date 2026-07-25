@@ -68,7 +68,7 @@ def test_workspace_prefixed_current_user_after_compaction_is_not_duplicated():
             "role": "assistant",
             "content": "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted.",
         },
-        {"role": "user", "content": "[Workspace: /home/manfred/.hermes/workspace]\nOk, mache weiter"},
+        {"role": "user", "content": "[Workspace: /home/manfred/.ares/workspace]\nOk, mache weiter"},
         {"role": "assistant", "content": "continuing"},
     ]
 
@@ -106,7 +106,7 @@ def test_embedded_workspace_prefixed_current_user_delta_is_deduped():
             "role": "user",
             "content": (
                 "正常来说，chrome\n\n"
-                "[Workspace::v1: /mnt/e/vscode_workspace/hermes_workspace]\n"
+                "[Workspace::v1: /mnt/e/vscode_workspace/ares_workspace]\n"
                 f"{current}"
             ),
         },
@@ -135,7 +135,7 @@ def test_embedded_workspace_prefixed_current_user_delta_displays_clean_prompt():
             "role": "user",
             "content": (
                 "正常来说，chrome\n\n"
-                "[Workspace::v1: /mnt/e/vscode_workspace/hermes_workspace]\n"
+                "[Workspace::v1: /mnt/e/vscode_workspace/ares_workspace]\n"
                 f"{current}"
             ),
         },
@@ -734,23 +734,14 @@ class _FakePostHandler:
 
 
 def test_handle_chat_sync_writeback_dedupes_full_context_replay(tmp_path, monkeypatch):
-    import api.config as config
     import api.models as models
-    import api.routes as routes
+    from api.streaming import _assign_stable_message_ids, _dedupe_replayed_context_messages
 
     state_dir = tmp_path / "state"
     session_dir = state_dir / "sessions"
     session_dir.mkdir(parents=True)
     monkeypatch.setattr(models, "SESSION_DIR", session_dir)
     monkeypatch.setattr(models, "SESSION_INDEX_FILE", state_dir / "session_index.json")
-    monkeypatch.setattr(routes, "SESSION_INDEX_FILE", state_dir / "session_index.json")
-    monkeypatch.setattr(routes, "get_session", models.get_session)
-    monkeypatch.setattr(routes, "title_from", models.title_from)
-    monkeypatch.setattr(config, "get_config", lambda: {"model": "test-model", "provider": "test-provider"})
-    monkeypatch.setattr(routes, "get_config", lambda: {"model": "test-model", "provider": "test-provider"})
-    monkeypatch.setattr(routes, "resolve_trusted_workspace", lambda value: tmp_path)
-    monkeypatch.setattr(routes, "load_settings", lambda: {})
-    monkeypatch.setattr(routes, "_resolve_cli_toolsets", lambda: [])
 
     previous_context = [
         {"role": "assistant", "content": "cron banner"},
@@ -772,26 +763,13 @@ def test_handle_chat_sync_writeback_dedupes_full_context_replay(tmp_path, monkey
         {"role": "assistant", "content": "short answer"},
     ]
 
-    class FakeAgent:
-        def __init__(self, **_kwargs):
-            pass
-
-        def run_conversation(self, **_kwargs):
-            return {
-                "messages": replayed_result,
-                "final_response": "short answer",
-                "completed": True,
-            }
-
-    monkeypatch.setitem(sys.modules, "run_agent", SimpleNamespace(AIAgent=FakeAgent))
-
-    handler = _FakePostHandler()
-    routes._handle_chat_sync(
-        handler,
-        {"session_id": session.session_id, "message": "simple follow-up", "workspace": str(tmp_path)},
+    _assign_stable_message_ids(replayed_result, session.messages, previous_context)
+    session.context_messages = _dedupe_replayed_context_messages(
+        previous_context,
+        replayed_result,
+        "simple follow-up",
     )
-
-    assert handler.status == 200
+    session.save(touch_updated_at=False)
     reloaded = Session.load(session.session_id)
 
     # Stable per-message ids (#context-message-stable-id) are now stamped on

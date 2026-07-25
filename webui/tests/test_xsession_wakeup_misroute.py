@@ -2,7 +2,7 @@
 
 ROOT CAUSE (RCA t_f62ff1e8, verified line-by-line):
   WebUI's per-turn session identity was bound ONLY to the process-global
-  ``os.environ['HERMES_SESSION_KEY']`` (streaming.py turn-start), and the env
+  ``os.environ['ARES_SESSION_KEY']`` (streaming.py turn-start), and the env
   lock was released BEFORE the agent ran. WebUI NEVER called
   ``gateway.session_context.set_session_vars`` so the ``_SESSION_KEY``
   contextvar stayed ``_UNSET`` and ``tools.approval.get_current_session_key``
@@ -70,7 +70,7 @@ def test_concurrent_turns_capture_their_own_session_under_env_race():
     import os
 
     streaming = importlib.import_module("api.streaming")
-    pytest.importorskip("tools.approval", reason="hermes-agent not installed")
+    pytest.importorskip("tools.approval", reason="ares-agent not installed")
     pytest.importorskip("gateway.session_context")
     from tools.approval import get_current_session_key
     from gateway import session_context as sc
@@ -79,12 +79,12 @@ def test_concurrent_turns_capture_their_own_session_under_env_race():
     if bind is None:
         pytest.fail("Option 1 not implemented: _bind_turn_session_identity missing")
 
-    # The two turn() threads below stamp os.environ["HERMES_SESSION_KEY"]
+    # The two turn() threads below stamp os.environ["ARES_SESSION_KEY"]
     # without owning it. Save/restore the prior value (sentinel for "was
     # unset") so this test does not leak state into sibling tests when
     # collection order interleaves it with another consumer.
     _prev_env_sentinel = object()
-    _prev_env = os.environ.get("HERMES_SESSION_KEY", _prev_env_sentinel)
+    _prev_env = os.environ.get("ARES_SESSION_KEY", _prev_env_sentinel)
 
     SESS_A = "20260518_161627_60b5f4"   # board claude-code-import
     SESS_B = "47ec28f66dff"             # board mcp-optimize
@@ -101,11 +101,11 @@ def test_concurrent_turns_capture_their_own_session_under_env_race():
         # fallback for non-contextvar consumers; the fix is that session-key
         # ROUTING now binds the contextvar so it no longer races.
         with bind(my_sid):
-            os.environ["HERMES_SESSION_KEY"] = my_sid
+            os.environ["ARES_SESSION_KEY"] = my_sid
             barrier.wait()
             if label == "B":
                 # B stamps env last while A's "agent" is still mid-turn.
-                os.environ["HERMES_SESSION_KEY"] = my_sid
+                os.environ["ARES_SESSION_KEY"] = my_sid
                 b_stamped_env.set()
             else:
                 assert b_stamped_env.wait(timeout=5), "B never stamped env"
@@ -139,14 +139,14 @@ def test_concurrent_turns_capture_their_own_session_under_env_race():
             f"MISROUTE: session B captured {captured.get('B')!r}, expected {SESS_B!r}"
         )
     finally:
-        # Restore HERMES_SESSION_KEY to its pre-test value (or unset if it was
+        # Restore ARES_SESSION_KEY to its pre-test value (or unset if it was
         # never set), independent of which assertion above might have failed —
         # see save/restore note at the top of the test.
         if _prev_env is _prev_env_sentinel:
-            os.environ.pop("HERMES_SESSION_KEY", None)
+            os.environ.pop("ARES_SESSION_KEY", None)
         else:
             assert isinstance(_prev_env, str)
-            os.environ["HERMES_SESSION_KEY"] = _prev_env
+            os.environ["ARES_SESSION_KEY"] = _prev_env
 
 
 def test_turn_identity_binder_restores_previous_value():
@@ -155,9 +155,9 @@ def test_turn_identity_binder_restores_previous_value():
     restores _UNSET for the top-level turn so CLI/cron env-fallback compat is
     preserved, and it must NOT touch the platform/chat_id/user session vars
     (those keep their env fallback so the notify_on_complete watcher
-    registration that reads HERMES_SESSION_PLATFORM still works)."""
+    registration that reads ARES_SESSION_PLATFORM still works)."""
     streaming = importlib.import_module("api.streaming")
-    pytest.importorskip("tools.approval", reason="hermes-agent not installed")
+    pytest.importorskip("tools.approval", reason="ares-agent not installed")
     from tools.approval import get_current_session_key
     from gateway import session_context as sc
 

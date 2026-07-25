@@ -23,20 +23,22 @@ def post(path, body=None):
 
 
 def make_session(created_list):
-    d, _ = post("/api/session/new", {})
+    d, status = post(
+        "/api/session/import",
+        {
+            "title": "Project fixture",
+            "messages": [{"role": "user", "content": "visible row"}],
+        },
+    )
+    assert status == 200
     sid = d["session"]["session_id"]
     created_list.append(sid)
     return sid, d["session"]
 
 
 def _make_session_visible(sid):
-    d, status = post("/api/chat/start", {
-        "session_id": sid,
-        "message": "visible row",
-        "model": "openai/gpt-5.4-mini",
-    })
-    assert status == 200, f"chat/start failed with {status}: {d}"
-    get(f"/api/chat/cancel?stream_id={urllib.parse.quote(d['stream_id'])}")
+    """The imported transcript returned by ``make_session`` is already durable."""
+    assert sid
 
 
 def make_project(created_list, name="Test Project", color=None):

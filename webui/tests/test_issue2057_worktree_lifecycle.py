@@ -1,49 +1,40 @@
 import sqlite3
 from pathlib import Path
-from types import SimpleNamespace
+import pytest
+from fastapi.testclient import TestClient
 
 import api.models as models
-import api.routes as routes
 from api.models import SESSIONS, Session
+from fastapi_app.main import create_app
 
 
-def _capture_post(monkeypatch, body):
-    captured = {}
-    monkeypatch.setattr(routes, "_check_csrf", lambda handler: True)
-    monkeypatch.setattr(routes, "read_body", lambda handler: body)
-    monkeypatch.setattr(
-        routes,
-        "j",
-        lambda handler, payload, status=200, extra_headers=None: captured.update(
-            payload=payload,
-            status=status,
-        )
-        or True,
-    )
-    return captured
+def _post(path, body):
+    with TestClient(create_app()) as client:
+        return client.post(path, json=body)
 
 
 def _isolate_session_store(tmp_path, monkeypatch):
+    import api.config as config
+
     session_dir = tmp_path / "sessions"
     session_dir.mkdir()
     monkeypatch.setattr(models, "SESSION_DIR", session_dir)
     monkeypatch.setattr(models, "SESSION_INDEX_FILE", session_dir / "_index.json")
-    monkeypatch.setattr(routes, "SESSION_DIR", session_dir)
-    monkeypatch.setattr(routes, "SESSION_INDEX_FILE", session_dir / "_index.json")
+    monkeypatch.setattr(config, "SESSION_DIR", session_dir)
     SESSIONS.clear()
     return session_dir
 
 
 def _worktree_session(tmp_path, session_id):
     repo = tmp_path / "repo"
-    worktree = repo / ".worktrees" / f"hermes-{session_id}"
+    worktree = repo / ".worktrees" / f"ares-{session_id}"
     worktree.mkdir(parents=True)
     s = Session(
         session_id=session_id,
         title="Worktree session",
         workspace=str(worktree),
         worktree_path=str(worktree),
-        worktree_branch=f"hermes/{session_id}",
+        worktree_branch=f"ares/{session_id}",
         worktree_repo_root=str(repo),
     )
     s.save()
@@ -92,18 +83,16 @@ def _make_state_db(path, sid, *, source="telegram"):
 def test_delete_worktree_session_reports_retained_worktree_without_cleanup(tmp_path, monkeypatch):
     session_dir = _isolate_session_store(tmp_path, monkeypatch)
     session, worktree = _worktree_session(tmp_path, "wtdelete1")
-    captured = _capture_post(monkeypatch, {"session_id": session.session_id})
-    monkeypatch.setattr(routes, "_lookup_cli_session_metadata", lambda sid: {})
-    monkeypatch.setattr(routes, "_is_messaging_session_id", lambda sid: False)
+    monkeypatch.setattr("api.session_access.lookup_cli_session_metadata", lambda sid, **kwargs: {})
     monkeypatch.setattr(models, "delete_cli_session", lambda sid: None)
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/delete")) is True
+    response = _post("/api/session/delete", {"session_id": session.session_id})
 
-    assert captured["status"] == 200
-    assert captured["payload"]["ok"] is True
-    assert captured["payload"]["worktree_retained"] is True
-    assert captured["payload"]["worktree_path"] == str(worktree.resolve())
-    assert captured["payload"]["worktree_branch"] == "hermes/wtdelete1"
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["worktree_retained"] is True
+    assert response.json()["worktree_path"] == str(worktree.resolve())
+    assert response.json()["worktree_branch"] == "ares/wtdelete1"
     assert not (session_dir / "wtdelete1.json").exists()
     assert worktree.exists(), "session delete must not remove the git worktree directory"
 
@@ -118,9 +107,7 @@ def test_delete_session_records_tombstone_when_state_db_delete_fails(tmp_path, m
     )
     session.save()
     (session_dir / f"{sid}.json.bak").write_text("backup", encoding="utf-8")
-    captured = _capture_post(monkeypatch, {"session_id": sid})
-    monkeypatch.setattr(routes, "_lookup_cli_session_metadata", lambda value: {})
-    monkeypatch.setattr(routes, "_is_messaging_session_id", lambda value: False)
+    monkeypatch.setattr("api.session_access.lookup_cli_session_metadata", lambda sid, **kwargs: {})
 
     def fail_delete(value):
         raise RuntimeError("state.db locked")
@@ -135,15 +122,15 @@ def test_delete_session_records_tombstone_when_state_db_delete_fails(tmp_path, m
     monkeypatch.setattr(models, "delete_cli_session", fail_delete)
     monkeypatch.setattr(Path, "unlink", fail_backup_unlink)
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/delete")) is True
+    response = _post("/api/session/delete", {"session_id": sid})
 
-    assert captured["status"] == 200
-    assert captured["payload"]["ok"] is True
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
     assert not (session_dir / f"{sid}.json").exists()
     assert sid in models._load_webui_deleted_session_tombstone()
 
 
-def test_delete_messaging_session_reopens_read_only_without_deleted_webui_tombstone(
+def test_delete_messaging_session_preserves_foreign_state_and_blocks_mutation(
     tmp_path, monkeypatch
 ):
     session_dir = _isolate_session_store(tmp_path, monkeypatch)
@@ -153,46 +140,41 @@ def test_delete_messaging_session_reopens_read_only_without_deleted_webui_tombst
     monkeypatch.setattr(models, "_active_state_db_path", lambda: state_db)
     session = Session(session_id=sid, title="Telegram chat")
     session.save()
-    captured = _capture_post(monkeypatch, {"session_id": sid})
     cli_meta = {
         "session_id": sid,
         "source_tag": "telegram",
         "raw_source": "telegram",
         "session_source": "messaging",
     }
-    monkeypatch.setattr(routes, "_lookup_cli_session_metadata", lambda value: cli_meta)
-    monkeypatch.setattr(routes, "_is_messaging_session_id", lambda value: True)
+    monkeypatch.setattr("api.session_access.lookup_cli_session_metadata", lambda value, **kwargs: cli_meta)
     delete_calls = []
     monkeypatch.setattr(models, "delete_cli_session", lambda value: delete_calls.append(value))
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/delete")) is True
-    sess, reason = routes._claim_or_synthesize_cli_session(sid)
+    response = _post("/api/session/delete", {"session_id": sid})
+    from api.session_access import get_or_materialize_session
 
-    assert captured["status"] == 200
-    assert captured["payload"]["ok"] is True
+    with pytest.raises(PermissionError, match="read-only imported session"):
+        get_or_materialize_session(sid)
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
     assert not (session_dir / f"{sid}.json").exists()
     assert sid not in models._load_webui_deleted_session_tombstone()
     assert delete_calls == []
-    assert reason == "not_claimable"
-    assert sess is not None
-    assert sess.read_only is True
-    assert sess.session_source == "messaging"
 
 
 def test_archive_worktree_session_reports_retained_worktree_without_cleanup(tmp_path, monkeypatch):
     _isolate_session_store(tmp_path, monkeypatch)
     session, worktree = _worktree_session(tmp_path, "wtarchive1")
-    captured = _capture_post(
-        monkeypatch,
+    response = _post(
+        "/api/session/archive",
         {"session_id": session.session_id, "archived": True},
     )
 
-    assert routes.handle_post(object(), SimpleNamespace(path="/api/session/archive")) is True
-
-    assert captured["status"] == 200
-    assert captured["payload"]["ok"] is True
-    assert captured["payload"]["session"]["archived"] is True
-    assert captured["payload"]["worktree_retained"] is True
-    assert captured["payload"]["worktree_path"] == str(worktree.resolve())
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["session"]["archived"] is True
+    assert response.json()["worktree_retained"] is True
+    assert response.json()["worktree_path"] == str(worktree.resolve())
     assert worktree.exists(), "session archive must not remove the git worktree directory"
     assert Session.load("wtarchive1").archived is True

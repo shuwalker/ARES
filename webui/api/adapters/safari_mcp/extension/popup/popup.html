@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 250px; padding: 16px; font-family: -apple-system, system-ui, sans-serif; font-size: 13px; margin: 0; }
+    h3 { margin: 0 0 12px; font-size: 15px; }
+    .status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .connected { background: #4CAF50; }
+    .disconnected { background: #f44336; }
+    .paused { background: #FF9800; }
+    .checking { background: #FF9800; animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .info { color: #666; font-size: 11px; margin-bottom: 12px; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid #e0e0e0; }
+    .toggle-label { font-size: 13px; font-weight: 500; }
+    .toggle { position: relative; width: 42px; height: 24px; cursor: pointer; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: #ccc; border-radius: 24px; transition: 0.2s; }
+    .slider::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
+    .toggle input:checked + .slider { background: #4CAF50; }
+    .toggle input:checked + .slider::before { transform: translateX(18px); }
+  </style>
+</head>
+<body>
+  <h3>Safari MCP Bridge</h3>
+  <div class="status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Checking...</span>
+  </div>
+  <div class="info" id="info"></div>
+  <div class="toggle-row">
+    <span class="toggle-label">Active</span>
+    <label class="toggle">
+      <input type="checkbox" id="enableToggle" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

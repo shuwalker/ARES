@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from api.models import Session, _append_recovered_pending_turn, _apply_core_sync_or_error_marker
-from api.routes import _checkpoint_user_message_for_eager_session_save
+from api.chat_runtime import _checkpoint_user_message_for_eager_session_save
 from api.streaming import _materialize_pending_user_turn_before_error, _merge_display_messages_after_agent_result
 
 

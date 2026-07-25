@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="ARES — Mac-first presentation and integration layer for JaegerAI and Hermes Agent. One AI interface, multiple runtimes.">
+<meta name="description" content="ARES — Mac-first presentation and integration layer for JaegerAI and Ares Agent. One AI interface, multiple runtimes.">
 <title>ARES — One Interface, Multiple Runtimes</title>
 <style>
   :root {
@@ -276,7 +276,7 @@
     <h1>One interface.<br><span class="grad">Multiple runtimes.</span></h1>
     <p class="lede">
       ARES is a Mac-first presentation layer for AI assistants. It connects JaegerAI
-      (your embodied companion), Hermes Agent (coding and automation), and OpenAI-compatible
+      (your embodied companion), Ares Agent (coding and automation), and OpenAI-compatible
       providers into a single coherent interface. Web UI for every device. Native Mac app
       for your desktop. Session-scoped backend switching. Character avatars. Voice. Hot reload.
     </p>
@@ -293,7 +293,7 @@
     <div class="center">
       <div class="eyebrow">Architecture</div>
       <h2 class="h">What ARES actually is</h2>
-      <p class="sub">ARES does not replace JaegerAI or Hermes. It composes them behind one interface. The runtime owns the turn. ARES owns the presentation.</p>
+      <p class="sub">ARES does not replace JaegerAI or Ares. It composes them behind one interface. The runtime owns the turn. ARES owns the presentation.</p>
     </div>
     <div class="arch-grid">
       <div class="arch-card">
@@ -309,7 +309,7 @@
       <div class="arch-card">
         <div class="greek">&#x1F504; Runtime Switching</div>
         <h3>Session-Scoped Backends</h3>
-        <p>Each chat session remembers whether it uses JaegerAI, Hermes, or Hybrid. The global default sets the starting point; the session selector overrides it per conversation. No restart required.</p>
+        <p>Each chat session remembers whether it uses JaegerAI, Ares, or Hybrid. The global default sets the starting point; the session selector overrides it per conversation. No restart required.</p>
       </div>
       <div class="arch-card">
         <div class="greek">&#x1F916; Embodiment Path</div>
@@ -342,7 +342,7 @@
       <div class="feature">
         <span class="ico">&#x1F504;</span>
         <h3>Backend Selector<span class="tag">3 modes</span></h3>
-        <p>JaegerAI (required Companion), Hermes (optional coding/terminal addition), or Hybrid (compose capabilities deliberately). Set per session.</p>
+        <p>JaegerAI (required Companion), Ares (optional coding/terminal addition), or Hybrid (compose capabilities deliberately). Set per session.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F3AD;</span>
@@ -352,7 +352,7 @@
       <div class="feature">
         <span class="ico">&#x1F4BB;</span>
         <h3>Native macOS App</h3>
-        <p>SwiftUI shell with WKWebView, native menus, server control, and device mesh status. Swift build is clean. Tabbed interface for Chat, Hermes, and JaegerAI terminals.</p>
+        <p>SwiftUI shell with WKWebView, native menus, server control, and device mesh status. Swift build is clean. Tabbed interface for Chat, Ares, and JaegerAI terminals.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x1F3E2;</span>
@@ -362,7 +362,7 @@
       <div class="feature">
         <span class="ico">&#x1F5E3;&#xFE0F;</span>
         <h3>Voice I/O</h3>
-        <p>Edge-TTS for speech output. Whisper STT for speech input. Optional Kokoro TTS via Hermes tools. Runs locally or delegates to JaegerAI voice pipeline.</p>
+        <p>Edge-TTS for speech output. Whisper STT for speech input. Optional Kokoro TTS via Ares tools. Runs locally or delegates to JaegerAI voice pipeline.</p>
       </div>
       <div class="feature">
         <span class="ico">&#x26A1;</span>
@@ -394,10 +394,10 @@
         <div class="link"><a href="https://github.com/JenkinsRobotics/JaegerAI" target="_blank">JenkinsRobotics/JaegerAI &rarr;</a></div>
       </div>
       <div class="powered-card">
-        <div class="name">Hermes Agent</div>
+        <div class="name">Ares Agent</div>
         <div class="role">Optional Capability Addition</div>
         <div class="desc">By Nous Research. Coding, terminal work, skills, sessions, cron, MCP servers, multi-model routing, memory-backed automation, and delegation. Installed only if you want it.</div>
-        <div class="link"><a href="https://github.com/NousResearch/hermes-agent" target="_blank">NousResearch/hermes-agent &rarr;</a></div>
+        <div class="link"><a href="https://github.com/NousResearch/ares-agent" target="_blank">NousResearch/ares-agent &rarr;</a></div>
       </div>
     </div>
     <div class="center" style="margin-top: 32px;">
@@ -419,7 +419,7 @@
       </div>
 <pre><span class="cs">$</span> <span class="accent">git log --oneline -5</span>
 cd203a1a docs: update README and INSTALL with current install.sh process
-dfd3d48c feat: device mesh registry, splash fix, and verified JaegerAI/Hermes chat
+dfd3d48c feat: device mesh registry, splash fix, and verified JaegerAI/Ares chat
 18f64d8c chore: merge accumulated platform boundary, onboarding, and backend work
 d74eed5d feat: production install path + JaegerAI auto-install in onboarding
 bfb1b648 fix: resolve swift concurrency warnings and dispatch source timer recovery
@@ -431,7 +431,7 @@ Build complete! (0.67s)
 46 passed in 6.01s
 
 <span class="cs">$</span> <span class="accent"># JaegerAI chat: "Greetings. What strategic objective requires my attention?"</span>
-<span class="cs">$</span> <span class="accent"># Hermes chat: "Hello, Matthew! 👋"</span></pre>
+<span class="cs">$</span> <span class="accent"># Ares chat: "Hello, Matthew! 👋"</span></pre>
     </div>
   </div>
 </section>
@@ -454,7 +454,7 @@ Build complete! (0.67s)
       </div>
       <div class="preview-panel" tabindex="0">
         <div class="ph"><span class="icon">&#x1F504;</span>Backend selector</div>
-        <div class="label">Switch between JaegerAI, Hermes, or Hybrid per conversation without restarting</div>
+        <div class="label">Switch between JaegerAI, Ares, or Hybrid per conversation without restarting</div>
       </div>
       <div class="preview-panel" tabindex="0">
         <div class="ph"><span class="icon">&#x1F4BB;</span>Native Mac app</div>
@@ -474,7 +474,7 @@ Build complete! (0.67s)
     <div class="center">
       <div class="eyebrow">Install</div>
       <h2 class="h">Run it locally</h2>
-      <p class="sub" style="margin: 0 auto;">One command. JaegerAI installs automatically. Hermes is optional.</p>
+      <p class="sub" style="margin: 0 auto;">One command. JaegerAI installs automatically. Ares is optional.</p>
     </div>
     <div class="cta-code">
       <div class="term-bar">
@@ -486,8 +486,8 @@ git clone https://github.com/shuwalker/ARES.git
 cd ARES
 bash install.sh
 
-<span class="cm"># Optional: also install Hermes Agent for coding/terminal work</span>
-bash install.sh --with-hermes
+<span class="cm"># Optional: also install Ares Agent for coding/terminal work</span>
+bash install.sh --with-ares
 
 <span class="cm"># Run</span>
 ./start.sh
@@ -514,10 +514,10 @@ swift run ARES</pre>
       <a href="https://github.com/shuwalker/ARES">GitHub</a>
       <a href="https://shuwalker.github.io/ARES/">Landing Page</a>
       <a href="https://github.com/JenkinsRobotics/JaegerAI">JaegerAI</a>
-      <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>
+      <a href="https://github.com/NousResearch/ares-agent">Ares Agent</a>
     </div>
     <p>AGPL-3.0 &middot; Built by Jenkins Robotics</p>
-    <p style="font-size: 12px; opacity: 0.6;">Web UI forked from hermes-webui by the Hermes Web UI Contributors (MIT notice preserved in webui/LICENSE).</p>
+    <p style="font-size: 12px; opacity: 0.6;">Web UI forked from ares-webui by the Ares Web UI Contributors (MIT notice preserved in webui/LICENSE).</p>
   </div>
 </footer>
 

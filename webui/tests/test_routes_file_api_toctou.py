@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+import asyncio
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ROUTES_PY = ROOT / "api" / "routes.py"
+FILE_OPERATIONS_PY = ROOT / "api" / "file_operations.py"
+FILE_DELIVERY_PY = ROOT / "fastapi_app" / "routers" / "file_delivery.py"
 WORKSPACE_PY = ROOT / "api" / "workspace.py"
 UPLOAD_PY = ROOT / "api" / "upload.py"
 
@@ -31,6 +33,13 @@ class _FakeHandler:
         self.body.extend(data)
 
 
+def _response_body(response) -> bytes:
+    async def collect():
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    return asyncio.run(collect())
+
+
 def _func_body(src: str, name: str) -> str:
     start = src.index(f"def {name}")
     try:
@@ -41,7 +50,7 @@ def _func_body(src: str, name: str) -> str:
 
 
 def test_serve_file_bytes_reads_through_anchor(monkeypatch, tmp_path):
-    from api import routes
+    from fastapi_app.routers.file_delivery import _stream_file
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -53,25 +62,22 @@ def test_serve_file_bytes_reads_through_anchor(monkeypatch, tmp_path):
         calls.append((root, resolved, want_dir))
         return os.open(str(target), os.O_RDONLY)
 
-    monkeypatch.setattr(routes, "open_anchored_fd", fake_open)
+    monkeypatch.setattr("api.workspace.open_anchored_fd", fake_open)
 
-    handler = _FakeHandler()
-    assert routes._serve_file_bytes(
-        handler,
+    response = _stream_file(
+        workspace,
         target,
-        "text/plain",
-        "inline",
-        "no-store",
-        anchor_root=workspace,
-    ) is True
+        download=False,
+        inline=False,
+    )
 
-    assert handler.status == 200
-    assert handler.body == b"abcdef"
+    assert response.status_code == 200
+    assert _response_body(response) == b"abcdef"
     assert calls == [(workspace, target.resolve(), False)]
 
 
 def test_inline_html_preview_reads_through_anchor(monkeypatch, tmp_path):
-    from api import routes
+    from fastapi_app.routers.file_delivery import _stream_file
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -83,74 +89,72 @@ def test_inline_html_preview_reads_through_anchor(monkeypatch, tmp_path):
         calls.append((root, resolved, want_dir))
         return os.open(str(target), os.O_RDONLY)
 
-    monkeypatch.setattr(routes, "open_anchored_fd", fake_open)
+    monkeypatch.setattr("api.workspace.open_anchored_fd", fake_open)
 
-    handler = _FakeHandler()
-    routes._serve_inline_html_preview(handler, target, "no-store", csp="sandbox", anchor_root=workspace)
+    response = _stream_file(workspace, target, download=False, inline=True)
 
-    assert handler.status == 200
-    assert b'<base target="_blank">' in handler.body
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"].startswith("sandbox")
+    assert b"<html" in _response_body(response)
     assert calls == [(workspace, target.resolve(), False)]
 
 
 def test_editor_file_endpoints_use_anchored_helpers():
-    src = ROUTES_PY.read_text(encoding="utf-8")
-    delete_body = _func_body(src, "_handle_file_delete")
-    save_body = _func_body(src, "_handle_file_save")
-    create_body = _func_body(src, "_handle_file_create")
-    rename_body = _func_body(src, "_handle_file_rename")
-    mkdir_body = _func_body(src, "_handle_create_dir")
+    src = FILE_OPERATIONS_PY.read_text(encoding="utf-8")
+    delete_body = _func_body(src, "delete_file")
+    save_body = _func_body(src, "save_file")
+    create_body = _func_body(src, "create_file")
+    rename_body = _func_body(src, "rename_file")
+    mkdir_body = _func_body(src, "create_directory")
 
-    assert "rmtree_anchored(ws_root, target)" in delete_body
-    assert "unlink_anchored(ws_root, target)" in delete_body
+    assert "rmtree_anchored(root, target)" in delete_body
+    assert "unlink_anchored(root, target)" in delete_body
     assert "target.unlink()" not in delete_body
     assert "shutil.rmtree(target)" not in delete_body
 
-    assert "open_anchored_write_fd(ws_root, target)" in save_body
+    assert "open_anchored_write_fd(root, target)" in save_body
     assert "target.write_text" not in save_body
 
-    assert "open_anchored_create_fd(ws_root, target)" in create_body
+    assert "open_anchored_create_fd(root, target)" in create_body
     assert "target.parent.mkdir" not in create_body
     assert "target.write_text" not in create_body
 
-    assert "rename_anchored(ws_root, source, dest)" in rename_body
+    assert "rename_anchored(root, source, destination)" in rename_body
     assert "source.rename(dest)" not in rename_body
 
-    assert "make_anchored_dir(ws_root, target)" in mkdir_body
+    assert "make_anchored_dir(root, target)" in mkdir_body
     assert "target.mkdir(parents=True)" not in mkdir_body
 
 
 def test_folder_zip_reopens_members_through_anchor():
-    src = ROUTES_PY.read_text(encoding="utf-8")
-    body = _func_body(src, "_handle_folder_download")
+    src = FILE_DELIVERY_PY.read_text(encoding="utf-8")
+    body = _func_body(src, "folder_download")
 
-    assert "open_anchored_fd(workspace_root, fp.resolve(), want_dir=False)" in body
-    assert "info.compress_type = zipfile.ZIP_DEFLATED" in body
-    assert "zf.open(info, \"w\")" in body
-    assert "zf.write(fp" not in body
+    assert "open_anchored_fd(root, candidate, want_dir=False)" in body
+    assert "zipfile.ZIP_DEFLATED" in body
+    assert "archive.open(relative, \"w\")" in body
+    assert "archive.write(" not in body
 
 
 def test_raw_and_inline_file_targets_carry_anchor_root():
-    src = ROUTES_PY.read_text(encoding="utf-8")
-    raw_target = _func_body(src, "_file_raw_target")
-    raw_handler = _func_body(src, "_handle_file_raw")
+    src = FILE_DELIVERY_PY.read_text(encoding="utf-8")
+    raw_target = _func_body(src, "_workspace_raw_target")
+    raw_handler = _func_body(src, "raw_file")
 
-    assert "return workspace_root, target" in raw_target
-    assert "return attachment_root, attachment_target" in raw_target
-    assert "anchor_root, target = resolved" in raw_handler
-    assert "_serve_inline_html_preview(handler, target, \"no-store\", csp=sandbox_csp, anchor_root=anchor_root)" in raw_handler
-    assert "_serve_file_bytes(handler, target, mime, disposition, \"no-store\", csp=csp, anchor_root=anchor_root)" in raw_handler
+    assert "return root, target" in raw_target
+    assert "return attachment_root, target" in raw_target
+    assert "root, target = _workspace_raw_target" in raw_handler
+    assert "_stream_file(" in raw_handler
 
 
 def test_escape_raw_and_read_routes_use_authorized_helpers():
-    src = ROUTES_PY.read_text(encoding="utf-8")
-    escape_read = _func_body(src, "_handle_escape_file_read")
-    escape_raw = _func_body(src, "_handle_escape_file_raw")
+    src = FILE_DELIVERY_PY.read_text(encoding="utf-8")
+    escape_read = _func_body(src, "read_escape_file")
+    escape_raw = _func_body(src, "raw_escape_file")
 
     assert "read_authorized_escape_file_content" in escape_read
     assert "raw_authorized_escape_target" in escape_raw
-    assert "_serve_inline_html_preview(handler, target, \"no-store\", csp=sandbox_csp, anchor_root=anchor_root)" in escape_raw
-    assert "_serve_file_bytes(handler, target, mime, disposition, \"no-store\", csp=csp, anchor_root=anchor_root)" in escape_raw
+    assert "_stream_file(" in escape_raw
 
 
 def test_escape_raw_helper_reanchors_through_safe_resolve():

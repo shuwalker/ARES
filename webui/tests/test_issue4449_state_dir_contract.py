@@ -2,7 +2,7 @@
 
 `api.config.STATE_DIR` is a module-level global computed from the environment at
 import time. Exercising how it's derived requires importing config under a
-specific HERMES_HOME / HERMES_WEBUI_STATE_DIR. We do this in a SUBPROCESS rather
+specific ARES_HOME / ARES_WEBUI_STATE_DIR. We do this in a SUBPROCESS rather
 than `importlib.reload(config)` in-process: reloading config inside the shared
 pytest process leaks recomputed globals (STATE_DIR/SESSION_DIR) and stale
 references into later tests (the cancel/stream/health/state-isolation suites),
@@ -31,8 +31,8 @@ def _state_dir_for_env(**env_overrides) -> Path:
     env = dict(os.environ)
     # Start from a clean slate for the two vars under test so the parent
     # process's pytest values don't bleed in.
-    env.pop("HERMES_HOME", None)
-    env.pop("HERMES_WEBUI_STATE_DIR", None)
+    env.pop("ARES_HOME", None)
+    env.pop("ARES_WEBUI_STATE_DIR", None)
     for key, value in env_overrides.items():
         if value is None:
             env.pop(key, None)
@@ -51,44 +51,44 @@ def _state_dir_for_env(**env_overrides) -> Path:
 
 
 def _platform_default_state_dir() -> Path:
-    """What STATE_DIR resolves to with HERMES_HOME + STATE_DIR both unset."""
+    """What STATE_DIR resolves to with ARES_HOME + STATE_DIR both unset."""
     return _state_dir_for_env()
 
 
-def test_config_state_dir_defaults_to_hermes_home_webui(tmp_path):
-    hermes_home = tmp_path / ".hermes" / "profiles" / "isolated"
-    hermes_home.mkdir(parents=True)
+def test_config_state_dir_defaults_to_ares_home_webui(tmp_path):
+    ares_home = tmp_path / ".ares" / "profiles" / "isolated"
+    ares_home.mkdir(parents=True)
 
-    state_dir = _state_dir_for_env(HERMES_HOME=hermes_home)
-    assert state_dir == (hermes_home / "webui").resolve()
+    state_dir = _state_dir_for_env(ARES_HOME=ares_home)
+    assert state_dir == (ares_home / "webui").resolve()
 
 
-def test_config_state_dir_unchanged_for_normal_install_hermes_home_unset():
-    """Backward-compat: with HERMES_HOME unset, STATE_DIR stays at the platform
-    default `<~/.hermes>/webui` — a normal install's state must NOT relocate
-    (the #4449/#4454 state-dir move only affects an explicitly-set HERMES_HOME).
+def test_config_state_dir_unchanged_for_normal_install_ares_home_unset():
+    """Backward-compat: with ARES_HOME unset, STATE_DIR stays at the platform
+    default `<~/.ares>/webui` — a normal install's state must NOT relocate
+    (the #4449/#4454 state-dir move only affects an explicitly-set ARES_HOME).
 
-    Cross-check: the unset-HERMES_HOME result must NOT equal the result of
-    pointing HERMES_HOME at an arbitrary other base — i.e. the default is
+    Cross-check: the unset-ARES_HOME result must NOT equal the result of
+    pointing ARES_HOME at an arbitrary other base — i.e. the default is
     genuinely the platform home, not whatever the test environment injected."""
     default = _platform_default_state_dir()
     assert default.name == "webui"
-    # Pointing HERMES_HOME elsewhere produces a DIFFERENT dir, proving the unset
+    # Pointing ARES_HOME elsewhere produces a DIFFERENT dir, proving the unset
     # case resolves to the platform default rather than echoing an injected base.
-    elsewhere = _state_dir_for_env(HERMES_HOME="/tmp/hermes-4449-elsewhere-base")
-    assert elsewhere == Path("/tmp/hermes-4449-elsewhere-base/webui").resolve()
+    elsewhere = _state_dir_for_env(ARES_HOME="/tmp/ares-4449-elsewhere-base")
+    assert elsewhere == Path("/tmp/ares-4449-elsewhere-base/webui").resolve()
     assert default != elsewhere
 
 
 def test_config_state_dir_explicit_override_takes_precedence(tmp_path):
-    """HERMES_WEBUI_STATE_DIR always wins over the HERMES_HOME-derived default,
+    """ARES_WEBUI_STATE_DIR always wins over the ARES_HOME-derived default,
     so an operator who pinned a state dir keeps it even in isolated mode."""
-    hermes_home = tmp_path / ".hermes" / "profiles" / "isolated"
-    hermes_home.mkdir(parents=True)
+    ares_home = tmp_path / ".ares" / "profiles" / "isolated"
+    ares_home.mkdir(parents=True)
     explicit = tmp_path / "custom-state"
 
     state_dir = _state_dir_for_env(
-        HERMES_HOME=hermes_home,
-        HERMES_WEBUI_STATE_DIR=explicit,
+        ARES_HOME=ares_home,
+        ARES_WEBUI_STATE_DIR=explicit,
     )
     assert state_dir == explicit.resolve()

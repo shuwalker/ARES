@@ -40,20 +40,20 @@ class TestParallelApprovalsHeadFidelity:
     """SSE payload must always reflect head-of-queue, never tail."""
 
     def setup_method(self):
-        from api import routes as r
+        import api.route_approvals as r
         with r._lock:
             r._approval_sse_subscribers.clear()
             r._pending.clear()
 
     def teardown_method(self):
-        from api import routes as r
+        import api.route_approvals as r
         with r._lock:
             r._approval_sse_subscribers.clear()
             r._pending.clear()
 
     def test_second_submit_pending_sends_head_not_tail(self):
         """When B is appended while A is still pending, SSE payload must show A as head."""
-        from api import routes as r
+        import api.route_approvals as r
         sid = f"sse-headtail-{uuid.uuid4().hex[:8]}"
         q = r._approval_sse_subscribe(sid)
         try:
@@ -88,20 +88,20 @@ class TestRespondNotifiesTrailingApproval:
     """After respond() pops one approval, SSE must re-emit the new head if any."""
 
     def setup_method(self):
-        from api import routes as r
+        import api.route_approvals as r
         with r._lock:
             r._approval_sse_subscribers.clear()
             r._pending.clear()
 
     def teardown_method(self):
-        from api import routes as r
+        import api.route_approvals as r
         with r._lock:
             r._approval_sse_subscribers.clear()
             r._pending.clear()
 
     def test_respond_to_first_pushes_second_as_new_head(self):
         """submit A; submit B; respond(A) -> SSE must push (B, 1) so the UI surfaces B."""
-        from api import routes as r
+        import api.route_approvals as r
         sid = f"sse-trailing-{uuid.uuid4().hex[:8]}"
 
         # Subscribe BEFORE any submit so we capture all events deterministically.
@@ -129,7 +129,7 @@ class TestRespondNotifiesTrailingApproval:
             # sequence the route handler runs. (Calling _handle_approval_respond
             # would require an HTTP handler mock; the inner sequence is what we
             # need to verify.)
-            from api.routes import _approval_sse_notify_locked, _lock, _pending
+            from api.route_approvals import _approval_sse_notify_locked, _lock, _pending
             with _lock:
                 qlist = _pending.get(sid)
                 # Pop A by approval_id
@@ -155,7 +155,7 @@ class TestRespondNotifiesTrailingApproval:
 
     def test_respond_to_only_pending_pushes_empty_state(self):
         """If respond pops the last entry, SSE must push a None/0 sentinel so UI hides card."""
-        from api import routes as r
+        import api.route_approvals as r
         sid = f"sse-empty-{uuid.uuid4().hex[:8]}"
 
         sub_q = r._approval_sse_subscribe(sid)
@@ -169,7 +169,7 @@ class TestRespondNotifiesTrailingApproval:
             })
             sub_q.get(timeout=1)  # drain submit notify
 
-            from api.routes import _approval_sse_notify_locked, _lock, _pending
+            from api.route_approvals import _approval_sse_notify_locked, _lock, _pending
             with _lock:
                 qlist = _pending.get(sid)
                 for i, e in enumerate(qlist):
@@ -195,13 +195,13 @@ class TestNotifyOrderUnderContention:
     """Two parallel submit_pending callers must deliver in queue-mutation order."""
 
     def setup_method(self):
-        from api import routes as r
+        import api.route_approvals as r
         with r._lock:
             r._approval_sse_subscribers.clear()
             r._pending.clear()
 
     def teardown_method(self):
-        from api import routes as r
+        import api.route_approvals as r
         with r._lock:
             r._approval_sse_subscribers.clear()
             r._pending.clear()
@@ -214,7 +214,7 @@ class TestNotifyOrderUnderContention:
         notify runs inside _lock alongside the append, the order is guaranteed.
         """
         import threading
-        from api import routes as r
+        import api.route_approvals as r
         sid = f"sse-order-{uuid.uuid4().hex[:8]}"
 
         sub_q = r._approval_sse_subscribe(sid)

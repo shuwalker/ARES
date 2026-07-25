@@ -118,7 +118,7 @@ def handle_email_unread_get(handler, parsed) -> bool:
         messages = assistant.list_unread(limit=limit)
     except Exception:
         logger.exception("list_unread failed")
-        return bad(handler, "failed to list unread messages", status=500)
+        return bad(handler, "Mail notifications are currently unavailable", status=503)
 
     return j(handler, {
         "ok": True,
@@ -133,12 +133,12 @@ def handle_email_unread_get(handler, parsed) -> bool:
 def handle_email_all_get(handler, parsed) -> bool:
     """GET /api/email/all?limit=200 → {ok: true, messages: [...], unread: N, read: N}"""
     query = parse_qs(parsed.query or "")
-    raw_limit = query.get("limit", ["200"])[0]
+    raw_limit = query.get("limit", ["50"])[0]
     try:
         limit = int(raw_limit)
     except (ValueError, TypeError):
-        limit = 200
-    limit = max(1, min(limit, 500))
+        limit = 50
+    limit = max(1, min(limit, 100))
 
     assistant, err = _new_assistant()
     if err is not None:
@@ -148,7 +148,7 @@ def handle_email_all_get(handler, parsed) -> bool:
         messages = assistant.scan_all(limit=limit)
     except Exception:
         logger.exception("scan_all failed")
-        return bad(handler, "failed to scan all messages", status=500)
+        return bad(handler, "Mail notifications are currently unavailable", status=503)
 
     return j(handler, {
         "ok": True,

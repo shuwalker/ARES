@@ -3,7 +3,7 @@
 ARES Usage Tracker — tracks LLM provider usage to prevent burning through weekly quotas.
 
 Tracks requests per provider, calculates burn rate against configurable weekly budgets,
-and writes routing state so Hermes can skip depleted providers before they 429.
+and writes routing state so Ares can skip depleted providers before they 429.
 
 Reset windows:
   - Ollama Cloud: 5-hour session + 7-day weekly

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-import api.routes as routes
+import api.session_lineage_display as routes
 
 
 def _msg(role, content, ts):
@@ -30,7 +30,7 @@ def test_webui_lineage_display_merge_includes_parent_only_rows(monkeypatch):
         truncation_watermark=None,
     )
 
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: parent)
+    monkeypatch.setattr("api.models.get_session", lambda sid, metadata_only=False: parent)
 
     merged = routes._merged_webui_lineage_messages_for_display(tip, tip.messages)
 
@@ -66,7 +66,7 @@ def test_webui_lineage_display_merge_preserves_duplicate_turn_duration(monkeypat
         truncation_watermark=None,
     )
 
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: parent)
+    monkeypatch.setattr("api.models.get_session", lambda sid, metadata_only=False: parent)
 
     merged = routes._merged_webui_lineage_messages_for_display(tip, tip.messages)
 
@@ -96,7 +96,7 @@ def test_webui_lineage_display_keeps_cumulative_child_tail_without_timestamps(mo
         truncation_watermark=None,
     )
 
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: parent)
+    monkeypatch.setattr("api.models.get_session", lambda sid, metadata_only=False: parent)
 
     merged = routes._merged_webui_lineage_messages_for_display(tip, tip.messages)
 
@@ -122,7 +122,7 @@ def test_webui_lineage_display_merge_skips_explicit_forks(monkeypatch):
         truncation_watermark=None,
     )
 
-    monkeypatch.setattr(routes, "get_session", lambda sid, metadata_only=False: parent)
+    monkeypatch.setattr("api.models.get_session", lambda sid, metadata_only=False: parent)
 
     merged = routes._merged_webui_lineage_messages_for_display(fork, fork.messages)
 

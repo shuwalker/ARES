@@ -105,42 +105,13 @@ def test_handler_snapshot_does_not_deadlock_when_queue_has_entry():
         clarify.resolve_clarify(sid, "a")
 
 
-def test_routes_handler_does_not_call_get_pending_under_lock():
-    """Source-level invariant: routes.py must not call get_clarify_pending()
-    inside the `with _clarify_lock:` block — that would re-acquire _lock and
-    deadlock."""
-    src = (REPO_ROOT / "api" / "routes.py").read_text(encoding="utf-8")
-    # Find _handle_clarify_sse_stream
-    start = src.find("def _handle_clarify_sse_stream(")
-    assert start != -1, "_handle_clarify_sse_stream must exist"
-    end = src.find("\ndef ", start + 1)
+def test_fastapi_handler_uses_public_clarify_subscription_api():
+    """The ASGI handler must not acquire clarify's private lock itself."""
+    src = (REPO_ROOT / "fastapi_app" / "routers" / "realtime.py").read_text(encoding="utf-8")
+    start = src.find("async def clarification_events_sse(")
+    assert start != -1
+    end = src.find("\n@router.", start + 1)
     body = src[start:end if end != -1 else len(src)]
-
-    # Find the lock block
-    lock_start = body.find("with _clarify_lock:")
-    assert lock_start != -1, "Handler must use `with _clarify_lock:`"
-
-    # Walk forward by indentation to find the end of the lock block
-    lines = body[lock_start:].split("\n")
-    lock_block_lines = [lines[0]]  # The `with` line itself
-    base_indent = None
-    for line in lines[1:]:
-        if not line.strip():
-            lock_block_lines.append(line)
-            continue
-        indent = len(line) - len(line.lstrip(" "))
-        if base_indent is None:
-            base_indent = indent
-        if indent < base_indent and line.strip():
-            break
-        lock_block_lines.append(line)
-    lock_body = "\n".join(lock_block_lines)
-
-    assert "get_clarify_pending(" not in lock_body, (
-        "_handle_clarify_sse_stream must not call get_clarify_pending() "
-        "inside `with _clarify_lock:` — it acquires _lock internally and "
-        "would deadlock the handler thread (non-reentrant Lock)."
-    )
-    assert "clarify.get_pending(" not in lock_body, (
-        "Same — clarify.get_pending() acquires _lock internally."
-    )
+    assert "sse_subscribe(session_id)" in body
+    assert "get_pending(session_id)" in body
+    assert "_clarify_lock" not in body

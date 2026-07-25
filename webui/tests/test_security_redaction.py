@@ -215,7 +215,7 @@ def test_redact_text_prefilter_routes_url_containing_strings_to_hard_redactor(te
 
     We test the *prefilter routing decision* here — `_might_contain_sensitive_text`
     must return True for any URL-shaped string — rather than asserting on the
-    specific output of the agent redactor (which varies between hermes-agent
+    specific output of the agent redactor (which varies between ares-agent
     versions and CI vs local installs).
     """
     import api.helpers as helpers
@@ -281,14 +281,14 @@ def test_redaction_masks_authorization_bot_value_without_breaking_code_structure
     snippet = (
         'headers = ["-H", '
         f'f"Authorization: Bot {token}", '
-        '"-H", "User-Agent: HermesBot/1.0"]'
+        '"-H", "User-Agent: AresBot/1.0"]'
     )
 
     redacted = helpers._redact_value(snippet)
 
     assert token not in redacted
     assert 'f"Authorization: Bot ' in redacted
-    assert '", "-H", "User-Agent: HermesBot/1.0"]' in redacted
+    assert '", "-H", "User-Agent: AresBot/1.0"]' in redacted
     ast.parse(redacted)
 
 
@@ -506,11 +506,11 @@ def _create_session_with_credentials() -> str:
 def test_api_session_redacts_messages():
     """GET /api/session route must call redact_session_data() before returning."""
     import inspect
-    import api.routes as routes
-    src = inspect.getsource(routes.handle_get)
+    from fastapi_app.services import AresCoreService
+    src = inspect.getsource(AresCoreService.session)
     # Verify redact_session_data is applied to the session payload
     assert "redact_session_data" in src, (
-        "api/routes.py handle_get must call redact_session_data() on /api/session response"
+        "AresCoreService.session must redact the /api/session response"
     )
 
 
@@ -542,11 +542,10 @@ def test_api_sessions_list_redacts_titles(test_server):
 def test_api_session_export_redacts():
     """GET /api/session/export must call redact_session_data() in _handle_session_export."""
     import inspect
-    import api.routes as routes
-    # The export handler is a separate function (_handle_session_export)
-    src = inspect.getsource(routes._handle_session_export)
+    from api.session_query import export_session
+    src = inspect.getsource(export_session)
     assert "redact_session_data" in src, (
-        "_handle_session_export must call redact_session_data() before serving download"
+        "export_session must call redact_session_data() before serving download"
     )
 
 
@@ -583,7 +582,7 @@ def test_fix_credential_permissions_corrects_loose_files(tmp_path, monkeypatch):
     google_file.write_text("{}")
     google_file.chmod(0o664)  # group-readable -- should be fixed
 
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("ARES_HOME", str(tmp_path))
     fix_credential_permissions()
 
     import stat
@@ -604,7 +603,7 @@ def test_fix_credential_permissions_skips_correct_files(tmp_path, monkeypatch):
     env_file.write_text("SECRET=abc")
     env_file.chmod(0o600)
 
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv("ARES_HOME", str(tmp_path))
 
     from api.startup import fix_credential_permissions
     fix_credential_permissions()

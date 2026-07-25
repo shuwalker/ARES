@@ -13,14 +13,14 @@ A local usage tracker that:
 1. **Records every request** — timestamp, model, estimated GPU-time weight
 2. **Tracks both windows** — 5-hour session and 7-day weekly, knows when each resets
 3. **Calculates burn rate** — "at this rate, you'll hit the weekly cap on Thursday instead of Sunday"
-4. **Proactively switches** — when projected burn hits 80% of weekly, marks provider as depleted so Hermes routes to the next provider
+4. **Proactively switches** — when projected burn hits 80% of weekly, marks provider as depleted so Ares routes to the next provider
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `tracker.py` | Core engine — recording, burn rate, threshold detection, routing evaluation |
-| `tool.py` | Hermes tool entry point — CLI interface for recording and checking |
+| `tool.py` | Ares tool entry point — CLI interface for recording and checking |
 | `cron_check.py` | Cron check script — runs every 15-30 min, reports projected depletion |
 | `__init__.py` | Package marker |
 

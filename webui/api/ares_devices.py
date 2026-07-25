@@ -3,7 +3,7 @@
 This module is intentionally small and additive. It gives ARES a stable way to
 answer: is this install the primary AI body, or a device joined to an existing
 AI? Later resource sharing and offline sync can build on this registry without
-rewriting chat, Hermes, or JROS.
+rewriting chat, Ares, or JROS.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import re
 import shutil
 import socket
 import subprocess
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -141,8 +140,8 @@ def _webui_url() -> str:
 
         return f"http://{HOST}:{PORT}"
     except Exception:
-        host = os.environ.get("HERMES_WEBUI_HOST", "127.0.0.1")
-        port = os.environ.get("HERMES_WEBUI_PORT", "8787")
+        host = os.environ.get("ARES_WEBUI_HOST", "127.0.0.1")
+        port = os.environ.get("ARES_WEBUI_PORT", "8787")
         return f"http://{host}:{port}"
 
 
@@ -157,9 +156,7 @@ def detect_capabilities(config: dict[str, Any] | None = None) -> dict[str, bool]
     return {
         "mac_app": system == "darwin",
         "webui": True,
-        "jros": bool(backend.get("jros")),
-        "hermes": bool(backend.get("hermes")),
-        "hybrid": bool(backend.get("hybrid")),
+        "jros": bool(backend.get("jros_local")),
         "local_tools": True,
         "filesystem": True,
         "terminal": True,

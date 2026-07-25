@@ -3,7 +3,7 @@
 Covers: project CRUD, profile scoping, title collision, color validation,
 session listing, cross-profile isolation.
 
-Uses HERMES_WEBUI_STATE_DIR env var to point to a temp directory,
+Uses ARES_WEBUI_STATE_DIR env var to point to a temp directory,
 so tests don't touch the real webui state. Module is re-imported
 per test class to ensure clean state.
 """
@@ -59,14 +59,14 @@ _SAVED_CONSTANTS = {"captured": False}
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _fresh_state_dir():
-    """Create a clean temp state dir and set HERMES_WEBUI_STATE_DIR."""
+    """Create a clean temp state dir and set ARES_WEBUI_STATE_DIR."""
     td = tempfile.mkdtemp()
     state_dir = Path(td)
     sessions_dir = state_dir / "sessions"
     sessions_dir.mkdir(parents=True)
     (state_dir / "projects.json").write_text("[]", encoding="utf-8")
     (sessions_dir / "_index.json").write_text("[]", encoding="utf-8")
-    os.environ["HERMES_WEBUI_STATE_DIR"] = str(state_dir)
+    os.environ["ARES_WEBUI_STATE_DIR"] = str(state_dir)
     return state_dir
 
 
@@ -81,7 +81,7 @@ def _cleanup_state_dir(state_dir: Path):
     no longer exists or doesn't match their pytest-managed state dir."""
     import shutil
     shutil.rmtree(state_dir, ignore_errors=True)
-    os.environ.pop("HERMES_WEBUI_STATE_DIR", None)
+    os.environ.pop("ARES_WEBUI_STATE_DIR", None)
 
     # Restore api.config / mcp_server / api.models module constants.
     saved = _SAVED_CONSTANTS
@@ -97,7 +97,7 @@ def _cleanup_state_dir(state_dir: Path):
             models_mod = sys.modules["api.models"]
             for attr, val in saved["api.models"].items():
                 setattr(models_mod, attr, val)
-        # Restore HERMES_BASE_HOME / HERMES_HOME if we changed them
+        # Restore ARES_BASE_HOME / ARES_HOME if we changed them
         for env_key, env_val in saved["env"].items():
             if env_val is _MISSING_ENV:
                 os.environ.pop(env_key, None)
@@ -107,7 +107,7 @@ def _cleanup_state_dir(state_dir: Path):
 def _reimport_mcp():
     """Re-point mcp_server's module-level STATE_DIR / SESSION_DIR /
     SESSION_INDEX_FILE / PROJECTS_FILE constants at the current
-    HERMES_WEBUI_STATE_DIR.
+    ARES_WEBUI_STATE_DIR.
 
     Returns (mcp_module, profiles_module) — profiles_module is the
     live api.profiles reference.
@@ -122,32 +122,32 @@ def _reimport_mcp():
     module-level Path objects used only to compute STATE_DIR-rooted
     paths at call time.
 
-    Also normalizes HERMES_BASE_HOME / HERMES_HOME to point at a
+    Also normalizes ARES_BASE_HOME / ARES_HOME to point at a
     directory whose `profiles/` subdirectory we control. This isolates
     us from sibling test files (e.g. test_profile_path_security.py)
     that mutate those env vars during their own setup and don't restore
     them in the strict sense the active-profile path resolution needs.
     """
-    state_dir = Path(os.environ['HERMES_WEBUI_STATE_DIR'])
+    state_dir = Path(os.environ['ARES_WEBUI_STATE_DIR'])
 
     # Sibling test files (e.g. test_profile_path_security.py) mutate
-    # HERMES_BASE_HOME / HERMES_HOME but only restore sys.modules — the
+    # ARES_BASE_HOME / ARES_HOME but only restore sys.modules — the
     # env vars stay pointing at their tmpdir, which then breaks our
     # active-profile path resolution. Re-anchor at a local home dir
     # under our state_dir so other-profile scoping works.
-    isolated_home = state_dir.parent / "hermes-home"
+    isolated_home = state_dir.parent / "ares-home"
     (isolated_home / "profiles").mkdir(parents=True, exist_ok=True)
 
     # Snapshot env vars BEFORE we overwrite them, so _cleanup_state_dir
     # can restore them at fixture exit.
     if not _SAVED_CONSTANTS.get("captured"):
         _SAVED_CONSTANTS["env"] = {
-            "HERMES_BASE_HOME": os.environ.get("HERMES_BASE_HOME", _MISSING_ENV),
-            "HERMES_HOME": os.environ.get("HERMES_HOME", _MISSING_ENV),
+            "ARES_BASE_HOME": os.environ.get("ARES_BASE_HOME", _MISSING_ENV),
+            "ARES_HOME": os.environ.get("ARES_HOME", _MISSING_ENV),
         }
 
-    os.environ["HERMES_BASE_HOME"] = str(isolated_home)
-    os.environ["HERMES_HOME"] = str(isolated_home)
+    os.environ["ARES_BASE_HOME"] = str(isolated_home)
+    os.environ["ARES_HOME"] = str(isolated_home)
 
     import api.config as cfg
     import mcp_server as mod
@@ -246,8 +246,8 @@ def _reimport_mcp():
     # Re-evaluate WEBUI_URL from current env (PR #1895 made it env-aware
     # but the value is computed once at module load; tests need to see
     # current env state).
-    mod.WEBUI_HOST = os.environ.get("HERMES_WEBUI_HOST", "127.0.0.1")
-    mod.WEBUI_PORT = os.environ.get("HERMES_WEBUI_PORT", "8787")
+    mod.WEBUI_HOST = os.environ.get("ARES_WEBUI_HOST", "127.0.0.1")
+    mod.WEBUI_PORT = os.environ.get("ARES_WEBUI_PORT", "8787")
     mod.WEBUI_URL = f"http://{mod.WEBUI_HOST}:{mod.WEBUI_PORT}"
 
     fresh_profiles._active_profile = 'default'
@@ -391,7 +391,7 @@ class TestDeleteProject:
         assert "error" in result
 
     async def test_delete_no_auth_refuses_unassign(self):
-        """Without HERMES_WEBUI_PASSWORD, delete_project must NOT touch
+        """Without ARES_WEBUI_PASSWORD, delete_project must NOT touch
         session JSONs. Direct FS writes would bypass _write_session_index()
         and leave _index.json holding the stale project_id, causing a
         running WebUI to keep grouping sessions under the deleted project.
@@ -401,7 +401,7 @@ class TestDeleteProject:
         surface a `warning` field telling the operator to set the env var.
         """
         from api.config import SESSION_DIR, SESSION_INDEX_FILE
-        os.environ.pop("HERMES_WEBUI_PASSWORD", None)
+        os.environ.pop("ARES_WEBUI_PASSWORD", None)
 
         # Create project + a session JSON that points at it
         created = await _call(self.mod, "create_project", name="ToDelete")
@@ -427,7 +427,7 @@ class TestDeleteProject:
         assert result["ok"] is True
         assert result["unassigned_sessions"] == 0
         assert "warning" in result
-        assert "HERMES_WEBUI_PASSWORD" in result["warning"]
+        assert "ARES_WEBUI_PASSWORD" in result["warning"]
         # Session JSON untouched
         assert session_path.read_text(encoding="utf-8") == session_before
         # Index untouched
@@ -598,7 +598,7 @@ class TestApiPassword:
     def setup(self):
         self.state_dir = _fresh_state_dir()
         # Ensure env var is unset for the test
-        os.environ.pop("HERMES_WEBUI_PASSWORD", None)
+        os.environ.pop("ARES_WEBUI_PASSWORD", None)
         self.mod, self.profiles = _reimport_mcp()
         yield
         _cleanup_state_dir(self.state_dir)
@@ -616,75 +616,26 @@ class TestApiPassword:
         assert self.mod._api_password() is None
 
     async def test_env_var_returned(self):
-        os.environ["HERMES_WEBUI_PASSWORD"] = "secret123"
+        os.environ["ARES_WEBUI_PASSWORD"] = "secret123"
         try:
             assert self.mod._api_password() == "secret123"
         finally:
-            os.environ.pop("HERMES_WEBUI_PASSWORD", None)
+            os.environ.pop("ARES_WEBUI_PASSWORD", None)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  _profiles_match parity (mcp_server vs api.routes vs api.profiles)
+#  _profiles_match parity (mcp_server vs api.profiles)
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# Locks the canonical-helper relocation: mcp_server.py and api/routes.py both
-# now import _profiles_match from api/profiles.py. If anyone re-introduces a
-# local copy in either module, both the identity check and the input-matrix
-# parametrize trip immediately.
+# Locks the canonical-helper relocation: the MCP bridge and FastAPI request
+# services use the predicate owned by api.profiles.py.
 
 async def test_profiles_match_single_source_of_truth():
-    """All three module names resolve to the same canonical object.
+    """The MCP bridge imports the canonical profile visibility predicate."""
+    import api.profiles as profiles
+    import mcp_server
 
-    This locks the relocation: mcp_server.py and api/routes.py both import
-    _profiles_match from api/profiles.py rather than carrying a local copy.
-    Re-introducing a local definition in either module trips this test
-    immediately.
-
-    Imported here in a clean module-import context (not via _reimport_mcp,
-    which would re-execute api/profiles.py and produce a distinct function
-    object that's behaviorally identical but fails the `is` check).
-
-    NOTE: We swap-in fresh modules but RESTORE the originals at exit so
-    sibling test files (test_provider_quota_status etc.) that imported
-    api.profiles at module-load time continue to see the same object
-    they already have monkeypatch handles into. Otherwise their
-    `monkeypatch.setattr(profiles, ...)` patches the wrong module object.
-    """
-    # Snapshot the originals; we'll put them back at the end.
-    saved_modules = {
-        k: sys.modules[k]
-        for k in ('mcp_server', 'api.routes', 'api.profiles')
-        if k in sys.modules
-    }
-    # Also snapshot the attributes on the parent `api` package, because
-    # `import api.routes as r` resolves via `sys.modules['api'].routes`,
-    # NOT directly via sys.modules['api.routes']. If we don't restore
-    # the parent attribute, subsequent `import api.routes as r` calls
-    # bind to the fresh re-imported module even though sys.modules
-    # holds the original.
-    import api as _api_parent
-    saved_api_attrs = {}
-    for sub in ('routes', 'profiles'):
-        if hasattr(_api_parent, sub):
-            saved_api_attrs[sub] = getattr(_api_parent, sub)
-
-    for k in ('mcp_server', 'api.routes', 'api.profiles'):
-        sys.modules.pop(k, None)
-    try:
-        import api.profiles as _profiles_mod
-        import api.routes as _routes_mod
-        import mcp_server as _mcp_mod
-        canonical = _profiles_mod._profiles_match
-        assert _routes_mod._profiles_match is canonical
-        assert _mcp_mod._profiles_match is canonical
-    finally:
-        # Restore so monkeypatch handles in sibling tests target the right module.
-        for k in ('mcp_server', 'api.routes', 'api.profiles'):
-            sys.modules.pop(k, None)
-        sys.modules.update(saved_modules)
-        # Restore parent-package attributes too (see above for why).
-        for sub, mod_obj in saved_api_attrs.items():
-            setattr(_api_parent, sub, mod_obj)
+    assert mcp_server._profiles_match is profiles._profiles_match
 
 
 @pytest.mark.parametrize("a, b", [
@@ -703,7 +654,7 @@ async def test_profiles_match_single_source_of_truth():
     ('foo', 'default'),
 ])
 async def test_profiles_match_input_matrix(a, b):
-    """mcp_server._profiles_match agrees with api.routes._profiles_match
+    """mcp_server._profiles_match agrees with api.profiles._profiles_match
     on every (row, active) pair across the visibility matrix.
 
     Note: function-object identity is checked separately in
@@ -711,7 +662,7 @@ async def test_profiles_match_input_matrix(a, b):
     behavioral parity, which is robust to test-fixture re-imports that
     clear and re-execute api.profiles."""
     from mcp_server import _profiles_match as mcp_match
-    from api.routes import _profiles_match as routes_match
+    from api.profiles import _profiles_match as routes_match
     assert mcp_match(a, b) == routes_match(a, b)
 
 
@@ -834,7 +785,7 @@ class TestApiWireFormat:
         self.thread.start()
 
         # Disable auth so _api_post() does not attempt a real /api/auth/login.
-        os.environ.pop("HERMES_WEBUI_PASSWORD", None)
+        os.environ.pop("ARES_WEBUI_PASSWORD", None)
 
         self.mod, self.profiles = _reimport_mcp()
         # Override AFTER import so the value sticks in the loaded module.
@@ -898,27 +849,27 @@ class TestApiWireFormat:
         assert result["ok"] is True
 
     async def test_url_built_from_env_vars(self):
-        """HERMES_WEBUI_HOST / HERMES_WEBUI_PORT govern WEBUI_URL.
+        """ARES_WEBUI_HOST / ARES_WEBUI_PORT govern WEBUI_URL.
 
         Locks the maintainer-suggested env-var contract from #1895 review:
         the MCP must track the same env vars api/config.py:32-33 reads, so
         a non-default WebUI port (e.g. 8788 when 8787 is held by another
         service on the host) does not require a code edit."""
-        os.environ["HERMES_WEBUI_HOST"] = "10.0.0.42"
-        os.environ["HERMES_WEBUI_PORT"] = "9999"
+        os.environ["ARES_WEBUI_HOST"] = "10.0.0.42"
+        os.environ["ARES_WEBUI_PORT"] = "9999"
         try:
             mod, _ = _reimport_mcp()
             assert mod.WEBUI_HOST == "10.0.0.42"
             assert mod.WEBUI_PORT == "9999"
             assert mod.WEBUI_URL == "http://10.0.0.42:9999"
         finally:
-            os.environ.pop("HERMES_WEBUI_HOST", None)
-            os.environ.pop("HERMES_WEBUI_PORT", None)
+            os.environ.pop("ARES_WEBUI_HOST", None)
+            os.environ.pop("ARES_WEBUI_PORT", None)
 
     async def test_url_default_when_env_unset(self):
         """Default upstream port is 8787, matching api/config.py:33."""
-        os.environ.pop("HERMES_WEBUI_HOST", None)
-        os.environ.pop("HERMES_WEBUI_PORT", None)
+        os.environ.pop("ARES_WEBUI_HOST", None)
+        os.environ.pop("ARES_WEBUI_PORT", None)
         mod, _ = _reimport_mcp()
         assert mod.WEBUI_HOST == "127.0.0.1"
         assert mod.WEBUI_PORT == "8787"

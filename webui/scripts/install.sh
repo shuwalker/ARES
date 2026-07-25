@@ -37,7 +37,6 @@ BOLD='\033[1m'
 REPO_URL_SSH="git@github.com:shuwalker/ARES.git"
 REPO_URL_HTTPS="https://github.com/shuwalker/ARES.git"
 ARES_HOME="${ARES_HOME:-$HOME/.ares}"
-HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME}"
 WEBUI_DIR="$INSTALL_DIR/webui"
 SOURCE_DIR="${ARES_SOURCE_DIR:-}"
@@ -53,7 +52,24 @@ MANIFEST_MODE=false
 NON_INTERACTIVE=false
 BACKEND_MODE="unconfigured"
 NO_START=false
+SOURCE_DIR=""
+INSTALL_CLI=true
 
+<<<<<<< HEAD
+=======
+# JaegerAI is ARES's recommended Companion runtime for identity, memory,
+# character, voice, and embodiment. ARES never forks or reimplements it; the installer only
+# ever detects an existing install or delegates to JaegerAI's own installer,
+# the same way ares-workspace's installer delegates to Nous's upstream
+# ares-agent installer instead of reimplementing it.
+JROS_INSTALL_URL="${JROS_INSTALL_URL:-https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh}"
+SKIP_JROS=false
+
+# Ares Agent is an optional addition (coding/terminal/skills capability),
+# never installed unless the operator asks for it.
+WITH_ARES=false
+
+>>>>>>> wip/multiagent-orchestrator
 # Detect non-interactive mode
 if [ -t 0 ]; then
     IS_INTERACTIVE=true
@@ -76,6 +92,13 @@ while [[ $# -gt 0 ]]; do
         --json) JSON_OUTPUT=true; shift ;;
         --non-interactive) NON_INTERACTIVE=true; shift ;;
         --no-start) NO_START=true; shift ;;
+<<<<<<< HEAD
+=======
+        --source) SOURCE_DIR="$2"; shift 2 ;;
+        --no-cli) INSTALL_CLI=false; shift ;;
+        --skip-jros) SKIP_JROS=true; shift ;;
+        --with-ares) WITH_ARES=true; shift ;;
+>>>>>>> wip/multiagent-orchestrator
         -h|--help)
             echo "ARES Web UI Installer"
             echo ""
@@ -93,7 +116,21 @@ while [[ $# -gt 0 ]]; do
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
+<<<<<<< HEAD
             echo "  --no-start      Skip auto-starting the server after installation"
+=======
+            echo "  --backend MODE  Live adapter ID or short alias (default: auto → jros_local"
+            echo "                  when JaegerAI is detected). Examples: auto, jros,"
+            echo "                  jros_local, hermes, hermes_local, claude_local,"
+            echo "                  ollama_local, openai_cloud. Deleted modes ares/hybrid are rejected."
+            echo "  --no-start      Skip auto-starting the server after installation"
+            echo "  --source PATH   Install the current local source tree instead of cloning"
+            echo "  --no-cli        Do not create or replace ~/.local/bin/ares"
+            echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — profile can still"
+            echo "                  be saved without a Companion runtime)"
+            echo "  --with-ares     Also install Ares Agent package (optional coding addition;"
+            echo "                  does not select a runtime by itself)"
+>>>>>>> wip/multiagent-orchestrator
             echo "  -h, --help      Show this help"
             exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -127,7 +164,11 @@ json_escape() {
 }
 
 emit_manifest() {
+<<<<<<< HEAD
     printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
+=======
+    printf '%s' '{"protocol_version":1,"stages":[{"name":"prerequisites","title":"System prerequisites","category":"runtime","needs_user_input":false},{"name":"repository","title":"Download ARES Web UI","category":"runtime","needs_user_input":false},{"name":"jros","title":"Connect recommended JaegerAI runtime","category":"runtime","needs_user_input":false},{"name":"venv","title":"Create Python virtual environment","category":"runtime","needs_user_input":false},{"name":"python-deps","title":"Install Python dependencies","category":"runtime","needs_user_input":false},{"name":"config","title":"Prepare configuration","category":"configuration","needs_user_input":false},{"name":"setup","title":"Configure Companion and optional additions","category":"configuration","needs_user_input":true},{"name":"complete","title":"Finish install","category":"runtime","needs_user_input":false}]}'
+>>>>>>> wip/multiagent-orchestrator
     printf '\n'
 }
 
@@ -177,6 +218,55 @@ prompt_yes_no() {
 # System detection
 # ============================================================================
 
+<<<<<<< HEAD
+=======
+detect_jros() {
+    JAEGER_HOME_DETECTED="${ARES_JAEGER_HOME:-${JAEGER_HOME:-$HOME/jaeger}}"
+    JAEGER_LAUNCHER="$JAEGER_HOME_DETECTED/jaeger"
+    if [ -x "$JAEGER_LAUNCHER" ]; then
+        JROS_DETECTED=true
+        log_success "JaegerAI detected at $JAEGER_HOME_DETECTED"
+    else
+        JROS_DETECTED=false
+        log_info "JaegerAI not detected at $JAEGER_HOME_DETECTED"
+    fi
+}
+
+# JaegerAI is ARES's recommended full Companion runtime. This stage never reimplements JaegerAI — it only detects an
+# existing install or delegates to JaegerAI's own installer, exactly the way
+# ARES already delegates to Nous's own installer for the optional Ares
+# addition (see install_deps below).
+stage_jros() {
+    detect_jros
+    if [ "$JROS_DETECTED" = true ]; then
+        log_success "JaegerAI already installed at $JAEGER_HOME_DETECTED — skipping install"
+        return 0
+    fi
+    if [ "$SKIP_JROS" = true ]; then
+        log_warn "Skipping JaegerAI install (--skip-jros). Profile setup remains available;"
+        log_warn "JaegerAI capabilities remain unavailable until it is connected."
+        return 0
+    fi
+
+    log_info "JaegerAI not found — installing the required Companion runtime..."
+    log_info "  Delegating to JaegerAI's own installer: $JROS_INSTALL_URL"
+    if ! curl -fsSL "$JROS_INSTALL_URL" | JAEGER_HOME="$JAEGER_HOME_DETECTED" bash; then
+        log_warn "JaegerAI install failed; continuing with profile-only setup."
+        log_warn "Retry later with: curl -fsSL $JROS_INSTALL_URL | bash"
+        return 0
+    fi
+
+    detect_jros
+    if [ "$JROS_DETECTED" != true ]; then
+        log_warn "JaegerAI installer finished but no launcher was found at $JAEGER_HOME_DETECTED."
+        log_warn "Profile setup will continue without execution readiness. Set"
+        log_warn "ARES_JAEGER_HOME/JAEGER_HOME after locating the installation."
+        return 0
+    fi
+    log_success "JaegerAI installed at $JAEGER_HOME_DETECTED"
+}
+
+>>>>>>> wip/multiagent-orchestrator
 detect_os() {
     case "$(uname -s)" in
         Linux*) OS="linux"; DISTRO="linux" ;;
@@ -236,6 +326,20 @@ check_python() {
     log_success "Python found: $PYTHON_FOUND_VERSION ($PYTHON_PATH)"
 }
 
+check_node() {
+    log_info "Checking Node.js..."
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+        log_error "Node.js and npm are required to build the ARES frontend."
+        log_info "  Install the current Node.js LTS release from https://nodejs.org"
+        exit 1
+    fi
+    if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+        log_error "Node.js 20 or newer is required (found $(node --version 2>/dev/null || echo unknown))."
+        exit 1
+    fi
+    log_success "Node.js $(node --version) found"
+}
+
 # ============================================================================
 # Installation stages
 # ============================================================================
@@ -244,6 +348,7 @@ stage_prerequisites() {
     log_info "Checking prerequisites..."
     check_git
     check_python
+    check_node
     log_success "All prerequisites met"
 }
 
@@ -295,30 +400,76 @@ clone_repo() {
                 log_warn "Fast-forward not possible; resetting to origin/$BRANCH..."
                 git reset --hard "origin/$BRANCH"
             fi
+        elif [ -n "$SOURCE_DIR" ] && [ -f "$INSTALL_DIR/.ares-source-install" ]; then
+            install_from_source
+        elif [ -z "$(find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+            # Secure temporary-directory APIs create the destination before
+            # invoking us. An existing *empty* directory is safe to replace;
+            # a non-empty non-repository remains protected below.
+            rmdir "$INSTALL_DIR"
+            if [ -n "$SOURCE_DIR" ]; then install_from_source; else clone_fresh_repo; fi
         else
             log_error "Directory exists but is not a git repository: $INSTALL_DIR"
             exit 1
         fi
     else
-        mkdir -p "$(dirname "$INSTALL_DIR")"
-        log_info "Trying SSH clone..."
-        if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
-           git clone --depth 1 --branch "$BRANCH" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
-            log_success "Cloned via SSH"
-        else
-            rm -rf "$INSTALL_DIR" 2>/dev/null
-            log_info "SSH failed, trying HTTPS..."
-            if git clone --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
-                log_success "Cloned via HTTPS"
-            else
-                log_error "Failed to clone repository"
-                exit 1
-            fi
-        fi
+        if [ -n "$SOURCE_DIR" ]; then install_from_source; else clone_fresh_repo; fi
     fi
 
     cd "$WEBUI_DIR"
     log_success "Repository ready"
+}
+
+install_from_source() {
+    local source_abs
+    if [ ! -d "$SOURCE_DIR" ]; then
+        log_error "Source directory not found: $SOURCE_DIR"
+        exit 1
+    fi
+    source_abs="$(cd "$SOURCE_DIR" && pwd)"
+    if [ ! -f "$source_abs/webui/fastapi_app/main.py" ] || \
+       [ ! -f "$source_abs/webui/frontend/package.json" ]; then
+        log_error "Source is not a current ARES tree: $source_abs"
+        exit 1
+    fi
+    mkdir -p "$INSTALL_DIR"
+    log_info "Staging current source from $source_abs..."
+    rsync -a \
+        --exclude '/.git/' \
+        --exclude '/.build/' \
+        --exclude '/attic/' \
+        --exclude '/ARES-Mac_os/ARES.app/' \
+        --exclude '/webui/.venv/' \
+        --exclude '/webui/venv/' \
+        --exclude '/webui/node_modules/' \
+        --exclude '/webui/frontend/node_modules/' \
+        --exclude '/webui/tests/' \
+        --exclude '/webui/docs/' \
+        --exclude '**/__pycache__/' \
+        --exclude '**/.pytest_cache/' \
+        "$source_abs/" "$INSTALL_DIR/"
+    printf '%s\n' "$source_abs" > "$INSTALL_DIR/.ares-source-install"
+    log_success "Current source staged"
+}
+
+clone_fresh_repo() {
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    log_info "Trying SSH clone..."
+    if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
+       git clone --depth 1 --branch "$BRANCH" "$REPO_URL_SSH" "$INSTALL_DIR" 2>/dev/null; then
+        log_success "Cloned via SSH"
+    else
+        # A failed clone can leave a partial target. The path is the exact
+        # installer destination already validated by clone_repo.
+        rm -rf "$INSTALL_DIR" 2>/dev/null
+        log_info "SSH failed, trying HTTPS..."
+        if git clone --depth 1 --branch "$BRANCH" "$REPO_URL_HTTPS" "$INSTALL_DIR"; then
+            log_success "Cloned via HTTPS"
+        else
+            log_error "Failed to clone repository"
+            exit 1
+        fi
+    fi
 }
 
 setup_venv() {
@@ -335,6 +486,13 @@ setup_venv() {
         check_python
     fi
 
+    if [ ! -d "$WEBUI_DIR" ]; then
+        log_error "WebUI directory not found: $WEBUI_DIR"
+        log_error "Run the repository stage first."
+        exit 1
+    fi
+    cd "$WEBUI_DIR"
+
     log_info "Creating virtual environment..."
 
     if [ -d "venv" ]; then
@@ -349,6 +507,13 @@ setup_venv() {
 
 install_deps() {
     log_info "Installing dependencies..."
+
+    if [ ! -f "$WEBUI_DIR/requirements.txt" ] || [ ! -d "$WEBUI_DIR/frontend" ]; then
+        log_error "Incomplete WebUI installation at $WEBUI_DIR"
+        log_error "Run the repository stage first."
+        exit 1
+    fi
+    cd "$WEBUI_DIR"
 
     if [ "$USE_VENV" = true ]; then
         export VIRTUAL_ENV="$WEBUI_DIR/venv"
@@ -366,7 +531,42 @@ install_deps() {
         exit 1
     fi
 
+<<<<<<< HEAD
     log_success "All dependencies installed"
+=======
+    log_info "Building React frontend..."
+    if ! (cd "$WEBUI_DIR/frontend" && npm ci && npm run build); then
+        log_error "Failed to build the React frontend"
+        exit 1
+    fi
+
+    # Ares Agent is an optional addition (coding/terminal/skills capability),
+    # not the Companion runtime — JaegerAI already covers that. Only install it
+    # when explicitly requested via --with-ares, or the operator opts in
+    # here on an interactive terminal.
+    if [ "$WITH_ARES" != true ] && [ "$NON_INTERACTIVE" != true ] && [ "$IS_INTERACTIVE" = true ]; then
+        if prompt_yes_no "Also install Ares Agent (optional coding/terminal addition)?" "no"; then
+            WITH_ARES=true
+        fi
+    fi
+
+    if [ "$WITH_ARES" = true ]; then
+        log_info "Installing Ares Agent (optional addition)..."
+        if ! "$PIP_PYTHON" -m pip install ares-agent 2>/dev/null; then
+            log_warn "ares-agent not found via pip"
+            log_info "Trying git install..."
+            if ! "$PIP_PYTHON" -m pip install git+https://github.com/nousresearch/ares-agent.git 2>/dev/null; then
+                log_warn "Could not install ares-agent. The Ares addition will be unavailable."
+                log_info "Install manually later: pip install ares-agent"
+                WITH_ARES=false
+            fi
+        fi
+    else
+        log_info "Skipping Ares Agent (optional addition — add later with --with-ares)"
+    fi
+
+    log_success "All dependencies installed and frontend built"
+>>>>>>> wip/multiagent-orchestrator
 }
 
 setup_config() {
@@ -383,17 +583,70 @@ setup_config() {
     # Create state directory
     mkdir -p "$ARES_HOME"
 
+<<<<<<< HEAD
+=======
+    detect_jros
+    # Canonical live adapter IDs must match api.backend_selector.VALID_BACKENDS.
+    # Short aliases map at write time; deleted ares/hybrid modes fail closed.
+    selected_backend="$BACKEND_MODE"
+    case "$selected_backend" in
+        auto)
+            if [ "${JROS_DETECTED:-false}" = true ]; then
+                selected_backend="jros_local"
+            else
+                # Profile can be saved without an elected runtime.
+                selected_backend=""
+                log_warn "No JaegerAI install detected; leaving ares_backend unset (profile-only)."
+                log_warn "Connect a live adapter later in Connections, or re-run with --backend jros_local."
+            fi
+            ;;
+        jros|jros_local) selected_backend="jros_local" ;;
+        hermes|hermes_local) selected_backend="hermes_local" ;;
+        claude_local|codex_local|gemini_local|grok_local|opencode_local|cursor_local|pi_local|openai_cloud|xai_cloud|gemini_cloud|gemini_antigravity|ollama_local)
+            selected_backend="$selected_backend"
+            ;;
+        ares|ares_local|hybrid)
+            log_error "Backend '$selected_backend' is no longer supported."
+            log_error "Use a live adapter ID such as jros_local or hermes_local (see --help)."
+            exit 1
+            ;;
+        *)
+            log_error "Invalid backend mode: $selected_backend"
+            log_error "Expected auto or a live adapter ID (jros_local, hermes_local, claude_local, ...)."
+            exit 1
+            ;;
+    esac
+    if [ "$selected_backend" = "jros_local" ] && [ "${JROS_DETECTED:-false}" != true ]; then
+        log_error "Backend 'jros_local' selected but no JaegerAI install was found at ${JAEGER_HOME_DETECTED:-unknown}."
+        log_error "Re-run without --skip-jros, install JaegerAI manually, or choose another --backend."
+        exit 1
+    fi
+
+    if [ -z "${PYTHON_PATH:-}" ]; then
+        check_python
+    fi
+>>>>>>> wip/multiagent-orchestrator
     CONFIG_PYTHON="${PYTHON_PATH:-}"
     if [ -z "$CONFIG_PYTHON" ]; then
         log_error "Python not found; cannot write ARES backend settings"
         exit 1
     fi
+<<<<<<< HEAD
     "$CONFIG_PYTHON" - "$ARES_HOME" <<'PY'
+=======
+    "$CONFIG_PYTHON" - "$selected_backend" "$ARES_HOME" "$ARES_HOME" <<'PY'
+>>>>>>> wip/multiagent-orchestrator
 import json
 import sys
 from pathlib import Path
 
+<<<<<<< HEAD
 state_home = Path(sys.argv[1]) / "webui"
+=======
+backend = (sys.argv[1] or "").strip()
+state_home = Path(sys.argv[2]) / "webui"
+ares_home = Path(sys.argv[3])
+>>>>>>> wip/multiagent-orchestrator
 state_home.mkdir(parents=True, exist_ok=True)
 settings = state_home / "settings.json"
 data = {}
@@ -401,11 +654,78 @@ if settings.exists():
     try:
         data = json.loads(settings.read_text(encoding="utf-8"))
     except Exception:
+<<<<<<< HEAD
         pass
 data["ares_backend"] = "unconfigured"
 settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+=======
+        data = {}
+if backend:
+    data["ares_backend"] = backend
+else:
+    # Profile-only install: do not persist a deleted or empty election.
+    data.pop("ares_backend", None)
+settings.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+# Runtime reads the selected backend from Ares config.yaml, not settings.json.
+# Keep this line-oriented and dependency-free so it works even if PyYAML is absent.
+ares_home.mkdir(parents=True, exist_ok=True)
+config_path = ares_home / "config.yaml"
+lines = config_path.read_text(encoding="utf-8").splitlines() if config_path.exists() else []
+out = []
+seen = False
+for line in lines:
+    if line.startswith("ares_backend:"):
+        if backend:
+            out.append(f"ares_backend: {backend}")
+            seen = True
+        # else drop stale election line on profile-only install
+        else:
+            seen = True
+    else:
+        out.append(line)
+if backend and not seen:
+    if out and out[-1].strip():
+        out.append("")
+    out.append(f"ares_backend: {backend}")
+config_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+>>>>>>> wip/multiagent-orchestrator
 PY
 
+<<<<<<< HEAD
+=======
+env_path = Path(sys.argv[1])
+jros_home = sys.argv[2]
+updates = {
+    "ARES_JAEGER_HOME": jros_home,
+    "JAEGER_HOME": jros_home,
+}
+lines = []
+seen = set()
+if env_path.exists():
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+out = []
+for line in lines:
+    stripped = line.strip()
+    key = stripped.split("=", 1)[0] if "=" in stripped and not stripped.startswith("#") else None
+    if key in updates:
+        out.append(f'{key}="{updates[key]}"')
+        seen.add(key)
+    else:
+        out.append(line)
+for key, value in updates.items():
+    if key not in seen:
+        out.append(f'{key}="{value}"')
+env_path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
+PY
+        log_success "Persisted JaegerAI runtime path: $JAEGER_HOME_DETECTED"
+    fi
+    if [ -n "$selected_backend" ]; then
+        log_success "Configured ARES backend: $selected_backend"
+    else
+        log_success "ARES backend left unset (profile-only; connect a runtime later)"
+    fi
+>>>>>>> wip/multiagent-orchestrator
 
     log_success "Configuration ready"
 }
@@ -420,7 +740,7 @@ run_setup_wizard() {
     log_info "Open http://localhost:$PORT in your browser to complete setup."
     log_info "The onboarding wizard will walk you through naming your Companion (JaegerAI),"
     log_info "connecting from your other devices over Tailscale, and any optional"
-    log_info "additions (Hermes, cloud providers, MCP servers)."
+    log_info "additions (Ares, cloud providers, MCP servers)."
 }
 
 # ============================================================================
@@ -466,21 +786,55 @@ fi
 # Full install
 print_banner
 detect_os
+setup_cli() {
+    if [ "$INSTALL_CLI" != true ]; then
+        log_info "Skipping global CLI link (--no-cli)"
+        return 0
+    fi
+    log_info "Setting up ARES CLI..."
+    mkdir -p ~/.local/bin
+    if [ -f "$INSTALL_DIR/bin/ares" ]; then
+        ln -sf "$INSTALL_DIR/bin/ares" ~/.local/bin/ares
+        log_success "Created symlink: ~/.local/bin/ares -> $INSTALL_DIR/bin/ares"
+        
+        if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+            log_info "NOTE: ~/.local/bin is not in your PATH."
+            log_info "Add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your shell profile."
+        fi
+    fi
+}
+
 stage_prerequisites
 clone_repo
 setup_venv
 install_deps
 setup_config
 run_setup_wizard
+setup_cli
 
 echo ""
 echo -e "${GREEN}${BOLD}ARES Web UI installation complete!${NC}"
 echo ""
 echo "  Start the server:"
+<<<<<<< HEAD
 echo "    cd $WEBUI_DIR && ./venv/bin/python server.py"
 echo ""
 echo "  Or set env and run:"
 echo "    HERMES_WEBUI_HOST=$HOST HERMES_WEBUI_PORT=$PORT $WEBUI_DIR/venv/bin/python $WEBUI_DIR/server.py"
+=======
+if [ "${JROS_DETECTED:-false}" = true ]; then
+    echo "    cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
+else
+    echo "    cd $WEBUI_DIR && ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
+fi
+echo ""
+echo "  Or set env and run:"
+if [ "${JROS_DETECTED:-false}" = true ]; then
+    echo "    cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
+else
+    echo "    cd $WEBUI_DIR && ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
+fi
+>>>>>>> wip/multiagent-orchestrator
 echo ""
 echo "  Then open: http://localhost:$PORT"
 echo ""
@@ -492,6 +846,21 @@ echo ""
 if [ "$NO_START" = false ] && [ -t 0 ]; then
     echo -e "${CYAN}→ Starting ARES Web UI...${NC}"
     cd "$WEBUI_DIR"
+<<<<<<< HEAD
 else
     echo -e "${CYAN}→ To start the server later, run:${NC}"
+=======
+    if [ "${JROS_DETECTED:-false}" = true ]; then
+        ARES_JAEGER_HOME="$JAEGER_HOME_DETECTED" JAEGER_HOME="$JAEGER_HOME_DETECTED" ARES_WEBUI_HOST="$HOST" ARES_WEBUI_PORT="$PORT" ./venv/bin/python -m uvicorn fastapi_app.main:app --host "$HOST" --port "$PORT" --no-server-header
+    else
+        ARES_WEBUI_HOST="$HOST" ARES_WEBUI_PORT="$PORT" ./venv/bin/python -m uvicorn fastapi_app.main:app --host "$HOST" --port "$PORT" --no-server-header
+    fi
+else
+    echo -e "${CYAN}→ To start the server later, run:${NC}"
+    if [ "${JROS_DETECTED:-false}" = true ]; then
+        echo "  cd $WEBUI_DIR && ARES_JAEGER_HOME=$JAEGER_HOME_DETECTED JAEGER_HOME=$JAEGER_HOME_DETECTED ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
+    else
+        echo "  cd $WEBUI_DIR && ARES_WEBUI_HOST=$HOST ARES_WEBUI_PORT=$PORT ./venv/bin/python -m uvicorn fastapi_app.main:app --host $HOST --port $PORT --no-server-header"
+    fi
+>>>>>>> wip/multiagent-orchestrator
 fi

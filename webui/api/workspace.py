@@ -1,5 +1,5 @@
 """
-Hermes Web UI -- Workspace and file system helpers.
+Ares Web UI -- Workspace and file system helpers.
 
 Workspace lists and last-used workspace are stored per-profile so each
 profile has its own workspace configuration.  State files live at
@@ -7,6 +7,9 @@ profile has its own workspace configuration.  State files live at
 ``{profile_home}/webui_state/last_workspace.txt``.  The global STATE_DIR
 paths are used as fallback when no profile module is available.
 """
+
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -41,14 +44,14 @@ def _profile_state_dir() -> Path:
     """Return the webui_state directory for the active profile.
 
     For the default profile, returns the global STATE_DIR (respects
-    HERMES_WEBUI_STATE_DIR env var for test isolation).
+    ARES_WEBUI_STATE_DIR env var for test isolation).
     For named profiles, returns {profile_home}/webui_state/.
     """
     try:
-        from api.profiles import get_active_profile_name, get_active_hermes_home
+        from api.profiles import get_active_profile_name, get_active_ares_home
         name = get_active_profile_name()
         if name and name != 'default':
-            d = get_active_hermes_home() / 'webui_state'
+            d = get_active_ares_home() / 'webui_state'
             d.mkdir(parents=True, exist_ok=True)
             return d
     except ImportError:
@@ -64,6 +67,16 @@ def _workspaces_file() -> Path:
 def _last_workspace_file() -> Path:
     """Return the last_workspace.txt path for the active profile."""
     return _profile_state_dir() / 'last_workspace.txt'
+
+
+def _is_leaked_test_workspace(raw: str) -> bool:
+    """Reject historical pytest paths when running the real product."""
+    if os.getenv("ARES_WEBUI_TEST_STATE_DIR"):
+        return False
+    try:
+        return "ares-webui-tests" in Path(raw).expanduser().parts
+    except (TypeError, ValueError):
+        return False
 
 
 def _expanduser_path(path: str | Path) -> Path:
@@ -89,7 +102,7 @@ def _expanduser_path(path: str | Path) -> Path:
         if raw.startswith('~/') or raw.startswith('~\\'):
             return Path(home) / raw[2:]
         # NOTE: ``~user`` / ``~root`` forms are intentionally NOT expanded here.
-        # Master deliberately does not block ``/root`` (#510/#521 — Hermes commonly
+        # Master deliberately does not block ``/root`` (#510/#521 — Ares commonly
         # runs as root, where ``/root`` is the legitimate home and is allowed via
         # the home carve-out). Expanding ``~root`` -> ``/root`` for a NON-root
         # deployment would let it register root's home; leaving the literal form
@@ -197,7 +210,7 @@ def _profile_default_workspace() -> str:
     Checks keys in priority order:
       1. 'workspace'         — explicit webui workspace key
       2. 'default_workspace' — alternate explicit key
-      3. 'terminal.cwd'      — hermes-agent terminal working dir (most common)
+      3. 'terminal.cwd'      — ares-agent terminal working dir (most common)
 
     For remote/SSH terminal profiles, ``terminal.cwd`` lives on the target
     machine, not on the WebUI server. In that case return it without a
@@ -246,12 +259,12 @@ def _clean_workspace_list(workspaces: list) -> list:
     - Preserve saved paths even when they are currently missing or inaccessible;
       picker state must not be destroyed by a transient stat/permission failure.
     - Remove entries whose paths live inside another profile's directory
-      (e.g. ~/.hermes/profiles/X/... should not appear on a different profile).
+      (e.g. ~/.ares/profiles/X/... should not appear on a different profile).
     - Rename any entry whose name is literally 'default' to 'Home' (avoids
       confusion with the 'default' profile name).
     Returns the cleaned list (may be empty).
     """
-    hermes_profiles = (_home_path() / '.hermes' / 'profiles').resolve()
+    ares_profiles = (_home_path() / '.ares' / 'profiles').resolve()
     result = []
     for w in workspaces:
         path = w.get('path', '')
@@ -261,13 +274,13 @@ def _clean_workspace_list(workspaces: list) -> list:
         p = _safe_resolve(_expanduser_path(path))
         # Skip paths inside a DIFFERENT profile's directory (cross-profile leak).
         # Allow paths inside the CURRENT profile's own directory (e.g. test workspaces
-        # created under ~/.hermes/profiles/webui/webui-mvp-test/).
+        # created under ~/.ares/profiles/webui/webui-mvp-test/).
         try:
-            p.relative_to(hermes_profiles)
-            # p is under ~/.hermes/profiles/ — only skip if it's under a DIFFERENT profile
+            p.relative_to(ares_profiles)
+            # p is under ~/.ares/profiles/ — only skip if it's under a DIFFERENT profile
             try:
-                from api.profiles import get_active_hermes_home
-                own_profile_dir = get_active_hermes_home().resolve()
+                from api.profiles import get_active_ares_home
+                own_profile_dir = get_active_ares_home().resolve()
                 p.relative_to(own_profile_dir)
                 # p is under our own profile dir — keep it
             except (ValueError, Exception):
@@ -303,7 +316,7 @@ def _workspace_access_error(candidate: Path, *, missing_label: str = "Path does 
         return (
             f"Cannot access path: {candidate}. The server process could not inspect "
             f"this directory ({exc}). On macOS, grant Full Disk Access or Files and "
-            f"Folders permission to the Hermes/WebUI app or server process, then try again."
+            f"Folders permission to the Ares/WebUI app or server process, then try again."
         )
     except OSError as exc:
         return f"Cannot access path: {candidate}. The server process could not inspect this path ({exc})."
@@ -393,6 +406,8 @@ def get_profile_default_workspace() -> str:
     def _valid(raw: str) -> str | None:
         if not raw:
             return None
+        if _is_leaked_test_workspace(raw):
+            return None
         if remote_cwd:
             if _remote_terminal_workspace_candidate(raw) is not None:
                 return raw
@@ -417,6 +432,8 @@ def get_last_workspace() -> str:
 
     def valid_last_workspace(raw: str) -> str | None:
         if not raw:
+            return None
+        if _is_leaked_test_workspace(raw):
             return None
         if remote_cwd:
             # For remote/SSH profiles, last_workspace is target-side state. Do
@@ -450,6 +467,8 @@ def get_last_workspace() -> str:
 
 def set_last_workspace(path: str) -> None:
     try:
+        if _is_leaked_test_workspace(path):
+            return
         lw_file = _last_workspace_file()
         lw_file.parent.mkdir(parents=True, exist_ok=True)
         lw_file.write_text(str(path), encoding='utf-8')
@@ -861,7 +880,7 @@ def resolve_trusted_workspace(path: str | Path | None = None) -> Path:
         pass
 
     # (C) Trusted if it is equal to or under the boot-time DEFAULT_WORKSPACE.
-    #     In Docker deployments HERMES_WEBUI_DEFAULT_WORKSPACE is often set to a
+    #     In Docker deployments ARES_WEBUI_DEFAULT_WORKSPACE is often set to a
     #     volume mount outside the user's home (e.g. /data/workspace).  That path
     #     was already validated at server startup, so any sub-path of it is safe
     #     without requiring the user to add it to the workspace list manually.

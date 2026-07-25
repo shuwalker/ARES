@@ -1,6 +1,6 @@
 """Regression coverage for #4465 built-in personality visibility.
 
-Hermes Agent CLI ships built-in personalities from its CLI config loader. WebUI
+Ares Agent CLI ships built-in personalities from its CLI config loader. WebUI
 should expose the same defaults through config-derived personality paths so a
 fresh profile is not empty.
 """
@@ -33,7 +33,7 @@ def test_config_defaults_seed_agent_builtin_personalities_for_fresh_profile():
 
     personalities = cfg["agent"]["personalities"]
     assert set(personalities) == BUILTIN_NAMES
-    assert personalities["helpful"] == "You are a helpful, friendly AI assistant."
+    assert personalities["helpful"] == "You are a helpful, friendly companion. Assist the user with their requests accurately and thoroughly."
     assert "desu~!" in personalities["kawaii"]
     assert "William Shakespeare" in personalities["shakespeare"]
     assert personalities["hype"].startswith("YOOO LET'S GOOOO!!!")
@@ -77,7 +77,7 @@ def test_profile_home_config_read_hydrates_builtin_personalities_without_writing
 
     personalities = cfg["agent"]["personalities"]
     assert set(personalities) == BUILTIN_NAMES
-    assert personalities["helpful"] == "You are a helpful, friendly AI assistant."
+    assert personalities["helpful"] == "You are a helpful, friendly companion. Assist the user with their requests accurately and thoroughly."
     assert not (profile_home / "config.yaml").exists()
 
 

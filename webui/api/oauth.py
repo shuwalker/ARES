@@ -2,7 +2,7 @@
 
 The browser receives only WebUI-local flow metadata (flow_id, user_code,
 verification_uri, high-level status). Provider device/auth codes and OAuth
-tokens stay server-side and are persisted to the active Hermes profile's
+tokens stay server-side and are persisted to the active Ares profile's
 ``auth.json`` credential_pool.
 """
 
@@ -25,7 +25,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Compatibility for older helper tests and self-heal code that import these.
-AUTH_JSON_PATH = Path.home() / ".hermes" / "auth.json"
+AUTH_JSON_PATH = Path.home() / ".ares" / "auth.json"
 
 CODEX_ISSUER = "https://auth.openai.com"
 CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -61,14 +61,14 @@ _OAUTH_START_LOCKS_LOCK = threading.Lock()
 _ANTHROPIC_ENV_KEYS = ("ANTHROPIC_TOKEN", "ANTHROPIC_API_KEY")
 
 
-def _oauth_start_key(provider: str, hermes_home: Path) -> tuple[str, str]:
+def _oauth_start_key(provider: str, ares_home: Path) -> tuple[str, str]:
     """Return the canonical single-flight key for onboarding OAuth starts."""
-    return (_normalize_onboarding_oauth_provider(provider), str(Path(hermes_home)))
+    return (_normalize_onboarding_oauth_provider(provider), str(Path(ares_home)))
 
 
-def _oauth_start_lock(provider: str, hermes_home: Path) -> threading.Lock:
+def _oauth_start_lock(provider: str, ares_home: Path) -> threading.Lock:
     """Return the per provider/profile lock that serializes OAuth flow creation."""
-    key = _oauth_start_key(provider, hermes_home)
+    key = _oauth_start_key(provider, ares_home)
     with _OAUTH_START_LOCKS_LOCK:
         lock = _OAUTH_START_LOCKS.get(key)
         if lock is None:
@@ -77,7 +77,7 @@ def _oauth_start_lock(provider: str, hermes_home: Path) -> threading.Lock:
         return lock
 
 
-def _pending_oauth_flow_for_locked(provider: str, hermes_home: Path) -> tuple[str, dict[str, Any]] | None:
+def _pending_oauth_flow_for_locked(provider: str, ares_home: Path) -> tuple[str, dict[str, Any]] | None:
     """Return an existing live onboarding OAuth flow for the provider/profile.
 
     Onboarding OAuth starts are unauthenticated while first-run auth is disabled.
@@ -88,12 +88,12 @@ def _pending_oauth_flow_for_locked(provider: str, hermes_home: Path) -> tuple[st
     with flow insertion on start paths.
     """
     canonical_provider = _normalize_onboarding_oauth_provider(provider)
-    canonical_home = str(Path(hermes_home))
+    canonical_home = str(Path(ares_home))
     now = time.time()
     for flow_id, flow in _OAUTH_FLOWS.items():
         if flow.get("provider") != canonical_provider:
             continue
-        if str(flow.get("hermes_home") or "") != canonical_home:
+        if str(flow.get("ares_home") or "") != canonical_home:
             continue
         if flow.get("status") != "pending":
             continue
@@ -106,10 +106,10 @@ def _pending_oauth_flow_for_locked(provider: str, hermes_home: Path) -> tuple[st
     return None
 
 
-def _pending_oauth_flow_for(provider: str, hermes_home: Path) -> tuple[str, dict[str, Any]] | None:
+def _pending_oauth_flow_for(provider: str, ares_home: Path) -> tuple[str, dict[str, Any]] | None:
     """Return an existing live onboarding OAuth flow for the provider/profile, if any."""
     with _OAUTH_FLOWS_LOCK:
-        return _pending_oauth_flow_for_locked(provider, hermes_home)
+        return _pending_oauth_flow_for_locked(provider, ares_home)
 
 
 def _clear_process_anthropic_env_values() -> None:
@@ -143,22 +143,22 @@ def _normalize_onboarding_oauth_provider(provider: str) -> str:
     return provider or "openai-codex"
 
 
-def _get_active_hermes_home() -> Path:
-    """Return the active Hermes profile home directory, falling back to ~/.hermes when profile resolution fails."""
+def _get_active_ares_home() -> Path:
+    """Return the active Ares profile home directory, falling back to ~/.ares when profile resolution fails."""
     try:
-        from api.profiles import get_active_hermes_home
+        from api.profiles import get_active_ares_home
 
-        return Path(get_active_hermes_home())
+        return Path(get_active_ares_home())
     except Exception as exc:
         # Per Opus advisor on stage-296: log the silent fallback so a corrupt
-        # profile state ending up writing tokens to ~/.hermes (instead of the
+        # profile state ending up writing tokens to ~/.ares (instead of the
         # active profile) is observable in logs rather than failing silently.
         logger.warning(
-            "Falling back to ~/.hermes for OAuth credential storage: "
+            "Falling back to ~/.ares for OAuth credential storage: "
             "active-profile resolution failed: %s",
             exc,
         )
-        return Path.home() / ".hermes"
+        return Path.home() / ".ares"
 
 
 # ── legacy auth.json helpers ────────────────────────────────────────────────
@@ -218,14 +218,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _persist_codex_credentials(hermes_home: Path, token_data: dict[str, Any]) -> Path:
+def _persist_codex_credentials(ares_home: Path, token_data: dict[str, Any]) -> Path:
     """Persist Codex OAuth credentials to active-profile auth.json."""
     access_token = str(token_data.get("access_token") or "").strip()
     refresh_token = str(token_data.get("refresh_token") or "").strip()
     if not access_token:
         raise RuntimeError("Codex token exchange did not return an access_token")
 
-    auth_path = Path(hermes_home) / "auth.json"
+    auth_path = Path(ares_home) / "auth.json"
     auth = _read_auth_json(auth_path)
     auth.setdefault("version", 1)
     pool = auth.setdefault("credential_pool", {})
@@ -290,7 +290,7 @@ def _persist_codex_credentials(hermes_home: Path, token_data: dict[str, Any]) ->
 # Backward-compatible wrapper used by older code/tests.
 def _save_codex_credentials(token_data):
     """Backward-compatible wrapper: persist Codex OAuth tokens to the active-profile auth.json."""
-    return _persist_codex_credentials(_get_active_hermes_home(), token_data)
+    return _persist_codex_credentials(_get_active_ares_home(), token_data)
 
 
 # ── Anthropic / Claude Code credential linking ─────────────────────────────
@@ -317,7 +317,7 @@ def _read_claude_code_credentials() -> dict[str, Any] | None:
     return None
 
 
-def _clear_anthropic_env_values(hermes_home: Path) -> None:
+def _clear_anthropic_env_values(ares_home: Path) -> None:
     """Clear Anthropic API/setup-token env values in the active profile only.
 
     The .env write path already clears os.environ while holding the streaming
@@ -328,7 +328,7 @@ def _clear_anthropic_env_values(hermes_home: Path) -> None:
         from api.providers import _write_env_file
 
         _write_env_file(
-            Path(hermes_home) / ".env",
+            Path(ares_home) / ".env",
             {key: None for key in _ANTHROPIC_ENV_KEYS},
         )
     except Exception as exc:
@@ -336,10 +336,10 @@ def _clear_anthropic_env_values(hermes_home: Path) -> None:
     _clear_process_anthropic_env_values()
 
 
-def _link_anthropic_credentials(hermes_home: Path) -> None:
-    """Link Hermes to use Claude Code's credential store.
+def _link_anthropic_credentials(ares_home: Path) -> None:
+    """Link Ares to use Claude Code's credential store.
 
-    Clears ANTHROPIC_TOKEN and ANTHROPIC_API_KEY from the Hermes .env so
+    Clears ANTHROPIC_TOKEN and ANTHROPIC_API_KEY from the Ares .env so
     that resolve_anthropic_token() falls through to reading Claude Code's
     ~/.claude/.credentials.json directly — the same thing the CLI's
     ``use_anthropic_claude_code_credentials()`` does.
@@ -348,10 +348,10 @@ def _link_anthropic_credentials(hermes_home: Path) -> None:
     ``_provider_oauth_authenticated("anthropic", ...)`` can detect the
     linked state without touching the actual credential files.
     """
-    _clear_anthropic_env_values(hermes_home)
+    _clear_anthropic_env_values(ares_home)
 
     # Write a pool marker (no secrets) so onboarding status can detect linkage.
-    auth_path = Path(hermes_home) / "auth.json"
+    auth_path = Path(ares_home) / "auth.json"
     auth = _read_auth_json(auth_path)
     auth.setdefault("version", 1)
     pool = auth.setdefault("credential_pool", {})
@@ -470,8 +470,8 @@ def _run_anthropic_credential_worker(flow_id: str) -> None:
                 if not current or current.get("status") != "pending":
                     return
 
-            hermes_home = Path(flow["hermes_home"])
-            _link_anthropic_credentials(hermes_home)
+            ares_home = Path(flow["ares_home"])
+            _link_anthropic_credentials(ares_home)
             with _OAUTH_FLOWS_LOCK:
                 current = _OAUTH_FLOWS.get(flow_id)
                 if not current or current.get("status") != "pending":
@@ -482,7 +482,7 @@ def _run_anthropic_credential_worker(flow_id: str) -> None:
                     _drop_sensitive_flow_fields(current)
                     cancelled = False
             if cancelled:
-                _remove_anthropic_link_marker(hermes_home)
+                _remove_anthropic_link_marker(ares_home)
             return
         except Exception as exc:
             logger.warning("Anthropic credential polling failed: %s", exc)
@@ -496,9 +496,9 @@ def _run_anthropic_credential_worker(flow_id: str) -> None:
             return
 
 
-def _remove_anthropic_link_marker(hermes_home: Path) -> None:
+def _remove_anthropic_link_marker(ares_home: Path) -> None:
     """Remove the secret-free Claude Code linked marker after a cancelled race."""
-    auth_path = Path(hermes_home) / "auth.json"
+    auth_path = Path(ares_home) / "auth.json"
     auth = _read_auth_json(auth_path)
     pool = auth.get("credential_pool")
     if not isinstance(pool, dict):
@@ -703,7 +703,7 @@ def _run_codex_oauth_worker(flow_id: str) -> None:
                 current = _OAUTH_FLOWS.get(flow_id)
                 if not current or current.get("status") != "pending":
                     return
-            _persist_codex_credentials(Path(live["hermes_home"]), tokens)
+            _persist_codex_credentials(Path(live["ares_home"]), tokens)
             _set_flow_status(flow_id, "success")
             return
         except Exception as exc:
@@ -712,18 +712,18 @@ def _run_codex_oauth_worker(flow_id: str) -> None:
             return
 
 
-def _start_anthropic_flow(hermes_home: Path) -> dict[str, Any]:
+def _start_anthropic_flow(ares_home: Path) -> dict[str, Any]:
     """Start or immediately complete the Anthropic credential-linking flow."""
     creds = _read_claude_code_credentials()
     flow_id = uuid.uuid4().hex
 
     if creds:
         # Credentials already exist — link and return success immediately.
-        _link_anthropic_credentials(hermes_home)
+        _link_anthropic_credentials(ares_home)
         flow = {
             "provider": "anthropic",
             "status": "success",
-            "hermes_home": str(hermes_home),
+            "ares_home": str(ares_home),
             "created_at": time.time(),
             "updated_at": time.time(),
         }
@@ -738,12 +738,12 @@ def _start_anthropic_flow(hermes_home: Path) -> dict[str, Any]:
         "status": "pending",
         "expires_at": expires_at,
         "poll_interval_seconds": ANTHROPIC_CREDENTIAL_POLL_SECONDS,
-        "hermes_home": str(hermes_home),
+        "ares_home": str(ares_home),
         "created_at": time.time(),
         "updated_at": time.time(),
     }
     with _OAUTH_FLOWS_LOCK:
-        existing = _pending_oauth_flow_for_locked("anthropic", hermes_home)
+        existing = _pending_oauth_flow_for_locked("anthropic", ares_home)
         if existing is not None:
             flow_id, flow = existing
             return _public_start_payload(flow_id, flow)
@@ -770,17 +770,17 @@ def start_onboarding_oauth_flow(body: dict[str, Any] | None) -> dict[str, Any]:
 
     # Normalize Claude aliases to canonical "anthropic"
     if provider in _ANTHROPIC_PROVIDER_ALIASES:
-        return _start_anthropic_flow(_get_active_hermes_home())
+        return _start_anthropic_flow(_get_active_ares_home())
 
     # Codex flow
-    hermes_home = _get_active_hermes_home()
+    ares_home = _get_active_ares_home()
     # Serialize check -> device-code request -> flow insertion -> worker spawn
     # for this provider/profile. The global flow lock is still held only for
     # short in-memory checks/inserts, so unrelated polling/status/cleanup paths
     # are not blocked by the slow provider request.
-    with _oauth_start_lock("openai-codex", hermes_home):
+    with _oauth_start_lock("openai-codex", ares_home):
         with _OAUTH_FLOWS_LOCK:
-            existing = _pending_oauth_flow_for_locked("openai-codex", hermes_home)
+            existing = _pending_oauth_flow_for_locked("openai-codex", ares_home)
             if existing is not None:
                 flow_id, flow = existing
                 return _public_start_payload(flow_id, flow)
@@ -806,12 +806,12 @@ def start_onboarding_oauth_flow(body: dict[str, Any] | None) -> dict[str, Any]:
             "user_code": user_code,
             "expires_at": expires_at,
             "poll_interval_seconds": interval,
-            "hermes_home": str(hermes_home),
+            "ares_home": str(ares_home),
             "created_at": time.time(),
             "updated_at": time.time(),
         }
         with _OAUTH_FLOWS_LOCK:
-            existing = _pending_oauth_flow_for_locked("openai-codex", hermes_home)
+            existing = _pending_oauth_flow_for_locked("openai-codex", ares_home)
             if existing is not None:
                 flow_id, flow = existing
                 return _public_start_payload(flow_id, flow)

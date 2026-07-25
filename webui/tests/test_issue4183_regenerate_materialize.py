@@ -1,35 +1,42 @@
-"""Issue #4183: regenerate-title must materialize CLI/TUI sessions from state.db.
+"""Regenerate-title materializes CLI/TUI sessions through the shared boundary."""
 
-The /api/session/title/regenerate endpoint must use _get_or_materialize_session
-so sessions that only exist in state.db (no sidecar JSON) can have their titles
-regenerated instead of returning "Session not found".
-"""
+from __future__ import annotations
 
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-ROUTES_PY = (ROOT / "api" / "routes.py").read_text(encoding="utf-8")
+import pytest
 
 
-def test_regenerate_endpoint_uses_materialize_fallback():
-    start = ROUTES_PY.index('"/api/session/title/regenerate"')
-    end = ROUTES_PY.index('"/api/personality/set"', start)
-    block = ROUTES_PY[start:end]
-    assert "_get_or_materialize_session(sid)" in block, (
-        "regenerate handler must use _get_or_materialize_session to find "
-        "sessions that only exist in state.db (CLI/TUI sessions)"
+def test_regenerate_uses_materialization_boundary(monkeypatch):
+    from api.session_mutations import regenerate_session_title
+
+    calls = []
+    session = type("Session", (), {"session_id": "cli-session"})()
+    monkeypatch.setattr(
+        "api.session_access.get_or_materialize_session",
+        lambda session_id: calls.append(session_id) or session,
     )
-    assert "get_session(sid)" not in block, (
-        "regenerate handler must not use bare get_session — it misses "
-        "CLI/TUI sessions that lack a sidecar JSON file"
+    monkeypatch.setattr(
+        "api.streaming.generate_session_title_for_session",
+        lambda value, prefer_latest=False: ("Generated", "ok", "raw"),
+    )
+    monkeypatch.setattr(
+        "api.session_mutations.persist_generated_session_title",
+        lambda value, title, event_reason: value,
     )
 
+    updated, reason, preview = regenerate_session_title("cli-session")
 
-def test_regenerate_endpoint_catches_permission_error():
-    start = ROUTES_PY.index('"/api/session/title/regenerate"')
-    end = ROUTES_PY.index('"/api/personality/set"', start)
-    block = ROUTES_PY[start:end]
-    assert "except PermissionError:" in block, (
-        "regenerate handler must catch PermissionError from "
-        "_get_or_materialize_session for read-only imported sessions"
-    )
+    assert updated is session
+    assert calls == ["cli-session"]
+    assert (reason, preview) == ("ok", "raw")
+
+
+def test_regenerate_propagates_read_only_materialization_error(monkeypatch):
+    from api.session_mutations import regenerate_session_title
+
+    def reject(_session_id):
+        raise PermissionError("read-only imported session")
+
+    monkeypatch.setattr("api.session_access.get_or_materialize_session", reject)
+
+    with pytest.raises(PermissionError, match="read-only"):
+        regenerate_session_title("imported-session")

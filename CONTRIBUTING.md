@@ -4,13 +4,13 @@ Thank you for your interest in contributing to ARES.
 
 ## Code of conduct
 
-Be respectful, direct, and focused on building a high-quality open-source UI/control layer for Hermes Agent, JROS, and the larger ARES companion roadmap.
+Be respectful, direct, and focused on building a high-quality open-source UI/control layer for Ares Agent, JROS, and the larger ARES companion roadmap.
 
 ## Licensing
 
 ARES is licensed under AGPL-3.0 with a commercial dual-license option. See `LICENSE` and `COMMERCIAL-LICENSE.md`.
 
-ARES also contains upstream Hermes WebUI code under `webui/`; that component preserves its original MIT notice in `webui/LICENSE`. Do not remove upstream copyright or license notices.
+ARES also contains upstream Ares WebUI code under `webui/`; that component preserves its original MIT notice in `webui/LICENSE`. Do not remove upstream copyright or license notices.
 
 By contributing to ARES, you agree that your contribution is compatible with the repository's AGPL distribution model.
 
@@ -41,11 +41,11 @@ By contributing to ARES, you agree that your contribution is compatible with the
 - New user-facing setup behavior must be real and verified.
 - New API endpoints must include authentication and owner-scope checks.
 - Preserve hot-reload behavior (`ARES_WEBUI_RELOAD=1`).
-- Do not modify Hermes Agent source code under `~/.hermes/hermes-agent/`.
+- Do not modify Ares Agent source code under `~/.ares/ares-agent/`.
 
 ## Public privacy boundary
 
-Never commit Matthew-specific private runtime values: real paths, IPs, hostnames, tailnet names, hardware assumptions, tokens, API keys, cookies, `.hermes`, `.ares/config`, or SOUL.md.
+Never commit Matthew-specific private runtime values: real paths, IPs, hostnames, tailnet names, hardware assumptions, tokens, API keys, cookies, `.ares`, `.ares/config`, or SOUL.md.
 
 Use placeholders, detected values, or user-selected paths.
 

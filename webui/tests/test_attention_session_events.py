@@ -41,27 +41,26 @@ def test_clarify_pending_and_resolved_publish_session_list_changed(monkeypatch):
 
 
 def test_approval_pending_and_resolved_publish_session_list_changed(monkeypatch):
-    import api.routes as routes
     import api.route_approvals as route_approvals
 
     events = []
     capture = lambda reason: events.append(reason)
     monkeypatch.setattr(route_approvals, "publish_session_list_changed", capture)
-    monkeypatch.setattr(routes, "publish_session_list_changed", capture)
+    monkeypatch.setattr(route_approvals, "publish_session_list_changed", capture)
     sid = "test-attention-approval"
 
-    with routes._lock:
-        routes._pending.pop(sid, None)
-        routes._gateway_queues.pop(sid, None)
+    with route_approvals._lock:
+        route_approvals._pending.pop(sid, None)
+        route_approvals._gateway_queues.pop(sid, None)
 
     try:
-        routes.submit_pending(sid, {"command": "echo ok", "pattern_key": "test-key"})
+        route_approvals.submit_pending(sid, {"command": "echo ok", "pattern_key": "test-key"})
         assert events == ["attention_pending"]
 
-        ok = routes._resolve_approval_legacy(sid, "", "deny")
+        ok = route_approvals.resolve_approval_legacy(sid, "", "deny")
         assert ok is True
         assert events == ["attention_pending", "attention_resolved"]
     finally:
-        with routes._lock:
-            routes._pending.pop(sid, None)
-            routes._gateway_queues.pop(sid, None)
+        with route_approvals._lock:
+            route_approvals._pending.pop(sid, None)
+            route_approvals._gateway_queues.pop(sid, None)

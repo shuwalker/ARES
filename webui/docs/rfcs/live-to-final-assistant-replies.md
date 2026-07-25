@@ -1,9 +1,9 @@
 # Live-to-Final Assistant Replies for Long-Running Agent Sessions
 
-- **Status:** Accepted (parent contract; implementation tracked in [#3400](https://github.com/nesquena/hermes-webui/issues/3400))
+- **Status:** Accepted (parent contract; implementation tracked in [#3400](https://github.com/nesquena/ares-webui/issues/3400))
 - **Author:** @franksong2702
 - **Created:** 2026-06-03
-- **Tracking issue:** [#3400](https://github.com/nesquena/hermes-webui/issues/3400)
+- **Tracking issue:** [#3400](https://github.com/nesquena/ares-webui/issues/3400)
 
 ## Background: Long-Running Sessions Are The Anchor
 
@@ -34,7 +34,7 @@ supporting activity, terminal outcome, and final answer.
 
 ## Product Problem
 
-Hermes WebUI currently uses one chat surface to represent several different
+Ares WebUI currently uses one chat surface to represent several different
 meanings:
 
 - the assistant's live process text while work is still running,
@@ -76,8 +76,8 @@ RFCs should preserve.
   from the reply lifecycle.
 - The full command semantics for Queue, Steer, Stop-and-send, and Interrupt.
   Those belong to the pending-intent control-surface contract tracked by
-  [#3058](https://github.com/nesquena/hermes-webui/issues/3058) and
-  [#3061](https://github.com/nesquena/hermes-webui/pull/3061).
+  [#3058](https://github.com/nesquena/ares-webui/issues/3058) and
+  [#3061](https://github.com/nesquena/ares-webui/pull/3061).
 
 ## Public Inventory
 
@@ -85,20 +85,20 @@ This inventory groups representative public issues and PRs by the
 long-running-session concern they expose. It is not a claim that every linked
 item is solved by this RFC. The classification column records durable scope,
 not current open/merged/superseded state: for live status, the tracking issue
-[#3400](https://github.com/nesquena/hermes-webui/issues/3400) is authoritative.
+[#3400](https://github.com/nesquena/ares-webui/issues/3400) is authoritative.
 
 | Concern | Representative signals | Current classification |
 | --- | --- | --- |
-| Live work vs final answer boundary | [#536](https://github.com/nesquena/hermes-webui/issues/536), [#3400](https://github.com/nesquena/hermes-webui/issues/3400), [#3464](https://github.com/nesquena/hermes-webui/pull/3464) | Main product scope. #3464 landed the first RFC; this document is the parent contract for follow-up slices. |
-| First live-to-final reply implementation | [#3401](https://github.com/nesquena/hermes-webui/pull/3401), [#3014](https://github.com/nesquena/hermes-webui/issues/3014), [#3015](https://github.com/nesquena/hermes-webui/pull/3015) | First implementation slice. It should keep using `Refs #3400`; it does not close the umbrella. |
-| Auto Compression visibility and context pressure | [#469](https://github.com/nesquena/hermes-webui/issues/469), [#2973](https://github.com/nesquena/hermes-webui/issues/2973), [#3079](https://github.com/nesquena/hermes-webui/issues/3079), [#3315](https://github.com/nesquena/hermes-webui/issues/3315), [#3316](https://github.com/nesquena/hermes-webui/pull/3316) | Supporting edge case. Running compression is live lifecycle status; compression-exhausted/no-final finalization is a terminal-state follow-up. |
-| Replay, reconnect, session switch, and reattach | [#2283](https://github.com/nesquena/hermes-webui/pull/2283), [#2924](https://github.com/nesquena/hermes-webui/issues/2924), [#3391](https://github.com/nesquena/hermes-webui/pull/3391) | Supporting recovery infrastructure. The product requirement is same lifecycle after replay, or an explicit degraded/restoring state. |
-| Tool, activity, thinking, and visible progress | [#1298](https://github.com/nesquena/hermes-webui/issues/1298), [#3014](https://github.com/nesquena/hermes-webui/issues/3014), [#3015](https://github.com/nesquena/hermes-webui/pull/3015) | Main reply-rendering concern. Process prose stays primary; tool/reasoning/debug detail stays supporting. |
-| No-final and terminal failure outcomes | [#3315](https://github.com/nesquena/hermes-webui/issues/3315), [#3316](https://github.com/nesquena/hermes-webui/pull/3316) | Confirmed follow-up / active PR scope. A tool-tail or compression-exhausted run must not settle as normal completion without a real final answer. |
-| Cancellation and stream ownership | [#3344](https://github.com/nesquena/hermes-webui/issues/3344), [#3345](https://github.com/nesquena/hermes-webui/pull/3345), [#3475](https://github.com/nesquena/hermes-webui/issues/3475), [#3476](https://github.com/nesquena/hermes-webui/pull/3476) | Supporting cancel/recovery scope. Early-cancel worker reconciliation is addressed by [#3476](https://github.com/nesquena/hermes-webui/pull/3476); frontend cancel owner-guard hardening is the remaining follow-up. |
-| Produced artifacts and output handoff | [#2655](https://github.com/nesquena/hermes-webui/issues/2655), [#2673](https://github.com/nesquena/hermes-webui/pull/2673), [#2881](https://github.com/nesquena/hermes-webui/issues/2881), [#2938](https://github.com/nesquena/hermes-webui/pull/2938), [#3329](https://github.com/nesquena/hermes-webui/pull/3329), [#3348](https://github.com/nesquena/hermes-webui/pull/3348), [#3528](https://github.com/nesquena/hermes-webui/issues/3528) | Supporting session-output concern. Existing Artifacts and `workspace://` surfaces make produced files findable; long-running replay/cancel/terminal paths must not lose the tool metadata needed to recover that handoff. |
-| Sidebar/session ownership and active-session awareness | [#856](https://github.com/nesquena/hermes-webui/issues/856), [#1370](https://github.com/nesquena/hermes-webui/pull/1370), [#1436](https://github.com/nesquena/hermes-webui/issues/1436) | Confirmed follow-up scope when sidebar/session metadata contradicts the visible active turn. |
-| User intervention during live work | [#720](https://github.com/nesquena/hermes-webui/issues/720), [#965](https://github.com/nesquena/hermes-webui/pull/965), [#1062](https://github.com/nesquena/hermes-webui/pull/1062), [#3058](https://github.com/nesquena/hermes-webui/issues/3058), [#3061](https://github.com/nesquena/hermes-webui/pull/3061) | Child RFC scope. This parent RFC only requires that controls preserve ownership, replay, and terminal honesty. |
+| Live work vs final answer boundary | [#536](https://github.com/nesquena/ares-webui/issues/536), [#3400](https://github.com/nesquena/ares-webui/issues/3400), [#3464](https://github.com/nesquena/ares-webui/pull/3464) | Main product scope. #3464 landed the first RFC; this document is the parent contract for follow-up slices. |
+| First live-to-final reply implementation | [#3401](https://github.com/nesquena/ares-webui/pull/3401), [#3014](https://github.com/nesquena/ares-webui/issues/3014), [#3015](https://github.com/nesquena/ares-webui/pull/3015) | First implementation slice. It should keep using `Refs #3400`; it does not close the umbrella. |
+| Auto Compression visibility and context pressure | [#469](https://github.com/nesquena/ares-webui/issues/469), [#2973](https://github.com/nesquena/ares-webui/issues/2973), [#3079](https://github.com/nesquena/ares-webui/issues/3079), [#3315](https://github.com/nesquena/ares-webui/issues/3315), [#3316](https://github.com/nesquena/ares-webui/pull/3316) | Supporting edge case. Running compression is live lifecycle status; compression-exhausted/no-final finalization is a terminal-state follow-up. |
+| Replay, reconnect, session switch, and reattach | [#2283](https://github.com/nesquena/ares-webui/pull/2283), [#2924](https://github.com/nesquena/ares-webui/issues/2924), [#3391](https://github.com/nesquena/ares-webui/pull/3391) | Supporting recovery infrastructure. The product requirement is same lifecycle after replay, or an explicit degraded/restoring state. |
+| Tool, activity, thinking, and visible progress | [#1298](https://github.com/nesquena/ares-webui/issues/1298), [#3014](https://github.com/nesquena/ares-webui/issues/3014), [#3015](https://github.com/nesquena/ares-webui/pull/3015) | Main reply-rendering concern. Process prose stays primary; tool/reasoning/debug detail stays supporting. |
+| No-final and terminal failure outcomes | [#3315](https://github.com/nesquena/ares-webui/issues/3315), [#3316](https://github.com/nesquena/ares-webui/pull/3316) | Confirmed follow-up / active PR scope. A tool-tail or compression-exhausted run must not settle as normal completion without a real final answer. |
+| Cancellation and stream ownership | [#3344](https://github.com/nesquena/ares-webui/issues/3344), [#3345](https://github.com/nesquena/ares-webui/pull/3345), [#3475](https://github.com/nesquena/ares-webui/issues/3475), [#3476](https://github.com/nesquena/ares-webui/pull/3476) | Supporting cancel/recovery scope. Early-cancel worker reconciliation is addressed by [#3476](https://github.com/nesquena/ares-webui/pull/3476); frontend cancel owner-guard hardening is the remaining follow-up. |
+| Produced artifacts and output handoff | [#2655](https://github.com/nesquena/ares-webui/issues/2655), [#2673](https://github.com/nesquena/ares-webui/pull/2673), [#2881](https://github.com/nesquena/ares-webui/issues/2881), [#2938](https://github.com/nesquena/ares-webui/pull/2938), [#3329](https://github.com/nesquena/ares-webui/pull/3329), [#3348](https://github.com/nesquena/ares-webui/pull/3348), [#3528](https://github.com/nesquena/ares-webui/issues/3528) | Supporting session-output concern. Existing Artifacts and `workspace://` surfaces make produced files findable; long-running replay/cancel/terminal paths must not lose the tool metadata needed to recover that handoff. |
+| Sidebar/session ownership and active-session awareness | [#856](https://github.com/nesquena/ares-webui/issues/856), [#1370](https://github.com/nesquena/ares-webui/pull/1370), [#1436](https://github.com/nesquena/ares-webui/issues/1436) | Confirmed follow-up scope when sidebar/session metadata contradicts the visible active turn. |
+| User intervention during live work | [#720](https://github.com/nesquena/ares-webui/issues/720), [#965](https://github.com/nesquena/ares-webui/pull/965), [#1062](https://github.com/nesquena/ares-webui/pull/1062), [#3058](https://github.com/nesquena/ares-webui/issues/3058), [#3061](https://github.com/nesquena/ares-webui/pull/3061) | Child RFC scope. This parent RFC only requires that controls preserve ownership, replay, and terminal honesty. |
 
 ## Product Model
 
@@ -278,8 +278,8 @@ Confirmed follow-up scope:
 - Add or standardize an explicit per-pass compression completion event if the
   UI otherwise has to infer completion from later stream events.
 - Keep compression-exhausted/no-final handling aligned with
-  [#3315](https://github.com/nesquena/hermes-webui/issues/3315) and
-  [#3316](https://github.com/nesquena/hermes-webui/pull/3316).
+  [#3315](https://github.com/nesquena/ares-webui/issues/3315) and
+  [#3316](https://github.com/nesquena/ares-webui/pull/3316).
 
 ### Tool-call, retry, and iteration ceilings
 
@@ -295,7 +295,7 @@ Expected behavior:
 - Internal continuation or control prompts used by the runtime must not persist
   as ordinary user-authored transcript content.
 - The product state should not depend on whether the limit came from provider
-  policy, Hermes Agent iteration budget, or WebUI adapter/runtime policy.
+  policy, Ares Agent iteration budget, or WebUI adapter/runtime policy.
 
 ### No-final answer and provider failure
 
@@ -331,11 +331,11 @@ Expected behavior:
 Classification:
 
 - The early startup cancel race tracked by
-  [#3475](https://github.com/nesquena/hermes-webui/issues/3475) is addressed by
-  [#3476](https://github.com/nesquena/hermes-webui/pull/3476).
+  [#3475](https://github.com/nesquena/ares-webui/issues/3475) is addressed by
+  [#3476](https://github.com/nesquena/ares-webui/pull/3476).
 - The owner-aware browser cancel cleanup tracked by
-  [#3344](https://github.com/nesquena/hermes-webui/issues/3344) and
-  [#3345](https://github.com/nesquena/hermes-webui/pull/3345) remains a
+  [#3344](https://github.com/nesquena/ares-webui/issues/3344) and
+  [#3345](https://github.com/nesquena/ares-webui/pull/3345) remains a
   focused follow-up.
 
 ### Reconnect and session switch
@@ -414,13 +414,13 @@ Expected behavior:
 Confirmed follow-up scope:
 
 - Keep artifact recoverability aligned with the session-scoped Artifacts tab
-  work in [#2655](https://github.com/nesquena/hermes-webui/issues/2655) and
-  [#2673](https://github.com/nesquena/hermes-webui/pull/2673).
+  work in [#2655](https://github.com/nesquena/ares-webui/issues/2655) and
+  [#2673](https://github.com/nesquena/ares-webui/pull/2673).
 - Keep final-answer artifact links aligned with the `workspace://` preview
-  path from [#2881](https://github.com/nesquena/hermes-webui/issues/2881) and
-  [#2938](https://github.com/nesquena/hermes-webui/pull/2938).
+  path from [#2881](https://github.com/nesquena/ares-webui/issues/2881) and
+  [#2938](https://github.com/nesquena/ares-webui/pull/2938).
 - Treat interrupted/cancelled tool-history loss, such as
-  [#3528](https://github.com/nesquena/hermes-webui/issues/3528), as a
+  [#3528](https://github.com/nesquena/ares-webui/issues/3528), as a
   live-to-final recoverability bug when it prevents artifact reconstruction.
 
 ### Sidebar and session ownership
@@ -453,8 +453,8 @@ Expected behavior:
   terminal outcomes, and replayable state.
 
 The current child contract is tracked by
-[#3058](https://github.com/nesquena/hermes-webui/issues/3058) and
-[#3061](https://github.com/nesquena/hermes-webui/pull/3061). That child RFC
+[#3058](https://github.com/nesquena/ares-webui/issues/3058) and
+[#3061](https://github.com/nesquena/ares-webui/pull/3061). That child RFC
 should own questions such as:
 
 - whether Queue is browser-backed or server-backed in each slice,
@@ -467,19 +467,19 @@ should own questions such as:
 
 Use this map to keep implementation PRs and child RFCs scoped. The "vehicle"
 column names a durable track, not live merge state; the tracking issue
-[#3400](https://github.com/nesquena/hermes-webui/issues/3400) is authoritative
+[#3400](https://github.com/nesquena/ares-webui/issues/3400) is authoritative
 for current open/merged/superseded status.
 
 | Track | Scope | Current vehicle |
 | --- | --- | --- |
-| Parent product RFC | Define the long-running live-to-final assistant reply lifecycle and review checklist. | This RFC; tracking issue [#3400](https://github.com/nesquena/hermes-webui/issues/3400). |
-| First reply lifecycle implementation | Live process prose, quiet tool activity, settled activity summary above final answer, replay/reattach consistency, live-only compression status, supporting stream ownership fixes. | [#3401](https://github.com/nesquena/hermes-webui/pull/3401). |
-| Terminal/no-final stabilization | Compression exhausted, tool-tail/no-final transcript shape, context-compaction marker suppression, terminal error routing. | [#3315](https://github.com/nesquena/hermes-webui/issues/3315), [#3316](https://github.com/nesquena/hermes-webui/pull/3316). |
-| Cancel ownership hardening | Frontend cancel should close its own SSE source and clear only its own busy state. | [#3344](https://github.com/nesquena/hermes-webui/issues/3344), [#3345](https://github.com/nesquena/hermes-webui/pull/3345). |
-| Early-cancel startup race | Backend cancel should still interrupt the worker when the SSE registry detached before startup fully settled. | [#3475](https://github.com/nesquena/hermes-webui/issues/3475), [#3476](https://github.com/nesquena/hermes-webui/pull/3476). |
-| Pending-intent control surface | Queue, Steer, Stop-and-send, Interrupt, delivered/applied/leftover semantics. | [#3058](https://github.com/nesquena/hermes-webui/issues/3058), [#3061](https://github.com/nesquena/hermes-webui/pull/3061). |
+| Parent product RFC | Define the long-running live-to-final assistant reply lifecycle and review checklist. | This RFC; tracking issue [#3400](https://github.com/nesquena/ares-webui/issues/3400). |
+| First reply lifecycle implementation | Live process prose, quiet tool activity, settled activity summary above final answer, replay/reattach consistency, live-only compression status, supporting stream ownership fixes. | [#3401](https://github.com/nesquena/ares-webui/pull/3401). |
+| Terminal/no-final stabilization | Compression exhausted, tool-tail/no-final transcript shape, context-compaction marker suppression, terminal error routing. | [#3315](https://github.com/nesquena/ares-webui/issues/3315), [#3316](https://github.com/nesquena/ares-webui/pull/3316). |
+| Cancel ownership hardening | Frontend cancel should close its own SSE source and clear only its own busy state. | [#3344](https://github.com/nesquena/ares-webui/issues/3344), [#3345](https://github.com/nesquena/ares-webui/pull/3345). |
+| Early-cancel startup race | Backend cancel should still interrupt the worker when the SSE registry detached before startup fully settled. | [#3475](https://github.com/nesquena/ares-webui/issues/3475), [#3476](https://github.com/nesquena/ares-webui/pull/3476). |
+| Pending-intent control surface | Queue, Steer, Stop-and-send, Interrupt, delivered/applied/leftover semantics. | [#3058](https://github.com/nesquena/ares-webui/issues/3058), [#3061](https://github.com/nesquena/ares-webui/pull/3061). |
 | Reattach and replay polish | Slow rebuild degraded state, replay/body timing, native cursor support, same lifecycle through replay. | Follow-up issue/PR or child RFC if protocol semantics expand. |
-| Tool-limit and max-iteration terminal state | Limit reached state, control prompt visibility, no fake final answer. | Follow-up issue/PR; may involve Hermes Agent if the runtime owns the limit signal. |
+| Tool-limit and max-iteration terminal state | Limit reached state, control prompt visibility, no fake final answer. | Follow-up issue/PR; may involve Ares Agent if the runtime owns the limit signal. |
 | Artifact handoff and recoverability | Preserve the link between final/terminal replies and workspace artifacts created or edited during the turn. | Existing Artifacts and `workspace://` surfaces; follow-up issue/PR when replay, cancel, or terminal paths lose artifact metadata. |
 | Sidebar/session ownership | Active/terminal state in session rows, stale spinner repair, session-list disappearance, background terminal feedback. | Follow-up issue/PR under session/runtime contracts. |
 | Very long final answer ergonomics | Optional navigation/outline/preview affordances that preserve the final answer as normal prose. | Open product discussion; no implementation vehicle yet. |
@@ -496,15 +496,15 @@ This RFC sits above the current runtime, recovery, and adapter contracts:
   to one visible session target.
 - [`turn-journal.md`](turn-journal.md) defines crash-safe submitted-turn and
   interrupted-turn recovery semantics.
-- [`hermes-run-adapter-contract.md`](hermes-run-adapter-contract.md) defines
+- [`ares-run-adapter-contract.md`](ares-run-adapter-contract.md) defines
   longer-term event/control ownership and migration gates.
 
 This RFC defines the product meaning those lower-level contracts need to
 preserve for long-running assistant replies.
 
 The pending-intent control-surface RFC tracked by
-[#3058](https://github.com/nesquena/hermes-webui/issues/3058) and
-[#3061](https://github.com/nesquena/hermes-webui/pull/3061) should be treated
+[#3058](https://github.com/nesquena/ares-webui/issues/3058) and
+[#3061](https://github.com/nesquena/ares-webui/pull/3061) should be treated
 as a child contract: it can define user intervention semantics without
 redefining the live-to-final reply lifecycle.
 

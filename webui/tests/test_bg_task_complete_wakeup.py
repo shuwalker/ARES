@@ -29,6 +29,7 @@ The tests below cover the wakeup-emit hot path end to end:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 # The fake process-registry stub + its installer were duplicated verbatim in
 # three bg_task_complete suites; they now live once in tests/_wakeup_helpers.py
@@ -74,6 +75,26 @@ def _capture_emits(monkeypatch):
     # covered exhaustively by tests/test_bg_task_complete_throttle.py).
     monkeypatch.setattr(bp, "_EMIT_COALESCE_WINDOW_SECS", 0.0)
     return emits
+
+
+def _client(monkeypatch):
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import (
+        RequestIdentity,
+        require_identity,
+        require_mutation_identity,
+    )
+
+    app = create_app(frontend_root=Path("/nonexistent-ares-test-dist"))
+    identity = RequestIdentity(session_cookie=None, profile="default", auth_enabled=False)
+    app.dependency_overrides[require_identity] = lambda: identity
+    app.dependency_overrides[require_mutation_identity] = lambda: identity
+    monkeypatch.setattr(
+        "fastapi_app.routers.controls._session",
+        lambda sid, _profile: type("Session", (), {"session_id": sid})(),
+    )
+    return TestClient(app)
 
 
 def test_bg_task_complete_wakeup_emits_canonical_event_with_event_id(monkeypatch):
@@ -174,33 +195,15 @@ class _FakeHandler:
         pass
 
 
-def test_legacy_process_complete_ack_returns_410_gone_with_x_replaced_by():
+def test_legacy_process_complete_ack_returns_410_gone_with_x_replaced_by(monkeypatch):
     """T1 deprecation alias: the old ``/api/process-complete-ack`` POST path
     must return HTTP 410 Gone and an ``X-Replaced-By`` header pointing at
     ``/api/bg-task-complete-ack`` (V-a-final criterion #6 + D-a-fix item #1).
     """
-    import json as _json
-    from urllib.parse import urlparse
-
-    import api.routes as routes
-
-    handler = _FakeHandler()
-    parsed = urlparse("/api/process-complete-ack")
-
-    result = routes.handle_post(handler, parsed)
-
-    assert result is True, "deprecated ack endpoint must claim the request"
-    assert handler.status == 410, (
-        f"expected HTTP 410 Gone for deprecated ack path, got {handler.status}"
-    )
-    assert handler.sent_headers.get("X-Replaced-By") == "/api/bg-task-complete-ack", (
-        f"X-Replaced-By header missing or wrong: {handler.sent_headers}"
-    )
-
-    body = handler.wfile.getvalue()
-    # Body is gzip-wrapped only if Accept-Encoding allowed it; the fake
-    # handler does not set Accept-Encoding so the body is plain JSON.
-    payload = _json.loads(body.decode("utf-8"))
+    response = _client(monkeypatch).post("/api/process-complete-ack", json={})
+    assert response.status_code == 410
+    assert response.headers.get("X-Replaced-By") == "/api/bg-task-complete-ack"
+    payload = response.json()
     assert payload.get("replaced_by") == "/api/bg-task-complete-ack"
     assert "gone" in payload.get("error", "").lower()
 
@@ -209,26 +212,13 @@ def test_bg_task_complete_ack_marks_process_id_alias_deprecated(monkeypatch):
     """The diagnostic ack endpoint keeps ``process_id`` as a transitional
     request alias, but makes that legacy usage visible via ``Deprecation``.
     """
-    import json as _json
-    import types as _types
-
-    import api.routes as routes
-
-    monkeypatch.setattr(
-        routes,
-        "get_session",
-        lambda sid: _types.SimpleNamespace(session_id=sid),
+    response = _client(monkeypatch).post(
+        "/api/bg-task-complete-ack",
+        json={"session_id": "sess-legacy-alias", "process_id": "proc-legacy-1"},
     )
-    handler = _FakeHandler()
-
-    routes._handle_bg_task_complete_ack(
-        handler,
-        {"session_id": "sess-legacy-alias", "process_id": "proc-legacy-1"},
-    )
-
-    assert handler.status == 200
-    assert handler.sent_headers.get("Deprecation") == "true"
-    payload = _json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert response.status_code == 200
+    assert response.headers.get("Deprecation") == "true"
+    payload = response.json()
     assert payload["task_id"] == "proc-legacy-1"
 
 
@@ -236,79 +226,44 @@ def test_bg_task_complete_ack_marks_mixed_process_id_presence_deprecated(monkeyp
     """If a request still includes ``process_id``, surface the transitional
     alias even when the canonical ``task_id`` is also present.
     """
-    import json as _json
-    import types as _types
-
-    import api.routes as routes
-
-    monkeypatch.setattr(
-        routes,
-        "get_session",
-        lambda sid: _types.SimpleNamespace(session_id=sid),
-    )
-    handler = _FakeHandler()
-
-    routes._handle_bg_task_complete_ack(
-        handler,
-        {
+    response = _client(monkeypatch).post(
+        "/api/bg-task-complete-ack",
+        json={
             "session_id": "sess-mixed-alias",
             "task_id": "task-canonical-1",
             "process_id": "proc-legacy-1",
         },
     )
 
-    assert handler.status == 200
-    assert handler.sent_headers.get("Deprecation") == "true"
-    payload = _json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert response.status_code == 200
+    assert response.headers.get("Deprecation") == "true"
+    payload = response.json()
     assert payload["task_id"] == "task-canonical-1"
 
 
 def test_bg_task_complete_ack_canonical_task_id_has_no_deprecation_header(monkeypatch):
     """Canonical ``task_id`` requests should not be marked deprecated."""
-    import types as _types
-
-    import api.routes as routes
-
-    monkeypatch.setattr(
-        routes,
-        "get_session",
-        lambda sid: _types.SimpleNamespace(session_id=sid),
+    response = _client(monkeypatch).post(
+        "/api/bg-task-complete-ack",
+        json={"session_id": "sess-canonical", "task_id": "task-canonical-1"},
     )
-    handler = _FakeHandler()
-
-    routes._handle_bg_task_complete_ack(
-        handler,
-        {"session_id": "sess-canonical", "task_id": "task-canonical-1"},
-    )
-
-    assert handler.status == 200
-    assert "Deprecation" not in handler.sent_headers
+    assert response.status_code == 200
+    assert "Deprecation" not in response.headers
 
 
 def test_bg_task_complete_ack_empty_process_id_alias_has_no_deprecation_header(monkeypatch):
     """An empty transitional alias key should not signal real legacy usage."""
-    import types as _types
-
-    import api.routes as routes
-
-    monkeypatch.setattr(
-        routes,
-        "get_session",
-        lambda sid: _types.SimpleNamespace(session_id=sid),
-    )
-    handler = _FakeHandler()
-
-    routes._handle_bg_task_complete_ack(
-        handler,
-        {
+    response = _client(monkeypatch).post(
+        "/api/bg-task-complete-ack",
+        json={
             "session_id": "sess-canonical-empty-alias",
             "task_id": "task-canonical-1",
             "process_id": "",
         },
     )
 
-    assert handler.status == 200
-    assert "Deprecation" not in handler.sent_headers
+    assert response.status_code == 200
+    assert "Deprecation" not in response.headers
 
 
 def test_old_process_complete_wakeup_test_file_is_absent():

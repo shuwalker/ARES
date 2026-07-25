@@ -3,9 +3,9 @@
 
 Configures and verifies MCP servers for an ARES deployment.
 
-Hermes Agent is the default backend today, but this tool keeps the public
+Ares Agent is the default backend today, but this tool keeps the public
 onboarding language backend-neutral: configure the selected user's backend and
-only use Hermes-specific commands when `--backend hermes` is selected.
+only use Ares-specific commands when `--backend ares` is selected.
 
 Design rule:
 - Hardware/app-bound MCPs run locally on the machine that owns the app/device.
@@ -107,27 +107,27 @@ def have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
-def hermes_set(key: str, value: str) -> tuple[int, str]:
-    return run(["hermes", "config", "set", key, value], timeout=30)
+def ares_set(key: str, value: str) -> tuple[int, str]:
+    return run(["ares", "config", "set", key, value], timeout=30)
 
 
 def backend_missing_hint(backend: str) -> str:
-    if backend == "hermes":
+    if backend == "ares":
         return (
-            "Hermes Agent backend not found. Install it with:\n"
-            "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash\n"
-            "Then run: hermes setup && hermes doctor\n"
-            "Docs: https://hermes-agent.nousresearch.com/docs"
+            "Ares Agent backend not found. Install it with:\n"
+            "curl -fsSL https://raw.githubusercontent.com/NousResearch/ares-agent/main/scripts/install.sh | bash\n"
+            "Then run: ares setup && ares doctor\n"
+            "Docs: https://ares-agent.nousresearch.com/docs"
         )
-    return f"Backend '{backend}' is not configured by this bootstrap yet. Connect an existing backend URL or install Hermes Agent."
+    return f"Backend '{backend}' is not configured by this bootstrap yet. Connect an existing backend URL or install Ares Agent."
 
 
-def configure_local(spec: MCPServerSpec, backend: str = "hermes") -> list[str]:
+def configure_local(spec: MCPServerSpec, backend: str = "ares") -> list[str]:
     logs: list[str] = []
-    if backend != "hermes":
+    if backend != "ares":
         return [backend_missing_hint(backend)]
-    if not have("hermes"):
-        return ["FAIL: " + backend_missing_hint("hermes")]
+    if not have("ares"):
+        return ["FAIL: " + backend_missing_hint("ares")]
     if not spec.command:
         return [f"SKIP: {spec.name} has no local command; configure URL instead"]
 
@@ -136,21 +136,21 @@ def configure_local(spec: MCPServerSpec, backend: str = "hermes") -> list[str]:
         (f"mcp.servers.{spec.name}.args", json.dumps(spec.args)),
     ]
     for k, v in commands:
-        code, out = hermes_set(k, v)
+        code, out = ares_set(k, v)
         logs.append(("OK" if code == 0 else "FAIL") + f": {k} = {v}" + (f"\n{out}" if out else ""))
     for env_key, env_val in spec.env.items():
-        code, out = hermes_set(f"mcp.servers.{spec.name}.env.{env_key}", env_val)
+        code, out = ares_set(f"mcp.servers.{spec.name}.env.{env_key}", env_val)
         logs.append(("OK" if code == 0 else "FAIL") + f": env {env_key} = {env_val}" + (f"\n{out}" if out else ""))
     return logs
 
 
-def configure_remote(name: str, url: str, headers_json: str | None = None, backend: str = "hermes") -> list[str]:
+def configure_remote(name: str, url: str, headers_json: str | None = None, backend: str = "ares") -> list[str]:
     logs: list[str] = []
-    if backend != "hermes":
+    if backend != "ares":
         return [backend_missing_hint(backend), f"Remote MCP URL to add manually: {name} -> {url}"]
-    if not have("hermes"):
-        return ["FAIL: " + backend_missing_hint("hermes")]
-    code, out = hermes_set(f"mcp.servers.{name}.url", url)
+    if not have("ares"):
+        return ["FAIL: " + backend_missing_hint("ares")]
+    code, out = ares_set(f"mcp.servers.{name}.url", url)
     logs.append(("OK" if code == 0 else "FAIL") + f": mcp.servers.{name}.url = {url}" + (f"\n{out}" if out else ""))
     if headers_json:
         try:
@@ -158,7 +158,7 @@ def configure_remote(name: str, url: str, headers_json: str | None = None, backe
         except json.JSONDecodeError as exc:
             return logs + [f"FAIL: invalid headers JSON: {exc}"]
         for k, v in headers.items():
-            code, out = hermes_set(f"mcp.servers.{name}.headers.{k}", str(v))
+            code, out = ares_set(f"mcp.servers.{name}.headers.{k}", str(v))
             logs.append(("OK" if code == 0 else "FAIL") + f": header {k}" + (f"\n{out}" if out else ""))
     return logs
 
@@ -169,15 +169,15 @@ def verify(spec: MCPServerSpec) -> tuple[bool, str]:
         return code == 0, out
     if spec.command and not have(spec.command):
         return False, f"Missing command: {spec.command}. {spec.install_hint}"
-    return True, "Static verification only: command present/configurable. Restart Hermes and run `hermes mcp list` / `hermes mcp test NAME` if available."
+    return True, "Static verification only: command present/configurable. Restart Ares and run `ares mcp list` / `ares mcp test NAME` if available."
 
 
-def print_catalog(backend: str = "hermes") -> None:
+def print_catalog(backend: str = "ares") -> None:
     print("ARES MCP Server Catalog")
     print("=" * 24)
     print(f"Backend: {backend}")
-    if backend == "hermes" and not have("hermes"):
-        print("\n" + backend_missing_hint("hermes"))
+    if backend == "ares" and not have("ares"):
+        print("\n" + backend_missing_hint("ares"))
     for spec in KNOWN_SERVERS.values():
         print(f"\n{spec.name}")
         print(f"  mode: {spec.mode}")
@@ -187,7 +187,7 @@ def print_catalog(backend: str = "hermes") -> None:
         print(f"  remote: {spec.remote_hint}")
 
 
-def print_plan(backend: str = "hermes") -> None:
+def print_plan(backend: str = "ares") -> None:
     print("ARES MCP Deployment Plan")
     print("=" * 24)
     print(f"ARES repo: {ARES_ROOT}")
@@ -205,7 +205,7 @@ def print_plan(backend: str = "hermes") -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Configure and verify ARES MCP servers for the selected backend.")
-    parser.add_argument("--backend", default="hermes", help="Agent backend to configure. Default: hermes. Non-Hermes backends print manual guidance for now.")
+    parser.add_argument("--backend", default="ares", help="Agent backend to configure. Default: ares. Non-Ares backends print manual guidance for now.")
     parser.add_argument("--catalog", action="store_true", help="Print known MCP server catalog")
     parser.add_argument("--plan", action="store_true", help="Print local vs remote/server deployment plan")
     parser.add_argument("--configure-local", choices=sorted(KNOWN_SERVERS), help="Configure a known local MCP server in the selected backend")

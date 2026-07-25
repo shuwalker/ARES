@@ -1,0 +1,8 @@
+name: plugin-llm-example
+version: 1.0.0
+description: "Reference plugin showing host-owned structured LLM access via ctx.llm.complete_structured(). Registers a /receipt-extract slash command that turns a text receipt or image into a structured JSON record using the user's active model and auth — no provider keys in the plugin."
+author: NousResearch
+hooks: []
+provides:
+  commands:
+    - receipt-extract

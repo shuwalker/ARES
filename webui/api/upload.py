@@ -1,6 +1,9 @@
 """
-Hermes Web UI -- File upload: multipart parser and upload handler.
+Ares Web UI -- File upload: multipart parser and upload handler.
 """
+
+from __future__ import annotations
+
 import mimetypes
 import os
 import re as _re
@@ -21,15 +24,23 @@ from api.workspace import (
 )
 
 
+class UploadServiceError(ValueError):
+    """A transport-neutral upload failure with its intended HTTP status."""
+
+    def __init__(self, message: str, status_code: int = 400) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def _max_extracted_bytes() -> int:
     """Total-extracted-bytes cap for archive uploads (zip/tar-bomb guard).
 
     Independently tunable from the upload size cap via
-    HERMES_WEBUI_MAX_EXTRACTED_MB; defaults to 10x the upload cap. Read at call
+    ARES_WEBUI_MAX_EXTRACTED_MB; defaults to 10x the upload cap. Read at call
     time (not import) so the value reflects the running process's environment
     and is exercisable by tests against the out-of-process test server.
     """
-    raw = os.getenv("HERMES_WEBUI_MAX_EXTRACTED_MB", "").strip()
+    raw = os.getenv("ARES_WEBUI_MAX_EXTRACTED_MB", "").strip()
     if raw:
         try:
             mb = float(raw)
@@ -114,9 +125,9 @@ def _attachment_root() -> Path:
 
     Plain chat attachments are transient context for the agent, not project
     source files.  Keep them out of the active workspace by default while still
-    allowing operators to move the inbox with HERMES_WEBUI_ATTACHMENT_DIR.
+    allowing operators to move the inbox with ARES_WEBUI_ATTACHMENT_DIR.
     """
-    override = os.getenv('HERMES_WEBUI_ATTACHMENT_DIR', '').strip()
+    override = os.getenv('ARES_WEBUI_ATTACHMENT_DIR', '').strip()
     if override:
         return Path(override).expanduser().resolve()
     return (STATE_DIR / 'attachments').resolve()
@@ -162,6 +173,218 @@ def _reject_invisible_session(handler, session) -> bool:
         return False
     j(handler, {'error': 'Session not found'}, status=404)
     return True
+
+
+def _visible_upload_session(session_id: str):
+    try:
+        session = get_session(session_id)
+    except KeyError as exc:
+        raise UploadServiceError('Session not found', 404) from exc
+    if not _session_visible_to_active_profile(session):
+        raise UploadServiceError('Session not found', 404)
+    return session
+
+
+def save_session_upload(session_id: str, filename: str, file_bytes: bytes) -> dict:
+    """Persist one chat attachment without depending on an HTTP handler."""
+
+    _visible_upload_session(session_id)
+    if not filename:
+        raise UploadServiceError('No filename in upload')
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise UploadServiceError(
+            f'File too large (max {MAX_UPLOAD_BYTES//1024//1024}MB)',
+            413,
+        )
+    try:
+        safe_name = _sanitize_upload_name(filename)
+        dest = _upload_destination(session_id, safe_name)
+        dest.write_bytes(file_bytes)
+    except ValueError as exc:
+        raise UploadServiceError(str(exc)) from exc
+    mime = mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
+    return {
+        'filename': dest.name,
+        'path': str(dest),
+        'size': dest.stat().st_size,
+        'mime': mime,
+        'is_image': mime.startswith('image/'),
+    }
+
+
+def extract_session_upload(session_id: str, filename: str, file_bytes: bytes) -> dict:
+    """Extract one uploaded archive into the session attachment inbox."""
+
+    _visible_upload_session(session_id)
+    if not filename:
+        raise UploadServiceError('No filename in upload')
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise UploadServiceError(
+            f'File too large (max {MAX_UPLOAD_BYTES//1024//1024}MB)',
+            413,
+        )
+    try:
+        session_dir = _session_attachment_dir(session_id)
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return {'ok': True, **extract_archive(file_bytes, filename, session_dir)}
+    except ValueError as exc:
+        raise UploadServiceError(str(exc)) from exc
+
+
+def transcribe_upload(filename: str, file_bytes: bytes) -> dict:
+    """Run speech-to-text for uploaded audio and always clean its temp file."""
+
+    if not filename:
+        raise UploadServiceError('No filename in upload')
+    if len(file_bytes) > MAX_UPLOAD_BYTES:
+        raise UploadServiceError(
+            f'File too large (max {MAX_UPLOAD_BYTES//1024//1024}MB)',
+            413,
+        )
+    temp_path = None
+    try:
+        safe_name = _sanitize_upload_name(filename)
+        suffix = Path(safe_name).suffix or '.webm'
+        with tempfile.NamedTemporaryFile(prefix='webui-stt-', suffix=suffix, delete=False) as tmp:
+            temp_path = tmp.name
+            tmp.write(file_bytes)
+        try:
+            from tools.transcription_tools import transcribe_audio
+        except ImportError as exc:
+            raise UploadServiceError(
+                'Speech-to-text is unavailable on this server',
+                503,
+            ) from exc
+        result = transcribe_audio(temp_path)
+        if not result.get('success'):
+            message = str(result.get('error') or 'Transcription failed')
+            status = 503 if 'unavailable' in message.lower() or 'not configured' in message.lower() else 400
+            raise UploadServiceError(message, status)
+        return {'ok': True, 'transcript': str(result.get('transcript') or '').strip()}
+    except UploadServiceError:
+        raise
+    except ValueError as exc:
+        raise UploadServiceError(str(exc)) from exc
+    finally:
+        if temp_path:
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def save_workspace_upload(
+    session_id: str,
+    subpath: str,
+    files: dict[str, tuple[str, bytes]],
+) -> dict:
+    """Persist multipart files beneath a session's trusted workspace."""
+
+    session = _visible_upload_session(session_id)
+    if not files:
+        raise UploadServiceError('No file field in request')
+    workspace = resolve_trusted_workspace(session.workspace)
+    try:
+        target_dir = safe_resolve_ws(workspace, subpath) if subpath else workspace
+        if not target_dir.resolve().is_relative_to(workspace.resolve()):
+            raise UploadServiceError('Upload target escapes workspace', 403)
+        make_anchored_dir(workspace, target_dir)
+    except UploadServiceError:
+        raise
+    except (ValueError, OSError) as exc:
+        raise UploadServiceError('Upload target escapes workspace', 403) from exc
+
+    results = []
+    for filename, file_bytes in files.values():
+        if not filename:
+            continue
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            raise UploadServiceError(
+                f'File too large (max {MAX_UPLOAD_BYTES//1024//1024}MB)',
+                413,
+            )
+        try:
+            safe_name = _sanitize_upload_name(filename)
+            dest = safe_resolve_ws(target_dir, safe_name)
+        except ValueError as exc:
+            raise UploadServiceError(str(exc)) from exc
+        if not dest.resolve().is_relative_to(workspace.resolve()):
+            raise UploadServiceError(f'Path traversal blocked: {safe_name}', 403)
+        if dest.exists():
+            stem, suffix = dest.stem, dest.suffix
+            for index in range(1, 1000):
+                candidate = safe_resolve_ws(target_dir, f'{stem}-{index}{suffix}')
+                if not candidate.resolve().is_relative_to(workspace.resolve()):
+                    raise UploadServiceError('Path traversal blocked', 403)
+                if not candidate.exists():
+                    dest = candidate
+                    break
+            else:
+                raise UploadServiceError('Too many uploads with the same filename')
+        try:
+            descriptor = open_anchored_create_fd(workspace, dest.resolve())
+        except FileExistsError as exc:
+            raise UploadServiceError(
+                f'Upload destination already exists: {safe_name}',
+                409,
+            ) from exc
+        except (ValueError, OSError) as exc:
+            raise UploadServiceError(f'Path traversal blocked: {safe_name}', 403) from exc
+        with os.fdopen(descriptor, 'wb', closefd=True) as handle:
+            handle.write(file_bytes)
+        mime = mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
+        is_archive = safe_name.lower().endswith(
+            ('.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz')
+        )
+        if is_archive:
+            try:
+                extraction = extract_archive(file_bytes, safe_name, target_dir)
+                unlink_anchored(workspace, dest.resolve())
+                results.append(
+                    {
+                        'filename': safe_name,
+                        'path': str(extraction.get('dest', target_dir)),
+                        'size': len(file_bytes),
+                        'is_image': False,
+                        'extracted': True,
+                        'extracted_files': extraction.get('files', []),
+                        'extracted_count': extraction.get('extracted', 0),
+                    }
+                )
+                continue
+            except Exception as exc:
+                try:
+                    unlink_anchored(workspace, dest.resolve())
+                except Exception:
+                    pass
+                results.append(
+                    {
+                        'filename': safe_name,
+                        'path': str(target_dir),
+                        'size': len(file_bytes),
+                        'mime': mime,
+                        'is_image': False,
+                        'extracted': False,
+                        'extract_error': str(exc) or 'Archive extraction failed',
+                    }
+                )
+                continue
+        sidecar = _write_office_upload_sidecar(workspace, dest, file_bytes)
+        results.append(
+            {
+                'filename': dest.name,
+                'path': str(dest),
+                'size': dest.stat().st_size,
+                'mime': mime,
+                'is_image': mime.startswith('image/'),
+                'extracted': False,
+                **({'sidecar': sidecar} if sidecar and 'error' not in sidecar else {}),
+                **({'sidecar_error': sidecar['error']} if sidecar and 'error' in sidecar else {}),
+            }
+        )
+    if len(results) == 1:
+        return results[0]
+    return {'files': results, 'count': len(results)}
 
 
 def _write_office_upload_sidecar(workspace: Path, dest: Path, file_bytes: bytes) -> dict | None:

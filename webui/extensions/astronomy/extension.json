@@ -1,0 +1,43 @@
+{
+  "id": "astronomy",
+  "name": "ARES Astronomy",
+  "description": "Telescope control, star map, and night planning",
+  "version": "0.1.0",
+  "scripts": ["astronomy.js"],
+  "stylesheets": ["astronomy.css"],
+  "sidecar": {
+    "type": "loopback",
+    "origin": "http://127.0.0.1:17787",
+    "health_path": "/health"
+  },
+  "has_api": true,
+  "permissions": {
+    "storage": {
+      "owned": true
+    }
+  },
+  "settings_schema": [
+    {
+      "key": "telescope_driver",
+      "type": "enum",
+      "label": "Telescope driver",
+      "options": [
+        { "value": "indi", "label": "INDI" },
+        { "value": "alpaca", "label": "ASCOM Alpaca" }
+      ],
+      "default": "indi"
+    },
+    {
+      "key": "auto_connect",
+      "type": "boolean",
+      "label": "Auto-connect on startup",
+      "default": false
+    },
+    {
+      "key": "preferred_port",
+      "type": "integer",
+      "label": "Preferred INDI port",
+      "default": 7624
+    }
+  ]
+}

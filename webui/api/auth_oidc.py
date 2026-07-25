@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import base64
 import hashlib
@@ -165,17 +167,17 @@ def _resolve_oidc_config() -> dict[str, Any]:
         env_value = os.getenv(env_name)
         return env_value if env_value is not None else raw.get(name)
 
-    scopes = _normalize_scopes(pick("scopes", "HERMES_WEBUI_OIDC_SCOPES"))
+    scopes = _normalize_scopes(pick("scopes", "ARES_WEBUI_OIDC_SCOPES"))
     allow_values = _normalize_allow_values(
-        pick("allow_values", "HERMES_WEBUI_OIDC_ALLOW_VALUES")
+        pick("allow_values", "ARES_WEBUI_OIDC_ALLOW_VALUES")
     )
     return {
-        "issuer": str(pick("issuer", "HERMES_WEBUI_OIDC_ISSUER") or "").strip(),
-        "client_id": str(pick("client_id", "HERMES_WEBUI_OIDC_CLIENT_ID") or "").strip(),
-        "client_secret": str(pick("client_secret", "HERMES_WEBUI_OIDC_CLIENT_SECRET") or "").strip(),
-        "redirect_uri": str(pick("redirect_uri", "HERMES_WEBUI_OIDC_REDIRECT_URI") or "").strip(),
+        "issuer": str(pick("issuer", "ARES_WEBUI_OIDC_ISSUER") or "").strip(),
+        "client_id": str(pick("client_id", "ARES_WEBUI_OIDC_CLIENT_ID") or "").strip(),
+        "client_secret": str(pick("client_secret", "ARES_WEBUI_OIDC_CLIENT_SECRET") or "").strip(),
+        "redirect_uri": str(pick("redirect_uri", "ARES_WEBUI_OIDC_REDIRECT_URI") or "").strip(),
         "scopes": scopes,
-        "allow_claim": str(pick("allow_claim", "HERMES_WEBUI_OIDC_ALLOW_CLAIM") or "").strip(),
+        "allow_claim": str(pick("allow_claim", "ARES_WEBUI_OIDC_ALLOW_CLAIM") or "").strip(),
         "allow_values": allow_values,
     }
 

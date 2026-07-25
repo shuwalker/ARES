@@ -3,7 +3,7 @@ Regression test for #2762 — state_sync writes to wrong profile's state.db
 when profile is switched via WebUI cookie.
 
 Root cause: ``_get_state_db()`` relied on TLS-based
-``get_active_hermes_home()`` to pick the DB path. TLS gets set on the HTTP
+``get_active_ares_home()`` to pick the DB path. TLS gets set on the HTTP
 thread by the cookie middleware, but the agent streaming worker thread that
 calls ``sync_session_usage`` does NOT inherit that TLS, so the lookup falls
 through to the process-global active profile and writes to the wrong DB.
@@ -40,15 +40,15 @@ if str(_REPO_ROOT) not in sys.path:
 @pytest.fixture()
 def two_profile_homes(tmp_path, monkeypatch):
     """Stand up two minimal profile homes with state.db initialized via
-    ``hermes_state.SessionDB`` itself (so the schema matches what the
+    ``ares_state.SessionDB`` itself (so the schema matches what the
     production code expects — `sync_session_usage` does a raw-SQL
     UPDATE of `message_count`, which hand-rolled schemas could miss).
     Per Copilot review on PR #2827.
     """
     # Skip the fixture cleanly if the production package isn't importable
     # in this env — same gate the tests below use.
-    pytest.importorskip("hermes_state")
-    from hermes_state import SessionDB
+    pytest.importorskip("ares_state")
+    from ares_state import SessionDB
 
     hiyuki_home = tmp_path / 'hiyuki'
     maiko_home = tmp_path / 'maiko'
@@ -73,7 +73,7 @@ def two_profile_homes(tmp_path, monkeypatch):
 
     monkeypatch.setattr(profiles_mod, '_resolve_profile_home_for_name', fake_resolve)
     # Active profile is hiyuki — the WRONG one for tests that pass profile='maiko'
-    monkeypatch.setattr(profiles_mod, 'get_active_hermes_home', lambda: hiyuki_home)
+    monkeypatch.setattr(profiles_mod, 'get_active_ares_home', lambda: hiyuki_home)
 
     return {'hiyuki': hiyuki_home, 'maiko': maiko_home}
 
@@ -84,7 +84,7 @@ def _read_session(db_path: Path, session_id: str):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
-        # Real state.db schema (see api/state_sync.py + hermes_cli StateDB):
+        # Real state.db schema (see api/state_sync.py + ares_cli StateDB):
         # `sessions` table has `id` as PRIMARY KEY (not session_id). Use real
         # column names so the test queries the actual schema.
         cur = conn.execute(
@@ -133,7 +133,6 @@ def two_profile_message_homes(tmp_path, monkeypatch):
     import api.config as config
     import api.models as models_mod
     import api.profiles as profiles_mod
-    import api.routes as routes_mod
 
     hiyuki_home = tmp_path / "hiyuki"
     maiko_home = tmp_path / "maiko"
@@ -152,15 +151,14 @@ def two_profile_message_homes(tmp_path, monkeypatch):
             return hiyuki_home
         raise LookupError(name)
 
-    monkeypatch.setattr(profiles_mod, "get_hermes_home_for_profile", fake_profile_home)
-    monkeypatch.setattr(profiles_mod, "get_active_hermes_home", lambda: hiyuki_home)
+    monkeypatch.setattr(profiles_mod, "get_ares_home_for_profile", fake_profile_home)
+    monkeypatch.setattr(profiles_mod, "get_active_ares_home", lambda: hiyuki_home)
     monkeypatch.setattr(models_mod, "_active_state_db_path", lambda: hiyuki_home / "state.db")
     monkeypatch.setattr(config, "STATE_DIR", tmp_path / "webui-state", raising=False)
     monkeypatch.setattr(config, "SESSION_DIR", session_dir, raising=False)
     monkeypatch.setattr(config, "SESSION_INDEX_FILE", session_dir / "_index.json", raising=False)
     monkeypatch.setattr(models_mod, "SESSION_DIR", session_dir, raising=False)
     monkeypatch.setattr(models_mod, "SESSION_INDEX_FILE", session_dir / "_index.json", raising=False)
-    monkeypatch.setattr(routes_mod, "_active_state_db_path", lambda: hiyuki_home / "state.db", raising=False)
 
     return {"sid": sid, "hiyuki": hiyuki_home, "maiko": maiko_home, "session_dir": session_dir}
 
@@ -170,12 +168,12 @@ def test_get_state_db_honors_explicit_profile_kwarg(two_profile_homes):
     the active profile (hiyuki)."""
     from api.state_sync import _get_state_db
 
-    # Some installs ship without the hermes_state package; the function
+    # Some installs ship without the ares_state package; the function
     # returns None gracefully and there's nothing to assert.
     try:
-        import hermes_state  # noqa: F401
+        import ares_state  # noqa: F401
     except ImportError:
-        pytest.skip("hermes_state package not available in this test env")
+        pytest.skip("ares_state package not available in this test env")
 
     db = _get_state_db(profile='maiko')
     if db is None:
@@ -200,9 +198,9 @@ def test_sync_session_usage_writes_only_to_named_profile(two_profile_homes):
     the streaming worker thread post-#2762. The write must land in maiko's
     state.db only, regardless of what the global active profile is."""
     try:
-        import hermes_state  # noqa: F401
+        import ares_state  # noqa: F401
     except ImportError:
-        pytest.skip("hermes_state package not available in this test env")
+        pytest.skip("ares_state package not available in this test env")
 
     from api.state_sync import sync_session_usage
 
@@ -237,9 +235,9 @@ def test_sync_session_usage_without_profile_kwarg_uses_active(two_profile_homes)
     pre-#2762 call shape), the function falls back to the active profile
     (here: hiyuki). Existing callers should not regress."""
     try:
-        import hermes_state  # noqa: F401
+        import ares_state  # noqa: F401
     except ImportError:
-        pytest.skip("hermes_state package not available in this test env")
+        pytest.skip("ares_state package not available in this test env")
 
     from api.state_sync import sync_session_usage
 
@@ -264,7 +262,7 @@ def test_metadata_only_summary_reads_explicit_profile_state_db(two_profile_messa
     profile kwarg or stops forwarding it to get_state_db_session_messages(), it
     falls back to the active profile (hiyuki) and reports the wrong count.
     """
-    from api.routes import _metadata_only_message_summary
+    from api.session_projection import _metadata_only_message_summary
 
     sid = two_profile_message_homes["sid"]
 
@@ -277,7 +275,7 @@ def test_metadata_only_summary_reads_explicit_profile_state_db(two_profile_messa
 
 def test_metadata_only_summary_honors_profile_from_background_thread(two_profile_message_homes):
     """Explicit profile= must work even when TLS active-profile context is absent."""
-    from api.routes import _metadata_only_message_summary
+    from api.session_projection import _metadata_only_message_summary
 
     sid = two_profile_message_homes["sid"]
     result = {}
@@ -302,11 +300,10 @@ def test_api_session_metadata_only_passes_session_profile_to_summary(
     without profile=s.profile, this test reports the active hiyuki count (1)
     instead of maiko's count (3).
     """
-    from urllib.parse import urlparse
-    from io import BytesIO
-
     import api.models as models_mod
-    import api.routes as routes_mod
+    from fastapi.testclient import TestClient
+    from fastapi_app.main import create_app
+    from fastapi_app.request_context import RequestIdentity, require_identity
 
     sid = two_profile_message_homes["sid"]
     session = models_mod.Session(
@@ -322,42 +319,26 @@ def test_api_session_metadata_only_passes_session_profile_to_summary(
         updated_at=1001.0,
     )
     session.save(touch_updated_at=False)
-    monkeypatch.setattr(routes_mod, "_lookup_cli_session_metadata", lambda _sid: {})
-    monkeypatch.setattr(routes_mod, "_get_active_profile_name", lambda: "maiko")
+    app = create_app(frontend_root=two_profile_message_homes["session_dir"] / "missing-dist")
+    app.dependency_overrides[require_identity] = lambda: RequestIdentity(
+        session_cookie=None,
+        profile="maiko",
+        auth_enabled=False,
+    )
+    response = TestClient(app).get(
+        "/api/session",
+        params={"session_id": sid, "messages": "0", "resolve_model": "0"},
+    )
 
-    class Handler:
-        path = f"/api/session?session_id={sid}&messages=0&resolve_model=0"
-        headers = {}
-        client_address = ("127.0.0.1", 12345)
-
-        def __init__(self):
-            self.status = None
-            self.wfile = BytesIO()
-
-        def send_response(self, status):
-            self.status = status
-
-        def send_header(self, *_args):
-            pass
-
-        def end_headers(self):
-            pass
-
-        def log_message(self, *_args, **_kwargs):
-            pass
-
-    handler = Handler()
-    routes_mod.handle_get(handler, urlparse(handler.path))
-
-    assert handler.status == 200
-    assert b'"message_count": 3' in handler.wfile.getvalue()
+    assert response.status_code == 200
+    assert response.json()["session"]["message_count"] == 3
 
 
 def test_unknown_explicit_profile_returns_none_not_falls_back(two_profile_homes):
     """Copilot review of PR #2827: when ``profile`` is explicit and
     resolution fails (e.g. typoed profile name, IO error), the
     function MUST return None rather than silently fall back to
-    HERMES_HOME and write to the wrong DB. That fallback would
+    ARES_HOME and write to the wrong DB. That fallback would
     re-introduce the exact #2762 symptom (writes leaking into the
     active profile).
 
@@ -366,9 +347,9 @@ def test_unknown_explicit_profile_returns_none_not_falls_back(two_profile_homes)
     here exercises the failure path.
     """
     try:
-        import hermes_state  # noqa: F401
+        import ares_state  # noqa: F401
     except ImportError:
-        pytest.skip("hermes_state package not available in this test env")
+        pytest.skip("ares_state package not available in this test env")
 
     from api.state_sync import sync_session_usage
 
@@ -411,7 +392,7 @@ def test_invalid_profile_name_refused_not_falls_back(two_profile_homes, bad_name
     quietly routed to the default state.db.
 
     Before this defense, ``_resolve_profile_home_for_name`` would return
-    ``_DEFAULT_HERMES_HOME`` for any name failing ``_PROFILE_ID_RE``
+    ``_DEFAULT_ARES_HOME`` for any name failing ``_PROFILE_ID_RE``
     without raising — which is the exact #2762 leak symptom with a
     different trigger. The new regex check up-front turns that quiet
     leak into an explicit "refuse + log + return None" so the
@@ -427,9 +408,9 @@ def test_invalid_profile_name_refused_not_falls_back(two_profile_homes, bad_name
     is itself a bug at the caller, not "I want the default."
     """
     try:
-        import hermes_state  # noqa: F401
+        import ares_state  # noqa: F401
     except ImportError:
-        pytest.skip("hermes_state package not available in this test env")
+        pytest.skip("ares_state package not available in this test env")
 
     from api.state_sync import sync_session_usage
 

@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STREAMING = ROOT / "api" / "streaming.py"
 MODELS = ROOT / "api" / "models.py"
-ROUTES = ROOT / "api" / "routes.py"
+SESSION_PROJECTION = ROOT / "api" / "session_projection.py"
 
 
 def test_streaming_persists_context_fields_on_session_before_save():
@@ -114,14 +114,13 @@ def test_session_compact_exposes_context_fields():
     assert "'last_prompt_tokens':" in body, "compact() must include last_prompt_tokens"
 
 
-def test_routes_session_get_returns_context_fields():
+def test_fastapi_session_projection_returns_context_fields():
     """GET /api/session response must include the three fields."""
-    src = ROUTES.read_text(encoding="utf-8")
-    # The session-detail response builder uses getattr(s, ..., 0) or 0 pattern.
-    # Look for the three keys in the same response shape.
-    assert '"context_length"' in src, "GET /api/session response must include context_length"
-    assert '"threshold_tokens"' in src, "GET /api/session response must include threshold_tokens"
-    assert '"last_prompt_tokens"' in src, "GET /api/session response must include last_prompt_tokens"
+    projection = SESSION_PROJECTION.read_text(encoding="utf-8")
+    models = MODELS.read_text(encoding="utf-8")
+    assert "context_length=context_length" in projection
+    assert "threshold_tokens=threshold" in projection
+    assert "'last_prompt_tokens':" in models
 
 
 def test_session_round_trip_persists_context_fields(tmp_path, monkeypatch):

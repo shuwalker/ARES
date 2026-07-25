@@ -72,15 +72,15 @@ def _make_state_db(path: Path) -> None:
 @pytest.mark.skipif(not _IS_LINUX, reason="fd counting via /proc only available on Linux")
 def test_handoff_summary_path_does_not_leak_fds(tmp_path, monkeypatch):
     """Loop both patched functions and assert open-fd count stays bounded."""
-    hermes_home = tmp_path / "hermes"
-    hermes_home.mkdir()
-    state_db = hermes_home / "state.db"
+    ares_home = tmp_path / "ares"
+    ares_home.mkdir()
+    state_db = ares_home / "state.db"
     _make_state_db(state_db)
 
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setenv("ARES_HOME", str(ares_home))
 
     from api.models import count_conversation_rounds
-    from api.routes import _persist_handoff_summary_to_state_db
+    from api.handoff_summary import persist_handoff_summary_to_state_db
 
     sid = "20260101_000000_abcdef"
     marker = {
@@ -90,13 +90,13 @@ def test_handoff_summary_path_does_not_leak_fds(tmp_path, monkeypatch):
     }
 
     count_conversation_rounds(sid)
-    _persist_handoff_summary_to_state_db(sid, marker)
+    persist_handoff_summary_to_state_db(sid, marker)
 
     fd_before = _open_fd_count()
 
     for _ in range(20):
         count_conversation_rounds(sid)
-        _persist_handoff_summary_to_state_db(sid, marker)
+        persist_handoff_summary_to_state_db(sid, marker)
 
     fd_after = _open_fd_count()
     growth = fd_after - fd_before

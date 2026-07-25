@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ares.observer</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/matthewjenkins/GitHub/ARES/observer/.venv/bin/python</string>
+        <string>/Users/matthewjenkins/GitHub/ARES/observer/observer.py</string>
+        <string>--daemon</string>
+        <string>--config</string>
+        <string>/Users/matthewjenkins/GitHub/ARES/observer/config.yaml</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/matthewjenkins/GitHub/ARES/observer</string>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/matthewjenkins/.ares/observer/observer.out</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/matthewjenkins/.ares/observer/observer.err</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

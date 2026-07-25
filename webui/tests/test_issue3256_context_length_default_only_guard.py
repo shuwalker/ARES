@@ -14,8 +14,7 @@ the real agent metadata catalog.
 import sys
 import types
 from pathlib import Path as _Path
-from unittest.mock import MagicMock, patch
-from urllib.parse import urlparse
+from unittest.mock import MagicMock
 
 
 def _install_fake_get_model_context_length(monkeypatch, recorder, *, default_context=1_000_000):
@@ -46,8 +45,8 @@ def _install_fake_get_model_context_length(monkeypatch, recorder, *, default_con
 
 
 def _resolver():
-    import api.routes as routes
-    return routes._resolve_context_length_for_session_model
+    from api.model_context import resolve_context_length_for_session_model
+    return resolve_context_length_for_session_model
 
 
 def test_global_cap_applies_to_default_model(monkeypatch):
@@ -109,8 +108,8 @@ def test_empty_model_returns_zero(monkeypatch):
 # context_length cap. _model_matches_configured_default() normalizes the shapes.
 
 def _matcher():
-    import api.routes as routes
-    return routes._model_matches_configured_default
+    from api.model_context import model_matches_configured_default
+    return model_matches_configured_default
 
 
 def test_default_match_exact():
@@ -241,14 +240,7 @@ def _stub_route_session(*, context_length=1_000_000, threshold_tokens=500_000, m
 def test_session_reload_preserves_large_persisted_window_when_recompute_hits_256k_fallback(monkeypatch):
     """#4248: full session reload must not snap a persisted 1M window back to 256k."""
     import api.config as config
-    import api.routes as routes
-
-    captured = {}
-
-    def fake_j(_handler, data, status=200):
-        captured["data"] = data
-        captured["status"] = status
-        return True
+    from api.model_context import session_context_projection
 
     rec = {}
     _install_fake_get_model_context_length(monkeypatch, rec, default_context=256_000)
@@ -270,33 +262,16 @@ def test_session_reload_preserves_large_persisted_window_when_recompute_hits_256
     )
 
     s = _stub_route_session()
-    handler = MagicMock()
-    parsed = urlparse("/api/session?session_id=test-4248&messages=1")
-
-    with patch("api.routes.get_session", return_value=s), \
-         patch("api.routes.j", side_effect=fake_j), \
-         patch("api.routes._resolve_effective_session_model_for_display", return_value="deepseek-v4-1m"), \
-         patch("api.routes._resolve_effective_session_model_provider_for_display", return_value="deepseek"), \
-         patch("api.routes._session_visible_to_active_profile", return_value=True), \
-         patch("api.routes._clear_stale_stream_state", return_value=None), \
-         patch("api.routes._session_requires_cli_metadata_lookup", return_value=False), \
-         patch("api.routes._is_messaging_session_record", return_value=False), \
-         patch("api.routes.get_state_db_session_messages", return_value=[]), \
-         patch("api.routes._webui_sidecar_lineage_messages_for_display", return_value=[]), \
-         patch("api.routes.merge_session_messages_append_only", return_value=[]), \
-         patch("api.routes._merged_webui_lineage_messages_for_display", return_value=[]), \
-         patch("api.routes._active_stream_ids", return_value=set()):
-        assert routes.handle_get(handler, parsed) is True
-
-    body = captured["data"]["session"]
-    assert captured["status"] == 200
+    context_length, threshold_tokens = session_context_projection(
+        s, "deepseek-v4-1m", "deepseek"
+    )
     assert rec["base_url"] == "https://runtime-base.invalid/v1"
     assert rec["api_key"] == "reload-key"
-    assert body["context_length"] == 1_000_000, (
+    assert context_length == 1_000_000, (
         "reload must keep the persisted 1M window instead of clobbering it "
         "with the anonymous 256k fallback"
     )
-    assert body["threshold_tokens"] == 500_000, (
+    assert threshold_tokens == 500_000, (
         "the existing threshold belongs to the preserved 1M window and must not "
         "be cleared when the 256k recompute is rejected"
     )
@@ -309,14 +284,7 @@ def test_session_reload_preserves_large_window_for_slash_qualified_model(monkeyp
     accept-guard and clobbers the persisted 1M window.
     """
     import api.config as config
-    import api.routes as routes
-
-    captured = {}
-
-    def fake_j(_handler, data, status=200):
-        captured["data"] = data
-        captured["status"] = status
-        return True
+    from api.model_context import session_context_projection
 
     rec = {}
     _install_fake_get_model_context_length(monkeypatch, rec, default_context=256_000)
@@ -340,51 +308,34 @@ def test_session_reload_preserves_large_window_for_slash_qualified_model(monkeyp
     )
 
     s = _stub_route_session(model="deepseek/deepseek-v4-1m")
-    handler = MagicMock()
-    parsed = urlparse("/api/session?session_id=test-4248-slash&messages=1")
-
-    with patch("api.routes.get_session", return_value=s), \
-         patch("api.routes.j", side_effect=fake_j), \
-         patch("api.routes._resolve_effective_session_model_for_display", return_value="deepseek/deepseek-v4-1m"), \
-         patch("api.routes._resolve_effective_session_model_provider_for_display", return_value="deepseek"), \
-         patch("api.routes._session_visible_to_active_profile", return_value=True), \
-         patch("api.routes._clear_stale_stream_state", return_value=None), \
-         patch("api.routes._session_requires_cli_metadata_lookup", return_value=False), \
-         patch("api.routes._is_messaging_session_record", return_value=False), \
-         patch("api.routes.get_state_db_session_messages", return_value=[]), \
-         patch("api.routes._webui_sidecar_lineage_messages_for_display", return_value=[]), \
-         patch("api.routes.merge_session_messages_append_only", return_value=[]), \
-         patch("api.routes._merged_webui_lineage_messages_for_display", return_value=[]), \
-         patch("api.routes._active_stream_ids", return_value=set()):
-        assert routes.handle_get(handler, parsed) is True
-
-    body = captured["data"]["session"]
-    assert captured["status"] == 200
-    assert body["context_length"] == 1_000_000, (
+    context_length, threshold_tokens = session_context_projection(
+        s, "deepseek/deepseek-v4-1m", "deepseek"
+    )
+    assert context_length == 1_000_000, (
         "a slash-qualified stored model resolving to its bare id is the SAME "
         "model, so the 256k fallback must not clobber the persisted 1M window"
     )
-    assert body["threshold_tokens"] == 500_000
+    assert threshold_tokens == 500_000
 
 
 def test_session_model_identity_matches_slash_qualified_form():
     """Unit: the identity check treats provider/model and bare-model as equal."""
-    import api.routes as routes
+    from api.model_context import session_model_identity_matches
 
     # slash-qualified stored vs bare resolved, same provider → same model
-    assert routes._session_model_identity_matches(
+    assert session_model_identity_matches(
         "deepseek/deepseek-v4-1m", "deepseek", "deepseek-v4-1m", "deepseek"
     ) is True
     # @provider:model form still resolves (no regression)
-    assert routes._session_model_identity_matches(
+    assert session_model_identity_matches(
         "@deepseek:deepseek-v4-1m", "deepseek", "deepseek-v4-1m", "deepseek"
     ) is True
     # different provider on the slash prefix → NOT the same model
-    assert routes._session_model_identity_matches(
+    assert session_model_identity_matches(
         "deepseek/deepseek-v4-1m", "deepseek", "deepseek-v4-1m", "openai"
     ) is False
     # genuinely different bare model → not a match
-    assert routes._session_model_identity_matches(
+    assert session_model_identity_matches(
         "deepseek/deepseek-v4-1m", "deepseek", "gpt-4o", "openai"
     ) is False
 
@@ -392,14 +343,7 @@ def test_session_model_identity_matches_slash_qualified_form():
 def test_session_reload_accepts_real_256k_when_effective_model_changes(monkeypatch):
     """#4248 follow-up: the 256k fallback guard must not block a real model switch."""
     import api.config as config
-    import api.routes as routes
-
-    captured = {}
-
-    def fake_j(_handler, data, status=200):
-        captured["data"] = data
-        captured["status"] = status
-        return True
+    from api.model_context import session_context_projection
 
     rec = {}
     _install_fake_get_model_context_length(monkeypatch, rec, default_context=256_000)
@@ -421,38 +365,21 @@ def test_session_reload_accepts_real_256k_when_effective_model_changes(monkeypat
     )
 
     s = _stub_route_session(model="deepseek-v4-1m")
-    handler = MagicMock()
-    parsed = urlparse("/api/session?session_id=test-4248&messages=1")
-
-    with patch("api.routes.get_session", return_value=s), \
-         patch("api.routes.j", side_effect=fake_j), \
-         patch("api.routes._resolve_effective_session_model_for_display", return_value="deepseek-v4-256k"), \
-         patch("api.routes._resolve_effective_session_model_provider_for_display", return_value="deepseek"), \
-         patch("api.routes._session_visible_to_active_profile", return_value=True), \
-         patch("api.routes._clear_stale_stream_state", return_value=None), \
-         patch("api.routes._session_requires_cli_metadata_lookup", return_value=False), \
-         patch("api.routes._is_messaging_session_record", return_value=False), \
-         patch("api.routes.get_state_db_session_messages", return_value=[]), \
-         patch("api.routes._webui_sidecar_lineage_messages_for_display", return_value=[]), \
-         patch("api.routes.merge_session_messages_append_only", return_value=[]), \
-         patch("api.routes._merged_webui_lineage_messages_for_display", return_value=[]), \
-         patch("api.routes._active_stream_ids", return_value=set()):
-        assert routes.handle_get(handler, parsed) is True
-
-    body = captured["data"]["session"]
-    assert captured["status"] == 200
+    context_length, threshold_tokens = session_context_projection(
+        s, "deepseek-v4-256k", "deepseek"
+    )
     assert rec["model"] == "deepseek-v4-256k"
-    assert body["context_length"] == 256_000, (
+    assert context_length == 256_000, (
         "a genuine effective-model change to a 256k model must replace the "
         "old 1M snapshot rather than being treated as an anonymous fallback"
     )
-    assert body["threshold_tokens"] == 128_000
+    assert threshold_tokens == 128_000
 
 
 def test_session_context_lookup_keeps_base_url_when_custom_helper_is_missing(monkeypatch):
     """#4248 follow-up: non-custom base URL resolution must not depend on custom helper imports."""
     import api.config as config
-    import api.routes as routes
+    from api.model_context import session_context_length_lookup_state
 
     monkeypatch.setattr(
         config,
@@ -461,7 +388,7 @@ def test_session_context_lookup_keeps_base_url_when_custom_helper_is_missing(mon
     )
     monkeypatch.delattr(config, "resolve_custom_provider_connection", raising=False)
 
-    model, provider, base_url, api_key = routes._session_context_length_lookup_state(
+    model, provider, base_url, api_key = session_context_length_lookup_state(
         "deepseek-v4-1m",
         "deepseek",
     )
@@ -546,12 +473,12 @@ def test_live_snapshot_reuses_hydration_context_length_helper():
 
 def test_live_snapshot_guard_has_legacy_two_arg_fallback():
     """#4618: a TypeError from the modern 6-arg get_model_context_length (older
-    hermes-agent builds) must fall back to the legacy 2-arg form rather than
+    ares-agent builds) must fall back to the legacy 2-arg form rather than
     raising, and the fallback must apply the SAME mismatch condition."""
     assert "from agent.model_metadata import get_model_context_length as _g2_u" in _STREAMING_SRC
     assert "_real_u = _g2_u(_sm_u, _base_u) or 0" in _STREAMING_SRC, (
         "live-snapshot guard must keep a legacy 2-arg get_model_context_length "
-        "fallback for older hermes-agent builds (#4618)"
+        "fallback for older ares-agent builds (#4618)"
     )
 
 
@@ -566,7 +493,7 @@ def test_live_snapshot_resolves_session_profile_config_not_ambient():
         "live-snapshot guard must read the session's profile config, not ambient "
         "get_config() (#3294 cross-profile leak class)"
     )
-    assert "get_hermes_home_for_profile as _ghp_u" in _STREAMING_SRC
+    assert "get_ares_home_for_profile as _ghp_u" in _STREAMING_SRC
     assert "_ghp_u(getattr(_session_obj, 'profile', None))" in _STREAMING_SRC, (
         "profile home must derive from the live session object's profile"
     )

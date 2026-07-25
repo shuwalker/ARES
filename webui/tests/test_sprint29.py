@@ -81,9 +81,9 @@ class TestCSRF:
     @staticmethod
     def _csrf_allowed(headers):
         from types import SimpleNamespace
-        from api.routes import _check_csrf
+        from api.http_security import browser_origin_allowed
 
-        return _check_csrf(SimpleNamespace(headers=headers))
+        return browser_origin_allowed(headers)
 
     def test_no_origin_no_referer_allowed(self):
         """Curl-style request with no Origin/Referer must pass CSRF check."""
@@ -129,7 +129,7 @@ class TestCSRF:
         See test_proxy_host_default_https_port_matches_https_origin for the
         real-world proxy case that should pass.
         """
-        monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "1")
+        monkeypatch.setenv("ARES_WEBUI_TRUST_FORWARDED_HOST", "1")
         assert not self._csrf_allowed({
             "Origin": "http://example.com",
             "X-Forwarded-Host": "example.com:443",
@@ -137,7 +137,7 @@ class TestCSRF:
 
     def test_proxy_host_default_https_port_matches_https_origin(self, monkeypatch):
         """HTTPS Origin without port should match X-Forwarded-Host with explicit :443."""
-        monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "1")
+        monkeypatch.setenv("ARES_WEBUI_TRUST_FORWARDED_HOST", "1")
         assert self._csrf_allowed({
             "Origin": "https://example.com",
             "X-Forwarded-Host": "example.com:443",
@@ -145,7 +145,7 @@ class TestCSRF:
 
     def test_proxy_host_port_normalization_still_rejects_other_host(self, monkeypatch):
         """Port normalization must not allow different hosts through."""
-        monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "1")
+        monkeypatch.setenv("ARES_WEBUI_TRUST_FORWARDED_HOST", "1")
         assert not self._csrf_allowed({
             "Origin": "https://evil.com",
             "X-Forwarded-Host": "example.com:443",
@@ -153,7 +153,7 @@ class TestCSRF:
 
     def test_allowed_public_origin_bypasses_missing_proxy_port(self, monkeypatch):
         """Explicitly configured public origins should pass even if proxy strips :port from Host."""
-        monkeypatch.setenv('HERMES_WEBUI_ALLOWED_ORIGINS', 'https://myapp.example.com:8000')
+        monkeypatch.setenv('ARES_WEBUI_ALLOWED_ORIGINS', 'https://myapp.example.com:8000')
         assert self._csrf_allowed({
             'Origin': 'https://myapp.example.com:8000',
             'Host': 'myapp.example.com',
@@ -162,7 +162,7 @@ class TestCSRF:
 
     def test_other_origin_not_allowed_by_public_origin_allowlist(self, monkeypatch):
         """Allowlist must stay exact; unrelated origins must still be rejected."""
-        monkeypatch.setenv('HERMES_WEBUI_ALLOWED_ORIGINS', 'https://myapp.example.com:8000')
+        monkeypatch.setenv('ARES_WEBUI_ALLOWED_ORIGINS', 'https://myapp.example.com:8000')
         assert not self._csrf_allowed({
             'Origin': 'https://evil.com:8000',
             'Host': 'myapp.example.com',
@@ -177,7 +177,7 @@ class TestCSRF:
         Before M-1 fix, _ports_match treated both 80 and 443 as equivalent to
         absent port, allowing http://host to match https://host:443 servers.
         """
-        monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "1")
+        monkeypatch.setenv("ARES_WEBUI_TRUST_FORWARDED_HOST", "1")
         assert not self._csrf_allowed({
             'Origin': 'http://example.com',     # http, no port = :80
             'X-Forwarded-Host': 'example.com:443',  # HTTPS port
@@ -185,7 +185,7 @@ class TestCSRF:
 
     def test_cross_protocol_port_not_confused_https_origin_http_host(self, monkeypatch):
         """https:// origin must NOT match a host with :80 (HTTP default)."""
-        monkeypatch.setenv("HERMES_WEBUI_TRUST_FORWARDED_HOST", "1")
+        monkeypatch.setenv("ARES_WEBUI_TRUST_FORWARDED_HOST", "1")
         assert not self._csrf_allowed({
             'Origin': 'https://example.com',    # https, no port = :443
             'X-Forwarded-Host': 'example.com:80',   # HTTP port
@@ -219,19 +219,19 @@ class TestCSRF:
 
         This documents the original bug: Origin: https://app.com:8000 with
         Host: app.com (proxy stripped the port). Before this PR that returned 403.
-        The fix (HERMES_WEBUI_ALLOWED_ORIGINS) handles it; without the env var
+        The fix (ARES_WEBUI_ALLOWED_ORIGINS) handles it; without the env var
         the request is still rejected, which is the safe default.
         """
-        monkeypatch.delenv('HERMES_WEBUI_ALLOWED_ORIGINS', raising=False)
+        monkeypatch.delenv('ARES_WEBUI_ALLOWED_ORIGINS', raising=False)
         assert not self._csrf_allowed({
             'Origin': 'https://myapp.example.com:8000',
             'Host': 'myapp.example.com',
         }), 'without allowlist, port mismatch must be rejected (safe default)'
 
     def test_allowed_origins_comma_separated(self, monkeypatch):
-        """HERMES_WEBUI_ALLOWED_ORIGINS accepts multiple comma-separated origins."""
+        """ARES_WEBUI_ALLOWED_ORIGINS accepts multiple comma-separated origins."""
         monkeypatch.setenv(
-            'HERMES_WEBUI_ALLOWED_ORIGINS',
+            'ARES_WEBUI_ALLOWED_ORIGINS',
             'https://app1.example.com:8000, https://app2.example.com:9000',
         )
         assert self._csrf_allowed({'Origin': 'https://app1.example.com:8000', 'Host': 'proxy.internal'})
@@ -240,8 +240,8 @@ class TestCSRF:
 
     def test_allowed_origins_without_scheme_ignored(self, monkeypatch, capsys):
         """Allowlist entries missing the scheme are skipped and a warning is printed."""
-        monkeypatch.setenv('HERMES_WEBUI_ALLOWED_ORIGINS', 'myapp.example.com:8000')
-        from api.routes import _allowed_public_origins
+        monkeypatch.setenv('ARES_WEBUI_ALLOWED_ORIGINS', 'myapp.example.com:8000')
+        from api.http_security import allowed_public_origins as _allowed_public_origins
         result = _allowed_public_origins()
         assert len(result) == 0, 'entry without scheme must be ignored'
         captured = capsys.readouterr()
@@ -249,7 +249,7 @@ class TestCSRF:
 
     def test_allowed_origins_trailing_slash_normalized(self, monkeypatch):
         """Trailing slash in allowlist entry is stripped before comparison."""
-        monkeypatch.setenv('HERMES_WEBUI_ALLOWED_ORIGINS', 'https://myapp.example.com:8000/')
+        monkeypatch.setenv('ARES_WEBUI_ALLOWED_ORIGINS', 'https://myapp.example.com:8000/')
         assert self._csrf_allowed({
             'Origin': 'https://myapp.example.com:8000',
             'Host': 'proxy.internal',
@@ -262,71 +262,71 @@ class TestCSRF:
 class TestCSRFHelpers:
     """Direct unit tests for _normalize_host_port and _ports_match."""
     def test_normalize_host_only(self):
-        from api.routes import _normalize_host_port
+        from api.http_security import normalize_host_port as _normalize_host_port
         assert _normalize_host_port('example.com') == ('example.com', None)
 
     def test_normalize_host_with_port(self):
-        from api.routes import _normalize_host_port
+        from api.http_security import normalize_host_port as _normalize_host_port
         assert _normalize_host_port('example.com:8000') == ('example.com', '8000')
 
     def test_normalize_ipv6_no_port(self):
-        from api.routes import _normalize_host_port
+        from api.http_security import normalize_host_port as _normalize_host_port
         assert _normalize_host_port('[::1]') == ('::1', None)
 
     def test_normalize_ipv6_with_port(self):
-        from api.routes import _normalize_host_port
+        from api.http_security import normalize_host_port as _normalize_host_port
         assert _normalize_host_port('[::1]:8080') == ('::1', '8080')
 
     def test_normalize_empty(self):
-        from api.routes import _normalize_host_port
+        from api.http_security import normalize_host_port as _normalize_host_port
         assert _normalize_host_port('') == ('', None)
 
     def test_normalize_whitespace_stripped(self):
-        from api.routes import _normalize_host_port
+        from api.http_security import normalize_host_port as _normalize_host_port
         assert _normalize_host_port('  example.com  ') == ('example.com', None)
 
     def test_normalize_lowercases(self):
-        from api.routes import _normalize_host_port
+        from api.http_security import normalize_host_port as _normalize_host_port
         assert _normalize_host_port('EXAMPLE.COM:80') == ('example.com', '80')
 
     def test_ports_match_identical(self):
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('https', '8000', '8000') is True
 
     def test_ports_match_both_absent(self):
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('https', None, None) is True
 
     def test_ports_match_https_absent_vs_443(self):
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('https', None, '443') is True
         assert _ports_match('https', '443', None) is True
 
     def test_ports_match_http_absent_vs_80(self):
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('http', None, '80') is True
         assert _ports_match('http', '80', None) is True
 
     def test_ports_match_http_absent_vs_443_rejected(self):
         """http:// scheme: absent port is :80, not :443."""
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('http', None, '443') is False
         assert _ports_match('http', '443', None) is False
 
     def test_ports_match_https_absent_vs_80_rejected(self):
         """https:// scheme: absent port is :443, not :80."""
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('https', None, '80') is False
         assert _ports_match('https', '80', None) is False
 
     def test_ports_match_non_default_never_waived(self):
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('https', None, '8000') is False
         assert _ports_match('https', '8000', None) is False
         assert _ports_match('http', None, '8080') is False
 
     def test_ports_match_different_non_default(self):
-        from api.routes import _ports_match
+        from api.http_security import ports_match as _ports_match
         assert _ports_match('https', '8000', '9000') is False
 
 
@@ -395,7 +395,7 @@ class TestSessionIDValidation:
         assert result is None  # No file, but no error
 
     def test_new_format_session_id_passes_validation(self):
-        """New hermes-agent session IDs (YYYYMMDD_HHMMSS_xxxxxx) must pass validation."""
+        """New ares-agent session IDs (YYYYMMDD_HHMMSS_xxxxxx) must pass validation."""
         from api.models import Session
         # Should pass the validator (returns None only because the file doesn't exist)
         result = Session.load("20260406_164014_74b2d1")
@@ -433,16 +433,16 @@ class TestSessionIDValidation:
 class TestSanitizeError:
     def test_unix_path_stripped(self):
         from api.helpers import _sanitize_error
-        e = FileNotFoundError("/home/hermes/.hermes/sessions/abc123.json")
+        e = FileNotFoundError("/home/ares/.ares/sessions/abc123.json")
         result = _sanitize_error(e)
-        assert "/home/hermes" not in result
+        assert "/home/ares" not in result
         assert "<path>" in result
 
     def test_nested_unix_path_stripped(self):
         from api.helpers import _sanitize_error
-        e = ValueError("cannot read /var/lib/hermes/data.db: permission denied")
+        e = ValueError("cannot read /var/lib/ares/data.db: permission denied")
         result = _sanitize_error(e)
-        assert "/var/lib/hermes" not in result
+        assert "/var/lib/ares" not in result
         assert "<path>" in result
 
     def test_no_path_unchanged(self):
@@ -453,9 +453,9 @@ class TestSanitizeError:
 
     def test_windows_path_stripped(self):
         from api.helpers import _sanitize_error
-        e = FileNotFoundError("C:\\Users\\hermes\\AppData\\sessions\\x.json not found")
+        e = FileNotFoundError("C:\\Users\\ares\\AppData\\sessions\\x.json not found")
         result = _sanitize_error(e)
-        assert "C:\\Users\\hermes" not in result
+        assert "C:\\Users\\ares" not in result
 
     def test_live_404_does_not_leak_path(self, webui_server):
         """Live server: file-not-found errors must not expose filesystem paths."""
@@ -537,9 +537,9 @@ class TestSkillsPathTraversal:
             "name": "test-security-skill",
             "content": "---\nname: test-security-skill\ndescription: test\n---\n# test",
         })
-        # 500 = skills module not available (hermes-agent not installed) — skip
+        # 500 = skills module not available (ares-agent not installed) — skip
         if status == 500:
-            import pytest; pytest.skip("skills module requires hermes-agent")
+            import pytest; pytest.skip("skills module requires ares-agent")
         # Should succeed (200) or need auth (401/403) — not path error (400)
         assert status in (200, 401, 403, 404), \
             f"Valid skill save got unexpected status {status}: {body}"
@@ -568,7 +568,7 @@ class TestContentDisposition:
 
         # Can't easily create a file via the test server without a workspace,
         # so test the logic directly instead.
-        from api.routes import _handle_file_raw
+        from fastapi_app.routers.file_delivery import raw_file as _handle_file_raw
         dangerous_types = {'text/html', 'application/xhtml+xml', 'image/svg+xml'}
         for mime in dangerous_types:
             assert mime in dangerous_types, f"{mime} should be in dangerous_types set"
@@ -577,7 +577,7 @@ class TestContentDisposition:
         """The set of dangerous MIME types must include html, xhtml, and svg."""
         import ast
         import pathlib
-        routes_src = pathlib.Path(__file__).parent.parent / "api" / "routes.py"
+        routes_src = pathlib.Path(__file__).parent.parent / "fastapi_app" / "routers" / "file_delivery.py"
         src = routes_src.read_text()
         assert "text/html" in src
         assert "application/xhtml+xml" in src
@@ -602,7 +602,7 @@ class TestContentDisposition:
 
         assert raw_status == 200
         assert raw == pdf_bytes
-        disp = headers["Content-Disposition"]
+        disp = {key.lower(): value for key, value in headers.items()}["content-disposition"]
         assert disp.startswith("attachment; ")
         assert "filename*=UTF-8''" in disp
         disp.encode("latin-1")
@@ -625,7 +625,7 @@ class TestContentDisposition:
 
         assert raw_status == 200
         assert raw == pdf_bytes
-        disp = headers["Content-Disposition"]
+        disp = {key.lower(): value for key, value in headers.items()}["content-disposition"]
         assert disp.startswith("inline; ")
         assert "filename*=UTF-8''" in disp
         disp.encode("latin-1")
@@ -697,14 +697,14 @@ class TestPasswordHashing:
 
 
 class TestStartupWarning:
-    def test_warning_code_present_in_server(self):
-        """server.py must contain non-loopback warning code."""
-        src = pathlib.Path(__file__).parent.parent / "server.py"
+    def test_warning_code_present_in_uvicorn_lifecycle(self):
+        """The ASGI lifecycle warns on unauthenticated non-loopback binds."""
+        src = pathlib.Path(__file__).parent.parent / "fastapi_app" / "lifecycle.py"
         text = src.read_text()
-        assert "0.0.0.0" in text or "non-loopback" in text.lower() or "WARNING" in text, \
-            "server.py must contain non-loopback warning logic"
+        assert "without authentication" in text.lower(), \
+            "FastAPI lifecycle must contain non-loopback warning logic"
         assert "is_auth_enabled" in text, \
-            "server.py must check is_auth_enabled() before warning"
+            "FastAPI lifecycle must check is_auth_enabled() before warning"
 
 
 # ── 11. SSRF DNS Check ─────────────────────────────────────────────────────
@@ -760,10 +760,10 @@ class TestENVLock:
             )
 
     def test_env_lock_importable_in_routes(self):
-        """api.routes must be able to import _ENV_LOCK from api.streaming."""
+        """FastAPI chat runtime must import without a legacy route cycle."""
         # If routes.py fails to import, this will raise ImportError
         import importlib
-        import api.routes  # noqa: F401 -- just checking import works
+        import fastapi_app.routers.realtime  # noqa: F401 -- import-cycle guard
         # No error means the circular import is OK
 
 

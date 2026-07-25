@@ -15,7 +15,7 @@
 .PARAMETER SkipSetup
     Skip the setup wizard
 .PARAMETER Backend
-    Backend mode: auto, hermes, jros, or hybrid (default: auto)
+    Backend mode: auto, ares, jros, or hybrid (default: auto)
 .PARAMETER NoStart
     Skip auto-starting the server after installation
 #>
@@ -69,6 +69,19 @@ if (-not $Python) {
 $PyVersion = & $Python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 Write-Host "✓ Python $PyVersion found" -ForegroundColor Green
 
+$Node = Get-Command node -ErrorAction SilentlyContinue
+$Npm = Get-Command npm -ErrorAction SilentlyContinue
+if (-not $Node -or -not $Npm) {
+    Write-Error "✗ Node.js and npm are required to build the ARES frontend. Install Node.js 20+ from https://nodejs.org"
+    exit 1
+}
+$NodeMajor = [int]((& node -p "process.versions.node.split('.')[0]").Trim())
+if ($NodeMajor -lt 20) {
+    Write-Error "✗ Node.js 20 or newer is required (found $(& node --version))."
+    exit 1
+}
+Write-Host "✓ Node.js $(& node --version) found" -ForegroundColor Green
+
 # === JROS detection ===
 function Detect-JROS {
     $jaegerHome = if ($env:ARES_JAEGER_HOME) { $env:ARES_JAEGER_HOME } `
@@ -88,7 +101,7 @@ $JrosDetected = Detect-JROS
 # Resolve backend mode
 $SelectedBackend = $Backend.ToLower()
 if ($SelectedBackend -eq 'auto') {
-    $SelectedBackend = 'hermes'
+    $SelectedBackend = 'ares'
     if ($JrosDetected) {
         Write-Host "JROS detected. Use JROS as the primary ARES backend? (default: No)" -ForegroundColor Yellow
         $response = Read-Host "  [y/N]"
@@ -98,11 +111,11 @@ if ($SelectedBackend -eq 'auto') {
     }
 }
 switch ($SelectedBackend) {
-    'hermes' { }
+    'ares' { }
     'jros' { }
     'hybrid' { }
     default {
-        Write-Error "✗ Invalid backend mode: $Backend (expected auto, hermes, jros, or hybrid)"
+        Write-Error "✗ Invalid backend mode: $Backend (expected auto, ares, jros, or hybrid)"
         exit 1
     }
 }
@@ -166,18 +179,29 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "Installing Hermes Agent..."
-& $VenvPython -m pip install hermes-agent 2>$null
+Write-Host "Building React frontend..."
+Push-Location (Join-Path $WebuiDir 'frontend')
+try {
+    & npm ci
+    if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+    & npm run build
+    if ($LASTEXITCODE -ne 0) { throw "React production build failed" }
+} finally {
+    Pop-Location
+}
+
+Write-Host "Installing Ares Agent..."
+& $VenvPython -m pip install ares-agent 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "⚠ hermes-agent not found via pip" -ForegroundColor Yellow
+    Write-Host "⚠ ares-agent not found via pip" -ForegroundColor Yellow
     Write-Host "Trying git install..."
-    & $VenvPython -m pip install "git+https://github.com/nousresearch/hermes-agent.git" 2>$null
+    & $VenvPython -m pip install "git+https://github.com/nousresearch/ares-agent.git" 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "⚠ Could not install hermes-agent. WebUI will have limited functionality." -ForegroundColor Yellow
-        Write-Host "  Install manually: pip install hermes-agent"
+        Write-Host "⚠ Could not install ares-agent. WebUI will have limited functionality." -ForegroundColor Yellow
+        Write-Host "  Install manually: pip install ares-agent"
     }
 }
-Write-Host "✓ All dependencies installed" -ForegroundColor Green
+Write-Host "✓ All dependencies installed and frontend built" -ForegroundColor Green
 
 # === Setup config ===
 Write-Host "→ Preparing configuration..." -ForegroundColor Cyan
@@ -208,7 +232,7 @@ Write-Host ""
 Write-Host "✓ ARES Web UI installation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Start the server:"
-Write-Host "    cd $WebuiDir && .venv\Scripts\python server.py"
+Write-Host "    cd $WebuiDir && .venv\Scripts\python -m uvicorn fastapi_app.main:app --host $HostFinal --port $PortFinal --no-server-header"
 
 if (-not $SkipSetup) {
     Write-Host "  The onboarding wizard will open in your browser."
@@ -217,10 +241,15 @@ if (-not $SkipSetup) {
 # Auto-start if interactive and not skipped
 if ($Host.UI.RawUI -and -not $SkipSetup -and -not $NoStart) {
     Write-Host "Starting ARES Web UI..." -ForegroundColor Cyan
-    $env:HERMES_WEBUI_HOST = $HostFinal
-    $env:HERMES_WEBUI_PORT = "$PortFinal"
-    & $VenvPython (Join-Path $WebuiDir 'server.py')
+    $env:ARES_WEBUI_HOST = $HostFinal
+    $env:ARES_WEBUI_PORT = "$PortFinal"
+    Push-Location $WebuiDir
+    try {
+        & $VenvPython -m uvicorn fastapi_app.main:app --host $HostFinal --port $PortFinal --no-server-header
+    } finally {
+        Pop-Location
+    }
 } elseif ($NoStart) {
     Write-Host "→ To start the server later, run:" -ForegroundColor Cyan
-    Write-Host "  cd $WebuiDir && `$env:HERMES_WEBUI_HOST=`"$HostFinal`" `$env:HERMES_WEBUI_PORT=`"$PortFinal`" .venv\Scripts\python server.py"
+    Write-Host "  cd $WebuiDir && `$env:ARES_WEBUI_HOST=`"$HostFinal`" `$env:ARES_WEBUI_PORT=`"$PortFinal`" .venv\Scripts\python -m uvicorn fastapi_app.main:app --host $HostFinal --port $PortFinal --no-server-header"
 }

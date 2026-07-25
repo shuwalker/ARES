@@ -10,7 +10,7 @@ while a valid backup remains.
 
 Three integration points:
 
-1. ``recover_all_sessions_on_startup()`` — called from server.py at boot,
+1. ``recover_all_sessions_on_startup()`` — called by the ASGI lifespan at boot,
    scans the session dir, restores any session whose JSON has fewer
    messages than its .bak, and recreates a missing ``<sid>.json`` from an
    orphaned ``<sid>.json.bak`` when the canonical state DB still has that
@@ -1031,10 +1031,10 @@ def recover_all_sessions_on_startup(
 
 
 def _main() -> int:
-    parser = argparse.ArgumentParser(description="Audit Hermes WebUI session recovery state")
+    parser = argparse.ArgumentParser(description="Audit Ares WebUI session recovery state")
     parser.add_argument("--audit", action="store_true", help="run a read-only recovery audit")
     parser.add_argument("--session-dir", type=Path, required=True, help="path to WebUI sessions directory")
-    parser.add_argument("--state-db", type=Path, default=None, help="optional Hermes state.db path")
+    parser.add_argument("--state-db", type=Path, default=None, help="optional Ares state.db path")
     parser.add_argument("--repair-safe", action="store_true", help="run safe deterministic repairs after auditing")
     args = parser.parse_args()
     if args.repair_safe:

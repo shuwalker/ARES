@@ -2,7 +2,7 @@
 setting ONCE per response, not once per row. Regression guard for the per-row
 settings.json reload that dominated /api/sessions response_write on large lists.
 """
-import api.routes as routes
+from api.helpers import redact_session_rows
 
 
 def test_sidebar_payload_reads_redaction_setting_once(monkeypatch):
@@ -25,10 +25,7 @@ def test_sidebar_payload_reads_redaction_setting_once(monkeypatch):
         ],
         "cli_count": 0,
     }
-    # Pass rows straight through — avoid runtime-overlay noise from the cache layer.
-    monkeypatch.setattr(routes, "_session_list_cache_overlay_runtime_rows", lambda rows: rows)
-
-    routes._session_list_payload_to_response(payload)
+    redact_session_rows(payload["sessions"])
 
     # Before the fix: ~1 read per row (>=12). After: exactly 1 for the whole response.
     assert calls["n"] <= 1, f"settings read {calls['n']}x; expected <=1 (read-once per response)"
@@ -39,12 +36,9 @@ def test_sidebar_payload_still_redacts_titles(monkeypatch):
     like a credential is still redacted when api_redact_enabled is True."""
     monkeypatch.setattr("api.config.load_settings", lambda: {"api_redact_enabled": True})
     monkeypatch.setattr("api.helpers.load_settings", lambda: {"api_redact_enabled": True}, raising=False)
-    monkeypatch.setattr(routes, "_session_list_cache_overlay_runtime_rows", lambda rows: rows)
-
     secret = "sk-ant-api03-" + ("A" * 40)
     payload = {"sessions": [{"session_id": "s1", "title": f"key {secret}"}], "cli_count": 0}
-    resp = routes._session_list_payload_to_response(payload)
-    title = resp["sessions"][0]["title"]
+    title = redact_session_rows(payload["sessions"])[0]["title"]
     assert secret not in title, f"credential leaked into sidebar title: {title!r}"
 
 
@@ -59,9 +53,6 @@ def test_sidebar_payload_no_redaction_when_disabled(monkeypatch):
 
     monkeypatch.setattr("api.config.load_settings", _load)
     monkeypatch.setattr("api.helpers.load_settings", _load, raising=False)
-    monkeypatch.setattr(routes, "_session_list_cache_overlay_runtime_rows", lambda rows: rows)
-
     payload = {"sessions": [{"session_id": "s1", "title": "plain title"}], "cli_count": 0}
-    resp = routes._session_list_payload_to_response(payload)
-    assert resp["sessions"][0]["title"] == "plain title"
+    assert redact_session_rows(payload["sessions"])[0]["title"] == "plain title"
     assert calls["n"] <= 1, f"settings read {calls['n']}x with redaction disabled; expected <=1"

@@ -1,13 +1,16 @@
 """
-Hermes Web UI -- Gateway session watcher.
+Ares Web UI -- Gateway session watcher.
 
 Background daemon thread that polls state.db every 5 seconds for changes
 to gateway sessions (telegram, discord, slack, etc.). When changes are
 detected, it pushes notifications to all subscribed SSE clients.
 
 This enables real-time session list updates in the sidebar without
-requiring any changes to hermes-agent.
+requiring any changes to ares-agent.
 """
+
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -145,16 +148,16 @@ def _cheap_change_fingerprint(db_path: Path) -> str | None:
 
 # ── DB resolution (shared pattern with state_sync.py) ──────────────────────
 
-def _get_state_db_path(hermes_home: Path | None = None) -> Path:
+def _get_state_db_path(ares_home: Path | None = None) -> Path:
     """Resolve state.db path for the active profile."""
-    if hermes_home is not None:
-        return Path(hermes_home).expanduser().resolve() / 'state.db'
+    if ares_home is not None:
+        return Path(ares_home).expanduser().resolve() / 'state.db'
     try:
-        from api.profiles import get_active_hermes_home
-        hermes_home = Path(get_active_hermes_home()).expanduser().resolve()
+        from api.profiles import get_active_ares_home
+        ares_home = Path(get_active_ares_home()).expanduser().resolve()
     except Exception:
-        hermes_home = Path(os.getenv('HERMES_HOME', str(HOME / '.hermes'))).expanduser().resolve()
-    return hermes_home / 'state.db'
+        ares_home = Path(os.getenv('ARES_HOME', str(HOME / '.ares'))).expanduser().resolve()
+    return ares_home / 'state.db'
 
 
 def _get_agent_sessions_from_db(db_path: Path | None = None) -> list:
@@ -205,7 +208,7 @@ class GatewayWatcher:
     def __init__(
         self,
         *,
-        hermes_home: Path | None = None,
+        ares_home: Path | None = None,
         profile_name: str | None = None,
         state_db_path: Path | None = None,
     ):
@@ -213,11 +216,11 @@ class GatewayWatcher:
         self._sub_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._hermes_home = Path(hermes_home).expanduser().resolve() if hermes_home else None
+        self._ares_home = Path(ares_home).expanduser().resolve() if ares_home else None
         self._state_db_path = (
             Path(state_db_path).expanduser().resolve()
             if state_db_path is not None
-            else _get_state_db_path(self._hermes_home) if self._hermes_home is not None else _get_state_db_path()
+            else _get_state_db_path(self._ares_home) if self._ares_home is not None else _get_state_db_path()
         )
         self.profile_name = profile_name or ""
         self._last_hash: str = ''
@@ -363,19 +366,19 @@ _watcher_lock = threading.Lock()
 def _resolve_watcher_target(
     *,
     profile_name: str | None = None,
-    hermes_home: Path | None = None,
+    ares_home: Path | None = None,
 ) -> tuple[str, Path | None]:
     """Resolve the watcher profile/home pair for the current request context."""
     resolved_profile = str(profile_name or "").strip()
-    resolved_home = Path(hermes_home).expanduser().resolve() if hermes_home is not None else None
+    resolved_home = Path(ares_home).expanduser().resolve() if ares_home is not None else None
 
     try:
-        from api.profiles import get_active_profile_name, get_hermes_home_for_profile
+        from api.profiles import get_active_profile_name, get_ares_home_for_profile
 
         if not resolved_profile:
             resolved_profile = get_active_profile_name() or "default"
         if resolved_home is None and resolved_profile:
-            resolved_home = Path(get_hermes_home_for_profile(resolved_profile)).expanduser().resolve()
+            resolved_home = Path(get_ares_home_for_profile(resolved_profile)).expanduser().resolve()
     except Exception:
         if resolved_home is None:
             try:
@@ -386,10 +389,10 @@ def _resolve_watcher_target(
     return resolved_profile, resolved_home
 
 
-def _watcher_registry_key(profile_name: str | None = None, hermes_home: Path | None = None) -> str:
+def _watcher_registry_key(profile_name: str | None = None, ares_home: Path | None = None) -> str:
     """Return the stable registry key for a watcher target."""
-    if hermes_home is not None:
-        return str(Path(hermes_home).expanduser().resolve())
+    if ares_home is not None:
+        return str(Path(ares_home).expanduser().resolve())
     return str(profile_name or "").strip() or "__default__"
 
 
@@ -412,11 +415,11 @@ def _pop_idle_watchers_locked(*, exclude_key: str) -> list[GatewayWatcher]:
     return stale
 
 
-def start_watcher(*, profile_name: str | None = None, hermes_home: Path | None = None):
+def start_watcher(*, profile_name: str | None = None, ares_home: Path | None = None):
     """Start the watcher for the resolved profile home (idempotent)."""
     resolved_profile, resolved_home = _resolve_watcher_target(
         profile_name=profile_name,
-        hermes_home=hermes_home,
+        ares_home=ares_home,
     )
     key = _watcher_registry_key(resolved_profile, resolved_home)
     with _watcher_lock:
@@ -424,22 +427,22 @@ def start_watcher(*, profile_name: str | None = None, hermes_home: Path | None =
         if watcher is None or not watcher.is_alive():
             if watcher is not None:
                 watcher.stop()
-            watcher = GatewayWatcher(profile_name=resolved_profile, hermes_home=resolved_home)
+            watcher = GatewayWatcher(profile_name=resolved_profile, ares_home=resolved_home)
             watcher.start()
             _watchers[key] = watcher
         return watcher
 
 
-def stop_watcher(*, profile_name: str | None = None, hermes_home: Path | None = None):
+def stop_watcher(*, profile_name: str | None = None, ares_home: Path | None = None):
     """Stop either one profile watcher or the entire registry."""
     with _watcher_lock:
-        if profile_name is None and hermes_home is None:
+        if profile_name is None and ares_home is None:
             watchers = list(_watchers.values())
             _watchers.clear()
         else:
             resolved_profile, resolved_home = _resolve_watcher_target(
                 profile_name=profile_name,
-                hermes_home=hermes_home,
+                ares_home=ares_home,
             )
             key = _watcher_registry_key(resolved_profile, resolved_home)
             watcher = _watchers.pop(key, None)
@@ -450,11 +453,11 @@ def stop_watcher(*, profile_name: str | None = None, hermes_home: Path | None = 
 
 def restart_watcher_for_profile(name: str):
     """Restart only the watcher pinned to the target profile home."""
-    from api.profiles import get_hermes_home_for_profile
+    from api.profiles import get_ares_home_for_profile
 
-    hermes_home = Path(get_hermes_home_for_profile(name)).expanduser().resolve()
-    key = _watcher_registry_key(name, hermes_home)
-    watcher = GatewayWatcher(profile_name=name, hermes_home=hermes_home)
+    ares_home = Path(get_ares_home_for_profile(name)).expanduser().resolve()
+    key = _watcher_registry_key(name, ares_home)
+    watcher = GatewayWatcher(profile_name=name, ares_home=ares_home)
     watcher.start()
     with _watcher_lock:
         existing = _watchers.pop(key, None)
@@ -465,15 +468,15 @@ def restart_watcher_for_profile(name: str):
     return watcher
 
 
-def get_watcher(*, profile_name: str | None = None, hermes_home: Path | None = None) -> GatewayWatcher | None:
+def get_watcher(*, profile_name: str | None = None, ares_home: Path | None = None) -> GatewayWatcher | None:
     """Get or lazily start the watcher for the resolved request profile."""
     resolved_profile, resolved_home = _resolve_watcher_target(
         profile_name=profile_name,
-        hermes_home=hermes_home,
+        ares_home=ares_home,
     )
     key = _watcher_registry_key(resolved_profile, resolved_home)
     with _watcher_lock:
         watcher = _watchers.get(key)
     if watcher is None or not watcher.is_alive():
-        watcher = start_watcher(profile_name=resolved_profile, hermes_home=resolved_home)
+        watcher = start_watcher(profile_name=resolved_profile, ares_home=resolved_home)
     return watcher

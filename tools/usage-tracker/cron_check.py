@@ -7,7 +7,7 @@ Runs periodically to:
   2. Update provider_state.json with current routing info
   3. Report if a provider is projected to exhaust before reset
 
-Called by Hermes cron job every 15-30 minutes.
+Called by Ares cron job every 15-30 minutes.
 """
 
 import sys

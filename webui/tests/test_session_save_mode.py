@@ -5,7 +5,7 @@ import pytest
 
 import api.config as config
 import api.models as models
-import api.routes as routes
+import api.chat_runtime as routes
 import api.streaming as streaming
 from api.models import Session, new_session
 
@@ -138,7 +138,7 @@ def test_active_pending_current_user_is_removed_from_model_context():
         context_messages=[
             {"role": "user", "content": "older"},
             {"role": "assistant", "content": "prior"},
-            {"role": "user", "content": "[Workspace::v1: /tmp/hermes]\ncurrent prompt"},
+            {"role": "user", "content": "[Workspace::v1: /tmp/ares]\ncurrent prompt"},
         ],
         active_stream_id="stream-current",
         pending_user_message="current prompt",

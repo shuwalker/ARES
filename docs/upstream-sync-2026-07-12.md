@@ -1,7 +1,7 @@
 # Upstream sync — 2026-07-12
 
 First full synchronization of `webui/` with upstream
-[hermes-webui](https://github.com/nesquena/hermes-webui) since the `webui/`
+[ares-webui](https://github.com/nesquena/ares-webui) since the `webui/`
 baseline was cut on 2026-07-01. Brings in ~338 upstream commits
 (through the `exp-v0.52.47` era).
 
@@ -46,17 +46,17 @@ Upstream's fix + ARES's feature, concretely:
 - `static/panels.js` — ARES backend-selector section + JROS update surfaces
   kept; upstream profile-switch session browser + manual-update note taken.
   Provider panel filter is the union: `…||p.is_self_hosted||p.has_key`.
-- **Storage keys standardized back on upstream's `hermes-webui-*` names.**
+- **Storage keys standardized back on upstream's `ares-webui-*` names.**
   The partial `ares-webui-*` rename lived only in `boot.js` while
-  `sessions.js`/`messages.js`/`ui.js` still used the hermes names — session
+  `sessions.js`/`messages.js`/`ui.js` still used the ares names — session
   and model restore were genuinely broken. `ares-identity.js` now migrates
   any values saved under the short-lived `ares-*` names back.
 - `webui/docs/` restored (the "strip upstream docs" pass had deleted files
   the test suite asserts on).
 
-## ARES-Desktop vs hermes-desktop
+## ARES-Desktop vs ares-desktop
 
-`ARESCore` was copied from hermes-desktop on 2026-06-05. hermes-desktop's
+`ARESCore` was copied from ares-desktop on 2026-06-05. ares-desktop's
 default branch has had **no commits since 2026-05-23 (v0.9.1)** — the copy
 already contains every released upstream fix. Nothing to port. (Post-copy
 work upstream exists only on unreleased feature branches, e.g. mobile.)

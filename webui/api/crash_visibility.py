@@ -1,9 +1,9 @@
-"""Crash-visibility hardening for the Hermes WebUI server (issue #4633).
+"""Crash-visibility hardening for the Ares WebUI server (issue #4633).
 
 Background
 ----------
-``server.py`` runs a ``ThreadingHTTPServer`` with ``daemon_threads = True``.
-Under that model a *silent* process death is possible in ways that leave the
+ARES runs under Uvicorn with background workers and native dependencies.
+A *silent* process death is possible in ways that leave the
 log ending mid-request with no traceback, no shutdown-audit line, and no core
 dump:
 

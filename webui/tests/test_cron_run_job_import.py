@@ -11,17 +11,17 @@ from pathlib import Path
 
 import pytest
 
-ROUTES_PY = Path(__file__).resolve().parent.parent / "api" / "routes.py"
+SCHEDULES_PY = Path(__file__).resolve().parent.parent / "api" / "schedules_store.py"
 
 
 def _get_function_source(func_name: str) -> str:
     """Extract a top-level function's source via AST for stability."""
-    tree = ast.parse(ROUTES_PY.read_text(encoding="utf-8"))
+    tree = ast.parse(SCHEDULES_PY.read_text(encoding="utf-8"))
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name:
-            lines = ROUTES_PY.read_text(encoding="utf-8").splitlines()
+            lines = SCHEDULES_PY.read_text(encoding="utf-8").splitlines()
             return "\n".join(lines[node.lineno - 1 : node.end_lineno])
-    pytest.fail(f"Function {func_name} not found in {ROUTES_PY}")
+    pytest.fail(f"Function {func_name} not found in {SCHEDULES_PY}")
 
 
 class TestRunCronTrackedImport:
@@ -71,20 +71,13 @@ class TestRunCronTrackedImport:
                 "It runs in a worker thread and cannot rely on caller's local imports."
             )
 
-    def test_handle_cron_run_does_not_import_run_job(self):
-        """After the fix, _handle_cron_run should NOT need to import run_job
-        itself — it's now _run_cron_tracked's responsibility."""
-        src = _get_function_source("_handle_cron_run")
-        tree = ast.parse(src)
-        imported_names = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    imported_names.add(alias.name if alias.asname is None else alias.asname)
-        assert "run_job" not in imported_names, (
-            "_handle_cron_run still imports run_job — it should be moved to "
-            "_run_cron_tracked to avoid the NameError in worker threads."
-        )
+    def test_fastapi_schedule_router_uses_schedule_service(self):
+        """HTTP transport delegates execution instead of importing cron internals."""
+        from fastapi_app.routers import schedules
+
+        src = inspect.getsource(schedules.run)
+        assert "from api.schedules_store import run_schedule" in src
+        assert "from cron" not in src
 
     def test_run_cron_tracked_calls_run_job_helper(self):
         """Sanity: the function still delegates to the cron job runner."""
