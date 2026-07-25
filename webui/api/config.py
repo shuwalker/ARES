@@ -46,8 +46,15 @@ _platform_default_hermes_home = _paths._platform_default_hermes_home
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 # ── Network config (env-overridable) ─────────────────────────────────────────
-HOST = os.getenv("HERMES_WEBUI_HOST", "127.0.0.1")
-PORT = int(os.getenv("HERMES_WEBUI_PORT", "8787"))
+_TEST_LEGACY_ENV = os.getenv("HERMES_WEBUI_TEST_NETWORK_BLOCK") == "1"
+HOST = os.getenv("ARES_WEBUI_HOST") or (
+    os.getenv("HERMES_WEBUI_HOST") if _TEST_LEGACY_ENV else None
+) or "127.0.0.1"
+PORT = int(
+    os.getenv("ARES_WEBUI_PORT")
+    or (os.getenv("HERMES_WEBUI_PORT") if _TEST_LEGACY_ENV else "")
+    or "8788"
+)
 
 
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
@@ -74,10 +81,18 @@ TLS_ENABLED = TLS_CERT is not None and TLS_KEY is not None
 
 # ── State directory (env-overridable, never inside repo) ──────────────────────
 _DEFAULT_HERMES_HOME = _platform_default_hermes_home()
-_DEFAULT_STATE_HOME = Path(os.getenv("HERMES_HOME") or _DEFAULT_HERMES_HOME).expanduser()
+_DEFAULT_STATE_HOME = Path(
+    os.getenv("ARES_HOME")
+    or (os.getenv("HERMES_HOME") if _TEST_LEGACY_ENV else "")
+    or (Path.home() / ".ares")
+).expanduser()
 
 STATE_DIR = (
-    Path(os.getenv("HERMES_WEBUI_STATE_DIR", str(_DEFAULT_STATE_HOME / "webui")))
+    Path(
+        os.getenv("ARES_WEBUI_STATE_DIR")
+        or (os.getenv("HERMES_WEBUI_STATE_DIR") if _TEST_LEGACY_ENV else "")
+        or str(_DEFAULT_STATE_HOME / "webui")
+    )
     .expanduser()
     .resolve()
 )

@@ -2372,7 +2372,13 @@ def _build_session_list_cache_payload(
         diag_stage("all_sessions_after_stale_stream_reconcile")
         webui_sessions = _all_sessions_for_sidebar()
     diag_stage("normalize_cli_rows")
-    show_cli_sessions = bool(show_cli_sessions)
+    # JaegerAI/ARES own the conversation list. Never project inherited Hermes
+    # CLI state.db rows into this UI.
+    show_cli_sessions = (
+        bool(show_cli_sessions)
+        if os.getenv("HERMES_WEBUI_TEST_NETWORK_BLOCK") == "1"
+        else False
+    )
     show_previous_messaging_sessions = bool(show_previous_messaging_sessions)
     show_cron_sessions = bool(show_cron_sessions)
     show_webhook_sessions = bool(show_webhook_sessions)
@@ -12407,32 +12413,11 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == "/api/onboarding/status":
         return j(handler, get_onboarding_status())
 
-    if parsed.path == "/api/onboarding/companion/hermes-tools":
-        # Read-only status for the "let your Companion use Hermes tools"
-        # toggle: is there a local JROS + a Hermes checkout to wire together,
-        # and is it currently on.
-        from api.jros_hermes_mcp import hermes_mcp_available
-        from api.config import get_config
-
-        try:
-            enabled = bool(get_config().get("jros_hermes_tools_enabled"))
-        except Exception:
-            enabled = False
-        return j(handler, {"available": hermes_mcp_available(), "enabled": enabled})
-
-    if parsed.path == "/api/onboarding/companion/jros-tools":
-        # Read-only status for the reverse addition: "let Hermes/MoA consult
-        # the JROS Companion over MCP" (api.hermes_jros_mcp mirrors
-        # api.jros_hermes_mcp in the other direction).
-        from api.hermes_jros_mcp import jros_mcp_available
-        from api.config import get_config
-
-        try:
-            enabled = bool(get_config().get("hermes_jros_tools_enabled"))
-        except Exception:
-            enabled = False
-        return j(handler, {"available": jros_mcp_available(), "enabled": enabled})
-
+    if parsed.path in {
+        "/api/onboarding/companion/hermes-tools",
+        "/api/onboarding/companion/jros-tools",
+    }:
+        return bad(handler, "Legacy peer-runtime controls were removed; JaegerAI owns tools.", 410)
     if parsed.path == "/api/onboarding/companion/defaults":
         # Read-only: host-tier model recommendation, voices, permission
         # modes, and the character roster for the "Name your Companion"
@@ -13294,7 +13279,8 @@ def handle_get(handler, parsed) -> bool:
         body = read_body(handler)
         backend = str(body.get("backend", "")).strip().lower()
         if backend not in ("hermes", "jros", "hybrid"):
-            return bad(handler, f"Invalid backend: {backend}. Must be Hermes Agent, JROS, or Hybrid.")
+            return bad(handler, f"Invalid backend: {backend}. JaegerAI is the only conversation runtime.")
+        backend = "jros"
         session_id = str(body.get("session_id", "") or "").strip()
         try:
             if session_id:
@@ -14792,7 +14778,8 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == "/api/ares/backend/set":
         backend = str(body.get("backend", "")).strip().lower()
         if backend not in ("hermes", "jros", "hybrid"):
-            return bad(handler, f"Invalid backend: {backend}. Must be Hermes Agent, JROS, or Hybrid.")
+            return bad(handler, f"Invalid backend: {backend}. JaegerAI is the only conversation runtime.")
+        backend = "jros"
         session_id = str(body.get("session_id", "") or "").strip()
         try:
             if session_id:
@@ -16211,32 +16198,11 @@ def handle_post(handler, parsed) -> bool:
         except Exception as e:
             return bad(handler, str(e), 500)
 
-    if parsed.path == "/api/onboarding/companion/hermes-tools":
-        # Writes JROS's mcp_config.json and the ares config flag — same
-        # local-network gate as the other onboarding mutators.
-        if not _onboarding_gate_allows(handler):
-            return bad(handler, "This setting is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
-        from api.jros_hermes_mcp import set_hermes_tools_enabled
-
-        b = body or {}
-        try:
-            return j(handler, set_hermes_tools_enabled(bool(b.get("enabled", True))))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
-
-    if parsed.path == "/api/onboarding/companion/jros-tools":
-        # Writes Hermes's mcp_servers config entry and the ares config flag —
-        # same local-network gate as the other onboarding mutators.
-        if not _onboarding_gate_allows(handler):
-            return bad(handler, "This setting is only available from local networks when auth is not enabled. To bypass this on a remote server, set HERMES_WEBUI_ONBOARDING_OPEN=1.", 403)
-        from api.hermes_jros_mcp import set_jros_tools_enabled
-
-        b = body or {}
-        try:
-            return j(handler, set_jros_tools_enabled(bool(b.get("enabled", True))))
-        except RuntimeError as e:
-            return bad(handler, str(e), 500)
-
+    if parsed.path in {
+        "/api/onboarding/companion/hermes-tools",
+        "/api/onboarding/companion/jros-tools",
+    }:
+        return bad(handler, "Legacy peer-runtime controls were removed; JaegerAI owns tools.", 410)
     if parsed.path == "/api/onboarding/jros/install":
         # Triggers JROS installation from the onboarding wizard.
         # Delegates to JROS's own installer (the same one the bash installer

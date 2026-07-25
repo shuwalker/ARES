@@ -1,20 +1,8 @@
-"""ARES Backend Selector — routes agent execution to JaegerAI or Hermes.
+"""ARES runtime selection.
 
-The core feature of ARES WebUI: the user picks which AI backend runs their agent.
-
-Backends:
-  - jros (default): JaegerAI is the required Companion runtime — the brain,
-    memory, character, and local model that "name your Companion" onboarding
-    creates. Turns run through the local ``jaeger bridge`` over stdio (NDJSON).
-    JaegerAI has no HTTP gateway; the bridge is the primary and only path.
-    See api/jros_gateway_chat.py.
-  - hermes: Hermes Agent in-process — an optional addition for coding/
-    terminal/skills capability, identical to hermes-webui behavior. Only
-    meaningful once the operator has installed Hermes (it is not installed
-    by default; see webui/scripts/install.sh --with-hermes).
-  - hybrid: JaegerAI persona/tools layered onto the Hermes loop (additive).
-    Currently hidden in the UI while the mode is being defined; the value
-    stays valid server-side so existing configs keep working.
+JaegerAI/JROS is the only conversation runtime. Hermes may be installed as an
+optional delegated worker that Jaeger calls from ``delegate_task``; it is never
+a WebUI backend and never owns ARES sessions, ports, models, or identity.
 
 This module is pure routing logic — no side effects on import. Execution
 itself happens in api/jros_gateway_chat.py: local bridge first
@@ -34,11 +22,13 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-BACKEND_HERMES = "hermes"
 BACKEND_JROS = "jros"
+# Kept as import-compatible migration constants for old configs and extensions.
+# ``normalize_backend`` maps both values to JROS; neither is selectable.
+BACKEND_HERMES = "hermes"
 BACKEND_HYBRID = "hybrid"
-
-VALID_BACKENDS = (BACKEND_HERMES, BACKEND_JROS, BACKEND_HYBRID)
+VALID_BACKENDS = (BACKEND_JROS,)
+_LEGACY_BACKENDS = frozenset({BACKEND_HERMES, BACKEND_HYBRID})
 
 # Cache JROS availability probe (5s TTL — avoids an HTTP round-trip per request)
 _jros_available_cache: Optional[bool] = None
@@ -49,9 +39,9 @@ _JROS_CACHE_TTL = 5.0
 
 def normalize_backend(value: object, *, fallback: str = BACKEND_JROS) -> str:
     raw = str(value or "").strip().lower()
-    if raw in VALID_BACKENDS:
-        return raw
-    return fallback if fallback in VALID_BACKENDS else BACKEND_JROS
+    if raw == BACKEND_JROS or raw in _LEGACY_BACKENDS:
+        return BACKEND_JROS
+    return BACKEND_JROS
 
 
 def get_active_backend(config: dict) -> str:
@@ -130,8 +120,8 @@ def is_jros_available() -> bool:
     return result
 
 
-def _is_hermes_available() -> bool:
-    """Hermes is an optional addition — only available once installed."""
+def is_hermes_worker_available() -> bool:
+    """Whether Jaeger may delegate a subtask to an installed Hermes worker."""
     try:
         from api.config import _HERMES_FOUND
 
@@ -145,9 +135,16 @@ def backend_status() -> dict:
     """Return current backend availability for UI display."""
     jros_up = is_jros_available()
     status = {
-        "hermes": _is_hermes_available(),  # optional addition, not guaranteed
         "jros": jros_up,
-        "hybrid": jros_up and _is_hermes_available(),  # hybrid needs both
+        "conversation_owner": BACKEND_JROS,
+        "delegated_workers": {
+            "hermes": {
+                "available": is_hermes_worker_available(),
+                "role": "subtask_worker",
+                "owns_sessions": False,
+                "owns_webui": False,
+            }
+        },
     }
     if jros_up and _jros_gateway_info:
         status["jros_mode"] = _jros_gateway_info.get("mode")
@@ -185,31 +182,17 @@ def backend_status() -> dict:
 
 
 def should_inject_persona(config: dict) -> bool:
-    """True if the current backend mode should inject JROS persona.
-
-    Persona injection happens in:
-      - hermes: No (pure Hermes behavior)
-      - jros: No (JROS handles its own persona)
-      - hybrid: Yes (Hermes loop + JROS persona)
-    """
-    return get_active_backend(config) == BACKEND_HYBRID
+    """Jaeger owns and applies its persona; ARES never injects one."""
+    return False
 
 
 def should_register_jros_tools(config: dict) -> bool:
-    """True if JROS tools should be registered into the Hermes agent.
-
-    JROS tools are registered in:
-      - hermes: No
-      - jros: No (JROS has its own tool system)
-      - hybrid: Yes (Hermes agent gains JROS tools)
-    """
-    return get_active_backend(config) == BACKEND_HYBRID and is_jros_available()
+    """JROS already owns its tools; no peer-backend tool injection is needed."""
+    return False
 
 
 def backend_label(backend: str) -> str:
     """Human-readable label for the backend selector dropdown."""
     return {
-        BACKEND_HERMES: "Hermes Agent",
-        BACKEND_JROS: "JROS",
-        BACKEND_HYBRID: "Hybrid",
+        BACKEND_JROS: "JaegerAI",
     }.get(backend, backend.title())

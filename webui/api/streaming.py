@@ -8357,25 +8357,9 @@ def _run_agent_streaming(
             except Exception as _exc:
                 logger.warning("ARES self-persistence prompt injection failed: %s", _exc)
 
-            # ARES: inject JROS persona into system prompt
-            # Only inject in hybrid mode (Hermes loop + JROS persona).
-            # In hermes mode: no injection (pure Hermes behavior).
-            # In jros mode: JROS handles its own persona (not this code path).
+            # JaegerAI owns persona application. This inherited execution path
+            # must never layer a second ARES/Hermes persona over Jaeger.
             _persona_prompt = ""
-            try:
-                from api.backend_selector import get_active_backend, BACKEND_HYBRID
-                _ares_backend = get_active_backend(_cfg)
-                if _ares_backend == BACKEND_HYBRID:
-                    from api.persona import get_persona_prompt as _get_persona
-                    _persona_id = str(_cfg.get("ares_persona", "") or "").strip()
-                    if _persona_id:
-                        _persona_prompt = _get_persona(_persona_id)
-                        if _persona_prompt:
-                            logger.info("ARES persona '%s' loaded (%d chars, hybrid mode)", _persona_id, len(_persona_prompt))
-                else:
-                    logger.debug("ARES backend=%s — skipping persona injection", _ares_backend)
-            except Exception as _exc:
-                logger.warning("ARES persona injection failed: %s", _exc)
 
             # ARES: inject runtime context into system prompt.
             # Live ARES operating state (backend mode, capabilities, tasks,

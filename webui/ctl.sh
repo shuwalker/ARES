@@ -4,19 +4,19 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/health_probe.sh
 . "${REPO_ROOT}/scripts/lib/health_probe.sh"
-HERMES_HOME="${HERMES_HOME:-${HOME}/.hermes}"
-PID_FILE="${HERMES_WEBUI_PID_FILE:-${HERMES_HOME}/webui.pid}"
-LOG_FILE="${HERMES_WEBUI_LOG_FILE:-${HERMES_HOME}/webui.log}"
-STATE_FILE="${HERMES_WEBUI_CTL_STATE_FILE:-${HERMES_HOME}/webui.ctl.env}"
-DEFAULT_STATE_DIR="${HERMES_WEBUI_STATE_DIR:-${HERMES_HOME}/webui}"
-DEFAULT_LAUNCHD_LABEL="${HERMES_WEBUI_LAUNCHD_LABEL:-com.parantoux.hermes-webui}"
+ARES_HOME="${ARES_HOME:-${HOME}/.ares}"
+PID_FILE="${ARES_WEBUI_PID_FILE:-${ARES_HOME}/webui.pid}"
+LOG_FILE="${ARES_WEBUI_LOG_FILE:-${ARES_HOME}/webui.log}"
+STATE_FILE="${ARES_WEBUI_CTL_STATE_FILE:-${ARES_HOME}/webui.ctl.env}"
+DEFAULT_STATE_DIR="${ARES_WEBUI_STATE_DIR:-${ARES_HOME}/webui}"
+DEFAULT_LAUNCHD_LABEL="${ARES_WEBUI_LAUNCHD_LABEL:-com.parantoux.ares-webui}"
 
 usage() {
   cat <<'EOF'
 Usage: ./ctl.sh <command> [args]
 
 Commands:
-  start [bootstrap args...]   Start Hermes WebUI as a background daemon
+  start [bootstrap args...]   Start ARES WebUI as a background daemon
   stop                        Stop the daemon started by ctl.sh
   restart [bootstrap args...] Stop, then start again
   status                      Show daemon, host/port, log, and health status
@@ -26,7 +26,7 @@ EOF
 }
 
 ensure_home() {
-  mkdir -p "${HERMES_HOME}" "${DEFAULT_STATE_DIR}"
+  mkdir -p "${ARES_HOME}" "${DEFAULT_STATE_DIR}"
 }
 
 _apply_env_file_safely() {
@@ -84,7 +84,7 @@ _apply_env_file_safely() {
 }
 
 _load_repo_dotenv_preserving_env() {
-  [[ "${HERMES_WEBUI_NO_DOTENV:-0}" == "1" ]] && return 0
+  [[ "${ARES_WEBUI_NO_DOTENV:-0}" == "1" ]] && return 0
   local env_file="${REPO_ROOT}/.env"
   [[ -f "${env_file}" ]] || return 0
 
@@ -121,15 +121,15 @@ _load_repo_dotenv_preserving_env() {
 }
 
 _load_hermes_dotenv() {
-  # Also load ~/.hermes/.env so that ${VAR} references in config.yaml can
+  # Also load ~/.ares/.env so that ${VAR} references in config.yaml can
   # resolve against provider credentials defined in the Hermes env file.
   # Repo .env takes precedence (loaded above); variables already exported
   # into the shell environment (including those just set by repo .env) are
   # captured in preserved[] before _apply_env_file_safely runs and are
   # restored afterwards, so this acts as a fallback source for vars the
   # repo .env did not define.
-  [[ "${HERMES_WEBUI_NO_DOTENV:-0}" == "1" ]] && return 0
-  local hermes_home="${HERMES_HOME:-${HOME}/.hermes}"
+  [[ "${ARES_WEBUI_NO_DOTENV:-0}" == "1" ]] && return 0
+  local hermes_home="${ARES_HOME:-${HOME}/.ares}"
   local hermes_env="${hermes_home}/.env"
   [[ -f "${hermes_env}" ]] || return 0
 
@@ -164,8 +164,8 @@ _load_hermes_dotenv() {
 }
 
 _find_python() {
-  if [[ -n "${HERMES_WEBUI_PYTHON:-}" ]]; then
-    printf '%s\n' "${HERMES_WEBUI_PYTHON}"
+  if [[ -n "${ARES_WEBUI_PYTHON:-}" ]]; then
+    printf '%s\n' "${ARES_WEBUI_PYTHON}"
   elif command -v python3 >/dev/null 2>&1; then
     command -v python3
   elif command -v python >/dev/null 2>&1; then
@@ -177,8 +177,8 @@ _find_python() {
 }
 
 _parse_launch_binding() {
-  CTL_HOST="${HERMES_WEBUI_HOST:-127.0.0.1}"
-  CTL_PORT="${HERMES_WEBUI_PORT:-8787}"
+  CTL_HOST="${ARES_WEBUI_HOST:-127.0.0.1}"
+  CTL_PORT="${ARES_WEBUI_PORT:-8788}"
   local arg next_is_host=0 saw_port=0
   for arg in "$@"; do
     if (( next_is_host )); then
@@ -235,7 +235,7 @@ _build_bootstrap_args() {
 
 _write_state() {
   local pid="$1" host="$2" port="$3" python_exe="${4:-}"
-  local state_dir="${HERMES_WEBUI_STATE_DIR:-${DEFAULT_STATE_DIR}}"
+  local state_dir="${ARES_WEBUI_STATE_DIR:-${DEFAULT_STATE_DIR}}"
   {
     printf 'PID=%q\n' "${pid}"
     printf 'REPO_ROOT=%q\n' "${REPO_ROOT}"
@@ -394,9 +394,9 @@ _pid_listens_on_port() {
 }
 
 _launchd_webui_pid() {
-  [[ "${HERMES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT:-0}" == "1" ]] && return 1
+  [[ "${ARES_WEBUI_CTL_ALLOW_LAUNCHD_CONFLICT:-0}" == "1" ]] && return 1
   command -v launchctl >/dev/null 2>&1 || return 1
-  local label="${HERMES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}}"
+  local label="${ARES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}}"
   [[ -n "${label}" ]] || return 1
   local uid launchd_out pid
   uid="$(id -u)"
@@ -406,18 +406,18 @@ _launchd_webui_pid() {
   (( pid > 0 )) || return 1
   _is_alive "${pid}" || return 1
   # Only treat the launchd job as a conflict for the port we are about to bind.
-  # A second instance on a DIFFERENT port (e.g. HERMES_WEBUI_PORT=8788 for a
+  # A second instance on a DIFFERENT port (e.g. ARES_WEBUI_PORT=8788 for a
   # test build) does not collide with the launchd-managed default and must be
   # allowed to start (#3291 over-block fix). When port ownership can't be
   # determined (no lsof), fall back to the conservative previous behavior of
   # only guarding the default port so non-default ports are never wrongly blocked.
-  local want_port="${CTL_PORT:-${HERMES_WEBUI_PORT:-8787}}"
+  local want_port="${CTL_PORT:-${ARES_WEBUI_PORT:-8788}}"
   _pid_listens_on_port "${pid}" "${want_port}"
   case "$?" in
     0) printf '%s\n' "${pid}"; return 0 ;;   # launchd job listens on our port → block
     1) return 1 ;;                            # launchd job on a different port → allow
     *)                                        # unknown: only guard the default port
-      if [[ "${want_port}" == "8787" ]]; then
+      if [[ "${want_port}" == "8788" ]]; then
         printf '%s\n' "${pid}"; return 0
       fi
       return 1 ;;
@@ -428,22 +428,22 @@ start_cmd() {
   ensure_home
   _load_repo_dotenv_preserving_env
   _load_hermes_dotenv
-  export HERMES_WEBUI_STATE_DIR="${HERMES_WEBUI_STATE_DIR:-${DEFAULT_STATE_DIR}}"
-  mkdir -p "${HERMES_WEBUI_STATE_DIR}"
+  export ARES_WEBUI_STATE_DIR="${ARES_WEBUI_STATE_DIR:-${DEFAULT_STATE_DIR}}"
+  mkdir -p "${ARES_WEBUI_STATE_DIR}"
   _parse_launch_binding "$@"
   _build_bootstrap_args "$@"
-  export HERMES_WEBUI_HOST="${CTL_HOST}"
-  export HERMES_WEBUI_PORT="${CTL_PORT}"
+  export ARES_WEBUI_HOST="${CTL_HOST}"
+  export ARES_WEBUI_PORT="${CTL_PORT}"
 
   local existing_pid
   if existing_pid="$(_current_pid 2>/dev/null)"; then
-    echo "[ctl] Hermes WebUI is already running (PID ${existing_pid})"
+    echo "[ctl] ARES WebUI is already running (PID ${existing_pid})"
     return 0
   fi
   local launchd_pid
   if launchd_pid="$(_launchd_webui_pid 2>/dev/null)"; then
-    echo "[ctl] Refusing to start a second Hermes WebUI while launchd job ${HERMES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}} is running (PID ${launchd_pid})." >&2
-    echo "[ctl] Use launchctl kickstart -k gui/$(id -u)/${HERMES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}} or disable the launchd job before using ctl.sh start." >&2
+    echo "[ctl] Refusing to start a second ARES WebUI while launchd job ${ARES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}} is running (PID ${launchd_pid})." >&2
+    echo "[ctl] Use launchctl kickstart -k gui/$(id -u)/${ARES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}} or disable the launchd job before using ctl.sh start." >&2
     return 2
   fi
   _clear_stale_pid >/dev/null 2>&1 || true
@@ -454,7 +454,7 @@ start_cmd() {
   (
     cd "${REPO_ROOT}"
     trap '' HUP
-    export HERMES_WEBUI_PRESERVE_ENV=1
+    export ARES_WEBUI_PRESERVE_ENV=1
     exec nohup "${python_exe}" "${REPO_ROOT}/bootstrap.py" --no-browser --foreground --host "${CTL_HOST}" "${CTL_PORT}" ${CTL_BOOTSTRAP_ARGS[@]+"${CTL_BOOTSTRAP_ARGS[@]}"}
   ) >> "${LOG_FILE}" 2>&1 &
   pid=$!
@@ -463,11 +463,11 @@ start_cmd() {
   _write_state "${pid}" "${CTL_HOST}" "${CTL_PORT}" "${python_exe}"
   sleep 0.15
   if ! _is_alive "${pid}"; then
-    echo "[ctl] Hermes WebUI failed to stay running. Log: ${LOG_FILE}" >&2
+    echo "[ctl] ARES WebUI failed to stay running. Log: ${LOG_FILE}" >&2
     rm -f "${PID_FILE}" "${STATE_FILE}"
     return 1
   fi
-  echo "[ctl] Started Hermes WebUI (PID ${pid})"
+  echo "[ctl] Started ARES WebUI (PID ${pid})"
   echo "[ctl] Bound: ${CTL_HOST}:${CTL_PORT}"
   echo "[ctl] Log: ${LOG_FILE}"
 }
@@ -476,7 +476,7 @@ stop_cmd() {
   ensure_home
   local pid
   if ! pid="$(_pid_from_file 2>/dev/null)"; then
-    echo "[ctl] Hermes WebUI is stopped"
+    echo "[ctl] ARES WebUI is stopped"
     rm -f "${PID_FILE}" "${STATE_FILE}"
     return 0
   fi
@@ -486,7 +486,7 @@ stop_cmd() {
     return 0
   fi
 
-  echo "[ctl] Stopping Hermes WebUI (PID ${pid})"
+  echo "[ctl] Stopping ARES WebUI (PID ${pid})"
   _stop_webui_pid "${pid}" TERM
   local i
   for i in {1..50}; do
@@ -535,8 +535,8 @@ status_cmd() {
   _load_repo_dotenv_preserving_env
   _load_hermes_dotenv
   _load_state_if_present
-  local host="${HOST:-${HERMES_WEBUI_HOST:-127.0.0.1}}"
-  local port="${PORT:-${HERMES_WEBUI_PORT:-8787}}"
+  local host="${HOST:-${ARES_WEBUI_HOST:-127.0.0.1}}"
+  local port="${PORT:-${ARES_WEBUI_PORT:-8788}}"
   local log_path="${LOG_FILE}"
   local pid uptime health
 

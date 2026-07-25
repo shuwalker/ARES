@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot bootstrap launcher for Hermes Web UI."""
+"""One-shot bootstrap launcher for ARES."""
 
 from __future__ import annotations
 
@@ -73,8 +73,8 @@ def _load_repo_dotenv() -> None:
 # values from .env even when bootstrap.py is invoked directly (not via start.sh).
 _load_repo_dotenv()
 
-DEFAULT_HOST = os.getenv("HERMES_WEBUI_HOST", "127.0.0.1")
-DEFAULT_PORT = int(os.getenv("HERMES_WEBUI_PORT", "8787"))
+DEFAULT_HOST = os.getenv("ARES_WEBUI_HOST", "127.0.0.1")
+DEFAULT_PORT = int(os.getenv("ARES_WEBUI_PORT", "8788"))
 # Set HERMES_WEBUI_SKIP_ONBOARDING=1 to bypass the first-run wizard when
 # the environment is already fully configured (e.g. managed hosting).
 
@@ -115,7 +115,7 @@ def _walk_up_for_run_agent(start: Path) -> Path | None:
 def _agent_dir_from_hermes_cli() -> Path | None:
     """Resolve the agent install root by inspecting the `hermes` CLI launcher.
 
-    The Hermes Agent installer drops a `hermes` launcher in the user's PATH.
+    The ARES Agent installer drops a `hermes` launcher in the user's PATH.
     It comes in two shapes depending on installer version:
 
     1. A Python console-script whose shebang points at the agent's venv::
@@ -206,7 +206,7 @@ def discover_agent_dir() -> Path | None:
 
 
 def discover_launcher_python(agent_dir: Path | None) -> str:
-    env_python = os.getenv("HERMES_WEBUI_PYTHON")
+    env_python = os.getenv("ARES_WEBUI_PYTHON")
     if env_python:
         return env_python
     if agent_dir:
@@ -222,7 +222,9 @@ def discover_launcher_python(agent_dir: Path | None) -> str:
 
 
 def _python_can_run_webui_and_agent(python_exe: str, agent_dir: Path | None = None) -> bool:
-    script = "import yaml\nfrom run_agent import AIAgent\n"
+    # ARES talks to Jaeger through its bridge; the WebUI process must not
+    # import or boot the Hermes agent runtime.
+    script = "import yaml\n"
     env = os.environ.copy()
     if agent_dir:
         # PREPEND agent_dir to PYTHONPATH so an `agent_dir/run_agent.py` wins
@@ -245,10 +247,10 @@ def _python_can_run_webui_and_agent(python_exe: str, agent_dir: Path | None = No
 
 
 def ensure_python_has_webui_deps(python_exe: str, agent_dir: Path | None = None) -> str:
-    """Return a Python executable that can run both WebUI and Hermes Agent.
+    """Return a Python executable that can run both WebUI and ARES Agent.
 
     The WebUI can be launched directly with its local .venv. That venv has the
-    WebUI dependencies (for example PyYAML), but may not have Hermes Agent on its
+    WebUI dependencies (for example PyYAML), but may not have ARES Agent on its
     import path. In that case the server starts healthy, then chat fails later
     with "AIAgent not available". Prefer the agent venv when it is usable, and
     validate the final interpreter before starting the server.
@@ -307,8 +309,8 @@ def ensure_python_has_webui_deps(python_exe: str, agent_dir: Path | None = None)
     if _python_can_run_webui_and_agent(str(venv_python), agent_dir):
         return str(venv_python)
     raise RuntimeError(
-        "Python environment cannot import both WebUI dependencies and Hermes Agent. "
-        "Set HERMES_WEBUI_PYTHON to the Hermes Agent venv Python or install the "
+        "Python environment cannot import both WebUI dependencies and ARES Agent. "
+        "Set ARES_WEBUI_PYTHON to a Python with the WebUI requirements "
         "WebUI requirements into that environment."
     )
 
@@ -323,7 +325,7 @@ def install_hermes_agent() -> None:
             "Auto-install is not supported on native Windows. "
             "Install hermes-agent manually first."
         )
-    info(f"Hermes Agent not found. Attempting install via {INSTALLER_URL}")
+    info(f"ARES Agent not found. Attempting install via {INSTALLER_URL}")
     subprocess.run(
         ["/bin/bash", "-lc", f"curl -fsSL {INSTALLER_URL} | bash"], check=True
     )
@@ -430,7 +432,7 @@ def open_browser(url: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Bootstrap Hermes Web UI onboarding.")
+    parser = argparse.ArgumentParser(description="Bootstrap ARES onboarding.")
     parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT)
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument(
@@ -441,7 +443,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-agent-install",
         action="store_true",
-        help="Fail instead of attempting the official Hermes installer.",
+        help="Fail instead of attempting the official ARES installer.",
     )
     parser.add_argument(
         "--foreground",
@@ -526,31 +528,24 @@ def main() -> int:
     args = parse_args()
     ensure_supported_platform()
 
-    agent_dir = discover_agent_dir()
-    if not agent_dir and not hermes_command_exists():
-        if args.skip_agent_install:
-            raise RuntimeError(
-                "Hermes Agent was not found and auto-install was disabled."
-            )
-        install_hermes_agent()
-        agent_dir = discover_agent_dir()
+    # Hermes is never a prerequisite for ARES. If installed, Jaeger may invoke
+    # its CLI separately as a delegated worker.
+    agent_dir = None
 
     python_exe = ensure_python_has_webui_deps(discover_launcher_python(agent_dir), agent_dir)
     state_dir = Path(
-        os.getenv("HERMES_WEBUI_STATE_DIR")
-        or Path(os.getenv("HERMES_HOME") or (Path.home() / ".hermes")) / "webui"
+        os.getenv("ARES_WEBUI_STATE_DIR")
+        or Path(os.getenv("ARES_HOME") or (Path.home() / ".ares")) / "webui"
     ).expanduser()
     state_dir.mkdir(parents=True, exist_ok=True)
 
     # Mutate os.environ so child (or post-execv) inherits the resolved values.
-    os.environ["HERMES_WEBUI_HOST"] = args.host
-    os.environ["HERMES_WEBUI_PORT"] = str(args.port)
-    os.environ.setdefault("HERMES_WEBUI_STATE_DIR", str(state_dir))
-    if agent_dir:
-        os.environ["HERMES_WEBUI_AGENT_DIR"] = str(agent_dir)
+    os.environ["ARES_WEBUI_HOST"] = args.host
+    os.environ["ARES_WEBUI_PORT"] = str(args.port)
+    os.environ.setdefault("ARES_WEBUI_STATE_DIR", str(state_dir))
 
     # Let operators move fallback relative writes out of a read-only agent dir.
-    server_cwd = os.environ.get("HERMES_WEBUI_SERVER_CWD", "").strip() or str(agent_dir or REPO_ROOT)
+    server_cwd = os.environ.get("ARES_WEBUI_SERVER_CWD", "").strip() or str(REPO_ROOT)
     server_path = str(REPO_ROOT / "server.py")
     # Scheme the server will advertise (HTTPS when TLS cert+key are configured).
     scheme = "https" if _tls_probe_enabled() else "http"
@@ -562,7 +557,7 @@ def main() -> int:
     foreground_reason = "--foreground" if args.foreground else _detect_supervisor()
     if foreground_reason:
         info(
-            f"Starting Hermes Web UI on {scheme}://{args.host}:{args.port} "
+            f"Starting ARES on {scheme}://{args.host}:{args.port} "
             f"(foreground mode: {foreground_reason})"
         )
         try:
@@ -578,8 +573,7 @@ def main() -> int:
         if not os.access(python_exe, os.X_OK):
             raise RuntimeError(
                 f"Python interpreter at {python_exe!r} is not executable. "
-                f"Set HERMES_WEBUI_PYTHON to a working interpreter or fix "
-                f"the agent venv at {agent_dir}."
+                f"Set ARES_WEBUI_PYTHON to a working interpreter."
             )
         # os.execv replaces the current process image. On Windows, execv
         # spawns a new process instead of replacing (Python calls CreateProcess),
@@ -629,7 +623,7 @@ def main() -> int:
     # /health, then return. Suitable for an interactive `bash start.sh` run.
     log_path = state_dir / f"bootstrap-{args.port}.log"
 
-    info(f"Starting Hermes Web UI on {scheme}://{args.host}:{args.port}")
+    info(f"Starting ARES on {scheme}://{args.host}:{args.port}")
     with log_path.open("ab") as log_file:
         proc = subprocess.Popen(
             [python_exe, server_path],

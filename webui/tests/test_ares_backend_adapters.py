@@ -1,24 +1,27 @@
 import pytest
 from api.backends.base import AgenticBackend
-from api.backends.hermes import HermesBackend
 from api.backends.jros import JROSBackend
-from api.backends.hybrid import HybridBackend
 from api.backends.router import get_router, get_default_router
+from api.backend_selector import backend_status, normalize_backend
 
 
-def test_router_contains_all_adapters():
+def test_router_contains_only_jaeger_adapter():
     router = get_default_router()
-    assert "hermes" in router.backends
-    assert "jros" in router.backends
-    assert "hybrid" in router.backends
-    
-    # Assert type
-    assert isinstance(router.backends["hermes"], HermesBackend)
+    assert set(router.backends) == {"jros"}
     assert isinstance(router.backends["jros"], JROSBackend)
-    assert isinstance(router.backends["hybrid"], HybridBackend)
 
 
-@pytest.mark.parametrize("backend_key", ["hermes", "jros", "hybrid"])
+def test_legacy_backend_values_migrate_to_jaeger(monkeypatch):
+    assert normalize_backend("hermes") == "jros"
+    assert normalize_backend("hybrid") == "jros"
+    monkeypatch.setattr("api.backend_selector.is_jros_available", lambda: True)
+    status = backend_status()
+    assert status["conversation_owner"] == "jros"
+    assert status["delegated_workers"]["hermes"]["owns_sessions"] is False
+    assert status["delegated_workers"]["hermes"]["owns_webui"] is False
+
+
+@pytest.mark.parametrize("backend_key", ["jros"])
 def test_backend_adapters_conform_to_contract(backend_key):
     router = get_default_router()
     backend = router.backends[backend_key]
@@ -42,44 +45,6 @@ def test_backend_adapters_conform_to_contract(backend_key):
     assert callable(getattr(backend, "tools"))
     assert callable(getattr(backend, "presence_events"))
     assert callable(getattr(backend, "settings_schema"))
-
-
-def test_hermes_adapter_metadata():
-    backend = HermesBackend()
-    
-    # Test health
-    h = backend.health()
-    assert h["status"] == "ok"
-    assert h["latency_ms"] == 0.0
-    assert "message" in h
-    
-    # Test identity projection
-    ident = backend.identity_projection()
-    assert "name" in ident
-    assert "description" in ident
-    assert ident["avatar_state"] == "idle"
-    
-    # Test capabilities
-    caps = backend.capabilities()
-    assert caps["chat"] is True
-    assert caps["tools"] is True
-    assert caps["persona"] is False
-    assert caps["hybrid"] is False
-    
-    # Test chat support
-    support = backend.chat_session_support()
-    assert support["streaming"] is True
-    assert support["context_window"] == 32768
-    
-    # Test tools
-    t = backend.tools()
-    assert isinstance(t, list)
-    
-    # Test settings schema
-    schema = backend.settings_schema()
-    assert schema["type"] == "object"
-    assert "properties" in schema
-
 
 def test_jros_adapter_metadata(monkeypatch):
     backend = JROSBackend()

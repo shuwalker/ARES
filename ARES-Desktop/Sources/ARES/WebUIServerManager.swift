@@ -96,19 +96,15 @@ public final class WebUIServerManager: ObservableObject {
         process.arguments = ["server.py"]
         
         var env = ProcessInfo.processInfo.environment
-        env["HERMES_WEBUI_HOST"] = host
-        env["HERMES_WEBUI_PORT"] = String(port)
+        env["ARES_WEBUI_HOST"] = host
+        env["ARES_WEBUI_PORT"] = String(port)
         env["ARES_WEBUI_RELOAD"] = config.reloadDevMode ? "1" : "0"
-        env["HERMES_API_URL"] = config.hermesURL
         env["ARES_JROS_GATEWAY_URL"] = config.jrosURL
         env["ARES_ROLE"] = config.aresRole
         env["ARES_DEVICE_ID"] = config.aresDeviceID
         env["ARES_AI_ID"] = config.aresAIID
         env["ARES_PRIMARY_URL"] = config.aresPrimaryURL
         env["ARES_CONTINUITY_DIR"] = config.aresContinuityDir
-        if !config.hermesAPIKey.isEmpty {
-            env["HERMES_WEBUI_GATEWAY_API_KEY"] = config.hermesAPIKey
-        }
         if !config.jrosAPIKey.isEmpty {
             env["ARES_JROS_GATEWAY_KEY"] = config.jrosAPIKey
         }

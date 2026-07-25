@@ -7127,15 +7127,11 @@ function _openProfileSwitchSessionBrowser(){
   }catch(_){}
 }
 
-// ── ARES Backend Selector ─────────────────────────────────────
-// The core ARES feature: pick which AI backend runs your agent.
-// Hermes, or JROS as the companion runtime path (turns run on a JROS gateway
-// server — `jaeger gateway` — local or on another machine, with a local
-// in-process fallback where supported).
-// Hybrid (the additive mode) is hidden in the UI until it's fully defined;
-// a config that already says "hybrid" still works server-side.
+// ── ARES Runtime Status ────────────────────────────────────────
+// JaegerAI is the sole conversation runtime. Hermes is not selectable here;
+// Jaeger may invoke it separately as a delegated subtask worker.
 
-let _aresCurrentBackend = 'hermes';
+let _aresCurrentBackend = 'jros';
 let _aresJrosAvailable = false;
 let _aresJrosMode = '';   // 'gateway' | 'local' | '' — how JROS turns will run
 let _aresJrosModel = '';
@@ -7166,7 +7162,7 @@ function initAresBackend() {
   const sid = _aresBackendSessionId();
   const url = sid ? `/api/ares/backend?session_id=${encodeURIComponent(sid)}` : '/api/ares/backend';
   api(url).then(data => {
-    _aresCurrentBackend = data.current || 'hermes';
+    _aresCurrentBackend = 'jros';
     _aresJrosAvailable = (data.status && data.status.jros) || false;
     _aresJrosMode = (data.status && data.status.jros_mode) || '';
     _aresJrosModel = (data.status && data.status.jros_model) || '';
@@ -7185,32 +7181,28 @@ function refreshAresBackendForSession() {
 }
 
 function _aresBackendDisplayName(backend) {
-  return { hermes: 'Hermes', jros: 'JROS', hybrid: 'Hybrid' }[backend] || 'Hermes';
+  return 'JaegerAI';
 }
 
 function _syncAresBackendDependentUI() {
   const personaWrap = $('aresPersonaWrap');
-  if (personaWrap) personaWrap.style.display = (_aresCurrentBackend === 'jros' || _aresCurrentBackend === 'hybrid') ? '' : 'none';
+  if (personaWrap) personaWrap.style.display = '';
 
   const chip = $('aresBackendChip');
   if (chip) {
     chip.dataset.backend = _aresCurrentBackend;
-    chip.title = _aresCurrentBackend === 'jros'
-      ? 'JROS runtime is running this conversation'
-      : _aresCurrentBackend === 'hybrid'
-        ? 'Hybrid mode: Hermes runtime with selected JROS identity/tools'
-        : 'Hermes runtime is running this conversation';
+    chip.title = 'JaegerAI owns this conversation';
   }
 }
 
 function _aresCapabilityDisabledMessage(capability) {
   const backend = _aresBackendDisplayName(_aresCurrentBackend);
   const labels = {
-    cloud_provider_model_settings: 'Cloud/provider model settings are handled by Hermes. Use provider sync for JROS model changes.',
-    mcp_server_config: 'This panel configures Hermes MCP. JROS has its own MCP configuration.',
-    messaging_gateway: 'Messaging gateways are Hermes-only for this backend.',
-    kanban: 'Kanban is Hermes-native. Enable Hermes tools for your Companion to expose it through JROS.',
-    delegate_task: 'Subagents and delegate_task are Hermes-only for this backend.',
+    cloud_provider_model_settings: 'This model setting is unavailable in the current Jaeger runtime.',
+    mcp_server_config: 'This MCP setting is unavailable in the current Jaeger runtime.',
+    messaging_gateway: 'This messaging setting is unavailable in the current Jaeger runtime.',
+    kanban: 'Kanban is unavailable in the current Jaeger runtime.',
+    delegate_task: 'Delegated tasks are unavailable in the current Jaeger runtime.',
     character_persona_editing: 'Character/persona editing is available when JROS is active.',
     voice_settings: 'These voice controls configure Hermes/browser TTS. JROS voice uses its own Kokoro/Whisper settings.',
   };
@@ -7255,7 +7247,6 @@ function updateAresBackendUI() {
 
   // JROS status text
   const jrosStatus = $('aresBackendJrosStatus');
-  const hybridStatus = $('aresBackendHybridStatus');
   if (jrosStatus) {
     const modelSuffix = _aresJrosModel ? ` · model: ${_aresJrosModel}` : '';
     jrosStatus.textContent = !_aresJrosAvailable
@@ -7264,7 +7255,6 @@ function updateAresBackendUI() {
         ? `Runs JROS on this machine (local bridge)${modelSuffix}`
         : `JROS gateway connected${modelSuffix}`;
   }
-  if (hybridStatus) hybridStatus.textContent = _aresJrosAvailable ? 'Hermes runtime + selected JROS identity/tools' : 'Needs the JROS gateway running';
 
   // JROS stays selectable while the gateway is offline (the user may start it
   // right after switching); the dimmed row signals it isn't reachable yet.
@@ -7306,15 +7296,12 @@ function closeAresBackendDropdown() {
 }
 
 function setAresBackend(backend) {
-  if (backend === 'hybrid' && !_aresJrosAvailable) {
-    showToast('Hybrid needs the JROS gateway running');
-    return;
-  }
+  backend = 'jros';
   const sid = _aresBackendSessionId();
   const payload = sid ? { backend, session_id: sid } : { backend };
   api('/api/ares/backend/set', { method: 'POST', body: JSON.stringify(payload) })
     .then(data => {
-      _aresCurrentBackend = (data && data.backend) || backend;
+      _aresCurrentBackend = 'jros';
       if (data && data.capabilities) _aresCapabilities = data.capabilities;
       if (typeof S !== 'undefined' && S.session && sid && S.session.session_id === sid) S.session.ares_backend = _aresCurrentBackend;
       updateAresBackendUI();
@@ -7353,7 +7340,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ── ARES Persona Selector ──────────────────────────────────────
 // Pick the active JROS character/person the user is messaging.
-// Active in JROS and Hybrid backend modes. Uses identical chip+dropdown
+// Active for the JaegerAI runtime. Uses identical chip+dropdown
 // pattern as the backend selector and profile picker for visual
 // consistency in the composer footer.
 
@@ -7370,11 +7357,11 @@ function initAresPersona() {
       _aresCurrentPersona = cfg.persona_id || '';
     }).catch(() => {});
 
-    // Only show if backend is JROS or Hybrid.
+    // Only show for the JaegerAI runtime.
     const sid = _aresBackendSessionId();
     const backendUrl = sid ? `/api/ares/backend?session_id=${encodeURIComponent(sid)}` : '/api/ares/backend';
     api(backendUrl).then(backendData => {
-      if (backendData.current === 'jros' || backendData.current === 'hybrid') {
+      if (backendData.current === 'jros') {
         const wrap = $('aresPersonaWrap');
         if (wrap) wrap.style.display = '';
       }

@@ -133,7 +133,7 @@ function _onboardingStepMeta(key){
     iphone:{title:t('onboarding_step_iphone_title')||'iPhone access',desc:t('onboarding_step_iphone_desc')||'Install Tailscale and join the same private network.'},
     connect:{title:t('onboarding_step_connect_title')||'Remote access',desc:t('onboarding_step_connect_desc')||'Install Tailscale and reach your Companion from any device.'},
     mcp:{title:t('onboarding_step_mcp_title')||'Optional: MCP servers',desc:t('onboarding_step_mcp_desc')||'Choose local-only vs remote/server automation.'},
-    setup:{title:t('onboarding_step_setup_title')||'Optional: Hermes + providers',desc:t('onboarding_step_setup_desc')||'Add Hermes Agent or a cloud provider for extra capability. Skippable — your Companion already works.'},
+    setup:{title:t('onboarding_step_setup_title')||'Models + providers',desc:t('onboarding_step_setup_desc')||'Configure the models and providers JaegerAI may use.'},
     workspace:{title:t('onboarding_step_workspace_title')||'Workspace + model',desc:t('onboarding_step_workspace_desc')||'Pick defaults for new sessions and chat.'},
     password:{title:t('onboarding_step_password_title')||'Optional password',desc:t('onboarding_step_password_desc')||'Protect the Web UI before sharing it.'},
     finish:{title:t('onboarding_step_finish_title')||'Finish',desc:t('onboarding_step_finish_desc')||'Review and enter the app.'}
@@ -375,26 +375,20 @@ function _renderOnboardingBody(){
   }
 
   if(key==='framework'){
-    _setOnboardingNotice('Select the core framework that will power your Synthetic Mind.', 'info');
+    ONBOARDING.form.framework='jros';
+    _setOnboardingNotice('JaegerAI is the required Synthetic Mind runtime.', 'info');
     body.innerHTML=`
       <div class="onboarding-hero-icon">⚙️</div>
       <div class="onboarding-centered-copy">
-        <h3>Choose your Framework</h3>
-        <p>ARES acts as the orchestrator. Select the primary backend framework you want to use.</p>
+        <h3>JaegerAI Runtime</h3>
+        <p>ARES is JaegerAI's WebUI and control surface.</p>
       </div>
       <div class="onboarding-panel-grid" style="gap: 12px; margin-bottom: 20px;">
         <label class="onboarding-check" style="cursor:pointer; flex-direction: row; align-items:center; gap:16px;">
-          <input type="radio" name="framework" value="jros" checked>
+          <input type="radio" name="framework" value="jros" checked disabled>
           <div style="flex:1;">
             <strong>Jaeger OS (Recommended)</strong>
             <span style="display:block;margin-top:4px;color:var(--muted);font-weight:normal;">The Synthetic Mind runtime. Provides local memory, persona embodiment, and a local agent engine.</span>
-          </div>
-        </label>
-        <label class="onboarding-check" style="cursor:pointer; flex-direction: row; align-items:center; gap:16px;">
-          <input type="radio" name="framework" value="hermes">
-          <div style="flex:1;">
-            <strong>Hermes Agent</strong>
-            <span style="display:block;margin-top:4px;color:var(--muted);font-weight:normal;">A terminal execution agent with deep code reasoning. No avatar or memory.</span>
           </div>
         </label>
       </div>
@@ -555,7 +549,7 @@ function _renderOnboardingBody(){
       return;
     }
 
-    _setOnboardingNotice(system.chat_ready?t('onboarding_notice_setup_already_ready'):(t('onboarding_notice_setup_optional')||'Optional: your Companion already works without this. Add Hermes Agent or a cloud provider here only if you want extra coding/automation capability.'),system.chat_ready?'success':'info');
+    _setOnboardingNotice(system.chat_ready?t('onboarding_notice_setup_already_ready'):(t('onboarding_notice_setup_optional')||'Configure the models and providers JaegerAI may use.'),system.chat_ready?'success':'info');
     body.innerHTML=`
       <label class="onboarding-field">
         <span>${t('onboarding_provider_label')}</span>
@@ -567,9 +561,7 @@ function _renderOnboardingBody(){
       <p class="onboarding-copy">${keyHelp}</p>
       ${showBaseUrl?`<p class="onboarding-copy">${t('onboarding_base_url_help')}</p>`:''}
       <p class="onboarding-copy">${esc(setup.unsupported_note||'')||''}</p>
-      ${_renderHermesToolsToggle()}
       ${system.chat_ready?'':`<button class="onboarding-secondary-wide" type="button" onclick="skipOnboardingProviderStep()">${t('onboarding_skip_addition')||'Skip — my Companion already works'}</button>`}`;
-    _loadHermesToolsStatus();
     return;
   }
 
@@ -658,38 +650,6 @@ function syncOnboardingProvider(value){
     }
   }
   _renderOnboardingBody();
-}
-
-let _hermesToolsStatus={loaded:false,available:false,enabled:false};
-
-function _renderHermesToolsToggle(){
-  if(!_hermesToolsStatus.loaded)return '';
-  if(!_hermesToolsStatus.available)return '';
-  const checked=_hermesToolsStatus.enabled?'checked':'';
-  return `<label class="onboarding-field onboarding-checkbox-field">
-    <input type="checkbox" id="onboardingHermesToolsToggle" ${checked} onchange="toggleHermesTools(this.checked)">
-    <span>${t('onboarding_hermes_tools_label')||'Let your Companion use Hermes tools (web search, browser, images, skills) over MCP'}</span>
-  </label>`;
-}
-
-async function _loadHermesToolsStatus(){
-  try{
-    const res=await api('/api/onboarding/companion/hermes-tools');
-    _hermesToolsStatus={loaded:true,available:!!(res&&res.available),enabled:!!(res&&res.enabled)};
-  }catch(e){
-    _hermesToolsStatus={loaded:true,available:false,enabled:false};
-  }
-  if(ONBOARDING.steps[ONBOARDING.step]==='setup')_renderOnboardingBody();
-}
-
-async function toggleHermesTools(enabled){
-  try{
-    const res=await api('/api/onboarding/companion/hermes-tools',{method:'POST',body:JSON.stringify({enabled})});
-    _hermesToolsStatus.enabled=!!(res&&res.enabled);
-    showToast(enabled?(t('onboarding_hermes_tools_on')||'Companion will use Hermes tools'):(t('onboarding_hermes_tools_off')||'Hermes tools disabled'));
-  }catch(e){
-    _setOnboardingNotice((e&&e.message)||String(e),'warn');
-  }
 }
 
 function skipOnboardingProviderStep(){

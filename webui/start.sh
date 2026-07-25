@@ -50,7 +50,7 @@ if [[ -f "${REPO_ROOT}/.env" ]]; then
   unset _hermes_env_filtered
 fi
 
-PYTHON="${HERMES_WEBUI_PYTHON:-}"
+PYTHON="${ARES_WEBUI_PYTHON:-}"
 if [[ -z "${PYTHON}" ]]; then
   if command -v python3 >/dev/null 2>&1; then
     PYTHON="$(command -v python3)"
@@ -77,12 +77,12 @@ fi
 # the detached start.sh path to parity using a health probe (start.sh keeps no
 # PID file of its own).
 #
-# Resolve host/port the same way bootstrap.py does: HERMES_WEBUI_HOST /
-# HERMES_WEBUI_PORT (possibly just sourced from .env above), else the
-# bootstrap.py defaults of 127.0.0.1 / 8787. A 0.0.0.0 / :: bind is probed via
+# Resolve host/port the same way bootstrap.py does: ARES_WEBUI_HOST /
+# ARES_WEBUI_PORT (possibly just sourced from .env above), else the
+# bootstrap.py defaults of 127.0.0.1 / 8788. A 0.0.0.0 / :: bind is probed via
 # loopback, matching server.py's _abort_if_already_serving.
-_hermes_host="${HERMES_WEBUI_HOST:-127.0.0.1}"
-_hermes_port="${HERMES_WEBUI_PORT:-8787}"
+_hermes_host="${ARES_WEBUI_HOST:-127.0.0.1}"
+_hermes_port="${ARES_WEBUI_PORT:-8788}"
 
 # CLI args override the env/defaults exactly as bootstrap.py's argparse does
 # (`port` is the first bare numeric positional; `--host VALUE` / `--host=VALUE`).
@@ -130,7 +130,7 @@ esac
 . "${REPO_ROOT}/scripts/lib/health_probe.sh"
 _hermes_probe_scheme="$(hermes_webui_probe_scheme)"
 # Run the probe in the CURRENT shell (redirect, not $(...)) so the helper's
-# _HERMES_WEBUI_PROBE_SCHEME global survives — a command-substitution subshell
+# _ARES_WEBUI_PROBE_SCHEME global survives — a command-substitution subshell
 # would discard it. server.py falls back to plain HTTP when the cert/key are
 # unloadable, so a TLS-configured instance can be live on http:// while the
 # configured scheme is https://; prefer the scheme that actually answered.
@@ -140,13 +140,13 @@ if hermes_webui_probe_health "${_hermes_probe_host}" "${_hermes_port}" "/health"
   _hermes_already_up="$(cat "${_hermes_probe_body_file}" 2>/dev/null || true)"
 fi
 rm -f "${_hermes_probe_body_file}" 2>/dev/null || true
-if [[ -n "${_HERMES_WEBUI_PROBE_SCHEME:-}" ]]; then
-  _hermes_probe_scheme="${_HERMES_WEBUI_PROBE_SCHEME}"
+if [[ -n "${_ARES_WEBUI_PROBE_SCHEME:-}" ]]; then
+  _hermes_probe_scheme="${_ARES_WEBUI_PROBE_SCHEME}"
 fi
 
 if [[ -n "${_hermes_already_up}" ]]; then
   cat >&2 <<EOF
-[==] Hermes WebUI is already running at ${_hermes_probe_scheme}://${_hermes_probe_host}:${_hermes_port}
+[==] ARES WebUI is already running at ${_hermes_probe_scheme}://${_hermes_probe_host}:${_hermes_port}
      The server was NOT started again (start.sh does not double-start).
 
      If you need to restart the server, do the following:

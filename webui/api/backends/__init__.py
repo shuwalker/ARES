@@ -1,27 +1,22 @@
 """
 ARES Backends Package
 
-This package provides the adapter layer so ARES can treat Hermes and JROS
-as peer full agentic frameworks. All code here is ARES-owned.
+This package exposes JaegerAI/JROS as ARES's conversation runtime.
 
 Public exports:
     - get_router()
     - AgenticBackend, BackendRouter
-    - HermesBackend, JROSBackend
+    - JROSBackend
 """
 
 from .base import AgenticBackend, BackendRouter
-from .hermes import HermesBackend
 from .jros import JROSBackend
-from .hybrid import HybridBackend
 from .router import get_router, get_default_router
 
 __all__ = [
     "AgenticBackend",
     "BackendRouter",
-    "HermesBackend",
     "JROSBackend",
-    "HybridBackend",
     "get_router",
     "get_default_router",
 ]

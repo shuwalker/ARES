@@ -282,7 +282,7 @@ def _jros_instance_name() -> str | None:
 def _jros_hermes_tools_enabled() -> bool:
     """Whether the Companion should boot with Hermes's tools reachable over
     MCP — an opt-in addition on top of the jros backend, not a competing
-    backend mode. See api.jros_hermes_mcp for the config-sync side."""
+    backend mode."""
     try:
         from api.config import get_config
 

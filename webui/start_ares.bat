@@ -8,7 +8,7 @@ setlocal enabledelayedexpansion
 set "ARES_HOME=%USERPROFILE%\.ares"
 set "INSTALL_DIR=%ARES_HOME%"
 set "WEBUI_DIR=%ARES_HOME%\webui"
-set "PORT=8787"
+set "PORT=8788"
 set "HOST=0.0.0.0"
 
 REM === If not inside the repo, check if installed or clone ===
@@ -70,13 +70,12 @@ if not exist ".venv\Scripts\python.exe" (
     "%PYTHON%" -m venv .venv
     echo [..] Installing dependencies...
     .venv\Scripts\python -m pip install -q -r "%~dp0requirements.txt"
-    .venv\Scripts\python -m pip install -q hermes-agent 2>nul
     if not exist ".env" if exist ".env.example" copy ".env.example" ".env" >nul
 )
 
 REM === Start server ===
-set HERMES_WEBUI_HOST=%HOST%
-set HERMES_WEBUI_PORT=%PORT%
+set ARES_WEBUI_HOST=%HOST%
+set ARES_WEBUI_PORT=%PORT%
 echo.
 echo === ARES Web UI === Open http://localhost:%PORT%
 echo.

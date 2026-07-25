@@ -1,4 +1,4 @@
-"""Hermes Web UI -- first-run onboarding helpers."""
+"""ARES -- first-run onboarding helpers."""
 
 from __future__ import annotations
 
@@ -953,7 +953,7 @@ def get_onboarding_status() -> dict:
             "default_workspace": settings.get("default_workspace")
             or str(DEFAULT_WORKSPACE),
             "password_enabled": is_auth_enabled(),
-            "bot_name": settings.get("bot_name") or "Hermes",
+            "bot_name": settings.get("bot_name") or "ARES",
         },
         "system": {
             "hermes_found": bool(_HERMES_FOUND),
@@ -1247,17 +1247,7 @@ def install_framework(body: dict) -> dict:
         threading.Thread(target=_run_install, daemon=True).start()
         return {"ok": True, "framework": framework, "status": "installing"}
         
-    elif framework == "hermes":
-        def _run_install():
-            try:
-                import sys
-                pip_exe = [sys.executable, "-m", "pip", "install", "hermes-agent"]
-                subprocess.run(pip_exe, check=True)
-                save_settings({"ares_backend": "hermes"})
-            except Exception as e:
-                logger.error("Hermes background install failed: %s", e)
-                
-        threading.Thread(target=_run_install, daemon=True).start()
-        return {"ok": True, "framework": framework, "status": "installing"}
-
-    return {"ok": False, "error": f"Unknown framework: {framework}"}
+    return {
+        "ok": False,
+        "error": "JaegerAI is the only supported conversation runtime",
+    }

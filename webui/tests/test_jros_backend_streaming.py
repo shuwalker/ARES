@@ -51,7 +51,7 @@ def test_jros_backend_selects_gateway_worker_without_health_ping(monkeypatch):
     assert is_jros is True
 
 
-def test_hybrid_backend_keeps_normal_hermes_worker(monkeypatch):
+def test_legacy_hybrid_backend_migrates_to_jaeger_worker(monkeypatch):
     from api import routes
 
     monkeypatch.setattr(routes, "get_config", lambda: {"ares_backend": "hybrid"})
@@ -59,9 +59,9 @@ def test_hybrid_backend_keeps_normal_hermes_worker(monkeypatch):
 
     worker, is_gateway, is_jros = routes._select_chat_worker_target()
 
-    assert worker is routes._run_agent_streaming
     assert is_gateway is False
-    assert is_jros is False
+    assert is_jros is True
+    assert worker.__name__ == "_run_jros_chat_streaming"
 
 
 def test_gateway_url_resolution_env_config_default(monkeypatch):
@@ -485,24 +485,20 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     assert status["jros_mode"] == "local"
 
 
-def test_ares_capabilities_follow_backend_and_hermes_tools(monkeypatch):
+def test_ares_capabilities_are_owned_by_jaeger(monkeypatch):
     from api import ares_capabilities
 
     monkeypatch.setattr(ares_capabilities, "_jros_hermes_tools_enabled", lambda: False)
     jros_caps = ares_capabilities.capabilities_for_backend("jros")
     assert jros_caps["character_persona_editing"] is True
-    assert jros_caps["cloud_provider_model_settings"] is False
-    assert jros_caps["mcp_server_config"] is False
-    assert jros_caps["messaging_gateway"] is False
-    assert jros_caps["delegate_task"] is False
-    assert jros_caps["kanban"] is False
+    assert jros_caps["cloud_provider_model_settings"] is True
+    assert jros_caps["mcp_server_config"] is True
+    assert jros_caps["messaging_gateway"] is True
+    assert jros_caps["delegate_task"] is True
+    assert jros_caps["kanban"] is True
 
     monkeypatch.setattr(ares_capabilities, "_jros_hermes_tools_enabled", lambda: True)
     assert ares_capabilities.capabilities_for_backend("jros")["kanban"] is True
 
-    hermes_caps = ares_capabilities.capabilities_for_backend("hermes")
-    assert hermes_caps["cloud_provider_model_settings"] is True
-    assert hermes_caps["mcp_server_config"] is True
-    assert hermes_caps["messaging_gateway"] is True
-    assert hermes_caps["delegate_task"] is True
-    assert hermes_caps["character_persona_editing"] is False
+    legacy_caps = ares_capabilities.capabilities_for_backend("hermes")
+    assert legacy_caps == jros_caps

@@ -175,6 +175,13 @@ os.environ['HERMES_WEBUI_STATE_DIR'] = str(TEST_STATE_DIR)
 os.environ['HERMES_WEBUI_DEFAULT_WORKSPACE'] = str(TEST_WORKSPACE)
 os.environ['HERMES_HOME'] = str(TEST_STATE_DIR)
 os.environ['HERMES_BASE_HOME'] = str(TEST_STATE_DIR)
+# ARES owns WebUI state/port. Publish its canonical variables before product
+# modules import; the Hermes variables above remain only for inherited agent
+# internals that the broader upstream suite still exercises.
+os.environ['ARES_WEBUI_PORT'] = str(TEST_PORT)
+os.environ['ARES_WEBUI_HOST'] = '127.0.0.1'
+os.environ['ARES_WEBUI_STATE_DIR'] = str(TEST_STATE_DIR)
+os.environ['ARES_HOME'] = str(TEST_STATE_DIR)
 # Hermes Agent sessions may inherit HERMES_CONFIG_PATH pointing at the live
 # ~/.hermes/config.yaml.  Override it before any product modules are imported so
 # tests that read/write config.yaml stay inside the isolated test home.
@@ -958,6 +965,10 @@ def test_server():
     # pytest-side block can't see.
     env["HERMES_WEBUI_TEST_NETWORK_BLOCK"] = "1"
     env.update({
+        "ARES_WEBUI_PORT":                str(TEST_PORT),
+        "ARES_WEBUI_HOST":                "127.0.0.1",
+        "ARES_WEBUI_STATE_DIR":           str(TEST_STATE_DIR),
+        "ARES_HOME":                      str(TEST_STATE_DIR),
         "HERMES_WEBUI_WORKSPACE_GIT_DESTRUCTIVE": "1",
         # Small archive-extraction cap so the zip-bomb guard is exercisable
         # against the out-of-process test server (the real 10x-upload default is

@@ -1,8 +1,5 @@
 """
-ARES Execution Backend Router.
-
-Pure ARES code. Decides whether to use Hermes, JROS, or both (hybrid)
-without modifying either framework.
+ARES execution backend router. JaegerAI/JROS owns conversation turns.
 """
 
 from __future__ import annotations
@@ -10,27 +7,13 @@ from __future__ import annotations
 from typing import Dict
 
 from .base import AgenticBackend, BackendRouter
-from .hermes import HermesBackend
 from .jros import JROSBackend
-from .hybrid import HybridBackend
-
-
-from .chatgpt_web import ChatGPTWebBackend
-from .claude_web import ClaudeWebBackend
-from .gemini_web import GeminiWebBackend
-from .grok_web import GrokWebBackend
 
 
 def get_default_router() -> BackendRouter:
-    """Factory that returns the canonical ARES router with peer backends."""
+    """Return the canonical router with Jaeger as the sole turn owner."""
     backends: Dict[str, AgenticBackend] = {
-        "hermes": HermesBackend(),
         "jros": JROSBackend(),
-        "hybrid": HybridBackend(),
-        "chatgpt-web": ChatGPTWebBackend(),
-        "claude-web": ClaudeWebBackend(),
-        "gemini-web": GeminiWebBackend(),
-        "grok-web": GrokWebBackend(),
     }
     return BackendRouter(backends)
 
