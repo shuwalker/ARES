@@ -431,27 +431,50 @@ PLIST_EOF
 #!/usr/bin/env bash
 # ARES CLI Dispatcher
 
-ARES_HOME="\$HOME/.ares"
 ARES_SRC="${SCRIPT_DIR}"
 
-if [ "\${1:-}" = "doctor" ]; then
-    shift
-    if [ -f "\$ARES_SRC/webui/venv/bin/python" ]; then
-        exec "\$ARES_SRC/webui/venv/bin/python" "\$ARES_SRC/webui/cli/doctor.py" "\$@"
-    else
-        exec python3 "\$ARES_SRC/webui/cli/doctor.py" "\$@"
-    fi
-elif [ "\${1:-}" = "update" ]; then
-    shift
-    exec bash "\$ARES_SRC/scripts/update.sh" "\$@"
-elif [ "\${1:-}" = "start" ] || [ -z "\${1:-}" ]; then
-    # Default behavior: open app
-    exec open "$ARES_APP"
-else
-    echo "Unknown ARES command: \$1"
-    echo "Available commands: doctor, update, start"
-    exit 1
-fi
+CMD="\${1:-}"
+
+case "\$CMD" in
+    doctor)
+        shift
+        if [ -x "\$ARES_SRC/webui/venv/bin/python" ]; then
+            exec "\$ARES_SRC/webui/venv/bin/python" "\$ARES_SRC/webui/cli/doctor.py" "\$@"
+        else
+            exec python3 "\$ARES_SRC/webui/cli/doctor.py" "\$@"
+        fi
+        ;;
+    update)
+        shift
+        exec bash "\$ARES_SRC/scripts/update.sh" "\$@"
+        ;;
+    setup|--setup|onboarding|--onboarding)
+        shift
+        defaults delete ARES onboarding_completed 2>/dev/null || true
+        defaults write ARES ARESForceOnboarding -bool true
+        rm -rf "\$HOME/jaeger/.jaeger_os/instances" "\$HOME/.jaeger/.jaeger_os/instances" "\$HOME/.jaeger/instances" "\$HOME/.ares/instances" "\$ARES_SRC/webui/.ares_state" 2>/dev/null || true
+        echo "Resetting onboarding state... Opening ARES onboarding wizard."
+        exec open "$ARES_APP"
+        ;;
+    start|"")
+        shift
+        if [ "\${1:-}" = "--cli" ] || [ "\${1:-}" = "--server" ]; then
+            cd "\$ARES_SRC/webui"
+            if [ -x "venv/bin/python" ]; then
+                exec "venv/bin/python" -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
+            else
+                exec python3 -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
+            fi
+        else
+            exec open "$ARES_APP"
+        fi
+        ;;
+    *)
+        echo "Unknown ARES command: \$CMD"
+        echo "Available commands: start, setup, update, doctor"
+        exit 1
+        ;;
+esac
 CMD_EOF
     chmod +x "$cmd_dir/ares"
     ok "Command installed: ares"
