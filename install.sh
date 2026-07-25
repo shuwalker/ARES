@@ -24,10 +24,12 @@
 
 set -euo pipefail
 
-GREEN='\033[0;32m'
-NC='\033[0m'
-
-ARES_HOME="${ARES_HOME:-$HOME/.ares}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -d "$SCRIPT_DIR/.git" ]]; then
+  ARES_HOME="${ARES_HOME:-$SCRIPT_DIR}"
+else
+  ARES_HOME="${ARES_HOME:-$HOME/.ares}"
+fi
 ARES_REF="${ARES_REF:-main}"
 REPO_URL="${ARES_REPO_URL:-https://github.com/shuwalker/ARES.git}"
 RAW_URL="$(printf '%s' "$REPO_URL" | sed 's#github.com#raw.githubusercontent.com#; s#\.git$##')/$ARES_REF/install.sh"
@@ -138,15 +140,68 @@ fi
 echo
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. Run in-repo installer
+# 4. Generate CLI Dispatcher
 # ─────────────────────────────────────────────────────────────────────────────
 
-echo "→ running ARES installer..."
-if [[ -x "$ARES_HOME/install.sh" ]]; then
-  bash "$ARES_HOME/install.sh"
-else
-  echo "✗ $ARES_HOME/install.sh not found" >&2
-  exit 1
+echo "→ generating ARES CLI launcher script..."
+mkdir -p "$HOME/.local/bin"
+LAUNCHER="$HOME/.local/bin/ares"
+
+cat <<'EOF' > "$LAUNCHER"
+#!/usr/bin/env bash
+# ARES CLI Dispatcher
+
+ARES_HOME="ARES_HOME_PLACEHOLDER"
+
+CMD="${1:-}"
+
+case "$CMD" in
+    doctor)
+        shift
+        if [ -x "$ARES_HOME/webui/venv/bin/python" ]; then
+            exec "$ARES_HOME/webui/venv/bin/python" "$ARES_HOME/webui/cli/doctor.py" "$@"
+        else
+            exec python3 "$ARES_HOME/webui/cli/doctor.py" "$@"
+        fi
+        ;;
+    update)
+        shift
+        exec bash "$ARES_HOME/scripts/update.sh" "$@"
+        ;;
+    setup|--setup|onboarding|--onboarding)
+        shift
+        defaults delete ARES onboarding_completed 2>/dev/null || true
+        defaults write ARES ARESForceOnboarding -bool true
+        rm -rf "$HOME/jaeger/.jaeger_os/instances" "$HOME/.jaeger/.jaeger_os/instances" "$HOME/.jaeger/instances" "$HOME/.ares/instances" "$ARES_HOME/webui/.ares_state" 2>/dev/null || true
+        echo "Resetting onboarding state... Opening ARES onboarding wizard."
+        exec open "$ARES_HOME/ARES-Mac_os/ARES.app"
+        ;;
+    start|"")
+        shift
+        if [ "${1:-}" = "--cli" ] || [ "${1:-}" = "--server" ]; then
+            cd "$ARES_HOME/webui"
+            if [ -x "venv/bin/python" ]; then
+                exec "venv/bin/python" -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
+            else
+                exec python3 -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
+            fi
+        else
+            exec open "$ARES_HOME/ARES-Mac_os/ARES.app"
+        fi
+        ;;
+    *)
+        echo "Unknown ARES command: $CMD"
+        echo "Available commands: start, setup, update, doctor"
+        exit 1
+        ;;
+esac
+EOF
+
+sed -i '' "s#ARES_HOME_PLACEHOLDER#$ARES_HOME#g" "$LAUNCHER"
+chmod +x "$LAUNCHER"
+
+if [[ -w "/usr/local/bin" ]]; then
+  cp "$LAUNCHER" "/usr/local/bin/ares" 2>/dev/null || true
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,12 +214,13 @@ echo "║  Installation Complete                       ║"
 echo "╚══════════════════════════════════════════════╝"
 echo
 echo "Next steps:"
-echo "  ares                      # Launch ARES (CLI)"
-echo "  ares --setup              # Run setup wizard"
+echo "  ares                      # Launch ARES"
+echo "  ares setup                # Run setup / onboarding wizard"
 echo "  ares update               # Update ARES to latest"
+echo "  ares doctor               # Run system diagnostics"
 echo
 if [[ "$JAEGER_FOUND" == "true" ]]; then
-  echo "JaegerAI is already installed — ARES will auto-detect it."
+  echo "✓ JaegerAI detected — ARES will auto-detect it."
 else
   echo "Optional: Install JaegerAI for local Companion runtime:"
   echo "  curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
