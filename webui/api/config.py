@@ -47,7 +47,7 @@ REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 # ── Network config (env-overridable) ─────────────────────────────────────────
 HOST = os.getenv("ARES_WEBUI_HOST", "127.0.0.1")
-PORT = int(os.getenv("ARES_WEBUI_PORT", "8787"))
+PORT = int(os.getenv("ARES_WEBUI_PORT", "8788"))
 
 
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:

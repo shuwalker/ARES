@@ -79,10 +79,10 @@ fi
 #
 # Resolve host/port the same way bootstrap.py does: ARES_WEBUI_HOST /
 # ARES_WEBUI_PORT (possibly just sourced from .env above), else the
-# bootstrap.py defaults of 127.0.0.1 / 8787. A 0.0.0.0 / :: bind is probed via
+# bootstrap.py defaults of 127.0.0.1 / 8788. A 0.0.0.0 / :: bind is probed via
 # loopback, matching bootstrap.py's existing-listener guard.
 _ares_host="${ARES_WEBUI_HOST:-127.0.0.1}"
-_ares_port="${ARES_WEBUI_PORT:-8787}"
+_ares_port="${ARES_WEBUI_PORT:-8788}"
 
 # CLI args override the env/defaults exactly as bootstrap.py's argparse does
 # (`port` is the first bare numeric positional; `--host VALUE` / `--host=VALUE`).

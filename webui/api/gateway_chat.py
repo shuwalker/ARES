@@ -149,12 +149,15 @@ def webui_gateway_chat_enabled(config_data=None, environ: dict[str, str] | None 
 def _gateway_base_url(config_data=None, environ: dict[str, str] | None = None) -> str:
     source = os.environ if environ is None else environ
     cfg = config_data if isinstance(config_data, dict) else {}
+    from api.provider_registry import provider_endpoint
+
     raw = str(
-        source.get(_WEBUI_GATEWAY_BASE_URL_ENV)
+        provider_endpoint("hermes_local", environ=source)
+        or source.get(_WEBUI_GATEWAY_BASE_URL_ENV)
         or cfg.get("webui_gateway_base_url")
-        or "http://127.0.0.1:8642"
+        or ""
     ).strip()
-    return raw.rstrip("/") or "http://127.0.0.1:8642"
+    return raw.rstrip("/")
 
 
 def _gateway_api_key(environ: dict[str, str] | None = None) -> str:

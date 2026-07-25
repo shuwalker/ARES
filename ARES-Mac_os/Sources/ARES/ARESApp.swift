@@ -219,7 +219,7 @@ struct WebViewRepresentable: NSViewRepresentable {
 
         private func showFallback(_ webView: WKWebView) {
             let host = parent.url.host ?? "127.0.0.1"
-            let port = parent.url.port ?? 8787
+            let port = parent.url.port ?? 8788
             let fallbackHTML = """
             <html><body style="background:#101014;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
             <div style="text-align:center">
@@ -274,16 +274,10 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Check if onboarding should be shown
-        let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
-        let needsOnboarding = !UserDefaults.standard.bool(forKey: "onboarding_completed")
-        
-        // Regular mode if onboarding, accessory (tray) otherwise
-        if forceOnboarding || needsOnboarding {
-            NSApp.setActivationPolicy(.regular)
-        } else {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        // ARES is a primary GUI application. Provider selection and onboarding
+        // completion must never demote it to a background-only menu-bar app or
+        // prevent the main WebUI window from becoming visible.
+        NSApp.setActivationPolicy(.regular)
 
         let config = ARESConfiguration.shared
         if config.autoLaunchOnStart {
@@ -292,6 +286,13 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         setupMenuBar()
+
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            for window in NSApp.windows where window.className != "NSStatusBarWindow" {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
 
         // WindowGroup creates the initial window. Explicitly calling
         // openMainWindow() here races the scene's onAppear registration and can

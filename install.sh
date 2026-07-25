@@ -14,7 +14,7 @@
 # What this does:
 #   1. Verify prereqs (git, python 3.11/3.12, C toolchain)
 #   2. Clone ARES into $ARES_HOME
-#   3. Detect existing JaegerAI install (recommended Companion runtime)
+#   3. Detect optional provider frameworks without selecting one
 #   4. Run the in-repo installer (.venv, deps, config)
 #   5. Print next steps
 #
@@ -116,7 +116,7 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. Detect JaegerAI (recommended, not required) — auto-wire if found
+# 3. Detect optional JaegerAI installation (never auto-select it)
 # ─────────────────────────────────────────────────────────────────────────────
 
 JAEGER_FOUND=false
@@ -134,7 +134,7 @@ done
 echo
 if [[ "$JAEGER_FOUND" == "true" ]]; then
   echo -e "${GREEN}✓${NC} JaegerAI detected at: $JAEGER_PATH"
-  echo "  → ARES will auto-detect JaegerAI on first launch"
+  echo "  → ARES will show JaegerAI as available during first-run setup"
   echo "  → Native onboarding window will appear when you open ARES"
 else
   echo "⚠ JaegerAI not detected"
@@ -157,14 +157,53 @@ cat <<'EOF' > "$LAUNCHER"
 # ARES CLI Dispatcher
 
 ARES_HOME="ARES_HOME_PLACEHOLDER"
+export ARES_WEBUI_DIR="$ARES_HOME/webui"
+export ARES_WEBUI_HOST="${ARES_WEBUI_HOST:-127.0.0.1}"
+export ARES_WEBUI_PORT="${ARES_WEBUI_PORT:-8788}"
+ARES_APP="$ARES_HOME/ARES-Mac_os/ARES.app"
+
+_webui_python() {
+    for p in "$ARES_HOME/webui/.venv/bin/python" "$ARES_HOME/webui/venv/bin/python"; do
+        [ -x "$p" ] && { echo "$p"; return 0; }
+    done
+    return 1
+}
+
+_webui_probe_host() {
+    case "$ARES_WEBUI_HOST" in
+        0.0.0.0|::) printf '%s\n' "127.0.0.1" ;;
+        *) printf '%s\n' "$ARES_WEBUI_HOST" ;;
+    esac
+}
+
+_ares_service_online() {
+    local probe_host
+    probe_host="$(_webui_probe_host)"
+    curl -fsS --max-time 1 \
+        "http://${probe_host}:${ARES_WEBUI_PORT}/health" 2>/dev/null |
+        /usr/bin/grep -Eq \
+            '"service"[[:space:]]*:[[:space:]]*"ares-webui"|"accept_loop"'
+}
+
+_launch_or_activate_app() {
+    if pgrep -x "ARES" >/dev/null 2>&1; then
+        echo "ARES app is already running; activating its existing window."
+    else
+        echo "Launching ARES app."
+    fi
+    open "$ARES_APP"
+    sleep 1
+    osascript -e 'tell application id "com.jenkinsrobotics.ares-desktop" to activate' 2>/dev/null || true
+}
 
 CMD="${1:-}"
 
 case "$CMD" in
     doctor)
         shift
-        if [ -x "$ARES_HOME/webui/venv/bin/python" ]; then
-            exec "$ARES_HOME/webui/venv/bin/python" "$ARES_HOME/webui/cli/doctor.py" "$@"
+        PY="$(_webui_python || true)"
+        if [ -n "$PY" ]; then
+            exec "$PY" "$ARES_HOME/webui/cli/doctor.py" "$@"
         else
             exec python3 "$ARES_HOME/webui/cli/doctor.py" "$@"
         fi
@@ -179,19 +218,32 @@ case "$CMD" in
         defaults write ARES ARESForceOnboarding -bool true
         rm -rf "$HOME/jaeger/.jaeger_os/instances" "$HOME/.jaeger/.jaeger_os/instances" "$HOME/.jaeger/instances" "$HOME/.ares/instances" "$ARES_HOME/webui/.ares_state" 2>/dev/null || true
         echo "Resetting onboarding state... Opening ARES onboarding wizard."
-        exec open "$ARES_HOME/ARES-Mac_os/ARES.app"
+        exec open "$ARES_APP"
         ;;
     start|"")
         shift
         if [ "${1:-}" = "--cli" ] || [ "${1:-}" = "--server" ]; then
-            cd "$ARES_HOME/webui"
-            if [ -x "venv/bin/python" ]; then
-                exec "venv/bin/python" -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
-            else
-                exec python3 -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
+            if _ares_service_online; then
+                echo "ARES WebUI is already healthy at http://$(_webui_probe_host):${ARES_WEBUI_PORT}"
+                exit 0
             fi
+            cd "$ARES_HOME/webui"
+            PY="$(_webui_python || true)"
+            if [ -z "$PY" ] || [ ! -f "fastapi_app/main.py" ]; then
+                echo "ARES WebUI entrypoint / Python environment not found under $ARES_HOME/webui" >&2
+                exit 1
+            fi
+            exec "$PY" -m uvicorn fastapi_app.main:app \
+                --host "$ARES_WEBUI_HOST" --port "$ARES_WEBUI_PORT" \
+                --no-server-header
         else
-            exec open "$ARES_HOME/ARES-Mac_os/ARES.app"
+            if _ares_service_online; then
+                echo "ARES WebUI is healthy at http://$(_webui_probe_host):${ARES_WEBUI_PORT}"
+            else
+                echo "ARES WebUI is not healthy yet; the app will start or recover it on ${ARES_WEBUI_PORT}."
+            fi
+            _launch_or_activate_app
+            exit 0
         fi
         ;;
     *)
@@ -225,7 +277,7 @@ echo "  ares update               # Update ARES to latest"
 echo "  ares doctor               # Run system diagnostics"
 echo
 if [[ "$JAEGER_FOUND" == "true" ]]; then
-  echo "✓ JaegerAI detected — ARES will auto-detect it."
+  echo "✓ JaegerAI detected — choose it in ARES setup if desired."
 else
   echo "Optional: Install JaegerAI for local Companion runtime:"
   echo "  curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"

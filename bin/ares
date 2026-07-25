@@ -9,6 +9,9 @@ if [ -L "${BASH_SOURCE[0]}" ]; then
 fi
 ARES_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CTL_SCRIPT="${ARES_ROOT}/ctl.sh"
+export ARES_WEBUI_DIR="${ARES_ROOT}/webui"
+export ARES_WEBUI_HOST="${ARES_WEBUI_HOST:-127.0.0.1}"
+export ARES_WEBUI_PORT="${ARES_WEBUI_PORT:-8788}"
 
 cmd="${1:-}"
 if [[ $# -gt 0 ]]; then
@@ -20,7 +23,9 @@ usage() {
 Usage: ares <command> [args]
 
 Commands:
-  start     Start Ares WebUI as a background daemon
+  start     Launch or activate the ARES app
+  start --server
+            Start only the ARES WebUI service
   stop      Stop the daemon
   restart   Stop, then start again
   status    Show daemon and health status
@@ -32,7 +37,10 @@ EOF
 }
 
 _launch_ares_app() {
-  local APP_PATH="${ARES_ROOT}/ARES-Mac_os/ARES.app"
+  local APP_PATH="${HOME}/Applications/ARES.app"
+  if [[ ! -d "$APP_PATH" ]]; then
+    APP_PATH="${ARES_ROOT}/ARES-Mac_os/ARES.app"
+  fi
 
   if [[ ! -d "$APP_PATH" ]]; then
     echo "ARES.app not found at ${APP_PATH}" >&2
@@ -40,16 +48,35 @@ _launch_ares_app() {
     exit 1
   fi
 
-  echo "Performing a fresh compile of the ARES frontend..."
-  (cd "${ARES_ROOT}/webui/frontend" && npm run build)
-
-  echo "Launching ARES…"
-  echo "Look for the ARES icon in your menu bar (top-right)."
-  echo ""
-
+  if _ares_service_online; then
+    echo "ARES WebUI is healthy at http://$(_webui_probe_host):${ARES_WEBUI_PORT}"
+  else
+    echo "ARES WebUI is not healthy yet; the app will start or recover it on ${ARES_WEBUI_PORT}."
+  fi
+  if pgrep -x "ARES" >/dev/null 2>&1; then
+    echo "ARES app is already running; activating its existing window."
+  else
+    echo "Launching ARES app."
+  fi
   open "$APP_PATH"
-  sleep 2
-  osascript -e 'tell application "ARES" to activate' 2>/dev/null || true
+  sleep 1
+  osascript -e 'tell application id "com.jenkinsrobotics.ares-desktop" to activate' 2>/dev/null || true
+}
+
+_webui_probe_host() {
+  case "$ARES_WEBUI_HOST" in
+    0.0.0.0|::) printf '%s\n' "127.0.0.1" ;;
+    *) printf '%s\n' "$ARES_WEBUI_HOST" ;;
+  esac
+}
+
+_ares_service_online() {
+  local probe_host
+  probe_host="$(_webui_probe_host)"
+  curl -fsS --max-time 1 \
+    "http://${probe_host}:${ARES_WEBUI_PORT}/health" 2>/dev/null |
+    /usr/bin/grep -Eq \
+      '"service"[[:space:]]*:[[:space:]]*"ares-webui"|"accept_loop"'
 }
 
 cmd_setup() {
@@ -192,7 +219,17 @@ cmd_update() {
 }
 
 case "${cmd}" in
-  start|stop|restart|status|logs)
+  start)
+    if [[ "${1:-}" == "--server" || "${1:-}" == "--cli" ]]; then
+      if _ares_service_online; then
+        echo "ARES WebUI is already healthy at http://$(_webui_probe_host):${ARES_WEBUI_PORT}"
+        exit 0
+      fi
+      exec bash "${CTL_SCRIPT}" start
+    fi
+    _launch_ares_app
+    ;;
+  stop|restart|status|logs)
     exec bash "${CTL_SCRIPT}" "${cmd}" "$@"
     ;;
   doctor)

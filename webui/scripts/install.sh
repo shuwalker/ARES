@@ -41,7 +41,7 @@ INSTALL_DIR="${ARES_INSTALL_DIR:-$ARES_HOME}"
 WEBUI_DIR="$INSTALL_DIR/webui"
 PYTHON_VERSION="3.11"
 BRANCH="main"
-PORT="${ARES_WEBUI_PORT:-8787}"
+PORT="${ARES_WEBUI_PORT:-8788}"
 HOST="${ARES_WEBUI_HOST:-0.0.0.0}"
 RUN_SETUP=true
 USE_VENV=true
@@ -49,7 +49,7 @@ JSON_OUTPUT=false
 STAGE_NAME=""
 MANIFEST_MODE=false
 NON_INTERACTIVE=false
-BACKEND_MODE="${ARES_BACKEND:-auto}"
+BACKEND_MODE="${ARES_BACKEND:-unassigned}"
 NO_START=false
 SOURCE_DIR=""
 INSTALL_CLI=true
@@ -101,15 +101,15 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-venv       Don't create virtual environment"
             echo "  --skip-setup    Skip interactive setup wizard"
             echo "  --branch NAME   Git branch to install (default: main)"
-            echo "  --port PORT     Web UI port (default: 8787)"
+            echo "  --port PORT     Web UI port (default: 8788)"
             echo "  --host HOST     Bind address (default: 0.0.0.0)"
             echo "  --dir PATH      Install directory (default: ~/.ares)"
             echo "  --manifest      Print desktop bootstrap stage manifest as JSON"
             echo "  --stage NAME    Run one desktop bootstrap stage"
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
-            echo "  --backend MODE  Live adapter ID or short alias (default: auto → jros_local"
-            echo "                  when JaegerAI is detected). Examples: auto, jros,"
+            echo "  --backend MODE  Explicit adapter election (default: unassigned)."
+            echo "                  Examples: unassigned, auto, jros,"
             echo "                  jros_local, hermes, hermes_local, claude_local,"
             echo "                  ollama_local, openai_cloud. Deleted modes ares/hybrid are rejected."
             echo "  --no-start      Skip auto-starting the server after installation"
@@ -535,6 +535,9 @@ setup_config() {
     # Short aliases map at write time; deleted ares/hybrid modes fail closed.
     selected_backend="$BACKEND_MODE"
     case "$selected_backend" in
+        ""|none|unassigned)
+            selected_backend=""
+            ;;
         auto)
             if [ "${JROS_DETECTED:-false}" = true ]; then
                 selected_backend="jros_local"
@@ -557,7 +560,7 @@ setup_config() {
             ;;
         *)
             log_error "Invalid backend mode: $selected_backend"
-            log_error "Expected auto or a live adapter ID (jros_local, hermes_local, claude_local, ...)."
+            log_error "Expected unassigned, auto, or a live adapter ID (jros_local, hermes_local, claude_local, ...)."
             exit 1
             ;;
     esac

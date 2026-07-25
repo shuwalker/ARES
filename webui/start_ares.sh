@@ -1,12 +1,12 @@
 #!/bin/bash
-# ARES Web UI launcher — replaces the old Ares WebUI on port 8787.
+# ARES Web UI launcher — dedicated to ARES on port 8788.
 # Binds to 0.0.0.0 so it's reachable over Tailscale.
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Port: ARES takes over port 8787 (same port the old Ares WebUI used)
-export ARES_WEBUI_PORT="${ARES_WEBUI_PORT:-8787}"
+# Port 8787 is reserved for Hermes WebUI.
+export ARES_WEBUI_PORT="${ARES_WEBUI_PORT:-8788}"
 export ARES_WEBUI_HOST="${ARES_WEBUI_HOST:-0.0.0.0}"
 
 # Separate state dir — ARES has its own sessions, settings, and database

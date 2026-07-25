@@ -86,7 +86,7 @@ def turn(
 def main() -> int:
     p = argparse.ArgumentParser(description="Talk to live ARES Companion")
     p.add_argument("message", nargs="?", help="Single message (omit with --chat)")
-    p.add_argument("--base", default="http://127.0.0.1:8787")
+    p.add_argument("--base", default="http://127.0.0.1:8788")
     p.add_argument("--worker", default="hermes_local")
     p.add_argument("--session", default=None, help="Reuse session id")
     p.add_argument("--timeout", type=float, default=120)

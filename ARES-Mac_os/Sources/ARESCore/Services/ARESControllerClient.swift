@@ -61,7 +61,7 @@ public actor ARESControllerClient {
             components.scheme = "http"
             components.host = config.webuiHost
             components.port = config.webuiPort
-            return components.url ?? URL(string: "http://127.0.0.1:8787")!
+            return components.url ?? URL(string: "http://127.0.0.1:8788")!
         }
     }
 

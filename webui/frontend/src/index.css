@@ -278,12 +278,11 @@
     gap: 0.75rem;
     border: 1px solid color-mix(in oklab, var(--primary) 50%, var(--border));
     border-radius: calc(var(--radius) * 1.4);
-    background: color-mix(in oklab, var(--card) 92%, transparent);
+    background: var(--card);
     padding: 1.5rem;
     font-size: 0.875rem;
     font-weight: 600;
     box-shadow: 0 1rem 3rem color-mix(in oklab, black 15%, transparent);
-    backdrop-filter: blur(0.75rem);
   }
 }
 
@@ -458,7 +457,7 @@
   top: 0.5rem;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 1.2);
-  background: color-mix(in oklab, var(--card) 92%, transparent);
+  background: var(--card);
   padding: 0.75rem;
 }
 

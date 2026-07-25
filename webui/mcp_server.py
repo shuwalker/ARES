@@ -68,7 +68,7 @@ if _profile_arg is not None:
 # WebUI port/host (e.g. when 8787 is held by another service on the host)
 # Just Works without configuration drift between the WebUI process and MCP.
 WEBUI_HOST = os.environ.get("ARES_WEBUI_HOST", "127.0.0.1")
-WEBUI_PORT = os.environ.get("ARES_WEBUI_PORT", "8787")
+WEBUI_PORT = os.environ.get("ARES_WEBUI_PORT", "8788")
 WEBUI_URL = f"http://{WEBUI_HOST}:{WEBUI_PORT}"
 _auth_cookie: str | None = None
 _auth_expires: float = 0  # unix timestamp after which we re-auth

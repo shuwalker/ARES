@@ -138,9 +138,18 @@ export function ActivationScreen() {
     }
   }
 
-  function chooseOrganizerOnly() {
+  async function chooseOrganizerOnly() {
     setError("");
-    setIntelligenceChoice({ kind: "organizer_only" });
+    setSelecting("unassigned");
+    try {
+      await aresApi.setDefaultBackend("unassigned");
+      setIntelligenceChoice({ kind: "organizer_only" });
+      await refresh();
+    } catch (reason) {
+      setError(readableError(reason, "ARES could not clear the runtime selection."));
+    } finally {
+      setSelecting("");
+    }
   }
 
   async function finishSetup() {
@@ -402,7 +411,7 @@ export function ActivationScreen() {
                 ) : null}
                 <button
                   type="button"
-                  onClick={chooseOrganizerOnly}
+                  onClick={() => void chooseOrganizerOnly()}
                   className={cn(
                     "rounded-xl border border-dashed bg-card/60 p-5 text-left transition hover:border-primary/60 sm:col-span-2",
                     intelligenceChoice?.kind === "organizer_only" && "border-primary ring-1 ring-primary/30",

@@ -111,7 +111,8 @@ class JROSBackend(AgenticBackend):
                 "jros_gateway_url": {
                     "type": "string",
                     "title": "JROS Gateway URL",
-                    "default": "http://127.0.0.1:8643",
+                    "default": "",
+                    "description": "Optional endpoint owned by the connected JaegerAI provider.",
                 },
                 "jros_instance_name": {
                     "type": "string",
@@ -184,20 +185,11 @@ class JROSBackend(AgenticBackend):
         # configured on another host was silently ignored and probes went to
         # localhost.
         try:
-            from api.jros_gateway_chat import DEFAULT_JROS_GATEWAY_URL, jros_gateway_base_url
+            from api.jros_gateway_chat import jros_gateway_base_url
 
-            gateway_url = jros_gateway_base_url() or DEFAULT_JROS_GATEWAY_URL
+            gateway_url = jros_gateway_base_url()
         except Exception:
-            gateway_url = "http://127.0.0.1:8643"
-        try:
-            schema = self.settings_schema()
-            props = (schema.get("properties") or {})
-            default_url = (props.get("jros_gateway_url") or {}).get("default")
-            # Schema default only fills in when nothing else resolved a URL.
-            if not gateway_url and isinstance(default_url, str) and default_url.strip():
-                gateway_url = default_url.strip()
-        except Exception:
-            pass
+            gateway_url = ""
 
         transports = [
             transport_entry(
@@ -205,7 +197,7 @@ class JROSBackend(AgenticBackend):
                 kind="http_gateway",
                 label="ARES JROS HTTP gateway",
                 in_use=True,
-                endpoint=f"{gateway_url}/v1/chat/completions",
+                endpoint=f"{gateway_url}/v1/chat/completions" if gateway_url else "",
                 notes="Active ARES path: OpenAI-compatible chat completions via jros_gateway.py.",
             ),
             transport_entry(

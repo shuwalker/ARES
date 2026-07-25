@@ -22,6 +22,7 @@ def health(
     deep: bool = Query(default=False),
 ):
     payload, status_code = service.health(deep=deep)
+    payload["service"] = "ares-webui"
     payload["accept_loop"] = {
         "status": "ok",
         "server": "uvicorn",

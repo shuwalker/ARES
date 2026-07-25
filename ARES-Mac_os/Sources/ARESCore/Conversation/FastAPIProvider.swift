@@ -103,7 +103,7 @@ public final class FastAPIProvider: AIProviderProtocol, @unchecked Sendable {
     private let session: URLSession
 
     public init(
-        baseURL: String = "http://127.0.0.1:8787/api/sam-conversation",
+        baseURL: String = "http://127.0.0.1:8788/api/sam-conversation",
         session: URLSession = .shared
     ) {
         self.baseURL = URL(string: baseURL) ?? URL(fileURLWithPath: "/invalid-ares-url")

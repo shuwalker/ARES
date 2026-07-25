@@ -37,7 +37,7 @@ paths:
 - **Developer mode:** run `swift run ARES` from the repo root. This launches
   the native macOS shell, which wraps and controls the Web UI.
 - **Web mode:** run `./start.sh` from the repo root, then open
-  `http://localhost:8787` in a browser.
+  `http://localhost:8788` in a browser.
 - **Windows companion app mode:** run the Web UI, then run the Tauri wrapper
   from `ARES-Windows/`. This is the Windows native shell path for wrapping the
   Web UI and adding Windows desktop integrations.
@@ -65,13 +65,13 @@ The installer handles everything automatically:
 **Options:**
 - `--with-ares` — also install Ares Agent package (optional coding addition; not a backend mode)
 - `--no-start` — skip auto-starting the server after install
-- `--backend auto|jros_local|hermes_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
+- `--backend unassigned|auto|jros_local|hermes_local|claude_local|...` — optionally elect a live adapter; the default is `unassigned`
 
 After install, run the Web UI:
 
 ```bash
 ./start.sh
-# → http://localhost:8787
+# → http://localhost:8788
 ```
 
 ### Native macOS App

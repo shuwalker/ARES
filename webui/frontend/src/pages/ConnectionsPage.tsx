@@ -6,8 +6,10 @@ import {
   Cpu,
   Gauge,
   Network,
+  Plus,
   RefreshCw,
   Server,
+  Trash2,
   Zap,
   Wrench,
 } from "lucide-react";
@@ -15,6 +17,7 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -280,6 +283,21 @@ export function ConnectionsPage() {
   const [rankings, setRankings] = useState<WorkerRanking[]>([]);
   const [rankingsNote, setRankingsNote] = useState("");
   const [rankingError, setRankingError] = useState("");
+  const [providers, setProviders] = useState<Awaited<ReturnType<typeof aresApi.registryProviders>>["providers"]>({});
+  const [providerId, setProviderId] = useState("");
+  const [providerEndpoint, setProviderEndpoint] = useState("");
+  const [providerCredentialEnv, setProviderCredentialEnv] = useState("");
+  const [providerError, setProviderError] = useState("");
+  const [savingProvider, setSavingProvider] = useState(false);
+
+  const loadProviders = useCallback(async () => {
+    try {
+      setProviders((await aresApi.registryProviders()).providers);
+      setProviderError("");
+    } catch (error) {
+      setProviderError(readableError(error, "Provider registry could not be loaded."));
+    }
+  }, []);
 
   const loadRankings = useCallback(async () => {
     try {
@@ -297,16 +315,56 @@ export function ConnectionsPage() {
     try {
       await refresh();
       await loadRankings();
+      await loadProviders();
     } catch (error) {
       setSelectionError(readableError(error, "Connections could not be refreshed."));
     } finally {
       setRefreshing(false);
     }
-  }, [refresh, loadRankings]);
+  }, [refresh, loadRankings, loadProviders]);
 
   useEffect(() => {
     void loadRankings();
-  }, [loadRankings]);
+    void loadProviders();
+  }, [loadRankings, loadProviders]);
+
+  const handleSaveProvider = useCallback(async () => {
+    const id = providerId.trim().toLowerCase();
+    if (!id) {
+      setProviderError("Provider ID is required.");
+      return;
+    }
+    setSavingProvider(true);
+    setProviderError("");
+    try {
+      await aresApi.saveRegistryProvider(id, {
+        enabled: true,
+        kind: "runtime",
+        endpoint: providerEndpoint.trim(),
+        credential_env: providerCredentialEnv.trim(),
+        capabilities: ["conversation"],
+      });
+      setProviderId("");
+      setProviderEndpoint("");
+      setProviderCredentialEnv("");
+      await loadProviders();
+      await refresh();
+    } catch (error) {
+      setProviderError(readableError(error, "Provider connection could not be saved."));
+    } finally {
+      setSavingProvider(false);
+    }
+  }, [loadProviders, providerCredentialEnv, providerEndpoint, providerId, refresh]);
+
+  const handleDeleteProvider = useCallback(async (id: string) => {
+    try {
+      await aresApi.deleteRegistryProvider(id);
+      await loadProviders();
+      await refresh();
+    } catch (error) {
+      setProviderError(readableError(error, "Provider connection could not be removed."));
+    }
+  }, [loadProviders, refresh]);
 
   const handleTest = useCallback(async (connection: RuntimeConnection) => {
     setTesting(connection.id);
@@ -437,6 +495,70 @@ export function ConnectionsPage() {
       </div>
 
       {/* ── Worker effectiveness (Companion technical intelligence) ─ */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">External provider registry</CardTitle>
+          <CardDescription>
+            Connect independently managed runtimes by full URL. ARES does not own or assign their ports.
+            Credentials remain in the named environment or keychain entry.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Input
+              aria-label="Provider ID"
+              placeholder="Provider ID (for example openclaw_local)"
+              value={providerId}
+              onChange={(event) => setProviderId(event.target.value)}
+            />
+            <Input
+              aria-label="Provider endpoint"
+              placeholder="Provider-owned URL"
+              value={providerEndpoint}
+              onChange={(event) => setProviderEndpoint(event.target.value)}
+            />
+            <Input
+              aria-label="Credential environment name"
+              placeholder="Credential env name (optional)"
+              value={providerCredentialEnv}
+              onChange={(event) => setProviderCredentialEnv(event.target.value)}
+            />
+          </div>
+          <Button onClick={() => void handleSaveProvider()} disabled={savingProvider}>
+            <Plus className="size-4" /> Add provider
+          </Button>
+          {providerError ? <p className="text-sm text-status-unavailable">{providerError}</p> : null}
+          <div className="space-y-2">
+            {Object.values(providers).map((provider) => (
+              <div key={provider.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{provider.id}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {provider.endpoint || "No network endpoint (local/CLI discovery)"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={provider.enabled ? "outline" : "secondary"}>
+                    {provider.enabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove ${provider.id}`}
+                    onClick={() => void handleDeleteProvider(provider.id)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {Object.keys(providers).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No external provider is assigned.</p>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">

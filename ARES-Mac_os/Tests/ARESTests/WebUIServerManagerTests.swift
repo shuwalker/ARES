@@ -3,6 +3,40 @@ import XCTest
 @testable import ARES
 
 final class WebUIServerManagerTests: XCTestCase {
+    func testExplicitWebUIDirectoryPrecedesDiscoveryCandidates() {
+        let explicit = URL(fileURLWithPath: "/opt/ares/webui")
+        let candidates = WebUIServerManager.webUICandidates(
+            resourceURL: URL(fileURLWithPath: "/Applications/ARES.app/Contents/Resources"),
+            executableURL: URL(fileURLWithPath: "/Applications/ARES.app/Contents/MacOS/ARES"),
+            homeDirectory: URL(fileURLWithPath: "/Users/tester"),
+            environment: ["ARES_WEBUI_DIR": explicit.path],
+            currentDirectory: "/tmp"
+        )
+        XCTAssertEqual(candidates.first, explicit)
+    }
+
+    func testPythonDiscoveryPrefersCanonicalDotVenv() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ares-python-precedence-\(UUID().uuidString)")
+        let dotVenv = root.appendingPathComponent(".venv/bin/python")
+        let legacyVenv = root.appendingPathComponent("venv/bin/python")
+        try FileManager.default.createDirectory(
+            at: dotVenv.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: legacyVenv.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(atPath: dotVenv.path, contents: Data())
+        FileManager.default.createFile(atPath: legacyVenv.path, contents: Data())
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dotVenv.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: legacyVenv.path)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        XCTAssertEqual(WebUIServerManager.pythonExecutable(in: root), dotVenv)
+    }
+
     func testGatewayEnvironmentMatchesFastAPIContract() {
         let environment = WebUIServerManager.applyingGatewayEnvironment(
             to: ["UNCHANGED": "yes"],
@@ -104,11 +138,11 @@ final class WebUIServerManagerTests: XCTestCase {
             dotVenvPython
         )
 
-        let installerPython = try makeExecutable("venv/bin/python")
+        _ = try makeExecutable("venv/bin/python")
         XCTAssertEqual(
             WebUIServerManager.pythonExecutable(in: temporaryDirectory),
-            installerPython,
-            "The installer-created venv must take precedence when both layouts exist"
+            dotVenvPython,
+            "The dependency-complete canonical .venv must take precedence over a stale legacy venv"
         )
     }
 
@@ -125,14 +159,22 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertEqual(candidates[2].path, "/Users/example/.ares/webui")
     }
 
-    func testPortReclamationRecognizesCurrentFastAPIProcessOnly() {
-        XCTAssertTrue(WebUIServerManager.isManagedWebUICommand(
-            "python -m uvicorn fastapi_app.main:app --port 8787"
-        ))
-        // Do NOT match generic server.py — that kills unrelated servers (e.g. Hermes WebUI).
-        XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("python server.py"))
-        XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("python -m http.server 8787"))
-        XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("uvicorn another_app:app"))
+    func testAresHealthResponseRequiresHealthyAresPayload() throws {
+        let currentPayload = try JSONSerialization.data(withJSONObject: [
+            "service": "ares-webui",
+            "status": "ok",
+        ])
+        XCTAssertTrue(WebUIServerManager.isAresHealthResponse(statusCode: 200, data: currentPayload))
+
+        let upgradePayload = try JSONSerialization.data(withJSONObject: [
+            "status": "ok",
+            "accept_loop": ["server": "uvicorn"],
+        ])
+        XCTAssertTrue(WebUIServerManager.isAresHealthResponse(statusCode: 200, data: upgradePayload))
+
+        let unrelatedPayload = try JSONSerialization.data(withJSONObject: ["status": "ok"])
+        XCTAssertFalse(WebUIServerManager.isAresHealthResponse(statusCode: 200, data: unrelatedPayload))
+        XCTAssertFalse(WebUIServerManager.isAresHealthResponse(statusCode: 503, data: currentPayload))
     }
 
     private func makeExecutable(_ relativePath: String) throws -> URL {

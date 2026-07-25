@@ -976,6 +976,38 @@ export const aresApi = {
       body: JSON.stringify({ backend }),
     });
   },
+  async registryProviders() {
+    return apiFetch<{
+      schema_version: number;
+      providers: Record<string, {
+        id: string;
+        enabled: boolean;
+        kind: string;
+        endpoint: string;
+        credential_env: string;
+        capabilities: string[];
+        metadata: Record<string, unknown>;
+      }>;
+    }>("/api/ares/providers");
+  },
+  async saveRegistryProvider(providerId: string, provider: {
+    enabled: boolean;
+    kind: string;
+    endpoint: string;
+    credential_env: string;
+    capabilities: string[];
+  }) {
+    return apiFetch<{ ok: boolean }>(`/api/ares/providers/${encodeURIComponent(providerId)}`, {
+      method: "PUT",
+      body: JSON.stringify(provider),
+    });
+  },
+  async deleteRegistryProvider(providerId: string) {
+    return apiFetch<{ ok: boolean; removed: boolean }>(
+      `/api/ares/providers/${encodeURIComponent(providerId)}`,
+      { method: "DELETE" },
+    );
+  },
   async backends() {
     const payload = await apiFetch<{ backends: BackendInfo[] }>("/api/backends");
     return payload.backends ?? [];

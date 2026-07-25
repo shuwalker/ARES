@@ -58,7 +58,7 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(webuiHost, forKey: "ares.config.webuiHost") }
     }
 
-    @Published public var webuiPort: Int = UserDefaults.standard.integer(forKey: "ares.config.webuiPort") == 0 ? 8787 : UserDefaults.standard.integer(forKey: "ares.config.webuiPort") {
+    @Published public var webuiPort: Int = UserDefaults.standard.integer(forKey: "ares.config.webuiPort") == 0 ? 8788 : UserDefaults.standard.integer(forKey: "ares.config.webuiPort") {
         didSet { UserDefaults.standard.set(webuiPort, forKey: "ares.config.webuiPort") }
     }
 
@@ -90,15 +90,15 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(reloadDevMode, forKey: "ares.config.reloadDevMode") }
     }
 
-    @Published public var hermesURL: String = UserDefaults.standard.string(forKey: "ares.config.hermesURL") ?? "http://localhost:8642" {
+    @Published public var hermesURL: String = UserDefaults.standard.string(forKey: "ares.config.hermesURL") ?? "" {
         didSet { UserDefaults.standard.set(hermesURL, forKey: "ares.config.hermesURL") }
     }
 
-    @Published public var jrosURL: String = UserDefaults.standard.string(forKey: "ares.config.jrosURL") ?? "http://127.0.0.1:8643" {
+    @Published public var jrosURL: String = UserDefaults.standard.string(forKey: "ares.config.jrosURL") ?? "" {
         didSet { UserDefaults.standard.set(jrosURL, forKey: "ares.config.jrosURL") }
     }
 
-    @Published public var ollamaURL: String = UserDefaults.standard.string(forKey: "ares.config.ollamaURL") ?? "http://localhost:11434" {
+    @Published public var ollamaURL: String = UserDefaults.standard.string(forKey: "ares.config.ollamaURL") ?? "" {
         didSet { UserDefaults.standard.set(ollamaURL, forKey: "ares.config.ollamaURL") }
     }
 
@@ -110,7 +110,7 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(localPerceiverWSURL, forKey: "ARES_PERCEIVER_WS") }
     }
 
-    @Published public var hermesDashboardURL: String = UserDefaults.standard.string(forKey: "ares.config.hermesDashboardURL") ?? "http://localhost:9119" {
+    @Published public var hermesDashboardURL: String = UserDefaults.standard.string(forKey: "ares.config.hermesDashboardURL") ?? "" {
         didSet { UserDefaults.standard.set(hermesDashboardURL, forKey: "ares.config.hermesDashboardURL") }
     }
 
@@ -140,18 +140,18 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
         }
     }
 
-    // MARK: - Parsed URLs (fall back to defaults if the stored string is malformed)
+    // MARK: - Parsed external provider URLs
 
     public var hermesBaseURL: URL {
-        Self.validHTTPURL(from: hermesURL) ?? URL(string: "http://localhost:8642")!
+        Self.validHTTPURL(from: hermesURL) ?? URL(string: "about:blank")!
     }
 
     public var jrosBaseURL: URL {
-        Self.validHTTPURL(from: jrosURL) ?? URL(string: "http://127.0.0.1:8643")!
+        Self.validHTTPURL(from: jrosURL) ?? URL(string: "about:blank")!
     }
 
     public var ollamaBaseURL: URL {
-        Self.validHTTPURL(from: ollamaURL) ?? URL(string: "http://localhost:11434")!
+        Self.validHTTPURL(from: ollamaURL) ?? URL(string: "about:blank")!
     }
 
     private static func validHTTPURL(from rawValue: String) -> URL? {

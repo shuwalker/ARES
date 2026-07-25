@@ -197,8 +197,22 @@ def set_backend(
     from api.ares_capabilities import capabilities_for_backend
 
     requested = str(payload.get("backend") or "").strip().lower()
-    if not requested:
-        raise CoreApiError(400, "A runtime connection is required.")
+    if requested in {"", "none", "unassigned"}:
+        session_id = str(payload.get("session_id") or "").strip()
+        with profile_scope(identity.profile):
+            if session_id:
+                session = _session(session_id)
+                session.ares_backend = ""
+                session.save(touch_updated_at=False)
+                return {
+                    "ok": True,
+                    "backend": "",
+                    "scope": "session",
+                    "session_id": session_id,
+                    "capabilities": [],
+                }
+            _save_config_values({"ares_backend": ""})
+        return {"ok": True, "backend": "", "scope": "default", "capabilities": []}
     try:
         backend_name = registry.execution_adapter(requested).adapter_id
         health = registry.test_connection(backend_name, profile=identity.profile)
@@ -226,12 +240,58 @@ def set_backend(
                 "capabilities": capabilities_for_backend(backend_name),
             }
         _save_config_values({"ares_backend": backend_name})
+    from api.provider_registry import load_provider_registry, save_provider
+
+    existing = load_provider_registry().get("providers", {}).get(backend_name, {})
+    save_provider(backend_name, {
+        **existing,
+        "enabled": True,
+        "kind": "runtime",
+        "capabilities": capabilities_for_backend(backend_name),
+        "metadata": {
+            **(existing.get("metadata", {}) if isinstance(existing, dict) else {}),
+            "selected_by": "operator",
+        },
+    })
     return {
         "ok": True,
         "backend": backend_name,
         "scope": "default",
         "capabilities": capabilities_for_backend(backend_name),
     }
+
+
+@router.get("/api/ares/providers")
+def providers(_identity: Annotated[RequestIdentity, Depends(require_identity)]):
+    """Return operator-configured external connections; never secrets."""
+    from api.provider_registry import load_provider_registry
+
+    return load_provider_registry()
+
+
+@router.put("/api/ares/providers/{provider_id}")
+def put_provider(
+    provider_id: str,
+    payload: dict[str, Any],
+    _identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
+):
+    from api.provider_registry import save_provider
+
+    try:
+        provider = save_provider(provider_id, payload)
+    except ValueError as exc:
+        raise CoreApiError(400, str(exc), code="invalid_provider_connection") from exc
+    return {"ok": True, "provider": provider}
+
+
+@router.delete("/api/ares/providers/{provider_id}")
+def delete_provider(
+    provider_id: str,
+    _identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
+):
+    from api.provider_registry import remove_provider
+
+    return {"ok": True, "removed": remove_provider(provider_id)}
 
 
 @router.get("/api/ares/self-persistence")

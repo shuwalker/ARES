@@ -41,11 +41,10 @@ public final class WebUIServerManager: ObservableObject {
         let port = config.webuiPort
         
         serverHealth = "Checking port..."
-        
-        // Reclaim port if held by orphaned server.py process
-        reclaimPort(port)
-        
-        // Check if port is in use
+
+        // ARES may already be running under the com.ares.webui launch service.
+        // Adopt that healthy server instead of killing it and racing launchd's
+        // automatic restart with a second Uvicorn process.
         let inUse = await isPortInUse(port, host: host)
         if inUse {
             let urlString = "http://\(host):\(port)/health"
@@ -53,8 +52,9 @@ public final class WebUIServerManager: ObservableObject {
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 1.0
                 do {
-                    let (_, response) = try await URLSession.shared.data(for: request)
-                    if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    if let httpResp = response as? HTTPURLResponse,
+                       Self.isAresHealthResponse(statusCode: httpResp.statusCode, data: data) {
                         self.isRunning = true
                         self.process = nil
                         self.serverHealth = "Running (External)"
@@ -81,7 +81,8 @@ public final class WebUIServerManager: ObservableObject {
 
         let process = Process()
         process.currentDirectoryURL = dir
-        // Try both "venv" (install.sh default) and ".venv" (common alternative).
+        // Prefer the repository's canonical .venv. A stale legacy venv may
+        // contain Python but not the WebUI dependencies (notably Uvicorn).
         let fm = FileManager.default
         guard let python = Self.pythonExecutable(in: dir, fileManager: fm) else {
             serverHealth = "Python environment not found — run install.sh"
@@ -155,15 +156,20 @@ public final class WebUIServerManager: ObservableObject {
         // PID/state-file detection — with the localhost default this reported
         // a healthy local Hermes gateway as permanently "down" because nothing
         // serves HTTP health on that port in a local install.
-        let isLocalDefault = Self.isLocalGatewayURL(hermesURL)
-        if isLocalDefault {
+        let normalizedHermesURL = hermesURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedHermesURL.isEmpty || Self.isLocalGatewayURL(normalizedHermesURL) {
             environment.removeValue(forKey: "ARES_API_URL")
             environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_BASE_URL")
         } else {
-            environment["ARES_API_URL"] = hermesURL
-            environment["ARES_WEBUI_GATEWAY_BASE_URL"] = hermesURL
+            environment["ARES_API_URL"] = normalizedHermesURL
+            environment["ARES_WEBUI_GATEWAY_BASE_URL"] = normalizedHermesURL
         }
-        environment["ARES_JROS_GATEWAY_URL"] = jrosURL
+        let normalizedJROSURL = jrosURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedJROSURL.isEmpty {
+            environment.removeValue(forKey: "ARES_JROS_GATEWAY_URL")
+        } else {
+            environment["ARES_JROS_GATEWAY_URL"] = normalizedJROSURL
+        }
         if hermesAPIKey.isEmpty {
             environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_API_KEY")
         } else {
@@ -201,14 +207,16 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     private func checkHealth() async {
+        var exitedProcess: Process?
         if let p = process, !p.isRunning {
-            isRunning = false
+            exitedProcess = p
             process = nil
-            serverHealth = "Exited (code: \(p.terminationStatus))"
-            return
         }
 
-        guard isRunning else {
+        // A duplicate child can lose a startup race to the launchd-managed
+        // ARES server. Probe the actual service before treating that child
+        // exit as an application failure.
+        guard isRunning || exitedProcess != nil else {
             return
         }
 
@@ -220,15 +228,46 @@ public final class WebUIServerManager: ObservableObject {
         request.timeoutInterval = 1.0
         
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let httpResp = response as? HTTPURLResponse,
+               Self.isAresHealthResponse(statusCode: httpResp.statusCode, data: data) {
+                isRunning = true
                 serverHealth = process == nil ? "Running (External)" : "Running (Healthy)"
             } else {
-                serverHealth = "Running (Degraded)"
+                recordHealthFailure(exitedProcess: exitedProcess, fallback: "Running (Degraded)")
             }
         } catch {
-            serverHealth = "Running (Unreachable)"
+            recordHealthFailure(exitedProcess: exitedProcess, fallback: "Running (Unreachable)")
         }
+    }
+
+    private func recordHealthFailure(exitedProcess: Process?, fallback: String) {
+        if let exitedProcess {
+            isRunning = false
+            serverHealth = "Exited (code: \(exitedProcess.terminationStatus))"
+        } else {
+            serverHealth = fallback
+        }
+    }
+
+    nonisolated static func isAresHealthResponse(statusCode: Int, data: Data) -> Bool {
+        guard statusCode == 200,
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return false
+        }
+
+        // New servers expose an explicit service identity. Keep compatibility
+        // with existing ARES launch agents during an in-place app upgrade.
+        if payload["service"] as? String == "ares-webui" {
+            return true
+        }
+        if let acceptLoop = payload["accept_loop"] as? [String: Any],
+           acceptLoop["server"] as? String == "uvicorn",
+           payload["status"] as? String == "ok" {
+            return true
+        }
+        return false
     }
 
     private func readLastLogs() {
@@ -285,6 +324,9 @@ public final class WebUIServerManager: ObservableObject {
         currentDirectory: String = FileManager.default.currentDirectoryPath
     ) -> [URL] {
         var candidates: [URL] = []
+        if let explicitWebUI = environment["ARES_WEBUI_DIR"], !explicitWebUI.isEmpty {
+            candidates.append(URL(fileURLWithPath: explicitWebUI))
+        }
         if let resourceURL {
             candidates.append(resourceURL.appendingPathComponent("webui"))
         }
@@ -315,7 +357,7 @@ public final class WebUIServerManager: ObservableObject {
         in directory: URL,
         fileManager: FileManager = .default
     ) -> URL? {
-        for relativePath in ["venv/bin/python", ".venv/bin/python"] {
+        for relativePath in [".venv/bin/python", "venv/bin/python"] {
             let candidate = directory.appendingPathComponent(relativePath)
             if fileManager.isExecutableFile(atPath: candidate.path) {
                 return candidate
@@ -335,52 +377,4 @@ public final class WebUIServerManager: ObservableObject {
         return fileManager.isExecutableFile(atPath: candidate.path) ? candidate : nil
     }
 
-    private func reclaimPort(_ port: Int) {
-        let lsofTask = Process()
-        lsofTask.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        lsofTask.arguments = ["-t", "-i", "tcp:\(port)"]
-        
-        let pipe = Pipe()
-        lsofTask.standardOutput = pipe
-        
-        do {
-            try lsofTask.run()
-            lsofTask.waitUntilExit()
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !output.isEmpty {
-                let pids = output.components(separatedBy: .newlines).compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
-                for pid in pids {
-                    let psTask = Process()
-                    psTask.executableURL = URL(fileURLWithPath: "/bin/ps")
-                    psTask.arguments = ["-o", "command=", "-p", String(pid)]
-                    
-                    let psPipe = Pipe()
-                    psTask.standardOutput = psPipe
-                    
-                    try psTask.run()
-                    psTask.waitUntilExit()
-                    
-                    let psData = psPipe.fileHandleForReading.readDataToEndOfFile()
-                    if let command = String(data: psData, encoding: .utf8),
-                       Self.isManagedWebUICommand(command) {
-                        print("[ARES] Reclaiming port \(port) from orphaned process \(pid)")
-                        let killTask = Process()
-                        killTask.executableURL = URL(fileURLWithPath: "/bin/kill")
-                        killTask.arguments = ["-9", String(pid)]
-                        try killTask.run()
-                        killTask.waitUntilExit()
-                    }
-                }
-            }
-        } catch {
-            print("[ARES] Error reclaiming port \(port): \(error)")
-        }
-    }
-
-    nonisolated static func isManagedWebUICommand(_ command: String) -> Bool {
-        // Reclaim ARES-owned WebUI processes (uvicorn running fastapi_app or .ares/webui).
-        (command.contains("uvicorn") && command.contains("fastapi_app")) || command.contains(".ares/webui")
-    }
 }

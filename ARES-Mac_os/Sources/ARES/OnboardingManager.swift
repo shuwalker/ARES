@@ -50,7 +50,7 @@ final class OnboardingManager: ObservableObject {
     }
     
     func fetchJaegerDefaults() async {
-        guard let url = URL(string: "http://localhost:8787/api/onboarding/companion/defaults") else { return }
+        guard let url = URL(string: "http://localhost:8788/api/onboarding/companion/defaults") else { return }
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
@@ -79,7 +79,7 @@ final class OnboardingManager: ObservableObject {
     }
     
     func saveOnboardingState(characterId: String, awakeModel: String, asleepModel: String) async throws {
-        guard let url = URL(string: "http://localhost:8787/api/onboarding/companion/create") else { return }
+        guard let url = URL(string: "http://localhost:8788/api/onboarding/companion/create") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

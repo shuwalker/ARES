@@ -194,6 +194,7 @@ os.environ['ARES_BASE_HOME'] = str(TEST_STATE_DIR)
 # ~/.ares/config.yaml.  Override it before any product modules are imported so
 # tests that read/write config.yaml stay inside the isolated test home.
 os.environ['ARES_CONFIG_PATH'] = str(TEST_STATE_DIR / 'config.yaml')
+os.environ['ARES_PROVIDER_REGISTRY_PATH'] = str(TEST_STATE_DIR / 'providers.json')
 
 
 @pytest.fixture(autouse=True)
@@ -916,6 +917,7 @@ def test_server():
         "ARES_WEBUI_DEFAULT_MODEL":     "openai/gpt-5.4-mini",
         "ARES_HOME":                    str(TEST_STATE_DIR),
         "ARES_CONFIG_PATH":             str(TEST_STATE_DIR / 'config.yaml'),
+        "ARES_PROVIDER_REGISTRY_PATH":  str(TEST_STATE_DIR / 'providers.json'),
         # Belt-and-suspenders: ARES_BASE_HOME hard-locks _DEFAULT_ARES_HOME
         # in api/profiles.py to the test state dir regardless of profile switching
         # or any os.environ mutation that happens inside the server process.

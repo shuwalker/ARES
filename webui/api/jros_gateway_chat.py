@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 _JROS_GATEWAY_URL_ENV = "ARES_JROS_GATEWAY_URL"
 _JROS_GATEWAY_KEY_ENV = "ARES_JROS_GATEWAY_KEY"
-DEFAULT_JROS_GATEWAY_URL = "http://127.0.0.1:8643"
+DEFAULT_JROS_GATEWAY_URL = ""
 
 _START_GATEWAY_HINT = (
     "JaegerAI runs through the local bridge (`jaeger bridge`). "
@@ -74,16 +74,18 @@ _START_GATEWAY_HINT = (
 
 
 def jros_gateway_base_url(config_data=None, environ: dict[str, str] | None = None) -> str:
-    """Resolve the JROS gateway base URL: env override, then config, then
-    the localhost default (same precedence as the Ares gateway bridge)."""
+    """Resolve an explicitly configured JaegerAI endpoint without owning it."""
     source = os.environ if environ is None else environ
     cfg = config_data if isinstance(config_data, dict) else {}
+    from api.provider_registry import provider_endpoint
+
     raw = str(
-        source.get(_JROS_GATEWAY_URL_ENV)
+        provider_endpoint("jros_local", environ=source)
+        or source.get(_JROS_GATEWAY_URL_ENV)
         or cfg.get("jros_gateway_url")
-        or DEFAULT_JROS_GATEWAY_URL
+        or ""
     ).strip()
-    return raw.rstrip("/") or DEFAULT_JROS_GATEWAY_URL
+    return raw.rstrip("/")
 
 
 def _jros_gateway_api_key(environ: dict[str, str] | None = None) -> str:
@@ -102,7 +104,10 @@ def jros_gateway_health(timeout: float = 1.0, config_data=None) -> dict | None:
     Returns the health payload dict when a live gateway answers, or None
     when unreachable — the availability signal api.backend_selector uses
     to light up the JROS option in the UI."""
-    url = f"{jros_gateway_base_url(config_data)}/v1/health"
+    base_url = jros_gateway_base_url(config_data)
+    if not base_url:
+        return None
+    url = f"{base_url}/v1/health"
     req = urllib.request.Request(url, headers=_auth_headers(), method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -123,7 +128,10 @@ def reset_jros_boot() -> None:
     Best-effort: an unreachable gateway just means the next operator-run
     gateway boots fresh from disk anyway."""
     _reset_local_bridge_clients()
-    url = f"{jros_gateway_base_url()}/v1/reset"
+    base_url = jros_gateway_base_url()
+    if not base_url:
+        return
+    url = f"{base_url}/v1/reset"
     req = urllib.request.Request(
         url, data=b"{}",
         headers={"Content-Type": "application/json", **_auth_headers()},

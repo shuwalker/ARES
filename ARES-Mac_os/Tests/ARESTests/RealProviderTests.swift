@@ -19,8 +19,8 @@ final class ARESConfigurationTests: XCTestCase {
 
         config.hermesURL = "not a url at all"
         config.ollamaURL = ""
-        XCTAssertEqual(config.hermesBaseURL.absoluteString, "http://localhost:8642")
-        XCTAssertEqual(config.ollamaBaseURL.absoluteString, "http://localhost:11434")
+        XCTAssertEqual(config.hermesBaseURL.absoluteString, "about:blank")
+        XCTAssertEqual(config.ollamaBaseURL.absoluteString, "about:blank")
     }
 
     func testCustomURLsParse() {
