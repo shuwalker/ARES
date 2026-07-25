@@ -62,7 +62,7 @@ struct OnboardingView: View {
             VStack {
                 switch currentStep {
                 case 0:
-                    WelcomeStep(onNext: { currentStep = 1 })
+                    WelcomeStep(onContinue: { currentStep = 1 })
                 case 1:
                     NameAssistantStep(
                         onNext: { currentStep = 2 },
@@ -124,101 +124,6 @@ func loadCharacterImage(filename: String) -> NSImage? {
     }
     let altPath = home.appendingPathComponent(".ares/webui/static/persona-cards/\(filename)")
     return NSImage(contentsOf: altPath)
-}
-
-// MARK: - Step 0: Welcome Step (ARES Philosophy & Vision)
-
-struct WelcomeStep: View {
-    var onNext: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            
-            Image(systemName: "sparkles")
-                .font(.system(size: 64))
-                .foregroundColor(.yellow)
-            
-            VStack(spacing: 4) {
-                Text("Welcome to ARES")
-                    .font(.system(size: 28, weight: .bold))
-                
-                Text("Agentic Responsive Environment & System")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.yellow)
-            }
-            
-            Text("As the world becomes more noisy and confusing, ARES helps you disconnect from digital overload—reshaping your relationship with technology starting directly on your Mac.")
-                .font(.body)
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-                .frame(maxWidth: 580)
-            
-            VStack(alignment: .leading, spacing: 14) {
-                FeatureRow(
-                    icon: "leaf.fill",
-                    title: "Reshape Your Relationship with Tech",
-                    titleColor: .green,
-                    subtitle: "Move away from endless distraction. Delegate repetitive tasks to your local companion and regain your focus."
-                )
-                
-                FeatureRow(
-                    icon: "brain.head.profile",
-                    title: "Natural UI for LLMs (Large Language Models)",
-                    titleColor: .blue,
-                    subtitle: "LLMs are AI reasoning engines—both private models on your Mac and 3rd-party cloud APIs—given a intuitive interface to turn your words into action."
-                )
-                
-                FeatureRow(
-                    icon: "arrow.triangle.2.circlepath.circle.fill",
-                    title: "Symbiotic Growth with JaegerAI",
-                    titleColor: .purple,
-                    subtitle: "Powered by JaegerAI, your local companion manages your digital life and agents—creating a space where you, your agents, and yourself learn and grow together."
-                )
-            }
-            .padding(18)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)))
-            .frame(maxWidth: 600)
-            
-            Spacer()
-            
-            Button(action: onNext) {
-                Text("Begin Your Journey")
-                    .fontWeight(.semibold)
-                    .frame(width: 220, height: 24)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            
-            Spacer()
-        }
-    }
-}
-
-struct FeatureRow: View {
-    let icon: String
-    let title: String
-    var titleColor: Color = .primary
-    let subtitle: String
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundColor(.accentColor)
-                .frame(width: 28, height: 28)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(titleColor)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
 }
 
 // MARK: - Step 1: Name Assistant Step (JaegerAI Character Deck)
@@ -925,92 +830,5 @@ struct SummaryRow: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
         }
-    }
-}
-
-// MARK: - Onboarding Manager & JaegerAI Dependency Handler
-
-@MainActor
-final class OnboardingManager: ObservableObject {
-    static let shared = OnboardingManager()
-    
-    @Published var needsOnboarding: Bool = true
-    @Published var agentName: String = "Jarvis"
-    @Published var agentRole: String = "AI Butler & Companion"
-    @Published var selectedCharacterId: String? = "jarvis"
-    @Published var selectedAwakeModel: String? = "qwen2.5-coder:7b"
-    @Published var selectedAsleepModel: String? = "llama3.2:1b"
-    @Published var networkMode: String = "local"
-    @Published var autoLaunchWebUI: Bool = true
-    @Published var enableTailscale: Bool = false
-    
-    @Published var isJaegerInstalled: Bool = false
-    @Published var jaegerStatusText: String = "Checking JaegerAI dependency..."
-    
-    init() {
-        checkOnboardingStatus()
-        Task {
-            await fetchJaegerDefaults()
-        }
-    }
-    
-    func checkOnboardingStatus() {
-        let completed = UserDefaults.standard.bool(forKey: "ares_onboarding_completed")
-        self.needsOnboarding = !completed
-    }
-    
-    func markCompleted() {
-        UserDefaults.standard.set(true, forKey: "ares_onboarding_completed")
-        self.needsOnboarding = false
-    }
-    
-    func resetOnboarding() {
-        UserDefaults.standard.set(false, forKey: "ares_onboarding_completed")
-        self.needsOnboarding = true
-    }
-    
-    func fetchJaegerDefaults() async {
-        guard let url = URL(string: "http://localhost:8787/api/onboarding/companion/defaults") else { return }
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                self.jaegerStatusText = "JaegerAI Core: Local Standalone"
-                return
-            }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            
-            if let available = json["available"] as? Bool, available {
-                self.isJaegerInstalled = true
-                self.jaegerStatusText = "✓ JaegerAI Core Dependency Installed & Connected"
-            } else {
-                self.isJaegerInstalled = false
-                self.jaegerStatusText = "JaegerAI Core: Local Standalone"
-            }
-            
-            if let recAwake = json["recommended_model"] as? String, !recAwake.isEmpty {
-                self.selectedAwakeModel = recAwake
-            }
-            if let recAsleep = json["recommended_asleep_model"] as? String, !recAsleep.isEmpty {
-                self.selectedAsleepModel = recAsleep
-            }
-        } catch {
-            self.jaegerStatusText = "JaegerAI Core: Active"
-        }
-    }
-    
-    func saveOnboardingState(characterId: String, awakeModel: String, asleepModel: String) async throws {
-        guard let url = URL(string: "http://localhost:8787/api/onboarding/companion/create") else { return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let payload: [String: Any] = [
-            "character_id": characterId,
-            "name": agentName,
-            "display_name": agentName,
-            "personality": agentRole,
-            "make_default": true
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        _ = try? await URLSession.shared.data(for: request)
     }
 }
