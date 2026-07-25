@@ -1,19 +1,6 @@
 """Capability registry for ARES backend-specific UI affordances."""
 from __future__ import annotations
 
-<<<<<<< HEAD
-from api.backend_selector import BACKEND_JROS, normalize_backend
-
-
-CAPABILITIES: dict[str, dict[str, bool]] = {
-    "cloud_provider_model_settings": {BACKEND_JROS: True},
-    "mcp_server_config": {BACKEND_JROS: True},
-    "messaging_gateway": {BACKEND_JROS: True},
-    "kanban": {BACKEND_JROS: True},
-    "delegate_task": {BACKEND_JROS: True},
-    "character_persona_editing": {BACKEND_JROS: True},
-    "voice_settings": {BACKEND_JROS: True},
-=======
 from api.backend_selector import VALID_BACKENDS, normalize_backend
 
 
@@ -46,7 +33,6 @@ CAPABILITIES: dict[str, dict[str, bool]] = {
         "hermes_local": True,
         "jros_local": False,
     },
->>>>>>> wip/multiagent-orchestrator
 }
 
 
@@ -62,9 +48,6 @@ def _jros_ares_tools_enabled() -> bool:
 def capabilities_for_backend(backend: str) -> dict[str, bool]:
     """Return UI capability flags for one normalized ARES backend."""
     selected = normalize_backend(backend)
-<<<<<<< HEAD
-    result = {capability: bool(matrix.get(selected, False)) for capability, matrix in CAPABILITIES.items()}
-=======
     if selected not in VALID_BACKENDS:
         return {capability: False for capability in CAPABILITIES}
     result = {
@@ -73,5 +56,4 @@ def capabilities_for_backend(backend: str) -> dict[str, bool]:
     }
     if selected == "jros_local" and _jros_ares_tools_enabled():
         result["kanban"] = True
->>>>>>> wip/multiagent-orchestrator
     return result

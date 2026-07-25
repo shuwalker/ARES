@@ -3,21 +3,6 @@
 Flat registry of agnostic backends. Each backend is {name}_{deployment}.
 No roles, no opinions. Paperclip pattern.
 """
-<<<<<<< HEAD
-ARES Backends Package
-
-This package exposes JaegerAI/JROS as ARES's conversation runtime.
-
-Public exports:
-    - get_router()
-    - AgenticBackend, BackendRouter
-    - JROSBackend
-"""
-
-from .base import AgenticBackend, BackendRouter
-from .jros import JROSBackend
-from .router import get_router, get_default_router
-=======
 from .base import AgenticBackend
 from .hermes import HermesBackend
 from .jros import JROSBackend
@@ -39,14 +24,12 @@ from .cli_backends import (
 from .gemini_cloud import GeminiCloudBackend
 from .ollama_hatchery import HatchedSIBackend, hatchery_autoload
 from .router import get_router, get_default_router, BackendRouter
->>>>>>> wip/multiagent-orchestrator
 
 __all__ = [
     "AgenticBackend",
     "BackendRouter",
+    "HermesBackend",
     "JROSBackend",
-<<<<<<< HEAD
-=======
     "HatchedSIBackend",
     "AntigravityGeminiBackend",
     "ClaudeLocalBackend",
@@ -62,7 +45,6 @@ __all__ = [
     "OpenCodeLocalBackend",
     "PiLocalBackend",
     "XAICloudBackend",
->>>>>>> wip/multiagent-orchestrator
     "get_router",
     "get_default_router",
     "hatchery_autoload",

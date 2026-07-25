@@ -62,11 +62,7 @@ PUBLIC_PATHS = frozenset({
 })
 
 COOKIE_NAME = 'ares_session'
-<<<<<<< HEAD
-CSRF_HEADER_NAME = 'X-Hermes-CSRF-Token'
-=======
 CSRF_HEADER_NAME = 'X-Ares-CSRF-Token'
->>>>>>> wip/multiagent-orchestrator
 
 
 # RFC 6265 cookie-name token: a non-empty run of token chars
@@ -427,17 +423,7 @@ def get_password_hash() -> str | None:
         if _AUTH_HASH_COMPUTED:
             return _AUTH_HASH_CACHE
 
-<<<<<<< HEAD
-        # ARES is canonical. The legacy name remains a read-only migration
-        # alias so existing password-protected installs do not become open
-        # during upgrade.
-        env_pw = (
-            os.getenv('ARES_WEBUI_PASSWORD', '').strip()
-            or os.getenv('HERMES_WEBUI_PASSWORD', '').strip()
-        )
-=======
         env_pw = os.getenv('ARES_WEBUI_PASSWORD', '').strip()
->>>>>>> wip/multiagent-orchestrator
         if env_pw:
             result = _hash_password(env_pw)
         else:

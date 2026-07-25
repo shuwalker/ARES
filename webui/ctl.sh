@@ -16,11 +16,7 @@ usage() {
 Usage: ./ctl.sh <command> [args]
 
 Commands:
-<<<<<<< HEAD
-  start [bootstrap args...]   Start ARES WebUI as a background daemon
-=======
   start [bootstrap args...]   Start Ares WebUI as a background daemon
->>>>>>> wip/multiagent-orchestrator
   stop                        Stop the daemon started by ctl.sh
   restart [bootstrap args...] Stop, then start again
   status                      Show daemon, host/port, log, and health status
@@ -124,30 +120,18 @@ _load_repo_dotenv_preserving_env() {
   fi
 }
 
-<<<<<<< HEAD
-_load_hermes_dotenv() {
-  # Also load ~/.ares/.env so that ${VAR} references in config.yaml can
-  # resolve against provider credentials defined in the Hermes env file.
-=======
 _load_ares_dotenv() {
   # Also load ~/.ares/.env so that ${VAR} references in config.yaml can
   # resolve against provider credentials defined in the Ares env file.
->>>>>>> wip/multiagent-orchestrator
   # Repo .env takes precedence (loaded above); variables already exported
   # into the shell environment (including those just set by repo .env) are
   # captured in preserved[] before _apply_env_file_safely runs and are
   # restored afterwards, so this acts as a fallback source for vars the
   # repo .env did not define.
   [[ "${ARES_WEBUI_NO_DOTENV:-0}" == "1" ]] && return 0
-<<<<<<< HEAD
-  local hermes_home="${ARES_HOME:-${HOME}/.ares}"
-  local hermes_env="${hermes_home}/.env"
-  [[ -f "${hermes_env}" ]] || return 0
-=======
   local ares_home="${ARES_HOME:-${HOME}/.ares}"
   local ares_env="${ares_home}/.env"
   [[ -f "${ares_env}" ]] || return 0
->>>>>>> wip/multiagent-orchestrator
 
   local -a preserved=()
   local line key value
@@ -194,11 +178,7 @@ _find_python() {
 
 _parse_launch_binding() {
   CTL_HOST="${ARES_WEBUI_HOST:-127.0.0.1}"
-<<<<<<< HEAD
-  CTL_PORT="${ARES_WEBUI_PORT:-8788}"
-=======
   CTL_PORT="${ARES_WEBUI_PORT:-8787}"
->>>>>>> wip/multiagent-orchestrator
   local arg next_is_host=0 saw_port=0
   for arg in "$@"; do
     if (( next_is_host )); then
@@ -432,17 +412,13 @@ _launchd_webui_pid() {
   # allowed to start (#3291 over-block fix). When port ownership can't be
   # determined (no lsof), fall back to the conservative previous behavior of
   # only guarding the default port so non-default ports are never wrongly blocked.
-<<<<<<< HEAD
-  local want_port="${CTL_PORT:-${ARES_WEBUI_PORT:-8788}}"
-=======
   local want_port="${CTL_PORT:-${ARES_WEBUI_PORT:-8787}}"
->>>>>>> wip/multiagent-orchestrator
   _pid_listens_on_port "${pid}" "${want_port}"
   case "$?" in
     0) printf '%s\n' "${pid}"; return 0 ;;   # launchd job listens on our port → block
     1) return 1 ;;                            # launchd job on a different port → allow
     *)                                        # unknown: only guard the default port
-      if [[ "${want_port}" == "8788" ]]; then
+      if [[ "${want_port}" == "8787" ]]; then
         printf '%s\n' "${pid}"; return 0
       fi
       return 1 ;;
@@ -452,11 +428,7 @@ _launchd_webui_pid() {
 start_cmd() {
   ensure_home
   _load_repo_dotenv_preserving_env
-<<<<<<< HEAD
-  _load_hermes_dotenv
-=======
   _load_ares_dotenv
->>>>>>> wip/multiagent-orchestrator
   export ARES_WEBUI_STATE_DIR="${ARES_WEBUI_STATE_DIR:-${DEFAULT_STATE_DIR}}"
   mkdir -p "${ARES_WEBUI_STATE_DIR}"
   _parse_launch_binding "$@"
@@ -466,20 +438,12 @@ start_cmd() {
 
   local existing_pid
   if existing_pid="$(_current_pid 2>/dev/null)"; then
-<<<<<<< HEAD
-    echo "[ctl] ARES WebUI is already running (PID ${existing_pid})"
-=======
     echo "[ctl] Ares WebUI is already running (PID ${existing_pid})"
->>>>>>> wip/multiagent-orchestrator
     return 0
   fi
   local launchd_pid
   if launchd_pid="$(_launchd_webui_pid 2>/dev/null)"; then
-<<<<<<< HEAD
-    echo "[ctl] Refusing to start a second ARES WebUI while launchd job ${ARES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}} is running (PID ${launchd_pid})." >&2
-=======
     echo "[ctl] Refusing to start a second Ares WebUI while launchd job ${ARES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}} is running (PID ${launchd_pid})." >&2
->>>>>>> wip/multiagent-orchestrator
     echo "[ctl] Use launchctl kickstart -k gui/$(id -u)/${ARES_WEBUI_LAUNCHD_LABEL:-${DEFAULT_LAUNCHD_LABEL}} or disable the launchd job before using ctl.sh start." >&2
     return 2
   fi
@@ -500,19 +464,11 @@ start_cmd() {
   _write_state "${pid}" "${CTL_HOST}" "${CTL_PORT}" "${python_exe}"
   sleep 0.15
   if ! _is_alive "${pid}"; then
-<<<<<<< HEAD
-    echo "[ctl] ARES WebUI failed to stay running. Log: ${LOG_FILE}" >&2
-    rm -f "${PID_FILE}" "${STATE_FILE}"
-    return 1
-  fi
-  echo "[ctl] Started ARES WebUI (PID ${pid})"
-=======
     echo "[ctl] Ares WebUI failed to stay running. Log: ${LOG_FILE}" >&2
     rm -f "${PID_FILE}" "${STATE_FILE}"
     return 1
   fi
   echo "[ctl] Started Ares WebUI (PID ${pid})"
->>>>>>> wip/multiagent-orchestrator
   echo "[ctl] Bound: ${CTL_HOST}:${CTL_PORT}"
   echo "[ctl] Log: ${LOG_FILE}"
 }
@@ -521,11 +477,7 @@ stop_cmd() {
   ensure_home
   local pid
   if ! pid="$(_pid_from_file 2>/dev/null)"; then
-<<<<<<< HEAD
-    echo "[ctl] ARES WebUI is stopped"
-=======
     echo "[ctl] Ares WebUI is stopped"
->>>>>>> wip/multiagent-orchestrator
     rm -f "${PID_FILE}" "${STATE_FILE}"
     return 0
   fi
@@ -535,11 +487,7 @@ stop_cmd() {
     return 0
   fi
 
-<<<<<<< HEAD
-  echo "[ctl] Stopping ARES WebUI (PID ${pid})"
-=======
   echo "[ctl] Stopping Ares WebUI (PID ${pid})"
->>>>>>> wip/multiagent-orchestrator
   _stop_webui_pid "${pid}" TERM
   local i
   for i in {1..50}; do
@@ -589,11 +537,7 @@ status_cmd() {
   _load_ares_dotenv
   _load_state_if_present
   local host="${HOST:-${ARES_WEBUI_HOST:-127.0.0.1}}"
-<<<<<<< HEAD
-  local port="${PORT:-${ARES_WEBUI_PORT:-8788}}"
-=======
   local port="${PORT:-${ARES_WEBUI_PORT:-8787}}"
->>>>>>> wip/multiagent-orchestrator
   local log_path="${LOG_FILE}"
   local pid uptime health
 

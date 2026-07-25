@@ -215,73 +215,7 @@ class AgenticBackend(ABC):
         return {"type": "object", "properties": {}}
 
     def get_worker_target(self) -> tuple:
-<<<<<<< HEAD
-        """
-        Return the (callable, is_gateway, is_jros) tuple for the Hermes
-        streaming worker. Subclasses override this to return their own target.
-        """
-        from api.streaming import _run_agent_streaming
-        return _run_agent_streaming, False, False
-
-    def get_backend_name(self) -> str:
-        """Return the display name for this backend (e.g. 'Hermes', 'JROS')."""
-        return self.name.title()
-
-    def get_status(self) -> Dict[str, Any]:
-        """Optional richer status for UI display."""
-        return {"available": self.is_available(), "label": self.get_backend_name()}
-
-
-class BackendRouter:
-    """
-    ARES-side router that decides which peer backend(s) to use.
-
-    Mirrors the ExecutionBackendRouter pattern from the native macOS app.
-    """
-
-    def __init__(self, backends: Dict[str, AgenticBackend]):
-        self.backends = backends
-
-    def select(self, requested: str) -> AgenticBackend | list[AgenticBackend]:
-        if requested == "hybrid":
-            return [b for b in self.backends.values() if b.is_available()]
-        backend = self.backends.get(requested)
-        if backend and backend.is_available():
-            return backend
-        # Fall back to first available backend
-        for name, b in self.backends.items():
-            if b.is_available():
-                return b
-        # Absolute last resort: return the requested backend even if unavailable
-        return backend or list(self.backends.values())[0]
-
-    def select_worker(self, requested: str) -> tuple:
-        """
-        Return the (callable, is_gateway, is_jros) tuple for the requested
-        backend. For 'hybrid' returns the first available backend's worker.
-        """
-        if requested == "hybrid":
-            available = [b for b in self.backends.values() if b.is_available()]
-            if available:
-                return available[0].get_worker_target()
-        
-        backend = self.backends.get(requested)
-        if backend:
-            return backend.get_worker_target()
-            
-        # Fallback only if the requested backend string is completely invalid/unknown
-        fallback = self.backends.get("hermes") or list(self.backends.values())[0]
-        return fallback.get_worker_target()
-
-    def get_active_backend_name(self, requested: str) -> str:
-        """Return the display name for the active backend."""
-        if requested == "hybrid":
-            return "Hybrid"
-        backend = self.backends.get(requested) or self.backends.get("hermes")
-        return backend.get_backend_name() if backend else "Hermes"
-=======
         return run_agentic_backend_streaming, False, False
 
     def get_status(self) -> Dict[str, Any]:
         return {"available": self.is_available(), "label": self.name}
->>>>>>> wip/multiagent-orchestrator

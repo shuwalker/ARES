@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-"""ARES -- first-run onboarding helpers."""
-=======
 """Ares Web UI -- first-run onboarding helpers."""
->>>>>>> wip/multiagent-orchestrator
 
 from __future__ import annotations
 
@@ -932,11 +928,7 @@ def get_onboarding_status() -> dict:
             "default_workspace": settings.get("default_workspace")
             or str(DEFAULT_WORKSPACE),
             "password_enabled": is_auth_enabled(),
-<<<<<<< HEAD
-            "bot_name": settings.get("bot_name") or "ARES",
-=======
             "bot_name": settings.get("bot_name") or "Ares",
->>>>>>> wip/multiagent-orchestrator
         },
         "system": {
             "ares_found": bool(_ARES_FOUND),
@@ -945,7 +937,6 @@ def get_onboarding_status() -> dict:
             "import_errors": errors,
             "config_path": str(_get_config_path()),
             "config_exists": Path(_get_config_path()).exists(),
-            "tailscale_ip": (lambda: "".join(t for t in [getattr(getattr(__import__("api.ares_devices", fromlist=["_tailscale_ip"]), "_tailscale_ip", None), "__call__", lambda: "")()] if t))(),
             **runtime,
         },
         "setup": _build_setup_catalog(cfg),
@@ -1139,86 +1130,10 @@ def apply_self_hosted_provider_setup(body: dict) -> dict:
     return result
 
 
-def verify_companion_live(timeout_s: float = 300.0) -> dict:
-    """Prove the Companion can actually produce a turn.
-
-    Boots the local ``jaeger bridge`` (through the same cached client the chat
-    path uses) and runs one tiny turn. This is the single source of truth for
-    "the agent is live" — everything else (dirs on disk, config keys) only
-    proves installation, not liveness. First boot may download/warm the model,
-    hence the generous timeout.
-    """
-    try:
-        from api.backend_selector import BACKEND_JROS, get_active_backend
-
-        if get_active_backend(get_config()) != BACKEND_JROS:
-            return {"ok": True, "skipped": True, "reason": "backend_not_jros"}
-    except Exception:
-        logger.debug("Backend check failed during companion verify", exc_info=True)
-    if not companion_exists():
-        return {"ok": False, "error": "No Companion instance exists yet — create one first."}
-
-    import threading as _threading
-
-    from api.jros_gateway_chat import _run_local_jros_turn
-
-    result: dict = {}
-
-    def _worker() -> None:
-        text, err, _tools = _run_local_jros_turn(
-            "Reply with one short word to confirm you are online.",
-            "onboarding-verify",
-            _threading.Event(),
-        )
-        result["text"] = text
-        result["error"] = err
-
-    t = _threading.Thread(target=_worker, daemon=True)
-    t.start()
-    t.join(timeout_s)
-    if t.is_alive():
-        return {
-            "ok": False,
-            "error": (
-                f"Companion did not respond within {int(timeout_s)}s. The model may "
-                "still be downloading or warming up — wait a minute and try again."
-            ),
-        }
-    err = str(result.get("error") or "").strip()
-    if err:
-        return {"ok": False, "error": err}
-    return {"ok": True, "reply": str(result.get("text") or "").strip()[:200]}
-
-
 def complete_onboarding() -> dict:
     # This records that the ARES Local Profile is ready. Agent frameworks are
     # optional connections and must not gate identity or configuration setup.
     save_settings({"onboarding_completed": True})
-<<<<<<< HEAD
-    return get_onboarding_status()
-
-def install_framework(body: dict) -> dict:
-    import subprocess
-    import threading
-    framework = str(body.get("framework") or "").strip().lower()
-    
-    if framework == "jros":
-        cmd = "curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
-        
-        def _run_install():
-            try:
-                subprocess.run(cmd, shell=True, check=True)
-                save_settings({"ares_backend": "jros"})
-            except Exception as e:
-                logger.error("JROS background install failed: %s", e)
-                
-        threading.Thread(target=_run_install, daemon=True).start()
-        return {"ok": True, "framework": framework, "status": "installing"}
-        
-    return {
-        "ok": False,
-        "error": "JaegerAI is the only supported conversation runtime",
-=======
     settings = load_settings() or {}
     # Completion belongs to the native ARES profile flow. Returning the legacy
     # Hermes bootstrap diagnostic here incorrectly reports missing run_agent
@@ -1230,5 +1145,4 @@ def install_framework(body: dict) -> dict:
             "owner_name": str(settings.get("owner_name") or ""),
             "bot_name": str(settings.get("bot_name") or "Ares"),
         },
->>>>>>> wip/multiagent-orchestrator
     }

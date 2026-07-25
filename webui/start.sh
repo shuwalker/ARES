@@ -79,17 +79,10 @@ fi
 #
 # Resolve host/port the same way bootstrap.py does: ARES_WEBUI_HOST /
 # ARES_WEBUI_PORT (possibly just sourced from .env above), else the
-<<<<<<< HEAD
-# bootstrap.py defaults of 127.0.0.1 / 8788. A 0.0.0.0 / :: bind is probed via
-# loopback, matching server.py's _abort_if_already_serving.
-_hermes_host="${ARES_WEBUI_HOST:-127.0.0.1}"
-_hermes_port="${ARES_WEBUI_PORT:-8788}"
-=======
 # bootstrap.py defaults of 127.0.0.1 / 8787. A 0.0.0.0 / :: bind is probed via
 # loopback, matching bootstrap.py's existing-listener guard.
 _ares_host="${ARES_WEBUI_HOST:-127.0.0.1}"
 _ares_port="${ARES_WEBUI_PORT:-8787}"
->>>>>>> wip/multiagent-orchestrator
 
 # CLI args override the env/defaults exactly as bootstrap.py's argparse does
 # (`port` is the first bare numeric positional; `--host VALUE` / `--host=VALUE`).
@@ -138,11 +131,7 @@ esac
 _ares_probe_scheme="$(ares_webui_probe_scheme)"
 # Run the probe in the CURRENT shell (redirect, not $(...)) so the helper's
 # _ARES_WEBUI_PROBE_SCHEME global survives — a command-substitution subshell
-<<<<<<< HEAD
-# would discard it. server.py falls back to plain HTTP when the cert/key are
-=======
 # would discard it. The launcher falls back to plain HTTP when the cert/key are
->>>>>>> wip/multiagent-orchestrator
 # unloadable, so a TLS-configured instance can be live on http:// while the
 # configured scheme is https://; prefer the scheme that actually answered.
 _ares_probe_body_file="$(mktemp 2>/dev/null || echo "/tmp/ares-webui-probe.$$")"
@@ -150,24 +139,14 @@ _ares_already_up=""
 if ares_webui_probe_health "${_ares_probe_host}" "${_ares_port}" "/health" 2 > "${_ares_probe_body_file}" 2>/dev/null; then
   _ares_already_up="$(cat "${_ares_probe_body_file}" 2>/dev/null || true)"
 fi
-<<<<<<< HEAD
-rm -f "${_hermes_probe_body_file}" 2>/dev/null || true
-if [[ -n "${_ARES_WEBUI_PROBE_SCHEME:-}" ]]; then
-  _hermes_probe_scheme="${_ARES_WEBUI_PROBE_SCHEME}"
-=======
 rm -f "${_ares_probe_body_file}" 2>/dev/null || true
 if [[ -n "${_ARES_WEBUI_PROBE_SCHEME:-}" ]]; then
   _ares_probe_scheme="${_ARES_WEBUI_PROBE_SCHEME}"
->>>>>>> wip/multiagent-orchestrator
 fi
 
 if [[ -n "${_ares_already_up}" ]]; then
   cat >&2 <<EOF
-<<<<<<< HEAD
-[==] ARES WebUI is already running at ${_hermes_probe_scheme}://${_hermes_probe_host}:${_hermes_port}
-=======
 [==] Ares WebUI is already running at ${_ares_probe_scheme}://${_ares_probe_host}:${_ares_port}
->>>>>>> wip/multiagent-orchestrator
      The server was NOT started again (start.sh does not double-start).
 
      If you need to restart the server, do the following:

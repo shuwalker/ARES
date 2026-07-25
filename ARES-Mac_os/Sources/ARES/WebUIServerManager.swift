@@ -35,51 +35,19 @@ public final class WebUIServerManager: ObservableObject {
 
     public func start() async {
         guard process == nil else { return }
-
-        // Production installs are owned by launchd. If a menu action stopped
-        // that service, load it again before falling back to an app-owned
-        // Python process.
-        if FileManager.default.fileExists(atPath: launchAgentPlist.path), !isLaunchAgentLoaded {
-            _ = runLaunchctl(["bootstrap", "gui/\(getuid())", launchAgentPlist.path])
-            _ = runLaunchctl(["kickstart", "gui/\(getuid())/com.ares.webui"])
-            try? await Task.sleep(nanoseconds: 750_000_000)
-        }
-
+        
         let config = ARESConfiguration.shared
         let host = config.webuiHost
         let port = config.webuiPort
-
+        
         serverHealth = "Checking port..."
-
-        // Check if the port is already in use before touching anything
+        
+        // Reclaim port if held by orphaned server.py process
+        reclaimPort(port)
+        
+        // Check if port is in use
         let inUse = await isPortInUse(port, host: host)
         if inUse {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/WebUIServerManager.swift
-            // A healthy server is already there (launchd or prior session) — adopt it
-            if await isServerHealthy(host: host, port: port) {
-                portConflict = false
-                isRunning = true
-                serverHealth = "Running (Healthy)"
-                print("[ARES] Adopted existing WebUI server on http://\(host):\(port)")
-                return
-            }
-            // Our server.py is on the port but still starting — don't kill it
-            if isPortHeldByOurServer(port) {
-                portConflict = false
-                isRunning = true
-                serverHealth = "Starting..."
-                print("[ARES] WebUI server starting on port \(port) — waiting for health")
-                return
-            }
-            // Something else is holding the port — reclaim and start fresh
-            reclaimPort(port)
-            let stillInUse = await isPortInUse(port, host: host)
-            if stillInUse {
-                portConflict = true
-                serverHealth = "Port \(port) conflict detected"
-                return
-            }
-=======
             let urlString = "http://\(host):\(port)/health"
             if let url = URL(string: urlString) {
                 var request = URLRequest(url: url)
@@ -101,7 +69,6 @@ public final class WebUIServerManager: ObservableObject {
             portConflict = true
             serverHealth = "Port \(port) conflict detected"
             return
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/WebUIServerManager.swift
         }
         portConflict = false
         serverHealth = "Starting..."
@@ -127,9 +94,6 @@ public final class WebUIServerManager: ObservableObject {
         env["ARES_WEBUI_HOST"] = host
         env["ARES_WEBUI_PORT"] = String(port)
         env["ARES_WEBUI_RELOAD"] = config.reloadDevMode ? "1" : "0"
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/WebUIServerManager.swift
-        env["ARES_JROS_GATEWAY_URL"] = config.jrosURL
-=======
         env = Self.applyingGatewayEnvironment(
             to: env,
             hermesURL: config.hermesURL,
@@ -137,19 +101,13 @@ public final class WebUIServerManager: ObservableObject {
             jrosURL: config.jrosURL,
             jrosAPIKey: config.jrosAPIKey
         )
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/WebUIServerManager.swift
         env["ARES_ROLE"] = config.aresRole
         env["ARES_DEVICE_ID"] = config.aresDeviceID
         env["ARES_AI_ID"] = config.aresAIID
         env["ARES_PRIMARY_URL"] = config.aresPrimaryURL
         env["ARES_CONTINUITY_DIR"] = config.aresContinuityDir
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/WebUIServerManager.swift
-        if !config.jrosAPIKey.isEmpty {
-            env["ARES_JROS_GATEWAY_KEY"] = config.jrosAPIKey
-=======
         if let nativeMCPCommand = Self.nativeMCPExecutable() {
             env["ARES_NATIVE_MCP_COMMAND"] = nativeMCPCommand.path
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/WebUIServerManager.swift
         }
         process.environment = env
 
@@ -181,16 +139,6 @@ public final class WebUIServerManager: ObservableObject {
         }
     }
 
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/WebUIServerManager.swift
-    public func stop(persistently: Bool = false) {
-        if persistently, isLaunchAgentLoaded {
-            _ = runLaunchctl(["bootout", "gui/\(getuid())", launchAgentPlist.path])
-        }
-        if let p = process {
-            p.terminate()
-            process = nil
-        }
-=======
     nonisolated static func applyingGatewayEnvironment(
         to base: [String: String],
         hermesURL: String,
@@ -221,44 +169,17 @@ public final class WebUIServerManager: ObservableObject {
         guard let p = process else { return }
         p.terminate()
         process = nil
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/WebUIServerManager.swift
         isRunning = false
         serverHealth = "Stopped"
     }
 
     public func restart() async {
-        stop(persistently: true)
+        stop()
         try? await Task.sleep(nanoseconds: 1_000_000_000) // Wait 1 second
         await start()
     }
 
-    private var launchAgentPlist: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/com.ares.webui.plist")
-    }
-
-    private var isLaunchAgentLoaded: Bool {
-        runLaunchctl(["print", "gui/\(getuid())/com.ares.webui"]) == 0
-    }
-
-    @discardableResult
-    private func runLaunchctl(_ arguments: [String]) -> Int32 {
-        let command = Process()
-        command.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        command.arguments = arguments
-        command.standardOutput = FileHandle.nullDevice
-        command.standardError = FileHandle.nullDevice
-        do {
-            try command.run()
-            command.waitUntilExit()
-            return command.terminationStatus
-        } catch {
-            return -1
-        }
-    }
-
     private func checkHealth() async {
-        // If we own the process and it exited, mark as exited
         if let p = process, !p.isRunning {
             isRunning = false
             process = nil
@@ -267,21 +188,16 @@ public final class WebUIServerManager: ObservableObject {
         }
 
         guard isRunning else {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/WebUIServerManager.swift
-            if serverHealth.hasPrefix("Running") || serverHealth == "Starting..." {
-                serverHealth = "Stopped"
-            }
-=======
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/WebUIServerManager.swift
             return
         }
 
-        // Always confirm via HTTP — works whether process was spawned by us or launchd
         let config = ARESConfiguration.shared
         let urlString = "http://\(config.webuiHost):\(config.webuiPort)/health"
         guard let url = URL(string: urlString) else { return }
+        
         var request = URLRequest(url: url)
         request.timeoutInterval = 1.0
+        
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
@@ -290,7 +206,6 @@ public final class WebUIServerManager: ObservableObject {
                 serverHealth = "Running (Degraded)"
             }
         } catch {
-            // Keep isRunning true so the timer retries — launchd will restart the server
             serverHealth = "Running (Unreachable)"
         }
     }
@@ -335,66 +250,12 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     private func findWebUIDir() -> URL? {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/WebUIServerManager.swift
-        let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser
-        
-        let candidatePaths = [
-            Bundle.main.resourceURL?.appendingPathComponent("webui"),
-            home.appendingPathComponent("GitHub/ARES/webui"),
-            home.appendingPathComponent(".ares/webui")
-        ]
-        
-        for path in candidatePaths.compactMap({ $0 }) {
-            let serverPy = path.appendingPathComponent("server.py").path
-            if fm.fileExists(atPath: serverPy) {
-                return path
-            }
-=======
         for candidate in Self.webUICandidates() where Self.containsWebUI(at: candidate) {
             return candidate
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/WebUIServerManager.swift
         }
         return nil
     }
 
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/WebUIServerManager.swift
-    private func isServerHealthy(host: String, port: Int) async -> Bool {
-        let clientHost = (host == "0.0.0.0") ? "127.0.0.1" : host
-        guard let url = URL(string: "http://\(clientHost):\(port)/health") else { return false }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 2.0
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            return (response as? HTTPURLResponse)?.statusCode == 200
-        } catch {
-            return false
-        }
-    }
-
-    private func isPortHeldByOurServer(_ port: Int) -> Bool {
-        let lsof = Process()
-        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        lsof.arguments = ["-t", "-i", "tcp:\(port)"]
-        let pipe = Pipe()
-        lsof.standardOutput = pipe
-        try? lsof.run()
-        lsof.waitUntilExit()
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let pids = output.components(separatedBy: .newlines).compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
-        for pid in pids {
-            let ps = Process()
-            ps.executableURL = URL(fileURLWithPath: "/bin/ps")
-            ps.arguments = ["-o", "command=", "-p", String(pid)]
-            let psPipe = Pipe()
-            ps.standardOutput = psPipe
-            try? ps.run()
-            ps.waitUntilExit()
-            let cmd = String(data: psPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            if cmd.contains("server.py") { return true }
-        }
-        return false
-=======
     nonisolated static func webUICandidates(
         resourceURL: URL? = Bundle.main.resourceURL,
         executableURL: URL? = Bundle.main.executableURL,
@@ -452,7 +313,6 @@ public final class WebUIServerManager: ObservableObject {
             .deletingLastPathComponent()
             .appendingPathComponent("ARESNativeMCP")
         return fileManager.isExecutableFile(atPath: candidate.path) ? candidate : nil
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/WebUIServerManager.swift
     }
 
     private func reclaimPort(_ port: Int) {

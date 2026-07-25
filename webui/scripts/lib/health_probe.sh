@@ -32,11 +32,7 @@
 _ARES_WEBUI_SELF_SIGNED_WARNED="${_ARES_WEBUI_SELF_SIGNED_WARNED:-0}"
 
 # Records the scheme that actually answered the most recent successful probe
-<<<<<<< HEAD
-# ("https" or "http"). Defaults empty; set by hermes_webui_probe_health.
-=======
 # ("https" or "http"). Defaults empty; set by ares_webui_probe_health.
->>>>>>> wip/multiagent-orchestrator
 _ARES_WEBUI_PROBE_SCHEME="${_ARES_WEBUI_PROBE_SCHEME:-}"
 
 _ares_webui_truthy() {
@@ -47,11 +43,7 @@ _ares_webui_truthy() {
 }
 
 # Echo "https" when TLS is configured (both cert and key present), else "http".
-<<<<<<< HEAD
-hermes_webui_probe_scheme() {
-=======
 ares_webui_probe_scheme() {
->>>>>>> wip/multiagent-orchestrator
   if [[ -n "${ARES_WEBUI_TLS_CERT:-}" && -n "${ARES_WEBUI_TLS_KEY:-}" ]]; then
     printf 'https'
   else
@@ -59,11 +51,7 @@ ares_webui_probe_scheme() {
   fi
 }
 
-<<<<<<< HEAD
-_hermes_webui_warn_self_signed() {
-=======
 _ares_webui_warn_self_signed() {
->>>>>>> wip/multiagent-orchestrator
   [[ "${_ARES_WEBUI_SELF_SIGNED_WARNED}" == "1" ]] && return 0
   _ARES_WEBUI_SELF_SIGNED_WARNED=1
   printf '[warn] Health probe: TLS certificate at %s is self-signed or not trusted; proceeding without verification.\n' \
@@ -110,11 +98,7 @@ ares_webui_probe_health() {
   local http_url="http://${host}:${port}${path}"
 
   if [[ "${scheme}" == "http" ]]; then
-<<<<<<< HEAD
-    if body="$(_hermes_webui_http_get "${http_url}" "${max_time}" "")"; then
-=======
     if body="$(_ares_webui_http_get "${http_url}" "${max_time}" "")"; then
->>>>>>> wip/multiagent-orchestrator
       _ARES_WEBUI_PROBE_SCHEME="http"
       printf '%s' "${body}"
       return 0
@@ -125,51 +109,31 @@ ares_webui_probe_health() {
   # TLS configured: prefer HTTPS, then fall back to HTTP.
   local https_url="https://${host}:${port}${path}"
 
-<<<<<<< HEAD
-  if _hermes_webui_truthy "${ARES_WEBUI_TLS_INSECURE_PROBE:-}"; then
-    # Explicit opt-in: skip verification, stay silent by contract.
-    if body="$(_hermes_webui_http_get "${https_url}" "${max_time}" "insecure")"; then
-=======
   if _ares_webui_truthy "${ARES_WEBUI_TLS_INSECURE_PROBE:-}"; then
     # Explicit opt-in: skip verification, stay silent by contract.
     if body="$(_ares_webui_http_get "${https_url}" "${max_time}" "insecure")"; then
->>>>>>> wip/multiagent-orchestrator
       _ARES_WEBUI_PROBE_SCHEME="https"
       printf '%s' "${body}"
       return 0
     fi
   else
     # 1) Verified HTTPS.
-<<<<<<< HEAD
-    if body="$(_hermes_webui_http_get "${https_url}" "${max_time}" "")"; then
-=======
     if body="$(_ares_webui_http_get "${https_url}" "${max_time}" "")"; then
->>>>>>> wip/multiagent-orchestrator
       _ARES_WEBUI_PROBE_SCHEME="https"
       printf '%s' "${body}"
       return 0
     fi
     # 2) Self-signed fallback: verification failed, retry unverified + warn.
-<<<<<<< HEAD
-    if body="$(_hermes_webui_http_get "${https_url}" "${max_time}" "insecure")"; then
-      _hermes_webui_warn_self_signed "${https_url}"
-=======
     if body="$(_ares_webui_http_get "${https_url}" "${max_time}" "insecure")"; then
       _ares_webui_warn_self_signed "${https_url}"
->>>>>>> wip/multiagent-orchestrator
       _ARES_WEBUI_PROBE_SCHEME="https"
       printf '%s' "${body}"
       return 0
     fi
   fi
 
-<<<<<<< HEAD
-  # 3) server.py may have fallen back to plain HTTP (cert/key unloadable).
-  if body="$(_hermes_webui_http_get "${http_url}" "${max_time}" "")"; then
-=======
   # 3) bootstrap may have fallen back to plain HTTP (cert/key unloadable).
   if body="$(_ares_webui_http_get "${http_url}" "${max_time}" "")"; then
->>>>>>> wip/multiagent-orchestrator
     _ARES_WEBUI_PROBE_SCHEME="http"
     printf '%s' "${body}"
     return 0

@@ -46,47 +46,6 @@ private struct ARESMainScene: View {
     }
 }
 
-/// Owns the SwiftUI window-opening action so AppKit menu commands can recreate
-/// the main window after the user has closed it. A WindowGroup does not retain
-/// a window instance once it is closed, so simply searching NSApp.windows is
-/// not sufficient.
-@MainActor
-final class ARESWindowCoordinator {
-    static let shared = ARESWindowCoordinator()
-
-    private var openAction: (() -> Void)?
-
-    func register(openAction: @escaping () -> Void) {
-        self.openAction = openAction
-    }
-
-    func openMainWindow() {
-        if let openAction {
-            openAction()
-            return
-        }
-
-        // The action is registered as soon as the first SwiftUI scene appears.
-        // Keep a small AppKit fallback for very early lifecycle calls.
-        NSApp.windows
-            .first(where: { $0.title != "" && $0.className != "NSStatusBarWindow" })?
-            .makeKeyAndOrderFront(nil)
-    }
-}
-
-private struct ARESMainScene: View {
-    var body: some View {
-        ARESMainView()
-            .frame(minWidth: 1024, minHeight: 700)
-            .preferredColorScheme(.dark)
-            .onAppear {
-                for window in NSApp.windows {
-                    window.tabbingMode = .disallowed
-                }
-            }
-    }
-}
-
 @MainActor
 @main
 struct ARESApp: App {
@@ -95,9 +54,6 @@ struct ARESApp: App {
     
     var body: some Scene {
         WindowGroup(id: "main") {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-            ARESMainScene()
-=======
             // Force onboarding if flag is set (from `ares setup`)
             let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
             if forceOnboarding || onboardingManager.needsOnboarding {
@@ -108,7 +64,6 @@ struct ARESApp: App {
             } else {
                 ARESMainScene()
             }
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
         }
         .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)
@@ -142,66 +97,11 @@ struct ARESApp: App {
 
 // MARK: - Main View
 
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-struct ARESMainView: View {
-    @ObservedObject private var onboardingManager = OnboardingManager.shared
-
-    var body: some View {
-        if onboardingManager.needsOnboarding {
-            OnboardingView()
-                .frame(minWidth: 900, minHeight: 650)
-        } else {
-            ARESWebView()
-        }
-    }
-}
-
-private enum RuntimeTerminalCommand {
-    static let hermes = """
-    clear
-    printf '\\033[1;33mHermes Agent TUI\\033[0m\\n'
-    HERMES_BIN="$HOME/.local/bin/hermes"
-    if [ ! -x "$HERMES_BIN" ]; then HERMES_BIN="$(command -v hermes 2>/dev/null || true)"; fi
-    if [ -z "$HERMES_BIN" ]; then
-      printf 'Hermes Agent CLI was not found on PATH.\\n'
-      printf 'Re-run the ARES installer with --with-hermes.\\n\\n'
-      exec /bin/zsh -l
-    fi
-    # First-run setup exits Hermes. Relaunch once so the configured TUI opens
-    # immediately instead of requiring the entire ARES app to restart.
-    "$HERMES_BIN"
-    first_exit=$?
-    if [ "$first_exit" -eq 0 ]; then exec "$HERMES_BIN"; fi
-    printf '\\nHermes exited with status %s. Press Return for a shell.\\n' "$first_exit"
-    read -r _
-    exec /bin/zsh -l
-    """
-
-    static let jros = """
-    clear
-    printf '\\033[1;36mJaegerAI TUI\\033[0m\\n\\n'
-    JAEGER_BIN="$HOME/.local/bin/jaeger"
-    if [ ! -x "$JAEGER_BIN" ] && [ -x "$HOME/jaeger/jaeger" ]; then JAEGER_BIN="$HOME/jaeger/jaeger"; fi
-    if [ ! -x "$JAEGER_BIN" ] && [ -x "$HOME/.jaeger/jaeger" ]; then JAEGER_BIN="$HOME/.jaeger/jaeger"; fi
-    if [ -x "$JAEGER_BIN" ]; then
-      exec "$JAEGER_BIN" --tui
-    else
-      printf 'JaegerAI was not found. Re-run the ARES installer.\\n\\n'
-      exec /bin/zsh -l
-    fi
-    """
-}
-
-struct RuntimeTerminalView: View {
-    let title: String
-    let command: String
-=======
 /// Primary on-device product entry. Full capacity lives in `ARESProductShell`
 /// (native destinations + routed shared surfaces). The WebUI alone is the
 /// remote/light client for other devices over LAN or a trusted tailnet.
 struct ARESMainView: View {
     @ObservedObject private var serverManager = WebUIServerManager.shared
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
 
     var body: some View {
         if serverManager.isRunning {
@@ -255,45 +155,14 @@ struct ARESWebView: View {
     @ObservedObject var config = ARESConfiguration.shared
 
     var body: some View {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-        if serverManager.serverHealth == "Running (Healthy)" {
-=======
         if serverManager.isRunning {
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
             if let url = URL(string: "http://\(config.webuiHost):\(config.webuiPort)") {
                 WebViewRepresentable(url: url, serverManager: serverManager)
             } else {
                 Text("Invalid Server URL").foregroundColor(.red)
             }
         } else {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-            ZStack {
-                Color(red: 0.063, green: 0.063, blue: 0.078)
-                    .ignoresSafeArea()
-                VStack(spacing: 0) {
-                    Spacer()
-                    Text("✦")
-                        .font(.system(size: 52))
-                        .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
-                        .padding(.bottom, 12)
-                    Text("ARES")
-                        .font(.system(size: 32, weight: .light, design: .default))
-                        .foregroundColor(.white)
-                        .tracking(6)
-                    Spacer()
-                    ProgressView()
-                        .scaleEffect(0.8)
-                        .colorMultiply(.white)
-                        .padding(.bottom, 8)
-                    Text(serverManager.isRunning ? serverManager.serverHealth : "Starting up…")
-                        .foregroundColor(Color.white.opacity(0.4))
-                        .font(.system(size: 12))
-                    Spacer().frame(height: 48)
-                }
-            }
-=======
             ARESBootSplashView(status: serverManager.serverHealth)
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
         }
     }
 }
@@ -418,10 +287,6 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-        NSWindow.allowsAutomaticWindowTabbing = false
-        NSApp.setActivationPolicy(.accessory)
-=======
         // Check if onboarding should be shown
         let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
         let needsOnboarding = !UserDefaults.standard.bool(forKey: "onboarding_completed")
@@ -432,7 +297,6 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         } else {
             NSApp.setActivationPolicy(.accessory)
         }
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
 
         let config = ARESConfiguration.shared
         if config.autoLaunchOnStart {
@@ -442,17 +306,11 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         }
         setupMenuBar()
 
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-        // Open the main window on first launch so the onboarding wizard is visible.
-        openMainWindow()
-        
-=======
         // WindowGroup creates the initial window. Explicitly calling
         // openMainWindow() here races the scene's onAppear registration and can
         // create a duplicate onboarding window. Reopen and menu-bar actions use
         // openMainWindow() only after the initial scene has been closed.
 
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowWillClose),
@@ -467,16 +325,10 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         // SwiftUI creates a new WindowGroup window asynchronously.
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            for window in NSApp.windows where window.className != "NSStatusBarWindow" {
-                window.tabbingMode = .disallowed
-=======
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if let window = NSApp.windows.first(where: {
                 $0.title != "" && $0.className != "NSStatusBarWindow"
             }) {
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
             }
@@ -588,7 +440,7 @@ final class ARESMenuBarController: NSObject {
     }
 
     @objc private func stopServer() {
-        WebUIServerManager.shared.stop(persistently: true)
+        WebUIServerManager.shared.stop()
     }
 
     @objc private func restartServer() {
@@ -650,11 +502,7 @@ struct MenuBarPopoverView: View {
                     }
                     .buttonStyle(.bordered)
                     Button("Stop") {
-<<<<<<< HEAD:ARES-Desktop/Sources/ARES/ARESApp.swift
-                        serverManager.stop(persistently: true)
-=======
                         serverManager.stop()
->>>>>>> wip/multiagent-orchestrator:ARES-Mac_os/Sources/ARES/ARESApp.swift
                     }
                     .buttonStyle(.bordered)
                 } else {

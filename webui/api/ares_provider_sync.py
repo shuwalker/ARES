@@ -8,9 +8,6 @@ credential files.
 from __future__ import annotations
 
 import os
-import shutil
-import urllib.error
-import urllib.request
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterable
@@ -29,10 +26,6 @@ PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
         "base_url": "https://api.openai.com/v1",
         "api_key_env": "OPENAI_API_KEY",
     },
-    "xai": {
-        "base_url": "https://api.x.ai/v1",
-        "api_key_env": "XAI_API_KEY",
-    },
     "anthropic": {
         "base_url": "https://api.anthropic.com",
         "api_key_env": "ANTHROPIC_API_KEY",
@@ -42,17 +35,7 @@ PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
         "api_key_env": "OLLAMA_API_KEY",
     },
     "ollama": {
-        # Ollama's OpenAI-compatible endpoint.  Keep the /v1 suffix here so
-        # Hermes, JROS, and the ARES bridge all receive the same URL shape.
-        "base_url": "http://127.0.0.1:11434/v1",
-        "api_key_env": None,
-    },
-    # ``ollama launch`` creates this named Hermes provider.  It is still the
-    # local Ollama runtime, but preserving the name lets ARES round-trip the
-    # user's existing Hermes model selection instead of silently changing it
-    # to a different provider lane.
-    "ollama-launch": {
-        "base_url": "http://127.0.0.1:11434/v1",
+        "base_url": "http://localhost:11434",
         "api_key_env": None,
     },
     "lmstudio": {
@@ -66,87 +49,13 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "gemini": "gemini",
     "lmstudio": "lmstudio",
     "ollama": "ollama",
-    "ollama-launch": "ollama",
     "ollama-cloud": "ollama-cloud",
     "ollama-local": "ollama",
-    "local": "ollama",
     "openai": "openai",
-<<<<<<< HEAD
-    "xai": "xai",
-    # Hermes OAuth provider slugs are not runnable by JROS today.
-=======
     # Ares OAuth provider slugs are not runnable by JROS today.
->>>>>>> wip/multiagent-orchestrator
     "openai-codex": None,
     "xai-oauth": None,
 }
-
-
-def provider_runtime_status(provider: str, base_url: str | None = None) -> dict[str, Any]:
-    """Describe whether a configured provider can actually be reached.
-
-    Provider configuration is intentionally usable before a runtime is started;
-    this probe is informational and never rewrites config or installs software.
-    That distinction lets ARES work on machines with no Ollama while giving a
-    precise "installed, start Ollama" state when a local model is selected.
-    """
-    normalized = str(provider or "").strip().lower()
-    if normalized in {"ollama", "ollama-launch", "ollama-local", "local"}:
-        endpoint = str(base_url or PROVIDER_PRESETS["ollama"]["base_url"] or "").strip().rstrip("/")
-        api_root = endpoint[:-3] if endpoint.endswith("/v1") else endpoint
-        installed = bool(shutil.which("ollama")) or any(
-            path.exists() for path in (
-                Path("/Applications/Ollama.app"),
-                Path.home() / "Applications" / "Ollama.app",
-            )
-        )
-        try:
-            with urllib.request.urlopen(f"{api_root}/api/tags", timeout=1.5) as response:
-                payload = yaml.safe_load(response.read().decode("utf-8")) or {}
-            models = payload.get("models") if isinstance(payload, dict) else []
-            model_count = len(models) if isinstance(models, list) else 0
-            return {
-                "provider": normalized,
-                "available": True,
-                "state": "running",
-                "installed": installed,
-                "model_count": model_count,
-                "base_url": endpoint,
-            }
-        except Exception:
-            return {
-                "provider": normalized,
-                "available": False,
-                "state": "installed_not_running" if installed else "not_installed",
-                "installed": installed,
-                "model_count": 0,
-                "base_url": endpoint,
-            }
-    if normalized == "ollama-cloud":
-        try:
-            from api.providers import provider_has_usable_credential
-
-            configured = bool(provider_has_usable_credential("ollama-cloud"))
-        except Exception:
-            configured = bool(os.getenv("OLLAMA_API_KEY", "").strip())
-        return {
-            "provider": normalized,
-            "available": configured,
-            "state": "configured" if configured else "missing_credentials",
-            "installed": True,
-            "model_count": None,
-            "base_url": str(base_url or PROVIDER_PRESETS[normalized]["base_url"] or "").strip(),
-        }
-    # Other API providers are credential/configuration concerns; their network
-    # request is intentionally deferred until the user sends a turn.
-    return {
-        "provider": normalized,
-        "available": True,
-        "state": "configured",
-        "installed": True,
-        "model_count": None,
-        "base_url": str(base_url or "").strip() or None,
-    }
 
 def resolve_jros_config_path() -> Path:
     """Compatibility wrapper for callers/tests; use api.jros_paths.jros_config_path."""
@@ -208,31 +117,6 @@ def _sync_ares_config(config: dict[str, Any], provider: str, model: str, base_ur
         model_config["base_url"] = base_url
     else:
         model_config.pop("base_url", None)
-
-    # Hermes' ``ollama launch`` command registers a named provider rather than
-    # using the built-in ``ollama`` slug.  Keep that provider self-contained so
-    # a fresh ARES install (or a model picked from the ARES UI) can be reopened
-    # by the standalone ``hermes`` command with the exact same local model.
-    if provider == "ollama-launch":
-        providers = updated.get("providers")
-        if not isinstance(providers, dict):
-            providers = {}
-            updated["providers"] = providers
-        launch = providers.get("ollama-launch")
-        if not isinstance(launch, dict):
-            launch = {}
-            providers["ollama-launch"] = launch
-        launch.setdefault("name", "Ollama")
-        launch["api"] = base_url or launch.get("api") or PROVIDER_PRESETS[provider]["base_url"]
-        launch["default_model"] = model
-        models = launch.get("models")
-        if not isinstance(models, list):
-            models = []
-        # Preserve Hermes' discovered list, but guarantee the selected model is
-        # present so the picker survives a cold restart before Ollama refreshes.
-        if model not in models:
-            models.append(model)
-        launch["models"] = models
     return updated
 
 
@@ -370,15 +254,9 @@ def sync_provider(
     if "jros" in normalized_targets:
         path = expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
         current = load_yaml_config(path)
-        # JROS uses its own small provider vocabulary.  Named Hermes custom
-        # providers such as ``ollama-launch`` still route to JROS's canonical
-        # Ollama adapter while retaining the original provider in Hermes.
-        jros_provider = JROS_FALLBACK_PROVIDER_MAP.get(normalized_provider, normalized_provider)
-        if not jros_provider:
-            raise ValueError(f"Provider {normalized_provider} cannot be routed through JROS")
         updated = _sync_jros_config(
             current,
-            jros_provider,
+            normalized_provider,
             normalized_model,
             resolved_base_url,
             resolved_api_key_env,

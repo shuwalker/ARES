@@ -46,22 +46,6 @@ def test_jros_backend_selects_gateway_worker_without_health_ping(monkeypatch):
     assert is_jros is True
 
 
-<<<<<<< HEAD
-def test_legacy_hybrid_backend_migrates_to_jaeger_worker(monkeypatch):
-    from api import routes
-
-    monkeypatch.setattr(routes, "get_config", lambda: {"ares_backend": "hybrid"})
-    monkeypatch.setattr(routes, "webui_gateway_chat_enabled", lambda _cfg: False)
-
-    worker, is_gateway, is_jros = routes._select_chat_worker_target()
-
-    assert is_gateway is False
-    assert is_jros is True
-    assert worker.__name__ == "_run_jros_chat_streaming"
-
-
-=======
->>>>>>> wip/multiagent-orchestrator
 def test_gateway_url_resolution_env_config_default(monkeypatch):
     from api import jros_gateway_chat as jgc
 
@@ -377,9 +361,6 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch, tmp_path):
 
 def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     from api import backend_selector
-    from api import jros_gateway_chat
-
-    monkeypatch.setattr(jros_gateway_chat, "local_jros_root", lambda: None)
 
     server, base = _start_fake_gateway()
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", base)
@@ -594,33 +575,24 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     assert status["jros_local"] is False
 
 
-<<<<<<< HEAD
-def test_ares_capabilities_are_owned_by_jaeger(monkeypatch):
-=======
 def test_ares_capabilities_follow_external_runtime_and_shared_tools(monkeypatch):
->>>>>>> wip/multiagent-orchestrator
     from api import ares_capabilities
 
     monkeypatch.setattr(ares_capabilities, "_jros_ares_tools_enabled", lambda: False)
     jros_caps = ares_capabilities.capabilities_for_backend("jros")
     assert jros_caps["character_persona_editing"] is True
-    assert jros_caps["cloud_provider_model_settings"] is True
-    assert jros_caps["mcp_server_config"] is True
-    assert jros_caps["messaging_gateway"] is True
-    assert jros_caps["delegate_task"] is True
-    assert jros_caps["kanban"] is True
+    assert jros_caps["cloud_provider_model_settings"] is False
+    assert jros_caps["mcp_server_config"] is False
+    assert jros_caps["messaging_gateway"] is False
+    assert jros_caps["delegate_task"] is False
+    assert jros_caps["kanban"] is False
 
     monkeypatch.setattr(ares_capabilities, "_jros_ares_tools_enabled", lambda: True)
     assert ares_capabilities.capabilities_for_backend("jros")["kanban"] is True
 
-<<<<<<< HEAD
-    legacy_caps = ares_capabilities.capabilities_for_backend("hermes")
-    assert legacy_caps == jros_caps
-=======
     hermes_caps = ares_capabilities.capabilities_for_backend("hermes_local")
     assert hermes_caps["cloud_provider_model_settings"] is True
     assert hermes_caps["mcp_server_config"] is True
     assert hermes_caps["messaging_gateway"] is True
     assert hermes_caps["delegate_task"] is True
     assert hermes_caps["character_persona_editing"] is False
->>>>>>> wip/multiagent-orchestrator

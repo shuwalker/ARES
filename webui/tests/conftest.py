@@ -168,24 +168,6 @@ TEST_WORKSPACE = TEST_STATE_DIR / 'test-workspace'
 #
 # Direct assignment is intentional for production-risk paths: tests that import
 # api.config/api.models in the pytest process must never inherit the real
-<<<<<<< HEAD
-# ~/.hermes state tree before the server subprocess fixture starts.
-os.environ['HERMES_WEBUI_TEST_PORT'] = str(TEST_PORT)
-os.environ['HERMES_WEBUI_TEST_STATE_DIR'] = str(TEST_STATE_DIR)
-os.environ['HERMES_WEBUI_STATE_DIR'] = str(TEST_STATE_DIR)
-os.environ['HERMES_WEBUI_DEFAULT_WORKSPACE'] = str(TEST_WORKSPACE)
-os.environ['HERMES_HOME'] = str(TEST_STATE_DIR)
-os.environ['HERMES_BASE_HOME'] = str(TEST_STATE_DIR)
-# ARES owns WebUI state/port. Publish its canonical variables before product
-# modules import; the Hermes variables above remain only for inherited agent
-# internals that the broader upstream suite still exercises.
-os.environ['ARES_WEBUI_PORT'] = str(TEST_PORT)
-os.environ['ARES_WEBUI_HOST'] = '127.0.0.1'
-os.environ['ARES_WEBUI_STATE_DIR'] = str(TEST_STATE_DIR)
-os.environ['ARES_HOME'] = str(TEST_STATE_DIR)
-# Hermes Agent sessions may inherit HERMES_CONFIG_PATH pointing at the live
-# ~/.hermes/config.yaml.  Override it before any product modules are imported so
-=======
 # ~/.ares state tree before the server subprocess fixture starts.
 os.environ['ARES_WEBUI_TEST_PORT'] = str(TEST_PORT)
 os.environ['ARES_WEBUI_TEST_STATE_DIR'] = str(TEST_STATE_DIR)
@@ -195,7 +177,6 @@ os.environ['ARES_HOME'] = str(TEST_STATE_DIR)
 os.environ['ARES_BASE_HOME'] = str(TEST_STATE_DIR)
 # Ares Agent sessions may inherit ARES_CONFIG_PATH pointing at the live
 # ~/.ares/config.yaml.  Override it before any product modules are imported so
->>>>>>> wip/multiagent-orchestrator
 # tests that read/write config.yaml stay inside the isolated test home.
 os.environ['ARES_CONFIG_PATH'] = str(TEST_STATE_DIR / 'config.yaml')
 
@@ -907,15 +888,7 @@ def test_server():
     # pytest-side block can't see.
     env["ARES_WEBUI_TEST_NETWORK_BLOCK"] = "1"
     env.update({
-<<<<<<< HEAD
-        "ARES_WEBUI_PORT":                str(TEST_PORT),
-        "ARES_WEBUI_HOST":                "127.0.0.1",
-        "ARES_WEBUI_STATE_DIR":           str(TEST_STATE_DIR),
-        "ARES_HOME":                      str(TEST_STATE_DIR),
-        "HERMES_WEBUI_WORKSPACE_GIT_DESTRUCTIVE": "1",
-=======
         "ARES_WEBUI_WORKSPACE_GIT_DESTRUCTIVE": "1",
->>>>>>> wip/multiagent-orchestrator
         # Small archive-extraction cap so the zip-bomb guard is exercisable
         # against the out-of-process test server (the real 10x-upload default is
         # ~200MB — impractical to exceed in a test). 5MB is far above any other

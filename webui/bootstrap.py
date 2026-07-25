@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-<<<<<<< HEAD
-"""One-shot bootstrap launcher for ARES."""
-=======
 """One-shot bootstrap launcher for Ares Web UI."""
->>>>>>> wip/multiagent-orchestrator
 
 from __future__ import annotations
 
@@ -79,13 +75,8 @@ def _load_repo_dotenv() -> None:
 _load_repo_dotenv()
 
 DEFAULT_HOST = os.getenv("ARES_WEBUI_HOST", "127.0.0.1")
-<<<<<<< HEAD
-DEFAULT_PORT = int(os.getenv("ARES_WEBUI_PORT", "8788"))
-# Set HERMES_WEBUI_SKIP_ONBOARDING=1 to bypass the first-run wizard when
-=======
 DEFAULT_PORT = int(os.getenv("ARES_WEBUI_PORT", "8787"))
 # Set ARES_WEBUI_SKIP_ONBOARDING=1 to bypass the first-run wizard when
->>>>>>> wip/multiagent-orchestrator
 # the environment is already fully configured (e.g. managed hosting).
 
 
@@ -186,11 +177,7 @@ def _walk_up_for_run_agent(start: Path) -> Path | None:
 def _agent_dir_from_ares_cli() -> Path | None:
     """Resolve the agent install root by inspecting the `ares` CLI launcher.
 
-<<<<<<< HEAD
-    The ARES Agent installer drops a `hermes` launcher in the user's PATH.
-=======
     The Ares Agent installer drops a `ares` launcher in the user's PATH.
->>>>>>> wip/multiagent-orchestrator
     It comes in two shapes depending on installer version:
 
     1. A Python console-script whose shebang points at the agent's venv::
@@ -297,11 +284,6 @@ def discover_launcher_python(agent_dir: Path | None) -> str:
 
 
 def _python_can_run_webui_and_agent(python_exe: str, agent_dir: Path | None = None) -> bool:
-<<<<<<< HEAD
-    # ARES talks to Jaeger through its bridge; the WebUI process must not
-    # import or boot the Hermes agent runtime.
-=======
->>>>>>> wip/multiagent-orchestrator
     script = "import yaml\n"
     env = os.environ.copy()
     if agent_dir:
@@ -325,17 +307,10 @@ def _python_can_run_webui_and_agent(python_exe: str, agent_dir: Path | None = No
 
 
 def ensure_python_has_webui_deps(python_exe: str, agent_dir: Path | None = None) -> str:
-<<<<<<< HEAD
-    """Return a Python executable that can run both WebUI and ARES Agent.
-
-    The WebUI can be launched directly with its local .venv. That venv has the
-    WebUI dependencies (for example PyYAML), but may not have ARES Agent on its
-=======
     """Return a Python executable that can run both WebUI and Ares Agent.
 
     The WebUI can be launched directly with its local .venv. That venv has the
     WebUI dependencies (for example PyYAML), but may not have Ares Agent on its
->>>>>>> wip/multiagent-orchestrator
     import path. In that case the server starts healthy, then chat fails later
     with "AIAgent not available". Prefer the agent venv when it is usable, and
     validate the final interpreter before starting the server.
@@ -391,15 +366,6 @@ def ensure_python_has_webui_deps(python_exe: str, agent_dir: Path | None = None)
         ],
         check=True,
     )
-<<<<<<< HEAD
-    if _python_can_run_webui_and_agent(str(venv_python), agent_dir):
-        return str(venv_python)
-    raise RuntimeError(
-        "Python environment cannot import both WebUI dependencies and ARES Agent. "
-        "Set ARES_WEBUI_PYTHON to a Python with the WebUI requirements "
-        "WebUI requirements into that environment."
-    )
-=======
     if not _python_can_run_webui_and_agent(str(venv_python), agent_dir):
         raise RuntimeError(
             "The prepared Python environment cannot import both WebUI "
@@ -407,7 +373,6 @@ def ensure_python_has_webui_deps(python_exe: str, agent_dir: Path | None = None)
             "interpreter or repair the Ares Agent installation."
         )
     return str(venv_python)
->>>>>>> wip/multiagent-orchestrator
 
 
 def ares_command_exists() -> bool:
@@ -420,11 +385,7 @@ def install_ares_agent() -> None:
             "Auto-install is not supported on native Windows. "
             "Install ares-agent manually first."
         )
-<<<<<<< HEAD
-    info(f"ARES Agent not found. Attempting install via {INSTALLER_URL}")
-=======
     info(f"Ares Agent not found. Attempting install via {INSTALLER_URL}")
->>>>>>> wip/multiagent-orchestrator
     subprocess.run(
         ["/bin/bash", "-lc", f"curl -fsSL {INSTALLER_URL} | bash"], check=True
     )
@@ -528,11 +489,7 @@ def open_browser(url: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-<<<<<<< HEAD
-    parser = argparse.ArgumentParser(description="Bootstrap ARES onboarding.")
-=======
     parser = argparse.ArgumentParser(description="Bootstrap Ares Web UI onboarding.")
->>>>>>> wip/multiagent-orchestrator
     parser.add_argument("port", nargs="?", type=int, default=DEFAULT_PORT)
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument(
@@ -543,11 +500,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-agent-install",
         action="store_true",
-<<<<<<< HEAD
-        help="Fail instead of attempting the official ARES installer.",
-=======
         help="Fail instead of attempting the official Ares installer.",
->>>>>>> wip/multiagent-orchestrator
     )
     parser.add_argument(
         "--foreground",
@@ -632,11 +585,6 @@ def main() -> int:
     args = parse_args()
     ensure_supported_platform()
 
-<<<<<<< HEAD
-    # Hermes is never a prerequisite for ARES. If installed, Jaeger may invoke
-    # its CLI separately as a delegated worker.
-    agent_dir = None
-=======
     agent_dir = discover_agent_dir()
     if not agent_dir and not ares_command_exists():
         if args.skip_agent_install:
@@ -645,7 +593,6 @@ def main() -> int:
             )
         install_ares_agent()
         agent_dir = discover_agent_dir()
->>>>>>> wip/multiagent-orchestrator
 
     python_exe = ensure_python_has_webui_deps(discover_launcher_python(agent_dir), agent_dir)
     state_dir = Path(
@@ -658,12 +605,6 @@ def main() -> int:
     os.environ["ARES_WEBUI_HOST"] = args.host
     os.environ["ARES_WEBUI_PORT"] = str(args.port)
     os.environ.setdefault("ARES_WEBUI_STATE_DIR", str(state_dir))
-<<<<<<< HEAD
-
-    # Let operators move fallback relative writes out of a read-only agent dir.
-    server_cwd = os.environ.get("ARES_WEBUI_SERVER_CWD", "").strip() or str(REPO_ROOT)
-    server_path = str(REPO_ROOT / "server.py")
-=======
     if agent_dir:
         os.environ["ARES_WEBUI_AGENT_DIR"] = str(agent_dir)
 
@@ -686,7 +627,6 @@ def main() -> int:
         tls_cert=tls_cert,
         tls_key=tls_key,
     )
->>>>>>> wip/multiagent-orchestrator
     # Scheme the server will advertise (HTTPS when TLS cert+key are configured).
     scheme = "https" if _tls_probe_enabled() else "http"
 
@@ -697,11 +637,7 @@ def main() -> int:
     foreground_reason = "--foreground" if args.foreground else _detect_supervisor()
     if foreground_reason:
         info(
-<<<<<<< HEAD
-            f"Starting ARES on {scheme}://{args.host}:{args.port} "
-=======
             f"Starting Ares Web UI on {scheme}://{args.host}:{args.port} "
->>>>>>> wip/multiagent-orchestrator
             f"(foreground mode: {foreground_reason})"
         )
         try:
@@ -717,12 +653,8 @@ def main() -> int:
         if not os.access(python_exe, os.X_OK):
             raise RuntimeError(
                 f"Python interpreter at {python_exe!r} is not executable. "
-<<<<<<< HEAD
-                f"Set ARES_WEBUI_PYTHON to a working interpreter."
-=======
                 f"Set ARES_WEBUI_PYTHON to a working interpreter or fix "
                 f"the agent venv at {agent_dir}."
->>>>>>> wip/multiagent-orchestrator
             )
         # os.execv replaces the current process image. On Windows, execv
         # spawns a new process instead of replacing (Python calls CreateProcess),
@@ -772,11 +704,7 @@ def main() -> int:
     # /health, then return. Suitable for an interactive `bash start.sh` run.
     log_path = state_dir / f"bootstrap-{args.port}.log"
 
-<<<<<<< HEAD
-    info(f"Starting ARES on {scheme}://{args.host}:{args.port}")
-=======
     info(f"Starting Ares Web UI on {scheme}://{args.host}:{args.port}")
->>>>>>> wip/multiagent-orchestrator
     with log_path.open("ab") as log_file:
         proc = subprocess.Popen(
             server_argv,

@@ -1,27 +1,12 @@
-<<<<<<< HEAD
-"""
-ARES execution backend router. JaegerAI/JROS owns conversation turns.
-=======
 """ARES Backend Router — flat registry of agnostic backends.
 
 Paperclip pattern: every adapter is just {name}_{deployment}.
 No roles, no opinions. The UI iterates the map.
->>>>>>> wip/multiagent-orchestrator
 """
 from __future__ import annotations
 
 from typing import Dict
 
-<<<<<<< HEAD
-from .base import AgenticBackend, BackendRouter
-from .jros import JROSBackend
-
-
-def get_default_router() -> BackendRouter:
-    """Return the canonical router with Jaeger as the sole turn owner."""
-    backends: Dict[str, AgenticBackend] = {
-        "jros": JROSBackend(),
-=======
 from .base import AgenticBackend
 from .hermes import HermesBackend
 from .jros import JROSBackend
@@ -59,7 +44,6 @@ def get_default_router() -> BackendRouter:
         "openai_cloud": OpenAICloudBackend(),
         "xai_cloud": XAICloudBackend(),
         "ollama_local": OllamaLocalBackend(),
->>>>>>> wip/multiagent-orchestrator
     }
     return BackendRouter(backends)
 

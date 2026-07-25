@@ -8383,13 +8383,6 @@ def _run_agent_streaming(
             except Exception as _exc:
                 logger.warning("ARES self-persistence prompt injection failed: %s", _exc)
 
-<<<<<<< HEAD
-            # JaegerAI owns persona application. This inherited execution path
-            # must never layer a second ARES/Hermes persona over Jaeger.
-            _persona_prompt = ""
-
-=======
->>>>>>> wip/multiagent-orchestrator
             # ARES: inject runtime context into system prompt.
             # Live ARES operating state (backend mode, capabilities, tasks,
             # promises, embodiment) is injected every turn so the agent
@@ -9961,22 +9954,6 @@ def _run_agent_streaming(
                         # #1932: mark this session as pending a goal continuation
                         # so the next /chat/start creates a goal-related stream.
                         PENDING_GOAL_CONTINUATION.add(session_id)
-                        # Server-side wakeup parity (Option Z): persist the prompt
-                        # so the turn-teardown idle-hook below can start the next
-                        # turn itself if no live tab is around to catch the SSE
-                        # event and re-POST it. This turn is still the active run
-                        # for the session, so it cannot be started here — see
-                        # drain_deferred_goal_continuation_for_session().
-                        try:
-                            from api.goals import record_deferred_goal_continuation
-
-                            record_deferred_goal_continuation(session_id, continuation_prompt)
-                        except Exception:
-                            logger.debug(
-                                "Failed to record deferred goal continuation for session %s",
-                                session_id,
-                                exc_info=True,
-                            )
                         put('goal_continue', {
                             'session_id': session_id,
                             'continuation_prompt': continuation_prompt,
@@ -10461,20 +10438,6 @@ def _run_agent_streaming(
         except Exception:
             logger.debug(
                 "turn-teardown deferred-wakeup drain failed for session %s",
-                session_id,
-                exc_info=True,
-            )
-
-        # Sibling idle-hook for goal continuations (Option Z parity — see
-        # record_deferred_goal_continuation() above for why this can't fire
-        # any earlier than here).
-        try:
-            from api.goals import drain_deferred_goal_continuation_for_session
-
-            drain_deferred_goal_continuation_for_session(session_id)
-        except Exception:
-            logger.debug(
-                "turn-teardown deferred-goal-continuation drain failed for session %s",
                 session_id,
                 exc_info=True,
             )

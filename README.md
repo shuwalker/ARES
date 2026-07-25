@@ -29,38 +29,33 @@
 
 ## Quick Start
 
-### Install
+### How To Run ARES Today
 
-One command — works whether or not you have the repo yet:
+ARES currently has three supported local run paths and two planned packaging
+paths:
+
+- **Developer mode:** run `swift run ARES` from the repo root. This launches
+  the native macOS shell, which wraps and controls the Web UI.
+- **Web mode:** run `./start.sh` from the repo root, then open
+  `http://localhost:8787` in a browser.
+- **Windows companion app mode:** run the Web UI, then run the Tauri wrapper
+  from `ARES-Windows/`. This is the Windows native shell path for wrapping the
+  Web UI and adding Windows desktop integrations.
+- **Future standalone modes:** package `ARES.app` on macOS and a Windows
+  installer from `ARES-Windows/`, each with `webui/`, a Python
+  runtime/environment, dependencies, and first-run setup. This is not complete
+  yet, so current native builds are for local/developer use.
+
+For a first local setup:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/install.sh | bash
+git clone https://github.com/shuwalker/ARES.git
+cd ARES
+
+# Run the installer
+bash install.sh
 ```
 
-<<<<<<< HEAD
-Or clone first if you prefer:
-
-```bash
-git clone https://github.com/shuwalker/ARES && cd ARES && bash install.sh
-```
-
-The installer handles everything:
-- Detects your OS and checks prerequisites
-- Prompts for machine role: **Primary** (always-on Mac) or **Client** (MacBook that falls back to local model when primary is unreachable)
-- Detects or installs JaegerAI (required Companion runtime)
-- Detects or installs Tailscale via Homebrew (macOS — for iPhone and cross-device access)
-- Creates `~/Desktop/ARES/companion/` — your Companion profile, synced across Macs via iCloud Desktop
-- Sets up the Python virtual environment and dependencies
-- Registers a launchd service so the server starts at login (macOS)
-- Launches the ARES menu bar app, which opens the onboarding wizard
-
-**Options:**
-- `--role primary|client` — set machine role without being prompted
-- `--primary-url URL` — primary machine URL for client mode (e.g. `http://100.x.y.z:8787`)
-- `--with-hermes` — also install Hermes Agent (optional coding/terminal addition)
-- `--no-start` — skip launching after install
-- `--backend jros|hermes|hybrid` — override default backend
-=======
 The installer handles everything automatically:
 - Detects or installs JaegerAI/JROS when available (optional for saving a Local Profile)
 - Creates a Python virtual environment
@@ -71,48 +66,44 @@ The installer handles everything automatically:
 - `--with-ares` — also install Ares Agent package (optional coding addition; not a backend mode)
 - `--no-start` — skip auto-starting the server after install
 - `--backend auto|jros_local|hermes_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
->>>>>>> wip/multiagent-orchestrator
 
-### macOS: what you get
-
-ARES lives in your **menu bar** (shield icon). Clicking it shows server status and controls. The main window has three tabs:
-
-- **Companion** — embedded web UI: chat, onboarding wizard, settings, all your sessions
-- **Terminal** — Hermes Agent TUI (if installed), falls back to a shell
-- **JROS** — JaegerAI TUI, falls back to a shell
-
-You can keep talking to your Companion in the Terminal tab even while the web UI is being modified or reloaded.
-
-### Linux / Windows
+After install, run the Web UI:
 
 ```bash
-# Linux
-bash install.sh   # from clone, or pipe from curl above
-
-# Windows (WSL recommended)
-bash install.sh
-# Then open: http://localhost:8787
+./start.sh
+# → http://localhost:8787
 ```
 
-Windows native app (Tauri wrapper):
+### Native macOS App
+
+```bash
+cd ARES
+swift run ARES
+```
+
+### Windows Companion App
 
 ```powershell
-cd ARES-Windows && cargo tauri dev
+cd ARES
+cd webui
+.\.venv\Scripts\python.exe server.py
 ```
+
+In a second PowerShell window:
+
+```powershell
+cd ARES
+cd ARES-Windows
+cargo tauri dev
+```
+
+The Windows app currently loads the running Web UI from
+`http://127.0.0.1:8787`. Its goal is to become the Windows version of the ARES
+native shell, including native start/stop control for the Web UI and Windows
+tray/menu integrations.
 
 ## Features
 
-<<<<<<< HEAD
-- **Multi-Agent Orchestrator (The "CEO" Model)** — ARES is now a lightweight, independent orchestrator shell. It boots instantly and seamlessly connects to your choice of "synthetic minds" (Jaeger OS or Hermes).
-- **Paperclip Multi-Agent Capabilities** — Give your primary agent (e.g. Jaeger OS) a massive goal, and it will automatically spin up Hermes or Cloud LLMs in the background to delegate coding and writing tasks via our **MCP Bridge**.
-- **Infinite Compute (Reverse API)** — ARES includes scaffolding to safely proxy requests through your existing $20/mo consumer subscriptions (Claude Pro, ChatGPT Plus), bypassing expensive developer API fees for massive background goals.
-- **Scientist-Grade Diagnostics** — Run `ares doctor` in your terminal anytime to get a beautifully formatted, color-coded health check of your network, Tailscale status, Python environment, and backend engine status.
-- **Safe Updates** — Run `ares update` to safely stash local tweaks, pull the latest code, and restart your environment without breaking your configuration.
-- **Interactive WebUI Onboarding** — No more editing config files in the terminal. The sleek, glassmorphic UI handles Framework Selection and onboarding directly from your browser.
-- **Tailscale Remote Access** — Because ARES automatically detects Tailscale, you can pull out your iPhone, navigate to your Tailscale IP, and check on your CEO's progress from anywhere in the world.
-- **Mac-First Native Home** — SwiftUI app launches the Web UI, wraps it in WKWebView, and acts as the native menu integration layer for local Mac automation.
-- **Hot Reload** — Edit Python files → server auto-restarts in ~2s. Edit static files → browser auto-reloads. Zero downtime for static, ~2s blip for Python.
-=======
 - **Single User-Facing Assistant Interface** — ARES composes runtimes, models, tools, voice, avatars, memory providers, and device integrations behind one consistent user experience.
 - **Runtime-Compatible Adapter Layer** — JaegerAI, Ares, OpenAI/ChatGPT-compatible services, and future systems connect through adapters. ARES presents and coordinates them without copying their internals.
 - **Mac-First Native Home** — SwiftUI app launches the Web UI, wraps it in WKWebView, and grows into the native menu/system integration layer for local Mac automation, status, notifications, and approvals.
@@ -124,7 +115,6 @@ cd ARES-Windows && cargo tauri dev
 - **Character Avatar Browser** — 14 visual character personas (HAL 9000, GLaDOS, Jarvis, TARS, Bender, Helldiver, and more) with card art, traits, lore, and active character selection from JaegerAI data.
 - **Presence Renderers** — Avatar/voice/body surfaces can evolve from animated eyes to Live2D-style, VR sprite rigs, Grok-like avatars, desktop modes, and future robotic bodies.
 - **Development Reload** — Vite provides frontend hot-module replacement; `ARES_WEBUI_RELOAD=1` restarts the Python controller after backend edits.
->>>>>>> wip/multiagent-orchestrator
 - **Local + Cloud Choice** — The active runtime can choose local or cloud models depending on the task, including OpenAI/ChatGPT-compatible providers where configured.
 - **Mail Butler** — IMAP-based mail cleaner with 321 classification rules. Server-side, no Mail.app dependency.
 - **Built in Public** — Every episode of the build is documented as part of the "Building Ares" YouTube series.

@@ -46,20 +46,8 @@ _platform_default_ares_home = _paths._platform_default_ares_home
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 
 # ── Network config (env-overridable) ─────────────────────────────────────────
-<<<<<<< HEAD
-_TEST_LEGACY_ENV = os.getenv("HERMES_WEBUI_TEST_NETWORK_BLOCK") == "1"
-HOST = os.getenv("ARES_WEBUI_HOST") or (
-    os.getenv("HERMES_WEBUI_HOST") if _TEST_LEGACY_ENV else None
-) or "127.0.0.1"
-PORT = int(
-    os.getenv("ARES_WEBUI_PORT")
-    or (os.getenv("HERMES_WEBUI_PORT") if _TEST_LEGACY_ENV else "")
-    or "8788"
-)
-=======
 HOST = os.getenv("ARES_WEBUI_HOST", "127.0.0.1")
 PORT = int(os.getenv("ARES_WEBUI_PORT", "8787"))
->>>>>>> wip/multiagent-orchestrator
 
 
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
@@ -85,27 +73,11 @@ TLS_KEY = os.getenv("ARES_WEBUI_TLS_KEY", "").strip() or None
 TLS_ENABLED = TLS_CERT is not None and TLS_KEY is not None
 
 # ── State directory (env-overridable, never inside repo) ──────────────────────
-<<<<<<< HEAD
-_DEFAULT_HERMES_HOME = _platform_default_hermes_home()
-_DEFAULT_STATE_HOME = Path(
-    os.getenv("ARES_HOME")
-    or (os.getenv("HERMES_HOME") if _TEST_LEGACY_ENV else "")
-    or (Path.home() / ".ares")
-).expanduser()
-
-STATE_DIR = (
-    Path(
-        os.getenv("ARES_WEBUI_STATE_DIR")
-        or (os.getenv("HERMES_WEBUI_STATE_DIR") if _TEST_LEGACY_ENV else "")
-        or str(_DEFAULT_STATE_HOME / "webui")
-    )
-=======
 _DEFAULT_ARES_HOME = _platform_default_ares_home()
 _DEFAULT_STATE_HOME = Path(os.getenv("ARES_HOME") or _DEFAULT_ARES_HOME).expanduser()
 
 STATE_DIR = (
     Path(os.getenv("ARES_WEBUI_STATE_DIR", str(_DEFAULT_STATE_HOME / "webui")))
->>>>>>> wip/multiagent-orchestrator
     .expanduser()
     .resolve()
 )
@@ -317,20 +289,7 @@ if _AGENT_DIR is not None:
         sys.path.append(str(_AGENT_DIR))
     _ARES_FOUND = True
 else:
-<<<<<<< HEAD
-    # No source checkout — but a pip install of hermes-agent in this venv is
-    # just as functional (the `hermes` console script + hermes_cli package).
-    # Without this, a venv-pip install reports hermes_found=False and the
-    # onboarding wizard shows "agent unavailable" for a working Hermes.
-    try:
-        import importlib.util
-
-        _HERMES_FOUND = importlib.util.find_spec("hermes_cli") is not None
-    except Exception:
-        _HERMES_FOUND = False
-=======
     _ARES_FOUND = False
->>>>>>> wip/multiagent-orchestrator
 
 # ── Thread-local env context ─────────────────────────────────────────────────
 # Defined BEFORE the config-file section because _expand_env_vars() (below) calls
