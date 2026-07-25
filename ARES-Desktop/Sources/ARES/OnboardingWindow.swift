@@ -356,7 +356,7 @@ struct CharacterCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .topRight) {
+            ZStack(alignment: .topTrailing) {
                 if let nsImg = loadCharacterImage(filename: preset.imageFilename) {
                     Image(nsImage: nsImg)
                         .resizable()

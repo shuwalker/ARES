@@ -16136,13 +16136,21 @@ def handle_post(handler, parsed) -> bool:
                 permission_mode=str(b.get("permission_mode") or "confirm").strip() or "confirm",
                 make_default=bool(b.get("make_default", True)),
             )
-            if display_name:
-                try:
-                    from api.config import load_settings as _load_settings, save_settings as _save_settings
+            try:
+                from api.config import load_settings as _load_settings, save_settings as _save_settings
 
-                    _save_settings({**(_load_settings() or {}), "bot_name": display_name})
-                except Exception:
-                    logger.debug("Failed to mirror Companion name into WebUI bot_name", exc_info=True)
+                settings_patch = dict(_load_settings() or {})
+                # Successful Companion write implies JaegerAI is the active peer.
+                if result.get("ok"):
+                    settings_patch["ares_backend"] = "jros"
+                if display_name:
+                    settings_patch["bot_name"] = display_name
+                _save_settings(settings_patch)
+            except Exception:
+                logger.debug(
+                    "Failed to mirror Companion create into WebUI settings",
+                    exc_info=True,
+                )
             return j(handler, result)
         except ValueError as e:
             return bad(handler, str(e))

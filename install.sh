@@ -8,10 +8,17 @@
 #   git clone https://github.com/shuwalker/ARES && cd ARES && bash install.sh
 #
 # Options:
-#   --role primary|client   Machine role (prompted if omitted)
+#   --role primary|client   Machine role (default: primary; only prompted if interactive + omitted)
 #   --primary-url URL       Primary URL for client mode (e.g. http://100.x.y.z:8787)
 #   --no-start              Skip launching the app after install
+#   --no-autostart          Skip launchd WebUI registration (Jaeger-style: install only)
+#   --with-jaeger           If JaegerAI peer missing, run Jaeger's official installer
 #   -h, --help
+#
+# Jaeger-style product split:
+#   install.sh  → put ARES on disk (prereqs, venv, app, CLI). Minimal interview.
+#   first launch / `ares setup` → onboarding wizard (Companion, models, network).
+#   JaegerAI is a required peer runtime, not a pip dep of ARES's WebUI venv.
 
 set -e
 
@@ -39,21 +46,26 @@ die()  { echo -e "${RED}✗${NC} $*" >&2; exit 1; }
 # ── Arg parsing ──────────────────────────────────────────────────────────────
 EXTRA_ARGS=()
 NO_START=false
+NO_AUTOSTART=false
+WITH_JAEGER=false
 ARES_ROLE=""
 ARES_PRIMARY_URL=""
 ARES_SOURCE_DIR="$SCRIPT_DIR"
+ARES_BUNDLE_ID="com.jenkinsrobotics.ares-desktop"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --role)          ARES_ROLE="$2"; shift 2 ;;
         --primary-url)   ARES_PRIMARY_URL="$2"; shift 2 ;;
         --no-start)      NO_START=true; shift ;;
+        --no-autostart)  NO_AUTOSTART=true; shift ;;
+        --with-jaeger)   WITH_JAEGER=true; shift ;;
         -h|--help)
             echo "ARES installer"
             echo ""
             echo "  curl -fsSL https://raw.githubusercontent.com/shuwalker/ARES/main/install.sh | bash"
             echo "  bash install.sh [--role primary|client] [--primary-url URL]"
-            echo "                  [--no-start]"
+            echo "                  [--no-start] [--no-autostart] [--with-jaeger]"
             exit 0 ;;
         *) die "Unknown option: $1" ;;
     esac
@@ -120,42 +132,47 @@ elif [ "$OS" = "Darwin" ]; then
     warn "Swift not found — Mac app will be skipped. Fix: install Xcode from the App Store."
 fi
 
-# ── 3. Role selection ────────────────────────────────────────────────────────
+# ── 3. Role selection (defaults like Jaeger: install is non-interview) ───────
 _select_role() {
     if [ -n "$ARES_ROLE" ]; then
         [ "$ARES_ROLE" != "primary" ] && [ "$ARES_ROLE" != "device" ] && \
             die "Invalid role '$ARES_ROLE' — must be primary or client"
+        ok "Role: $ARES_ROLE"
+        return 0
+    fi
+
+    # Non-interactive / piped curl: default primary (onboarding can change later).
+    if [ ! -t 0 ]; then
+        ARES_ROLE="primary"
+        ok "Role: primary (default — non-interactive install)"
         return 0
     fi
 
     echo ""
-    echo -e "${MAGENTA}${BOLD}  Which machine is this?${NC}"
+    echo -e "${MAGENTA}${BOLD}  Which machine is this?${NC}  ${CYAN}(Enter = Primary)${NC}"
     echo ""
-    echo "  1) Primary   Always-on Mac — full model, Tailscale reachable"
-    echo "  2) Client    MacBook / secondary — uses primary when online,"
-    echo "               local JaegerAI model when offline"
+    echo "  1) Primary   Always-on Mac — full model, Tailscale reachable  [default]"
+    echo "  2) Client    MacBook / secondary — uses primary when online"
     echo ""
-    while true; do
-        printf "  Select [1/2]: "
-        read -r _choice
-        case "$_choice" in
-            1|primary)         ARES_ROLE="primary"; ok "Role: Primary"; break ;;
-            2|client|device)   ARES_ROLE="device";  ok "Role: Client";  break ;;
-            *) echo "  Enter 1 or 2." ;;
-        esac
-    done
+    printf "  Select [1/2]: "
+    read -r _choice || _choice=""
+    case "${_choice:-1}" in
+        1|primary|"")      ARES_ROLE="primary"; ok "Role: Primary" ;;
+        2|client|device)   ARES_ROLE="device";  ok "Role: Client"  ;;
+        *) die "Invalid selection — use 1 or 2 (or pass --role primary)" ;;
+    esac
 
     if [ "$ARES_ROLE" = "device" ] && [ -z "$ARES_PRIMARY_URL" ]; then
         echo ""
         printf "  Primary machine URL (e.g. http://100.x.y.z:8787) — blank to set later: "
-        read -r ARES_PRIMARY_URL
+        read -r ARES_PRIMARY_URL || ARES_PRIMARY_URL=""
         ARES_PRIMARY_URL="${ARES_PRIMARY_URL// /}"
         [ -n "$ARES_PRIMARY_URL" ] && ok "Primary URL: $ARES_PRIMARY_URL" || \
-            info "No primary URL set — add it later in Settings"
+            info "No primary URL set — add it later in Settings / onboarding"
     fi
 }
 
-# ── 5. Tailscale (macOS only) — must be CONNECTED, not just installed ────────
+# ── 4. Tailscale — probe only during install (setup/onboarding owns enable) ──
 _tailscale_bin() {
     if command -v tailscale >/dev/null 2>&1; then
         echo "tailscale"
@@ -173,57 +190,56 @@ _tailscale_ip() {
 _check_tailscale() {
     [ "$OS" != "Darwin" ] && return 0
 
-    # Install if missing
     if [ -z "$(_tailscale_bin)" ]; then
-        echo ""
-        info "Tailscale not found — needed for cross-device access (iPhone, MacBook, etc.)"
-        if command -v brew >/dev/null 2>&1; then
-            printf "  Install via Homebrew? [Y/n]: "
-            read -r _ans
-            case "${_ans:-Y}" in
-                [Yy]*)
-                    info "Installing Tailscale..."
-                    brew install --cask tailscale 2>/dev/null || \
-                        warn "Install failed — get it from https://tailscale.com/download" ;;
-                *) warn "Skipped — remote access won't work until Tailscale is set up"; return 0 ;;
-            esac
-        else
-            warn "Install from https://tailscale.com/download, then re-run"
-            return 0
-        fi
-    fi
-
-    # Verify actually connected — installed-but-stopped means no remote access
-    local ip; ip="$(_tailscale_ip || true)"
-    if [ -n "$ip" ]; then
-        ok "Tailscale connected ($ip)"
+        warn "Tailscale not installed — optional; enable in onboarding for remote/iPhone access"
+        info "  https://tailscale.com/download"
         return 0
     fi
 
-    warn "Tailscale is installed but NOT connected (stopped or signed out)"
-    open -a Tailscale 2>/dev/null || true
-    echo "    Tailscale is opening — sign in and connect to your tailnet."
-    printf "  Press Enter once connected (or type skip): "
-    read -r _ans
-    [ "$_ans" = "skip" ] && { warn "Skipped — remote access unavailable until connected"; return 0; }
+    local ip; ip="$(_tailscale_ip || true)"
+    if [ -n "$ip" ]; then
+        ok "Tailscale connected ($ip)"
+    else
+        warn "Tailscale installed but not connected — remote access unavailable until signed in"
+    fi
+}
 
-    # Give it a few seconds to come up, then re-check
-    local tries=0
-    while [ $tries -lt 10 ]; do
-        ip="$(_tailscale_ip || true)"
-        if [ -n "$ip" ]; then
-            ok "Tailscale connected ($ip)"
-            return 0
+# ── 5. JaegerAI peer probe (required Companion; separate product install) ────
+_probe_jaeger() {
+    local home="${ARES_JAEGER_HOME:-${JAEGER_HOME:-$HOME/jaeger}}"
+    local launcher="$home/jaeger"
+
+    info "Checking JaegerAI peer runtime at $home..."
+    if [ -x "$launcher" ]; then
+        ok "JaegerAI peer present: $launcher"
+        return 0
+    fi
+
+    warn "JaegerAI peer not found at $launcher"
+    if [ "$WITH_JAEGER" = true ]; then
+        info "Installing JaegerAI via official one-liner (--with-jaeger)..."
+        if curl -fsSL "https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh" \
+            | JAEGER_HOME="$home" bash; then
+            if [ -x "$launcher" ]; then
+                ok "JaegerAI installed at $home"
+                return 0
+            fi
+            warn "JaegerAI installer finished but launcher still missing — check $home"
+        else
+            warn "JaegerAI installer failed — Companion onboarding will retry / show fix"
         fi
-        sleep 2
-        tries=$((tries+1))
-    done
-    warn "Still not connected — continuing, but remote access won't work yet"
+        return 0
+    fi
+
+    info "Companion requires JaegerAI. Install peer (or re-run with --with-jaeger):"
+    info "  curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
+    info "ARES onboarding can also install it when the WebUI is running."
 }
 
 # ── Run pre-install steps ────────────────────────────────────────────────────
 _select_role
 _check_tailscale
+_probe_jaeger
 
 # Companion profile dir — syncs across Macs via iCloud Desktop
 ARES_CONTINUITY_DIR="$HOME/Desktop/ARES/companion"
@@ -267,11 +283,14 @@ _write_role_config() {
     ok "Role config → $cfg"
 
     if [ "$OS" = "Darwin" ]; then
-        defaults write ARES ares.config.role         "$ARES_ROLE"           2>/dev/null || true
-        defaults write ARES ares.config.continuityDir "$ARES_CONTINUITY_DIR" 2>/dev/null || true
-        [ -n "$ARES_PRIMARY_URL" ] && \
-            defaults write ARES ares.config.primaryURL "$ARES_PRIMARY_URL" 2>/dev/null || true
-        ok "Mac app config synced"
+        # Match CFBundleIdentifier used by packaged ARES.app (UserDefaults.standard domain)
+        for domain in "$ARES_BUNDLE_ID" "com.jenkinsrobotics.ares" "ARES"; do
+            defaults write "$domain" ares.config.role         "$ARES_ROLE"           2>/dev/null || true
+            defaults write "$domain" ares.config.continuityDir "$ARES_CONTINUITY_DIR" 2>/dev/null || true
+            [ -n "$ARES_PRIMARY_URL" ] && \
+                defaults write "$domain" ares.config.primaryURL "$ARES_PRIMARY_URL" 2>/dev/null || true
+        done
+        ok "Mac app config synced ($ARES_BUNDLE_ID)"
     fi
 }
 
@@ -280,16 +299,37 @@ _write_role_config
 # ── 11. launchd (macOS — auto-start server at login) ─────────────────────────
 _setup_launchd() {
     [ "$OS" != "Darwin" ] && return 0
+    if [ "$NO_AUTOSTART" = true ]; then
+        info "Skipping launchd WebUI (--no-autostart) — start via ARES.app / ares start"
+        return 0
+    fi
 
     local plist_dir="$HOME/Library/LaunchAgents"
     local plist="$plist_dir/com.ares.webui.plist"
-    local python="$HOME/.ares/webui/venv/bin/python"
+    local python=""
+    for candidate in \
+        "$HOME/.ares/webui/venv/bin/python" \
+        "$HOME/.ares/webui/.venv/bin/python" \
+        "$SCRIPT_DIR/webui/venv/bin/python" \
+        "$SCRIPT_DIR/webui/.venv/bin/python"
+    do
+        if [ -x "$candidate" ]; then
+            python="$candidate"
+            break
+        fi
+    done
     local server="$HOME/.ares/webui/server.py"
-    local workdir="$HOME/.ares/webui"
+    [ -f "$server" ] || server="$SCRIPT_DIR/webui/server.py"
+    local workdir
+    workdir="$(cd "$(dirname "$server")" && pwd)"
     local logfile="$HOME/.ares/webui.log"
 
-    if [ ! -f "$python" ]; then
-        warn "launchd setup skipped — venv not found at $python"
+    if [ -z "$python" ] || [ ! -x "$python" ]; then
+        warn "launchd setup skipped — WebUI venv python not found"
+        return 0
+    fi
+    if [ ! -f "$server" ]; then
+        warn "launchd setup skipped — server.py not found"
         return 0
     fi
 
@@ -319,6 +359,10 @@ _setup_launchd() {
         <key>ARES_CONTINUITY_DIR</key>
         <string>$ARES_CONTINUITY_DIR</string>
 $primary_url_xml
+        <key>HERMES_HOME</key>
+        <string>$HOME/.ares</string>
+        <key>HERMES_WEBUI_STATE_DIR</key>
+        <string>$HOME/.ares/webui</string>
         <key>HERMES_WEBUI_HOST</key>
         <string>0.0.0.0</string>
         <key>HERMES_WEBUI_PORT</key>
@@ -357,6 +401,138 @@ _setup_launchd
 # reopenable from Spotlight / Finder / Dock like any other Mac app.
 ARES_APP="$HOME/Applications/ARES.app"
 
+_install_cli() {
+    # Always install the ares CLI even if the Mac app build fails.
+    local cmd_dir="$HOME/.local/bin"
+    mkdir -p "$cmd_dir"
+    cat > "$cmd_dir/ares" << CMD_EOF
+#!/usr/bin/env bash
+# ARES CLI Dispatcher
+
+ARES_SRC="${SCRIPT_DIR}"
+ARES_APP="${ARES_APP}"
+ARES_BUNDLE_ID="${ARES_BUNDLE_ID}"
+WEBUI_DIR="\$ARES_SRC/webui"
+if [ ! -f "\$WEBUI_DIR/server.py" ] && [ -f "\$HOME/.ares/webui/server.py" ]; then
+    WEBUI_DIR="\$HOME/.ares/webui"
+fi
+
+_webui_python() {
+    for p in "\$WEBUI_DIR/venv/bin/python" "\$WEBUI_DIR/.venv/bin/python"; do
+        [ -x "\$p" ] && { echo "\$p"; return 0; }
+    done
+    return 1
+}
+
+_reset_onboarding_defaults() {
+    # Swift OnboardingManager uses UserDefaults key ares_onboarding_completed
+    # under the app's CFBundleIdentifier domain.
+    for domain in "\$ARES_BUNDLE_ID" "com.jenkinsrobotics.ares" "ARES"; do
+        defaults delete "\$domain" ares_onboarding_completed 2>/dev/null || true
+        defaults write "\$domain" ares_onboarding_completed -bool false 2>/dev/null || true
+        defaults write "\$domain" ARESForceOnboarding -bool true 2>/dev/null || true
+    done
+}
+
+CMD="\${1:-}"
+
+case "\$CMD" in
+    doctor)
+        shift
+        PY="\$(_webui_python || true)"
+        if [ -n "\$PY" ]; then
+            exec "\$PY" "\$ARES_SRC/webui/cli/doctor.py" "\$@"
+        else
+            exec python3 "\$ARES_SRC/webui/cli/doctor.py" "\$@"
+        fi
+        ;;
+    update)
+        shift
+        exec bash "\$ARES_SRC/scripts/update.sh" "\$@"
+        ;;
+    setup|--setup|onboarding|--onboarding)
+        shift
+        WIPE=false
+        for arg in "\$@"; do
+            [ "\$arg" = "--wipe-companion" ] && WIPE=true
+        done
+        _reset_onboarding_defaults
+        if [ "\$WIPE" = true ]; then
+            echo "Wiping Companion instances (--wipe-companion)..."
+            rm -rf "\$HOME/jaeger/.jaeger_os/instances" "\$HOME/.jaeger/.jaeger_os/instances" \\
+                   "\$HOME/.jaeger/instances" "\$HOME/.ares/instances" "\$ARES_SRC/webui/.ares_state" 2>/dev/null || true
+        fi
+        echo "Resetting ARES onboarding... Opening wizard."
+        if [ -d "\$ARES_APP" ]; then
+            exec open "\$ARES_APP"
+        else
+            echo "ARES.app not found at \$ARES_APP — start WebUI and open http://127.0.0.1:8787"
+            exit 1
+        fi
+        ;;
+    uninstall)
+        shift
+        exec bash "\$ARES_SRC/scripts/uninstall.sh" "\$@"
+        ;;
+    start|"")
+        shift
+        if [ "\${1:-}" = "--cli" ] || [ "\${1:-}" = "--server" ]; then
+            cd "\$WEBUI_DIR"
+            PY="\$(_webui_python || true)"
+            if [ -n "\$PY" ] && [ -f "server.py" ]; then
+                export HERMES_HOME="\${HERMES_HOME:-\$HOME/.ares}"
+                export HERMES_WEBUI_STATE_DIR="\${HERMES_WEBUI_STATE_DIR:-\$HOME/.ares/webui}"
+                export HERMES_WEBUI_HOST="\${HERMES_WEBUI_HOST:-127.0.0.1}"
+                export HERMES_WEBUI_PORT="\${HERMES_WEBUI_PORT:-8787}"
+                exec "\$PY" server.py
+            else
+                echo "WebUI server.py / venv not found under \$WEBUI_DIR" >&2
+                exit 1
+            fi
+        else
+            if [ -d "\$ARES_APP" ]; then
+                exec open "\$ARES_APP"
+            else
+                echo "ARES.app missing — try: ares start --server" >&2
+                exit 1
+            fi
+        fi
+        ;;
+    *)
+        echo "Unknown ARES command: \$CMD"
+        echo "Available commands: start, setup, update, doctor, uninstall"
+        echo "  ares setup                 Reset onboarding flags and open wizard"
+        echo "  ares setup --wipe-companion Also delete Jaeger companion instances"
+        echo "  ares start --server        Run WebUI server.py in foreground"
+        exit 1
+        ;;
+esac
+CMD_EOF
+    chmod +x "$cmd_dir/ares"
+    ok "Command installed: ares"
+
+    # Compatibility for installs whose shell profile still aliases `ares` to
+    # ~/.ares/ares.sh. This prevents the alias from masking the real command.
+    mkdir -p "$HOME/.ares"
+    cat > "$HOME/.ares/ares.sh" << 'COMPAT_EOF'
+#!/usr/bin/env bash
+exec "$HOME/.local/bin/ares" "$@"
+COMPAT_EOF
+    chmod +x "$HOME/.ares/ares.sh"
+    if ! echo "$PATH" | grep -q "$cmd_dir"; then
+        local path_line='export PATH="$HOME/.local/bin:$PATH"'
+        for profile in "$HOME/.zprofile" "$HOME/.zshrc"; do
+            touch "$profile"
+            if ! grep -Fqx "$path_line" "$profile" 2>/dev/null; then
+                printf '\n# ARES command-line launchers\n%s\n' "$path_line" >> "$profile"
+            fi
+        done
+        export PATH="$cmd_dir:$PATH"
+        hash -r 2>/dev/null || true
+        ok "Added ~/.local/bin to zsh PATH"
+    fi
+}
+
 _package_app() {
     [ "$OS" != "Darwin" ] && return 0
     [ "$HAS_SWIFT" != true ] && return 0
@@ -364,6 +540,7 @@ _package_app() {
     info "Building ARES app (first build can take a few minutes)..."
     cd "$SCRIPT_DIR"
     local build_log="$HOME/.ares/build.log"
+    mkdir -p "$HOME/.ares"
     if ! swift build -c release > "$build_log" 2>&1; then
         warn "Build failed — see $build_log"
         return 0
@@ -398,7 +575,7 @@ _package_app() {
     <key>CFBundleExecutable</key>
     <string>ARES</string>
     <key>CFBundleIdentifier</key>
-    <string>com.jenkinsrobotics.ares</string>
+    <string>com.jenkinsrobotics.ares-desktop</string>
     <key>CFBundleName</key>
     <string>ARES</string>
     <key>CFBundleDisplayName</key>
@@ -423,85 +600,6 @@ PLIST_EOF
     # Ad-hoc sign so Gatekeeper/TCC treat it as a stable identity
     codesign --force --deep --sign - "$ARES_APP" 2>/dev/null || true
     ok "Packaged $ARES_APP"
-
-    # `ares` command — open the app (or bring it forward) from any terminal
-    local cmd_dir="$HOME/.local/bin"
-    mkdir -p "$cmd_dir"
-    cat > "$cmd_dir/ares" << CMD_EOF
-#!/usr/bin/env bash
-# ARES CLI Dispatcher
-
-ARES_SRC="${SCRIPT_DIR}"
-
-CMD="\${1:-}"
-
-case "\$CMD" in
-    doctor)
-        shift
-        if [ -x "\$ARES_SRC/webui/venv/bin/python" ]; then
-            exec "\$ARES_SRC/webui/venv/bin/python" "\$ARES_SRC/webui/cli/doctor.py" "\$@"
-        else
-            exec python3 "\$ARES_SRC/webui/cli/doctor.py" "\$@"
-        fi
-        ;;
-    update)
-        shift
-        exec bash "\$ARES_SRC/scripts/update.sh" "\$@"
-        ;;
-    setup|--setup|onboarding|--onboarding)
-        shift
-        defaults delete ARES onboarding_completed 2>/dev/null || true
-        defaults write ARES ARESForceOnboarding -bool true
-        rm -rf "\$HOME/jaeger/.jaeger_os/instances" "\$HOME/.jaeger/.jaeger_os/instances" "\$HOME/.jaeger/instances" "\$HOME/.ares/instances" "\$ARES_SRC/webui/.ares_state" 2>/dev/null || true
-        echo "Resetting onboarding state... Opening ARES onboarding wizard."
-        exec open "$ARES_APP"
-        ;;
-    uninstall)
-        shift
-        exec bash "\$ARES_SRC/scripts/uninstall.sh" "\$@"
-        ;;
-    start|"")
-        shift
-        if [ "\${1:-}" = "--cli" ] || [ "\${1:-}" = "--server" ]; then
-            cd "\$ARES_SRC/webui"
-            if [ -x "venv/bin/python" ]; then
-                exec "venv/bin/python" -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
-            else
-                exec python3 -m uvicorn fastapi_app.main:app --port 8787 --host 127.0.0.1
-            fi
-        else
-            exec open "$ARES_APP"
-        fi
-        ;;
-    *)
-        echo "Unknown ARES command: \$CMD"
-        echo "Available commands: start, setup, update, doctor, uninstall"
-        exit 1
-        ;;
-esac
-CMD_EOF
-    chmod +x "$cmd_dir/ares"
-    ok "Command installed: ares"
-
-    # Compatibility for installs whose shell profile still aliases `ares` to
-    # ~/.ares/ares.sh. This prevents the alias from masking the real command.
-    cat > "$HOME/.ares/ares.sh" << 'COMPAT_EOF'
-#!/usr/bin/env bash
-exec "$HOME/.local/bin/ares" "$@"
-COMPAT_EOF
-    chmod +x "$HOME/.ares/ares.sh"
-    if ! echo "$PATH" | grep -q "$cmd_dir"; then
-        local path_line='export PATH="$HOME/.local/bin:$PATH"'
-        for profile in "$HOME/.zprofile" "$HOME/.zshrc"; do
-            touch "$profile"
-            if ! grep -Fqx "$path_line" "$profile" 2>/dev/null; then
-                printf '\n# ARES command-line launchers\n%s\n' "$path_line" >> "$profile"
-            fi
-        done
-        export PATH="$cmd_dir:$PATH"
-        hash -r 2>/dev/null || true
-        ok "Added ~/.local/bin to zsh PATH"
-    fi
 }
 
 _write_install_manifest() {
@@ -523,6 +621,7 @@ MANIFEST_EOF
     ok "Installation manifest: $manifest"
 }
 
+_install_cli
 _package_app
 _write_install_manifest
 
@@ -552,26 +651,37 @@ _verify_install() {
 _verify_install
 
 # ── 14. Launch ────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${GREEN}${BOLD}ARES installed.${NC}"
+echo ""
+echo "  Next steps (Jaeger-style: install code, then configure):"
+echo "    ares                  # open ARES.app / onboarding wizard"
+echo "    ares setup            # force re-run onboarding"
+echo "    ares doctor           # health + JaegerAI peer checks"
+echo "    ares start --server   # WebUI only on http://127.0.0.1:8787"
+if [ ! -x "${ARES_JAEGER_HOME:-${JAEGER_HOME:-$HOME/jaeger}}/jaeger" ]; then
+    echo ""
+    echo "  JaegerAI peer (required Companion) not detected — install with:"
+    echo "    curl -fsSL https://raw.githubusercontent.com/JenkinsRobotics/JaegerAI/master/scripts/install.sh | bash"
+    echo "    # or: bash install.sh --with-jaeger"
+fi
+echo ""
+
 if [ "$USE_MAC_APP" = true ] && [ "$NO_START" = false ]; then
     local_bin="$HOME/.local/bin/ares"
     if [ -f "$local_bin" ]; then
         info "Launching ARES (detached — survives closing this terminal)..."
-        bash "$local_bin"
-        echo ""
-        echo -e "${GREEN}${BOLD}Done.${NC} ARES is in your menu bar. The window opens with the onboarding wizard."
-        echo "  Reopen anytime:  ares"
+        bash "$local_bin" || open "$ARES_APP" 2>/dev/null || true
+        echo "  Menu bar app launching; complete onboarding in the window."
     else
-        warn "App build unavailable — use the web UI instead: http://localhost:8787"
+        warn "App build unavailable — use: ares start --server  →  http://localhost:8787"
     fi
-elif [ "$USE_MAC_APP" != true ]; then
-    echo -e "${GREEN}${BOLD}ARES installed.${NC}"
-    echo ""
-    echo "  Open in browser:   http://localhost:8787"
+elif [ "$USE_MAC_APP" != true ] && [ "$NO_START" = false ]; then
+    echo "  Open in browser after start:   http://localhost:8787"
     _ts_ip="$(_tailscale_ip || true)"
     [ -n "$_ts_ip" ] && echo "  Remote URL:        http://$_ts_ip:8787"
 fi
 
 if [ "$NO_START" = true ]; then
-    echo -e "${GREEN}${BOLD}ARES installed.${NC}"
-    echo "  Start anytime:  ares"
+    echo "  Start when ready:  ares"
 fi

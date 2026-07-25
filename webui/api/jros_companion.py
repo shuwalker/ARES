@@ -42,29 +42,51 @@ _NO_LOCAL_JROS = (
     "point ARES_JAEGER_HOME/JAEGER_HOME at an existing install."
 )
 
-_DEFAULTS_SCRIPT = """
+# JaegerAI 0.9 renamed the Python package jaeger_os → jaeger_ai. Field installs
+# may still be on the pre-split package name. Resolve at runtime inside the
+# peer venv so ARES does not hard-fail on either tree.
+_PKG_SHIM = """
+def _jaeger_pkg():
+    try:
+        import jaeger_ai as pkg  # noqa: F401
+        return "jaeger_ai"
+    except ImportError:
+        import jaeger_os as pkg  # noqa: F401
+        return "jaeger_os"
+
+_PKG = _jaeger_pkg()
+"""
+
+_DEFAULTS_SCRIPT = _PKG_SHIM + """
 import json
-from jaeger_ai.core.instance.setup_wizard import setup_defaults, _character_rows
+import importlib
+setup_wizard = importlib.import_module(f"{_PKG}.core.instance.setup_wizard")
+setup_defaults = setup_wizard.setup_defaults
+_character_rows = setup_wizard._character_rows
 
 data = setup_defaults()
 data["characters"] = [
     {"id": r[0], "name": r[1], "role": r[2], "voice_id": r[3], "voice_tone": r[4]}
     for r in _character_rows()
 ]
+data["package"] = _PKG
 print(json.dumps(data, default=str))
 """
 
-_EXISTS_SCRIPT = """
-import json, os
-from jaeger_ai.core.instance.instance import default_instance_name, resolve_instance_dir
+_EXISTS_SCRIPT = _PKG_SHIM + """
+import json, os, importlib
+instance_mod = importlib.import_module(f"{_PKG}.core.instance.instance")
+default_instance_name = instance_mod.default_instance_name
+resolve_instance_dir = instance_mod.resolve_instance_dir
 
 name = os.environ.get("ARES_JROS_INSTANCE") or default_instance_name()
-print(json.dumps({"exists": resolve_instance_dir(name).exists()}))
+print(json.dumps({"exists": resolve_instance_dir(name).exists(), "name": name, "package": _PKG}))
 """
 
-_CREATE_SCRIPT = """
-import json, sys
-from jaeger_ai.core.instance.setup_wizard import create_instance
+_CREATE_SCRIPT = _PKG_SHIM + """
+import json, sys, importlib
+setup_wizard = importlib.import_module(f"{_PKG}.core.instance.setup_wizard")
+create_instance = setup_wizard.create_instance
 
 payload = json.loads(sys.stdin.read())
 try:
@@ -78,7 +100,12 @@ try:
         interaction_mode=payload.get("interaction_mode") or "gui",
         make_default=payload.get("make_default", True),
     )
-    print(json.dumps({"ok": True, "name": layout.root.name, "instance_dir": str(layout.root)}))
+    print(json.dumps({
+        "ok": True,
+        "name": layout.root.name,
+        "instance_dir": str(layout.root),
+        "package": _PKG,
+    }))
 except FileExistsError as exc:
     print(json.dumps({"ok": False, "error": "exists", "message": str(exc)}))
 except LookupError as exc:

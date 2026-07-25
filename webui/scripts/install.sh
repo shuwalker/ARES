@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
         --branch) BRANCH="$2"; shift 2 ;;
         --port) PORT="$2"; shift 2 ;;
         --host) HOST="$2"; shift 2 ;;
-        --dir) INSTALL_DIR="$2"; WEBUI_DIR="$INSTALL_DIR/webui"; shift 2 ;;
+        --dir) INSTALL_DIR="$2"; ARES_HOME="$2"; WEBUI_DIR="$INSTALL_DIR/webui"; shift 2 ;;
         --source-dir) SOURCE_DIR="$2"; shift 2 ;;
         --manifest) MANIFEST_MODE=true; shift ;;
         --stage) STAGE_NAME="$2"; shift 2 ;;
@@ -438,7 +438,15 @@ if [ -n "$STAGE_NAME" ]; then
     case "$STAGE_NAME" in
         prerequisites) stage_prerequisites ;;
         repository) clone_repo ;;
-        jros) stage_jros ;;
+        jros)
+            # Peer probe only — JaegerAI is a separate product install.
+            _jh="${ARES_JAEGER_HOME:-${JAEGER_HOME:-$HOME/jaeger}}"
+            if [ -x "$_jh/jaeger" ]; then
+                log_success "JaegerAI peer present at $_jh"
+            else
+                log_warn "JaegerAI peer missing at $_jh (install via official JaegerAI one-liner or onboarding)"
+            fi
+            ;;
         venv) setup_venv ;;
         python-deps) install_deps ;;
         config) setup_config ;;
