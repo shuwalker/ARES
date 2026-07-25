@@ -24,6 +24,9 @@
 
 set -euo pipefail
 
+GREEN='\033[0;32m'
+NC='\033[0m'
+
 ARES_HOME="${ARES_HOME:-$HOME/.ares}"
 ARES_REF="${ARES_REF:-main}"
 REPO_URL="${ARES_REPO_URL:-https://github.com/shuwalker/ARES.git}"
