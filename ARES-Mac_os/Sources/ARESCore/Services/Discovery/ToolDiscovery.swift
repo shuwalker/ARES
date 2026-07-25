@@ -158,7 +158,6 @@ public final class ToolDiscovery: ObservableObject {
     /// `comfy`, `comfy-cli`, `comfycli` → `comfy`  (the latter is
     ///   collapsed by `normalizeName` later — see mergeDuplicates)
     /// `claude`, `claude-code` → `claude`
-    /// `ares-hermes`, `hermes` → `hermes`
     nonisolated private static func baseBinaryName(_ name: String) -> String {
         let lower = name.lowercased()
         // Hyphen/underscore split: take the first segment.
@@ -182,7 +181,6 @@ public final class ToolDiscovery: ObservableObject {
 
     /// Normalize a name for cross-source dedup (bin, app, data dir).
     /// Strips spaces, hyphens, underscores, dots, suffixes.
-    /// `HermesDesktopDodo` → `hermesdesktopdodo`
     /// `Claude Code URL Handler` → `claudecodeurlhandler`
     /// `comfy` → `comfy`, `comfycli` → `comfycli` (kept distinct from comfy)
     nonisolated private static func normalizeName(_ name: String) -> String {
@@ -207,11 +205,9 @@ public final class ToolDiscovery: ObservableObject {
     ]
 
     /// Map well-known tool binaries to their local web UI URL.
-    /// Hermes Agent runs a control plane at :9119. Others could be added
-    /// (e.g. ComfyUI :8188, Ollama :11434 web).
+    /// Ollama and ComfyUI expose local web UIs; others could be added.
     nonisolated private static func webURLFor(name: String) -> String? {
         let lower = name.lowercased()
-        if lower.contains("hermes") { return "http://localhost:9119" }
         if lower.contains("ollama") { return "http://localhost:11434" }
         if lower.contains("comfy")  { return "http://localhost:8188" }
         return nil
@@ -333,9 +329,9 @@ public final class ToolDiscovery: ObservableObject {
 
         var kept: [DiscoveredTool] = []
         for tool in sorted {
-            // Compute a "core token" for this tool. Hermes variants
-            // (hermes, ares-hermes, hermes-desktop, HermesDesktopDodo)
-            // all share the token "hermes" and should collapse.
+            // Compute a "core token" for this tool. Name variants of the
+            // same tool (e.g. claude, claude-code, Claude.app) share a token
+            // and should collapse.
             let coreTokens = Self.coreTokens(name: tool.name)
             let isDup = kept.contains { existing in
                 if existing.category != tool.category { return false }
@@ -364,8 +360,6 @@ public final class ToolDiscovery: ObservableObject {
 
     /// Extract "core tokens" from a tool name for dedup. A core token is
     /// a distinctive word that identifies the tool's identity.
-    /// `hermes`, `ares-hermes`, `hermes-desktop`, `HermesDesktopDodo`
-    ///   → all contain the token "hermes"
     /// `claude`, `claude-code`, `Claude.app`
     ///   → all contain the token "claude"
     /// `codex`, `Codex.app`
@@ -377,7 +371,7 @@ public final class ToolDiscovery: ObservableObject {
         // Split on non-letter chars
         let parts = lower.split(whereSeparator: { !$0.isLetter }).map(String.init)
         let knownCores: Set<String> = [
-            "hermes", "claude", "codex", "gemini", "opencode", "ollama",
+            "claude", "codex", "gemini", "opencode", "ollama",
             "llama", "comfy", "hyper", "sam", "odysseus", "dodo", "copilot",
             "cursor", "windsurf", "zed", "aider", "continue", "goose",
             "droid", "coder"
@@ -399,7 +393,6 @@ public final class ToolDiscovery: ObservableObject {
             ("gemini", .codingAgent),
             ("codex", .codingAgent),
             ("opencode", .codingAgent),
-            ("hermes", .codingAgent),
             ("droid", .codingAgent),
 
             // Model servers
@@ -465,7 +458,6 @@ public final class ToolDiscovery: ObservableObject {
         if n.contains("opencode") { return "curlybraces" }
         if n.contains("ollama") { return "cpu.fill" }
         if n.contains("lms") || n.contains("lm-studio") { return "cpu" }
-        if n.contains("hermes") { return "bolt.horizontal" }
         if n.contains("comfy") { return "wand.and.stars" }
         if n.contains("hyper") { return "play.rectangle.fill" }
         if n.contains("odysseus") { return "compass.drawing" }

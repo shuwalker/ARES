@@ -96,8 +96,8 @@ public final class WebUIServerManager: ObservableObject {
         env["ARES_WEBUI_RELOAD"] = config.reloadDevMode ? "1" : "0"
         env = Self.applyingGatewayEnvironment(
             to: env,
-            hermesURL: config.hermesURL,
-            hermesAPIKey: config.hermesAPIKey,
+            gatewayURL: config.gatewayURL,
+            gatewayAPIKey: config.gatewayAPIKey,
             jrosURL: config.jrosURL,
             jrosAPIKey: config.jrosAPIKey
         )
@@ -141,8 +141,8 @@ public final class WebUIServerManager: ObservableObject {
 
     nonisolated static func applyingGatewayEnvironment(
         to base: [String: String],
-        hermesURL: String,
-        hermesAPIKey: String,
+        gatewayURL: String,
+        gatewayAPIKey: String,
         jrosURL: String,
         jrosAPIKey: String
     ) -> [String: String] {
@@ -153,21 +153,21 @@ public final class WebUIServerManager: ObservableObject {
         // Only export them for a genuinely remote gateway. Setting ARES_API_URL
         // forces agent health into remote-HTTP probing and skips the local
         // PID/state-file detection — with the localhost default this reported
-        // a healthy local Hermes gateway as permanently "down" because nothing
+        // a healthy local gateway as permanently "down" because nothing
         // serves HTTP health on that port in a local install.
-        let isLocalDefault = Self.isLocalGatewayURL(hermesURL)
+        let isLocalDefault = Self.isLocalGatewayURL(gatewayURL)
         if isLocalDefault {
             environment.removeValue(forKey: "ARES_API_URL")
             environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_BASE_URL")
         } else {
-            environment["ARES_API_URL"] = hermesURL
-            environment["ARES_WEBUI_GATEWAY_BASE_URL"] = hermesURL
+            environment["ARES_API_URL"] = gatewayURL
+            environment["ARES_WEBUI_GATEWAY_BASE_URL"] = gatewayURL
         }
         environment["ARES_JROS_GATEWAY_URL"] = jrosURL
-        if hermesAPIKey.isEmpty {
+        if gatewayAPIKey.isEmpty {
             environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_API_KEY")
         } else {
-            environment["ARES_WEBUI_GATEWAY_API_KEY"] = hermesAPIKey
+            environment["ARES_WEBUI_GATEWAY_API_KEY"] = gatewayAPIKey
         }
         if jrosAPIKey.isEmpty {
             environment.removeValue(forKey: "ARES_JROS_GATEWAY_KEY")
@@ -177,8 +177,8 @@ public final class WebUIServerManager: ObservableObject {
         return environment
     }
 
-    /// True when the configured Hermes gateway URL points at this machine —
-    /// local installs detect the gateway via PID/state files, not HTTP.
+    /// True when the configured gateway URL points at this machine, or is
+    /// unset — local installs detect the gateway via PID/state files, not HTTP.
     nonisolated static func isLocalGatewayURL(_ raw: String) -> Bool {
         guard let url = URL(string: raw.trimmingCharacters(in: .whitespaces)),
               let host = url.host?.lowercased()

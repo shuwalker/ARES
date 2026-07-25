@@ -6,22 +6,22 @@ final class WebUIServerManagerTests: XCTestCase {
     func testGatewayEnvironmentMatchesFastAPIContract() {
         let environment = WebUIServerManager.applyingGatewayEnvironment(
             to: ["UNCHANGED": "yes"],
-            hermesURL: "http://gateway.example:8642",
-            hermesAPIKey: "hermes-secret",
+            gatewayURL: "http://gateway.example:8642",
+            gatewayAPIKey: "gateway-secret",
             jrosURL: "http://jros.example:8643",
             jrosAPIKey: "jros-secret"
         )
 
         XCTAssertEqual(environment["ARES_API_URL"], "http://gateway.example:8642")
         XCTAssertEqual(environment["ARES_WEBUI_GATEWAY_BASE_URL"], "http://gateway.example:8642")
-        XCTAssertEqual(environment["ARES_WEBUI_GATEWAY_API_KEY"], "hermes-secret")
+        XCTAssertEqual(environment["ARES_WEBUI_GATEWAY_API_KEY"], "gateway-secret")
         XCTAssertEqual(environment["ARES_JROS_GATEWAY_URL"], "http://jros.example:8643")
         XCTAssertEqual(environment["ARES_JROS_GATEWAY_KEY"], "jros-secret")
         XCTAssertEqual(environment["UNCHANGED"], "yes")
     }
 
     func testLocalGatewayURLDoesNotForceRemoteHealthProbing() {
-        // A loopback Hermes URL must not export ARES_API_URL — that flips the
+        // A loopback gateway URL must not export ARES_API_URL — that flips the
         // controller's agent health into remote-HTTP probing and skips the
         // local PID/state-file detection, reporting a healthy local gateway
         // as permanently down (no HTTP health port exists in local installs).
@@ -30,8 +30,8 @@ final class WebUIServerManagerTests: XCTestCase {
                 "ARES_API_URL": "http://localhost:8642",
                 "ARES_WEBUI_GATEWAY_BASE_URL": "http://localhost:8642",
             ],
-            hermesURL: "http://localhost:8642",
-            hermesAPIKey: "",
+            gatewayURL: "http://localhost:8642",
+            gatewayAPIKey: "",
             jrosURL: "http://127.0.0.1:8643",
             jrosAPIKey: ""
         )
@@ -50,11 +50,11 @@ final class WebUIServerManagerTests: XCTestCase {
     func testEmptyGatewayKeysDoNotLeakInheritedCredentials() {
         let environment = WebUIServerManager.applyingGatewayEnvironment(
             to: [
-                "ARES_WEBUI_GATEWAY_API_KEY": "stale-hermes",
+                "ARES_WEBUI_GATEWAY_API_KEY": "stale-key",
                 "ARES_JROS_GATEWAY_KEY": "stale-jros",
             ],
-            hermesURL: "http://127.0.0.1:8642",
-            hermesAPIKey: "",
+            gatewayURL: "http://127.0.0.1:8642",
+            gatewayAPIKey: "",
             jrosURL: "http://127.0.0.1:8643",
             jrosAPIKey: ""
         )
@@ -129,7 +129,7 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertTrue(WebUIServerManager.isManagedWebUICommand(
             "python -m uvicorn fastapi_app.main:app --port 8787"
         ))
-        // Do NOT match generic server.py — that kills unrelated servers (e.g. Hermes WebUI).
+        // Do NOT match generic server.py — that kills unrelated servers.
         XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("python server.py"))
         XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("python -m http.server 8787"))
         XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("uvicorn another_app:app"))

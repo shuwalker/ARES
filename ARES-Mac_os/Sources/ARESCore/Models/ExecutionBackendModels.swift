@@ -2,12 +2,12 @@ import Foundation
 
 /// A backend ARES can use to turn natural human intent into work.
 ///
-/// Hermes and JROS are peer full agentic frameworks. ARES-native services,
-/// local model runners, cloud providers, and future runtimes are also valid
+/// JROS is a full agentic framework. ARES-native services, local model
+/// runners, cloud providers, and future runtimes are also valid
 /// backends. ARES owns the product experience; backends provide capability.
 public enum ExecutionBackendKind: String, Codable, CaseIterable, Hashable, Sendable {
-    case hermes
     case jros
+    case cliWorker = "cli_worker"
     case aresNative = "ares_native"
     case localModel = "local_model"
     case cloudProvider = "cloud_provider"

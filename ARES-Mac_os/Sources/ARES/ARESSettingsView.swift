@@ -68,7 +68,7 @@ public struct ARESSettingsView: View {
     @State private var runtimeOptions: [RuntimeConnectionOption] = []
     @State private var backendSelectionError: String? = nil
     @State private var jrosLive = false
-    @State private var hermesLive = false
+    @State private var gatewayLive = false
     @State private var checkTimer: Timer? = nil
     
     // Safety & Approvals
@@ -369,15 +369,15 @@ public struct ARESSettingsView: View {
             
             Section(header: Text("Backend Liveness").font(.headline)) {
                 HStack(spacing: 24) {
-                    statusCard(title: "Hermes Gateway", isLive: hermesLive, url: config.hermesURL)
+                    statusCard(title: "Gateway", isLive: gatewayLive, url: config.gatewayURL)
                     statusCard(title: "JROS Gateway", isLive: jrosLive, url: config.jrosURL)
                 }
             }
             
             Section(header: Text("Gateway Configurations").font(.headline)) {
-                TextField("Hermes Gateway URL", text: $config.hermesURL)
+                TextField("Gateway URL", text: $config.gatewayURL)
                     .textFieldStyle(.roundedBorder)
-                SecureField("Hermes API Key", text: $config.hermesAPIKey)
+                SecureField("Gateway API Key", text: $config.gatewayAPIKey)
                     .textFieldStyle(.roundedBorder)
                 TextField("JROS Gateway URL", text: $config.jrosURL)
                     .textFieldStyle(.roundedBorder)
@@ -673,22 +673,22 @@ public struct ARESSettingsView: View {
     }
     
     private func performLivenessProbes() async {
-        // Probe Hermes
-        if let hermesUrl = endpointURL(base: config.hermesURL, path: "/health") {
-            var request = URLRequest(url: hermesUrl)
+        // Probe the gateway
+        if let gatewayUrl = endpointURL(base: config.gatewayURL, path: "/health") {
+            var request = URLRequest(url: gatewayUrl)
             request.timeoutInterval = 1.0
             do {
                 let (_, response) = try await URLSession.shared.data(for: request)
                 if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                    self.hermesLive = true
+                    self.gatewayLive = true
                 } else {
-                    self.hermesLive = false
+                    self.gatewayLive = false
                 }
             } catch {
-                self.hermesLive = false
+                self.gatewayLive = false
             }
         } else {
-            self.hermesLive = false
+            self.gatewayLive = false
         }
         
         // Probe JROS

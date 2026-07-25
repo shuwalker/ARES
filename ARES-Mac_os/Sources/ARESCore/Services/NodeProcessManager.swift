@@ -21,7 +21,7 @@ public final class NodeProcessManager: @unchecked Sendable {
     
     /// Starts a Python node from the extensions directory
     /// - Parameters:
-    ///   - nodeName: The directory name (e.g., "hermes-agent")
+    ///   - nodeName: The directory name (e.g., "jaeger-node")
     ///   - entryPoint: The main script to run (e.g., "main.py")
     /// - Returns: The Process ID (PID)
     @discardableResult

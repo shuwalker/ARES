@@ -4,7 +4,7 @@ import CoreGraphics
 import Foundation
 
 /// ReasoningBrain protocol: planning, responding, and reflection.
-/// Conforming types: HermesAgentBrain, ClaudeApiBrain, LocalLlamaBrain
+/// Conforming types: ClaudeApiBrain, LocalLlamaBrain
 public protocol ReasoningBrain: AnyObject, Sendable {
     /// Generate a plan given world state and context.
     /// Returns ordered tasks with dependencies and approval requirements.

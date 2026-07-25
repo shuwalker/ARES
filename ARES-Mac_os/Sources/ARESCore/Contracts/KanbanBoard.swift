@@ -2,7 +2,7 @@ import Foundation
 
 /// Workflow protocol: task visualization and workflow management.
 /// Not a data store (memory-svc owns that). This is the *view model* for tasks.
-/// Conforming types: FileSystemKanban, HermesKanban, DummyKanban
+/// Conforming types: FileSystemKanban, DummyKanban
 public protocol Workflow: AnyObject, Sendable {
     /// List all boards (e.g., "inbox", "in-progress", "done").
     func listBoards() async throws -> [Board]

@@ -1,13 +1,13 @@
 import Foundation
 
 /// Gateway provider: bridges to external reasoning engines, APIs, or services.
-/// Conforming types: HermesGateway, AnthropicGateway, OllamaGateway, OpenAIGateway
+/// Conforming types: AnthropicGateway, OllamaGateway, OpenAIGateway
 ///
 /// Design: Each gateway abstracts a different reasoning backend.
 /// Apps use only this protocol; never the concrete gateway type.
 public protocol GatewayProvider: AnyObject, Sendable {
     /// Unique identifier for this gateway.
-    /// Examples: "hermes", "anthropic", "ollama", "openai"
+    /// Examples: "anthropic", "ollama", "openai"
     var identifier: String { get }
 
     /// Human-readable name of the backing service.

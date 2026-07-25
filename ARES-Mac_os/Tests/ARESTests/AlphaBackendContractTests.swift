@@ -54,11 +54,11 @@ final class AlphaBackendContractTests: XCTestCase {
         XCTAssertGreaterThan(context.confidence, 0)
     }
 
-    func testExecutionBackendRouterTreatsHermesAndJROSAsPeerFrameworks() throws {
+    func testExecutionBackendRouterTreatsFrameworksAsPeers() throws {
         let router = ExecutionBackendRouter(backends: [
             ExecutionBackendDescriptor(
-                kind: .hermes,
-                displayName: "Hermes Agent",
+                kind: .cliWorker,
+                displayName: "CLI Worker",
                 capabilities: [.agentTurn, .toolUse, .memory, .scheduling, .verification]
             ),
             ExecutionBackendDescriptor(
@@ -79,11 +79,11 @@ final class AlphaBackendContractTests: XCTestCase {
         ))
 
         if case .hybrid(let backends) = route.mode {
-            XCTAssertEqual(Set(backends), Set([.hermes, .jros]))
+            XCTAssertEqual(Set(backends), Set([.cliWorker, .jros]))
         } else {
             XCTFail("Expected hybrid route, got \(route.mode)")
         }
-        XCTAssertEqual(Set(route.selectedBackends), Set([.hermes, .jros]))
+        XCTAssertEqual(Set(route.selectedBackends), Set([.cliWorker, .jros]))
         XCTAssertTrue(route.isRoutable)
         XCTAssertTrue(route.rationale.contains { $0.contains("Hybrid route") })
     }
@@ -96,8 +96,8 @@ final class AlphaBackendContractTests: XCTestCase {
                 capabilities: [.naturalLanguageInterface, .uiPresentation, .automationFlow]
             ),
             ExecutionBackendDescriptor(
-                kind: .hermes,
-                displayName: "Hermes Agent",
+                kind: .cliWorker,
+                displayName: "CLI Worker",
                 capabilities: [.agentTurn, .toolUse, .memory]
             ),
             ExecutionBackendDescriptor(

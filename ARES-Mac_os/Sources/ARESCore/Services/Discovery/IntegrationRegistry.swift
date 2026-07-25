@@ -57,20 +57,6 @@ public final class IntegrationRegistry: ObservableObject, @unchecked Sendable {
     /// appear as Hub tabs. Add new tools to this list and they'll
     /// automatically show up if the host has them installed.
     private static let catalog: [ToolSpec] = [
-        // Hermes — always the first tab if installed (the orchestration
-        // backbone of ARES). Detected by ~/.hermes/ AND the `hermes` binary.
-        ToolSpec(
-            id: "hermes",
-            name: "Hermes Agent",
-            icon: "bolt.horizontal",
-            kind: .webUI,
-            command: "hermes",
-            url: "http://localhost:9119",
-            dataPath: "~/.hermes",
-            hint: "ARES orchestration backbone",
-            dataDirProbe: "~/.hermes",
-            binaryProbes: ["~/.local/bin/hermes", "/usr/local/bin/hermes", "/opt/homebrew/bin/hermes"]
-        ),
         // Claude Code — CLI tool, embeds the Claude Code TUI
         ToolSpec(
             id: "claude-code",

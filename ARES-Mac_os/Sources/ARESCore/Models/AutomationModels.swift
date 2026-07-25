@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Automation
 
-/// A runnable script discovered on the local filesystem (e.g. in ~/.hermes/scripts/).
+/// A runnable script discovered on the local filesystem (e.g. in a scripts/ dir).
 /// This is NOT a cron job (which schedules things) and NOT a workflow (which is a prompt preset).
 /// An Automation is the script itself — its source, its runtime status, its logs, its state files.
 public struct Automation: Identifiable, Hashable, Sendable {

@@ -10,26 +10,28 @@ import ARESCore
 final class ARESConfigurationTests: XCTestCase {
     func testMalformedURLsFallBackToDefaults() {
         let config = ARESConfiguration.shared
-        let savedHermes = config.hermesURL
+        let savedGateway = config.gatewayURL
         let savedOllama = config.ollamaURL
         defer {
-            config.hermesURL = savedHermes
+            config.gatewayURL = savedGateway
             config.ollamaURL = savedOllama
         }
 
-        config.hermesURL = "not a url at all"
+        // The gateway has no default endpoint — an unparseable value yields nil
+        // rather than silently pointing the app at some assumed local port.
+        config.gatewayURL = "not a url at all"
         config.ollamaURL = ""
-        XCTAssertEqual(config.hermesBaseURL.absoluteString, "http://localhost:8642")
+        XCTAssertNil(config.gatewayBaseURL)
         XCTAssertEqual(config.ollamaBaseURL.absoluteString, "http://localhost:11434")
     }
 
     func testCustomURLsParse() {
         let config = ARESConfiguration.shared
-        let saved = config.hermesURL
-        defer { config.hermesURL = saved }
+        let saved = config.gatewayURL
+        defer { config.gatewayURL = saved }
 
-        config.hermesURL = "http://198.51.100.11:8642"
-        XCTAssertEqual(config.hermesBaseURL.host, "198.51.100.11")
-        XCTAssertEqual(config.hermesBaseURL.port, 8642)
+        config.gatewayURL = "http://198.51.100.11:8642"
+        XCTAssertEqual(config.gatewayBaseURL?.host, "198.51.100.11")
+        XCTAssertEqual(config.gatewayBaseURL?.port, 8642)
     }
 }
