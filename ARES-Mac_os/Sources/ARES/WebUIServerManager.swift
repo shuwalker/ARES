@@ -294,12 +294,11 @@ public final class WebUIServerManager: ObservableObject {
             candidates.append(current.appendingPathComponent("webui"))
             directory = current.deletingLastPathComponent()
         }
-        // An explicit install root must beat the default per-user install.
+        candidates.append(URL(fileURLWithPath: currentDirectory).appendingPathComponent("webui"))
         if let aresHome = environment["ARES_HOME"], !aresHome.isEmpty {
             candidates.append(URL(fileURLWithPath: aresHome).appendingPathComponent("webui"))
         }
         candidates.append(homeDirectory.appendingPathComponent(".ares/webui"))
-        candidates.append(URL(fileURLWithPath: currentDirectory).appendingPathComponent("webui"))
         return candidates
     }
 
@@ -381,7 +380,7 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     nonisolated static func isManagedWebUICommand(_ command: String) -> Bool {
-        // Reclaim port 8787 from any python, uvicorn, or server process to ensure ARES runs its own FastAPI WebUI.
-        command.contains("uvicorn") || command.contains("server.py") || command.contains("fastapi_app") || command.contains("python")
+        // Reclaim ARES-owned WebUI processes (uvicorn running fastapi_app or .ares/webui).
+        (command.contains("uvicorn") && command.contains("fastapi_app")) || command.contains(".ares/webui")
     }
 }

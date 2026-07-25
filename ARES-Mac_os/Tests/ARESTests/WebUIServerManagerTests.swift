@@ -120,8 +120,9 @@ final class WebUIServerManagerTests: XCTestCase {
             environment: ["ARES_HOME": "/tmp/isolated-ares"],
             currentDirectory: "/workspace"
         )
-        XCTAssertEqual(candidates[0].path, "/tmp/isolated-ares/webui")
-        XCTAssertEqual(candidates[1].path, "/Users/example/.ares/webui")
+        XCTAssertEqual(candidates[0].path, "/workspace/webui")
+        XCTAssertEqual(candidates[1].path, "/tmp/isolated-ares/webui")
+        XCTAssertEqual(candidates[2].path, "/Users/example/.ares/webui")
     }
 
     func testPortReclamationRecognizesCurrentFastAPIProcessOnly() {
