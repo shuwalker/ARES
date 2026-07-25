@@ -41,13 +41,18 @@ _SESSION_ID_LEGACY_RE = re.compile(r"session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]
 
 def _hermes_cli() -> str:
     """Return the path to the hermes CLI, or empty string if not found."""
-    path = shutil.which("hermes")
+    command = os.getenv("JAEGER_HERMES_COMMAND", "hermes").strip() or "hermes"
+    path = shutil.which(command)
     if path:
         return path
+    if command != "hermes":
+        return command if os.path.isfile(command) else ""
     # Check common install locations
     for candidate in (
+        os.path.expanduser("~/.local/bin/hermes"),
         os.path.expanduser("~/.hermes/hermes-agent/run_agent.py"),
         "/usr/local/bin/hermes",
+        "/opt/homebrew/bin/hermes",
     ):
         if os.path.isfile(candidate):
             return candidate
