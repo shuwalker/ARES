@@ -519,6 +519,18 @@ struct BrainModelStep: View {
             Text("Select and install local and cloud models for your assistant.")
                 .foregroundColor(.secondary)
             
+            HStack(spacing: 6) {
+                Image(systemName: manager.isJaegerInstalled ? "checkmark.seal.fill" : "cpu")
+                    .foregroundColor(manager.isJaegerInstalled ? .green : .blue)
+                Text(manager.jaegerStatusText)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(manager.isJaegerInstalled ? .green : .blue)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(manager.isJaegerInstalled ? Color.green.opacity(0.15) : Color.blue.opacity(0.15)))
+            
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Active / Awake Model (Primary Intelligence)")
@@ -879,5 +891,92 @@ struct SummaryRow: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
         }
+    }
+}
+
+// MARK: - Onboarding Manager & JaegerAI Dependency Handler
+
+@MainActor
+final class OnboardingManager: ObservableObject {
+    static let shared = OnboardingManager()
+    
+    @Published var needsOnboarding: Bool = true
+    @Published var agentName: String = "Jarvis"
+    @Published var agentRole: String = "AI Butler & Companion"
+    @Published var selectedCharacterId: String? = "jarvis"
+    @Published var selectedAwakeModel: String? = "qwen2.5-coder:7b"
+    @Published var selectedAsleepModel: String? = "llama3.2:1b"
+    @Published var networkMode: String = "local"
+    @Published var autoLaunchWebUI: Bool = true
+    @Published var enableTailscale: Bool = false
+    
+    @Published var isJaegerInstalled: Bool = false
+    @Published var jaegerStatusText: String = "Checking JaegerAI dependency..."
+    
+    init() {
+        checkOnboardingStatus()
+        Task {
+            await fetchJaegerDefaults()
+        }
+    }
+    
+    func checkOnboardingStatus() {
+        let completed = UserDefaults.standard.bool(forKey: "ares_onboarding_completed")
+        self.needsOnboarding = !completed
+    }
+    
+    func markCompleted() {
+        UserDefaults.standard.set(true, forKey: "ares_onboarding_completed")
+        self.needsOnboarding = false
+    }
+    
+    func resetOnboarding() {
+        UserDefaults.standard.set(false, forKey: "ares_onboarding_completed")
+        self.needsOnboarding = true
+    }
+    
+    func fetchJaegerDefaults() async {
+        guard let url = URL(string: "http://localhost:8787/api/onboarding/companion/defaults") else { return }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                self.jaegerStatusText = "JaegerAI Core: Local Standalone"
+                return
+            }
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            
+            if let available = json["available"] as? Bool, available {
+                self.isJaegerInstalled = true
+                self.jaegerStatusText = "✓ JaegerAI Core Dependency Installed & Connected"
+            } else {
+                self.isJaegerInstalled = false
+                self.jaegerStatusText = "JaegerAI Core: Local Standalone"
+            }
+            
+            if let recAwake = json["recommended_model"] as? String, !recAwake.isEmpty {
+                self.selectedAwakeModel = recAwake
+            }
+            if let recAsleep = json["recommended_asleep_model"] as? String, !recAsleep.isEmpty {
+                self.selectedAsleepModel = recAsleep
+            }
+        } catch {
+            self.jaegerStatusText = "JaegerAI Core: Active"
+        }
+    }
+    
+    func saveOnboardingState(characterId: String, awakeModel: String, asleepModel: String) async throws {
+        guard let url = URL(string: "http://localhost:8787/api/onboarding/companion/create") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "character_id": characterId,
+            "name": agentName,
+            "display_name": agentName,
+            "personality": agentRole,
+            "make_default": true
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        _ = try? await URLSession.shared.data(for: request)
     }
 }
