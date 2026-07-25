@@ -435,9 +435,8 @@
 }
 
 /*
- * Command Center mobile drawers — Hermes-aligned (≤900px shell switches layout
- * in JS; these styles animate deck/hands as fixed overlays).
- * See hermes-webui/static/style.css @media(max-width:900px) / 640px.
+ * Command Center mobile drawers — ≤900px shell switches layout in JS; these
+ * styles animate deck/hands as fixed overlays.
  */
 .cc-mobile-overlay {
   position: fixed;
@@ -502,7 +501,7 @@
     overflow-x: clip;
   }
 
-  /* Hermes: full-width sidebar drawer on phone */
+  /* Full-width sidebar drawer on phone */
   .cc-mobile-drawer--deck {
     width: 100vw;
     max-width: none;
@@ -550,7 +549,7 @@
   }
 }
 
-/* ── Settings hub (Hermes-aligned section shell) ── */
+/* ── Settings hub section shell ── */
 .settings-hub .settings-layout {
   display: grid;
   gap: 1rem;

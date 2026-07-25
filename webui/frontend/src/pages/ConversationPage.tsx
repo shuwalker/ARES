@@ -43,7 +43,7 @@ import { useLocalProfile } from "@/shared/local-profile";
 import { useWorkbenchPanel } from "@/shared/workbench-panel";
 import { apiFetch, readableError } from "@/shared/api-client";
 
-// Hermes-matching dark blue palette
+// Dark blue palette for the conversation surface
 const H = {
   bg: "#0f1117",
   surface: "#1a1d28",
@@ -758,7 +758,7 @@ export function ConversationPage() {
               onInput={(e) => { const el = e.currentTarget; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 180) + "px"; }}
             />
 
-            {/* Toolbar — scrolls horizontally on narrow viewports (Hermes cf-burger pattern) */}
+            {/* Toolbar — scrolls horizontally on narrow viewports */}
             <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "0.25rem 0.5rem 0.5rem", gap: "0.25rem", overflowX: "auto", whiteSpace: "nowrap", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", maxWidth: "100%" }}>
               <IconBtn title="Attach files" onClick={() => fileInputRef.current?.click()}><Paperclip size={15} /></IconBtn>
               <IconBtn title="Saved prompts" onClick={() => setShowSavedPrompts(!showSavedPrompts)}><Bookmark size={15} /></IconBtn>

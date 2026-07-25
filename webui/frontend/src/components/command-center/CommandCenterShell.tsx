@@ -11,7 +11,7 @@ import { useAres } from "@/shared/ares-context";
 import type { ConversationSession } from "@/shared/contracts";
 import { useLocalProfile } from "@/shared/local-profile";
 import { useIsCompactViewport } from "@/shared/use-media-query";
-import { WorkbenchPanelProvider } from "@/shared/workbench-panel";
+import { prefersWorkbenchOpen, WorkbenchPanelProvider } from "@/shared/workbench-panel";
 
 // Bumped when panel min/default sizes change so a prior layout can't leave the
 // brain (chat) pane at 0 width after a rebuild — that looks like a blank app.
@@ -227,7 +227,7 @@ function BrainHeader({
 
 /**
  * Desktop: three resizable columns (deck | brain | hands).
- * Compact (≤900px, Hermes-aligned): brain full-width; deck and hands as
+ * Compact (≤900px): brain full-width; deck and hands as
  * slide-over drawers so chat is usable on a phone.
  */
 export function CommandCenterShell() {
@@ -242,15 +242,10 @@ export function CommandCenterShell() {
   const workbenchRef = usePanelRef();
   const [workbenchCollapsed, setWorkbenchCollapsed] = useState(() => {
     // Initialize from localStorage preference - default to collapsed (closed) for new sessions
-    try {
-      const pref = window.localStorage.getItem("hermes-webui-workspace-panel-pref");
-      return pref !== "open";
-    } catch {
-      return true; // default closed
-    }
+    return !prefersWorkbenchOpen();
   });
 
-  // Compact drawers (Hermes: sidebar + rightpanel slide-ins under 900/640).
+  // Compact drawers: sidebar + workbench slide-ins under 900/640.
   const [deckOpen, setDeckOpen] = useState(false);
   const [handsOpen, setHandsOpen] = useState(false);
 
@@ -357,7 +352,7 @@ export function CommandCenterShell() {
               </div>
             </main>
 
-            {/* Backdrop — Hermes .mobile-overlay */}
+            {/* Backdrop for the open drawer */}
             {(deckOpen || handsOpen) && (
               <button
                 type="button"

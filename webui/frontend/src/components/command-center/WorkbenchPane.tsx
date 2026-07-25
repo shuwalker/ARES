@@ -23,7 +23,7 @@ const Editor = lazy(async () => ({
 type WorkbenchTab = "files" | "artifacts";
 const STORAGE_KEY = "ares.command-center.workbench-tab";
 
-// Theme constants matching Hermes dark UI
+// Theme constants for the dark workbench surface
 const H = {
   bg: "#11131c",
   surface: "#181b26",
@@ -202,7 +202,7 @@ export function WorkbenchPane({ onCollapse }: { onCollapse?: () => void }) {
 
   return (
     <section style={{ height: "100%", display: "flex", flexDirection: "column", background: H.bg, color: H.text, borderLeft: `1px solid ${H.border}` }}>
-      {/* Hermes Top Header */}
+      {/* Top header */}
       <header style={{ height: "2.75rem", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 0.75rem", borderBottom: `1px solid ${H.border}`, flexShrink: 0 }}>
         <span style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: H.muted }}>
           WORKSPACE

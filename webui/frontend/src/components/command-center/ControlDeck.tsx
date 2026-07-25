@@ -42,6 +42,7 @@ import { apiFetch } from "@/shared/api-client";
 import { aresApi } from "@/shared/ares-api";
 import { useAres } from "@/shared/ares-context";
 import { useLocalProfile } from "@/shared/local-profile";
+import { prefersWorkbenchOpen } from "@/shared/workbench-panel";
 
 // ─────────────────────────────────────────────────────────────
 // Types & Metadata
@@ -467,14 +468,9 @@ export function ControlDeck({
       navigate("/chat");
       onSessionOpened?.();
       // Close workbench panel on new session unless user has "keep open by default" pref
-      try {
-        const pref = localStorage.getItem("hermes-webui-workspace-panel-pref");
-        if (pref !== "open") {
-          // Signal to collapse the workbench panel
-          window.dispatchEvent(new CustomEvent("ares:close-workbench"));
-        }
-      } catch {
-        // ignore storage errors
+      if (!prefersWorkbenchOpen()) {
+        // Signal to collapse the workbench panel
+        window.dispatchEvent(new CustomEvent("ares:close-workbench"));
       }
     });
   }, [createSession, navigate, onSessionOpened]);
