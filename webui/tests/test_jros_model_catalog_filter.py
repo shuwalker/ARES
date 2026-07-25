@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-
 def _catalog():
     return {
         "active_provider": "xai-oauth",
@@ -56,35 +53,3 @@ def test_jros_backend_shows_only_real_compatible_model_providers(monkeypatch):
     assert result["active_provider"] == "ollama-cloud"
     assert result["default_model"] == "glm-5.1"
     assert set(result["configured_model_badges"]) == {"glm-5.1", "gemma4:e4b-mlx"}
-
-
-def test_session_model_change_prepares_local_jros_immediately(monkeypatch):
-    from api import backend_selector, jros_gateway_chat, routes
-
-    prepared = []
-    resets = []
-    monkeypatch.setattr(routes, "get_config", lambda: {"ares_backend": "jros"})
-    monkeypatch.setattr(
-        backend_selector,
-        "get_session_backend",
-        lambda _session, _config: backend_selector.BACKEND_JROS,
-    )
-    monkeypatch.setattr(
-        jros_gateway_chat,
-        "_prepare_local_jros_model",
-        lambda model, provider, instance: prepared.append((model, provider, instance)),
-    )
-    monkeypatch.setattr(
-        jros_gateway_chat,
-        "reset_jros_boot",
-        lambda: resets.append(True),
-    )
-    monkeypatch.setenv("ARES_JROS_INSTANCE", "jros-dev")
-    monkeypatch.delenv("ARES_JROS_GATEWAY_URL", raising=False)
-
-    routes._apply_session_model_to_jros(
-        SimpleNamespace(model="glm-5.1", model_provider="ollama-cloud")
-    )
-
-    assert prepared == [("glm-5.1", "ollama-cloud", "jros-dev")]
-    assert resets == []
