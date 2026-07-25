@@ -104,9 +104,13 @@ struct ARESApp: App {
 /// remote/light client for other devices over LAN or a trusted tailnet.
 struct ARESMainView: View {
     @ObservedObject private var serverManager = WebUIServerManager.shared
+    @ObservedObject private var onboardingManager = OnboardingManager.shared
 
     var body: some View {
-        if serverManager.isRunning {
+        if onboardingManager.needsOnboarding {
+            OnboardingView()
+                .frame(minWidth: 800, minHeight: 600)
+        } else if serverManager.isRunning {
             ARESProductShell()
         } else {
             ARESBootSplashView(status: serverManager.serverHealth)

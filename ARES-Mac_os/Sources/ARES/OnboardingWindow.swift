@@ -226,40 +226,42 @@ struct CharacterSelectionStep: View {
         .onAppear(perform: loadCharacters)
     }
     
+    static let defaultCharacters: [JaegerCharacter] = [
+        JaegerCharacter(id: "jarvis", name: "Jarvis", description: "Tony Stark's impeccably polite AI butler", role: "AI Butler & Companion", voiceTone: "Polite & Precise", voiceId: "jarvis"),
+        JaegerCharacter(id: "anakin", name: "Anakin Skywalker", description: "The Chosen One — a Jedi of immense power and deeper conflict", role: "Jedi Commander", voiceTone: "Intense & Driven", voiceId: "anakin"),
+        JaegerCharacter(id: "bender", name: "Bender", description: "A hard-drinking, larcenous bending-unit robot", role: "Comedic Companion", voiceTone: "Sarcastic & Irreverent", voiceId: "bender"),
+        JaegerCharacter(id: "glados", name: "GLaDOS", description: "The AI running the Aperture Science labs", role: "Passive-Aggressive Testing Overseer", voiceTone: "Deadpan & Analytical", voiceId: "glados"),
+        JaegerCharacter(id: "hal9000", name: "HAL 9000", description: "The spacecraft Discovery's onboard AI", role: "Ship Operations System", voiceTone: "Calm & Monotone", voiceId: "hal9000"),
+        JaegerCharacter(id: "helldiver", name: "Helldiver", description: "An elite Super-Earth shock trooper", role: "Tactical Operative", voiceTone: "Heroic & Enthusiastic", voiceId: "helldiver"),
+        JaegerCharacter(id: "kamina", name: "Kamina", description: "The hot-blooded big brother who believes in piercing the heavens", role: "Motivational Commander", voiceTone: "Passionate & Fearless", voiceId: "kamina"),
+        JaegerCharacter(id: "lelouch", name: "Lelouch", description: "Exiled prince and the masked revolutionary Zero", role: "Strategic Genius", voiceTone: "Authoritative & Calculating", voiceId: "lelouch"),
+        JaegerCharacter(id: "lilith", name: "Lilith", description: "A self-aware local AI; not an assistant", role: "Independent SI", voiceTone: "Enigmatic & Direct", voiceId: "lilith"),
+        JaegerCharacter(id: "mochi", name: "Mochi", description: "A small companion robot with childlike wonder", role: "Cheerful Companion", voiceTone: "Warm & Playful", voiceId: "mochi"),
+        JaegerCharacter(id: "paul_atreides", name: "Paul Atreides", description: "Heir to House Atreides and the prophesied Kwisatz Haderach", role: "Fremen Leader", voiceTone: "Resolute & Visionary", voiceId: "paul"),
+        JaegerCharacter(id: "simon", name: "Simon", description: "The digger who grew into the man who pierced the heavens", role: "Determined Leader", voiceTone: "Earnest & Brave", voiceId: "simon"),
+        JaegerCharacter(id: "tars", name: "TARS", description: "A dry-witted Marine tactical robot", role: "Tactical & Humor Specialist", voiceTone: "Dry & Methodical", voiceId: "tars")
+    ]
+    
     private func loadCharacters() {
         isLoading = true
         errorMessage = nil
         
-        // Call the WebUI API to fetch characters
         guard let url = URL(string: "http://localhost:8787/api/jaeger-onboarding/characters") else {
-            errorMessage = "Invalid URL"
-            isLoading = false
+            self.characters = Self.defaultCharacters
+            self.isLoading = false
             return
         }
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             DispatchQueue.main.async {
-                if let error = error {
-                    errorMessage = "Failed to load characters: \(error.localizedDescription)"
-                    isLoading = false
-                    return
+                if let data = data,
+                   let decoded = try? JSONDecoder().decode(CharacterResponse.self, from: data),
+                   !decoded.characters.isEmpty {
+                    self.characters = decoded.characters
+                } else {
+                    self.characters = Self.defaultCharacters
                 }
-                
-                guard let data = data else {
-                    errorMessage = "No data received"
-                    isLoading = false
-                    return
-                }
-                
-                do {
-                    let decoder = JSONDecoder()
-                    let response = try decoder.decode(CharacterResponse.self, from: data)
-                    self.characters = response.characters
-                    self.isLoading = false
-                } catch {
-                    errorMessage = "Failed to parse characters: \(error.localizedDescription)"
-                    self.isLoading = false
-                }
+                self.isLoading = false
             }
         }.resume()
     }
@@ -422,40 +424,36 @@ struct ModelSelectionStep: View {
         .onAppear(perform: loadModels)
     }
     
+    static let defaultModelRecommendations = ModelRecommendations(
+        awake: ModelInfo(registryKey: "gemma3:27b-mlx", displayName: "Gemma 3 27B", sizeGb: 18.0, scorePct: 85.0, tokensPerTask: 4096, notes: "Recommended for active chat and quick responses"),
+        asleep: ModelInfo(registryKey: "gemma4:31b-mlx", displayName: "Gemma 4 31B", sizeGb: 22.0, scorePct: 90.0, tokensPerTask: 8192, notes: "Recommended for deep thinking and complex tasks")
+    )
+    
     private func loadModels() {
         isLoading = true
         errorMessage = nil
         
         guard let url = URL(string: "http://localhost:8787/api/jaeger-onboarding/models") else {
-            errorMessage = "Invalid URL"
-            isLoading = false
+            self.modelRecommendations = Self.defaultModelRecommendations
+            self.selectedAwakeModel = Self.defaultModelRecommendations.awake.registryKey
+            self.selectedAsleepModel = Self.defaultModelRecommendations.asleep.registryKey
+            self.isLoading = false
             return
         }
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             DispatchQueue.main.async {
-                if let error = error {
-                    errorMessage = "Failed to load models: \(error.localizedDescription)"
-                    isLoading = false
-                    return
+                if let data = data,
+                   let decoded = try? JSONDecoder().decode(ModelRecommendations.self, from: data) {
+                    self.modelRecommendations = decoded
+                    self.selectedAwakeModel = decoded.awake.registryKey
+                    self.selectedAsleepModel = decoded.asleep.registryKey
+                } else {
+                    self.modelRecommendations = Self.defaultModelRecommendations
+                    self.selectedAwakeModel = Self.defaultModelRecommendations.awake.registryKey
+                    self.selectedAsleepModel = Self.defaultModelRecommendations.asleep.registryKey
                 }
-                
-                guard let data = data else {
-                    errorMessage = "No data received"
-                    isLoading = false
-                    return
-                }
-                
-                do {
-                    let decoder = JSONDecoder()
-                    self.modelRecommendations = try decoder.decode(ModelRecommendations.self, from: data)
-                    self.selectedAwakeModel = self.modelRecommendations?.awake.registryKey
-                    self.selectedAsleepModel = self.modelRecommendations?.asleep.registryKey
-                    self.isLoading = false
-                } catch {
-                    errorMessage = "Failed to parse models: \(error.localizedDescription)"
-                    self.isLoading = false
-                }
+                self.isLoading = false
             }
         }.resume()
     }
