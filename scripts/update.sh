@@ -29,7 +29,7 @@ else
 fi
 
 info "Re-initializing ARES environment (no-start mode)..."
-if bash install.sh --no-start; then
+if bash install.sh --role primary --no-start; then
     ok "ARES successfully updated and re-initialized."
 else
     error "Failed to run install.sh after update."
