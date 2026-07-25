@@ -16,8 +16,7 @@ struct OnboardingView: View {
         "Welcome",
         "Name Assistant",
         "Model Brain",
-        "Network",
-        "Tailscale",
+        "Network & Remote",
         "Complete"
     ]
     
@@ -75,16 +74,11 @@ struct OnboardingView: View {
                         onBack: { currentStep = 1 }
                     )
                 case 3:
-                    NetworkAccessStep(
+                    NetworkAndRemoteStep(
                         onNext: { currentStep = 4 },
                         onBack: { currentStep = 2 }
                     )
                 case 4:
-                    TailscaleStep(
-                        onNext: { currentStep = 5 },
-                        onBack: { currentStep = 3 }
-                    )
-                case 5:
                     CompletionStep(
                         onFinish: {
                             Task {
@@ -94,6 +88,7 @@ struct OnboardingView: View {
                                     asleepModel: onboardingManager.selectedAsleepModel ?? "llama3.2:1b"
                                 )
                                 onboardingManager.markCompleted()
+                                await WebUIServerManager.shared.start()
                                 NSApp.setActivationPolicy(.regular)
                                 NSApp.activate(ignoringOtherApps: true)
                             }
@@ -632,40 +627,40 @@ struct BrainModelStep: View {
     }
 }
 
-// MARK: - Step 3: Network Access Step
+// MARK: - Step 3: Network & Remote Access Step
 
-struct NetworkAccessStep: View {
+struct NetworkAndRemoteStep: View {
     var onNext: () -> Void
     var onBack: () -> Void
     
     @ObservedObject private var manager = OnboardingManager.shared
     
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Where do you want to talk to your assistant?")
+        VStack(spacing: 18) {
+            Text("Network & Remote Access")
                 .font(.title2)
                 .fontWeight(.bold)
             
-            Text("Do you want to only talk in the Mac app on device, or would you like to talk to it over the network?")
+            Text("Choose where you want to talk to your assistant and enable remote access.")
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 500)
+                .frame(maxWidth: 520)
             
-            VStack(spacing: 14) {
+            VStack(spacing: 12) {
                 // Card 1: Local Mac App
                 Button(action: {
                     manager.networkMode = "local"
                 }) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
                         Image(systemName: "laptopcomputer")
-                            .font(.system(size: 32))
+                            .font(.system(size: 28))
                             .foregroundColor(.blue)
-                            .frame(width: 40)
+                            .frame(width: 36)
                         
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("On-Device Mac App Only")
                                 .font(.headline)
-                            Text("Binds WebUI server to local loopback (127.0.0.1). Maximum privacy; accessible only on this Mac.")
+                            Text("Binds WebUI server to local loopback (127.0.0.1). Maximum privacy.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -673,10 +668,10 @@ struct NetworkAccessStep: View {
                         Spacer()
                         
                         Image(systemName: manager.networkMode == "local" ? "checkmark.circle.fill" : "circle")
-                            .font(.title2)
+                            .font(.title3)
                             .foregroundColor(manager.networkMode == "local" ? .blue : .gray)
                     }
-                    .padding(16)
+                    .padding(12)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(manager.networkMode == "local" ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.networkMode == "local" ? 2 : 1)
@@ -689,16 +684,16 @@ struct NetworkAccessStep: View {
                 Button(action: {
                     manager.networkMode = "network"
                 }) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
                         Image(systemName: "network")
-                            .font(.system(size: 32))
+                            .font(.system(size: 28))
                             .foregroundColor(.green)
-                            .frame(width: 40)
+                            .frame(width: 36)
                         
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("Over the Network (WebUI Server)")
                                 .font(.headline)
-                            Text("Binds WebUI server to network IP (0.0.0.0). Access your assistant from any browser on your home network.")
+                            Text("Binds WebUI server to network IP (0.0.0.0). Access from any browser on home network.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -706,10 +701,10 @@ struct NetworkAccessStep: View {
                         Spacer()
                         
                         Image(systemName: manager.networkMode == "network" ? "checkmark.circle.fill" : "circle")
-                            .font(.title2)
+                            .font(.title3)
                             .foregroundColor(manager.networkMode == "network" ? .green : .gray)
                     }
-                    .padding(16)
+                    .padding(12)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(manager.networkMode == "network" ? Color.green : Color.gray.opacity(0.3), lineWidth: manager.networkMode == "network" ? 2 : 1)
@@ -718,9 +713,39 @@ struct NetworkAccessStep: View {
                 }
                 .buttonStyle(.plain)
                 
-                Toggle("Auto-launch WebUI server when ARES opens", isOn: $manager.autoLaunchWebUI)
-                    .font(.subheadline)
-                    .padding(.top, 8)
+                Divider().padding(.vertical, 2)
+                
+                // Card 3: Tailscale Remote Access
+                Button(action: {
+                    manager.enableTailscale.toggle()
+                }) {
+                    HStack(spacing: 14) {
+                        Image(systemName: "globe.americas.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.purple)
+                            .frame(width: 36)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Tailscale Remote Access")
+                                .font(.headline)
+                            Text("Reach your assistant securely from any external device anywhere over Tailscale.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: $manager.enableTailscale)
+                            .labelsHidden()
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(manager.enableTailscale ? Color.purple : Color.gray.opacity(0.3), lineWidth: manager.enableTailscale ? 2 : 1)
+                            .background(Color(NSColor.controlBackgroundColor))
+                    )
+                }
+                .buttonStyle(.plain)
             }
             .frame(maxWidth: 520)
             
@@ -736,91 +761,6 @@ struct NetworkAccessStep: View {
                     Text("Continue")
                         .fontWeight(.semibold)
                         .frame(width: 120)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .frame(maxWidth: 520)
-        }
-        .padding()
-    }
-}
-
-// MARK: - Step 4: Tailscale Step
-
-struct TailscaleStep: View {
-    var onNext: () -> Void
-    var onBack: () -> Void
-    
-    @ObservedObject private var manager = OnboardingManager.shared
-    
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Reach your assistant anywhere")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text("Do you want to reach this on external devices anywhere?")
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            
-            VStack(spacing: 16) {
-                Button(action: {
-                    manager.enableTailscale.toggle()
-                }) {
-                    HStack(spacing: 16) {
-                        Image(systemName: "globe.americas.fill")
-                            .font(.system(size: 36))
-                            .foregroundColor(.purple)
-                            .frame(width: 44)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Enable Tailscale Remote Access")
-                                .font(.headline)
-                            Text("Connect securely to your assistant over a private Tailscale mesh network from any phone, laptop, or browser worldwide.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Toggle("", isOn: $manager.enableTailscale)
-                            .labelsHidden()
-                    }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(manager.enableTailscale ? Color.purple : Color.gray.opacity(0.3), lineWidth: manager.enableTailscale ? 2 : 1)
-                            .background(Color(NSColor.controlBackgroundColor))
-                    )
-                }
-                .buttonStyle(.plain)
-                
-                if manager.enableTailscale {
-                    HStack(spacing: 8) {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.purple)
-                        Text("Tailscale integration will expose your WebUI to your authenticated Tailnet.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.1)))
-                }
-            }
-            .frame(maxWidth: 520)
-            
-            Spacer()
-            
-            HStack {
-                Button("Back", action: onBack)
-                    .buttonStyle(.bordered)
-                
-                Spacer()
-                
-                Button(action: onNext) {
-                    Text("Complete Setup")
-                        .fontWeight(.semibold)
-                        .frame(width: 140)
                 }
                 .buttonStyle(.borderedProminent)
             }

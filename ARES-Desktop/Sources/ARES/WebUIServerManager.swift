@@ -260,48 +260,20 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     private func findWebUIDir() -> URL? {
-        // 1. Packaged App resources check
-        if let bundlePath = Bundle.main.resourceURL {
-            let webuiPath = bundlePath.appendingPathComponent("webui")
-            if FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path) {
-                return webuiPath
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
+        
+        let candidatePaths = [
+            Bundle.main.resourceURL?.appendingPathComponent("webui"),
+            home.appendingPathComponent("GitHub/ARES/webui"),
+            home.appendingPathComponent(".ares/webui")
+        ]
+        
+        for path in candidatePaths.compactMap({ $0 }) {
+            let serverPy = path.appendingPathComponent("server.py").path
+            if fm.fileExists(atPath: serverPy) {
+                return path
             }
-        }
-        // 2. Traversal up from executable to support swift run / Xcode dev.
-        // Only accept a webui dir here if a venv also exists — otherwise the
-        // dev-checkout webui/ (which has server.py but no venv) silently wins
-        // over the production install at ~/.ares/webui where the venv lives.
-        var dir = Bundle.main.executableURL?.deletingLastPathComponent()
-        for _ in 0..<5 {
-            if let currentDir = dir {
-                let webuiPath = currentDir.appendingPathComponent("webui")
-                let hasServer = FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("server.py").path)
-                let hasVenv = FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent("venv/bin/python").path)
-                    || FileManager.default.fileExists(atPath: webuiPath.appendingPathComponent(".venv/bin/python").path)
-                if hasServer && hasVenv {
-                    return webuiPath
-                }
-                dir = currentDir.deletingLastPathComponent()
-            }
-        }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        // 3. Dev checkout / git install location
-        let devPath = home.appendingPathComponent("GitHub/ARES/webui")
-        if FileManager.default.fileExists(atPath: devPath.path) {
-            return devPath
-        }
-        // 4. ARES_HOME override — respect explicit install location
-        if let aresHome = ProcessInfo.processInfo.environment["ARES_HOME"],
-           !aresHome.isEmpty {
-            let overridePath = URL(fileURLWithPath: aresHome).appendingPathComponent("webui")
-            if FileManager.default.fileExists(atPath: overridePath.path) {
-                return overridePath
-            }
-        }
-        // 5. Fallback install
-        let prodPath = home.appendingPathComponent(".ares/webui")
-        if FileManager.default.fileExists(atPath: prodPath.path) {
-            return prodPath
         }
         return nil
     }
