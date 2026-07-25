@@ -36,6 +36,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import { APP_ICON_URL } from "@/assets";
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
 import { aresApi } from "@/shared/ares-api";
@@ -68,7 +69,7 @@ const H = {
 
 // ARES Spartan Helmet - uses the actual icon from assets
 const SpartanHelmetSVG = () => (
-  <img src="/assets/ares-app-icon.png" alt="ARES Spartan Helmet" style={{ width: "72px", height: "72px", objectFit: "contain" }} />
+  <img src={APP_ICON_URL} alt="ARES Spartan Helmet" style={{ width: "72px", height: "72px", objectFit: "contain" }} />
 );
 
 function IconBtn({ children, title, onClick }: { children: React.ReactNode; title: string; onClick?: () => void }) {
