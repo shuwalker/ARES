@@ -8,6 +8,8 @@ credential files.
 from __future__ import annotations
 
 import os
+import shutil
+import urllib.request
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterable
@@ -38,6 +40,10 @@ PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
         "base_url": "http://localhost:11434",
         "api_key_env": None,
     },
+    "ollama-launch": {
+        "base_url": "http://127.0.0.1:11434/v1",
+        "api_key_env": None,
+    },
     "lmstudio": {
         "base_url": "http://localhost:1234/v1",
         "api_key_env": None,
@@ -49,6 +55,7 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "gemini": "gemini",
     "lmstudio": "lmstudio",
     "ollama": "ollama",
+    "ollama-launch": "ollama",
     "ollama-cloud": "ollama-cloud",
     "ollama-local": "ollama",
     "openai": "openai",
@@ -56,6 +63,66 @@ JROS_FALLBACK_PROVIDER_MAP: dict[str, str | None] = {
     "openai-codex": None,
     "xai-oauth": None,
 }
+
+
+def provider_runtime_status(provider: str, base_url: str | None = None) -> dict[str, Any]:
+    """Report provider runtime readiness without mutating configuration."""
+    normalized = str(provider or "").strip().lower()
+    if normalized in {"ollama", "ollama-launch", "ollama-local", "local"}:
+        endpoint = str(base_url or PROVIDER_PRESETS["ollama"]["base_url"] or "").strip().rstrip("/")
+        api_root = endpoint[:-3] if endpoint.endswith("/v1") else endpoint
+        installed = bool(shutil.which("ollama")) or any(
+            path.exists()
+            for path in (
+                Path("/Applications/Ollama.app"),
+                Path.home() / "Applications" / "Ollama.app",
+            )
+        )
+        try:
+            with urllib.request.urlopen(f"{api_root}/api/tags", timeout=1.5) as response:
+                payload = yaml.safe_load(response.read().decode("utf-8")) or {}
+            models = payload.get("models") if isinstance(payload, dict) else []
+            return {
+                "provider": normalized,
+                "available": True,
+                "state": "running",
+                "installed": installed,
+                "model_count": len(models) if isinstance(models, list) else 0,
+                "base_url": endpoint,
+            }
+        except Exception:
+            return {
+                "provider": normalized,
+                "available": False,
+                "state": "installed_not_running" if installed else "not_installed",
+                "installed": installed,
+                "model_count": 0,
+                "base_url": endpoint,
+            }
+    if normalized == "ollama-cloud":
+        try:
+            from api.providers import provider_has_usable_credential
+
+            configured = bool(provider_has_usable_credential("ollama-cloud"))
+        except Exception:
+            configured = bool(os.getenv("OLLAMA_API_KEY", "").strip())
+        return {
+            "provider": normalized,
+            "available": configured,
+            "state": "configured" if configured else "missing_credentials",
+            "installed": True,
+            "model_count": None,
+            "base_url": str(base_url or PROVIDER_PRESETS[normalized]["base_url"] or "").strip(),
+        }
+    return {
+        "provider": normalized,
+        "available": True,
+        "state": "configured",
+        "installed": True,
+        "model_count": None,
+        "base_url": str(base_url or "").strip() or None,
+    }
+
 
 def resolve_jros_config_path() -> Path:
     """Compatibility wrapper for callers/tests; use api.jros_paths.jros_config_path."""
@@ -254,9 +321,12 @@ def sync_provider(
     if "jros" in normalized_targets:
         path = expand_path(jros_config_path) if jros_config_path is not None else resolve_jros_config_path()
         current = load_yaml_config(path)
+        jros_provider = JROS_FALLBACK_PROVIDER_MAP.get(normalized_provider, normalized_provider)
+        if not jros_provider:
+            raise ValueError(f"Provider {normalized_provider} is not supported by JROS")
         updated = _sync_jros_config(
             current,
-            normalized_provider,
+            jros_provider,
             normalized_model,
             resolved_base_url,
             resolved_api_key_env,

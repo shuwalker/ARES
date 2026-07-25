@@ -182,27 +182,27 @@ def test_sync_main_model_to_jros_handles_exception(monkeypatch):
     assert len(called_reset) == 0
 
 
-def test_characters_list_api_endpoint_handles_missing_jros_dir(monkeypatch):
+def test_characters_list_api_endpoint_handles_missing_jros_dir(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     from fastapi_app.main import create_app
 
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    monkeypatch.setattr("api.characters._character_dir", lambda: tmp_path / "missing")
     with TestClient(create_app()) as client:
         response = client.get("/api/ares/characters")
 
-    assert response.status_code == 400
-    assert "Failed to list characters" in response.json()["error"]
-    assert "ARES_JROS_DIR is not set" in response.json()["error"]
+    assert response.status_code == 200
+    assert response.json()["characters"] == []
 
 
-def test_character_detail_api_endpoint_handles_missing_jros_dir(monkeypatch):
+def test_character_detail_api_endpoint_handles_missing_jros_dir(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
     from fastapi_app.main import create_app
 
     monkeypatch.setattr("api.auth.is_auth_enabled", lambda: False)
+    monkeypatch.setattr("api.characters._character_dir", lambda: tmp_path / "missing")
     with TestClient(create_app()) as client:
         response = client.get("/api/ares/character?id=test-character")
 
-    assert response.status_code == 400
-    assert "Failed to load character" in response.json()["error"]
-    assert "ARES_JROS_DIR is not set" in response.json()["error"]
+    assert response.status_code == 404
+    assert response.json()["error"] == "Character not found"
