@@ -20,6 +20,7 @@ import logging
 import os
 import shutil
 import time
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,18 @@ def is_jros_available() -> bool:
 def is_hermes_worker_available() -> bool:
     """Whether Jaeger may delegate a subtask to an installed Hermes worker."""
     command = os.getenv("JAEGER_HERMES_COMMAND", "hermes").strip() or "hermes"
-    return shutil.which(command) is not None
+    if shutil.which(command) is not None:
+        return True
+    if command == "hermes":
+        return any(
+            candidate.is_file()
+            for candidate in (
+                Path.home() / ".local" / "bin" / "hermes",
+                Path("/usr/local/bin/hermes"),
+                Path("/opt/homebrew/bin/hermes"),
+            )
+        )
+    return False
 
 
 def backend_status() -> dict:
