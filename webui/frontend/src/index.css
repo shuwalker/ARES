@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/island-backdrop.css";
 
 @font-face {
   font-family: "InterVariable";
@@ -41,6 +42,12 @@
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-shell: var(--shell);
+  --color-shell-deep: var(--shell-deep);
+  --color-shell-raised: var(--shell-raised);
+  --color-edge: var(--edge);
+  --color-edge-strong: var(--edge-strong);
+  --color-edge-emphasis: var(--edge-emphasis);
   --color-status-available: var(--status-available);
   --color-status-limited: var(--status-limited);
   --color-status-unavailable: var(--status-unavailable);
@@ -78,6 +85,20 @@
   --status-limited: oklch(0.78 0.15 75);
   --status-unavailable: oklch(0.63 0.025 255);
   --status-task-done: var(--status-available);
+
+  /* Command-center shell chrome.
+   *
+   * These are the exact hex values the shell has always used inline, lifted into
+   * tokens so the island backdrop can make them translucent in one place. The
+   * shell palette is warm-neutral and deliberately distinct from the cool
+   * `--card` / `--background` scale — do not "unify" them without a design call,
+   * as that visibly recolors the whole workbench. */
+  --shell-deep: #111210;
+  --shell: #151614;
+  --shell-raised: #1b1c1a;
+  --edge: #343631;
+  --edge-strong: #4a4d45;
+  --edge-emphasis: #71736b;
   --rad-2: 2px;
   --rad-3: 3px;
   --rad-4: 4px;

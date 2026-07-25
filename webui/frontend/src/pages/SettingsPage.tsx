@@ -41,6 +41,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { useTheme } from "@/context/ThemeContext";
+import {
+  applySettings as applyIslandSettings,
+  readSettings as readIslandSettings,
+  writeSettings as writeIslandSettings,
+  type IslandBackdropSettings,
+  type IslandPosition,
+} from "@/island-backdrop";
 import { cn } from "@/lib/utils";
 import { readableError } from "@/shared/api-client";
 import { aresApi } from "@/shared/ares-api";
@@ -265,6 +272,18 @@ export function SettingsPage() {
   // Device-local prefs
   const [density, setDensity] = useState<Density>(() => readDensity());
   const [menubarHints, setMenubarHints] = useState(() => readMenubarHints());
+  const [island, setIsland] = useState<IslandBackdropSettings>(() => readIslandSettings());
+
+  // The backdrop is pure presentation held in localStorage, so it applies
+  // immediately rather than round-tripping through the settings API.
+  const updateIsland = useCallback((patch: Partial<IslandBackdropSettings>) => {
+    setIsland((current) => {
+      const next = { ...current, ...patch };
+      applyIslandSettings(next);
+      writeIslandSettings(next);
+      return next;
+    });
+  }, []);
 
   // Auth
   const [newPassword, setNewPassword] = useState("");
@@ -682,6 +701,11 @@ export function SettingsPage() {
       { section: "appearance", label: "Theme", keywords: "theme light dark system color scheme" },
       { section: "appearance", label: "Skin", keywords: "skin accent graphite slate poseidon" },
       { section: "appearance", label: "Font size", keywords: "font size accessibility large small" },
+      {
+        section: "appearance",
+        label: "Island backdrop",
+        keywords: "island backdrop wallpaper glass glassmorphism blur transparency background",
+      },
       { section: "appearance", label: "Activity display", keywords: "worklog transparent stream tools thinking activity" },
       { section: "appearance", label: "Auto-follow", keywords: "scroll follow streaming" },
       { section: "appearance", label: "User markdown", keywords: "markdown user messages" },
@@ -828,6 +852,52 @@ export function SettingsPage() {
               <SelectItem value="compact">Compact</SelectItem>
             </SelectContent>
           </Select>
+        </Field>
+
+        <Field
+          label="Island backdrop"
+          description="Renders the shell as translucent glass over the ARES island wallpaper. Browser-local — it does not sync to other devices."
+        >
+          <div className="grid gap-3">
+            <ToggleField
+              id="island-backdrop-enabled"
+              label="Enable island backdrop"
+              description="In progress: some panels are still opaque and will not turn to glass yet."
+              checked={island.enabled}
+              onChange={(enabled) => updateIsland({ enabled })}
+            />
+            <div className={cn("grid gap-3", !island.enabled && "pointer-events-none opacity-50")}>
+              <div className="grid gap-1.5">
+                <Label htmlFor="island-surface-opacity" className="text-xs text-muted-foreground">
+                  Surface opacity — {island.surfaceOpacity}%
+                </Label>
+                <input
+                  id="island-surface-opacity"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={island.surfaceOpacity}
+                  disabled={!island.enabled}
+                  onChange={(event) => updateIsland({ surfaceOpacity: Number(event.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <Select
+                value={island.position}
+                onValueChange={(position: IslandPosition) => updateIsland({ position })}
+              >
+                <SelectTrigger aria-label="Wallpaper anchor">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="top">Anchor top</SelectItem>
+                  <SelectItem value="center">Anchor center</SelectItem>
+                  <SelectItem value="bottom">Anchor bottom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </Field>
 
         <Field

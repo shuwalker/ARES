@@ -1,0 +1,101 @@
+/* ARES island backdrop — glassmorphism shell over the island wallpaper.
+ *
+ * Port of the legacy engine in attic/island-backdrop-legacy/, which targeted the
+ * removed vanilla-JS UI in webui/static/ and drove ~40 hand-listed selectors with
+ * !important. The React frontend is token-driven, so this port instead reopens
+ * the design tokens themselves: every `bg-card` / `bg-background` / `bg-muted`
+ * consumer becomes translucent at once, with no per-component overrides and no
+ * specificity war.
+ *
+ * Everything here is gated on `html.island-backdrop`. With the class absent this
+ * file contributes no matching rules, so the default appearance is byte-identical
+ * to the current UI.
+ *
+ * Known gap (see docs/ui/glassmorphism-plan.md, phase 2): 62 surfaces still use
+ * hardcoded `bg-[#rrggbb]` arbitrary values instead of tokens. Those stay opaque
+ * and must be converted to tokens before the effect reads as complete.
+ */
+
+:root.island-backdrop {
+  /* Tuning surface. Opacity and blur match the legacy engine's defaults
+     (42% fill, 18px blur, saturate 1.2) so the recovered look is preserved. */
+  /* Relative so Vite resolves and content-hashes it from src/assets/ — a
+     renamed or missing wallpaper then fails the build instead of shipping a
+     broken background. See src/assets/index.ts. */
+  --island-image: url("../assets/ares-island-wide.png");
+  --island-surface-opacity: 42%;
+  --island-position: center top;
+  --island-blur: 18px;
+  --island-saturate: 1.2;
+
+  /* The wallpaper lives on the root element rather than a ::before layer: the
+     base stylesheet paints `body { background: var(--background) }`, which would
+     occlude any negatively-stacked pseudo-element. */
+  background-color: oklch(0.16 0.012 255);
+  background-image: var(--island-image);
+  background-position: var(--island-position);
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Reopened tokens. Specificity (0,2,0) beats both `:root` and `.dark` (0,1,0),
+   so this wins regardless of import order. Base colors are copied verbatim from
+   index.css — translucency is the only change. */
+:root.island-backdrop {
+  --background: color-mix(in oklab, oklch(0.16 0.012 255) var(--island-surface-opacity), transparent);
+  --card: color-mix(in oklab, oklch(0.205 0.014 255) var(--island-surface-opacity), transparent);
+  --sidebar: color-mix(in oklab, oklch(0.185 0.014 255) var(--island-surface-opacity), transparent);
+  --secondary: color-mix(in oklab, oklch(0.255 0.014 255) var(--island-surface-opacity), transparent);
+  --muted: color-mix(in oklab, oklch(0.255 0.014 255) var(--island-surface-opacity), transparent);
+  --accent: color-mix(in oklab, oklch(0.285 0.025 252) var(--island-surface-opacity), transparent);
+  --border: color-mix(in oklab, oklch(0.34 0.018 255) 70%, transparent);
+
+  /* --popover stays opaque on purpose: dropdowns and command menus float over
+     arbitrary content, and a translucent one is unreadable rather than pretty. */
+
+  /* Command-center shell chrome. Base hexes are copied verbatim from index.css
+     so the only difference from the default shell is alpha. */
+  --shell-deep: color-mix(in srgb, #111210 var(--island-surface-opacity), transparent);
+  --shell: color-mix(in srgb, #151614 var(--island-surface-opacity), transparent);
+  --shell-raised: color-mix(in srgb, #1b1c1a var(--island-surface-opacity), transparent);
+  --edge: color-mix(in srgb, #343631 70%, transparent);
+}
+
+/* The wallpaper is the root's own background, so body must not repaint over it. */
+:root.island-backdrop body {
+  background: transparent;
+}
+
+/* Exactly one blur pass, at the app root.
+ *
+ * The legacy engine's hardest-won lesson (its header calls out "nested
+ * backdrop-filter blur glitches" and "double-blur box outlines") is that blur
+ * must be applied once. #root spans the viewport and its backdrop is the
+ * wallpaper, so a single filter here frosts everything the translucent tokens
+ * reveal. Do not add backdrop-filter to individual panes.
+ */
+:root.island-backdrop #root {
+  backdrop-filter: blur(var(--island-blur)) saturate(var(--island-saturate));
+  -webkit-backdrop-filter: blur(var(--island-blur)) saturate(var(--island-saturate));
+}
+
+/* Wallpaper anchoring, mirroring the legacy position modes. */
+:root.island-backdrop.island-pos-top {
+  --island-position: center top;
+}
+:root.island-backdrop.island-pos-center {
+  --island-position: center center;
+}
+:root.island-backdrop.island-pos-bottom {
+  --island-position: center bottom;
+}
+
+/* Respect a reduced-transparency preference: keep the wallpaper, drop the
+   translucency and the blur so the shell stays legible. */
+@media (prefers-reduced-transparency: reduce) {
+  :root.island-backdrop {
+    --island-surface-opacity: 100%;
+    --island-blur: 0px;
+  }
+}
