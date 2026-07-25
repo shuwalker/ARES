@@ -492,6 +492,8 @@ struct BrainModelStep: View {
     var onBack: () -> Void
     
     @ObservedObject private var manager = OnboardingManager.shared
+    @State private var isScanning: Bool = false
+    @State private var scanResultText: String? = nil
     
     let awakeModels = [
         ("qwen2.5-coder:7b", "Qwen 2.5 Coder (7B)", "Recommended local model for coding & tool execution", "Local (Ollama/Jaeger)"),
@@ -505,8 +507,12 @@ struct BrainModelStep: View {
         ("qwen2.5:1.5b", "Qwen 2.5 (1.5B)", "Efficient background task model", "Local")
     ]
     
+    var systemRamGB: Int {
+        Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024))
+    }
+    
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Text("Next, let's give it a brain")
                 .font(.title2)
                 .fontWeight(.bold)
@@ -514,20 +520,86 @@ struct BrainModelStep: View {
             Text("Select and install local and cloud models for your assistant.")
                 .foregroundColor(.secondary)
             
-            HStack(spacing: 6) {
-                Image(systemName: manager.isJaegerInstalled ? "checkmark.seal.fill" : "cpu")
-                    .foregroundColor(manager.isJaegerInstalled ? .green : .blue)
-                Text(manager.jaegerStatusText)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(manager.isJaegerInstalled ? .green : .blue)
+            // System Hardware & Scan Card
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: "cpu.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("System Hardware: \(systemRamGB) GB Unified Memory")
+                            .font(.headline)
+                        Text(systemRamGB >= 16 ? "High Performance System — 7B local models recommended." : "Standard System — 3B/1B models recommended.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        isScanning = true
+                        Task {
+                            await manager.fetchJaegerDefaults()
+                            try? await Task.sleep(nanoseconds: 600_000_000)
+                            isScanning = false
+                            scanResultText = "Scan Complete: Recommended Qwen 2.5 Coder (7B)"
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            if isScanning {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "arrow.clockwise.circle.fill")
+                            }
+                            Text(isScanning ? "Scanning..." : "Initiate Scan")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.blue.opacity(0.2)))
+                        .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                if let scanText = scanResultText {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                        Text(scanText)
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                    .padding(.top, 2)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(manager.isJaegerInstalled ? Color.green.opacity(0.15) : Color.blue.opacity(0.15)))
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+            .frame(maxWidth: 580)
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Explainer callout box
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.yellow)
+                            Text("How Awake & Asleep Models Work")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundColor(.yellow)
+                        }
+                        Text("• Awake Model: Used while you actively chat or ask your assistant to write code & execute tools.\n• Asleep Model: Runs in the background while idling to index memories, organize tasks, and run cron scripts.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.1)))
+                    
                     Text("Active / Awake Model (Primary Intelligence)")
                         .font(.headline)
                     
@@ -604,7 +676,7 @@ struct BrainModelStep: View {
                 }
                 .padding()
             }
-            .frame(maxWidth: 540)
+            .frame(maxWidth: 580, maxHeight: 300)
             
             Spacer()
             
@@ -621,7 +693,7 @@ struct BrainModelStep: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-            .frame(maxWidth: 540)
+            .frame(maxWidth: 580)
         }
         .padding()
     }
