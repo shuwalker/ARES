@@ -14,18 +14,17 @@ runtime status, and approval surfaces.
 - Settings expose:
   - Web UI host, port, auto-launch, and reload/dev mode.
   - Server health and recent logs.
-  - Active backend selector for live adapters (Hermes, JROS, CLI/cloud).
-  - Hermes and JROS gateway URL/key fields.
+  - Active backend selector for live adapters (JROS, CLI/cloud).
+  - Gateway URL/key fields.
   - LAN and Tailscale URLs with QR code for phone/tablet access.
   - Browser microphone constraints for remote HTTP access.
   - Pending approvals and recent audit log entries.
 
 ## Responsibility Boundary
 
-ARES Desktop does not replace Hermes, JROS, or the Web UI. It is a native
+ARES Desktop does not replace JROS or the Web UI. It is a native
 presentation and control layer over those systems:
 
-- Hermes owns Hermes runtime state.
 - JROS owns JROS runtime, embodiment, and canonical character/persona state.
 - ARES projects active runtime identity and owns user-facing presentation,
   permissions, settings, server control, and continuity surfaces.
@@ -39,7 +38,7 @@ swift run ARES
 ```
 
 The app starts the Web UI automatically when `Start WebUI Server on App Launch`
-is enabled. Server launch exports the native Hermes/JROS gateway settings into
+is enabled. Server launch exports the native gateway settings into
 the Web UI process environment.
 
 ## Archived Notes

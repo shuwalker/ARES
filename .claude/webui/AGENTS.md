@@ -37,9 +37,9 @@ before running commands or inspecting logs.
 
 Follow that checklist's safety rules:
 
-- use isolated `HERMES_HOME` and `HERMES_WEBUI_STATE_DIR` for trials unless the
+- use isolated `ARES_HOME` and `ARES_WEBUI_STATE_DIR` for trials unless the
   human explicitly asks to use real state
-- do not delete or overwrite a real `~/.hermes` directory without explicit
+- do not delete or overwrite a real worker home directory without explicit
   approval
 - do not print API keys, OAuth tokens, cookies, full `.env` files, full
   `auth.json` files, or password hashes
@@ -53,7 +53,7 @@ Follow that checklist's safety rules:
 - For local pytest runs, use `./scripts/test.sh` instead of bare `python3`,
   `python -m pytest`, or `pytest`. The script creates/uses the repo `.venv`,
   pins execution to Python 3.11-3.13, and installs missing dev test dependencies.
-  `HERMES_WEBUI_TEST_PYTHON` selects the supported base interpreter used to
+  `ARES_WEBUI_TEST_PYTHON` selects the supported base interpreter used to
   create or rebuild `.venv`; it must not install test dependencies into a
   system/Homebrew interpreter directly.
   If a direct pytest invocation reports an unsupported interpreter, rerun through
@@ -73,7 +73,7 @@ Follow that checklist's safety rules:
 - For runtime, streaming, recovery, replay, compression, or sidebar metadata
   changes, name the state layer being mutated and prove the relevant invariant.
 - For Docker build changes in `docker_init.bash`, mirror directory exclusions
-  in both the `rsync` and `cp -a` paths — `/opt/hermes` may contain subdirectories
+  in both the `rsync` and `cp -a` paths — `/opt/ares` may contain subdirectories
   with restricted permissions (e.g. `.playwright/`).
 
 ## Local state and secrets
@@ -85,9 +85,9 @@ unless you have confirmed the active state directories.
 Prefer isolated trial state for experiments:
 
 ```bash
-HERMES_HOME=/tmp/hermes-webui-agent-home \
-HERMES_WEBUI_STATE_DIR=/tmp/hermes-webui-agent-state \
-HERMES_WEBUI_PORT=8789 \
+ARES_HOME=/tmp/ares-webui-agent-home \
+ARES_WEBUI_STATE_DIR=/tmp/ares-webui-agent-state \
+ARES_WEBUI_PORT=8789 \
 python3 bootstrap.py
 ```
 

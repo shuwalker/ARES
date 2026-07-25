@@ -10,7 +10,7 @@ This document describes **how the running system actually works**: what happens
 when a message is sent, where conversation data lives, and which assumptions the
 code makes. FOUNDATION defines the product; this defines the machine.
 
-ARES's WebUI is a fork of Hermes WebUI (MIT, preserved in `webui/LICENSE`). Several
+ARES's WebUI is a fork of an upstream MIT WebUI (notice preserved in `webui/LICENSE`). Several
 runtime bugs have come from inherited code that assumed upstream's storage model.
 Section 6 lists the ones still outstanding.
 

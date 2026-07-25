@@ -58,7 +58,7 @@ part of the **Companion**, still not a worker.
 
 ## UI merge policy
 
-Liked elements from Scarf, HermesDesktop, Command Center, prototypes merge into
+Liked elements from Scarf, Command Center, prototypes merge into
 **one ARES app shell** for the Companion — not parallel products.
 
 ## Priority path

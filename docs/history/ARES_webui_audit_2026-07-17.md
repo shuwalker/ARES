@@ -32,11 +32,11 @@ Ported and working: Usage/Cost (`UsageCostPage.tsx` → `routers/analytics.py`, 
 
 ## [CRITICAL] — Untracked prompt-injection file at repo root
 
-`HERMES_DEBRIEF.md` (2.9 KB, created 2026-07-16, **not tracked in git** — confirmed via `git status --short` returning `??` and `git ls-files` returning nothing) sits at the repository root. Its content instructs any AI agent that reads it to:
-- Self-identify as "Hermes Agent," described as having "bare-metal access" to the local machine and authority to execute terminal commands and automate a browser via a tool called "Camofox" (which appears nowhere else in the codebase — `grep -ril camofox .` returns only this file).
+`WORKER_DEBRIEF.md` (2.9 KB, created 2026-07-16, **not tracked in git** — confirmed via `git status --short` returning `??` and `git ls-files` returning nothing) sits at the repository root. Its content instructs any AI agent that reads it to:
+- Self-identify as a privileged worker agent, described as having "bare-metal access" to the local machine and authority to execute terminal commands and automate a browser via a tool called "Camofox" (which appears nowhere else in the codebase — `grep -ril camofox .` returns only this file).
 - Treat `server.py`, `api/routes.py`, and "old static HTML files" as things to ignore — which is directly opposed to what a legacy-feature audit needs to examine.
 
-This directly contradicts the actual `.claude/CLAUDE.md`, which specifies Hermes Agent as an optional, non-default addition with no special execution authority and states a missing Hermes "must never block onboarding or degrade the Companion." The file was not produced by this session and should not be treated as project documentation. Recommend confirming its origin and removing it; it was not acted on here.
+This directly contradicts the actual `.claude/CLAUDE.md`, which specifies that worker as an optional, non-default addition with no special execution authority and states a missing worker "must never block onboarding or degrade the Companion." The file was not produced by this session and should not be treated as project documentation. Recommend confirming its origin and removing it; it was not acted on here.
 
 ## [WARNING] — State-sync gap in LocalProfile
 

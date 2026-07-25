@@ -7,7 +7,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
     public var sshHost: String
     public var sshPort: Int?
     public var sshUser: String
-    public var hermesProfile: String?
+    public var workerProfile: String?
     public var customARESHomePath: String?
     public var createdAt: Date
     public var updatedAt: Date
@@ -20,7 +20,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
         sshHost: String = "",
         sshPort: Int? = nil,
         sshUser: String = "",
-        hermesProfile: String? = nil,
+        workerProfile: String? = nil,
         customARESHomePath: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -32,7 +32,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
         self.sshHost = sshHost
         self.sshPort = sshPort
         self.sshUser = sshUser
-        self.hermesProfile = hermesProfile
+        self.workerProfile = workerProfile
         self.customARESHomePath = customARESHomePath
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -55,8 +55,8 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
     }
 
     public var trimmedARESProfile: String? {
-        guard let hermesProfile else { return nil }
-        let value = hermesProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let workerProfile else { return nil }
+        let value = workerProfile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
         guard value.caseInsensitiveCompare("default") != .orderedSame else { return nil }
         return value
@@ -94,10 +94,10 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
             return trimmedCustomARESHomePath
         }
         if let trimmedARESProfile {
-            return "~/.hermes/profiles/\(trimmedARESProfile)"
+            return "~/.ares/profiles/\(trimmedARESProfile)"
         }
 
-        return "~/.hermes"
+        return "~/.ares"
     }
 
     public var remoteSkillsPath: String {
@@ -109,7 +109,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
     }
 
     public var remoteKanbanHomePath: String {
-        "~/.hermes"
+        "~/.ares"
     }
 
     public var remoteKanbanDatabasePath: String {
@@ -122,7 +122,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
 
     public func applyingARESProfile(named profileName: String) -> ConnectionProfile {
         var copy = self
-        copy.hermesProfile = profileName
+        copy.workerProfile = profileName
         copy.customARESHomePath = nil
         return copy.updated()
     }
@@ -133,17 +133,17 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
         }
         if let trimmedARESProfile {
             let escapedProfile = trimmedARESProfile.escapedForDoubleQuotedShellArgument
-            return "$HOME/.hermes/profiles/\(escapedProfile)"
+            return "$HOME/.ares/profiles/\(escapedProfile)"
         }
 
-        return "$HOME/.hermes"
+        return "$HOME/.ares"
     }
 
     public var remoteARESSearchPathShellExpression: String {
         let entries = [
-            "\(remoteARESHomeShellExpression)/hermes-agent/venv/bin",
+            "\(remoteARESHomeShellExpression)/ares-agent/venv/bin",
             "$HOME/.local/bin",
-            "$HOME/.hermes/hermes-agent/venv/bin",
+            "$HOME/.ares/ares-agent/venv/bin",
             "$HOME/.cargo/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin",
@@ -160,7 +160,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
 
     public var remoteARESCommandPrefix: String {
         """
-        if [ -x "$HERMES_HOME/hermes-agent/venv/bin/hermes" ]; then HERMES_BIN="$HERMES_HOME/hermes-agent/venv/bin/hermes"; elif [ -x "$HOME/.local/bin/hermes" ]; then HERMES_BIN="$HOME/.local/bin/hermes"; elif [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ]; then HERMES_BIN="$HOME/.hermes/hermes-agent/venv/bin/hermes"; elif command -v hermes >/dev/null 2>&1; then HERMES_BIN="$(command -v hermes)"; else printf 'ARES CLI not found.\\n' >&2; exit 127; fi; "$HERMES_BIN"
+        if [ -x "$ARES_HOME/ares-agent/venv/bin/ares" ]; then ARES_BIN="$ARES_HOME/ares-agent/venv/bin/ares"; elif [ -x "$HOME/.local/bin/ares" ]; then ARES_BIN="$HOME/.local/bin/ares"; elif [ -x "$HOME/.ares/ares-agent/venv/bin/ares" ]; then ARES_BIN="$HOME/.ares/ares-agent/venv/bin/ares"; elif command -v ares >/dev/null 2>&1; then ARES_BIN="$(command -v ares)"; else printf 'ARES CLI not found.\\n' >&2; exit 127; fi; "$ARES_BIN"
         """
     }
 
@@ -171,7 +171,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
     }
 
     public func remoteServiceCommand(_ commandLine: String) -> String {
-        let exportCommand = "export HERMES_HOME=\"\(remoteARESHomeShellExpression)\""
+        let exportCommand = "export ARES_HOME=\"\(remoteARESHomeShellExpression)\""
         let pathCommand = "export PATH=\"\(remoteARESSearchPathShellExpression)\""
         let escapedCommand = commandLine.escapedForDoubleQuotedShellArgument
         let innerCommand = "\(exportCommand); \(pathCommand); exec /bin/sh -c \"\(escapedCommand)\""
@@ -183,14 +183,14 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
     }
 
     public func remoteShellBootstrapCommand(startupCommandLine: String? = nil) -> String {
-        let exportCommand = "export HERMES_HOME=\"\(remoteARESHomeShellExpression)\""
+        let exportCommand = "export ARES_HOME=\"\(remoteARESHomeShellExpression)\""
         let pathCommand = "export PATH=\"\(remoteARESSearchPathShellExpression)\""
 
         let innerCommand: String
         if let startupCommandLine,
            !startupCommandLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let startupSequence = """
-\(startupCommandLine); hermes_bootstrap_exit_code=$?; if [ "$hermes_bootstrap_exit_code" -ne 0 ]; then printf '\\n[ARES Desktop] Startup command exited with status %s.\\n' "$hermes_bootstrap_exit_code"; fi; exec "${SHELL:-/bin/zsh}" -l
+\(startupCommandLine); ares_bootstrap_exit_code=$?; if [ "$ares_bootstrap_exit_code" -ne 0 ]; then printf '\\n[ARES Desktop] Startup command exited with status %s.\\n' "$ares_bootstrap_exit_code"; fi; exec "${SHELL:-/bin/zsh}" -l
 """
             let escapedStartupCommand = startupSequence.escapedForDoubleQuotedShellArgument
             innerCommand = "\(exportCommand); \(pathCommand); exec \"${SHELL:-/bin/zsh}\" -lc \"\(escapedStartupCommand)\""
@@ -301,7 +301,7 @@ public struct ConnectionProfile: Codable, Identifiable, Equatable, Hashable, Sen
         copy.sshAlias = sshAlias.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.sshHost = sshHost.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.sshUser = sshUser.trimmingCharacters(in: .whitespacesAndNewlines)
-        copy.hermesProfile = trimmedARESProfile
+        copy.workerProfile = trimmedARESProfile
         copy.customARESHomePath = trimmedCustomARESHomePath
         if let sshPort = sshPort, sshPort <= 0 {
             copy.sshPort = nil

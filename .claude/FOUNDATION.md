@@ -179,7 +179,7 @@ metaphorical names such as "Cortex," "Orchestrator," "Meta-System," or
 | **WebUI** | Light remote client to the same controller over localhost, LAN, or trusted Tailscale. |
 | **CLI / terminal start** | Operator path to start/stop the controller without the GUI. |
 
-Historical UI experiments (Scarf, HermesDesktop, Command Center, prototypes)
+Historical UI experiments (Scarf, Command Center, prototypes)
 are **merge sources**, not parallel apps. Liked elements are integrated into
 one shell; superseded trees leave production after their capabilities are
 represented. Do not ship multiple entrypoints that fight each other.

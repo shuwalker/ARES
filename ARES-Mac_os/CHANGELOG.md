@@ -5,7 +5,7 @@
 ### Changed
 - **ARESCore library target split** (build-system only, no product behavior change)
   - 28 files moved from `Sources/ARES/` → `Sources/ARESCore/`: all Models, Discovery services, Hub Readers, UpdateCheckService, Utilities
-  - New `ARESEnvironment.swift` added to ARESCore with public `.hermes` path helpers
+  - New `ARESEnvironment.swift` added to ARESCore with public ARES home path helpers
   - All ARESCore types converted from `internal` to `public` access (1021 declarations)
   - All 58 files in `Sources/ARES/` now `import ARESCore`
   - `Package.swift` updated: `ARESCore` library target with `dependencies: []`, ARES executable depends on it, platforms include `.iOS(.v17)` alongside `.macOS(.v14)`, tests depend on both targets

@@ -23,7 +23,7 @@ Autonomous task discovery for ARES. Watches your work, infers tasks, and creates
 │  JaegerAI (Mind)                                            │
 │  - Picks up tasks from Kanban                               │
 │  - Plans execution via agent loop                           │
-│  - Routes to workers (Hermes, Claude, etc.)                 │
+│  - Routes to workers (JROS, Claude, etc.)                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 

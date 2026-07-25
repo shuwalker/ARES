@@ -5,7 +5,7 @@
 
 ## Context
 
-Upstream Hermes WebUI has no translation layer, and does not need one: one team
+The upstream WebUI has no translation layer, and does not need one: one team
 owns both the agent and the UI, so payload shapes simply match.
 
 ARES aggregates several runtimes whose payloads differ in field names, source
@@ -23,7 +23,7 @@ contracts. FOUNDATION states this as a hard boundary.
 Good:
 
 - Adding a worker is a translator change, not a component change.
-- One session row renders identically whether it came from Claude Code, Hermes,
+- One session row renders identically whether it came from Claude Code, a CLI worker,
   or the WebUI.
 - The normalization has one place to be tested — `translators.test.ts`.
 

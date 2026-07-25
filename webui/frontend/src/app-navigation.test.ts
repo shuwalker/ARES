@@ -4,8 +4,15 @@ import { navigationSections, workspaceRoutes } from "@/app-navigation";
 
 describe("app navigation registry", () => {
   it("is the single unique source for routed sidebar tabs", () => {
-    expect(navigationSections.map((section) => section.id)).toEqual(["core", "resources", "system"]);
-    expect(workspaceRoutes.length).toBe(26);
+    expect(navigationSections.map((section) => section.id)).toEqual([
+      "chat",
+      "companion",
+      "self",
+      "workshop",
+      "library",
+      "system",
+    ]);
+    expect(workspaceRoutes.length).toBe(34);
     expect(new Set(workspaceRoutes.map((route) => route.path)).size).toBe(workspaceRoutes.length);
     expect(new Set(workspaceRoutes.map((route) => route.to)).size).toBe(workspaceRoutes.length);
     for (const route of workspaceRoutes) {

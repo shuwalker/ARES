@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-20  
 **Branch**: `wip/odysseus-import`  
-**Auditor**: Hermes Agent (codex/local model)
+**Auditor**: CLI agent (codex/local model)
 
 ---
 
@@ -43,7 +43,7 @@ Scored on: integrated, reachable, tested, performing real work. Placeholders and
 | 4 | Journal (episodic memory) | Full conversation + document search | 359 convos, 48K msgs, 628 docs, FTS5 | `api/journal/schema.py` | 80 | ✅ | — |
 | 5 | Memory lifecycle | Classify → dedup → importance → consolidate → correct | No lifecycle. Journal is write-once, no classification or consolidation | `schema.py` has no tags, importance, or lifecycle columns | 10 | P1 | — |
 | 6 | Context compiler | Assemble minimum viable context per task | **Does not exist.** `ares_runtime_context.py` injects identity/capability into system prompt but does no Journal retrieval, no relevance ranking, no budgeting, no sensitivity filtering | `ares_runtime_context.py:102` only builds identity packet | 5 | P0 | **Critical** |
-| 7 | Provider abstraction | Common `ReasoningProvider` interface with capability methods | Backends are ad-hoc. `hermes.py`, `jros.py`, `gemini_cloud.py` each have different interfaces. No `classify_intent()`, `rank_context()`, `evaluate_result()` | `webui/api/backends/` — each backend is a standalone module with no shared protocol | 15 | P0 | — |
+| 7 | Provider abstraction | Common `ReasoningProvider` interface with capability methods | Backends are ad-hoc. `jros.py`, `gemini_cloud.py` each have different interfaces. No `classify_intent()`, `rank_context()`, `evaluate_result()` | `webui/api/backends/` — each backend is a standalone module with no shared protocol | 15 | P0 | — |
 | 8 | Capability registry | Data-driven worker capabilities | `ai_framework_discovery.py` has hardcoded adapter list, no capability schema | `ai_framework_discovery.py:46-99` hardcoded IDs | 10 | P1 | — |
 | 9 | Trust engine | Data classification, provider eligibility, local-only, approval gates | **Does not exist.** No data classification, no provider eligibility rules, no approval gates. Any context goes to any provider. | No `trust_engine.py`, no `privacy_engine.py`, no data classification anywhere | 0 | P0 | **Critical** |
 | 10 | Privacy enforcement | Secret filtering, redaction, disclosure ledger | `secret_vault.py` uses OS keychain (good) but `secrets_router` list endpoint returns plaintext values (Grok found this). No redaction, no disclosure tracking | `secret_vault.py` good, but listing API exposes values | 15 | P0 | **Critical** |
@@ -54,7 +54,7 @@ Scored on: integrated, reachable, tested, performing real work. Placeholders and
 | 15 | Response composition | SI identity + user prefs + verified results + uncertainty → final response | Worker output goes directly to user. No composition step. No SI voice layer. No uncertainty framing. | `gateway_chat.py` streams worker response directly to client | 5 | P0 | — |
 | 16 | Activity ledger | What SI understood, what context used, which worker, why, what data shared, what verified, what failed | `run_journal.py` and `turn_journal.py` log turns but not routing decisions, context provenance, or data disclosures | `run_journal.py` logs runs but not the "why" | 15 | P1 | **Important** |
 | 17 | User controls | Inspect tasks, pause, cancel, approve, override worker, correct memories, restrict providers, force local-only, delete data, inspect costs, inspect disclosures | Settings page exists. Connections page shows providers. No task inspection. No memory correction. No local-only mode. No disclosure inspection. No cost tracking. | `SettingsPage.tsx`, `ConnectionsPage.tsx` exist | 15 | P2 | — |
-| 18 | Hermes integration | Defined adapter contract, structured results, no architecture leak | `hermes.py` and `hermes_streaming.py` are direct backend implementations, not adapter contracts. Hermes-specific types leak into `ares_tools.py`, `ares_tool_adapter.py`, `commands.py` | `webui/api/backends/hermes.py` | 30 | P1 | — |
+| 18 | CLI worker integration | Defined adapter contract, structured results, no architecture leak | the CLI backend modules were direct backend implementations, not adapter contracts. Worker-specific types leaked into `ares_tools.py`, `ares_tool_adapter.py`, `commands.py` | `webui/api/backends/worker.py` | 30 | P1 | — |
 | 19 | Claude integration | Adapter contract, no special-casing | `ai_framework_discovery.py` hardcodes `claude_local` with special-case config dir. No adapter contract. | `ai_framework_discovery.py:53` | 20 | P2 | — |
 | 20 | Gemini integration | Adapter contract | `gemini_cloud.py` backend, `gemini_local` in discovery, `gemini_antigravity` special case | `ai_framework_discovery.py:278` | 15 | P2 | — |
 | 21 | Ollama / local model | Adapter contract, local-first priority | `ollama_hatchery.py` is a backend. No adapter contract. No local-first routing priority. | `webui/api/backends/ollama_hatchery.py` | 15 | P1 | — |

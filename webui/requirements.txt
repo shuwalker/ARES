@@ -40,7 +40,7 @@ monarchmoney>=0.1.15  # ARES Finance: Monarch Money Personal CFO integration
 watchdog>=6.0  # ARES hot-reload: auto-restart on .py changes (ARES_WEBUI_RELOAD=1)
 # OPTIONAL: ARES Missions (webui/api/llm_client.py) uses these only for the
 # CEO decomposition step and pure-reasoning sub-tasks that call a cloud model
-# directly (agentic sub-tasks route through the existing Hermes/JROS backends
+# directly (agentic sub-tasks route through the existing agentic backends
 # instead). Missing package or key raises a catchable per-subtask error, not
 # a server crash. Install only if you want direct-API mission dispatch:
 #   pip install anthropic>=0.40 openai>=1.50

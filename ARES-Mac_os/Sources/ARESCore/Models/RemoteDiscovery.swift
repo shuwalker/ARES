@@ -3,7 +3,7 @@ import Foundation
 public struct RemoteDiscovery: Codable {
     public let ok: Bool
     public let remoteHome: String
-    public let hermesHome: String
+    public let aresHome: String
     public let activeProfile: RemoteARESProfile
     public let availableProfiles: [RemoteARESProfile]
     public let paths: RemoteARESPaths
@@ -14,7 +14,7 @@ public struct RemoteDiscovery: Codable {
     enum CodingKeys: String, CodingKey {
         case ok
         case remoteHome = "remote_home"
-        case hermesHome = "hermes_home"
+        case aresHome = "ares_home"
         case activeProfile = "active_profile"
         case availableProfiles = "available_profiles"
         case paths
@@ -102,7 +102,7 @@ public struct RemoteKanbanDiscovery: Codable, Hashable {
         case databasePath = "database_path"
         case exists
         case hostWide = "host_wide"
-        case hasARESCLI = "has_hermes_cli"
+        case hasARESCLI = "has_ares_cli"
         case hasKanbanModule = "has_kanban_module"
         case dispatcher
     }

@@ -86,7 +86,7 @@ Chat      = direct access to the underlying AI machinery
 
 Transparent, technical interface for talking to individual workers:
 
-- Hermes Agent, JROS, Claude, Gemini, Grok, local models, other workers
+- JROS, Claude, Gemini, Grok, local models, other workers
 - Selected backend visible
 - Model / provider switching
 - Tool calls inspectable
@@ -122,7 +122,7 @@ Eventually responsible for:
 - Voice and presence
 - Relationship history
 
-User speaks to **one SI**. The SI decides whether Hermes, JROS, Claude, a local model, or another worker performs the task.
+User speaks to **one SI**. The SI decides whether JROS, Claude, a local model, or another worker performs the task.
 
 Front door to everything when mature:
 
@@ -245,7 +245,7 @@ User speech maps to domains without forcing menu tourism:
 | Open CAD / edit code / run analysis | Workshop |
 | What did Aurelius say / find a PDF | Library |
 | Is the server healthy / add a model | System |
-| Talk to Hermes only, show tools | Chat |
+| Talk to one worker only, show tools | Chat |
 
 ---
 
@@ -302,7 +302,7 @@ Never call System “the knowledge base.” Never call Library “memory config.
 5. Workshop: projects/files/IDE/terminal/CAD/artifacts — create path.
 6. Library: Alexandria — study and preserve path.
 7. System: workers, devices, services, memory infrastructure, health.
-8. Do not reintroduce a “Hermes Original” or framework-branded top-level section.
+8. Do not reintroduce a framework-branded top-level section.
 9. Prefer intent entry via Companion; keep deep links into each surface for power users.
 
 ---

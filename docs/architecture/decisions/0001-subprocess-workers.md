@@ -5,13 +5,13 @@
 
 ## Context
 
-Upstream Hermes WebUI, which ARES forked, invokes its agent **in-process**:
+The upstream WebUI, which ARES forked, invokes its agent **in-process**:
 `api/streaming.py` constructs `AIAgent(...)` directly and receives tokens through a
 `stream_delta_callback`. Conversation history is passed as a Python list
 (`conversation_history=`), so there is no serialization and no session-identity
 problem.
 
-ARES routes work to many workers — Hermes Agent, jros/JaegerAI, Claude Code, Codex,
+ARES routes work to many workers — jros/JaegerAI, Claude Code, Codex,
 Ollama, cloud providers. FOUNDATION states the Companion does not re-implement or
 absorb a worker's execution loop; adapters invoke them.
 

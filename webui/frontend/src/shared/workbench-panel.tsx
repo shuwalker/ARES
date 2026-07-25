@@ -10,21 +10,10 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
  */
 const PANEL_PREF_KEY = "ares.workspace-panel-pref";
 
-/** Pre-rename key. Read-only: kept so an existing preference is not lost. */
-const LEGACY_PANEL_PREF_KEY = "hermes-webui-workspace-panel-pref";
-
-/**
- * Whether the workspace panel should start open.
- *
- * Nothing in ARES writes either key today — the value is carried over from
- * installs that set it previously — so this reads the current key first and
- * falls back to the legacy one rather than migrating on write.
- */
+/** Whether the workspace panel should start open. */
 export function prefersWorkbenchOpen(): boolean {
   try {
-    const pref =
-      window.localStorage.getItem(PANEL_PREF_KEY) ??
-      window.localStorage.getItem(LEGACY_PANEL_PREF_KEY);
+    const pref = window.localStorage.getItem(PANEL_PREF_KEY);
     return pref === "open";
   } catch {
     // WKWebView storage can be unavailable in an ephemeral profile.

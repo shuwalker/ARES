@@ -1,7 +1,7 @@
 # ARES Reference-Source Drain Log
 
 Phase 6 was completed on 2026-07-18. The four source snapshots under
-`reference_sources/` and the unused `frontend/src/**/drained/hermes-workspace`
+`reference_sources/` and the unused `frontend/src/**/drained/worker-workspace`
 tree were reviewed before removal. Active code does not import either tree.
 
 ## Patterns retained in ARES
@@ -36,14 +36,14 @@ tree were reviewed before removal. Active code does not import either tree.
 - Colibri model-specific C/CUDA implementation and bundled binary assets; these
   do not fit the Swift/FastAPI inference boundary and carried separate licensing.
 
-The deleted snapshots were named `paperclip_drained`, `hermes_web_drained`,
-`hermes_desktop_drained`, and `colibri_drained` (the latter identified an Apache
+The deleted snapshots were named `paperclip_drained`, `webui_ref_drained`,
+`desktop_ref_drained`, and `colibri_drained` (the latter identified an Apache
 2.0 license). No active build, test, or runtime path referenced them at removal.
 
 The nested legacy snapshot formerly at
-`ARES-Mac_os/Sources/HermesDesktop/reference_sources/` was also drained after
+`ARES-Mac_os/Sources/DesktopRef/reference_sources/` was also drained after
 confirming the active Swift implementation was newer. It is recoverable from
-`~/.Trash/ARES-HermesDesktop-reference_sources-20260718`. The unreachable
+`~/.Trash/ARES-DesktopRef-reference_sources-20260718`. The unreachable
 frontend import scaffold is recoverable from
 `~/.Trash/ARES-unreachable-frontend-20260718`.
 

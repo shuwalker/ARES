@@ -5,7 +5,7 @@
 
 ## Context
 
-ARES inherited SSE streaming from Hermes WebUI, whose own ADR-004 chose SSE over
+ARES inherited SSE streaming from the upstream WebUI, whose own ADR-004 chose SSE over
 WebSockets. ARES never recorded the reasoning, so the choice has periodically
 looked arbitrary.
 

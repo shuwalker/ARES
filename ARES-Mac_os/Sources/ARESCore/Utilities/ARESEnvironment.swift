@@ -2,10 +2,10 @@ import Foundation
 
 public enum ARESEnvironment: Sendable {
     
-    /// The default directory for ARES data: `~/.hermes`
+    /// The default directory for ARES data: `~/.ares`
     public static var defaultHomeDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".hermes", isDirectory: true)
+            .appendingPathComponent(".ares", isDirectory: true)
     }
     
     /// The directory where companion chat sessions are persisted
@@ -47,12 +47,12 @@ public enum ARESEnvironment: Sendable {
     
     /// The file path to the kanban database
     public static var kanbanDatabasePath: String {
-        "~/.hermes/kanban.db"
+        defaultHomeDirectory.appendingPathComponent("kanban.db").path
     }
     
     /// The file path to the cron jobs database
     public static var cronJobsPath: String {
-        "~/.hermes/cron/jobs.json"
+        defaultHomeDirectory.appendingPathComponent("cron/jobs.json").path
     }
     
     /// A helper function to safely resolve a tilde path to an absolute path string

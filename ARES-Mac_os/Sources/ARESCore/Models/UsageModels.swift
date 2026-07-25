@@ -107,9 +107,9 @@ public struct UsageProfileBreakdown: Hashable {
 }
 
 public struct UsageProfileSlice: Identifiable, Hashable {
-    public init(profileName: String, hermesHomePath: String, state: ARESCore.UsageSummaryState, sessionCount: Int, inputTokens: Int64, outputTokens: Int64, cacheReadTokens: Int64, cacheWriteTokens: Int64, reasoningTokens: Int64, databasePath: String?, message: String?, isActiveProfile: Bool) { self.profileName = profileName; self.hermesHomePath = hermesHomePath; self.state = state; self.sessionCount = sessionCount; self.inputTokens = inputTokens; self.outputTokens = outputTokens; self.cacheReadTokens = cacheReadTokens; self.cacheWriteTokens = cacheWriteTokens; self.reasoningTokens = reasoningTokens; self.databasePath = databasePath; self.message = message; self.isActiveProfile = isActiveProfile }
+    public init(profileName: String, aresHomePath: String, state: ARESCore.UsageSummaryState, sessionCount: Int, inputTokens: Int64, outputTokens: Int64, cacheReadTokens: Int64, cacheWriteTokens: Int64, reasoningTokens: Int64, databasePath: String?, message: String?, isActiveProfile: Bool) { self.profileName = profileName; self.aresHomePath = aresHomePath; self.state = state; self.sessionCount = sessionCount; self.inputTokens = inputTokens; self.outputTokens = outputTokens; self.cacheReadTokens = cacheReadTokens; self.cacheWriteTokens = cacheWriteTokens; self.reasoningTokens = reasoningTokens; self.databasePath = databasePath; self.message = message; self.isActiveProfile = isActiveProfile }
     public let profileName: String
-    public let hermesHomePath: String
+    public let aresHomePath: String
     public let state: UsageSummaryState
     public let sessionCount: Int
     public let inputTokens: Int64

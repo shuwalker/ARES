@@ -25,7 +25,7 @@ IF data_class == "sensitive":
     Log disclosure in audit ledger
     
 IF data_class == "private":
-    ONLY include in briefings to local workers (Ollama, local Hermes)
+    ONLY include in briefings to local workers (Ollama, local CLI agents)
     Redact from cloud provider briefings
     
 IF data_class == "personal":
@@ -40,7 +40,7 @@ IF data_class == "public":
 
 When the user enables local-only mode:
 - ALL data classes above `public` are treated as `private`
-- Only local workers (Ollama, local Hermes) receive briefings
+- Only local workers (Ollama, local CLI agents) receive briefings
 - Cloud workers receive only `public` data
 - This is a hard override regardless of individual data classifications
 

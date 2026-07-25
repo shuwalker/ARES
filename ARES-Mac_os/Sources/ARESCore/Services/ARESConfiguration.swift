@@ -92,10 +92,7 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
 
     /// Remote gateway base URL. Empty means "no remote gateway configured",
     /// which is the normal local install — see `applyingGatewayEnvironment`.
-    /// Reads the pre-rename key once so an existing setting is not lost.
-    @Published public var gatewayURL: String = UserDefaults.standard.string(forKey: "ares.config.gatewayURL")
-        ?? UserDefaults.standard.string(forKey: "ares.config.hermesURL")
-        ?? "" {
+    @Published public var gatewayURL: String = UserDefaults.standard.string(forKey: "ares.config.gatewayURL") ?? "" {
         didSet { UserDefaults.standard.set(gatewayURL, forKey: "ares.config.gatewayURL") }
     }
 
@@ -116,18 +113,12 @@ public final class ARESConfiguration: ObservableObject, @unchecked Sendable {
     }
 
     /// Gateway API key. Environment overrides win; persisted values live in
-    /// Keychain and legacy UserDefaults values are migrated once. The
-    /// pre-rename Keychain account is read as a fallback so a key stored
-    /// before the rename keeps working.
-    @Published public var gatewayAPIKey: String = {
-        let migrated = ARESSecretStore.loadMigratingLegacy(
-            environmentKey: "API_SERVER_KEY",
-            account: "ares-gateway-api-key",
-            legacyDefaultsKey: "ares.config.gatewayAPIKey"
-        )
-        if !migrated.isEmpty { return migrated }
-        return ARESSecretStore.read(account: "hermes-gateway-api-key") ?? ""
-    }() {
+    /// Keychain and legacy UserDefaults values are migrated once.
+    @Published public var gatewayAPIKey: String = ARESSecretStore.loadMigratingLegacy(
+        environmentKey: "API_SERVER_KEY",
+        account: "ares-gateway-api-key",
+        legacyDefaultsKey: "ares.config.gatewayAPIKey"
+    ) {
         didSet {
             _ = ARESSecretStore.write(gatewayAPIKey, account: "ares-gateway-api-key")
             UserDefaults.standard.removeObject(forKey: "ares.config.gatewayAPIKey")

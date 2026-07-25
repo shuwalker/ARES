@@ -40,21 +40,6 @@ Capability disposition:
 | Health, logs, usage | `TodayPage`, `ActivityPage`, `UsageCostPage`, health APIs |
 | Profiles and settings | Local Profile + server-authoritative settings |
 
-### Hermes Desktop
-
-Upstream: <https://github.com/dodo-reach/hermes-desktop> (MIT, dodo-reach)
-
-The imported tree was another full SwiftUI app centered on SSH-only remote
-Hermes administration. ARES instead treats Hermes as one optional execution
-adapter and keeps workspace, terminal, sessions, skills, usage, and schedules
-behind shared product contracts. The duplicate Swift app and its bundled
-screenshots therefore had no reachable ARES entry point.
-
-Direct remote-host administration is not claimed by ARES today. If it is
-added, it must be a transport adapter behind the existing Connections,
-Workspace, Terminal, Sessions, Skills, Usage, and Schedule contracts. It must
-not reintroduce a second application state tree.
-
 ### Hypura extraction
 
 Upstream: <https://github.com/t8/hypura> (`Cargo.toml` declares MIT)

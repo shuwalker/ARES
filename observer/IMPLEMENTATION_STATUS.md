@@ -97,7 +97,7 @@ Config points to `~/.ares/journal.db` but ARES may use a different path.
 ```bash
 find ~ -name "*.db" | grep -i journal
 # or
-find ~ -name "state.db"  # Hermes uses this
+find ~ -name "state.db"  # CLI workers use this
 ```
 
 Update `config.yaml` with correct path.

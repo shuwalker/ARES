@@ -10,7 +10,7 @@ repository and implementation rules.
 ## Licensing
 
 - ARES is licensed under AGPL-3.0 with a commercial dual-license option. See `LICENSE` and `COMMERCIAL-LICENSE.md`.
-- Upstream Hermes WebUI code in `webui/` preserves its MIT notice in `webui/LICENSE`.
+- Upstream MIT-licensed WebUI code in `webui/` preserves its notice in `webui/LICENSE`.
 - Do not remove upstream copyright or license notices.
 - Do not introduce code with terms incompatible with AGPL distribution.
 - Do not change the license model without explicit maintainer approval.
@@ -36,7 +36,7 @@ Summary:
 
 ## Public repo privacy boundary
 
-Public repo code/docs must not contain maintainer-specific runtime values: personal paths, real Tailscale IPs/hostnames/tailnet names, personal hardware requirements, `.hermes`, `.ares/config`, SOUL.md, auth files, tokens, API keys, cookies, or live profile assumptions.
+Public repo code/docs must not contain maintainer-specific runtime values: personal paths, real Tailscale IPs/hostnames/tailnet names, personal hardware requirements, worker home directories, `.ares/config`, SOUL.md, auth files, tokens, API keys, cookies, or live profile assumptions.
 
 Use placeholders, detected values, or user-selected paths. In source code, prefer environment variables/configuration over user-folder assumptions. For JaegerAI integration specifically, use `ARES_JROS_DIR` for source-checkout features and `ARES_JAEGER_HOME` / `JAEGER_HOME` for installed runtime discovery; never assume `~/GitHub`, a maintainer username, or another developer-only clone layout.
 

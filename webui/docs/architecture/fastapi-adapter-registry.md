@@ -58,7 +58,7 @@ defaults.
   execution mode.
 - `McpToolAdapter` normalizes MCP tool health and safe inventory.
 
-The former Hermes integration is represented by `AresAdapter`; no new Hermes
+The former third-party CLI integration is represented by `AresAdapter`; no new
 product identity or configuration key is reintroduced.
 
 The concrete framework adapters reuse `api.backends` for existing capability

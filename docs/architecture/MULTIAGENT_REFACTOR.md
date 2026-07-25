@@ -2,7 +2,7 @@
 
 ## Problem
 
-ARES started as a Hermes WebUI fork rewired to use JaegerAI. Along the way it
+ARES started as a WebUI fork rewired to use JaegerAI. Along the way it
 built its own agent brain (SI layer: identity, memory, context compiler, trust
 engine, planner, evaluator) that duplicates what JaegerAI already does better.
 Meanwhile, cloud AI subscriptions (Claude, Gemini, Grok, etc.) are wired as

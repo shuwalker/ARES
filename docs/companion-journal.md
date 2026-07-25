@@ -6,7 +6,7 @@
 |------|---------|
 | **ARES** | Application package only |
 | **Companion** | Everything that is not a worker (identity, journal, routing, scores) |
-| **Workers** | Ollama, jros, Hermes, cloud, MCP, devices |
+| **Workers** | Ollama, jros, cloud, MCP, devices |
 
 ## Journal (source of truth)
 

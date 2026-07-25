@@ -22,7 +22,7 @@ Workers own execution. They do NOT own identity, memory, policy, or the user rel
 
 | Worker | Owns | Does NOT Own |
 |--------|------|-------------|
-| Hermes Agent | Tool execution, terminal ops, file ops, agent loops | SI identity, memory, policy |
+| CLI workers | Tool execution, terminal ops, file ops, agent loops | SI identity, memory, policy |
 | Claude | Text generation, code generation, reasoning | Context selection, data boundaries |
 | Gemini | Research, long-context reasoning | Memory, user preferences |
 | Grok | Real-time information, analysis | Trust decisions, privacy filtering |
@@ -57,7 +57,7 @@ User
 │                             │
 │  ← Filtered briefing only → │──── Worker 1 (Claude)
 │  ← Filtered briefing only → │──── Worker 2 (Ollama)
-│  ← Filtered briefing only → │──── Worker 3 (Hermes)
+│  ← Filtered briefing only → │──── Worker 3 (CLI)
 │                             │
 │  ← Structured result only ← │──── Worker 1 returns
 │  ← Structured result only ← │──── Worker 2 returns

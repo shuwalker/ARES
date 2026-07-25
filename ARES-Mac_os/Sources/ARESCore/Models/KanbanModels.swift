@@ -193,7 +193,7 @@ public struct KanbanBoard: Codable, Hashable, Sendable {
         case hostWide = "host_wide"
         case isInitialized = "is_initialized"
         case hasKanbanModule = "has_kanban_module"
-        case hasARESCLI = "has_hermes_cli"
+        case hasARESCLI = "has_ares_cli"
         case dispatcher
         case latestEventID = "latest_event_id"
         case warning
@@ -204,7 +204,7 @@ public struct KanbanBoard: Codable, Hashable, Sendable {
     }
 
     public static let empty = KanbanBoard(
-        databasePath: "~/.hermes/kanban.db",
+        databasePath: ARESEnvironment.kanbanDatabasePath,
         hostWide: true,
         isInitialized: false,
         hasKanbanModule: false,

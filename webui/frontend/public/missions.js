@@ -3,7 +3,7 @@
  *
  * Backend: webui/api/missions.py. Distinct from the single-session "/goal"
  * continuation feature (webui/api/goals.py, the "/goal" chat command) — a
- * Mission decomposes one prompt into sub-tasks dispatched across Hermes,
+ * Mission decomposes one prompt into sub-tasks dispatched across
  * JROS, and direct Anthropic/OpenAI calls, tracked here as a list with a
  * sub-agent status breakdown per item. Live updates arrive via the
  * 'mission_update' SSE event on the existing per-session stream (wired in

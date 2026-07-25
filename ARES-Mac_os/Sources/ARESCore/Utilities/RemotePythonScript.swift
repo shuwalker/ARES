@@ -112,24 +112,24 @@ public enum RemotePythonScript {
                 return base_dir / path
         return path
 
-    def resolved_hermes_home(request=None):
+    def resolved_ares_home(request=None):
         request_data = payload if request is None else request
         home = pathlib.Path.home()
-        expanded = expand_remote_path(request_data.get("hermes_home"), home)
+        expanded = expand_remote_path(request_data.get("ares_home"), home)
         if expanded is not None:
             return expanded
-        env_home = expand_remote_path(os.environ.get("HERMES_HOME"), home)
+        env_home = expand_remote_path(os.environ.get("ARES_HOME"), home)
         if env_home is not None:
             return env_home
-        return home / ".hermes"
+        return home / ".ares"
 
-    def hermes_search_path(request=None):
+    def ares_search_path(request=None):
         home = pathlib.Path.home()
-        hermes_home = resolved_hermes_home(request)
+        ares_home = resolved_ares_home(request)
         candidates = [
-            hermes_home / "hermes-agent" / "venv" / "bin",
+            ares_home / "ares-agent" / "venv" / "bin",
             home / ".local" / "bin",
-            home / ".hermes" / "hermes-agent" / "venv" / "bin",
+            home / ".ares" / "ares-agent" / "venv" / "bin",
             home / ".cargo" / "bin",
             pathlib.Path("/opt/homebrew/bin"),
             pathlib.Path("/usr/local/bin"),
@@ -152,8 +152,8 @@ public enum RemotePythonScript {
             entries.append(env_path)
         return os.pathsep.join(entries)
 
-    def find_hermes_binary(request=None):
-        candidate = shutil.which("hermes", path=hermes_search_path(request))
+    def find_ares_binary(request=None):
+        candidate = shutil.which("ares", path=ares_search_path(request))
         if candidate:
             return candidate
         return None
@@ -167,7 +167,7 @@ public enum RemotePythonScript {
         except ValueError:
             return path.as_posix()
 
-    def iter_session_store_candidates(hermes_home, home=None, hinted_path=None):
+    def iter_session_store_candidates(ares_home, home=None, hinted_path=None):
         if home is None:
             home = pathlib.Path.home()
 
@@ -187,12 +187,12 @@ public enum RemotePythonScript {
             yield hinted_candidate
 
         preferred = [
-            hermes_home / "state.db",
-            hermes_home / "state.sqlite",
-            hermes_home / "state.sqlite3",
-            hermes_home / "store.db",
-            hermes_home / "store.sqlite",
-            hermes_home / "store.sqlite3",
+            ares_home / "state.db",
+            ares_home / "state.sqlite",
+            ares_home / "state.sqlite3",
+            ares_home / "store.db",
+            ares_home / "store.sqlite",
+            ares_home / "store.sqlite3",
         ]
 
         for candidate in preferred:
@@ -204,7 +204,7 @@ public enum RemotePythonScript {
             [
                 item
                 for pattern in ("*.db", "*.sqlite", "*.sqlite3")
-                for item in hermes_home.glob(pattern)
+                for item in ares_home.glob(pattern)
                 if item.is_file()
             ],
             key=lambda item: item.stat().st_mtime,
@@ -214,7 +214,7 @@ public enum RemotePythonScript {
             if candidate is not None:
                 yield candidate
 
-        sessions_dir = hermes_home / "sessions"
+        sessions_dir = ares_home / "sessions"
         if sessions_dir.exists():
             for candidate in sorted(
                 [

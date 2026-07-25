@@ -5,7 +5,7 @@
 
 ## Context
 
-Upstream Hermes WebUI and the Hermes CLI share **one** `state.db`, written by the
+The upstream WebUI and its CLI share **one** `state.db`, written by the
 agent. The WebUI keeps a JSON "sidecar" as a cache and self-heals it from
 `state.db` whenever the agent has written newer turns
 (`_sync_sidecar_from_state_db_if_newer`). Continuing a terminal session works
@@ -20,7 +20,7 @@ forbids modifying a worker's runtime state.
 Two stores, with a one-way boundary:
 
 - **ARES owns** `ARES_HOME/webui/sessions/*.json` — read and write.
-- **Workers own** their stores (`$HERMES_HOME/state.db`, `~/.claude/projects`,
+- **Workers own** their stores (a worker's own `state.db`, `~/.claude/projects`,
   JaegerAI instance DBs) — ARES reads them **read-only**.
 - When a worker session needs a new turn, ARES asks the *worker* to write it
   (ADR-0001), and never writes the worker's store itself.

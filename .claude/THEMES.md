@@ -1,6 +1,6 @@
-# Hermes Web UI — Themes
+# ARES Web UI — Themes
 
-Hermes Web UI splits **appearance** into two independent pickers:
+The ARES Web UI splits **appearance** into two independent pickers:
 
 - **Theme** — the mode: `System`, `Dark`, or `Light`. Drives the background,
   text, surface, and chrome colors.
@@ -47,7 +47,7 @@ absent for light. System mode tracks the OS preference at runtime.
 
 | Skin | Description |
 |------|-------------|
-| **Default** | The original Hermes gold accent. Warm and understated. |
+| **Default** | The original gold accent. Warm and understated. |
 | **Ares** | Fiery red. High-energy and assertive. |
 | **Mono** | Neutral gray. Distraction-free, for deep focus. |
 | **Slate** | Slate blue-gray. Subtle and grown-up. |
@@ -98,11 +98,11 @@ Two ways to ship it:
    list (`static/commands.js`), then open a PR.
 
 2. **Self-hosted (no fork):** use the WebUI extensions surface — see
-   `docs/EXTENSIONS.md`. Drop your CSS in `HERMES_WEBUI_EXTENSION_DIR` and
-   declare it in `HERMES_WEBUI_EXTENSION_STYLESHEET_URLS`. No code changes
+   `docs/EXTENSIONS.md`. Drop your CSS in `ARES_WEBUI_EXTENSION_DIR` and
+   declare it in `ARES_WEBUI_EXTENSION_STYLESHEET_URLS`. No code changes
    needed; the skin attribute can be set from your own JS.
 
-   Extensions that register a skin through `window.registerHermesSkin()` may
+   Extensions that register a skin through `window.registerAresSkin()` may
    also set `scheme: "light"` or `scheme: "dark"` for light-only or dark-only
    skins. The saved Theme preference stays unchanged, but WebUI applies the
    matching effective base class while that skin is selected so System/Light or

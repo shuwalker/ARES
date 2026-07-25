@@ -8,7 +8,7 @@
 Imported sessions come from other agent apps. It is tempting to mark all of them
 read-only on the reasoning that "ARES does not own them." Upstream does not do
 this: the only `read_only: True` in the upstream session model is on the Claude
-Code bridge. Hermes CLI and TUI sessions remain writable.
+Code bridge. Worker CLI and TUI sessions remain writable.
 
 The distinction matters because a user who started a conversation in the terminal
 expects to continue it in the UI, and marking it read-only removes that ability
@@ -21,7 +21,7 @@ not "ARES cannot write the file."
 
 | Source | `read_only` | Why |
 |---|---|---|
-| Hermes CLI / TUI | `false` | The agent can resume it (ADR-0001). |
+| Worker CLI / TUI | `false` | The agent can resume it (ADR-0001). |
 | Claude Code | `true` | JSONL transcripts; nothing will append on request. |
 | Codex / Gemini | `true` (when parsed) | Same — detected, no write-back path. |
 | ARES WebUI | `false` | ARES owns it. |
