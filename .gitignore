@@ -61,6 +61,8 @@ venv/
 *.swo
 .claude/
 .claude/worktrees/
+attic/local-notes/
+webui/frontend/tsconfig.tsbuildinfo
 
 # Secrets and credentials (NEVER commit)
 .env
