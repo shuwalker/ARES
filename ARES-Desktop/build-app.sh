@@ -53,6 +53,12 @@ if [ -f "$PROJECT_DIR/Sources/ARES/Resources/AppIcon.icns" ]; then
     echo "  AppIcon.icns copied"
 fi
 
+# Character persona cards
+if [ -d "$PROJECT_DIR/Sources/ARES/Resources/Characters" ]; then
+    cp -R "$PROJECT_DIR/Sources/ARES/Resources/Characters" "$APP_BUNDLE/Contents/Resources/"
+    echo "  Character persona cards copied"
+fi
+
 # Resource bundle from SwiftPM build
 RESOURCE_BUNDLE="$BUILD_DIR/ARES_ARES.bundle"
 if [ -d "$RESOURCE_BUNDLE" ]; then

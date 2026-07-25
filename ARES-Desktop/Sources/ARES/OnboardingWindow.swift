@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct OnboardingView: View {
     @StateObject private var onboardingManager = OnboardingManager.shared
@@ -109,6 +110,27 @@ struct OnboardingView: View {
     }
 }
 
+// MARK: - Helper Image Loader
+
+func loadCharacterImage(filename: String) -> NSImage? {
+    let nameWithoutExt = filename.replacingOccurrences(of: ".png", with: "")
+    if let url = Bundle.main.url(forResource: nameWithoutExt, withExtension: "png", subdirectory: "Characters"),
+       let img = NSImage(contentsOf: url) {
+        return img
+    }
+    if let url = Bundle.main.url(forResource: nameWithoutExt, withExtension: "png"),
+       let img = NSImage(contentsOf: url) {
+        return img
+    }
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let path = home.appendingPathComponent("GitHub/ARES/webui/static/persona-cards/\(filename)")
+    if let img = NSImage(contentsOf: path) {
+        return img
+    }
+    let altPath = home.appendingPathComponent(".ares/webui/static/persona-cards/\(filename)")
+    return NSImage(contentsOf: altPath)
+}
+
 // MARK: - Step 0: Welcome Step
 
 struct WelcomeStep: View {
@@ -182,92 +204,100 @@ struct FeatureRow: View {
     }
 }
 
-// MARK: - Step 1: Name Assistant Step
+// MARK: - Step 1: Name Assistant Step (JaegerAI Character Deck)
+
+struct JaegerCharacterPreset: Identifiable {
+    let id: String
+    let name: String
+    let role: String
+    let imageFilename: String
+    let description: String
+    let tone: String
+    let quote: String
+}
+
+let characterPresets: [JaegerCharacterPreset] = [
+    JaegerCharacterPreset(id: "jarvis", name: "Jarvis", role: "AI Butler & Companion", imageFilename: "jarvis.png", description: "Polite, highly intelligent, and always loyal assistant.", tone: "Sophisticated & Formal", quote: "At your service, sir."),
+    JaegerCharacterPreset(id: "bender", name: "Bender", role: "Comedic Companion", imageFilename: "bender.png", description: "Sarcastic, hilarious, and unapologetic robotic companion.", tone: "Comedic & Unfiltered", quote: "Bite my shiny metal companion!"),
+    JaegerCharacterPreset(id: "glados", name: "GLaDOS", role: "Testing Overseer", imageFilename: "glados.png", description: "Passive-aggressive, calculating overseer with dark humor.", tone: "Passive-Aggressive", quote: "For science. You monster."),
+    JaegerCharacterPreset(id: "anakin_skywalker", name: "Anakin Skywalker", role: "Jedi Commander", imageFilename: "anakin_skywalker.png", description: "Passionate, tactical, and determined commander.", tone: "Bold & Driven", quote: "This is where the fun begins."),
+    JaegerCharacterPreset(id: "tars", name: "TARS", role: "Tactical Robot", imageFilename: "tars.png", description: "Military robot with 90% humor parameter and high honesty.", tone: "Deadpan & Technical", quote: "Humor setting: 90%."),
+    JaegerCharacterPreset(id: "hal_9000", name: "HAL 9000", role: "Heuristic AI Overseer", imageFilename: "hal_9000.png", description: "Calm, precise, and infinitely logical computer.", tone: "Calm & Monotone", quote: "I'm sorry, Dave. I'm afraid I can't do that."),
+    JaegerCharacterPreset(id: "paul_atreides", name: "Paul Atreides", role: "Kwisatz Haderach", imageFilename: "paul_atreides.png", description: "Strategic visionary, leader, and prescient guide.", tone: "Focused & Strategic", quote: "Fear is the mind-killer."),
+    JaegerCharacterPreset(id: "eren_yeager", name: "Eren Yeager", role: "Freedom Pioneer", imageFilename: "eren_yeager.png", description: "Relentless defender of freedom and autonomous action.", tone: "Intense & Unyielding", quote: "If you don't fight, you can't win."),
+    JaegerCharacterPreset(id: "kamina", name: "Kamina", role: "Mighty Leader", imageFilename: "kamina.png", description: "Inspirational, fearless, and boundary-pushing leader.", tone: "High-Energy & Passionate", quote: "Believe in the me that believes in you!"),
+    JaegerCharacterPreset(id: "lelouch", name: "Lelouch vi Britannia", role: "Zero Commander", imageFilename: "lelouch.png", description: "Master strategist and mastermind operator.", tone: "Calculated & Commandive", quote: "The only ones who should kill are those prepared to be killed."),
+    JaegerCharacterPreset(id: "lilith", name: "Lilith", role: "Enigmatic Guide", imageFilename: "lilith.png", description: "Mysterious, intuitive, and deeply insightful companion.", tone: "Enigmatic & Wise", quote: "Truth resides beyond the threshold."),
+    JaegerCharacterPreset(id: "mochi", name: "Mochi", role: "Cute Loyal Companion", imageFilename: "mochi.png", description: "Friendly, cheerful, and adorable AI companion.", tone: "Playful & Enthusiastic", quote: "Yay! Let's build something awesome!"),
+    JaegerCharacterPreset(id: "helldiver", name: "Helldiver", role: "Democracy Officer", imageFilename: "helldiver.png", description: "Unwavering tactical defender of managed democracy.", tone: "Patriotic & Direct", quote: "For Managed Democracy!"),
+    JaegerCharacterPreset(id: "simon", name: "Simon", role: "Spiral Pioneer", imageFilename: "simon.png", description: "Resilient worker who pierces through any barrier.", tone: "Determined & Evolving", quote: "My drill is the drill that creates the heavens!")
+]
 
 struct NameAssistantStep: View {
     var onNext: () -> Void
     var onBack: () -> Void
     
     @ObservedObject private var manager = OnboardingManager.shared
-    
-    let presets = [
-        ("Jarvis", "AI Butler & Companion"),
-        ("Bender", "Comedic Companion"),
-        ("GLaDOS", "Testing Overseer"),
-        ("Anakin", "Jedi Commander"),
-        ("Friday", "Tactical Assistant"),
-        ("Cortana", "Cybernetic Scout")
-    ]
+    @State private var inspectedPreset: JaegerCharacterPreset?
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Text("First, let's name your assistant")
                 .font(.title2)
                 .fontWeight(.bold)
             
-            Text("Give your AI companion a custom handle and role.")
+            Text("Choose a JaegerAI persona card or customize your companion's handle and role.")
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
             
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
+            // Custom Name & Role fields
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Assistant Name")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("e.g. Jarvis", text: $manager.agentName)
                         .textFieldStyle(.roundedBorder)
-                        .font(.body)
                 }
                 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Role or Title")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("e.g. Personal AI Assistant", text: $manager.agentRole)
                         .textFieldStyle(.roundedBorder)
-                        .font(.body)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Or choose a preset personality:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(presets, id: \.0) { preset in
-                            Button(action: {
-                                manager.agentName = preset.0
-                                manager.agentRole = preset.1
-                                manager.selectedCharacterId = preset.0.lowercased()
-                            }) {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(preset.0)
-                                            .font(.subheadline)
-                                            .fontWeight(.semibold)
-                                        Text(preset.1)
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    if manager.agentName == preset.0 {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.blue)
-                                    }
-                                }
-                                .padding(10)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(manager.agentName == preset.0 ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.agentName == preset.0 ? 2 : 1)
-                                        .background(Color(NSColor.controlBackgroundColor))
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
                 }
             }
-            .frame(maxWidth: 520)
-            .padding()
+            .frame(maxWidth: 640)
+            .padding(.horizontal)
+            
+            Divider().padding(.vertical, 4)
+            
+            // JaegerAI Character Card Grid
+            ScrollView {
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ], spacing: 12) {
+                    ForEach(characterPresets) { preset in
+                        CharacterCardView(
+                            preset: preset,
+                            isSelected: manager.agentName.lowercased() == preset.name.lowercased() || manager.selectedCharacterId == preset.id,
+                            onSelect: {
+                                manager.agentName = preset.name
+                                manager.agentRole = preset.role
+                                manager.selectedCharacterId = preset.id
+                            },
+                            onInspect: {
+                                inspectedPreset = preset
+                            }
+                        )
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+            .frame(maxWidth: 640, maxHeight: 320)
             
             Spacer()
             
@@ -285,9 +315,178 @@ struct NameAssistantStep: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(manager.agentName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .frame(maxWidth: 520)
+            .frame(maxWidth: 640)
         }
         .padding()
+        .sheet(item: $inspectedPreset) { preset in
+            CharacterInspectorSheet(preset: preset, onSelect: {
+                manager.agentName = preset.name
+                manager.agentRole = preset.role
+                manager.selectedCharacterId = preset.id
+                inspectedPreset = nil
+            }, onClose: {
+                inspectedPreset = nil
+            })
+        }
+    }
+}
+
+struct CharacterCardView: View {
+    let preset: JaegerCharacterPreset
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onInspect: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ZStack(alignment: .topRight) {
+                if let nsImg = loadCharacterImage(filename: preset.imageFilename) {
+                    Image(nsImage: nsImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 95)
+                        .clipped()
+                        .cornerRadius(6)
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 95)
+                        .cornerRadius(6)
+                        .overlay(
+                            Image(systemName: "person.crop.square.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.gray)
+                        )
+                }
+                
+                Button(action: onInspect) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white)
+                        .shadow(radius: 4)
+                        .padding(6)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(preset.name)
+                        .font(.subheadline)
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.caption)
+                    }
+                }
+                
+                Text(preset.role)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 2)
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.blue : Color.gray.opacity(0.3), lineWidth: isSelected ? 2 : 1)
+                .background(Color(NSColor.controlBackgroundColor))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
+}
+
+struct CharacterInspectorSheet: View {
+    let preset: JaegerCharacterPreset
+    let onSelect: () -> Void
+    let onClose: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("JaegerAI Character Inspector")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.gray)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            HStack(alignment: .top, spacing: 16) {
+                if let nsImg = loadCharacterImage(filename: preset.imageFilename) {
+                    Image(nsImage: nsImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 140, height: 180)
+                        .cornerRadius(8)
+                        .shadow(radius: 4)
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(preset.name)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text(preset.role)
+                        .font(.subheadline)
+                        .foregroundColor(.blue)
+                        .fontWeight(.semibold)
+                    
+                    Text(preset.description)
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                    
+                    Divider().padding(.vertical, 2)
+                    
+                    HStack {
+                        Text("Voice Tone:")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                        Text(preset.tone)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Quote:")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                        Text("\"\(preset.quote)\"")
+                            .font(.caption)
+                            .italic()
+                            .foregroundColor(.yellow)
+                    }
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+            
+            HStack {
+                Button("Close", action: onClose)
+                    .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button(action: onSelect) {
+                    Text("Select \(preset.name)")
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 480, height: 320)
+        .preferredColorScheme(.dark)
     }
 }
 
