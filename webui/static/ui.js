@@ -3510,6 +3510,30 @@ function syncModelChip(){
   if(mobileAction) mobileAction.classList.toggle('active',!!(dd&&dd.classList.contains('open')));
 }
 
+// Preserve the dropdown's composer-footer home while the phone layout moves it
+// to <body>. This mirrors the Hermes switcher's viewport-safe mobile method.
+let _modelDropdownHome=null;
+
+function _restoreModelDropdownHome(){
+  const dd=document.getElementById('composerModelDropdown');
+  if(!dd) return;
+  dd.classList.remove('model-dropdown--floating');
+  dd.style.left='';
+  dd.style.top='';
+  dd.style.bottom='';
+  dd.style.width='';
+  dd.style.maxWidth='';
+  dd.style.maxHeight='';
+  if(_modelDropdownHome&&_modelDropdownHome.parent&&dd.parentNode!==_modelDropdownHome.parent){
+    const ref=_modelDropdownHome.nextSibling;
+    if(ref&&ref.parentNode===_modelDropdownHome.parent){
+      _modelDropdownHome.parent.insertBefore(dd,ref);
+    }else{
+      _modelDropdownHome.parent.appendChild(dd);
+    }
+  }
+}
+
 function _positionModelDropdown(){
   const dd=$('composerModelDropdown');
   const chip=$('composerModelChip');
@@ -3519,6 +3543,46 @@ function _positionModelDropdown(){
   const panel=$('composerMobileConfigPanel');
   const anchor=(panel&&panel.classList.contains('open')&&mobileAction)?mobileAction:(chip&&chip.offsetParent?chip:mobileAction);
   if(!anchor) return;
+  const isPhone=typeof window.matchMedia==='function'&&window.matchMedia('(max-width:640px)').matches;
+  if(isPhone){
+    if(!_modelDropdownHome){
+      _modelDropdownHome={parent:dd.parentNode,nextSibling:dd.nextSibling};
+    }
+    if(dd.parentNode!==document.body) document.body.appendChild(dd);
+    dd.classList.add('model-dropdown--floating');
+    const anchorRect=anchor.getBoundingClientRect();
+    const visualViewport=window.visualViewport;
+    const viewportWidth=Math.max(1,Number(visualViewport&&visualViewport.width)||window.innerWidth||1);
+    const viewportHeight=Math.max(1,Number(visualViewport&&visualViewport.height)||window.innerHeight||1);
+    const viewportTop=Math.max(0,Number(visualViewport&&visualViewport.offsetTop)||0);
+    const viewportBottom=viewportTop+viewportHeight;
+    const viewportLeft=Math.max(0,Number(visualViewport&&visualViewport.offsetLeft)||0);
+    const viewportRight=viewportLeft+viewportWidth;
+    const margin=8;
+    const gap=6;
+    const titlebar=document.querySelector('.app-titlebar');
+    const titlebarBottom=titlebar&&typeof titlebar.getBoundingClientRect==='function'
+      ?Number(titlebar.getBoundingClientRect().bottom)||0
+      :0;
+    const contentTop=Math.max(viewportTop+margin,titlebarBottom+margin);
+    const menuWidth=Math.max(1,viewportWidth-margin*2);
+    const left=Math.max(viewportLeft+margin,Math.min(anchorRect.left,viewportRight-menuWidth-margin));
+    dd.style.left=`${left}px`;
+    dd.style.width=`${menuWidth}px`;
+    dd.style.maxWidth=`${menuWidth}px`;
+    dd.style.bottom='auto';
+    const menuHeight=Math.max(dd.scrollHeight,dd.offsetHeight);
+    const aboveSpace=Math.max(0,anchorRect.top-contentTop-gap-margin);
+    const belowSpace=Math.max(0,viewportBottom-anchorRect.bottom-gap-margin);
+    const openAbove=aboveSpace>=Math.min(menuHeight,belowSpace)||aboveSpace>=belowSpace;
+    const availableHeight=Math.max(1,openAbove?aboveSpace:belowSpace);
+    dd.style.maxHeight=`${availableHeight}px`;
+    const visibleHeight=Math.min(menuHeight||availableHeight,availableHeight);
+    const top=openAbove?anchorRect.top-gap-visibleHeight:anchorRect.bottom+gap;
+    dd.style.top=`${Math.max(contentTop,Math.min(top,viewportBottom-margin-visibleHeight))}px`;
+    return;
+  }
+  _restoreModelDropdownHome();
   const chipRect=anchor.getBoundingClientRect();
   const footerRect=footer.getBoundingClientRect();
   let left=chipRect.left-footerRect.left;
@@ -4327,6 +4391,7 @@ function closeModelDropdown(){
   if(dd) dd.classList.remove('open');
   if(chip) chip.classList.remove('active');
   if(mobileAction) mobileAction.classList.remove('active');
+  if(typeof _restoreModelDropdownHome==='function') _restoreModelDropdownHome();
 }
 
 function closeSettingsModelDropdown(){

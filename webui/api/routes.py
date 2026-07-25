@@ -1889,6 +1889,27 @@ def _sync_main_model_to_jros(result: dict) -> None:
         logger.warning("Failed to sync main model change to JROS", exc_info=True)
 
 
+def _apply_session_model_to_jros(session) -> None:
+    """Apply a changed conversation model to its selected Jaeger runtime."""
+    from api.backend_selector import BACKEND_JROS, get_session_backend
+
+    config = get_config()
+    if get_session_backend(session, config) != BACKEND_JROS:
+        return
+
+    from api.jros_gateway_chat import _prepare_local_jros_model, reset_jros_boot
+
+    _prepare_local_jros_model(
+        getattr(session, "model", None),
+        getattr(session, "model_provider", None),
+        os.environ.get("ARES_JROS_INSTANCE", "").strip() or None,
+    )
+    # Local preparation already releases the cached bridge. A separately
+    # configured HTTP gateway needs its reset endpoint notified as well.
+    if os.environ.get("ARES_JROS_GATEWAY_URL") or config.get("jros_gateway_url"):
+        reset_jros_boot()
+
+
 def _filter_model_catalog_for_active_ares_backend(catalog: dict) -> dict:
     """Return the same model-picker catalog, scoped to the active ARES runtime.
 
@@ -15113,6 +15134,25 @@ def handle_post(handler, parsed) -> bool:
 
                     _evict_session_agent(body["session_id"])
             s.save()
+        model_selection_changed = (
+            str(old_model or "") != str(getattr(s, "model", "") or "")
+            or str(old_provider or "") != str(getattr(s, "model_provider", "") or "")
+        )
+        if model_selection_changed:
+            try:
+                # JaegerAI reads external_model at bridge boot. Apply the
+                # conversation's newly selected provider/model immediately
+                # and discard any already-booted client, so the picker changes
+                # the runtime rather than only the session label.
+                _apply_session_model_to_jros(s)
+            except Exception:
+                # The selection remains persisted if Jaeger is offline. The
+                # JROS turn path retries preparation before its next local boot.
+                logger.warning(
+                    "Failed to apply JROS model selection for session %s",
+                    body["session_id"],
+                    exc_info=True,
+                )
         if str(old_ws or "") != str(new_ws or ""):
             try:
                 from api.terminal import close_terminal
