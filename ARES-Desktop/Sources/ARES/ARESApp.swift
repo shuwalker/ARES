@@ -33,15 +33,13 @@ final class ARESWindowCoordinator {
 }
 
 private struct ARESMainScene: View {
-    @Environment(\.openWindow) private var openWindow
-
     var body: some View {
         ARESMainView()
             .frame(minWidth: 1024, minHeight: 700)
             .preferredColorScheme(.dark)
             .onAppear {
-                ARESWindowCoordinator.shared.register {
-                    openWindow(id: "main")
+                for window in NSApp.windows {
+                    window.tabbingMode = .disallowed
                 }
             }
     }
@@ -86,85 +84,17 @@ struct ARESApp: App {
     }
 }
 
-// MARK: - Tab Model
-
-enum ARESTab: String, CaseIterable {
-    case companion, hermes, jros
-
-    var label: String {
-        switch self {
-        case .companion: return "Companion"
-        case .hermes: return "Hermes Agent"
-        case .jros: return "JaegerAI"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .companion: return "bubble.left.and.bubble.right.fill"
-        case .hermes: return "terminal.fill"
-        case .jros: return "cpu"
-        }
-    }
-}
-
-// MARK: - Tab Bar
-
-struct ARESTabBar: View {
-    @Binding var activeTab: ARESTab
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(ARESTab.allCases, id: \.self) { tab in
-                Button(action: { activeTab = tab }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 11))
-                        Text(tab.label)
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(activeTab == tab ? .white : Color.white.opacity(0.35))
-                    .padding(.vertical, 7)
-                    .padding(.horizontal, 14)
-                    .background(activeTab == tab ? Color.white.opacity(0.1) : Color.clear)
-                    .cornerRadius(5)
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Color(red: 0.063, green: 0.063, blue: 0.078))
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundColor(Color.white.opacity(0.12)),
-            alignment: .bottom
-        )
-    }
-}
-
 // MARK: - Main View
 
 struct ARESMainView: View {
-    @State private var activeTab: ARESTab = .companion
+    @ObservedObject private var onboardingManager = OnboardingManager.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            ARESTabBar(activeTab: $activeTab)
-            // ZStack keeps all three views alive so terminals don't restart on tab switch
-            ZStack {
-                ARESWebView()
-                    .opacity(activeTab == .companion ? 1 : 0)
-                    .zIndex(activeTab == .companion ? 1 : 0)
-                RuntimeTerminalView(title: "Hermes Agent TUI", command: RuntimeTerminalCommand.hermes)
-                    .opacity(activeTab == .hermes ? 1 : 0)
-                    .zIndex(activeTab == .hermes ? 1 : 0)
-                RuntimeTerminalView(title: "JaegerAI TUI", command: RuntimeTerminalCommand.jros)
-                    .opacity(activeTab == .jros ? 1 : 0)
-                    .zIndex(activeTab == .jros ? 1 : 0)
-            }
+        if onboardingManager.needsOnboarding {
+            OnboardingView()
+                .frame(minWidth: 900, minHeight: 650)
+        } else {
+            ARESWebView()
         }
     }
 }
@@ -401,7 +331,12 @@ struct WebViewRepresentable: NSViewRepresentable {
 final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: ARESMenuBarController?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.setActivationPolicy(.accessory)
 
         let config = ARESConfiguration.shared
@@ -413,8 +348,6 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         setupMenuBar()
 
         // Open the main window on first launch so the onboarding wizard is visible.
-        // The window is closed by the user, not hidden — subsequent launches stay
-        // tray-only until the user clicks "Open ARES" from the menu bar.
         openMainWindow()
         
         NotificationCenter.default.addObserver(
@@ -431,10 +364,9 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         // SwiftUI creates a new WindowGroup window asynchronously.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if let window = NSApp.windows.first(where: {
-                $0.title != "" && $0.className != "NSStatusBarWindow"
-            }) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            for window in NSApp.windows where window.className != "NSStatusBarWindow" {
+                window.tabbingMode = .disallowed
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
             }

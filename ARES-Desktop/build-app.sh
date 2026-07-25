@@ -143,10 +143,16 @@ codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || {
     echo "Warning: codesign failed (ad-hoc signing). App will work locally but may not pass Gatekeeper on other Macs."
 }
 
+# Copy to ~/Applications
+mkdir -p "$HOME/Applications"
+rm -rf "$HOME/Applications/$APP_NAME.app"
+cp -R "$APP_BUNDLE" "$HOME/Applications/$APP_NAME.app"
+
 # Done
 echo ""
 echo "=== Build Complete ==="
 echo "App bundle: $APP_BUNDLE"
+echo "Installed to: $HOME/Applications/$APP_NAME.app"
 echo "Binary size: $(du -sh "$APP_BUNDLE/Contents/MacOS/$APP_NAME" | cut -f1)"
 echo "Bundle size: $(du -sh "$APP_BUNDLE" | cut -f1)"
 echo ""

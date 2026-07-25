@@ -284,24 +284,24 @@ public final class WebUIServerManager: ObservableObject {
                 dir = currentDir.deletingLastPathComponent()
             }
         }
-        // 3. Production install — installer default: ~/.ares/webui
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let prodPath = home.appendingPathComponent(".ares/webui")
-        if FileManager.default.fileExists(atPath: prodPath.appendingPathComponent("server.py").path) {
-            return prodPath
+        // 3. Dev checkout / git install location
+        let devPath = home.appendingPathComponent("GitHub/ARES/webui")
+        if FileManager.default.fileExists(atPath: devPath.path) {
+            return devPath
         }
         // 4. ARES_HOME override — respect explicit install location
         if let aresHome = ProcessInfo.processInfo.environment["ARES_HOME"],
            !aresHome.isEmpty {
             let overridePath = URL(fileURLWithPath: aresHome).appendingPathComponent("webui")
-            if FileManager.default.fileExists(atPath: overridePath.appendingPathComponent("server.py").path) {
+            if FileManager.default.fileExists(atPath: overridePath.path) {
                 return overridePath
             }
         }
-        // 5. Dev checkout fallback — only used during development
-        let devPath = home.appendingPathComponent("GitHub/ARES/webui")
-        if FileManager.default.fileExists(atPath: devPath.appendingPathComponent("server.py").path) {
-            return devPath
+        // 5. Fallback install
+        let prodPath = home.appendingPathComponent(".ares/webui")
+        if FileManager.default.fileExists(atPath: prodPath.path) {
+            return prodPath
         }
         return nil
     }
