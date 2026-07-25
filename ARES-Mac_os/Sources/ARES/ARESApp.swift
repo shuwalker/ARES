@@ -32,24 +32,13 @@ final class ARESWindowCoordinator {
 }
 
 private struct ARESMainScene: View {
-    @Environment(\.openWindow) private var openWindow
-    @ObservedObject private var onboardingManager = OnboardingManager.shared
-
     var body: some View {
         ARESMainView()
             .frame(minWidth: 1024, minHeight: 700)
             .preferredColorScheme(.dark)
             .onAppear {
-                ARESWindowCoordinator.shared.register {
-                    openWindow(id: "main")
-                }
-                if onboardingManager.needsOnboarding {
-                    openWindow(id: "onboarding")
-                }
-            }
-            .onChange(of: onboardingManager.needsOnboarding) { _, needs in
-                if needs {
-                    openWindow(id: "onboarding")
+                for window in NSApp.windows {
+                    window.tabbingMode = .disallowed
                 }
             }
     }
@@ -67,14 +56,6 @@ struct ARESApp: App {
         }
         .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)
-        
-        // Onboarding window - always registered but shown conditionally
-        WindowGroup(id: "onboarding") {
-            OnboardingView()
-                .frame(minWidth: 800, minHeight: 600)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .defaultPosition(.center)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About ARES") {
@@ -333,6 +314,7 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         // SwiftUI creates or brings forward the WindowGroup window asynchronously.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             for window in NSApp.windows where window.className != "NSStatusBarWindow" {
+                window.tabbingMode = .disallowed
                 window.deminiaturize(nil)
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
