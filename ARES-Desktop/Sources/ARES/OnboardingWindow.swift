@@ -126,43 +126,65 @@ func loadCharacterImage(filename: String) -> NSImage? {
     return NSImage(contentsOf: altPath)
 }
 
-// MARK: - Step 0: Welcome Step
+// MARK: - Step 0: Welcome Step (ARES Philosophy & Vision)
 
 struct WelcomeStep: View {
     var onNext: () -> Void
     
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 20) {
             Spacer()
             
             Image(systemName: "sparkles")
-                .font(.system(size: 72))
+                .font(.system(size: 64))
                 .foregroundColor(.yellow)
             
-            Text("Welcome to ARES")
-                .font(.system(size: 28, weight: .bold))
-            
-            VStack(spacing: 12) {
-                Text("ARES is a User Interface to your AI assistant. Using JaegerAI we will give a local LLM tools to assist you in anything you want to do on your devices.")
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: 520)
+            VStack(spacing: 4) {
+                Text("Welcome to ARES")
+                    .font(.system(size: 28, weight: .bold))
+                
+                Text("Agentic Responsive Environment & System")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.yellow)
             }
+            
+            Text("As the world becomes more noisy and confusing, ARES helps you disconnect from digital overload—reshaping your relationship with technology starting directly on your Mac.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: 580)
             
             VStack(alignment: .leading, spacing: 14) {
-                FeatureRow(icon: "brain.head.profile", title: "Local Tools & Automation", subtitle: "Grant your AI assistant tools to run terminal commands, view screens, and automate apps.")
-                FeatureRow(icon: "cpu", title: "Local & Cloud LLMs", subtitle: "Connect Ollama, JaegerAI local models, or cloud providers like OpenAI, Claude, and Gemini.")
-                FeatureRow(icon: "shield.checkmark.fill", title: "Private & Local-First", titleColor: .green, subtitle: "Your data stays on your machine with optional local-only loopback.")
+                FeatureRow(
+                    icon: "leaf.fill",
+                    title: "Reshape Your Relationship with Tech",
+                    titleColor: .green,
+                    subtitle: "Move away from endless distraction. Delegate repetitive tasks to your local companion and regain your focus."
+                )
+                
+                FeatureRow(
+                    icon: "brain.head.profile",
+                    title: "Natural UI for LLMs (Large Language Models)",
+                    titleColor: .blue,
+                    subtitle: "LLMs are AI reasoning engines—both private models on your Mac and 3rd-party cloud APIs—given a intuitive interface to turn your words into action."
+                )
+                
+                FeatureRow(
+                    icon: "arrow.triangle.2.circlepath.circle.fill",
+                    title: "Symbiotic Growth with JaegerAI",
+                    titleColor: .purple,
+                    subtitle: "Powered by JaegerAI, your local companion manages your digital life and agents—creating a space where you, your agents, and yourself learn and grow together."
+                )
             }
-            .padding(20)
+            .padding(18)
             .background(RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)))
-            .frame(maxWidth: 560)
+            .frame(maxWidth: 600)
             
             Spacer()
             
             Button(action: onNext) {
-                Text("Get Started")
+                Text("Begin Your Journey")
                     .fontWeight(.semibold)
                     .frame(width: 220, height: 24)
             }
