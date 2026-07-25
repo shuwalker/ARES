@@ -21,24 +21,6 @@ from .types import (
 # via discover_adapters() which detects what's installed on this machine.
 
 _BUILTIN_WORKERS: dict[str, WorkerRecord] = {
-    "hermes_local": WorkerRecord(
-        worker_id="hermes_local",
-        provider="nous",
-        display_name="Hermes Agent (local)",
-        capabilities=[
-            WorkerCapability("code_generation", "Write, edit, and debug code", 0.9),
-            WorkerCapability("terminal", "Execute shell commands", 1.0),
-            WorkerCapability("file_operations", "Read, write, and manage files", 1.0),
-            WorkerCapability("research", "Web search and information retrieval", 0.8),
-            WorkerCapability("conversation", "General conversation and reasoning", 0.85),
-        ],
-        privacy_class=PrivacyClass.LOCAL_ONLY,
-        data_location="local",
-        context_limit=None,
-        supports_streaming=True,
-        supports_files=True,
-        supports_images=False,
-    ),
     "claude_local": WorkerRecord(
         worker_id="claude_local",
         provider="anthropic",

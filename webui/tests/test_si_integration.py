@@ -148,7 +148,7 @@ class TestBridgePipeline:
             target_worker="mock_unavailable",
         )
 
-        # Should fall back to hermes_local or return an error
+        # Should fall back to the default worker or return an error
         assert "text" in result or "error" in result
 
     def test_si_turn_handles_backend_error(self):
@@ -458,10 +458,10 @@ class TestRouterIntegration:
         result = route_task(
             "conversation",
             data_sensitivity="personal",
-            prefer_worker="hermes_local",
+            prefer_worker="claude_local",
         )
         assert result["selected_worker"] is not None
-        assert result["selected_worker"]["worker_id"] == "hermes_local"
+        assert result["selected_worker"]["worker_id"] == "claude_local"
 
     def test_route_excludes_workers(self):
         """Excluded workers are not selected."""
@@ -470,10 +470,10 @@ class TestRouterIntegration:
         result = route_task(
             "conversation",
             data_sensitivity="personal",
-            exclude_workers=["hermes_local"],
+            exclude_workers=["claude_local"],
         )
         if result["selected_worker"]:
-            assert result["selected_worker"]["worker_id"] != "hermes_local"
+            assert result["selected_worker"]["worker_id"] != "claude_local"
 
 
 # ── Evaluator Integration Tests ─────────────────────────────────────────

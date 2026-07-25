@@ -43,7 +43,7 @@ async def sam_chat(
 ) -> dict[str, Any]:
     """
     Adapter endpoint for SAM ConversationEngine to start a chat inference session
-    using a specific LLM adapter (e.g. hermes_local, ollama_local).
+    using a specific LLM adapter (e.g. jros_local, ollama_local).
     """
     with profile_scope(identity.profile):
         try:

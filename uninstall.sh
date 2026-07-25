@@ -3,10 +3,10 @@
 #
 # Usage:
 #   bash uninstall.sh          Remove the ARES install (server, launchd, app command).
-#                              Keeps your Companion (JaegerAI instance), profile, and
-#                              Hermes config — reinstalling picks them back up.
-#   bash uninstall.sh --purge  Also remove Companion instances, ~/.hermes, and the
-#                              companion profile dir. Use for a truly fresh onboarding.
+#                              Keeps your Companion (JaegerAI instance) and profile —
+#                              reinstalling picks them back up.
+#   bash uninstall.sh --purge  Also remove Companion instances and the companion
+#                              profile dir. Use for a truly fresh onboarding.
 
 set -e
 
@@ -50,7 +50,6 @@ if [ "$PURGE" = false ]; then
     ok "Uninstalled. Companion data kept:"
     echo "    • JaegerAI instances:  ~/jaeger/.jaeger_os/instances/"
     echo "    • Companion profile:   ~/Desktop/ARES/companion/"
-    echo "    • Hermes config:       ~/.hermes/"
     echo "  Run with --purge to remove those too (fresh onboarding)."
     exit 0
 fi
@@ -66,20 +65,6 @@ for jh in "$HOME/jaeger" "$HOME/.jaeger"; do
         ok "Companion instances removed ($jh/.jaeger_os/instances)"
     fi
 done
-
-# Hermes state (old configs make onboarding auto-complete or misreport)
-if [ -d "$HOME/.hermes" ]; then
-    rm -rf "$HOME/.hermes"
-    ok "~/.hermes removed"
-fi
-# Stale hermes wrapper pointing at a removed venv
-if [ -f "$HOME/.local/bin/hermes" ]; then
-    _target=$(grep -oE '"/[^"]*/bin/hermes"' "$HOME/.local/bin/hermes" 2>/dev/null | tr -d '"' || true)
-    if [ -n "$_target" ] && [ ! -f "$_target" ]; then
-        rm -f "$HOME/.local/bin/hermes"
-        ok "Stale hermes wrapper removed"
-    fi
-fi
 
 # Companion profile dir
 if [ -d "$HOME/Desktop/ARES/companion" ]; then

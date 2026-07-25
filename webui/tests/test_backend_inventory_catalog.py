@@ -8,7 +8,6 @@ from api.backends.catalog import (
     infer_model_location,
     model_entry,
 )
-from api.backends.hermes import HermesBackend
 from api.backends.jros import JROSBackend
 
 
@@ -24,19 +23,6 @@ def test_empty_inventory_has_latency_note():
     assert inv["schema_version"] == 1
     assert "selected_model" in inv["latency"]["depends_on"]
     assert "LLM" in inv["latency"]["note"] or "model" in inv["latency"]["note"].lower()
-
-
-def test_hermes_inventory_catalogues_cli_and_mcp():
-    inv = HermesBackend().inventory()
-    inv = finalize_inventory(inv)
-    kinds = {t["kind"] for t in inv["transports"]}
-    assert "cli" in kinds
-    assert "mcp" in kinds
-    assert inv["active_execution"]["transport"] == "cli_chat"
-    # MCP declared even if ARES is not the client
-    assert any(m.get("in_use_by_ares") is False for m in inv["mcp"])
-    assert inv["models"], "should list at least one model or placeholder"
-    assert any(m.get("location") in {"local", "cloud", "unknown"} for m in inv["models"])
 
 
 def test_jros_inventory_catalogues_gateway_and_available_models_only():

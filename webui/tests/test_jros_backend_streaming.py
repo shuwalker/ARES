@@ -589,10 +589,3 @@ def test_ares_capabilities_follow_external_runtime_and_shared_tools(monkeypatch)
 
     monkeypatch.setattr(ares_capabilities, "_jros_ares_tools_enabled", lambda: True)
     assert ares_capabilities.capabilities_for_backend("jros")["kanban"] is True
-
-    hermes_caps = ares_capabilities.capabilities_for_backend("hermes_local")
-    assert hermes_caps["cloud_provider_model_settings"] is True
-    assert hermes_caps["mcp_server_config"] is True
-    assert hermes_caps["messaging_gateway"] is True
-    assert hermes_caps["delegate_task"] is True
-    assert hermes_caps["character_persona_editing"] is False

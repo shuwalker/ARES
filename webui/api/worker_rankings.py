@@ -1,7 +1,7 @@
 """Companion technical intelligence: worker effectiveness scores.
 
 ARES is only the app name. The Companion owns ranking of *workers*
-(Ollama, jros, Hermes, cloud, …). Scores are rule/metric based — not a chat LLM.
+(Ollama, jros, cloud, …). Scores are rule/metric based — not a chat LLM.
 
 Source of truth for durable SI memory remains the Companion journal (sessions);
 this module only stores evaluation outcomes used for routing and leaderboards.

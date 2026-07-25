@@ -167,7 +167,7 @@ def _make_session(messages=None, tool_calls=None):
     s = Session(
         session_id=f"compress_test_{time.time_ns()}",
         title="Untitled",
-        workspace="/tmp/hermes-webui-test",
+        workspace="/tmp/ares-webui-test",
         model="openai/gpt-5.4-mini",
         messages=messages,
         tool_calls=tool_calls or [],
@@ -350,7 +350,7 @@ def test_session_compress_status_reports_worker_error_without_raw_paths(monkeypa
 
         def compress(self, messages, current_tokens=None, focus_topic=None):
             self.entered.set()
-            raise RuntimeError("provider log at /Users/alice/.hermes/secrets/token.txt failed")
+            raise RuntimeError("provider log at /Users/alice/.ares/secrets/token.txt failed")
 
     class FailingAgent:
         def __init__(self, **kwargs):
@@ -529,9 +529,9 @@ def test_manual_compress_worker_uses_session_profile_env(monkeypatch, tmp_path, 
             thread_env = getattr(_thread_ctx, "env", {})
             EnvAssertingAgent.seen_env = {
                 "ARES_HOME": os.environ.get("ARES_HOME"),
-                "HERMES_TEST_PROFILE_ENV": os.environ.get("HERMES_TEST_PROFILE_ENV"),
+                "ARES_TEST_PROFILE_ENV": os.environ.get("ARES_TEST_PROFILE_ENV"),
                 "THREAD_ARES_HOME": thread_env.get("ARES_HOME"),
-                "THREAD_HERMES_TEST_PROFILE_ENV": thread_env.get("HERMES_TEST_PROFILE_ENV"),
+                "THREAD_ARES_TEST_PROFILE_ENV": thread_env.get("ARES_TEST_PROFILE_ENV"),
                 "SKILL_MODULE_HOME": getattr(skill_module, "ARES_HOME", None),
                 "SKILL_MODULE_DIR": getattr(skill_module, "SKILLS_DIR", None),
             }
@@ -554,10 +554,10 @@ def test_manual_compress_worker_uses_session_profile_env(monkeypatch, tmp_path, 
     monkeypatch.setattr(
         profiles,
         "get_profile_runtime_env",
-        lambda home: {"HERMES_TEST_PROFILE_ENV": "work-runtime"},
+        lambda home: {"ARES_TEST_PROFILE_ENV": "work-runtime"},
     )
     monkeypatch.setenv("ARES_HOME", "default-home")
-    monkeypatch.delenv("HERMES_TEST_PROFILE_ENV", raising=False)
+    monkeypatch.delenv("ARES_TEST_PROFILE_ENV", raising=False)
     _install_fake_compression_runtime(monkeypatch, EnvAssertingAgent)
 
     with routes._MANUAL_COMPRESSION_JOBS_LOCK:
@@ -573,15 +573,15 @@ def test_manual_compress_worker_uses_session_profile_env(monkeypatch, tmp_path, 
 
     assert EnvAssertingAgent.seen_env == {
         "ARES_HOME": str(profile_home),
-        "HERMES_TEST_PROFILE_ENV": "work-runtime",
+        "ARES_TEST_PROFILE_ENV": "work-runtime",
         "THREAD_ARES_HOME": str(profile_home),
-        "THREAD_HERMES_TEST_PROFILE_ENV": "work-runtime",
+        "THREAD_ARES_TEST_PROFILE_ENV": "work-runtime",
         "SKILL_MODULE_HOME": profile_home,
         "SKILL_MODULE_DIR": profile_home / "skills",
     }
     assert str(fake_skill_module.ARES_HOME) == "default-home"
     assert str(fake_skill_module.SKILLS_DIR) == "default-home/skills"
     assert os.environ.get("ARES_HOME") == "default-home"
-    assert os.environ.get("HERMES_TEST_PROFILE_ENV") is None
+    assert os.environ.get("ARES_TEST_PROFILE_ENV") is None
     with routes._MANUAL_COMPRESSION_JOBS_LOCK:
         assert routes._MANUAL_COMPRESSION_JOBS[sid]["status"] == "done"

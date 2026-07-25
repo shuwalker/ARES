@@ -134,7 +134,6 @@ function resolveBackendId(raw: Record<string, unknown>): string {
     grok: "grok_local",
     cursor: "cursor_local",
     opencode: "opencode_local",
-    hermes: "hermes_local",
     jros: "jros_local",
     jaeger: "jros_local",
     ollama: "ollama_local",

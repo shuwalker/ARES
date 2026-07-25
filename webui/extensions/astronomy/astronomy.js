@@ -318,7 +318,7 @@
   /* ── Sidebar tab registration ── */
   function registerSidebarTab() {
     /* Use the Plugin SDK if available */
-    const sdk = window.__HERMES_PLUGIN_SDK__ || window.__ARES_PLUGIN_SDK__;
+    const sdk = window.__ARES_PLUGIN_SDK__;
     if (sdk?.registerTab) {
       sdk.registerTab({
         id: "astronomy",

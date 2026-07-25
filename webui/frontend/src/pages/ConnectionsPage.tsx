@@ -458,7 +458,7 @@ export function ConnectionsPage() {
             <p className="text-sm text-status-unavailable" role="alert">{rankingError}</p>
           ) : rankings.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No evaluations yet. After chat runs, record scores so the Companion can rank Ollama, jros, Hermes, and other workers.
+              No evaluations yet. After chat runs, record scores so the Companion can rank Ollama, jros, and other workers.
             </p>
           ) : (
             <div className="space-y-2">

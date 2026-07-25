@@ -8,7 +8,6 @@ from __future__ import annotations
 from typing import Dict
 
 from .base import AgenticBackend
-from .hermes import HermesBackend
 from .jros import JROSBackend
 from .cli_backends import (
     AntigravityGeminiBackend,
@@ -30,7 +29,6 @@ def get_default_router() -> BackendRouter:
     """Factory returning the canonical ARES router with all available backends."""
     jros = JROSBackend()
     backends: Dict[str, AgenticBackend] = {
-        "hermes_local": HermesBackend(),
         "jros_local": jros,
         "claude_local": ClaudeLocalBackend(),
         "codex_local": CodexLocalBackend(),

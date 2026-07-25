@@ -158,7 +158,7 @@ def check_worker_registry():
     r = get_registry()
     workers = r.list_all()
     assert len(workers) >= 6, f"Expected >=6 workers, got {len(workers)}"
-    assert any(w.worker_id == "hermes_local" for w in workers)
+    assert any(w.worker_id == "jros_local" for w in workers)
     assert any(w.worker_id == "claude_local" for w in workers)
     # SECRET data = no eligible workers
     assert len(r.find_eligible("conversation", data_sensitivity="secret")) == 0
@@ -239,8 +239,8 @@ def check_router():
     assert r2["selected_worker"] is None
 
     # User preference respected
-    r3 = route_task("conversation", data_sensitivity="personal", prefer_worker="hermes_local")
-    assert r3["selected_worker"]["worker_id"] == "hermes_local"
+    r3 = route_task("conversation", data_sensitivity="personal", prefer_worker="jros_local")
+    assert r3["selected_worker"]["worker_id"] == "jros_local"
 
 
 def check_evaluator():
@@ -266,7 +266,7 @@ def check_response_composer():
     assert resp.plan_id == "plan-1"
 
     summary = compose_activity_summary([
-        {"status": "completed", "objective": "search", "assigned_worker": "hermes_local"},
+        {"status": "completed", "objective": "search", "assigned_worker": "jros_local"},
         {"status": "failed", "objective": "verify", "assigned_worker": "claude_local"},
     ])
     assert "✓" in summary
@@ -432,13 +432,13 @@ def check_bridge_pipeline():
 
     assert isinstance(si_enabled(), bool)
 
-    # Test with hermes_local (should be available)
+    # Test with jros_local (should be available)
     try:
-        r = si_turn("hello, this is a doctor test", session_id="si_doctor_test", target_worker="hermes_local")
+        r = si_turn("hello, this is a doctor test", session_id="si_doctor_test", target_worker="jros_local")
     except Exception as e:
-        # If hermes_local isn't available, that's OK — the bridge itself works
+        # If jros_local isn't available, that's OK — the bridge itself works
         if "not found" in str(e).lower() or "unavailable" in str(e).lower() or "no module" in str(e).lower():
-            print(f"    {YELLOW}Note: hermes_local not available, skipping live pipeline test{RESET}")
+            print(f"    {YELLOW}Note: jros_local not available, skipping live pipeline test{RESET}")
             return
         raise
 

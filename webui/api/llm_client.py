@@ -1,7 +1,7 @@
 """Optional direct Anthropic/OpenAI SDK calls for the Missions orchestrator.
 
 Sub-agent dispatch (webui/api/missions.py) routes coding/tool-using sub-tasks
-through the existing Hermes/JROS backends (webui/api/backends/), which carry
+through the existing agentic backends (webui/api/backends/), which carry
 tool use, memory, and persona. This module is only for the CEO decomposition
 step and pure-reasoning sub-tasks that call a cloud model directly with no
 agent loop involved.
@@ -69,7 +69,7 @@ def call_anthropic(prompt: str, *, system: str | None = None, model: str | None 
     key = _anthropic_key()
     if not key:
         raise LLMProviderUnavailable(
-            "No Anthropic API key configured. Set ANTHROPIC_API_KEY in ~/.hermes/.env or the environment."
+            "No Anthropic API key configured. Set ANTHROPIC_API_KEY in the environment."
         )
     client = anthropic.Anthropic(api_key=key)
     resp = client.messages.create(
@@ -92,7 +92,7 @@ def call_openai(prompt: str, *, system: str | None = None, model: str | None = N
     key = _openai_key()
     if not key:
         raise LLMProviderUnavailable(
-            "No OpenAI API key configured. Set OPENAI_API_KEY in ~/.hermes/.env or the environment."
+            "No OpenAI API key configured. Set OPENAI_API_KEY in the environment."
         )
     client = openai.OpenAI(api_key=key)
     messages = []

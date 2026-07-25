@@ -97,13 +97,13 @@ describe("ARES backend translators", () => {
     const session = translateConversation({
       session_id: "s1",
       ares_backend: "ollama_local",
-      messages: [{ role: "assistant", content: "ok", worker_id: "hermes_local" }],
+      messages: [{ role: "assistant", content: "ok", worker_id: "jros_local" }],
     });
     expect(session.backendId).toBe("ollama_local");
     expect(session.messages[0]).toEqual(expect.objectContaining({
       role: "assistant",
       text: "ok",
-      workerId: "hermes_local",
+      workerId: "jros_local",
     }));
   });
 

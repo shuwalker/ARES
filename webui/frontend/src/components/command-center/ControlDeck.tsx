@@ -78,7 +78,6 @@ const modes: Array<{ id: DeckMode; label: string; icon: LucideIcon; to: string }
 
 // Maps backend adapter IDs to friendly display info
 const BACKEND_META: Record<string, { label: string; color: string }> = {
-  hermes_local:   { label: "Hermes",      color: "#08EBF1" },
   jros_local:     { label: "JROS",        color: "#3889FD" },
   claude_local:   { label: "Claude Code", color: "#D97706" },
   codex_local:    { label: "Codex",       color: "#10B981" },

@@ -15,7 +15,7 @@ from .paths import journal_dir, journal_db
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,           -- hermes, claude_code, grok, gemini, codex, sam, imessage
+    source TEXT NOT NULL,           -- claude_code, grok, gemini, codex, sam, imessage
     session_id TEXT NOT NULL,       -- original session identifier
     title TEXT,                     -- human-readable session title
     model TEXT,                     -- AI model used
@@ -81,7 +81,7 @@ END;
 -- Documents table for planning/evaluation/architecture docs
 CREATE TABLE IF NOT EXISTS documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,           -- hermes, claude, grok, gemini, codex, repo, manual
+    source TEXT NOT NULL,           -- claude, grok, gemini, codex, repo, manual
     title TEXT,                     -- document title (from first heading or filename)
     file_path TEXT NOT NULL,        -- absolute path to the document
     content TEXT,                   -- full text content

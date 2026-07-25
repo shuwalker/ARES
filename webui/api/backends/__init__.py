@@ -7,7 +7,6 @@ Backends register themselves via BackendRegistry at import time.
 The router queries the registry for available backends.
 """
 from .base import AgenticBackend
-from .hermes import HermesBackend
 from .jros import JROSBackend
 from .cli_backends import (
     AntigravityGeminiBackend,
@@ -36,7 +35,6 @@ __all__ = [
     "AgenticBackend",
     "BackendRegistry",
     "BackendRouter",
-    "HermesBackend",
     "JROSBackend",
     "HatchedSIBackend",
     "ClaudeCloudBackend",

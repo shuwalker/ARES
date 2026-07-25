@@ -1319,7 +1319,6 @@ class Session:
         title_lower = (self.title or "").lower()
         is_probe = (
             "reply with" in title_lower
-            or "ares-hermes-ok" in title_lower
             or "ares-jaeger-ok" in title_lower
             or "si-ok" in title_lower
         )
@@ -1407,7 +1406,6 @@ class Session:
             title_lower = (self.title or "").lower()
             is_probe = (
                 "reply with" in title_lower
-                or "ares-hermes-ok" in title_lower
                 or "ares-jaeger-ok" in title_lower
                 or "si-ok" in title_lower
             )
@@ -4920,67 +4918,6 @@ def _active_state_db_path() -> Path:
     return ares_home / 'state.db'
 
 
-def _worker_state_db_path() -> Path | None:
-    """Return the connected worker's ``state.db``, or ``None`` when absent.
-
-    ARES owns its own sessions under ``ARES_HOME`` (see ``SESSION_DIR``), but
-    CLI/TUI history belongs to the *worker* that produced it and lives in that
-    worker's own home — Hermes Agent keeps it at ``$HERMES_HOME/state.db``.
-    ARES_HOME has no ``state.db`` in a normal install, so resolving the CLI
-    projection against it alone silently yields zero rows and the sidebar looks
-    empty even though the worker has history. This is read-only: ARES never
-    writes into a worker's store.
-    """
-    try:
-        from api.journal.paths import hermes_db
-        db_path = Path(hermes_db()).expanduser()
-    except Exception:
-        return None
-    return db_path if db_path.exists() else None
-
-
-def _worker_backend_id_for_db(db_path) -> str | None:
-    """Map a worker's session store back to the adapter id that owns it.
-
-    Rows in a worker's ``state.db`` carry no adapter column — Hermes records a
-    ``model`` (``glm-5.1``, ``qwen3.5:cloud``) but nothing naming the framework.
-    The store itself is the provenance: anything read from ``$HERMES_HOME`` came
-    from the Hermes Agent regardless of which model served the turn.
-    """
-    try:
-        candidate = Path(db_path).expanduser().resolve()
-    except Exception:
-        return None
-    worker_db = _worker_state_db_path()
-    if worker_db is not None:
-        try:
-            if candidate == worker_db.resolve():
-                return 'hermes_local'
-        except Exception:
-            return None
-    return None
-
-
-def _stamp_worker_backend(rows, db_path) -> None:
-    """Attach the owning adapter id to rows projected from a worker store.
-
-    Without this the frontend derives a backend from ``source_tag`` ("cli") and
-    invents a ``cli_local`` adapter that does not exist, so real Hermes history
-    lands in a phantom group instead of under HERMES.
-    """
-    backend_id = _worker_backend_id_for_db(db_path)
-    if not backend_id:
-        return
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        # Claude Code rows come from ~/.claude/projects, not this store.
-        if str(row.get('source_tag') or '') == CLAUDE_CODE_SOURCE:
-            continue
-        if not row.get('ares_backend'):
-            row['ares_backend'] = backend_id
-
-
 def _agent_state_db_path(*, profile=None) -> Path | None:
     """Return agent ``state.db`` for *profile*, or ``None`` when unavailable."""
     if isinstance(profile, str) and profile:
@@ -4990,8 +4927,7 @@ def _agent_state_db_path(*, profile=None) -> Path | None:
     else:
         db_path = _active_state_db_path()
     if not db_path.exists():
-        # Fall back to the worker's own store for imported CLI/TUI history.
-        return _worker_state_db_path()
+        return None
     return db_path
 
 
@@ -6680,15 +6616,6 @@ def _resolve_cli_sessions_context(source_filter=None, include_claude_code: bool 
         cli_profile = None
 
     db_path = ares_home / 'state.db'
-    if not db_path.exists():
-        # ARES owns WebUI sessions under ARES_HOME/webui/sessions and normally
-        # has no state.db of its own. CLI/TUI history belongs to the worker that
-        # produced it and lives in that worker's home ($HERMES_HOME/state.db).
-        # Without this fallback the projection reads a non-existent path and the
-        # CLI sidebar is silently empty even when the worker has history.
-        worker_db = _worker_state_db_path()
-        if worker_db is not None:
-            db_path = worker_db
     projects_dir = _default_claude_code_projects_dir()
     # #4842: while a turn streams, freeze the volatile state.db component of the
     # key so per-message writes don't bust the CLI cache and re-run the heavy
@@ -7151,7 +7078,6 @@ def _load_cli_sessions_uncached(
         except Exception:
             logger.debug("Webhook project-chip second pass failed", exc_info=True)
 
-    _stamp_worker_backend(cli_sessions, db_path)
     return cli_sessions
 
 

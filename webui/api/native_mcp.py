@@ -30,7 +30,7 @@ def native_server_config() -> dict[str, dict]:
 
 
 def register_native_mcp_tools() -> list[str]:
-    """Connect the bundled helper to Hermes without altering user config."""
+    """Connect the bundled helper to the worker without altering user config."""
 
     servers = native_server_config()
     if not servers:

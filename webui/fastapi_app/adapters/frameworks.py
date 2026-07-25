@@ -271,39 +271,6 @@ class JaegerAdapter(JournaledFrameworkAdapter):
         return [ModelDescriptor(model_id, model_id, provider, self.adapter_id)]
 
 
-class HermesAdapter(JournaledFrameworkAdapter):
-    adapter_id = "hermes_local"
-    display_name = "Hermes Agent"
-
-    def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
-        from api.backends.hermes import HermesBackend
-
-        super().__init__(backend=HermesBackend(), turn_starter=turn_starter)
-
-    def check_health(self, *, profile: str | None) -> AdapterHealth:
-        del profile
-        from api.backends.hermes import _available_message, _probe_hermes
-
-        available, version = _probe_hermes()
-        if available:
-            return AdapterHealth(
-                "connected",
-                True,
-                _available_message(version),
-            )
-        return AdapterHealth(
-            "offline",
-            False,
-            "Hermes Agent CLI not found. Install with: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
-        )
-
-    def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
-        del profile
-        # Hermes uses its own model routing from ~/.hermes/config.yaml
-        # We report a generic entry so the UI shows something selectable.
-        return [ModelDescriptor("hermes-default", "Hermes (default model)", None, self.adapter_id)]
-
-
 class CliFrameworkAdapter(JournaledFrameworkAdapter):
     """Generic adapter for CLI-based backends (Claude, Codex, Gemini, etc.)."""
 

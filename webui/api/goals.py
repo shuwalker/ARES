@@ -700,7 +700,7 @@ def _start_server_side_goal_continuation_turn(session_id: str, continuation_prom
 
     threading.Thread(
         target=_runner,
-        name=f"hermes-webui-goal-continuation-{str(session_id)[:8]}",
+        name=f"ares-goal-continuation-{str(session_id)[:8]}",
         daemon=True,
     ).start()
 

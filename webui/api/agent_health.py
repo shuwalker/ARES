@@ -334,42 +334,6 @@ def _remote_probe_wait_budget_s() -> float:
     return _REMOTE_PROBE_TIMEOUT_S * len(_REMOTE_PROBE_PATHS) + 1.0
 
 
-def _gateway_health_from_state_file() -> dict[str, Any] | None:
-    """Detect the gateway from its runtime state file, without agent imports.
-
-    ``hermes gateway run`` maintains ``$HERMES_HOME/gateway_state.json``
-    (pid, gateway_state, updated_at). When the agent's ``gateway.status``
-    package is not importable from this process — the normal case for a
-    WebUI-only install — that file is still authoritative. Pure read.
-
-    Returns None when the file is missing/unreadable so the caller keeps its
-    existing "unknown" semantics for setups with no gateway at all.
-    """
-    hermes_home = Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes")).expanduser()
-    state_path = hermes_home / "gateway_state.json"
-    payload = _read_runtime_status_path(state_path)
-    if payload is None:
-        return None
-
-    pid_alive = False
-    pid = payload.get("pid")
-    if isinstance(pid, int) and pid > 0:
-        try:
-            os.kill(pid, 0)
-            pid_alive = True
-        except (ProcessLookupError, PermissionError, OSError):
-            pid_alive = False
-
-    details = _runtime_detail_subset(payload)
-    details.setdefault("state", "alive" if pid_alive else "down")
-    details["reason"] = "gateway_state_file"
-    return {
-        "alive": pid_alive,
-        "checked_at": _checked_at(),
-        "details": details,
-    }
-
-
 def _is_loopback_base_url(base_url: str) -> bool:
     """True when *base_url* points at this machine (localhost/127.x/::1).
 
@@ -644,12 +608,7 @@ def build_agent_health_payload() -> dict[str, Any]:
     try:
         gateway_status = _gateway_status_module()
     except Exception as exc:
-        # WebUI-only installs cannot import the agent's gateway package, but
-        # the worker still writes its runtime state file. Read it directly
-        # (read-only, RUNTIME.md) before reporting "unknown".
-        file_result = _gateway_health_from_state_file()
-        if file_result is not None:
-            return file_result
+        # WebUI-only installs cannot import the agent's gateway package.
         return {
             "alive": None,
             "checked_at": checked_at,

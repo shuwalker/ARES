@@ -22,7 +22,7 @@ System as a product package). It is not a character and not who the user talks t
 
 **Companion** = everything that is **not a worker**: the personal SI experience
 (identity, journal, context, routing, scoring, permissions, workspace).
-**Workers** = Ollama, jros, Hermes, cloud models, MCP, devices — execution only.
+**Workers** = Ollama, jros, cloud models, MCP, devices — execution only.
 
 Read [FOUNDATION.md](FOUNDATION.md) and [docs/product-vision.md](../docs/product-vision.md).
 
@@ -55,7 +55,7 @@ Keep the merged layout intentional:
 
 Thin wrappers at the repo root (`install.sh`, `start.sh`, `ctl.sh`) delegate into `webui/`; keep them as delegators, not implementations.
 
-Do not create new top-level directories without explicit approval. Do not modify Hermes Agent source code under a user runtime directory; build ARES adapters/config/templates instead.
+Do not create new top-level directories without explicit approval. Do not modify a worker's source code under a user runtime directory; build ARES adapters/config/templates instead.
 
 ## Native app architecture
 
@@ -96,7 +96,7 @@ Non-negotiable runtime rules:
 - `ARES_HOME/state.db` normally does not exist. Do not add callers of
   `_active_state_db_path()`; use `_agent_state_db_path()` to read worker history.
 - Resolve every external path through `api/journal/paths.py` so the
-  `HERMES_HOME` / `CLAUDE_HOME` / `CODEX_HOME` / `GEMINI_HOME` overrides apply.
+  `CLAUDE_HOME` / `CODEX_HOME` / `GEMINI_HOME` overrides apply.
 - Never branch on a display string (`source_label`); branch on machine values.
 - If code caps or truncates a listing, report what it dropped — silent
   truncation reads to the user as "there is nothing more".
@@ -149,10 +149,9 @@ External services must be optional/detected, not hardcoded:
 | Service | Default role | Expected configuration style |
 |---|---|---|
 | JaegerAI | First-class agent/voice/embodiment framework connection; current default where configured | detected or installed through an explicit connection flow; path via `ARES_JAEGER_HOME`/`JAEGER_HOME` |
-| Hermes | Optional addition backend | opt-in via `--with-hermes`; configured URL/API key/env/template |
 | ARES-native services | Product-owned UI/automation features | bundled/detected/configured per user |
 | Ollama/local models | Local model inference backend | detected localhost or configured URL |
-| Cloud providers | Remote model/tool providers for the Companion's `external_model` (JaegerAI) or Hermes, synced via `api/ares_provider_sync.py` — never the key itself, only provider/model/env-var name | configured provider credentials/templates |
+| Cloud providers | Remote model/tool providers for the Companion's `external_model` (JaegerAI), synced via `api/ares_provider_sync.py` — never the key itself, only provider/model/env-var name | configured provider credentials/templates |
 | Workflow tools | Automation/tool providers | detected/configured per user |
 
 ARES must degrade honestly when services are absent. Local Profile setup may

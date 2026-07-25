@@ -47,9 +47,6 @@ def test_provider_breakdown_from_index_rows(monkeypatch, tmp_path):
     _write_index(session_dir, rows)
     monkeypatch.setattr(config, "SESSION_DIR", session_dir)
     monkeypatch.setattr("api.models._active_state_db_path", lambda: _missing_db_path(tmp_path))
-    # _agent_state_db_path falls back to the worker's own store when the
-    # active DB is missing; stub it out so a real local worker DB never leaks in.
-    monkeypatch.setattr("api.models._worker_state_db_path", lambda: None)
 
     result = build_insights(days=1)
 
@@ -90,9 +87,6 @@ def test_duration_aggregation_from_index_rows(monkeypatch, tmp_path):
     _write_index(session_dir, rows)
     monkeypatch.setattr(config, "SESSION_DIR", session_dir)
     monkeypatch.setattr("api.models._active_state_db_path", lambda: _missing_db_path(tmp_path))
-    # _agent_state_db_path falls back to the worker's own store when the
-    # active DB is missing; stub it out so a real local worker DB never leaks in.
-    monkeypatch.setattr("api.models._worker_state_db_path", lambda: None)
 
     result = build_insights(days=1)
 

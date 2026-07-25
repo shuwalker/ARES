@@ -1,7 +1,7 @@
 """Profile-scoped durable storage for delegated tasks owned by ARES.
 
 A delegated task is a discrete unit of work handed to an execution backend
-(Hermes, Gemini/Antigravity, Ollama, a CLI backend) and awaited asynchronously.
+(JROS, Gemini/Antigravity, Ollama, a CLI backend) and awaited asynchronously.
 The caller creates a task, gets an id back immediately, and polls status until
 it reaches a terminal Run state. Storage mirrors `schedule_jobs.py`: an atomic
 JSON file with 0600 perms under the active profile's ARES home.

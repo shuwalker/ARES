@@ -111,7 +111,7 @@ def assign_workers(plan: Plan) -> Plan:
             continue  # Already assigned
 
         if not step.required_capabilities:
-            step.assigned_worker = "hermes_local"
+            step.assigned_worker = "claude_local"
             continue
 
         # Find eligible workers for the first required capability
@@ -129,8 +129,8 @@ def assign_workers(plan: Plan) -> Plan:
             ))
             step.assigned_worker = eligible[0].worker_id
         else:
-            # Fallback to hermes_local if no eligible worker found
-            step.assigned_worker = "hermes_local"
+            # Fallback to a general-purpose worker if none is eligible
+            step.assigned_worker = "claude_local"
 
     return plan
 

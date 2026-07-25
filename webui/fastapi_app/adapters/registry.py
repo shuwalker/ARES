@@ -13,7 +13,6 @@ from .frameworks import (
     GeminiCloudAdapter,
     GeminiAntigravityAdapter,
     GrokLocalAdapter,
-    HermesAdapter,
     JaegerAdapter,
     OllamaLocalAdapter,
     OpenAICloudAdapter,
@@ -29,7 +28,6 @@ from ..request_context import profile_scope
 _ALIASES = {
     "jaeger": "jros_local",
     "jaegerai": "jros_local",
-    "hermes-agent": "hermes_local",
 }
 
 
@@ -46,7 +44,6 @@ class AdapterRegistry:
         if execution_adapters is None:
             execution_adapters = (
                 JaegerAdapter(turn_starter=turn_starter),
-                HermesAdapter(turn_starter=turn_starter),
                 ClaudeLocalAdapter(turn_starter=turn_starter),
                 CodexLocalAdapter(turn_starter=turn_starter),
                 GeminiLocalAdapter(turn_starter=turn_starter),

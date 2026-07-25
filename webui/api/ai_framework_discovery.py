@@ -43,13 +43,6 @@ class DiscoveredAdapter:
 # Map ARES adapter IDs to likely binary names and config directories
 _ADAPTER_SPECS: list[dict[str, Any]] = [
     {
-        "adapter_id": "hermes_local",
-        "display_name": "Hermes Agent",
-        "binaries": ["hermes"],
-        "config_dirs": ["~/.hermes"],
-        "model_file": "config.yaml",
-    },
-    {
         "adapter_id": "claude_local",
         "display_name": "Claude Code",
         "binaries": ["claude"],
@@ -223,12 +216,6 @@ def _extract_model_info(adapter_id: str, config_dir: Path) -> dict[str, Any]:
         if cfg:
             cli = cfg.get("cli", {})
             info["default_model"] = cli.get("fork_secondary_model")
-    elif adapter_id == "hermes_local":
-        cfg = _read_yaml_front(config_dir / "config.yaml")
-        if cfg:
-            model = cfg.get("model", {})
-            info["default_model"] = model.get("default")
-            info["default_provider"] = model.get("provider")
     elif adapter_id == "ollama_local":
         info["default_model"] = _fetch_ollama_default_model()
     return info
@@ -333,7 +320,6 @@ def discover_summary() -> dict[str, Any]:
 
 
 _BACKEND_CLASS_MAP: dict[str, str] = {
-    "hermes_local": "api.backends:HermesBackend",
     "claude_local": "api.backends:ClaudeLocalBackend",
     "codex_local": "api.backends:CodexLocalBackend",
     "gemini_local": "api.backends:GeminiLocalBackend",

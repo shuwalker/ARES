@@ -1,12 +1,12 @@
 """Worker adapter inventory catalog.
 
-Talking to Hermes or Jaeger is not just "CLI vs MCP." Each framework is a
+Talking to a framework like Jaeger is not just "CLI vs MCP." Each framework is a
 host for:
 
   * multiple **models** (local and/or cloud)
   * multiple **transports** (CLI, HTTP gateway, MCP, reverse APIs, …)
   * optional **MCP servers / tools** (declared even when ARES is not using them)
-  * optional **gateways** (ARES jros gateway, hermes-webui, etc.)
+  * optional **gateways** (ARES jros gateway, etc.)
 
 Latency and quality depend heavily on the **active model/provider config**
 inside that framework, not only on which socket ARES opens.

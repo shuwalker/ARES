@@ -70,7 +70,7 @@ bash install.sh
 
 When run from a checkout, the installer deploys that exact checkout into
 `~/.ares` so local Web UI changes are not replaced by a different remote
-revision. The installer also registers `ares`, `hermes`, and `jaeger` in
+revision. The installer also registers `ares` and `jaeger` in
 `~/.local/bin` and adds that directory to zsh's login path.
 
 The installer:
@@ -82,7 +82,7 @@ The installer:
 **Options:**
 - `--with-ares` — also install Ares Agent package (optional coding addition; not a backend mode)
 - `--no-start` — skip auto-starting the server after install
-- `--backend auto|jros_local|hermes_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
+- `--backend auto|jros_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
 
 After install, use any of the run modes above (Web, Mac app, or Windows).
 
@@ -102,7 +102,7 @@ the Web UI.
 
 That packaging is not complete yet. Current native builds are for
 local/developer use. The native app is an ARES control shell around the Web UI;
-it does not replace JaegerAI's character/runtime app or Hermes's own TUI.
+it does not replace JaegerAI's character/runtime app.
 
 ## Windows Companion App Notes
 

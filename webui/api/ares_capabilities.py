@@ -6,31 +6,24 @@ from api.backend_selector import VALID_BACKENDS, normalize_backend
 
 CAPABILITIES: dict[str, dict[str, bool]] = {
     "cloud_provider_model_settings": {
-        "hermes_local": True,
         "jros_local": False,
     },
     "mcp_server_config": {
-        "hermes_local": True,
         "jros_local": False,
     },
     "messaging_gateway": {
-        "hermes_local": True,
         "jros_local": False,
     },
     "kanban": {
-        "hermes_local": True,
         "jros_local": False,
     },
     "delegate_task": {
-        "hermes_local": True,
         "jros_local": False,
     },
     "character_persona_editing": {
-        "hermes_local": False,
         "jros_local": True,
     },
     "voice_settings": {
-        "hermes_local": True,
         "jros_local": False,
     },
 }

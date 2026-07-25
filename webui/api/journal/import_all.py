@@ -7,7 +7,6 @@ in the ARES journal database.
 
 Usage:
     python -m api.journal.import_all              # Import everything
-    python -m api.journal.import_all --source hermes  # Import only Hermes
     python -m api.journal.import_all --source grok    # Import only Grok
     python -m api.journal.import_all --stats          # Show current stats
     python -m api.journal.import_all --search "boot bug"  # Search all conversations
@@ -32,7 +31,6 @@ def import_all(sources: list[str] | None = None) -> dict:
     results = {}
 
     all_sources = {
-        "hermes": ("api.journal.import_hermes", "import_hermes"),
         "claude_code": ("api.journal.import_claude_code", "import_claude_code"),
         "grok": ("api.journal.import_grok", "import_grok"),
         "codex": ("api.journal.import_codex", "import_codex"),

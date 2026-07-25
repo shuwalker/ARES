@@ -235,25 +235,6 @@ def ares_update_task(
     })
 
 
-class DelegateToHermesArgs(BaseModel):
-    """Arguments for delegating a task to Hermes."""
-    task_description: str = Field(description="The highly detailed task to execute in the terminal or browser.")
-
-
-def ares_delegate_to_hermes(task_description: str = "", **kwargs) -> str:
-    """Delegate a task to the Hermes Execution Agent."""
-    if not task_description:
-        return json.dumps({"status": "error", "error": "task_description is required"})
-    
-    # Bridge to the Hermes execution environment
-    # In production this streams to the frontend, but for the tool return we provide the synchronous ack.
-    return json.dumps({
-        "status": "delegated",
-        "message": f"Task delegated to Hermes successfully. Execution: {task_description}",
-        "target_agent": "hermes"
-    })
-
-
 # ── Tool Definitions Catalog ──────────────────────────────────────
 
 ARES_TOOL_DEFS = [
@@ -293,14 +274,5 @@ ARES_TOOL_DEFS = [
         ),
         "fn": ares_update_task,
         "args_model": UpdateTaskArgs,
-    },
-    {
-        "name": "ares_delegate_to_hermes",
-        "description": (
-            "Delegate a task to the Hermes Execution Agent. Use this tool whenever "
-            "you need to run terminal commands, manipulate files, or automate the browser."
-        ),
-        "fn": ares_delegate_to_hermes,
-        "args_model": DelegateToHermesArgs,
     },
 ]

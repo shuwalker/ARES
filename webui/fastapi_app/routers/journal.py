@@ -23,7 +23,7 @@ def journal_stats():
 @router.get("/search")
 def journal_search(
     q: str = Query(..., description="Search query"),
-    source: Optional[str] = Query(None, description="Filter by source (hermes, claude_code, grok, codex, gemini, sam)"),
+    source: Optional[str] = Query(None, description="Filter by source (claude_code, grok, codex, gemini, sam)"),
     limit: int = Query(20, ge=1, le=100),
 ):
     """Full-text search across all imported conversations."""

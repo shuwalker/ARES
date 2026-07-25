@@ -20,7 +20,7 @@ from fastapi_app.adapters import (
     McpToolAdapter,
     ModelDescriptor,
 )
-from fastapi_app.adapters.frameworks import HermesAdapter
+from fastapi_app.adapters.frameworks import ClaudeLocalAdapter
 from fastapi_app.main import create_app
 from fastapi_app.realtime import RealtimeService
 from fastapi_app.request_context import (
@@ -89,7 +89,7 @@ class RecordingTools(BaseToolAdapter):
 
 
 def test_framework_and_tool_adapters_have_distinct_strict_interfaces():
-    assert isinstance(HermesAdapter(turn_starter=lambda *_args, **_kwargs: {}), BaseLLMAdapter)
+    assert isinstance(ClaudeLocalAdapter(turn_starter=lambda *_args, **_kwargs: {}), BaseLLMAdapter)
     assert isinstance(JaegerAdapter(turn_starter=lambda *_args, **_kwargs: {}), BaseLLMAdapter)
     assert isinstance(McpToolAdapter(), BaseToolAdapter)
     assert not isinstance(McpToolAdapter(), BaseLLMAdapter)
@@ -132,7 +132,7 @@ def test_framework_adapter_preserves_external_runtime_response(monkeypatch):
         captured.update(session_id=session_id, message=message, source=source)
         return {"_status": 200, "stream_id": "run-1", "session_id": session_id}
 
-    adapter = HermesAdapter(turn_starter=starter)
+    adapter = ClaudeLocalAdapter(turn_starter=starter)
     monkeypatch.setattr(
         adapter,
         "check_health",

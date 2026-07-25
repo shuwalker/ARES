@@ -7,7 +7,6 @@ defaults. No hardcoded user directories. Works on macOS, Linux, and Windows.
 Environment variables:
     ARES_HOME      — base directory for ARES data (default: ~/.ares)
     XDG_DATA_HOME  — freedesktop.org data dir (default: ~/.local/share on Linux)
-    HERMES_HOME    — Hermes Agent state directory (default: ~/.hermes)
     CLAUDE_HOME    — Claude Code config directory (default: ~/.claude)
     CODEX_HOME     — Codex config directory (default: ~/.codex)
     GEMINI_HOME    — Gemini/Antigravity config directory (default: ~/.gemini)
@@ -36,11 +35,6 @@ def journal_dir() -> Path:
 def journal_db() -> Path:
     """Journal database file."""
     return journal_dir() / "journal.db"
-
-
-def hermes_db() -> Path:
-    """Hermes Agent state database."""
-    return Path(os.environ.get("HERMES_HOME", _home() / ".hermes")) / "state.db"
 
 
 def claude_projects_dir() -> Path:
@@ -124,11 +118,6 @@ def document_scan_dirs() -> list[Path]:
         docs = ares_repo / "docs"
         if docs.is_dir():
             dirs.append(docs)
-
-    # Hermes plans
-    hermes_plans = Path(os.environ.get("HERMES_HOME", _home() / ".hermes")) / "plans"
-    if hermes_plans.is_dir():
-        dirs.append(hermes_plans)
 
     # Gemini brain
     gemini_brain = Path(os.environ.get("GEMINI_HOME", _home() / ".gemini")) / "antigravity-ide" / "brain"

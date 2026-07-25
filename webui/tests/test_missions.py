@@ -2,10 +2,10 @@
 
 Distinct from test_goals-style coverage: missions.py decomposes a prompt into
 sub-tasks via api.llm_client and dispatches each either through the existing
-Hermes/JROS agent loop (ephemeral sub-session + start_session_turn) or a
+JROS agent loop (ephemeral sub-session + start_session_turn) or a
 direct Anthropic/OpenAI call. These tests monkeypatch both dispatch paths so
 they exercise the orchestrator's own logic without needing a real model, a
-real Hermes/JROS install, or a live server.
+real JROS install, or a live server.
 """
 import time
 from types import SimpleNamespace
@@ -143,9 +143,9 @@ def test_run_agentic_subtask_extracts_last_assistant_message(monkeypatch):
     monkeypatch.setattr(missions.time, "sleep", lambda *_: None)
 
     subtask = {"description": "write the feature", "sub_session_id": None}
-    result = missions._run_agentic_subtask({"profile": None}, subtask, "hermes")
+    result = missions._run_agentic_subtask({"profile": None}, subtask, "jros")
     assert result == "done, here's the PR"
-    assert fake_session.ares_backend == "hermes"
+    assert fake_session.ares_backend == "jros"
 
 
 def test_run_agentic_subtask_raises_on_start_failure(monkeypatch):
@@ -157,4 +157,4 @@ def test_run_agentic_subtask_raises_on_start_failure(monkeypatch):
     )
 
     with pytest.raises(RuntimeError):
-        missions._run_agentic_subtask({"profile": None}, {"description": "x"}, "hermes")
+        missions._run_agentic_subtask({"profile": None}, {"description": "x"}, "jros")

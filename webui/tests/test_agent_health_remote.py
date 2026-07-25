@@ -72,7 +72,6 @@ def test_falls_back_to_local_when_no_env(monkeypatch, tmp_path):
     monkeypatch.delenv("ARES_API_URL", raising=False)
     # Isolate from any real gateway_state.json on the host — the state-file
     # fallback would otherwise report the developer's live gateway.
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 
     # Force the local importlib path to fail so we hit the well-known
     # "gateway_not_configured" terminal state — proving the remote probe was
@@ -219,7 +218,6 @@ def test_default_url_when_no_env(monkeypatch, tmp_path):
     monkeypatch.delenv("ARES_API_URL", raising=False)
     monkeypatch.delenv("GATEWAY_HEALTH_URL", raising=False)
     monkeypatch.delenv("ARES_GATEWAY_HEALTH_URL", raising=False)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 
     # Force the local importlib path to fail so we hit "gateway_status_unavailable",
     # proving the remote probe was NOT invoked.

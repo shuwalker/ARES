@@ -14,7 +14,7 @@ override it.
 |------|------------|
 | **ARES** | **Only the application name** (product package: Mac app, WebUI, controller). Not a character, not an agent, not a second brain. |
 | **Companion** (SI) | **Everything that is not a worker.** The personal Synthetic Intelligence experience: identity, journal, context, routing, scoring, permissions, workspace, and how the person is spoken to. |
-| **Workers** | Models, agent frameworks, and tools that **execute** (Ollama, jros, Hermes, cloud LLMs, MCP servers, device tools). |
+| **Workers** | Models, agent frameworks, and tools that **execute** (Ollama, jros, cloud LLMs, MCP servers, device tools). |
 
 In product UI, the person talks to their **Companion**, not to “ARES.”
 Technical docs may say “the ARES app hosts the Companion.”
@@ -96,7 +96,7 @@ The Companion is the non-worker layer of the product:
 - Mac + WebUI product surfaces that host this experience.
 
 A Local Profile can be saved without any worker online. First-run **must force
-an explicit worker choice** (Ollama, jros, Hermes, cloud, or explicit
+an explicit worker choice** (Ollama, jros, cloud, or explicit
 “organizer only for now”). Nothing is pre-selected as a default worker.
 
 Profile readiness is not execution readiness:
@@ -115,14 +115,14 @@ Workers own **execution loops** and framework-native runtimes. Providers may
 supply models, speech, vision, embeddings, search, or storage. Devices may
 supply perception or embodiment.
 
-The Companion does **not** re-implement JaegerAI, Hermes, Ollama, or cloud
+The Companion does **not** re-implement JaegerAI, Ollama, or cloud
 agents as a competing worker. Adapters invoke them.
 
 Workers may have **session scratchpads** (Option B lease). Durable SI memory
 stays in the Companion journal (Option A source of truth). Scratchpads yield
 summaries/artifacts back; they do not become lifelong identity.
 
-No worker is the product identity. JaegerAI/jros, Hermes, Ollama, Claude,
+No worker is the product identity. JaegerAI/jros, Ollama, Claude,
 Gemini, OpenAI, MCP servers are **named connections / workers**.
 
 ## Integration model

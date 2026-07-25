@@ -8,7 +8,7 @@ Aligned with [`.claude/FOUNDATION.md`](../.claude/FOUNDATION.md).
 |------|---------|
 | **ARES** | **Just the application name** — Mac app, WebUI, controller package. Not a character. Not an agent. Not who you talk to. |
 | **Companion** | **Everything that is not a worker** — your personal SI: identity, journal, context, routing, scores, permissions, workspace. Who you talk to. |
-| **Workers** | LLMs, agent frameworks, tools that execute (Ollama, jros, Hermes, cloud, MCP, devices). |
+| **Workers** | LLMs, agent frameworks, tools that execute (Ollama, jros, cloud, MCP, devices). |
 
 ```text
 You  ←→  Companion (non-worker intelligence + memory + control)
@@ -35,7 +35,7 @@ living in a silo.
 
 | Companion (not a worker) | Workers |
 |--------------------------|---------|
-| Profile, name, preferences | Ollama, jros, Hermes, cloud models |
+| Profile, name, preferences | Ollama, jros, cloud models |
 | Unified journal (source of truth) | Session scratchpads only (leased) |
 | Context compiler, routing, ranking | Sense → think → act execution |
 | Permissions, approvals, reachability | Tool runtimes they own |

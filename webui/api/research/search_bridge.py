@@ -20,7 +20,7 @@ async def web_search(query: str, limit: int = 5) -> List[Dict[str, str]]:
     """
     results: List[Dict[str, str]] = []
 
-    # Try ARES's Hermes agent search if available
+    # Try ARES's agent search if available
     try:
         from api.config import get_config
         cfg = get_config()
@@ -35,11 +35,11 @@ async def web_search(query: str, limit: int = 5) -> List[Dict[str, str]]:
     except Exception as e:
         logger.debug(f"ARES config search not available: {e}")
 
-    # Try direct web search via Hermes tools if in agent context
+    # Try direct web search via agent tools if in agent context
     try:
         from api.config import get_config
         cfg = get_config()
-        # Use Hermes web_search tool if available
+        # Use the web_search tool if available
         # This will be called from agent context
         pass
     except Exception:

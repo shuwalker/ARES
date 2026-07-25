@@ -97,7 +97,6 @@ class LatencyProfile:
 ```python
 # In the worker registry
 ADAPTERS: dict[str, ReasoningProvider] = {
-    "hermes_local": HermesAdapter(),
     "claude_local": ClaudeAdapter(),
     "codex_local": CodexAdapter(),
     "gemini_local": GeminiAdapter(),
@@ -118,8 +117,8 @@ ARES opens.
 def inventory(self) -> dict:
     """schema_version 1 — see api/backends/catalog.py"""
     return {
-        "worker_id": "hermes_local",
-        "display_name": "Hermes Agent",
+        "worker_id": "jros_local",
+        "display_name": "JROS",
         "models": [
             # location: local | cloud | unknown; in_use marks active config
             {"id": "…", "location": "cloud", "provider": "ollama-cloud", "in_use": True},
@@ -135,7 +134,7 @@ def inventory(self) -> dict:
         ],
         "mcp": [
             # Declare MCP servers/tools even when ARES is not the MCP client
-            {"id": "hermes_mcp_serve", "in_use_by_ares": False, "used_by": ["claude_code"]},
+            {"id": "jros_mcp_serve", "in_use_by_ares": False, "used_by": ["claude_code"]},
         ],
         "latency": {
             "depends_on": ["selected_model", "provider_location", "transport", "tool_use"],
@@ -147,7 +146,6 @@ def inventory(self) -> dict:
 
 | Framework (today) | Active ARES transport | Also catalogued |
 |-------------------|----------------------|-----------------|
-| Hermes | CLI `hermes chat -q` | MCP serve, hermes-webui gateway, multi providers |
 | JaegerAI / JROS | HTTP gateway `:8643` | Local checkout fallback, native app, optional MCP |
 
 Exposed on `GET /api/backends` as `inventory` per backend.
@@ -156,9 +154,9 @@ Exposed on `GET /api/backends` as `inventory` per backend.
 
 | Aspect | Current | Target |
 |--------|---------|--------|
-| Backend interface | Each backend is a standalone module (`hermes.py`, `jros.py`, etc.) | Common `ReasoningProvider` protocol |
+| Backend interface | Each backend is a standalone module (`jros.py`, `cli_backends.py`, etc.) | Common `ReasoningProvider` protocol |
 | Adapter registration | Hardcoded in `ai_framework_discovery.py` | Data-driven registry with capabilities |
 | Context sent to worker | Full conversation history + identity prompt | `ContextBriefing` with manifest and privacy policy |
 | Worker result | Raw streamed text | `WorkerResult` with confidence, cost, evidence |
 | Provider switching | User manually picks from model picker | SI routes based on capability + privacy + cost |
-| Capability catalog | Hermes/JROS inventory on `/api/backends` | All adapters fill inventory; SI routes on it |
+| Capability catalog | JROS inventory on `/api/backends` | All adapters fill inventory; SI routes on it |

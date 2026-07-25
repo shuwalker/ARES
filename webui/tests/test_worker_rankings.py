@@ -32,7 +32,6 @@ def test_compute_effectiveness_weighted():
 
 def test_record_and_rank(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ARES_HOME", str(tmp_path))
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 
     def _home(_profile):
         return tmp_path
@@ -51,7 +50,7 @@ def test_record_and_rank(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     record_evaluation(
         "default",
-        worker_id="hermes_local",
+        worker_id="claude_local",
         metrics={"task_success": 40, "user_preference": 30, "safety": 100},
         task_kind="chat",
     )

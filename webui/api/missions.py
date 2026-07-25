@@ -1,10 +1,10 @@
 """Background Missions orchestrator — CEO-style multi-agent task dispatch.
 
 Distinct from webui/api/goals.py (single-session standing-goal continuation,
-the "/goal" command and its Hermes-native GoalManager). A Mission takes one
+the "/goal" command and its worker-native GoalManager). A Mission takes one
 complex prompt, decomposes it into sub-tasks via a direct Anthropic/OpenAI
 call (api/llm_client.py), and dispatches each sub-task either:
-  - to the existing Hermes/JROS backends, via an ephemeral sub-session and
+  - to the existing agentic backends, via an ephemeral sub-session and
     api.chat_runtime.start_session_turn — reuses the full agent loop (tools,
     memory, persona) instead of reimplementing turn execution, or
   - directly to Anthropic/OpenAI (api/llm_client.py) for pure-reasoning
@@ -39,8 +39,8 @@ _DECOMPOSE_SYSTEM_PROMPT = (
     'into a short list of concrete, independently-executable sub-tasks. '
     'Respond with ONLY a JSON array, no prose, no markdown fences. Each '
     'element: {"description": str, "kind": "coding"|"reasoning", '
-    '"backend": "hermes"|"jros"|"anthropic"|"openai"}. Use "coding" + '
-    '"hermes" for work needing a terminal/file/tool-using agent. Use '
+    '"backend": "jros"|"anthropic"|"openai"}. Use "coding" + '
+    '"jros" for work needing a terminal/file/tool-using agent. Use '
     '"reasoning" + "anthropic" or "openai" for analysis, review, or writing '
     'that needs no tools. Keep the list to 2-6 sub-tasks.'
 )
@@ -222,8 +222,8 @@ def _decompose(prompt: str) -> List[Dict[str, Any]]:
             continue
         kind = str(item.get("kind") or "reasoning").strip().lower()
         backend = str(item.get("backend") or "").strip().lower()
-        if backend not in ("hermes", "jros", "anthropic", "openai"):
-            backend = "hermes" if kind == "coding" else "anthropic"
+        if backend not in ("jros", "anthropic", "openai"):
+            backend = "jros" if kind == "coding" else "anthropic"
         subtasks.append({
             "id": _new_id(),
             "description": description,
@@ -241,7 +241,7 @@ def _decompose(prompt: str) -> List[Dict[str, Any]]:
 
 def _run_subtask(mission: Dict[str, Any], subtask: Dict[str, Any]) -> str:
     backend = subtask["backend"]
-    if backend in ("hermes", "jros"):
+    if backend == "jros":
         return _run_agentic_subtask(mission, subtask, backend)
     from api.llm_client import call_anthropic, call_openai
 
@@ -251,7 +251,7 @@ def _run_subtask(mission: Dict[str, Any], subtask: Dict[str, Any]) -> str:
 
 
 def _run_agentic_subtask(mission: Dict[str, Any], subtask: Dict[str, Any], backend: str) -> str:
-    """Dispatch a sub-task through the real Hermes/JROS agent loop.
+    """Dispatch a sub-task through the real JROS agent loop.
 
     Runs in an ephemeral sub-session so the sub-agent's tool calls, memory,
     and transcript don't pollute the user's main chat session, reusing

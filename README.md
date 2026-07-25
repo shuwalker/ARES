@@ -65,7 +65,7 @@ The installer handles everything automatically:
 **Options:**
 - `--with-ares` — also install Ares Agent package (optional coding addition; not a backend mode)
 - `--no-start` — skip auto-starting the server after install
-- `--backend auto|jros_local|hermes_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
+- `--backend auto|jros_local|claude_local|...` — elect a live adapter ID (deleted modes `ares`/`hybrid` are rejected)
 
 After install, run the Web UI:
 

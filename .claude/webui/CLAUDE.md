@@ -16,7 +16,7 @@ ownership, vocabulary, multi-agent, and animated-environment boundaries.
 
 - Keep `requirements.txt` minimal.
 - Optional dependencies (edge-tts, psutil, etc.) must stay optional and clearly documented.
-- Do not add heavy ML/model dependencies directly to the WebUI shell. Prefer adapter boundaries to full frameworks (Hermes/JROS) or explicit ARES-native services.
+- Do not add heavy ML/model dependencies directly to the WebUI shell. Prefer adapter boundaries to full frameworks (JROS) or explicit ARES-native services.
 
 ## Onboarding & Setup Flow
 
@@ -65,10 +65,10 @@ ownership, vocabulary, multi-agent, and animated-environment boundaries.
 
 ## Framework, Provider & Model Handling
 
-- Hermes and JROS are peer full agentic frameworks behind ARES. Do not describe Hermes as the real backend or JROS as merely the body/accessory.
-- Backend mode (`hermes`, `jros`, `hybrid`, or future ARES-native modes) is runtime/framework selection. Model/provider selection is separate and must stay real-provider based; never add fake `model="jros"` or `model_provider="jros"`.
+- JROS is a full agentic framework behind ARES. Do not describe it as merely the body/accessory.
+- Backend mode (`jros`, `hybrid`, or future ARES-native modes) is runtime/framework selection. Model/provider selection is separate and must stay real-provider based; never add fake `model="jros"` or `model_provider="jros"`.
 - ARES WebUI is the UX/product layer: natural human request → ARES maps intent to framework/provider/tool calls → UI presents the result.
-- Hybrid is first-class. A turn may use Hermes, JROS, and ARES-native automation together when that best satisfies the user intent.
+- Hybrid is first-class. A turn may use JROS and ARES-native automation together when that best satisfies the user intent.
 - Multi-agent/model comparison and synthesis are first-class capabilities.
   Preserve each contribution and its provenance; do not force agents into
   employee, company, or org-chart semantics.

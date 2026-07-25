@@ -28,7 +28,7 @@ FastAPI controller  (fastapi_app/, uvicorn)
 Worker adapters (api/backends/*)
    │  subprocess per turn
    ▼
-Worker processes: Hermes Agent · jros · Claude Code · Codex · Ollama · cloud
+Worker processes: jros · Claude Code · Codex · Ollama · cloud
 ```
 
 Three trees, one product:
@@ -41,7 +41,7 @@ Three trees, one product:
 
 The frontend never consumes framework-native shapes. `frontend/src/shared/translators.ts`
 normalizes backend payloads into ARES-owned contracts (`shared/contracts.ts`). That
-seam is load-bearing — it is what lets a Claude Code row and a Hermes row render
+seam is load-bearing — it is what lets a Claude Code row and a jros row render
 through one component.
 
 ---
@@ -52,7 +52,6 @@ This is the most important thing to understand, and the source of most historica
 
 ```text
 ARES_HOME/webui/sessions/*.json     ARES-owned sessions      read + WRITE
-$HERMES_HOME/state.db               Hermes Agent's store     read ONLY
 ~/.claude/projects/**/*.jsonl       Claude Code transcripts  read ONLY
 <jaeger>/instances/*/memory/*.db    JaegerAI store           read ONLY (not parsed yet)
 ~/.codex/sessions/**                Codex store              detected, not parsed
@@ -69,7 +68,7 @@ sessions as JSON sidecars. Any inherited code path that resolves
 it will silently return empty rather than error.
 
 Path resolution goes through `api/journal/paths.py`, which honours
-`ARES_HOME`, `HERMES_HOME`, `CLAUDE_HOME`, `CODEX_HOME`, `GEMINI_HOME`. Nothing
+`ARES_HOME`, `CLAUDE_HOME`, `CODEX_HOME`, `GEMINI_HOME`. Nothing
 may assume a maintainer's home layout (see the privacy boundary in
 `.claude/CLAUDE.md`).
 
@@ -78,8 +77,7 @@ may assume a maintainer's home layout (see the privacy boundary in
 | Helper | Resolves to | Notes |
 |---|---|---|
 | `_active_state_db_path()` | `ARES_HOME/state.db` | Usually absent. **Do not add new callers.** |
-| `_agent_state_db_path()` | profile store → falls back to the **worker's** store | Correct helper for reading worker history. |
-| `_worker_state_db_path()` | `$HERMES_HOME/state.db` | Read-only; `None` when absent. |
+| `_agent_state_db_path()` | profile store | Correct helper for reading worker history; `None` when absent. |
 
 ---
 
@@ -89,11 +87,9 @@ What happens when the user presses Send in the Chat surface:
 
 1. `ConversationPage.sendMessage()` → `POST /api/chat/start {session_id, message, …}`.
 2. The router resolves identity/profile and hands off to the streaming layer.
-3. `api/backends/hermes_streaming.py` builds an argv for the worker CLI:
-   ```
-   hermes chat -q "<message>" -Q --yolo --source webui -m <model> --provider <p>
-   ```
-4. **Resume:** `_get_hermes_session_id(session_id)` decides whether this turn
+3. The worker's streaming module builds an argv for the worker CLI (see
+   `api/backends/` for the adapter that owns the selected worker).
+4. **Resume:** the adapter decides whether this turn
    continues an existing worker session. It checks an in-process map first, then
    probes the worker's `state.db` for a session with the same id. On a hit,
    `--resume <id>` is appended.
@@ -126,8 +122,8 @@ A session row carries both what it is and where it came from:
 | `ares_backend` | Adapter that owns the session; stamped from the store it was read from. |
 
 `read_only` means *"nothing can add turns to this"* — not *"ARES cannot write it."*
-A Hermes CLI session is not read-only: ARES cannot write `state.db` directly, but
-the Hermes agent can continue it, so it stays writable from the user's point of view.
+A worker's CLI session is not read-only: ARES cannot write its `state.db` directly,
+but the worker can continue it, so it stays writable from the user's point of view.
 Claude Code transcripts are read-only because no process will append to them on request.
 
 Titles are sanitized before display (`sanitize_session_title`). Agent clients inject

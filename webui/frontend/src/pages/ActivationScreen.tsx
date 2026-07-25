@@ -212,7 +212,7 @@ export function ActivationScreen() {
               </h1>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
                 {[
-                  "ARES provides the multi-agent control plane. Your Companion (Jaeger AI) sits above worker backends (Hermes CLI, Claude, Ollama, JROS) to maintain relationship continuity, intent routing, and local privacy.",
+                  "ARES provides the multi-agent control plane. Your Companion (Jaeger AI) sits above worker backends (Claude, Ollama, JROS) to maintain relationship continuity, intent routing, and local privacy.",
                   "Set the operator and SI Companion names used throughout your private workspace. They remain active even when subagent workers are offline.",
                   "Configure Jaeger AI persona attention, character tone, and life focus areas.",
                   "Decide reachability (this Mac, LAN, or trusted network) and context indexing policies.",
@@ -416,7 +416,7 @@ export function ActivationScreen() {
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Use your Companion for profile, workspace, journal, and tools without an AI execution worker.
-                    You can connect Ollama, jros, Hermes, or cloud later — nothing is silently assumed.
+                    You can connect Ollama, jros, or cloud later — nothing is silently assumed.
                   </p>
                 </button>
               </div>

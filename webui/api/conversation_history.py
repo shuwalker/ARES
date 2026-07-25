@@ -22,7 +22,6 @@ def _backend_label(backend_id: str | None) -> str:
     if not backend_id:
         return "unknown"
     labels = {
-        "hermes_local": "Hermes Agent",
         "jros_local": "Jaeger AI (JROS)",
         "claude_local": "Claude Code",
         "codex_local": "OpenAI Codex",

@@ -285,7 +285,7 @@ def _backend_for_session(session: Any):
     # Try fallback chain: if the selected backend is unavailable, try
     # alternatives in order. This makes the system resilient to single
     # backend failures.
-    fallbacks = ["hermes_proxy", "ollama_local", "openai_cloud", "claude_cloud", "gemini_cloud"]
+    fallbacks = ["ollama_local", "openai_cloud", "claude_cloud", "gemini_cloud"]
     for name in fallbacks:
         fb = router.backends.get(name)
         if fb is not None:
@@ -437,7 +437,7 @@ def start_session_turn(
 
     # ── LangGraph-style history injection ──────────────────────────────
     # Inject full conversation history into the message so every worker
-    # (Hermes, JROS, etc.) sees the complete context, even when the
+    # (JROS, CLI workers, etc.) sees the complete context, even when the
     # backend changed between turns.
     from api.conversation_history import build_context_prompt
 

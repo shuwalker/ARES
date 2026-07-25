@@ -174,15 +174,6 @@ def _discover_agent_dir() -> Path:
     for sys_prefix in ("/opt", "/usr/local", "/usr/local/share"):
         candidates.append(Path(sys_prefix) / "ares-agent")
 
-    # 9. Fallback to legacy hermes-agent paths since we just forked
-    candidates.append(Path(ares_home).expanduser() / "hermes-agent")
-    candidates.append(REPO_ROOT.parent / "hermes-agent")
-    candidates.append(_DEFAULT_ARES_HOME / "hermes-agent")
-    candidates.append(HOME / "hermes-agent")
-    candidates.append(xdg_data.expanduser() / "hermes-agent")
-    for sys_prefix in ("/opt", "/usr/local", "/usr/local/share"):
-        candidates.append(Path(sys_prefix) / "hermes-agent")
-
     # Prefer real source checkouts before pip-style roots so lookalikes cannot preempt them.
     for path in candidates:
         if path.exists() and (path / "run_agent.py").exists():

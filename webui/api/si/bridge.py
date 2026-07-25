@@ -78,7 +78,7 @@ def compose_prompt_from_briefing(briefing: ContextBriefing, message: str) -> str
             f"[Identity]\n"
             f"You are {name}, the Companion SI for {owner}. "
             f"You work only for {owner}. "
-            f"You are NOT Hermes, Claude, GPT, Grok, Gemini, Ollama, or any other worker brand. "
+            f"You are NOT Claude, GPT, Grok, Gemini, Ollama, or any other worker brand. "
             f"Workers execute tools for you; they are not your identity. "
             f"When asked who you are, answer as {name}."
         )
@@ -93,7 +93,7 @@ def compose_prompt_from_briefing(briefing: ContextBriefing, message: str) -> str
         )
     else:
         parts.append(
-            "[Identity]\nYou are ARES, a Companion SI. Do not claim to be Hermes or any other agent brand."
+            "[Identity]\nYou are ARES, a Companion SI. Do not claim to be any other agent brand."
         )
 
     # 2. Context — what the SI knows
@@ -141,7 +141,7 @@ def compose_prompt_from_briefing(briefing: ContextBriefing, message: str) -> str
 def _worker_to_backend_name(worker_id: str) -> str:
     """Map SI WorkerRecord IDs to existing AgenticBackend names.
 
-    They're already the same: hermes_local, claude_local, gemini_local, etc.
+    They're already the same: jros_local, claude_local, gemini_local, etc.
     """
     return worker_id
 
@@ -162,7 +162,7 @@ def si_prepare_message(
 ) -> dict[str, Any]:
     """Fast SI packaging only — no worker execution.
 
-    Used by streaming workers (Hermes CLI stream, etc.) so Companion identity
+    Used by streaming workers (CLI streams, etc.) so Companion identity
     can be injected without forcing a non-streaming ``run_turn`` path.
     """
     from api.si.context_compiler import classify_intent, compile_context
@@ -182,9 +182,9 @@ def si_prepare_message(
         )
         selected = routing.get("selected_worker")
         if isinstance(selected, dict):
-            backend_name = selected.get("worker_id", "hermes_local")
+            backend_name = selected.get("worker_id", "jros_local")
         else:
-            backend_name = "hermes_local"
+            backend_name = "jros_local"
 
     privacy_class = _backend_name_to_privacy_class(backend_name)
     filtered_briefing = filter_briefing(briefing, privacy_class)
@@ -227,7 +227,7 @@ def si_turn(
     prepared = si_prepare_message(user_message, target_worker=target_worker)
     intent = prepared["intent"]
     confidence = float(prepared.get("confidence") or 0.0)
-    backend_name = str(prepared.get("worker") or "hermes_local")
+    backend_name = str(prepared.get("worker") or "jros_local")
     prompt = str(prepared.get("prompt") or user_message)
 
     # Execute via existing AgenticBackend
@@ -235,8 +235,8 @@ def si_turn(
     backend = backend_router.select(backend_name)
 
     if backend is None:
-        # Fallback to hermes_local
-        backend = backend_router.select("hermes_local")
+        # Fallback to the configured default worker
+        backend = backend_router.select("jros_local")
 
     if backend is None:
         return {

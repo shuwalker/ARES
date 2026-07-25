@@ -32,7 +32,7 @@ SECRET = DataClassification.SECRET
 
 class PrivacyClass(str, Enum):
     """Who a worker is allowed to see data from."""
-    LOCAL_ONLY = "local_only"              # Only local workers (Ollama, local Hermes)
+    LOCAL_ONLY = "local_only"              # Only local workers (Ollama, local CLI agents)
     APPROVED_PROVIDER = "approved_provider" # Cloud providers the user has approved
     EXTERNAL_PROVIDER = "external_provider" # Any cloud provider
     UNRESTRICTED = "unrestricted"           # No restrictions (public data)
@@ -171,7 +171,7 @@ class WorkerCapability:
 @dataclass(frozen=True)
 class WorkerRecord:
     """A worker in the registry."""
-    worker_id: str             # "claude-code", "ollama-llama3", "hermes-local"
+    worker_id: str             # "claude-code", "ollama-llama3", "jros-local"
     provider: str              # "anthropic", "local", "nous"
     display_name: str
     capabilities: list[WorkerCapability] = field(default_factory=list)

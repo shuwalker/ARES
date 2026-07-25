@@ -285,12 +285,6 @@ def run_diagnostics() -> None:
         )
     elif configured_backend in ("jros", "jaeger", "hybrid"):
         check_pass(f"Backend configured: {configured_backend}")
-    elif configured_backend == "hermes":
-        check_pass("Hermes Agent is configured as the active framework.")
-        if shutil.which("hermes"):
-            check_pass("Hermes CLI is available in PATH.")
-        else:
-            check_warn("Hermes CLI not found in PATH.")
 
     probe_jaeger(resolve_jaeger_home())
 

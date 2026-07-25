@@ -40,7 +40,7 @@ export function CompanionPage() {
     {
       to: "/chat",
       label: "Developer Chat",
-      subtitle: "Direct worker console (Hermes, Claude, Ollama, JROS)",
+      subtitle: "Direct worker console (Claude, Ollama, JROS)",
       icon: MessageCircle,
       badge: "Console",
       color: "border-primary/40 bg-primary/10 text-primary",

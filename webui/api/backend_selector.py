@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 BACKEND_JROS = "jros_local"
 
 VALID_BACKENDS = (
-    "hermes_local", "jros_local",
+    "jros_local",
     "claude_local", "codex_local", "gemini_local", "grok_local",
     "opencode_local", "cursor_local", "pi_local",
     "openai_cloud", "xai_cloud", "gemini_cloud", "gemini_antigravity",
@@ -24,7 +24,6 @@ VALID_BACKENDS = (
 )
 
 _BACKEND_ALIASES = {
-    "hermes": "hermes_local",
     "jaeger": "jros_local",
     "jros": "jros_local",
 }
@@ -122,7 +121,6 @@ def backend_status() -> dict:
 def backend_label(backend: str) -> str:
     """Human-readable label for the backend selector dropdown."""
     labels = {
-        "hermes_local": "Hermes Agent",
         "jros_local": "JROS",
         "claude_local": "Claude Code",
         "codex_local": "OpenAI Codex",

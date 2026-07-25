@@ -47,8 +47,6 @@ def _extract_title(content: str, file_path: str) -> str:
 def _detect_source(file_path: str) -> str:
     """Guess which AI tool produced this document based on its location."""
     fp = str(file_path)
-    if ".hermes" in fp or "plans" in fp:
-        return "hermes"
     if ".claude" in fp:
         return "claude"
     if ".gemini" in fp or "antigravity" in fp:

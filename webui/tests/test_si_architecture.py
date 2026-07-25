@@ -55,7 +55,7 @@ class TestWorkerRegistry:
         from api.si.worker_registry import get_registry
         registry = get_registry()
         workers = registry.list_all()
-        assert len(workers) >= 6  # hermes, claude, gemini, grok, ollama, codex
+        assert len(workers) >= 5  # claude, gemini, grok, ollama, codex
 
     def test_find_by_capability(self):
         from api.si.worker_registry import get_registry
@@ -63,7 +63,7 @@ class TestWorkerRegistry:
         coders = registry.find_by_capability("code_generation")
         assert len(coders) >= 1
         worker_ids = [w.worker_id for w in coders]
-        assert "hermes_local" in worker_ids
+        assert "claude_local" in worker_ids
 
     def test_eligible_for_public_data(self):
         from api.si.worker_registry import get_registry
@@ -285,17 +285,22 @@ class TestRouting:
     def test_route_code_generation_task(self):
         """Routing a code generation task should prefer capable workers."""
         from api.si.router import route_task
+        from api.si.worker_registry import get_registry
         result = route_task("code_generation", data_sensitivity="personal")
         assert result["selected_worker"] is not None
-        # Should select a worker with code_generation capability
+        # Assert the capability, not a fixed worker list: which worker wins
+        # depends on what is registered and its proficiency, so a hardcoded
+        # list goes stale every time the registry changes.
         worker_id = result["selected_worker"]["worker_id"]
-        assert worker_id in ("hermes_local", "claude_local", "codex_local")
+        selected = get_registry().get(worker_id)
+        assert selected is not None
+        assert any(c.capability_id == "code_generation" for c in selected.capabilities)
 
     def test_route_with_user_preference(self):
         """User preference should be respected if the worker is eligible."""
         from api.si.router import route_task
-        result = route_task("conversation", data_sensitivity="personal", prefer_worker="hermes_local")
-        assert result["selected_worker"]["worker_id"] == "hermes_local"
+        result = route_task("conversation", data_sensitivity="personal", prefer_worker="claude_local")
+        assert result["selected_worker"]["worker_id"] == "claude_local"
 
     def test_route_secret_data_returns_no_worker(self):
         """Secret data should have no eligible workers."""
@@ -314,9 +319,9 @@ class TestRouting:
         """Excluded workers should not be selected."""
         from api.si.router import route_task
         result = route_task("conversation", data_sensitivity="personal",
-                            exclude_workers=["hermes_local"])
+                            exclude_workers=["claude_local"])
         if result["selected_worker"]:
-            assert result["selected_worker"]["worker_id"] != "hermes_local"
+            assert result["selected_worker"]["worker_id"] != "claude_local"
 
     def test_routing_reasons_are_provided(self):
         """Every routing decision should explain why."""

@@ -6,10 +6,10 @@ searchable database so the SI can reference past context across all agents.
 
 Storage: ARES_HOME/journal/ (default: ~/.ares/journal/)
 Schema:  journal.db (SQLite with FTS5)
-Imports: Hermes, Claude Code, Grok, Gemini, Codex, SAM, iMessage
+Imports: Claude Code, Grok, Gemini, Codex, SAM, iMessage
 
 Each imported conversation is normalized into a common schema:
-  - source: which tool produced it (hermes, claude_code, grok, gemini, codex, sam, imessage)
+  - source: which tool produced it (claude_code, grok, gemini, codex, sam, imessage)
   - session_id: original session identifier
   - title: human-readable session title
   - model: AI model used

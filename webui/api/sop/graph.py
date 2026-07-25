@@ -79,7 +79,7 @@ def scope_interview(state: SOPState) -> dict:
         "Identify: 1) What needs to be built 2) Key constraints "
         "3) Edge cases to handle 4) Verification criteria"
     )
-    plan = _call_backend("hermes_proxy", prompt)
+    plan = _call_backend("jros_local", prompt)
     return {"plan": plan}
 
 
@@ -161,7 +161,7 @@ def execute_solution(state: SOPState) -> dict:
         f"Goal: {state.get('goal', '')}\n\n"
         "Run it and return the output."
     )
-    result = _call_backend("hermes_proxy", prompt)
+    result = _call_backend("jros_local", prompt)
     return {"result": result}
 
 
@@ -173,7 +173,7 @@ def verify_output(state: SOPState) -> dict:
         f"Output:\n{state.get('result', '')}\n\n"
         "Did this achieve the goal? Answer PASS or FAIL with explanation."
     )
-    text = _call_backend("hermes_proxy", prompt)
+    text = _call_backend("jros_local", prompt)
     passed = "PASS" in text.upper() and "FAIL" not in text.upper()
     return {
         "verification_output": text,

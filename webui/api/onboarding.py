@@ -1136,7 +1136,7 @@ def complete_onboarding() -> dict:
     save_settings({"onboarding_completed": True})
     settings = load_settings() or {}
     # Completion belongs to the native ARES profile flow. Returning the legacy
-    # Hermes bootstrap diagnostic here incorrectly reports missing run_agent
+    # The bootstrap diagnostic here incorrectly reports missing run_agent
     # even when an AdapterRegistry runtime is healthy; runtime truth is exposed
     # by /api/readiness and /api/connections.
     return {

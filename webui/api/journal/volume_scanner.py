@@ -158,7 +158,6 @@ def scan_volume(volume_path: str) -> dict:
     Scan a mounted volume for conversation data sources.
 
     Looks for:
-    - Hermes state.db
     - Claude Code sessions
     - Grok export directories
     - Codex session directories
@@ -177,7 +176,7 @@ def scan_volume(volume_path: str) -> dict:
 
     # Known conversation patterns to search for
     patterns = [
-        ("hermes_state_db", "**/state.db"),
+        ("worker_state_db", "**/state.db"),
         ("claude_code_sessions", "**/.claude/projects/**/*.jsonl"),
         ("grok_export", "**/Grok-Conversation-Export*/INDEX.md"),
         ("codex_sessions", "**/.codex/sessions/**/*.jsonl"),

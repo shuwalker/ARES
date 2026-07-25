@@ -88,7 +88,6 @@ def _rebuild_recovery_session_index(session_dir: Path) -> None:
         if (
             msg_count == 0
             or "reply with" in title_lower
-            or "ares-hermes-ok" in title_lower
             or "ares-jaeger-ok" in title_lower
             or "si-ok" in title_lower
         ):

@@ -25,7 +25,7 @@ def tasks_mod(tmp_path, monkeypatch):
 
 
 def test_create_task_is_queued(tasks_mod):
-    task = tasks_mod.create_task(prompt="hello", backend="hermes_local")
+    task = tasks_mod.create_task(prompt="hello", backend="jros_local")
     assert task["status"] == tasks_mod.STATUS_QUEUED
     assert task["id"]
     assert tasks_mod.get_task(task["id"])["prompt"] == "hello"
@@ -70,9 +70,9 @@ def test_delegate_completes(tmp_path, monkeypatch):
     importlib.reload(delegation_tasks)
     importlib.reload(delegation_runner)
 
-    _patch_router(monkeypatch, {"hermes_local": _FakeBackend({"text": "42", "error": None})})
+    _patch_router(monkeypatch, {"jros_local": _FakeBackend({"text": "42", "error": None})})
 
-    task = delegation_runner.delegate(prompt="what is 6*7", backend="hermes_local")
+    task = delegation_runner.delegate(prompt="what is 6*7", backend="jros_local")
     result = _await_terminal(delegation_tasks, task["id"])
     assert result["status"] == delegation_tasks.STATUS_COMPLETED
     assert result["result"] == "42"
@@ -85,9 +85,9 @@ def test_delegate_failed_backend_error(tmp_path, monkeypatch):
     importlib.reload(delegation_tasks)
     importlib.reload(delegation_runner)
 
-    _patch_router(monkeypatch, {"hermes_local": _FakeBackend({"text": "", "error": "boom"})})
+    _patch_router(monkeypatch, {"jros_local": _FakeBackend({"text": "", "error": "boom"})})
 
-    task = delegation_runner.delegate(prompt="x", backend="hermes_local")
+    task = delegation_runner.delegate(prompt="x", backend="jros_local")
     result = _await_terminal(delegation_tasks, task["id"])
     assert result["status"] == delegation_tasks.STATUS_FAILED
     assert result["error"] == "boom"

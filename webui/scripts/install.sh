@@ -110,7 +110,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --non-interactive  Skip stages that require user input"
             echo "  --backend MODE  Live adapter ID or short alias (default: auto → jros_local"
             echo "                  when JaegerAI is detected). Examples: auto, jros,"
-            echo "                  jros_local, hermes, hermes_local, claude_local,"
+            echo "                  jros_local, claude_local,"
             echo "                  ollama_local, openai_cloud. Deleted modes ares/hybrid are rejected."
             echo "  --no-start      Skip auto-starting the server after installation"
             echo "  --source PATH   Install the current local source tree instead of cloning"
@@ -546,18 +546,17 @@ setup_config() {
             fi
             ;;
         jros|jros_local) selected_backend="jros_local" ;;
-        hermes|hermes_local) selected_backend="hermes_local" ;;
         claude_local|codex_local|gemini_local|grok_local|opencode_local|cursor_local|pi_local|openai_cloud|xai_cloud|gemini_cloud|gemini_antigravity|ollama_local)
             selected_backend="$selected_backend"
             ;;
         ares|ares_local|hybrid)
             log_error "Backend '$selected_backend' is no longer supported."
-            log_error "Use a live adapter ID such as jros_local or hermes_local (see --help)."
+            log_error "Use a live adapter ID such as jros_local or claude_local (see --help)."
             exit 1
             ;;
         *)
             log_error "Invalid backend mode: $selected_backend"
-            log_error "Expected auto or a live adapter ID (jros_local, hermes_local, claude_local, ...)."
+            log_error "Expected auto or a live adapter ID (jros_local, claude_local, ...)."
             exit 1
             ;;
     esac

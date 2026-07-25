@@ -11,7 +11,7 @@ computer, and how much of it can ARES currently read?* It is read-only and
 never opens a write handle on another app's store.
 
 Paths come from ``api.journal.paths`` so the env-var overrides (``CLAUDE_HOME``,
-``CODEX_HOME``, ``GEMINI_HOME``, ``HERMES_HOME``) apply here too — nothing
+``CODEX_HOME``, ``GEMINI_HOME``) apply here too — nothing
 assumes a maintainer's home layout.
 """
 
@@ -105,27 +105,6 @@ def _claude_source() -> dict[str, Any]:
     }
 
 
-def _hermes_source() -> dict[str, Any]:
-    from api.journal.paths import hermes_db
-
-    db = Path(hermes_db()).expanduser()
-    total = _sqlite_session_count(db)
-    if total is None:
-        return {"status": STATUS_ABSENT, "path": str(db), "sessions": 0, "bytes": 0}
-    try:
-        size = db.stat().st_size
-    except (OSError, PermissionError):
-        size = 0
-    return {
-        "status": STATUS_INDEXED,
-        "path": str(db),
-        "sessions": total,
-        "bytes": size,
-        "indexed_sessions": total,
-        "notes": [],
-    }
-
-
 def _codex_source() -> dict[str, Any]:
     from api.journal.paths import codex_dir
 
@@ -213,7 +192,6 @@ def _jaeger_source() -> dict[str, Any]:
 
 _SOURCES = (
     ("claude_code", "Claude Code", _claude_source),
-    ("hermes", "Hermes Agent", _hermes_source),
     ("codex", "Codex", _codex_source),
     ("gemini", "Gemini / Antigravity", _gemini_source),
     ("jaeger", "JaegerAI", _jaeger_source),

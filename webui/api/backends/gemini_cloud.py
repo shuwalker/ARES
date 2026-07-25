@@ -1,6 +1,6 @@
 """Direct Google Gemini cloud adapter — SDK-based, streaming, AgenticBackend-compliant.
 
-Uses the google-generativeai SDK directly (no Hermes proxy, no subprocess).
+Uses the google-generativeai SDK directly (no proxy, no subprocess).
 Supports streaming token-by-token and non-streaming modes.
 """
 from __future__ import annotations

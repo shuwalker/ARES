@@ -690,7 +690,7 @@ export function SettingsPage() {
       { section: "preferences", label: "CLI history", keywords: "cli sessions external history privacy" },
       { section: "preferences", label: "TTS", keywords: "speech tts voice read aloud" },
       { section: "preferences", label: "Notifications", keywords: "sound notification browser" },
-      { section: "connections", label: "Workers & models", keywords: "backend llm model connection worker hermes ollama openai" },
+      { section: "connections", label: "Workers & models", keywords: "backend llm model connection worker jros ollama openai" },
       { section: "plugins", label: "Plugins", keywords: "plugin hooks" },
       { section: "extensions", label: "Extensions", keywords: "extension gallery install" },
       { section: "system", label: "Password", keywords: "auth password access security" },
@@ -1447,7 +1447,7 @@ export function SettingsPage() {
           <h3 className="text-lg font-semibold">Connections</h3>
           <p className="text-sm text-muted-foreground">
             Workers and LLM runtimes are agent-agnostic. Configure adapters, models, and defaults on the
-            Connections surface — not Hermes-only.
+            Connections surface — not tied to a single worker.
           </p>
         </div>
 
@@ -1541,7 +1541,7 @@ export function SettingsPage() {
 
         <p className="text-xs text-muted-foreground">
           Per-conversation model selection stays in the Chat composer. Defaults and credentials live under
-          Connections / Secrets so any adapter (Hermes, Ollama, OpenAI-compatible, CLI workers, …) can be
+          Connections / Secrets so any adapter (Ollama, OpenAI-compatible, CLI workers, …) can be
           wired the same way.
         </p>
       </div>
@@ -1804,7 +1804,7 @@ export function SettingsPage() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Official Hermes “dashboard mode” is intentionally not offered — ARES is multi-runtime and does
+          A single-agent “dashboard mode” is intentionally not offered — ARES is multi-runtime and does
           not assume a single agent product.
         </p>
       </div>
@@ -1838,7 +1838,7 @@ export function SettingsPage() {
     <div className="page-stack settings-hub">
       <PageHeader
         title="App settings"
-        description="Hermes-style control plane adapted for ARES: agent-agnostic connections, curated chat prefs, and Local Profile identity."
+        description="Control plane for ARES: agent-agnostic connections, curated chat prefs, and Local Profile identity."
         action={
           status || savingKeys.size ? (
             <Badge variant="secondary" className="font-normal">
