@@ -279,9 +279,10 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     private func isServerHealthy(host: String, port: Int) async -> Bool {
-        guard let url = URL(string: "http://\(host):\(port)/health") else { return false }
+        let clientHost = (host == "0.0.0.0") ? "127.0.0.1" : host
+        guard let url = URL(string: "http://\(clientHost):\(port)/health") else { return false }
         var request = URLRequest(url: url)
-        request.timeoutInterval = 1.0
+        request.timeoutInterval = 2.0
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             return (response as? HTTPURLResponse)?.statusCode == 200
