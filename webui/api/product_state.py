@@ -16,7 +16,9 @@ from typing import Any
 
 
 MAX_STATE_BYTES = 2 * 1024 * 1024
-REGISTERED_MODULES = frozenset({"board", "canvas", "timeline", "issues", "cases", "goals", "daily-goals"})
+REGISTERED_MODULES = frozenset(
+    {"board", "canvas", "timeline", "issues", "cases", "goals", "daily-goals", "self-entries"}
+)
 _MODULE_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 _lock = threading.RLock()
 

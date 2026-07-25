@@ -74,3 +74,29 @@ export function readableError(error: unknown, fallback = "ARES could not complet
   if (error instanceof Error && error.message) return error.message;
   return fallback;
 }
+
+export interface UploadResult {
+  filename: string;
+  path: string;
+  size: number;
+  mime: string;
+  is_image: boolean;
+}
+
+export async function uploadFile(sessionId: string, file: File): Promise<UploadResult> {
+  const formData = new FormData();
+  formData.append("session_id", sessionId);
+  formData.append("file", file);
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    credentials: "same-origin",
+    body: formData,
+  });
+  const payload: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const body = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+    const message = String(body.error || body.message || `Upload failed (${response.status})`);
+    throw new ApiError(message, response.status, payload);
+  }
+  return payload as UploadResult;
+}

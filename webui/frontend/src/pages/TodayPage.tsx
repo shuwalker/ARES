@@ -262,7 +262,7 @@ export function TodayPage() {
         action={
           <div className="flex items-center gap-2">
             <Button asChild variant="outline">
-              <Link to="/conversation">Open conversation</Link>
+              <Link to="/chat">Open conversation</Link>
             </Button>
             <Button variant="ghost" size="icon-sm" onClick={() => refresh()}>
               <RefreshCw className="size-4" />
@@ -319,7 +319,7 @@ export function TodayPage() {
               Recent conversations
             </CardTitle>
             <Button asChild variant="ghost" size="sm">
-              <Link to="/conversation">
+              <Link to="/chat">
                 View all
               </Link>
             </Button>
@@ -330,7 +330,7 @@ export function TodayPage() {
                 {recent.map((session) => (
                   <Link
                     key={session.id}
-                    to="/conversation"
+                    to="/chat"
                     className="flex items-center gap-3 py-3 text-sm hover:text-primary"
                   >
                     <MessageCircle className="size-4 shrink-0" />
@@ -415,7 +415,7 @@ export function TodayPage() {
                 {pinned.slice(0, 5).map((session) => (
                   <Link
                     key={session.id}
-                    to="/conversation"
+                    to="/chat"
                     className="flex items-center gap-3 py-2 text-sm hover:text-primary"
                   >
                     <Pin className="size-3.5 shrink-0 text-primary" />
@@ -508,7 +508,7 @@ export function TodayPage() {
           </Link>
         </Button>
         <Button asChild variant="outline" className="justify-start gap-2 h-auto py-3">
-          <Link to="/conversation">
+          <Link to="/chat">
             <MessageCircle className="size-4" />
             New conversation
           </Link>

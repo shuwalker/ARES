@@ -175,6 +175,21 @@ class SessionBranch(SessionMutation):
     title: str | None = Field(default=None, max_length=80)
 
 
+class LibraryCollectionAdd(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    label: str = Field(default="", max_length=200)
+    kind: str = Field(default="", max_length=32)
+
+
+class LibraryCollectionRemove(BaseModel):
+    collection_id: str = Field(min_length=1, max_length=256)
+
+
+class LibraryCollectionRename(BaseModel):
+    collection_id: str = Field(min_length=1, max_length=256)
+    label: str = Field(min_length=1, max_length=200)
+
+
 class SessionRename(SessionMutation):
     title: str = Field(max_length=10_000)
 
@@ -370,6 +385,16 @@ class WorkspaceEntriesResponse(ExtensibleResponse):
     signature: str | None = None
 
 
+class ChatAttachment(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str = Field(min_length=1, max_length=512)
+    path: str = Field(min_length=1, max_length=4096)
+    mime: str = Field(default="", max_length=256)
+    size: int | None = Field(default=None, ge=0)
+    is_image: bool = False
+
+
 class ChatStart(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -380,6 +405,7 @@ class ChatStart(BaseModel):
     connection_id: str | None = Field(default=None, max_length=128)
     workspace: str | None = Field(default=None, max_length=4096)
     profile: str | None = Field(default=None, max_length=80)
+    attachments: list[ChatAttachment] | None = Field(default=None)
 
     @field_validator("message")
     @classmethod

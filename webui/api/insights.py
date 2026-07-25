@@ -78,7 +78,7 @@ def build_insights(days: int = 30) -> dict[str, Any]:
     """Aggregate WebUI and CLI usage without depending on an HTTP handler."""
 
     from api.config import SESSION_DIR
-    from api.models import _active_state_db_path
+    from api.models import _agent_state_db_path, open_state_db_readonly
     from api.usage import prompt_cache_hit_percent
 
     days = min(max(int(days), 1), 365)
@@ -185,9 +185,12 @@ def build_insights(days: int = 30) -> dict[str, Any]:
         )
 
     try:
-        db_path = _active_state_db_path()
+        db_path = _agent_state_db_path()
         if db_path and db_path.exists():
-            with closing(sqlite3.connect(str(db_path))) as connection:
+            # The ``sessions`` table is owned by the worker runtime (CLI/Telegram
+            # agent), so this is a pure read: open read-only (``?mode=ro``) and
+            # never a write-capable handle — ARES never writes a worker's store.
+            with closing(open_state_db_readonly(db_path)) as connection:
                 connection.row_factory = sqlite3.Row
                 columns = {item[1] for item in connection.execute("PRAGMA table_info(sessions)")}
                 cache_expr = "COALESCE(cache_read_tokens, 0)" if "cache_read_tokens" in columns else "0"

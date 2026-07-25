@@ -52,10 +52,10 @@ def _provider_probe_health(
     )
 
 
-def _default_turn_starter(session_id: str, message: str, *, source: str) -> dict[str, Any]:
+def _default_turn_starter(session_id: str, message: str, *, source: str, attachments: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     from api.chat_runtime import start_session_turn
 
-    return dict(start_session_turn(session_id, message, source=source) or {})
+    return dict(start_session_turn(session_id, message, source=source, attachments=attachments) or {})
 
 
 class JournaledFrameworkAdapter(BaseLLMAdapter):
@@ -112,6 +112,7 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
                 str(getattr(session, "session_id", request.session_id)),
                 request.message,
                 source="webui",
+                attachments=[att.model_dump() for att in request.attachments] if request.attachments else None,
             )
             or {}
         )
@@ -233,15 +234,17 @@ class JaegerAdapter(JournaledFrameworkAdapter):
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        from api.backend_selector import backend_status
+        # Hot path: do NOT call backend_status() here — it probes every adapter
+        # CLI (multi-second) and made every Jaeger chat start feel laggy.
+        from api.backend_selector import is_jros_available, jros_gateway_details
+
         try:
             from api.jros_companion import companion_available
 
             companion_ready = bool(companion_available())
         except Exception:
             companion_ready = False
-        status = backend_status()
-        runtime_available = bool(status.get("jros_local"))
+        runtime_available = bool(is_jros_available())
         available = runtime_available and companion_ready
         if available:
             message = "JaegerAI Companion is available."
@@ -255,11 +258,7 @@ class JaegerAdapter(JournaledFrameworkAdapter):
         else:
             message = "JaegerAI is not installed or reachable."
             state = "offline"
-        details = {
-            key.removeprefix("jros_"): value
-            for key, value in status.items()
-            if key.startswith("jros_") and key not in {"jros_url"}
-        }
+        details = jros_gateway_details()
         return AdapterHealth(state, available, message, details)
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:

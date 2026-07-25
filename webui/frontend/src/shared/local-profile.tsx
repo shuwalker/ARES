@@ -16,7 +16,8 @@ const storageKey = (profileScope: string) => `${LEGACY_STORAGE_KEY}:${encodeURIC
 
 export const DEFAULT_LOCAL_PROFILE: LocalProfile = {
   displayName: "",
-  assistantName: "Ares",
+  assistantName: "Jaeger AI",
+  assistantAvatar: "",
   voice: "system-default",
   reachability: "this-device",
   setupMode: "quick",
@@ -66,7 +67,7 @@ export function LocalProfileProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({
         owner_name: next.displayName.trim(),
-        bot_name: next.assistantName.trim() || "Ares",
+        bot_name: next.assistantName.trim() || "Companion",
         local_profile_voice: next.voice,
         local_profile_reachability: next.reachability,
         local_profile_setup_mode: next.setupMode,
@@ -98,7 +99,8 @@ export function LocalProfileProvider({ children }: { children: ReactNode }) {
         const ownerName = String(settings.owner_name || "").trim();
         const serverProfile: LocalProfile = {
           displayName: ownerName || cached.displayName,
-          assistantName: String(settings.bot_name || cached.assistantName || "Ares"),
+          assistantName: String(settings.bot_name || cached.assistantName || "Jaeger AI"),
+          assistantAvatar: String(settings.bot_avatar || cached.assistantAvatar || ""),
           voice: settings.local_profile_voice === "disabled" || settings.local_profile_voice === "system-default"
             ? settings.local_profile_voice
             : cached.voice,
@@ -132,7 +134,7 @@ export function LocalProfileProvider({ children }: { children: ReactNode }) {
             method: "POST",
             body: JSON.stringify({
               owner_name: cached.displayName.trim(),
-              bot_name: serverProfile.assistantName.trim() || "Ares",
+              bot_name: serverProfile.assistantName.trim() || "Companion",
               local_profile_voice: serverProfile.voice,
               local_profile_reachability: serverProfile.reachability,
               local_profile_setup_mode: serverProfile.setupMode,

@@ -55,9 +55,18 @@ Check logs at `~/.ares/observer/observer.log`
 
 ### 4. Install as daemon (macOS)
 
+The bundled plist is a **template**: `__ARES_REPO__` and `__HOME__` must be
+substituted for your own paths before it will load.
+
 ```bash
-# Copy plist to LaunchAgents
-cp com.ares.observer.plist ~/Library/LaunchAgents/
+# Substitute the placeholders while copying into LaunchAgents
+sed -e "s|__ARES_REPO__|$(cd "$(dirname "$0")/.." && pwd)|g" \
+    -e "s|__HOME__|$HOME|g" \
+    com.ares.observer.plist > ~/Library/LaunchAgents/com.ares.observer.plist
+
+# Verify no placeholders survived, then check syntax
+grep -q '__' ~/Library/LaunchAgents/com.ares.observer.plist && echo "ERROR: unsubstituted placeholders"
+plutil -lint ~/Library/LaunchAgents/com.ares.observer.plist
 
 # Load and start
 launchctl load ~/Library/LaunchAgents/com.ares.observer.plist

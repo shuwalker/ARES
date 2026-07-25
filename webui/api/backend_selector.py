@@ -90,8 +90,21 @@ def is_jros_available() -> bool:
     return available
 
 
+def jros_gateway_details() -> dict:
+    """Cached gateway details from the last successful :func:`is_jros_available` probe."""
+
+    # Refresh cache if empty/stale so health surfaces stay current.
+    is_jros_available()
+    return dict(_jros_gateway_info or {})
+
+
 def backend_status() -> dict:
-    """Return current backend availability for UI display."""
+    """Return current backend availability for UI display.
+
+    Note: this probes *every* registered backend and is intentionally not used
+    on the chat start hot path (use :func:`is_jros_available` /
+    per-backend ``is_available`` instead).
+    """
     router = get_router()
     status = {
         name: backend.is_available()

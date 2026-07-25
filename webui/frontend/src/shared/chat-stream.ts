@@ -130,9 +130,11 @@ export function subscribeToSessionActivity(
   let stopped = false;
   let retryTimer: number | undefined;
   let attempt = 0;
+  /** Backend closed cleanly (read-only import, permission error) — do not thrash reconnects. */
+  let terminal = false;
 
   const connect = () => {
-    if (stopped) return;
+    if (stopped || terminal) return;
     socket = new WebSocket(
       webSocketUrl(`/api/sessions/${encodeURIComponent(sessionId)}/stream`),
       webSocketProtocols(),
@@ -142,13 +144,23 @@ export function subscribeToSessionActivity(
       try {
         const envelope = JSON.parse(String(message.data || "{}")) as RealtimeEnvelope;
         const name = String(envelope.event || "message");
-        if (name !== "heartbeat") onEvent({ name, data: object(envelope.data) });
+        if (name === "heartbeat") return;
+        // Imported CLI sessions are not live-streamable; the server ends with a
+        // terminal error. Stop quietly so the chat page does not surface a
+        // "Background activity updates are temporarily unavailable" banner.
+        if (name === "error" || envelope.terminal) {
+          terminal = true;
+          onEvent({ name, data: object(envelope.data) });
+          socket?.close(1000, "terminal session activity event");
+          return;
+        }
+        onEvent({ name, data: object(envelope.data) });
       } catch { /* A malformed observation event must not break the conversation. */ }
     };
     socket.onerror = () => socket?.close();
     socket.onclose = () => {
       socket = null;
-      if (stopped) return;
+      if (stopped || terminal) return;
       attempt += 1;
       if (attempt > MAX_RECONNECTS) { onDisconnected(); return; }
       retryTimer = window.setTimeout(connect, Math.min(4000, 500 * 2 ** (attempt - 1)));

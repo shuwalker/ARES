@@ -128,7 +128,7 @@ def test_fastapi_chat_service_and_router_have_no_framework_imports():
 def test_framework_adapter_preserves_external_runtime_response(monkeypatch):
     captured = {}
 
-    def starter(session_id, message, *, source):
+    def starter(session_id, message, *, source, attachments=None):
         captured.update(session_id=session_id, message=message, source=source)
         return {"_status": 200, "stream_id": "run-1", "session_id": session_id}
 

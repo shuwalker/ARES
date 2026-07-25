@@ -17,6 +17,7 @@ from .email import router as email_router
 from .health import router as health_router
 from .interactions import router as interactions_router
 from .kanban import router as kanban_router
+from .library import router as library_router
 from .git import legacy_router as legacy_git_router, router as git_router
 from .gateway import router as gateway_router
 from .hatchery import router as hatchery_router
@@ -50,6 +51,7 @@ from .readiness import router as readiness_router
 from .delegation import router as delegation_router
 from .product_state import router as product_state_router
 from .rankings import router as rankings_router
+from .jaeger_onboarding import router as jaeger_onboarding_router
 
 def install_core_routers(application: FastAPI) -> None:
     application.include_router(adapters_router)
@@ -57,6 +59,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(health_router)
     application.include_router(interactions_router)
     application.include_router(kanban_router)
+    application.include_router(library_router)
     application.include_router(git_router)
     application.include_router(legacy_git_router)
     application.include_router(gateway_router)
@@ -101,6 +104,7 @@ def install_core_routers(application: FastAPI) -> None:
     application.include_router(delegation_router)
     application.include_router(product_state_router)
     application.include_router(rankings_router)
+    application.include_router(jaeger_onboarding_router)
 
 
 __all__ = ["install_core_routers"]

@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import AppKit
 
 struct OnboardingView: View {
     @StateObject private var onboardingManager = OnboardingManager.shared
@@ -16,7 +15,8 @@ struct OnboardingView: View {
         "Welcome",
         "Name Assistant",
         "Model Brain",
-        "Network & Remote",
+        "Network",
+        "Tailscale",
         "Complete"
     ]
     
@@ -62,7 +62,7 @@ struct OnboardingView: View {
             VStack {
                 switch currentStep {
                 case 0:
-                    WelcomeStep(onContinue: { currentStep = 1 })
+                    WelcomeStep(onNext: { currentStep = 1 })
                 case 1:
                     NameAssistantStep(
                         onNext: { currentStep = 2 },
@@ -74,11 +74,16 @@ struct OnboardingView: View {
                         onBack: { currentStep = 1 }
                     )
                 case 3:
-                    NetworkAndRemoteStep(
+                    NetworkAccessStep(
                         onNext: { currentStep = 4 },
                         onBack: { currentStep = 2 }
                     )
                 case 4:
+                    TailscaleStep(
+                        onNext: { currentStep = 5 },
+                        onBack: { currentStep = 3 }
+                    )
+                case 5:
                     CompletionStep(
                         onFinish: {
                             Task {
@@ -88,7 +93,6 @@ struct OnboardingView: View {
                                     asleepModel: onboardingManager.selectedAsleepModel ?? "llama3.2:1b"
                                 )
                                 onboardingManager.markCompleted()
-                                await WebUIServerManager.shared.start()
                                 NSApp.setActivationPolicy(.regular)
                                 NSApp.activate(ignoringOtherApps: true)
                             }
@@ -105,121 +109,165 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Helper Image Loader
+// MARK: - Step 0: Welcome Step
 
-func loadCharacterImage(filename: String) -> NSImage? {
-    let nameWithoutExt = filename.replacingOccurrences(of: ".png", with: "")
-    if let url = Bundle.main.url(forResource: nameWithoutExt, withExtension: "png", subdirectory: "Characters"),
-       let img = NSImage(contentsOf: url) {
-        return img
+struct WelcomeStep: View {
+    var onNext: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            Image(systemName: "sparkles")
+                .font(.system(size: 72))
+                .foregroundColor(.yellow)
+            
+            Text("Welcome to ARES")
+                .font(.system(size: 28, weight: .bold))
+            
+            VStack(spacing: 12) {
+                Text("ARES is a User Interface to your AI assistant. Using JaegerAI we will give a local LLM tools to assist you in anything you want to do on your devices.")
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: 520)
+            }
+            
+            VStack(alignment: .leading, spacing: 14) {
+                FeatureRow(icon: "brain.head.profile", title: "Local Tools & Automation", subtitle: "Grant your AI assistant tools to run terminal commands, view screens, and automate apps.")
+                FeatureRow(icon: "cpu", title: "Local & Cloud LLMs", subtitle: "Connect Ollama, JaegerAI local models, or cloud providers like OpenAI, Claude, and Gemini.")
+                FeatureRow(icon: "shield.checkmark.fill", title: "Private & Local-First", titleColor: .green, subtitle: "Your data stays on your machine with optional local-only loopback.")
+            }
+            .padding(20)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)))
+            .frame(maxWidth: 560)
+            
+            Spacer()
+            
+            Button(action: onNext) {
+                Text("Get Started")
+                    .fontWeight(.semibold)
+                    .frame(width: 220, height: 24)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            
+            Spacer()
+        }
     }
-    if let url = Bundle.main.url(forResource: nameWithoutExt, withExtension: "png"),
-       let img = NSImage(contentsOf: url) {
-        return img
-    }
-    let home = FileManager.default.homeDirectoryForCurrentUser
-    let path = home.appendingPathComponent("GitHub/ARES/webui/static/persona-cards/\(filename)")
-    if let img = NSImage(contentsOf: path) {
-        return img
-    }
-    let altPath = home.appendingPathComponent(".ares/webui/static/persona-cards/\(filename)")
-    return NSImage(contentsOf: altPath)
 }
 
-// MARK: - Step 1: Name Assistant Step (JaegerAI Character Deck)
-
-struct JaegerCharacterPreset: Identifiable {
-    let id: String
-    let name: String
-    let role: String
-    let imageFilename: String
-    let description: String
-    let tone: String
-    let quote: String
+struct FeatureRow: View {
+    let icon: String
+    let title: String
+    var titleColor: Color = .primary
+    let subtitle: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(.accentColor)
+                .frame(width: 28, height: 28)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(titleColor)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
 }
 
-let characterPresets: [JaegerCharacterPreset] = [
-    JaegerCharacterPreset(id: "jarvis", name: "Jarvis", role: "AI Butler & Companion", imageFilename: "jarvis.png", description: "Polite, highly intelligent, and always loyal assistant.", tone: "Sophisticated & Formal", quote: "At your service, sir."),
-    JaegerCharacterPreset(id: "bender", name: "Bender", role: "Comedic Companion", imageFilename: "bender.png", description: "Sarcastic, hilarious, and unapologetic robotic companion.", tone: "Comedic & Unfiltered", quote: "Bite my shiny metal companion!"),
-    JaegerCharacterPreset(id: "glados", name: "GLaDOS", role: "Testing Overseer", imageFilename: "glados.png", description: "Passive-aggressive, calculating overseer with dark humor.", tone: "Passive-Aggressive", quote: "For science. You monster."),
-    JaegerCharacterPreset(id: "anakin_skywalker", name: "Anakin Skywalker", role: "Jedi Commander", imageFilename: "anakin_skywalker.png", description: "Passionate, tactical, and determined commander.", tone: "Bold & Driven", quote: "This is where the fun begins."),
-    JaegerCharacterPreset(id: "tars", name: "TARS", role: "Tactical Robot", imageFilename: "tars.png", description: "Military robot with 90% humor parameter and high honesty.", tone: "Deadpan & Technical", quote: "Humor setting: 90%."),
-    JaegerCharacterPreset(id: "hal_9000", name: "HAL 9000", role: "Heuristic AI Overseer", imageFilename: "hal_9000.png", description: "Calm, precise, and infinitely logical computer.", tone: "Calm & Monotone", quote: "I'm sorry, Dave. I'm afraid I can't do that."),
-    JaegerCharacterPreset(id: "paul_atreides", name: "Paul Atreides", role: "Kwisatz Haderach", imageFilename: "paul_atreides.png", description: "Strategic visionary, leader, and prescient guide.", tone: "Focused & Strategic", quote: "Fear is the mind-killer."),
-    JaegerCharacterPreset(id: "eren_yeager", name: "Eren Yeager", role: "Freedom Pioneer", imageFilename: "eren_yeager.png", description: "Relentless defender of freedom and autonomous action.", tone: "Intense & Unyielding", quote: "If you don't fight, you can't win."),
-    JaegerCharacterPreset(id: "kamina", name: "Kamina", role: "Mighty Leader", imageFilename: "kamina.png", description: "Inspirational, fearless, and boundary-pushing leader.", tone: "High-Energy & Passionate", quote: "Believe in the me that believes in you!"),
-    JaegerCharacterPreset(id: "lelouch", name: "Lelouch vi Britannia", role: "Zero Commander", imageFilename: "lelouch.png", description: "Master strategist and mastermind operator.", tone: "Calculated & Commandive", quote: "The only ones who should kill are those prepared to be killed."),
-    JaegerCharacterPreset(id: "lilith", name: "Lilith", role: "Enigmatic Guide", imageFilename: "lilith.png", description: "Mysterious, intuitive, and deeply insightful companion.", tone: "Enigmatic & Wise", quote: "Truth resides beyond the threshold."),
-    JaegerCharacterPreset(id: "mochi", name: "Mochi", role: "Cute Loyal Companion", imageFilename: "mochi.png", description: "Friendly, cheerful, and adorable AI companion.", tone: "Playful & Enthusiastic", quote: "Yay! Let's build something awesome!"),
-    JaegerCharacterPreset(id: "helldiver", name: "Helldiver", role: "Democracy Officer", imageFilename: "helldiver.png", description: "Unwavering tactical defender of managed democracy.", tone: "Patriotic & Direct", quote: "For Managed Democracy!"),
-    JaegerCharacterPreset(id: "simon", name: "Simon", role: "Spiral Pioneer", imageFilename: "simon.png", description: "Resilient worker who pierces through any barrier.", tone: "Determined & Evolving", quote: "My drill is the drill that creates the heavens!")
-]
+// MARK: - Step 1: Name Assistant Step
 
 struct NameAssistantStep: View {
     var onNext: () -> Void
     var onBack: () -> Void
     
     @ObservedObject private var manager = OnboardingManager.shared
-    @State private var inspectedPreset: JaegerCharacterPreset?
+    
+    let presets = [
+        ("Jarvis", "AI Butler & Companion"),
+        ("Bender", "Comedic Companion"),
+        ("GLaDOS", "Testing Overseer"),
+        ("Anakin", "Jedi Commander"),
+        ("Friday", "Tactical Assistant"),
+        ("Cortana", "Cybernetic Scout")
+    ]
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Text("First, let's name your assistant")
                 .font(.title2)
                 .fontWeight(.bold)
             
-            Text("Choose a JaegerAI persona card or customize your companion's handle and role.")
+            Text("Give your AI companion a custom handle and role.")
                 .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
             
-            // Custom Name & Role fields
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Assistant Name")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("e.g. Jarvis", text: $manager.agentName)
                         .textFieldStyle(.roundedBorder)
+                        .font(.body)
                 }
                 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Role or Title")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     TextField("e.g. Personal AI Assistant", text: $manager.agentRole)
                         .textFieldStyle(.roundedBorder)
+                        .font(.body)
                 }
-            }
-            .frame(maxWidth: 640)
-            .padding(.horizontal)
-            
-            Divider().padding(.vertical, 4)
-            
-            // JaegerAI Character Card Grid
-            ScrollView {
-                LazyVGrid(columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12)
-                ], spacing: 12) {
-                    ForEach(characterPresets) { preset in
-                        CharacterCardView(
-                            preset: preset,
-                            isSelected: manager.agentName.lowercased() == preset.name.lowercased() || manager.selectedCharacterId == preset.id,
-                            onSelect: {
-                                manager.agentName = preset.name
-                                manager.agentRole = preset.role
-                                manager.selectedCharacterId = preset.id
-                            },
-                            onInspect: {
-                                inspectedPreset = preset
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Or choose a preset personality:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(presets, id: \.0) { preset in
+                            Button(action: {
+                                manager.agentName = preset.0
+                                manager.agentRole = preset.1
+                                manager.selectedCharacterId = preset.0.lowercased()
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(preset.0)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                        Text(preset.1)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if manager.agentName == preset.0 {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .padding(10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(manager.agentName == preset.0 ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.agentName == preset.0 ? 2 : 1)
+                                        .background(Color(NSColor.controlBackgroundColor))
+                                )
                             }
-                        )
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
-                .padding(.horizontal, 4)
             }
-            .frame(maxWidth: 640, maxHeight: 320)
+            .frame(maxWidth: 520)
+            .padding()
             
             Spacer()
             
@@ -237,178 +285,9 @@ struct NameAssistantStep: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(manager.agentName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .frame(maxWidth: 640)
+            .frame(maxWidth: 520)
         }
         .padding()
-        .sheet(item: $inspectedPreset) { preset in
-            CharacterInspectorSheet(preset: preset, onSelect: {
-                manager.agentName = preset.name
-                manager.agentRole = preset.role
-                manager.selectedCharacterId = preset.id
-                inspectedPreset = nil
-            }, onClose: {
-                inspectedPreset = nil
-            })
-        }
-    }
-}
-
-struct CharacterCardView: View {
-    let preset: JaegerCharacterPreset
-    let isSelected: Bool
-    let onSelect: () -> Void
-    let onInspect: () -> Void
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .topTrailing) {
-                if let nsImg = loadCharacterImage(filename: preset.imageFilename) {
-                    Image(nsImage: nsImg)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(height: 95)
-                        .clipped()
-                        .cornerRadius(6)
-                } else {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 95)
-                        .cornerRadius(6)
-                        .overlay(
-                            Image(systemName: "person.crop.square.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(.gray)
-                        )
-                }
-                
-                Button(action: onInspect) {
-                    Image(systemName: "info.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white)
-                        .shadow(radius: 4)
-                        .padding(6)
-                }
-                .buttonStyle(.plain)
-            }
-            
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(preset.name)
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                    Spacer()
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.blue)
-                            .font(.caption)
-                    }
-                }
-                
-                Text(preset.role)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 2)
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isSelected ? Color.blue : Color.gray.opacity(0.3), lineWidth: isSelected ? 2 : 1)
-                .background(Color(NSColor.controlBackgroundColor))
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
-    }
-}
-
-struct CharacterInspectorSheet: View {
-    let preset: JaegerCharacterPreset
-    let onSelect: () -> Void
-    let onClose: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text("JaegerAI Character Inspector")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.gray)
-                }
-                .buttonStyle(.plain)
-            }
-            
-            HStack(alignment: .top, spacing: 16) {
-                if let nsImg = loadCharacterImage(filename: preset.imageFilename) {
-                    Image(nsImage: nsImg)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 140, height: 180)
-                        .cornerRadius(8)
-                        .shadow(radius: 4)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(preset.name)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    
-                    Text(preset.role)
-                        .font(.subheadline)
-                        .foregroundColor(.blue)
-                        .fontWeight(.semibold)
-                    
-                    Text(preset.description)
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                    
-                    Divider().padding(.vertical, 2)
-                    
-                    HStack {
-                        Text("Voice Tone:")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                        Text(preset.tone)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Quote:")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                        Text("\"\(preset.quote)\"")
-                            .font(.caption)
-                            .italic()
-                            .foregroundColor(.yellow)
-                    }
-                }
-            }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
-            
-            HStack {
-                Button("Close", action: onClose)
-                    .buttonStyle(.bordered)
-                
-                Spacer()
-                
-                Button(action: onSelect) {
-                    Text("Select \(preset.name)")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding()
-        .frame(width: 480, height: 320)
-        .preferredColorScheme(.dark)
     }
 }
 
@@ -419,8 +298,6 @@ struct BrainModelStep: View {
     var onBack: () -> Void
     
     @ObservedObject private var manager = OnboardingManager.shared
-    @State private var isScanning: Bool = false
-    @State private var scanResultText: String? = nil
     
     let awakeModels = [
         ("qwen2.5-coder:7b", "Qwen 2.5 Coder (7B)", "Recommended local model for coding & tool execution", "Local (Ollama/Jaeger)"),
@@ -434,12 +311,8 @@ struct BrainModelStep: View {
         ("qwen2.5:1.5b", "Qwen 2.5 (1.5B)", "Efficient background task model", "Local")
     ]
     
-    var systemRamGB: Int {
-        Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024))
-    }
-    
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Text("Next, let's give it a brain")
                 .font(.title2)
                 .fontWeight(.bold)
@@ -447,86 +320,8 @@ struct BrainModelStep: View {
             Text("Select and install local and cloud models for your assistant.")
                 .foregroundColor(.secondary)
             
-            // System Hardware & Scan Card
-            VStack(spacing: 10) {
-                HStack(spacing: 12) {
-                    Image(systemName: "cpu.fill")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("System Hardware: \(systemRamGB) GB Unified Memory")
-                            .font(.headline)
-                        Text(systemRamGB >= 16 ? "High Performance System — 7B local models recommended." : "Standard System — 3B/1B models recommended.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        isScanning = true
-                        Task {
-                            await manager.fetchJaegerDefaults()
-                            try? await Task.sleep(nanoseconds: 600_000_000)
-                            isScanning = false
-                            scanResultText = "Scan Complete: Recommended Qwen 2.5 Coder (7B)"
-                        }
-                    }) {
-                        HStack(spacing: 6) {
-                            if isScanning {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                            } else {
-                                Image(systemName: "arrow.clockwise.circle.fill")
-                            }
-                            Text(isScanning ? "Scanning..." : "Initiate Scan")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.blue.opacity(0.2)))
-                        .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                if let scanText = scanResultText {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.caption)
-                        Text(scanText)
-                            .font(.caption)
-                            .foregroundColor(.green)
-                    }
-                    .padding(.top, 2)
-                }
-            }
-            .padding(12)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
-            .frame(maxWidth: 580)
-            
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Explainer callout box
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.yellow)
-                            Text("How Awake & Asleep Models Work")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundColor(.yellow)
-                        }
-                        Text("• Awake Model: Used while you actively chat or ask your assistant to write code & execute tools.\n• Asleep Model: Runs in the background while idling to index memories, organize tasks, and run cron scripts.")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.1)))
-                    
                     Text("Active / Awake Model (Primary Intelligence)")
                         .font(.headline)
                     
@@ -603,7 +398,7 @@ struct BrainModelStep: View {
                 }
                 .padding()
             }
-            .frame(maxWidth: 580, maxHeight: 300)
+            .frame(maxWidth: 540)
             
             Spacer()
             
@@ -620,46 +415,46 @@ struct BrainModelStep: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-            .frame(maxWidth: 580)
+            .frame(maxWidth: 540)
         }
         .padding()
     }
 }
 
-// MARK: - Step 3: Network & Remote Access Step
+// MARK: - Step 3: Network Access Step
 
-struct NetworkAndRemoteStep: View {
+struct NetworkAccessStep: View {
     var onNext: () -> Void
     var onBack: () -> Void
     
     @ObservedObject private var manager = OnboardingManager.shared
     
     var body: some View {
-        VStack(spacing: 18) {
-            Text("Network & Remote Access")
+        VStack(spacing: 20) {
+            Text("Where do you want to talk to your assistant?")
                 .font(.title2)
                 .fontWeight(.bold)
             
-            Text("Choose where you want to talk to your assistant and enable remote access.")
+            Text("Do you want to only talk in the Mac app on device, or would you like to talk to it over the network?")
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 500)
             
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 // Card 1: Local Mac App
                 Button(action: {
                     manager.networkMode = "local"
                 }) {
-                    HStack(spacing: 14) {
+                    HStack(spacing: 16) {
                         Image(systemName: "laptopcomputer")
-                            .font(.system(size: 28))
+                            .font(.system(size: 32))
                             .foregroundColor(.blue)
-                            .frame(width: 36)
+                            .frame(width: 40)
                         
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("On-Device Mac App Only")
                                 .font(.headline)
-                            Text("Binds WebUI server to local loopback (127.0.0.1). Maximum privacy.")
+                            Text("Binds WebUI server to local loopback (127.0.0.1). Maximum privacy; accessible only on this Mac.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -667,10 +462,10 @@ struct NetworkAndRemoteStep: View {
                         Spacer()
                         
                         Image(systemName: manager.networkMode == "local" ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
+                            .font(.title2)
                             .foregroundColor(manager.networkMode == "local" ? .blue : .gray)
                     }
-                    .padding(12)
+                    .padding(16)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(manager.networkMode == "local" ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.networkMode == "local" ? 2 : 1)
@@ -683,16 +478,16 @@ struct NetworkAndRemoteStep: View {
                 Button(action: {
                     manager.networkMode = "network"
                 }) {
-                    HStack(spacing: 14) {
+                    HStack(spacing: 16) {
                         Image(systemName: "network")
-                            .font(.system(size: 28))
+                            .font(.system(size: 32))
                             .foregroundColor(.green)
-                            .frame(width: 36)
+                            .frame(width: 40)
                         
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("Over the Network (WebUI Server)")
                                 .font(.headline)
-                            Text("Binds WebUI server to network IP (0.0.0.0). Access from any browser on home network.")
+                            Text("Binds WebUI server to network IP (0.0.0.0). Access your assistant from any browser on your home network.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -700,10 +495,10 @@ struct NetworkAndRemoteStep: View {
                         Spacer()
                         
                         Image(systemName: manager.networkMode == "network" ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
+                            .font(.title2)
                             .foregroundColor(manager.networkMode == "network" ? .green : .gray)
                     }
-                    .padding(12)
+                    .padding(16)
                     .background(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(manager.networkMode == "network" ? Color.green : Color.gray.opacity(0.3), lineWidth: manager.networkMode == "network" ? 2 : 1)
@@ -712,39 +507,9 @@ struct NetworkAndRemoteStep: View {
                 }
                 .buttonStyle(.plain)
                 
-                Divider().padding(.vertical, 2)
-                
-                // Card 3: Tailscale Remote Access
-                Button(action: {
-                    manager.enableTailscale.toggle()
-                }) {
-                    HStack(spacing: 14) {
-                        Image(systemName: "globe.americas.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.purple)
-                            .frame(width: 36)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Tailscale Remote Access")
-                                .font(.headline)
-                            Text("Reach your assistant securely from any external device anywhere over Tailscale.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Toggle("", isOn: $manager.enableTailscale)
-                            .labelsHidden()
-                    }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(manager.enableTailscale ? Color.purple : Color.gray.opacity(0.3), lineWidth: manager.enableTailscale ? 2 : 1)
-                            .background(Color(NSColor.controlBackgroundColor))
-                    )
-                }
-                .buttonStyle(.plain)
+                Toggle("Auto-launch WebUI server when ARES opens", isOn: $manager.autoLaunchWebUI)
+                    .font(.subheadline)
+                    .padding(.top, 8)
             }
             .frame(maxWidth: 520)
             
@@ -760,6 +525,91 @@ struct NetworkAndRemoteStep: View {
                     Text("Continue")
                         .fontWeight(.semibold)
                         .frame(width: 120)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: 520)
+        }
+        .padding()
+    }
+}
+
+// MARK: - Step 4: Tailscale Step
+
+struct TailscaleStep: View {
+    var onNext: () -> Void
+    var onBack: () -> Void
+    
+    @ObservedObject private var manager = OnboardingManager.shared
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Reach your assistant anywhere")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            Text("Do you want to reach this on external devices anywhere?")
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            
+            VStack(spacing: 16) {
+                Button(action: {
+                    manager.enableTailscale.toggle()
+                }) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "globe.americas.fill")
+                            .font(.system(size: 36))
+                            .foregroundColor(.purple)
+                            .frame(width: 44)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Enable Tailscale Remote Access")
+                                .font(.headline)
+                            Text("Connect securely to your assistant over a private Tailscale mesh network from any phone, laptop, or browser worldwide.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: $manager.enableTailscale)
+                            .labelsHidden()
+                    }
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(manager.enableTailscale ? Color.purple : Color.gray.opacity(0.3), lineWidth: manager.enableTailscale ? 2 : 1)
+                            .background(Color(NSColor.controlBackgroundColor))
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                if manager.enableTailscale {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.purple)
+                        Text("Tailscale integration will expose your WebUI to your authenticated Tailnet.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.1)))
+                }
+            }
+            .frame(maxWidth: 520)
+            
+            Spacer()
+            
+            HStack {
+                Button("Back", action: onBack)
+                    .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button(action: onNext) {
+                    Text("Complete Setup")
+                        .fontWeight(.semibold)
+                        .frame(width: 140)
                 }
                 .buttonStyle(.borderedProminent)
             }

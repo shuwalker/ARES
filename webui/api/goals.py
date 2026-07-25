@@ -654,7 +654,7 @@ def _start_server_side_goal_continuation_turn(session_id: str, continuation_prom
     """Start the goal-continuation turn server-side (Option Z for goals).
 
     Runs on a short-lived daemon thread so the caller (turn teardown) never
-    blocks. Reuses api.routes.start_session_turn — the same HTTP-handler-free
+    blocks. Reuses api.chat_runtime.start_session_turn — the same HTTP-handler-free
     entrypoint background_process.py uses for process-wakeup turns — so
     concurrency (per-session agent lock, 409 on an already-active turn) and
     session/model resolution are identical to a human-typed turn. A human
@@ -665,7 +665,7 @@ def _start_server_side_goal_continuation_turn(session_id: str, continuation_prom
 
     def _runner() -> None:
         try:
-            from api.routes import start_session_turn
+            from api.chat_runtime import start_session_turn
 
             resp = start_session_turn(session_id, continuation_prompt, source="goal_continuation")
             status = int((resp or {}).get("_status", 200) or 200)

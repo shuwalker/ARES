@@ -107,6 +107,51 @@ ADAPTERS: dict[str, ReasoningProvider] = {
 }
 ```
 
+## Inventory catalog (models · transports · gateways · MCP)
+
+Adapters must **catalog** everything the framework can expose — not only the
+path ARES uses today. Latency and quality depend on the **LLM configuration
+inside the worker** (local vs cloud model, load, tools), not only the socket
+ARES opens.
+
+```python
+def inventory(self) -> dict:
+    """schema_version 1 — see api/backends/catalog.py"""
+    return {
+        "worker_id": "hermes_local",
+        "display_name": "Hermes Agent",
+        "models": [
+            # location: local | cloud | unknown; in_use marks active config
+            {"id": "…", "location": "cloud", "provider": "ollama-cloud", "in_use": True},
+            {"id": "…", "location": "local", "provider": "ollama", "in_use": False},
+        ],
+        "transports": [
+            # kind: cli | http_gateway | mcp | subprocess | other
+            {"id": "cli_chat", "kind": "cli", "in_use": True},
+            {"id": "mcp_serve", "kind": "mcp", "in_use": False},
+        ],
+        "gateways": [
+            {"id": "…", "kind": "openai_compatible", "endpoint": "http://…", "in_use": False},
+        ],
+        "mcp": [
+            # Declare MCP servers/tools even when ARES is not the MCP client
+            {"id": "hermes_mcp_serve", "in_use_by_ares": False, "used_by": ["claude_code"]},
+        ],
+        "latency": {
+            "depends_on": ["selected_model", "provider_location", "transport", "tool_use"],
+            "note": "Wall time dominated by model/provider, not transport alone.",
+        },
+        "active_execution": {"transport": "cli_chat", "model": "…", "provider": "…"},
+    }
+```
+
+| Framework (today) | Active ARES transport | Also catalogued |
+|-------------------|----------------------|-----------------|
+| Hermes | CLI `hermes chat -q` | MCP serve, hermes-webui gateway, multi providers |
+| JaegerAI / JROS | HTTP gateway `:8643` | Local checkout fallback, native app, optional MCP |
+
+Exposed on `GET /api/backends` as `inventory` per backend.
+
 ## Current State vs Target
 
 | Aspect | Current | Target |
@@ -116,3 +161,4 @@ ADAPTERS: dict[str, ReasoningProvider] = {
 | Context sent to worker | Full conversation history + identity prompt | `ContextBriefing` with manifest and privacy policy |
 | Worker result | Raw streamed text | `WorkerResult` with confidence, cost, evidence |
 | Provider switching | User manually picks from model picker | SI routes based on capability + privacy + cost |
+| Capability catalog | Hermes/JROS inventory on `/api/backends` | All adapters fill inventory; SI routes on it |

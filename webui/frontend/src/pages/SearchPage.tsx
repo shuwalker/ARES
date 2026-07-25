@@ -104,7 +104,7 @@ function SearchResultRow({
 
   return (
     <Link
-      to="/conversation"
+      to="/chat"
       className="flex items-start gap-3 rounded-md border bg-card px-4 py-3 transition-colors hover:border-foreground/20 hover:shadow-sm"
     >
       <MessageCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -385,7 +385,7 @@ export function SearchPage() {
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-muted-foreground">All sessions</p>
             <Button asChild variant="ghost" size="sm">
-              <Link to="/conversation">
+              <Link to="/chat">
                 View all <ArrowRight className="ml-1 size-3.5" />
               </Link>
             </Button>

@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from pathlib import Path
 import json
 import sqlite3
 
 
 def state_db_session_source(session_id: str) -> str:
-    from api.models import _active_state_db_path, is_safe_session_id
+    from api.models import _agent_state_db_path, is_safe_session_id
 
     if not session_id or not is_safe_session_id(session_id):
         return ""
     try:
-        path = _active_state_db_path()
-        if not path or not Path(path).exists():
+        # _agent_state_db_path falls back to the worker's own store when ARES
+        # has no state.db, so CLI history stays resolvable. Opened read-only:
+        # a writable handle would create WAL/journal files in the worker's home.
+        path = _agent_state_db_path()
+        if not path:
             return ""
-        with sqlite3.connect(str(path)) as connection:
+        uri = f"{Path(path).resolve().as_uri()}?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as connection:
             row = connection.execute(
                 "SELECT source FROM sessions WHERE id = ?",
                 (session_id,),

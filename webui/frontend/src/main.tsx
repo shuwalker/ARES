@@ -33,7 +33,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error:
           </p>
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
             <button type="button" onClick={() => this.setState({ error: null })}>Retry</button>
-            <button type="button" onClick={() => window.location.assign("/today")}>Go to Today</button>
+            <button type="button" onClick={() => window.location.assign("/companion")}>Go to Companion</button>
             <button type="button" onClick={() => window.location.reload()}>Reload</button>
           </div>
         </div>

@@ -52,31 +52,31 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   --radius: 0.55rem;
-  --background: oklch(0.985 0.004 255);
-  --foreground: oklch(0.19 0.012 255);
-  --card: oklch(1 0 0);
+  --background: oklch(0.16 0.012 255);
+  --foreground: oklch(0.94 0.006 255);
+  --card: oklch(0.205 0.014 255);
   --card-foreground: var(--foreground);
-  --popover: var(--card);
+  --popover: oklch(0.22 0.014 255);
   --popover-foreground: var(--foreground);
-  --primary: oklch(0.48 0.15 252);
-  --primary-foreground: oklch(0.985 0.004 255);
-  --secondary: oklch(0.95 0.008 255);
+  --primary: oklch(0.7 0.14 250);
+  --primary-foreground: oklch(0.16 0.012 255);
+  --secondary: oklch(0.255 0.014 255);
   --secondary-foreground: var(--foreground);
-  --muted: oklch(0.95 0.008 255);
-  --muted-foreground: oklch(0.49 0.018 255);
-  --accent: oklch(0.93 0.018 250);
-  --accent-foreground: oklch(0.22 0.025 252);
-  --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.89 0.012 255);
-  --input: oklch(0.89 0.012 255);
-  --ring: oklch(0.58 0.14 252);
-  --sidebar: oklch(0.965 0.008 255);
+  --muted: oklch(0.255 0.014 255);
+  --muted-foreground: oklch(0.69 0.018 255);
+  --accent: oklch(0.285 0.025 252);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.65 0.21 27);
+  --border: oklch(0.34 0.018 255);
+  --input: oklch(0.34 0.018 255);
+  --ring: oklch(0.68 0.13 250);
+  --sidebar: oklch(0.185 0.014 255);
   --sidebar-foreground: var(--foreground);
-  --status-available: oklch(0.61 0.17 150);
-  --status-limited: oklch(0.7 0.16 75);
-  --status-unavailable: oklch(0.56 0.03 255);
+  --status-available: oklch(0.72 0.16 150);
+  --status-limited: oklch(0.78 0.15 75);
+  --status-unavailable: oklch(0.63 0.025 255);
   --status-task-done: var(--status-available);
   --rad-2: 2px;
   --rad-3: 3px;
@@ -180,6 +180,48 @@
   }
 }
 
+@layer base {
+  /* Thin, low-contrast scrollbars. The platform default renders an opaque
+     light track against the dark shell, which reads as a UI element rather
+     than an indicator. Firefox gets the standard properties; WebKit/Blink
+     need the vendor pseudo-elements for an overlay-style thumb. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.16);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    /* Keeps the thumb inset from the track edge without a visible border. */
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.28);
+  }
+
+  /* Utility for rails that should scroll with no visible indicator at all. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   .activation-surface {
     background:
@@ -251,6 +293,286 @@
   }
 
   .page-stack {
+    padding: 0.75rem;
+  }
+}
+
+/* iPhone / narrow phone (≤430px) */
+@media (max-width: 430px) {
+  .page-stack {
+    padding: 0.5rem;
+  }
+
+  .conversation-messages {
+    padding: 16px 10px 100px !important;
+    gap: 14px !important;
+  }
+
+  .conversation-composer {
+    padding-left: max(8px, env(safe-area-inset-left, 0px)) !important;
+    padding-right: max(8px, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .conversation-toolbar {
+    gap: 2px !important;
+  }
+
+  .conversation-toolbar > * {
+    font-size: 11px !important;
+  }
+}
+
+/*
+ * Command Center mobile drawers — Hermes-aligned (≤900px shell switches layout
+ * in JS; these styles animate deck/hands as fixed overlays).
+ * See hermes-webui/static/style.css @media(max-width:900px) / 640px.
+ */
+.cc-mobile-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.cc-mobile-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: #111210;
+  box-shadow: none;
+  transition: transform 0.25s ease;
+  will-change: transform;
+  /* Safe areas for notched phones / PWA */
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.cc-mobile-drawer--deck {
+  left: 0;
+  width: min(100vw, 22rem);
+  max-width: 100vw;
+  transform: translateX(-100%);
+  border-right: 1px solid #343631;
+  padding-left: env(safe-area-inset-left, 0);
+}
+
+.cc-mobile-drawer--deck.is-open {
+  transform: translateX(0);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+}
+
+.cc-mobile-drawer--hands {
+  right: 0;
+  width: min(100vw, 20rem);
+  max-width: 100vw;
+  transform: translateX(100%);
+  border-left: 1px solid #343631;
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+.cc-mobile-drawer--hands.is-open {
+  transform: translateX(0);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Chat surface: tighter padding and full-width bubbles on phones */
+@media (max-width: 640px) {
+  .command-center-surface {
+    /* Avoid horizontal scroll from wide composer chips / code blocks */
+    overflow-x: clip;
+  }
+
+  /* Hermes: full-width sidebar drawer on phone */
+  .cc-mobile-drawer--deck {
+    width: 100vw;
+    max-width: none;
+  }
+
+  .cc-mobile-drawer--hands {
+    width: min(300px, 100vw);
+  }
+
+  .conversation-messages {
+    padding: 16px 12px 100px !important;
+    gap: 16px !important;
+  }
+
+  .conversation-composer {
+    padding-top: 0 !important;
+    padding-right: max(10px, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-left: max(10px, env(safe-area-inset-left, 0px)) !important;
+  }
+
+  .conversation-toolbar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  .conversation-toolbar > * {
+    flex-shrink: 0;
+  }
+}
+
+/* Compact band (tablet portrait): keep drawers at comfortable width */
+@media (min-width: 641px) and (max-width: 900px) {
+  .cc-mobile-drawer--deck {
+    width: min(100vw, 22rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-mobile-drawer {
+    transition: none;
+  }
+}
+
+/* ── Settings hub (Hermes-aligned section shell) ── */
+.settings-hub .settings-layout {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .settings-hub .settings-layout {
+    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+.settings-hub .settings-side {
+  position: sticky;
+  top: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.2);
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  padding: 0.75rem;
+}
+
+.settings-hub .settings-side-nav {
+  display: flex;
+  flex-direction: row;
+  gap: 0.25rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.15rem;
+}
+
+@media (min-width: 900px) {
+  .settings-hub .settings-side-nav {
+    flex-direction: column;
+    overflow: visible;
+  }
+}
+
+.settings-hub .settings-side-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-hub .settings-side-item:hover {
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  color: var(--foreground);
+}
+
+.settings-hub .settings-side-item.is-active {
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+  border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.settings-hub .settings-main {
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.2);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  padding: 1.25rem;
+  min-height: 24rem;
+}
+
+@media (max-width: 640px) {
+  .settings-hub .settings-main {
     padding: 1rem;
   }
+}
+
+/* Font-size scale from Appearance settings */
+html[data-font-size="small"] {
+  font-size: 14px;
+}
+html[data-font-size="default"] {
+  font-size: 16px;
+}
+html[data-font-size="large"] {
+  font-size: 17.5px;
+}
+html[data-font-size="xlarge"] {
+  font-size: 19px;
+}
+
+/* Skin accents (light touch — full skins can expand later) */
+html[data-skin="ares"] {
+  --primary: oklch(0.72 0.14 200);
+  --ring: oklch(0.72 0.14 200);
+}
+html[data-skin="graphite"] {
+  --primary: oklch(0.72 0.02 255);
+  --ring: oklch(0.72 0.02 255);
+}
+html[data-skin="slate"] {
+  --primary: oklch(0.7 0.06 250);
+  --ring: oklch(0.7 0.06 250);
+}
+html[data-skin="poseidon"] {
+  --primary: oklch(0.68 0.12 220);
+  --ring: oklch(0.68 0.12 220);
+}
+html[data-skin="sisyphus"] {
+  --primary: oklch(0.72 0.14 85);
+  --ring: oklch(0.72 0.14 85);
+}
+html[data-skin="charizard"] {
+  --primary: oklch(0.7 0.18 45);
+  --ring: oklch(0.7 0.18 45);
+}
+html[data-skin="catppuccin"] {
+  --primary: oklch(0.72 0.14 300);
+  --ring: oklch(0.72 0.14 300);
+}
+html[data-skin="nous"] {
+  --primary: oklch(0.7 0.16 155);
+  --ring: oklch(0.7 0.16 155);
+}
+html[data-skin="neon-soft"] {
+  --primary: oklch(0.75 0.18 330);
+  --ring: oklch(0.75 0.18 330);
+}
+html[data-skin="neon-paint"] {
+  --primary: oklch(0.78 0.2 145);
+  --ring: oklch(0.78 0.2 145);
 }

@@ -34,11 +34,12 @@ def post(path, body=None):
 # ── Default value ─────────────────────────────────────────────────────────
 
 def test_settings_default_bot_name():
-    """GET /api/settings should return bot_name defaulting to 'Ares'."""
+    """GET /api/settings defaults bot_name to 'Companion' — ARES is the app
+    name only, never the persona (FOUNDATION.md)."""
     d, status = get("/api/settings")
     assert status == 200
     assert "bot_name" in d
-    assert d["bot_name"] == "Ares"
+    assert d["bot_name"] == "Companion"
 
 
 # ── Round-trip ────────────────────────────────────────────────────────────

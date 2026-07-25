@@ -24,12 +24,30 @@ def list_backends(
     registry = get_router()
     items = []
     for name, backend in registry.list_all().items():
+        inventory = None
+        inv_fn = getattr(backend, "inventory", None)
+        if callable(inv_fn):
+            try:
+                inventory = inv_fn()
+            except Exception:
+                inventory = None
+        models = []
+        if isinstance(inventory, dict):
+            models = list(inventory.get("models") or [])
+        elif callable(getattr(backend, "models", None)):
+            try:
+                models = backend.models() or []
+            except Exception:
+                models = []
         items.append({
             "id": name,
             "name": getattr(backend, "name", name),
             "available": backend.is_available(),
             "kind": getattr(backend, "kind", "agent"),
             "description": getattr(backend, "description", ""),
-            "models": getattr(backend, "models", lambda: [])() if callable(getattr(backend, "models", None)) else [],
+            "models": models,
+            # Full catalog: models (local+cloud), transports, gateways, MCP —
+            # including paths not currently selected for ARES execution.
+            "inventory": inventory,
         })
     return {"backends": sorted(items, key=lambda x: (not x["available"], x["id"]))}

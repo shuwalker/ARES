@@ -10442,13 +10442,11 @@ def _run_agent_streaming(
                 exc_info=True,
             )
 
-# ============================================================
-# SECTION: HTTP Request Handler
+# =====================================================# SECTION: HTTP Request Handler
 # do_GET: read-only API endpoints + SSE stream + static HTML
 # do_POST: mutating endpoints (session CRUD, chat, upload, approval)
 # Routing is a flat if/elif chain. See ARCHITECTURE.md section 4.1.
-# ============================================================
-
+# =====================================================
 
 def _handle_chat_steer(handler, body: dict) -> bool:
     """Inject a /steer payload into the active agent for a session.

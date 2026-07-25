@@ -1,9 +1,0 @@
-{
-  "name": "ares",
-  "version": "0.1.0",
-  "description": "ARES companion surface",
-  "scripts": {
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
-  }
-}

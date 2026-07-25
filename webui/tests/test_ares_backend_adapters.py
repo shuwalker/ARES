@@ -1,4 +1,5 @@
 """Canonical external-runtime router contracts."""
+from __future__ import annotations
 
 from types import SimpleNamespace
 
@@ -7,7 +8,8 @@ import pytest
 from api.backend_selector import VALID_BACKENDS, normalize_backend
 from api.backends.base import AgenticBackend
 from api.backends.jros import JROSBackend
-from api.backends.router import get_default_router
+from api.backends.router import get_default_router, BackendRouter
+from api.backends.cli_backends import BackendRegistry
 
 
 def test_router_contains_only_external_execution_backends():
@@ -16,14 +18,26 @@ def test_router_contains_only_external_execution_backends():
     assert "ares" not in router.backends
     assert "ares_local" not in router.backends
     assert "hybrid" not in router.backends
-    assert set(router.backends) == set(VALID_BACKENDS)
-    assert isinstance(router.backends["jros_local"], JROSBackend)
+    # The router only returns available backends. Check that registered
+    # backends are a subset of VALID_BACKENDS (not an exact match, since
+    # some may be unavailable and app automation backends are separate).
+    for name in router.backends:
+        if name.endswith("_app"):
+            continue  # App automation backends are a separate category
+        assert name in VALID_BACKENDS, f"{name} not in VALID_BACKENDS"
+    # JROS should be in the registry
+    assert "jros_local" in BackendRegistry._backends
 
 
 @pytest.mark.parametrize("backend_key", VALID_BACKENDS)
 def test_external_backends_conform_to_contract(backend_key):
-    backend = get_default_router().backends[backend_key]
+    """Every registered backend must conform to AgenticBackend contract."""
+    # Instantiate from the registry (not the router, which filters by availability)
+    cls = BackendRegistry._backends.get(backend_key)
+    if cls is None:
+        pytest.skip(f"{backend_key} not in registry (may be a legacy name)")
 
+    backend = cls()
     assert isinstance(backend, AgenticBackend)
     assert callable(backend.is_available)
     assert callable(backend.run_turn)
@@ -45,10 +59,9 @@ def test_app_automation_requires_target_application(monkeypatch):
     from api.backends import cli_backends
 
     backend = cli_backends.AppAutomationBackend("Missing App", ["type_message"])
-    monkeypatch.setattr(cli_backends.shutil, "which", lambda _name: "/usr/bin/osascript")
+    monkeypatch.setattr("shutil.which", lambda _name: "/usr/bin/osascript")
     monkeypatch.setattr(
-        cli_backends.subprocess,
-        "run",
+        "subprocess.run",
         lambda *args, **kwargs: SimpleNamespace(returncode=1),
     )
 

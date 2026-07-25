@@ -32,15 +32,13 @@ final class ARESWindowCoordinator {
 }
 
 private struct ARESMainScene: View {
-    @Environment(\.openWindow) private var openWindow
-
     var body: some View {
         ARESMainView()
             .frame(minWidth: 1024, minHeight: 700)
             .preferredColorScheme(.dark)
             .onAppear {
-                ARESWindowCoordinator.shared.register {
-                    openWindow(id: "main")
+                for window in NSApp.windows {
+                    window.tabbingMode = .disallowed
                 }
             }
     }
@@ -54,16 +52,7 @@ struct ARESApp: App {
     
     var body: some Scene {
         WindowGroup(id: "main") {
-            // Force onboarding if flag is set (from `ares setup`)
-            let forceOnboarding = UserDefaults.standard.bool(forKey: "ARESForceOnboarding")
-            if forceOnboarding || onboardingManager.needsOnboarding {
-                ARESOnboardingView(onComplete: {
-                    onboardingManager.markCompleted()
-                    UserDefaults.standard.removeObject(forKey: "ARESForceOnboarding")
-                })
-            } else {
-                ARESMainScene()
-            }
+            ARESMainScene()
         }
         .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)
@@ -72,12 +61,6 @@ struct ARESApp: App {
                 Button("About ARES") {
                     NSApp.orderFrontStandardAboutPanel(nil)
                 }
-            }
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    openSettings()
-                }
-                .keyboardShortcut(",", modifiers: .command)
             }
         }
         
@@ -102,9 +85,13 @@ struct ARESApp: App {
 /// remote/light client for other devices over LAN or a trusted tailnet.
 struct ARESMainView: View {
     @ObservedObject private var serverManager = WebUIServerManager.shared
+    @ObservedObject private var onboardingManager = OnboardingManager.shared
 
     var body: some View {
-        if serverManager.isRunning {
+        if onboardingManager.needsOnboarding {
+            OnboardingView()
+                .frame(minWidth: 800, minHeight: 600)
+        } else if serverManager.isRunning {
             ARESProductShell()
         } else {
             ARESBootSplashView(status: serverManager.serverHealth)
@@ -324,11 +311,11 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
         ARESWindowCoordinator.shared.openMainWindow()
         NSApp.activate(ignoringOtherApps: true)
 
-        // SwiftUI creates a new WindowGroup window asynchronously.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if let window = NSApp.windows.first(where: {
-                $0.title != "" && $0.className != "NSStatusBarWindow"
-            }) {
+        // SwiftUI creates or brings forward the WindowGroup window asynchronously.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            for window in NSApp.windows where window.className != "NSStatusBarWindow" {
+                window.tabbingMode = .disallowed
+                window.deminiaturize(nil)
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
             }
@@ -338,9 +325,10 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func windowWillClose(_ notification: Notification) {
         DispatchQueue.main.async {
-            let visibleWindows = NSApp.windows.filter { $0.isVisible && $0.title != "" && $0.className != "NSStatusBarWindow" }
+            let visibleWindows = NSApp.windows.filter { $0.isVisible && $0.className != "NSStatusBarWindow" }
             if visibleWindows.isEmpty {
-                NSApp.setActivationPolicy(.accessory)
+                // Keep .regular policy so clicking the Dock icon or app bundle always brings back the window
+                NSApp.setActivationPolicy(.regular)
             }
         }
     }
@@ -350,9 +338,8 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            openMainWindow()
-        }
+        NSApp.setActivationPolicy(.regular)
+        openMainWindow()
         return true
     }
 
@@ -469,12 +456,13 @@ final class ARESMenuBarController: NSObject {
 struct MenuBarPopoverView: View {
     @ObservedObject var serverManager = WebUIServerManager.shared
     @ObservedObject var config = ARESConfiguration.shared
-
+    
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "shield")
-                .font(.largeTitle)
-                .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
+            Image("ares-app-icon")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 64, height: 64)
             
             Text("ARES WebUI Server")
                 .font(.headline)

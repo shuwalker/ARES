@@ -82,6 +82,17 @@ def _rebuild_recovery_session_index(session_dir: Path) -> None:
         session = _load_session_from_path(path)
         if not session:
             continue
+        title_lower = (session.title or "").lower()
+        # Exclude automated verification probes and 0-message empty sessions
+        msg_count = len(session.messages) if session.messages is not None else getattr(session, '_metadata_message_count', 0)
+        if (
+            msg_count == 0
+            or "reply with" in title_lower
+            or "ares-hermes-ok" in title_lower
+            or "ares-jaeger-ok" in title_lower
+            or "si-ok" in title_lower
+        ):
+            continue
         entry = session.compact()
         session_id = entry.get('session_id')
         if not session_id:

@@ -36,6 +36,58 @@ describe("ARES backend translators", () => {
     ]);
   });
 
+  it("classifies CLI sessions by machine source, never by display label", () => {
+    // source_label is a human string ("Claude Code"); matching on it put every
+    // CLI session in the WebUI bucket and left the CLI tab reading 0.
+    const [session] = translateSessions({ sessions: [{
+      session_id: "s1",
+      session_source: "cli",
+      source_label: "Claude Code",
+    }] });
+    expect(session.source).toBe("cli");
+  });
+
+  it("classifies live Claude Code imports as cli (external_agent + is_cli_session)", () => {
+    // Real /api/sessions payloads for imported Claude Code conversations look
+    // like this — not session_source:"cli". Preferring session_source alone
+    // left CLI (0) after the first fix.
+    const sessions = translateSessions({ sessions: [
+      {
+        session_id: "s1",
+        session_source: "external_agent",
+        source_tag: "claude_code",
+        source_label: "Claude Code",
+        is_cli_session: true,
+        model: "claude-code",
+      },
+      { session_id: "s2", session_source: "external_agent" },
+      { session_id: "s3", source_tag: "claude_code" },
+    ] });
+    expect(sessions.map((s) => s.source)).toEqual(["cli", "cli", "cli"]);
+    // No ares_backend on imports — derive from source_tag so the CLI sidebar
+    // groups under Claude Code instead of "unknown".
+    expect(sessions[0].backendId).toBe("claude_local");
+  });
+
+  it("folds acp and tui raw sources into the cli bucket like the backend does", () => {
+    const sources = translateSessions({ sessions: [
+      { session_id: "a", source_tag: "acp" },
+      { session_id: "b", source_tag: "TUI" },
+      { session_id: "c", source: "cli" },
+    ] }).map((s) => s.source);
+    expect(sources).toEqual(["cli", "cli", "cli"]);
+  });
+
+  it("defaults to webui and preserves non-cli buckets", () => {
+    const sources = translateSessions({ sessions: [
+      { session_id: "a" },
+      { session_id: "b", session_source: "messaging" },
+      { session_id: "c", is_cli_session: true },
+      { session_id: "d", session_source: "webui", source_label: "Claude Code" },
+    ] }).map((s) => s.source);
+    expect(sources).toEqual(["webui", "messaging", "cli", "webui"]);
+  });
+
   it("normalizes mixed message content without exposing backend shapes", () => {
     const session = translateConversation({ session_id: "s1", messages: [{ role: "user", content: [{ text: "hello" }, { text: "world" }] }] });
     expect(session.messages[0]).toEqual(expect.objectContaining({ role: "user", text: "hello\nworld" }));

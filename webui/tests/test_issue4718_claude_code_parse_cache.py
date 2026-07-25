@@ -119,7 +119,9 @@ def test_parse_cache_handles_missing_file(tmp_path):
     models.clear_claude_code_parse_cache()
     missing = tmp_path / "nope.jsonl"
     # Must not raise; matches the empty-tuple contract of the uncached parser.
-    assert models._parse_claude_code_jsonl_cached(missing) == ([], None, None, None)
+    # The trailing dict carries per-file metadata (real cwd, git branch) that
+    # the sidebar uses instead of a fabricated shared workspace.
+    assert models._parse_claude_code_jsonl_cached(missing) == ([], None, None, None, {})
 
 
 def test_get_claude_code_sessions_warm_uses_cache(tmp_path, monkeypatch):

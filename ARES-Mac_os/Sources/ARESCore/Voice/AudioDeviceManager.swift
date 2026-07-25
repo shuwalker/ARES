@@ -81,7 +81,7 @@ public class AudioDeviceManager: ObservableObject, @unchecked Sendable {
         }
     }
 
-   /// Available system voices (native macOS voices via NSSpeechSynthesizer)
+   /// Available system voices (native macOS voices via AVSpeechSynthesisVoice)
    @Published public private(set) var availableVoices: [NativeVoice] = []
 
     /// Stored CoreAudio listener callback and property address for cleanup in deinit
@@ -131,25 +131,16 @@ public class AudioDeviceManager: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Refresh the list of available voices using native macOS API
-    /// Note: NSSpeechSynthesizer is deprecated in macOS 14 but provides more reliable voice enumeration
+    /// Refresh the list of available voices via AVSpeechSynthesisVoice (non-deprecated).
     public func refreshVoices() {
-        let voices = NSSpeechSynthesizer.availableVoices
-
-        let voiceList: [NativeVoice] = voices.compactMap { voiceName in
-            let attrs = NSSpeechSynthesizer.attributes(forVoice: voiceName)
-            guard let name = attrs[.name] as? String,
-                  let language = attrs[.localeIdentifier] as? String else {
-                return nil
-            }
-            return NativeVoice(id: voiceName.rawValue, name: name, language: language)
-        }
-        .filter { $0.language.hasPrefix("en") }
-        .sorted { $0.name < $1.name }
+        let voiceList: [NativeVoice] = AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix("en") }
+            .map { NativeVoice(id: $0.identifier, name: $0.name, language: $0.language) }
+            .sorted { $0.name < $1.name }
 
         DispatchQueue.main.async { [weak self] in
             self?.availableVoices = voiceList
-            self?.logger.info("Found \(voiceList.count) English voices via NSSpeechSynthesizer")
+            self?.logger.info("Found \(voiceList.count) English voices via AVSpeechSynthesisVoice")
         }
     }
 

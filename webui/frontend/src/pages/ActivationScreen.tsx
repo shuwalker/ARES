@@ -202,24 +202,24 @@ export function ActivationScreen() {
             <div>
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                 {[
-                  "A personal Companion, built around you.",
-                  "Name yourself and your Companion.",
-                  `Shape ${draft.assistantName || "your Companion"}.`,
-                  "Choose the boundaries.",
-                  "Choose which workers run.",
-                  "Your Companion is ready.",
+                  "Jaeger AI Synthetic Intelligence Setup",
+                  "Name yourself and your Jaeger AI SI.",
+                  `Shape ${draft.assistantName || "Jaeger AI"}.`,
+                  "Choose safety & system boundaries.",
+                  "Choose local LLM & worker backends.",
+                  "Your Jaeger AI Companion is active.",
                 ][step]}
               </h1>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
                 {[
-                  "ARES is just the app. Your Companion is everything that is not a worker — identity, memory, context, and control. Create a Local Profile first, then pick workers.",
-                  "Choose the names used throughout your private workspace. They remain available when every worker is offline.",
-                  "Set attention and behavior—not blanket permission. Every macOS and product safety gate remains enforceable.",
-                  "Decide reachability (this machine, LAN, or trusted tailnet), context indexing, and optional import of external AI history into your Companion journal.",
-                  "Nothing is pre-selected. Pick a detected worker (Ollama, jros, Hermes, cloud, …) or explicitly continue as organizer only.",
+                  "ARES provides the multi-agent control plane. Your Companion (Jaeger AI) sits above worker backends (Hermes CLI, Claude, Ollama, JROS) to maintain relationship continuity, intent routing, and local privacy.",
+                  "Set the operator and SI Companion names used throughout your private workspace. They remain active even when subagent workers are offline.",
+                  "Configure Jaeger AI persona attention, character tone, and life focus areas.",
+                  "Decide reachability (this Mac, LAN, or trusted network) and context indexing policies.",
+                  "Select your local LLM engine (Ollama/MLX) or backend runtime to process turns and command subagents.",
                   intelligenceChoice?.kind === "runtime"
-                    ? "Your Local Profile and selected worker are ready. Conversations land in the Companion journal with provenance."
-                    : "Your Local Profile is ready. Execution stays offline until you connect a worker — the Companion organizer and journal remain available.",
+                    ? "Your Jaeger AI Local Profile and worker runtime are active. All subagent turns will log transparently with full provenance."
+                    : "Your Jaeger AI Local Profile is active. The Companion organizer remains ready to connect workers.",
                 ][step]}
               </p>
             </div>
@@ -239,8 +239,8 @@ export function ActivationScreen() {
           {step === 0 ? (
             <div className="grid gap-4 sm:grid-cols-2">
               {([
-                { id: "quick", title: "Quickstart", detail: "Name yourself and your SI, then make an explicit intelligence choice. No backend is assumed.", badge: "About a minute" },
-                { id: "advanced", title: "Shape the experience", detail: "Attention, character, autonomy, privacy, reachability, then an explicit runtime pick (or organizer only).", badge: "Full control" },
+                { id: "quick", title: "Jaeger AI Quickstart", detail: "Set your name and Jaeger AI SI defaults, then select a local or cloud LLM runtime.", badge: "Fast track" },
+                { id: "advanced", title: "Custom Character & Architecture", detail: "Configure Jaeger AI persona tone, life areas, autonomy boundaries, and multi-agent routing.", badge: "Full control" },
               ] as const).map((mode) => (
                 <button
                   key={mode.id}
@@ -253,18 +253,49 @@ export function ActivationScreen() {
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">{mode.detail}</p>
                 </button>
               ))}
-              <p className="text-center text-xs text-muted-foreground sm:col-span-2">Both paths save the same Local Profile. Quickstart can be expanded later in Settings.</p>
+              <p className="text-center text-xs text-muted-foreground sm:col-span-2">Both paths save your Local Profile. You can re-run this character wizard anytime from Companion home.</p>
             </div>
           ) : step === 1 ? (
             <Card className="border-border/80 bg-card/85 shadow-2xl shadow-black/10 backdrop-blur-xl">
               <CardContent className="grid gap-6 p-6 sm:p-8">
                 <div className="flex items-center gap-3">
                   <div className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><UserRound className="size-5" /></div>
-                  <div><p className="font-semibold">Identity</p><p className="text-sm text-muted-foreground">You can change this later in Settings.</p></div>
+                  <div><p className="font-semibold">Identity & Companion Name</p><p className="text-sm text-muted-foreground">Define your operator handle and SI name.</p></div>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="grid gap-2"><Label htmlFor="setup-owner">What should ARES call you?</Label><Input id="setup-owner" autoFocus value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} placeholder="Your name" /></div>
-                  <div className="grid gap-2"><Label htmlFor="setup-assistant">What should your SI be called?</Label><Input id="setup-assistant" value={draft.assistantName} onChange={(event) => setDraft({ ...draft, assistantName: event.target.value })} placeholder="Ares" /></div>
+                  <div className="grid gap-2"><Label htmlFor="setup-assistant">What should your SI be called?</Label><Input id="setup-assistant" value={draft.assistantName} onChange={(event) => setDraft({ ...draft, assistantName: event.target.value })} placeholder="Jaeger AI" /></div>
+                </div>
+
+                <div className="grid gap-3">
+                  <Label htmlFor="setup-avatar">Jaeger AI Profile Avatar (Image URL or Base64)</Label>
+                  <Input
+                    id="setup-avatar"
+                    value={draft.assistantAvatar || ""}
+                    onChange={(event) => setDraft({ ...draft, assistantAvatar: event.target.value })}
+                    placeholder="https://.../jaeger-avatar.png or data:image/png;base64,..."
+                  />
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="text-xs text-muted-foreground">Presets:</span>
+                    {[
+                      { label: "Default Core", val: "" },
+                      { label: "Cyber Holographic", val: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80" },
+                      { label: "Quantum Gold", val: "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=150&auto=format&fit=crop&q=80" },
+                      { label: "Deepspace Void", val: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=150&auto=format&fit=crop&q=80" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, assistantAvatar: preset.val })}
+                        className={cn(
+                          "rounded-md border px-2.5 py-1 text-xs transition hover:border-primary/60",
+                          (draft.assistantAvatar || "") === preset.val && "border-primary bg-primary/10 text-primary font-medium"
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
                   <Button variant="ghost" onClick={() => setStep(0)}><ArrowLeft />Back</Button>

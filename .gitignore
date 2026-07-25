@@ -74,7 +74,13 @@ webui/frontend/tsconfig.tsbuildinfo
 
 # Private runtime folders must never be vendored into this repo
 .ares/
-.ares/
+.hermes/
+.grok/
+
+# Maintainer-local process notes and one-off scratch (never commit)
+MASTER_PROMPT.md
+PORT_HERMES_WEBUI.md
+generate_chat.js
 
 # ARES Tauri wrapper — local build artifacts (never commit)
 src-tauri/target/

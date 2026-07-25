@@ -45,11 +45,26 @@ requires_fork = pytest.mark.skipif(
 )
 
 # ── Repo root discovery ────────────────────────────────────────────────────
-# conftest.py lives at <repo>/tests/conftest.py
+# conftest.py lives at <webui>/tests/conftest.py (webui is the pytest rootdir).
+# REPO_ROOT is the webui package root, not the monorepo root.
 TESTS_DIR  = pathlib.Path(__file__).parent.resolve()
 REPO_ROOT  = TESTS_DIR.parent.resolve()
 HOME       = pathlib.Path.home()
 ARES_HOME = pathlib.Path(os.getenv('ARES_HOME', str(HOME / '.ares')))
+
+# CWD independence: many tests open relative paths like ``api/config.py`` and
+# import ``api.*`` / ``fastapi_app.*``. When pytest is invoked from the monorepo
+# root (e.g. ``webui/.venv/bin/python -m pytest webui/tests/...``), the process
+# CWD is not webui/, so those relative opens raise FileNotFoundError. Anchor
+# both sys.path and CWD to the webui root at conftest import time so the suite
+# is portable across launch directories.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+try:
+    if pathlib.Path.cwd().resolve() != REPO_ROOT:
+        os.chdir(REPO_ROOT)
+except OSError:
+    pass
 
 # ── Test server config ────────────────────────────────────────────────────
 # Port and state dir auto-derive from the repo path when no env var is set,

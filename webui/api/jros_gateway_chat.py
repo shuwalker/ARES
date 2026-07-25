@@ -455,18 +455,21 @@ def _merge_and_save_jros_turn(
             turn_input = int(usage.get("input_tokens") or 0)
             turn_output = int(usage.get("output_tokens") or 0)
             turn_cost = usage.get("estimated_cost")
+            turn_cache_read = int(usage.get("cache_read_tokens") or 0)
+            turn_cache_write = int(usage.get("cache_write_tokens") or 0)
             if turn_input > 0:
                 s.input_tokens = int(getattr(s, "input_tokens", 0) or 0) + turn_input
             if turn_output > 0:
                 s.output_tokens = int(getattr(s, "output_tokens", 0) or 0) + turn_output
+            if turn_cache_read > 0:
+                s.cache_read_tokens = int(getattr(s, "cache_read_tokens", 0) or 0) + turn_cache_read
+            if turn_cache_write > 0:
+                s.cache_write_tokens = int(getattr(s, "cache_write_tokens", 0) or 0) + turn_cache_write
             if turn_cost:
                 try:
                     s.estimated_cost = float(getattr(s, "estimated_cost", 0) or 0) + float(turn_cost)
                 except (TypeError, ValueError):
                     pass
-            # TODO: cache tokens and the local-bridge fallback's input_tokens/
-            # estimated_cost are not reported upstream yet (see usage dict
-            # construction above) — this only persists what's computed today.
         s.save()
         return s
 

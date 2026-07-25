@@ -37,9 +37,48 @@ logger = logging.getLogger(__name__)
 _HERMES_SESSION_MAP: dict[str, str] = {}
 
 
+def _session_exists_in_worker_store(session_id: str) -> bool:
+    """True when the Hermes agent already owns a session with this exact id.
+
+    Sessions started in the terminal are keyed in ``state.db`` by the same id
+    ARES lists them under, so the id itself is the resume handle.
+    """
+    if not session_id:
+        return False
+    try:
+        from api.models import _agent_state_db_path, open_state_db_readonly
+        from contextlib import closing
+
+        db_path = _agent_state_db_path()
+        if db_path is None:
+            return False
+        with closing(open_state_db_readonly(db_path)) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sessions WHERE id = ? LIMIT 1", (session_id,)
+            ).fetchone()
+        return bool(row)
+    except Exception:
+        # Resume is an optimization; never block a turn on a probe failure.
+        return False
+
+
 def _get_hermes_session_id(ares_session_id: str) -> str | None:
-    """Look up the Hermes session ID for an ARES session, if any."""
-    return _HERMES_SESSION_MAP.get(ares_session_id)
+    """Look up the Hermes session ID for an ARES session, if any.
+
+    The in-memory map only covers sessions this process started, so it is empty
+    for imported terminal history and after any restart. Falling back to the
+    worker's own store is what makes a CLI session *continuable* rather than
+    forked: without it the agent silently began a brand-new session on every
+    reply, which is why continuing imported history never worked.
+    """
+    mapped = _HERMES_SESSION_MAP.get(ares_session_id)
+    if mapped:
+        return mapped
+    if _session_exists_in_worker_store(ares_session_id):
+        # Cache so the next turn skips the probe.
+        _HERMES_SESSION_MAP[ares_session_id] = ares_session_id
+        return ares_session_id
+    return None
 
 
 def _store_hermes_session_id(ares_session_id: str, hermes_session_id: str) -> None:
@@ -96,6 +135,7 @@ def _finish_hermes_stream(
                         "role": "assistant",
                         "content": accumulated_text.strip(),
                         "timestamp": int(time.time()),
+                        "backend_id": "hermes_local",
                     })
                 if getattr(session, "active_stream_id", None) == stream_id:
                     session.active_stream_id = None
@@ -195,7 +235,11 @@ def run_hermes_streaming(
                 event_id = None
                 if run_journal is not None:
                     try:
-                        event_id = run_journal.append_sse_event(event, data)
+                        # append_sse_event returns the whole journal entry;
+                        # only its event_id string belongs in the SSE id field
+                        # (a dict repr there breaks Last-Event-ID resume).
+                        entry = run_journal.append_sse_event(event, data)
+                        event_id = (entry or {}).get("event_id") or None
                     except Exception:
                         pass
                 if event_id and hasattr(q, "note_last_event_id"):
@@ -214,21 +258,52 @@ def run_hermes_streaming(
         _finish_hermes_stream(stream_id, session_id, q, run_journal, cancel_event, accumulated_text="", user_message=msg_text)
         return
 
-    effective_model = model or "qwen3.6:35b-mlx"
+    from api.backends.hermes import resolve_hermes_defaults
+
+    default_model, default_provider = resolve_hermes_defaults()
+    effective_model = (model or "").strip() or default_model
     # model_provider is often the ARES backend id (hermes_local, ollama_local); only use it if it looks like a Hermes provider.
-    ares_backend_ids = {"hermes_local", "jros_local", "claude_local", "codex_local", "gemini_local", "grok_local", "opencode_local", "cursor_local", "pi_local", "openai_cloud", "xai_cloud", "ollama_local"}
+    ares_backend_ids = {
+        "hermes_local", "jros_local", "claude_local", "codex_local", "gemini_local",
+        "grok_local", "opencode_local", "cursor_local", "pi_local", "openai_cloud",
+        "xai_cloud", "ollama_local",
+    }
     if model_provider and model_provider not in ares_backend_ids:
         effective_provider = model_provider
     else:
-        effective_provider = "ollama-cloud"
-    args = [cli, "chat", "-q", msg_text, "-Q", "--yolo", "--source", "webui", "-m", effective_model, "--provider", effective_provider]
-    # Companion SI may still reach this worker in edge paths; strip Hermes SOUL branding.
-    if os.environ.get("ARES_SI_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
-        args.append("--ignore-rules")
+        effective_provider = default_provider
 
-    # Resume session if we have a previous hermes session ID
+    # Chat tab is a pure worker console: send the user message unchanged.
+    # Companion SI packaging lives on the Companion surface later — not here.
+    args = [
+        cli, "chat", "-q", msg_text, "-Q", "--yolo", "--source", "webui",
+        "-m", effective_model, "--provider", effective_provider,
+    ]
+
+    # Attach images if provided
+    if attachments:
+        for att in attachments:
+            path = ""
+            mime = ""
+            if isinstance(att, dict):
+                path = str(att.get("path") or att.get("filepath") or att.get("url") or "").strip()
+                mime = str(att.get("mime") or att.get("type") or "").strip()
+            elif isinstance(att, str):
+                path = att.strip()
+            if not mime and path:
+                import mimetypes
+                mime = mimetypes.guess_type(path)[0] or ""
+            is_img = mime.startswith("image/") or path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"))
+            if path and is_img and os.path.exists(path):
+                args.extend(["--image", path])
+                logger.info("Hermes streaming: attaching image file %s to command", path)
+
+    # Resume session if we have a previous hermes session ID.
+    # NOTE: When ARES injects conversation history into the message
+    # (LangGraph-style), we skip --resume to avoid duplicating context.
+    # The orchestrator owns the history, not the model.
     hermes_session_id = _get_hermes_session_id(session_id)
-    if hermes_session_id:
+    if hermes_session_id and "--- Previous conversation ---" not in msg_text:
         args.extend(["--resume", hermes_session_id])
 
     effective_workspace = workspace or os.path.expanduser("~")
@@ -236,6 +311,10 @@ def run_hermes_streaming(
     # Build environment
     env = dict(os.environ)
     env["HERMES_HOME"] = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+    # Hermes is a Python CLI writing to a pipe: without this, its stdout is
+    # block-buffered (~8KB) and the whole reply lands in one burst at process
+    # exit — the UI shows nothing until the turn ends instead of streaming.
+    env["PYTHONUNBUFFERED"] = "1"
 
     logger.info("Hermes worker cmd: %s", " ".join(args))
 

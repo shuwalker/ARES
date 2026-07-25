@@ -7,6 +7,8 @@ in the agent execution layer.
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 
 import errno
 import atexit
@@ -148,7 +150,7 @@ def _reap_abandoned_spawn(proc: subprocess.Popen) -> bool:
         except (subprocess.TimeoutExpired, ProcessLookupError):
             pass
     if proc.poll() is None:
-        print("terminal abandoned spawn cleanup failed", flush=True)
+        logger.error("terminal abandoned spawn cleanup failed")
         return False
     return True
 

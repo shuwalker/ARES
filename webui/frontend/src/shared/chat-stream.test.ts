@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   subscribeToChatStream,
+  subscribeToSessionActivity,
   translateChatStreamEvent,
   type ChatStreamEvent,
   type TransportState,
@@ -107,5 +108,30 @@ describe("chat stream translation", () => {
       { type: "warning", message: "ARES received an unreadable stream event." },
       { type: "text", text: "still alive" },
     ]);
+  });
+});
+
+describe("session activity stream", () => {
+  it("stops quietly on terminal read-only errors instead of reconnect thrash", () => {
+    const events: Array<{ name: string; data: Record<string, unknown> }> = [];
+    let disconnected = 0;
+    subscribeToSessionActivity(
+      "claude_code_abc",
+      (event) => events.push(event),
+      () => { disconnected += 1; },
+    );
+    const socket = FakeWebSocket.instances[0];
+    expect(socket.url).toContain("/api/sessions/claude_code_abc/stream");
+    socket.open();
+    socket.message({
+      event: "error",
+      data: { error: "read-only imported session" },
+      terminal: true,
+    });
+    vi.advanceTimersByTime(10_000);
+
+    expect(events).toEqual([{ name: "error", data: { error: "read-only imported session" } }]);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(disconnected).toBe(0);
   });
 });

@@ -6,6 +6,7 @@ export type ConnectionState = "loading" | "available" | "limited" | "unavailable
 export interface LocalProfile {
   displayName: string;
   assistantName: string;
+  assistantAvatar?: string;
   voice: string;
   reachability: "this-device" | "local-network" | "private-network";
   setupMode: "quick" | "advanced";
@@ -60,6 +61,7 @@ export interface SessionSummary {
   archived?: boolean;
   isStreaming: boolean;
   readOnly: boolean;
+  personality?: string;
 }
 
 export type ConversationRole = "user" | "assistant" | "system" | "tool";
@@ -86,11 +88,48 @@ export interface WorkerRanking {
 export interface ConversationSession extends SessionSummary {
   messages: ConversationMessage[];
   pendingStartedAt?: string;
+  personality?: string;
 }
 
 export interface WorkspaceSummary {
   path: string;
   label: string;
+}
+
+/** A folder-backed knowledge source: Obsidian vault, local folder, network share. */
+export interface LibraryCollection {
+  id: string;
+  label: string;
+  path: string;
+  kind: "obsidian" | "folder" | "network";
+  added_at?: number;
+  available: boolean;
+  stats?: {
+    notes: number;
+    documents: number;
+    other: number;
+    truncated: boolean;
+    reachable: boolean;
+  };
+}
+
+export interface LibraryEntry {
+  name: string;
+  path: string;
+  kind: "directory" | "file";
+  readable: boolean;
+  document: boolean;
+  size: number | null;
+}
+
+export interface LibraryItem {
+  collection_id: string;
+  path: string;
+  name: string;
+  readable: boolean;
+  size: number;
+  content: string;
+  reason?: string;
 }
 
 export interface WorkspaceEntry {
