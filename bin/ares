@@ -40,6 +40,9 @@ _launch_ares_app() {
     exit 1
   fi
 
+  echo "Performing a fresh compile of the ARES frontend..."
+  (cd "${ARES_ROOT}/webui/frontend" && npm run build)
+
   echo "Launching ARES…"
   echo "Look for the ARES icon in your menu bar (top-right)."
   echo ""

@@ -3,6 +3,8 @@ import type { LocalProfile } from "@/shared/contracts";
 export const ONBOARDING_STEPS = [
   "Welcome",
   "You",
+  "Jaeger Character",
+  "Jaeger Model",
   "Companion",
   "Access",
   "Intelligence",
@@ -37,12 +39,12 @@ export const AUTONOMY_OPTIONS: Array<{
   { id: "delegated", label: "Handle delegated work", detail: "Act within explicit scopes. System permission gates still apply." },
 ];
 
-export function stepAfterIdentity(mode: LocalProfile["setupMode"]): 2 | 4 {
-  return mode === "quick" ? 4 : 2;
+export function stepAfterIdentity(mode: LocalProfile["setupMode"]): 2 {
+  return 2; // Always go to JaegerAI character step after identity
 }
 
-export function stepBeforeIntelligence(mode: LocalProfile["setupMode"]): 1 | 3 {
-  return mode === "quick" ? 1 : 3;
+export function stepBeforeIntelligence(mode: LocalProfile["setupMode"]): 5 {
+  return 5; // Access step is now at index 5
 }
 
 /** First-run intelligence selection — nothing is pre-selected. */
@@ -68,4 +70,32 @@ export function intelligenceChoiceLabel(
   if (choice === null) return "Not chosen yet";
   if (choice.kind === "organizer_only") return "Organizer only (no AI runtime yet)";
   return runtimeName?.trim() || choice.runtimeId;
+}
+
+/** JaegerAI character for onboarding */
+export interface JaegerCharacter {
+  id: string;
+  name: string;
+  description: string;
+  role: string;
+  voice_tone: string;
+  voice_id: string;
+}
+
+/** JaegerAI model recommendation */
+export interface JaegerModel {
+  registry_key: string;
+  display_name: string;
+  size_gb: number;
+  score_pct: number;
+  tokens_per_task: number;
+  notes: string;
+}
+
+/** JaegerAI onboarding state */
+export interface JaegerOnboardingState {
+  characterId: string | null;
+  awakeModel: string | null;
+  asleepModel: string | null;
+  voiceId: string | null;
 }

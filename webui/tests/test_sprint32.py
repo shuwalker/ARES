@@ -16,6 +16,8 @@ class TestAutoInstallAgentDeps:
     """
 
     def test_disabled_by_default(self, tmp_path, caplog):
+        import logging
+        caplog.set_level(logging.INFO)
         """Auto-install must be off unless ARES_WEBUI_AUTO_INSTALL=1 is set."""
         agent_dir = tmp_path / 'ares-agent'
         agent_dir.mkdir()
@@ -56,6 +58,8 @@ class TestAutoInstallAgentDeps:
                     assert str(agent_dir) in args and '-r' not in args
 
     def test_skips_when_agent_dir_missing(self, tmp_path, caplog):
+        import logging
+        caplog.set_level(logging.INFO)
         missing = tmp_path / 'nonexistent-agent'
         env_overrides = {
             'ARES_WEBUI_AGENT_DIR': str(missing),
@@ -70,6 +74,8 @@ class TestAutoInstallAgentDeps:
         assert 'skipped' in out or 'not found' in out
 
     def test_skips_when_no_install_file(self, tmp_path, caplog):
+        import logging
+        caplog.set_level(logging.INFO)
         agent_dir = tmp_path / 'ares-agent'
         agent_dir.mkdir()
         env = {'ARES_WEBUI_AGENT_DIR': str(agent_dir), 'ARES_WEBUI_AUTO_INSTALL': '1'}
@@ -81,6 +87,8 @@ class TestAutoInstallAgentDeps:
         assert 'skipped' in caplog.text.lower()
 
     def test_skips_when_dir_not_trusted(self, tmp_path, caplog):
+        import logging
+        caplog.set_level(logging.INFO)
         """_trusted_agent_dir returning False must block installation."""
         agent_dir = tmp_path / 'ares-agent'
         agent_dir.mkdir()
@@ -94,6 +102,8 @@ class TestAutoInstallAgentDeps:
         assert 'trust' in caplog.text.lower()
 
     def test_tolerates_pip_failure(self, tmp_path, caplog):
+        import logging
+        caplog.set_level(logging.INFO)
         agent_dir = tmp_path / 'ares-agent'
         agent_dir.mkdir()
         (agent_dir / 'requirements.txt').write_text('somepkg\n')
@@ -107,6 +117,8 @@ class TestAutoInstallAgentDeps:
         assert 'failed' in out or 'pip' in out
 
     def test_tolerates_timeout(self, tmp_path, caplog):
+        import logging
+        caplog.set_level(logging.INFO)
         agent_dir = tmp_path / 'ares-agent'
         agent_dir.mkdir()
         (agent_dir / 'requirements.txt').write_text('somepkg\n')

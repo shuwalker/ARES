@@ -69,7 +69,7 @@ export const navigationSections: NavigationSection[] = [
       {
         path: "chat",
         to: "/chat",
-        label: "Worker console",
+        label: "Projects",
         icon: MessageCircle,
         component: named(() => import("@/pages/ConversationPage"), "ConversationPage"),
       },

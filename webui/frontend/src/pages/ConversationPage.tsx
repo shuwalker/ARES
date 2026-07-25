@@ -20,6 +20,11 @@ import {
   GitBranch,
   Settings,
   Server,
+  User,
+  Package,
+  Brain,
+  Zap,
+  WrenchIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -34,6 +39,7 @@ import {
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
 import { aresApi } from "@/shared/ares-api";
+import { useLocalProfile } from "@/shared/local-profile";
 import { useWorkbenchPanel } from "@/shared/workbench-panel";
 import { apiFetch, readableError } from "@/shared/api-client";
 
@@ -56,23 +62,13 @@ const H = {
   chipBg: "#1e2130",
   chipBorder: "#2a2d42",
   chipText: "#9094b8",
-  sendBtn: "#f0f2ff",
-  sendBtnText: "#0f1117",
+  sendBtn: "#ef4444",
+  sendBtnText: "#ffffff",
 };
 
-// Hermes Caduceus SVG
-const CaduceusSVG = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="72" height="72" aria-label="Hermes caduceus">
-    <defs>
-      <linearGradient id="hermes-mark-cp" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0" stopColor="#08EBF1"/>
-        <stop offset="1" stopColor="#3889FD"/>
-      </linearGradient>
-    </defs>
-    <g transform="translate(-24.93 -29.13) scale(0.09075)">
-      <path fill="url(#hermes-mark-cp)" fillRule="evenodd" d="M630.5 961.9 C634.9 960.7 638.5 957.9 640.5 953.9 C642.5 950.1 643.3 865.1 641.4 864.3 C640 863.8 623.9 872.5 618.2 876.8 C616.4 878.2 613.8 881.2 612.5 883.5 L610 887.7 610 918.4 C610 951.8 610.2 953.1 615.7 958.3 C618.3 960.8 622.4 962.7 625.5 962.9 C626 963 628.3 962.5 630.5 961.9 Z M596 913 C596.8 911.5 596.6 909.4 595.4 904.8 C592.1 892.1 595.4 881.4 605.5 872.1 C612.9 865.4 621.2 860.6 641.1 851.4 C681.3 832.9 691.1 827.1 704.5 813.6 C724.9 793.1 730 768.6 718.9 745.5 C714.9 737.4 705.5 727.4 696.7 722.1 L691.1 718.8 678.3 722.6 C671.3 724.6 664.9 726.8 664.2 727.3 C663.5 727.9 663 730.6 663 734.1 C663 739.9 663.1 740 666.8 741.9 C672.9 745 680.6 752.6 683.4 758.2 C688.9 769.3 686 781.3 675.3 791 C666.4 799.1 662.1 801.7 631.3 817.2 C598.7 833.5 587.2 840.5 578.9 849 C565.9 862.3 561.8 880.1 568.3 894.4 C574.4 907.7 592.4 919.8 596 913 Z M579.8 832.2 C582.7 830.2 586.8 827.3 589 825.8 C592.9 823.1 593 822.9 593 817.2 L593 811.4 586.6 807.2 C578.4 801.8 572.5 795.2 568.7 787.2 C566 781.5 565.8 780.1 566.2 773.5 C566.8 764.5 569.4 759.6 577.8 751.8 C589.1 741.4 603.5 735.3 666 714.8 C687.7 707.6 710.2 699.7 715.9 697.2 C741.9 685.8 757.8 670 764.5 648.7 C765.9 644.4 767 639.2 767 637.1 C767 631.5 768.1 631 777.9 631.6 C801.3 633.2 819.4 623.2 829 603.6 C831.2 599.2 833.5 593.4 834.2 590.7 C835.3 586.4 835.2 585.8 833.4 584 C831.5 582.1 830.8 582 814 583 C804.4 583.5 789.8 584.1 781.5 584.2 L766.5 584.5 766.2 577.9 C766 573.4 766.3 571 767.2 570.2 C767.9 569.6 778.4 568.4 790.4 567.6 C835.7 564.3 849.7 561.9 862.2 555.3 C878.5 546.7 889.5 529.3 893 506.4 C894.1 499.3 894 498.6 892.3 496.8 C890.4 494.9 890 495 865.4 500.4 C838.7 506.3 789.4 516.1 776.8 518.1 C766.3 519.7 766 519.5 766 511.2 C766 507.2 766.5 503.7 767.2 502.8 C767.9 502 771.2 500.7 774.5 500.1 C788.7 497.1 852.9 480.7 868.5 476 C877.9 473.2 889.8 468.8 895 466.3 C903 462.5 905.8 460.4 913.1 453.1 C922.9 443.2 928.3 433.9 932.5 419.5 C935.4 409.5 937.6 393.5 936.6 389.7 C935.3 384.3 933.5 384.5 914.3 392.1 C879.6 406 825.4 423.1 754.6 442.4 C728.5 449.6 719.1 452.5 717.2 454.2 C711.9 459.2 712 457.7 712 516.7 C712 551.6 711.6 572.9 710.9 575.2 C709.6 580 703.8 585.7 699.1 587 C697.1 587.5 689.9 588.2 683 588.6 C674 589.1 670 589.7 668.8 590.8 C667.2 592.1 667 594.3 667 608 C667 621.6 667.2 624.1 668.8 625.8 C670.4 627.8 671.8 627.9 694.9 628.2 C710.4 628.4 719.8 628.9 720.8 629.6 C723.1 631.2 720.6 639.8 715.9 646.9 C706.4 661.1 694.2 667.1 631 689 C581.4 706.1 563.9 713.8 550.3 724.7 C512.3 755 518.4 806 563.1 831.3 C567.7 833.9 572.2 836 573.1 836 C573.9 836 577 834.3 579.8 832.2 Z M628.9 807.4 C633.5 803.8 640.2 800.1 641.1 799.4 C642.5 798.1 642.7 794.2 642.5 766.5 C642.5 749.2 642.1 734.7 641.7 734.4 C641 733.7 613.6 743.6 611.2 745.3 C610.3 746 610 754.1 610 779.5 C610 797.7 610.3 813 610.7 813.3 C611.8 814.5 612.7 814.1 626.3 807.4 Z M571.1 699.2 L584.5 693.4 584.8 685.5 C585 681.2 584.7 677.3 584.1 676.7 C583.6 676.2 579.9 674.7 575.8 673.3 C567.5 670.5 554.7 664.2 548.4 660 C538.6 653.2 530.5 640.3 531.2 632.6 L531.5 629.5 541 628.9 C546.2 628.5 557.7 628.2 566.5 628.1 C577.6 628 583 627.6 583.8 626.8 C585.5 625.1 585.5 591.6 583.8 590.3 C583.1 589.7 576.5 589 569.1 588.6 C555.2 587.9 550.4 586.7 546.1 582.7 C541 578 541 578.1 541 518.8 C541 466.4 540.9 463.3 539 459.3 C536.5 453.7 533.3 451.9 518.7 448.1 C442.4 428 363.2 402.9 330.3 388.3 C322.4 384.9 322 384.8 319.5 386.4 C317.3 387.9 317 388.7 317 393.9 C317 397.1 317.7 403.5 318.5 408.1 C324.3 439.3 338.4 458 364.5 469.2 C374.6 473.5 396.4 479.7 441.3 491 C464.8 496.9 484.7 502.3 485.5 503 C486.6 503.9 487 506.3 487 511.2 C487 519.5 486.6 519.8 476.7 518.1 C461.5 515.5 412.5 505.6 391.5 500.9 C379.4 498.2 368.3 495.7 366.7 495.3 C364.8 494.9 363.3 495.3 361.9 496.6 C360 498.3 359.9 499.2 360.5 505.4 C362.5 526 373.6 544.9 388.9 554 C401.6 561.5 417.9 564.4 468 568.1 C477.1 568.7 485.1 569.7 485.8 570.3 C487.5 571.7 487.4 582.4 485.6 583.9 C484.2 585.1 473.4 584.7 432.5 582.4 C422.2 581.8 421.4 581.9 419.7 583.8 C417.9 585.8 417.9 586.1 419.5 591.6 C424.1 607.4 434.2 620.5 446.4 626.5 C455.1 630.8 461.3 632 474.1 632 C479.5 632 484.1 632.4 484.4 632.9 C484.8 633.4 485.6 637.4 486.4 641.7 C489.7 660.4 500.4 676.9 516.5 688 C526.3 694.7 549.1 704.8 555.1 704.9 C556.5 705 563.7 702.4 571.1 699.2 Z M628.9 678.9 C635.3 676.6 641 674.2 641.5 673.5 C643.1 671.6 642.5 576.3 640.9 574.4 C639.4 572.5 613.1 572.3 611.2 574.2 C610.3 575.1 610 588.7 610 629 C610 658.5 610.3 683 610.7 683.4 C611.8 684.5 616 683.5 628.9 678.9 Z M636.1 556 C654.1 552.6 669.6 536.9 673.6 517.8 C677.9 497.7 668.2 476.3 650 465.8 C636.2 457.8 615.8 458 601.7 466.3 C595.3 470.1 586.1 480.5 582.7 487.8 C570 514.9 585.4 547.4 614.7 555.5 C620.6 557.1 629 557.3 636.1 556 Z"/>
-    </g>
-  </svg>
+// ARES Spartan Helmet - uses the actual icon from assets
+const SpartanHelmetSVG = () => (
+  <img src="/assets/ares-app-icon.png" alt="ARES Spartan Helmet" style={{ width: "72px", height: "72px", objectFit: "contain" }} />
 );
 
 function IconBtn({ children, title, onClick }: { children: React.ReactNode; title: string; onClick?: () => void }) {
@@ -115,8 +111,42 @@ const SAVED_PROMPT_TEMPLATES = [
   { label: "System Architecture", prompt: "Outline a high-level technical architecture and implementation plan for the following feature requirement:" },
 ];
 
+/** Available JaegerAI character/personality presets — mirrors backend config.yaml agent.personalities */
+const PERSONALITY_OPTIONS: Array<{ id: string; label: string; detail: string }> = [
+  { id: "grounded", label: "Grounded", detail: "Practical, direct, no fluff — matches your onboarding character" },
+  { id: "helpful", label: "Helpful", detail: "Friendly and thorough, assists accurately and completely" },
+  { id: "concise", label: "Concise", detail: "Brief and to the point — minimal words, maximum signal" },
+  { id: "technical", label: "Technical", detail: "Detailed, precise technical information and analysis" },
+  { id: "creative", label: "Creative", detail: "Think outside the box, innovative solutions" },
+  { id: "warm", label: "Warm", detail: "Caring, empathetic, supportive conversational style" },
+  { id: "direct", label: "Direct", detail: "No sugar-coating, straight answers, efficient" },
+  { id: "curious", label: "Curious", detail: "Asks clarifying questions, explores implications deeply" },
+  { id: "teacher", label: "Teacher", detail: "Patient explanations with examples and analogies" },
+  { id: "noir", label: "Noir", detail: "Hard-boiled detective style, atmospheric and sharp" },
+  { id: "catgirl", label: "Neko-chan", detail: "Playful catgirl companion, nya~!" },
+  { id: "pirate", label: "Pirate", detail: "Arrr! Tech-savvy buccaneer of the digital seas" },
+  { id: "shakespeare", label: "Shakespeare", detail: "Flowery prose and dramatic flair" },
+  { id: "uwu", label: "UwU", detail: "Maximum cuteness, hewwo fwiend!" },
+  { id: "philosopher", label: "Philosopher", detail: "Contemplates the deeper meaning behind every query" },
+  { id: "hype", label: "Hype", detail: "YOOO LET'S GOOO! Maximum energy, minimum chill" },
+  { id: "kawaii", label: "Kawaii", detail: "Sparkles and enthusiasm for everything desu~!" },
+  { id: "surfer", label: "Surfer", detail: "Duuude, chillest companion on the web, bro!" },
+];
+
+const REASONING_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "none", label: "Off" },
+  { value: "minimal", label: "Minimal" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Extra High" },
+  { value: "max", label: "Max" },
+  { value: "ultra", label: "Ultra" },
+];
+
 export function ConversationPage() {
   const workbenchPanel = useWorkbenchPanel();
+  const { profile } = useLocalProfile();
   const {
     snapshot,
     currentSession,
@@ -138,6 +168,7 @@ export function ConversationPage() {
   const [discoveredBackends, setDiscoveredBackends] = useState<DiscoveredBackend[]>([]);
   const [discoveryError, setDiscoveryError] = useState("");
   const [selectedBackend, setSelectedBackend] = useState<string>(() => currentSession?.backendId || "");
+  const [selectedPersonality, setSelectedPersonality] = useState<string>(() => profile.character || "grounded");
   const [showApproval, setShowApproval] = useState(false);
   const [approvalCollapsed, setApprovalCollapsed] = useState(false);
 
@@ -147,6 +178,11 @@ export function ConversationPage() {
   const [showBackendMenu, setShowBackendMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
+  const [showSiModeMenu, setShowSiModeMenu] = useState(false);
+  const [showReasoningMenu, setShowReasoningMenu] = useState(false);
+  const [showToolsetMenu, setShowToolsetMenu] = useState(false);
+  const [selectedReasoning, setSelectedReasoning] = useState<string>("medium");
+  const [yoloMode, setYoloMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [selectedModelProvider, setSelectedModelProvider] = useState<string>("");
@@ -205,10 +241,16 @@ export function ConversationPage() {
 
   // Close menus when clicking outside
   useEffect(() => {
-    const handleDocumentClick = () => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      // Don't close if click is inside any menu wrapper (they have stopPropagation)
+      const target = e.target as HTMLElement;
+      if (target.closest?.("[data-menu-wrapper]")) return;
       setShowWorkspaceMenu(false);
       setShowBackendMenu(false);
       setShowModelMenu(false);
+      setShowSiModeMenu(false);
+      setShowReasoningMenu(false);
+      setShowToolsetMenu(false);
     };
     document.addEventListener("click", handleDocumentClick);
     return () => document.removeEventListener("click", handleDocumentClick);
@@ -254,7 +296,11 @@ export function ConversationPage() {
       setSelectedModel(currentSession.model);
       setSelectedModelProvider(currentSession.provider || "");
     }
-  }, [currentSession?.backendId, currentSession?.workspace, currentSession?.model, currentSession?.provider, snapshot.connections]);
+    // Restore personality from session, or fall back to onboarding character
+    if (currentSession?.personality) {
+      setSelectedPersonality(currentSession.personality);
+    }
+  }, [currentSession?.backendId, currentSession?.workspace, currentSession?.model, currentSession?.provider, currentSession?.personality, snapshot.connections]);
 
   useEffect(() => {
     const el = transcriptRef.current;
@@ -331,6 +377,7 @@ export function ConversationPage() {
       provider: selectedModelProvider || undefined,
       workspace,
       files,
+      personality: selectedPersonality || undefined,
     });
   }, [
     draft, attachedFiles, isBusy, isReadOnlyCli, sendMessage, selectedBackend,
@@ -503,10 +550,10 @@ export function ConversationPage() {
         ) : !hasConversation ? (
           /* Empty state */
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100%", padding: "2.5rem 1.5rem", textAlign: "center", background: `radial-gradient(ellipse at 50% 25%, rgba(56,137,253,0.06) 0%, transparent 60%)` }}>
-            <div style={{ marginBottom: "1.25rem" }}><CaduceusSVG /></div>
-            <h2 style={{ fontSize: "1.375rem", fontWeight: 700, color: H.strong, margin: "0rem" }}>What can I help with?</h2>
+            <div style={{ marginBottom: "1.25rem" }}><SpartanHelmetSVG /></div>
+            <h2 style={{ fontSize: "1.375rem", fontWeight: 700, color: H.strong, margin: "0rem" }}>What are we working on?</h2>
             <p style={{ fontSize: "0.875rem", color: H.muted, margin: "0.5rem 0 1.75rem", lineHeight: 1.6, maxWidth: "23.75rem" }}>
-              Ask anything, run commands, explore files, or manage your scheduled tasks.
+              Start a project, delegate tasks, or ask anything. Your agent remembers.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", width: "100%", maxWidth: "32.5rem" }}>
               {!hideSuggestions && [
@@ -634,11 +681,7 @@ export function ConversationPage() {
             CLI / imported session (read-only). Switch to a <strong>WebUI</strong> session in the deck to talk to a backend.
           </div>
         )}
-        {!isReadOnlyCli && (
-          <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.375rem 0.75rem", borderRadius: "0.5rem", border: `1px solid ${H.border}`, background: H.surface, color: H.muted, fontSize: "0.6875rem" }}>
-            Worker console — messages go to the selected backend as-is (no Companion SI prompt). Profile & app theme live in App settings.
-          </div>
-        )}
+
         {chatNotice && (
           <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <AlertTriangle size={13} />{chatNotice}
@@ -707,10 +750,8 @@ export function ConversationPage() {
               aria-label="Message"
               placeholder={
                 isReadOnlyCli
-                  ? "CLI session is read-only — open a WebUI session to chat"
-                  : activeBackendMeta || selectedBackend
-                    ? `Message ${activeBackendLabel}…`
-                    : "Select a backend below to start chatting…"
+                  ? "CLI session is read-only — open a project to chat"
+                  : "Message Jaeger AI…"
               }
               disabled={isBusy || isReadOnlyCli}
               style={{ width: "100%", padding: "0.8125rem 1rem 0.5rem", background: "transparent", border: "none", outline: "none", color: H.text, fontSize: "0.9062rem", lineHeight: 1.5, resize: "none", fontFamily: "inherit", boxSizing: "border-box", maxHeight: "11.25rem", overflowY: "auto" }}
@@ -727,8 +768,90 @@ export function ConversationPage() {
 
               <div style={{ width: "0.0625rem", height: "1rem", background: H.border2, margin: "0 0.1875rem", flexShrink: 0 }} />
 
+              {/* JaegerAI Character Chip — default is onboarding character, list shows all personalities */}
+              <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.3125rem", height: "1.625rem", padding: "0 0.5rem", borderRadius: "0.375rem", border: "1px solid rgba(8,235,241,0.2)", background: "rgba(8,235,241,0.05)", color: H.accentGlow, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer" }}
+                  onClick={() => setShowSiModeMenu(!showSiModeMenu)}
+                >
+                  <Boxes size={12} />
+                  <span>{selectedPersonality || profile.assistantName || "Jaeger AI"}</span>
+                  <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
+                </button>
+                {showSiModeMenu && (
+                  <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "22rem", maxWidth: "min(22rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
+                    <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
+                      Jaeger AI Character
+                    </div>
+                    <div style={{ padding: "0.75rem 0.875rem", background: "rgba(8,235,241,0.1)", borderBottom: `1px solid ${H.border}` }}>
+                      <div style={{ fontWeight: 600, color: H.strong, fontSize: "0.8125rem", marginBottom: "0.25rem" }}>{profile.assistantName || "Jaeger AI"}</div>
+                      <div style={{ fontSize: "0.6875rem", color: H.muted, lineHeight: 1.5 }}>
+                        {profile.character || "grounded"} · {profile.autonomy || "confirm"} — your persistent agent determines context and delegates to workers.
+                      </div>
+                    </div>
+                    {/* Character / Personality list */}
+                    <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
+                      <div style={{ fontSize: "0.625rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: H.muted, marginBottom: "0.375rem" }}>Character</div>
+                      {PERSONALITY_OPTIONS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPersonality(p.id);
+                            setShowSiModeMenu(false);
+                          }}
+                          style={{
+                            display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
+                            borderRadius: "0.375rem", border: `1px solid ${selectedPersonality === p.id ? H.accentGlow : H.border}`,
+                            background: selectedPersonality === p.id ? "rgba(8,235,241,0.1)" : "transparent",
+                            color: H.text, textAlign: "left", cursor: "pointer",
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: "0.75rem" }}>{p.label}</div>
+                            <div style={{ fontSize: "0.625rem", color: H.muted, lineHeight: 1.4 }}>{p.detail}</div>
+                          </div>
+                          {selectedPersonality === p.id && <Check size={11} style={{ marginLeft: "auto", color: H.accentGlow }} />}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Delegation Agents / Backends */}
+                    <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
+                      <div style={{ fontSize: "0.625rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: H.muted, marginBottom: "0.375rem" }}>Delegation Workers</div>
+                      {backendOptions.map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedBackend(b.id);
+                            setShowSiModeMenu(false);
+                          }}
+                          style={{
+                            display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
+                            borderRadius: "0.375rem", border: `1px solid ${selectedBackend === b.id ? H.accentGlow : H.border}`,
+                            background: selectedBackend === b.id ? "rgba(8,235,241,0.1)" : "transparent",
+                            color: H.text, textAlign: "left", cursor: "pointer",
+                          }}
+                        >
+                          <Server size={11} style={{ opacity: 0.7, color: selectedBackend === b.id ? H.accentGlow : H.muted }} />
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: "0.75rem" }}>{b.label}</div>
+                            <div style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace" }}>{b.detail || b.id}</div>
+                          </div>
+                          {selectedBackend === b.id && <Check size={11} style={{ marginLeft: "auto", color: H.accentGlow }} />}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ padding: "0.5rem 0.625rem", fontSize: "0.625rem", color: H.muted, lineHeight: 1.5 }}>
+                      <strong>Jaeger AI</strong> is your persistent agent. It understands your intent, selects the right character, and delegates to workers.
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Working folder — agent cwd / project context */}
-              <div style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: "0.375rem", border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: "1.625rem", overflow: "visible", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              <div data-menu-wrapper style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: "0.375rem", border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: "1.625rem", overflow: "visible", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   title="Browse files in working folder"
@@ -825,8 +948,8 @@ export function ConversationPage() {
                       >
                         <GitBranch size={16} style={{ color: H.accentGlow, marginTop: "0.125rem", flexShrink: 0 }} />
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: "0.7812rem", color: H.strong }}>New WebUI session here</div>
-                          <div style={{ fontSize: "0.6875rem", color: H.muted, marginTop: "0.125rem" }}>Fresh conversation in this folder</div>
+                          <div style={{ fontWeight: 600, fontSize: "0.7812rem", color: H.strong }}>New project here</div>
+                          <div style={{ fontSize: "0.6875rem", color: H.muted, marginTop: "0.125rem" }}>Fresh session in this folder</div>
                         </div>
                       </button>
                       <button
@@ -848,134 +971,187 @@ export function ConversationPage() {
                 )}
               </div>
 
-              {/* Backend chip — framework/runtime (distinct Server icon) */}
-              <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              {/* Model chip — Auto (Jaeger AI picks) + manual LLM selection */}
+              <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <ComposerChip
-                  icon={<Server size={12} />}
-                  label={activeBackendLabel}
+                  icon={<Package size={12} />}
+                  label={selectedModel === "auto" ? "Auto" : activeModelLabel}
                   onClick={() => {
                     if (isReadOnlyCli) return;
-                    setShowBackendMenu(!showBackendMenu);
-                    setShowWorkspaceMenu(false);
-                    setShowModelMenu(false);
-                  }}
-                />
-                {showBackendMenu && !isReadOnlyCli && (
-                  <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "20rem", maxWidth: "min(20rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
-                    <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
-                      Backend (worker runtime)
-                    </div>
-                    <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
-                      <input
-                        type="text"
-                        value={backendSearchQuery}
-                        onChange={(e) => setBackendSearchQuery(e.target.value)}
-                        placeholder="Filter backends…"
-                        style={{ width: "100%", background: "#0c0e18", border: `1px solid ${H.border}`, borderRadius: "0.5rem", padding: "0.375rem 0.625rem", color: H.text, fontSize: "0.75rem", outline: "none", boxSizing: "border-box" }}
-                      />
-                    </div>
-                    <div style={{ maxHeight: "15rem", overflowY: "auto", padding: "0.5rem 0.625rem" }}>
-                      {filteredBackends.length === 0 ? (
-                        <p style={{ margin: "0rem", padding: "0.5rem", color: H.muted, fontSize: "0.6875rem" }}>No backends available.</p>
-                      ) : (
-                        filteredBackends.map((b) => (
-                          <button
-                            key={b.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedBackend(b.id);
-                              setSelectedModel("");
-                              setSelectedModelProvider("");
-                              setShowBackendMenu(false);
-                            }}
-                            style={{
-                              display: "flex", flexDirection: "column", width: "100%", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
-                              borderRadius: "0.375rem", border: `1px solid ${selectedBackend === b.id ? H.accent : H.border}`,
-                              background: selectedBackend === b.id ? "rgba(124,58,237,0.1)" : "transparent",
-                              color: H.text, textAlign: "left", cursor: "pointer",
-                            }}
-                          >
-                            <span style={{ fontWeight: 600, fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}>
-                              <Server size={11} style={{ opacity: 0.7 }} />
-                              {b.label}
-                            </span>
-                            <span style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace" }}>{b.id}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Model chip — only models configured for the selected backend (Boxes icon) */}
-              <div style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                <ComposerChip
-                  icon={<Boxes size={12} />}
-                  label={activeModelLabel}
-                  onClick={() => {
-                    if (isReadOnlyCli || modelsForBackend.length === 0) return;
                     setShowModelMenu(!showModelMenu);
                     setShowWorkspaceMenu(false);
                     setShowBackendMenu(false);
                   }}
                 />
-                {showModelMenu && !isReadOnlyCli && modelsForBackend.length > 0 && (
-                  <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "21.25rem", maxWidth: "min(21.25rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
+                {showModelMenu && !isReadOnlyCli && (
+                  <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "22rem", maxWidth: "min(22rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
                     <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
-                      Models for {activeBackendLabel}
+                      Select Model
                     </div>
-                    {providersForBackend.length > 0 && (
-                      <div style={{ padding: "0.5rem 0.75rem", borderBottom: `1px solid ${H.border}`, fontSize: "0.625rem", color: H.muted }}>
-                        <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Providers: </span>
-                        {providersForBackend.map((p) => p.label || p.id).join(" · ")}
-                      </div>
-                    )}
-                    <div style={{ maxHeight: "16.25rem", overflowY: "auto", padding: "0.5rem 0.625rem" }}>
-                      {(["local", "cloud", "unknown"] as const).map((loc) => {
-                        const group = modelsForBackend.filter((m) => (m.location || "unknown") === loc);
-                        if (!group.length) return null;
-                        return (
-                          <div key={loc} style={{ marginBottom: "0.5rem" }}>
-                            <div style={{ fontSize: "0.625rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: H.muted, margin: "0.25rem 0.125rem 0.375rem" }}>
-                              {loc === "local" ? "Local / installed" : loc === "cloud" ? "Cloud / configured" : "Other"}
-                            </div>
-                            {group.map((m) => (
-                              <button
-                                key={`${m.id}-${m.provider || ""}`}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedModel(m.id);
-                                  setSelectedModelProvider(m.provider || "");
-                                  setShowModelMenu(false);
-                                }}
-                                style={{
-                                  display: "block", width: "100%", textAlign: "left", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
-                                  borderRadius: "0.375rem", border: `1px solid ${selectedModel === m.id ? H.accent : H.border}`,
-                                  background: selectedModel === m.id ? "rgba(124,58,237,0.1)" : "transparent", color: H.text, cursor: "pointer",
-                                }}
-                              >
-                                <div style={{ fontWeight: 600, fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}>
-                                  <Boxes size={11} style={{ opacity: 0.7 }} />
-                                  {m.label || m.id}
-                                  {m.in_use ? (
-                                    <span style={{ fontSize: "0.5625rem", fontWeight: 700, padding: "1px 0.3125rem", borderRadius: "0.25rem", background: H.accent, color: "#fff" }}>ACTIVE</span>
-                                  ) : null}
-                                </div>
-                                <div style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace" }}>
-                                  {m.provider || "—"}{m.notes ? ` · ${m.notes}` : ""}
-                                </div>
-                              </button>
-                            ))}
+                    {/* Auto option — Jaeger AI decides */}
+                    <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedModel("auto"); setSelectedModelProvider(""); setShowModelMenu(false); }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", padding: "0.5rem 0.625rem",
+                          borderRadius: "0.375rem", border: `1px solid ${selectedModel === "auto" ? H.accentGlow : H.border}`,
+                          background: selectedModel === "auto" ? "rgba(8,235,241,0.1)" : "transparent", color: H.text, cursor: "pointer", textAlign: "left",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}>
+                            <Boxes size={11} style={{ opacity: 0.7 }} />
+                            Auto
+                            {selectedModel === "auto" && <span style={{ fontSize: "0.5625rem", fontWeight: 700, padding: "1px 0.3125rem", borderRadius: "0.25rem", background: H.accentGlow, color: "#fff" }}>ACTIVE</span>}
                           </div>
-                        );
-                      })}
+                          <div style={{ fontSize: "0.625rem", color: H.muted }}>Jaeger AI selects the best model for your request</div>
+                        </div>
+                        {selectedModel === "auto" && <Check size={11} style={{ marginLeft: "auto", color: H.accentGlow }} />}
+                      </button>
                     </div>
+                    {/* Models grouped by location (local first, then cloud) */}
+                    {(["local", "cloud", "unknown"] as const).map((loc) => {
+                      const group = modelsForBackend.filter((m) => (m.location || "unknown") === loc);
+                      if (!group.length) return null;
+                      return (
+                        <div key={loc} style={{ padding: "0.25rem 0.625rem 0.375rem" }}>
+                          <div style={{ fontSize: "0.625rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: H.muted, margin: "0.25rem 0.125rem 0.375rem" }}>
+                            {loc === "local" ? "Local models" : loc === "cloud" ? "Cloud models" : "Other"}
+                          </div>
+                          {group.map((m) => (
+                            <button
+                              key={`${m.id}-${m.provider || ""}`}
+                              type="button"
+                              onClick={() => {
+                                setSelectedModel(m.id);
+                                setSelectedModelProvider(m.provider || "");
+                                setShowModelMenu(false);
+                              }}
+                              style={{
+                                display: "block", width: "100%", textAlign: "left", padding: "0.5rem 0.625rem", marginBottom: "0.25rem",
+                                borderRadius: "0.375rem", border: `1px solid ${selectedModel === m.id ? H.accent : H.border}`,
+                                background: selectedModel === m.id ? "rgba(124,58,237,0.1)" : "transparent", color: H.text, cursor: "pointer",
+                              }}
+                            >
+                              <div style={{ fontWeight: 600, fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.375rem" }}>
+                                <Package size={11} style={{ opacity: 0.7 }} />
+                                {m.label || m.id}
+                                {m.in_use ? (
+                                  <span style={{ fontSize: "0.5625rem", fontWeight: 700, padding: "1px 0.3125rem", borderRadius: "0.25rem", background: H.accent, color: "#fff" }}>ACTIVE</span>
+                                ) : null}
+                              </div>
+                              <div style={{ fontSize: "0.625rem", color: H.muted, fontFamily: "monospace" }}>
+                                {m.provider || "—"}{m.notes ? ` · ${m.notes}` : ""}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
               <div style={{ flex: 1 }} />
+
+              {/* Reasoning Effort Chip */}
+              <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                <ComposerChip
+                  icon={<Brain size={12} />}
+                  label={REASONING_OPTIONS.find(o => o.value === selectedReasoning)?.label || "Medium"}
+                  onClick={() => {
+                    if (isReadOnlyCli) return;
+                    setShowReasoningMenu(!showReasoningMenu);
+                    setShowBackendMenu(false);
+                    setShowModelMenu(false);
+                    setShowWorkspaceMenu(false);
+                    setShowSiModeMenu(false);
+                    setShowToolsetMenu(false);
+                  }}
+                />
+                {showReasoningMenu && !isReadOnlyCli && (
+                  <div style={{ position: "absolute", right: 0, bottom: "2.125rem", zIndex: 40, width: "14rem", maxWidth: "min(14rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
+                    <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
+                      Reasoning Effort
+                    </div>
+                    <div style={{ padding: "0.375rem 0.5rem" }}>
+                      {REASONING_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => { setSelectedReasoning(opt.value); setShowReasoningMenu(false); }}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "0.375rem 0.625rem", marginBottom: "0.125rem",
+                            borderRadius: "0.375rem", border: `1px solid ${selectedReasoning === opt.value ? H.accentGlow : H.border}`,
+                            background: selectedReasoning === opt.value ? "rgba(8,235,241,0.1)" : "transparent",
+                            color: H.text, textAlign: "left", cursor: "pointer", fontSize: "0.75rem",
+                          }}
+                        >
+                          <span style={{ fontWeight: selectedReasoning === opt.value ? 600 : 400 }}>{opt.label}</span>
+                          {selectedReasoning === opt.value && <Check size={11} style={{ color: H.accentGlow }} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* YOLO / Auto-Approve Toggle */}
+              <button
+                type="button"
+                title={yoloMode ? "YOLO mode: auto-approve all tool calls" : "Manual approval: confirm each tool call"}
+                onClick={() => setYoloMode(!yoloMode)}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: "0.25rem", height: "1.625rem", padding: "0 0.5rem",
+                  borderRadius: "0.375rem", border: `1px solid ${yoloMode ? "#ef4444" : H.chipBorder}`,
+                  background: yoloMode ? "rgba(239,68,68,0.12)" : H.chipBg,
+                  color: yoloMode ? "#ef4444" : H.chipText, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer",
+                  transition: "all 0.15s", flexShrink: 0,
+                }}
+              >
+                <Zap size={12} style={{ opacity: 0.8 }} />
+                <span style={{ fontSize: "0.6875rem" }}>YOLO</span>
+              </button>
+
+              {/* Toolsets Chip */}
+              <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                <ComposerChip
+                  icon={<WrenchIcon size={12} />}
+                  label="Global"
+                  onClick={() => {
+                    if (isReadOnlyCli) return;
+                    setShowToolsetMenu(!showToolsetMenu);
+                    setShowBackendMenu(false);
+                    setShowModelMenu(false);
+                    setShowWorkspaceMenu(false);
+                    setShowSiModeMenu(false);
+                    setShowReasoningMenu(false);
+                  }}
+                />
+                {showToolsetMenu && !isReadOnlyCli && (
+                  <div style={{ position: "absolute", right: 0, bottom: "2.125rem", zIndex: 40, width: "16rem", maxWidth: "min(16rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
+                    <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
+                      Toolsets
+                    </div>
+                    <div style={{ padding: "0.75rem 0.875rem", background: "rgba(8,235,241,0.05)", borderBottom: `1px solid ${H.border}` }}>
+                      <div style={{ fontWeight: 600, color: H.strong, fontSize: "0.8125rem", marginBottom: "0.125rem" }}>Global</div>
+                      <div style={{ fontSize: "0.6875rem", color: H.muted, lineHeight: 1.5 }}>All available tools enabled. Select per-tool control in Settings.</div>
+                    </div>
+                    <div style={{ padding: "0.5rem 0.625rem", fontSize: "0.625rem", color: H.muted, lineHeight: 1.5 }}>
+                      <strong>Global</strong> mode uses all tools the backend provides. Per-tool filtering is available in the Settings page.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Context window usage ring — shows message count as session progress */}
+              <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "1.625rem", height: "1.625rem", borderRadius: "50%", background: H.surface, border: `1px solid ${H.border}`, color: H.muted, flexShrink: 0, marginRight: "0.25rem", position: "relative" }} title={`Context: ${currentSession?.messageCount ?? 0} messages`}>
+                <svg viewBox="0 0 24 24" width="16" height="16" style={{ transform: "rotate(-90deg)" }}>
+                  <circle cx="12" cy="12" r="9.75" fill="none" stroke="currentColor" strokeWidth="2.5" opacity="0.2" />
+                </svg>
+                <span style={{ position: "absolute", fontSize: "0.45rem", fontWeight: 700, color: H.text }}>{currentSession?.messageCount ?? 0}</span>
+              </div>
 
               {isBusy ? (
                 <button type="button" onClick={() => void cancelResponse()} title="Stop response"

@@ -54,6 +54,7 @@ interface AresContextValue {
       provider?: string;
       workspace?: string;
       files?: File[];
+      personality?: string;
     },
   ) => Promise<void>;
   cancelResponse: () => Promise<void>;
@@ -64,7 +65,7 @@ const AresContext = createContext<AresContextValue | undefined>(undefined);
 
 export function AresProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState(EMPTY_SNAPSHOT);
-  const [selectedSessionId, setSelectedSessionId] = useState(() => localStorage.getItem("ares.active-session") || "");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
   const [currentSession, setCurrentSession] = useState<ConversationSession | null>(null);
   const [streamText, setStreamText] = useState("");
   const [streamReasoning, setStreamReasoning] = useState("");
@@ -125,27 +126,15 @@ export function AresProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
-    if (!selectedSessionId) {
-      // Prefer a writable WebUI session so boot doesn't open a huge imported CLI
-      // transcript (often 100+ messages) and look "stuck loading".
-      const preferred =
-        snapshot.sessions.find((s) => s.source !== "cli" && !s.readOnly)
-        || snapshot.sessions.find((s) => s.source !== "cli")
-        || snapshot.sessions[0];
-      if (preferred?.id) setSelectedSessionId(preferred.id);
-      return;
-    }
-    // Drop a stale localStorage id that no longer exists in the list once we
+    if (!selectedSessionId) return;
+
+    // Drop a stale id that no longer exists in the list once we
     // have sessions, so the chat surface doesn't hang on a 404 forever.
     if (
       snapshot.sessions.length > 0
       && !snapshot.sessions.some((s) => s.id === selectedSessionId)
     ) {
-      const fallback =
-        snapshot.sessions.find((s) => s.source !== "cli" && !s.readOnly)
-        || snapshot.sessions[0];
-      if (fallback?.id) setSelectedSessionId(fallback.id);
-      return;
+      setSelectedSessionId("");
     }
   }, [selectedSessionId, snapshot.sessions]);
 
@@ -158,7 +147,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
     }).catch((error) => {
       if (active) {
         setCurrentSession(null);
-        setChatNotice(readableError(error, "The conversation could not be loaded."));
+        setChatNotice(readableError(error, "The project could not be loaded."));
       }
     });
     try { localStorage.setItem("ares.active-session", selectedSessionId); } catch { /* private mode */ }
@@ -324,6 +313,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       provider?: string;
       workspace?: string;
       files?: File[];
+      personality?: string;
     },
   ) => {
     // Back-compat: older callers passed backendId as the second arg string.
@@ -343,13 +333,14 @@ export function AresProvider({ children }: { children: ReactNode }) {
       const effectiveBackend = opts.backendId || undefined;
       const sessionBase = currentSession || await createSession(opts.workspace);
       if (generation !== streamGeneration.current) return;
-      if (sessionBase.readOnly) throw new Error("This conversation is read-only. Start a new conversation to send a message.");
+      if (sessionBase.readOnly) throw new Error("This project is read-only. Start a new project to send a message.");
       const session = {
         ...sessionBase,
         model: opts.model || sessionBase.model,
         provider: opts.provider || sessionBase.provider,
         workspace: opts.workspace || sessionBase.workspace,
         backendId: effectiveBackend || sessionBase.backendId,
+        personality: opts.personality || sessionBase.personality,
       };
       // Upload files first, then pass attachment metadata to startChat
       let attachments: Array<{ name: string; path: string; mime: string; size?: number; is_image?: boolean }> | undefined;

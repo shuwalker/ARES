@@ -303,10 +303,10 @@ function SessionRow({
           className="fixed z-50 w-50 rounded-md border border-[#343631] bg-[#1a1c24] p-1 shadow-2xl text-[11px]"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <MenuItem icon={Link2} label="Copy conversation link" onClick={() => run(() => actions.copyLink(sessionId))} />
+          <MenuItem icon={Link2} label="Copy project link" onClick={() => run(() => actions.copyLink(sessionId))} />
           <MenuItem
             icon={Pencil}
-            label="Rename conversation"
+            label="Rename project"
             disabled={readOnly}
             hint={readOnly ? "Read-only" : undefined}
             onClick={() => run(() => actions.rename(sessionId, title))}
@@ -314,7 +314,7 @@ function SessionRow({
           <MenuItem icon={Share2} label="Share" onClick={() => run(() => actions.share(sessionId))} />
           <MenuItem
             icon={Pin}
-            label={pinned ? "Unpin conversation" : "Pin conversation"}
+            label={pinned ? "Unpin project" : "Pin project"}
             disabled={readOnly}
             hint={readOnly ? "Read-only" : undefined}
             onClick={() => run(() => actions.pin(sessionId, !pinned))}
@@ -358,7 +358,7 @@ function SessionRow({
 
           <MenuItem
             icon={Archive}
-            label="Archive conversation"
+            label="Archive project"
             disabled={readOnly}
             hint={readOnly ? "Read-only" : undefined}
             onClick={() => run(() => actions.archive(sessionId))}
@@ -381,7 +381,7 @@ function SessionRow({
           />
           <MenuItem
             icon={Trash2}
-            label="Delete conversation"
+            label="Delete project"
             danger
             disabled={readOnly}
             hint={readOnly ? "Imported history" : undefined}
@@ -433,69 +433,6 @@ function MenuItem({
   );
 }
 
-/** A collapsible group header for a CLI backend */
-function BackendGroup({
-  backendId,
-  detected,
-  sessionCount,
-  children,
-}: {
-  backendId: string;
-  detected: boolean;
-  sessionCount: number;
-  children?: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(detected && sessionCount > 0);
-  const color = backendColor(backendId);
-  const label = backendLabel(backendId);
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => { if (detected) setOpen((v) => !v); }}
-        disabled={!detected}
-        className={cn(
-          "w-full flex items-center gap-2 px-3 py-[6px] text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors",
-          detected ? "hover:bg-[#1a1b19] cursor-pointer" : "cursor-default opacity-50",
-        )}
-      >
-        <span
-          className="shrink-0 size-1.5 rounded-full"
-          style={{ background: detected ? color : "#343631" }}
-        />
-        <span className={cn("flex-1 truncate", detected ? "text-[#a7a79d]" : "text-[#6f7169]")}>
-          {label}
-        </span>
-        {detected && sessionCount > 0 && (
-          <span
-            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold"
-            style={{ background: color + "22", color }}
-          >
-            {sessionCount}
-          </span>
-        )}
-        {!detected && (
-          <span className="shrink-0 text-[10px] text-[#4b4d47] font-normal normal-case tracking-normal">
-            offline
-          </span>
-        )}
-        {detected && (
-          open
-            ? <ChevronDown className="shrink-0 size-3 text-[#6f7169]" />
-            : <ChevronRight className="shrink-0 size-3 text-[#6f7169]" />
-        )}
-      </button>
-      {open && detected && (
-        <div>{children}</div>
-      )}
-      {open && detected && sessionCount === 0 && (
-        <p className="px-4 py-2 text-[11px] text-[#4b4d47] italic">No active sessions</p>
-      )}
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────
 // Main ControlDeck
 // ─────────────────────────────────────────────────────────────
@@ -529,6 +466,16 @@ export function ControlDeck({
     void createSession().then(() => {
       navigate("/chat");
       onSessionOpened?.();
+      // Close workbench panel on new session unless user has "keep open by default" pref
+      try {
+        const pref = localStorage.getItem("hermes-webui-workspace-panel-pref");
+        if (pref !== "open") {
+          // Signal to collapse the workbench panel
+          window.dispatchEvent(new CustomEvent("ares:close-workbench"));
+        }
+      } catch {
+        // ignore storage errors
+      }
     });
   }, [createSession, navigate, onSessionOpened]);
   const activeSection = navigationSections.find(({ id }) => id === activeMode);
@@ -557,12 +504,10 @@ export function ControlDeck({
 
   // State
   const [sessionSearch, setSessionSearch] = useState("");
-  const [sourceTab, setSourceTab] = useState<"webui" | "cli">("webui");
   const [activeProject, setActiveProject] = useState<string | null>(null);
-  const [backends, setBackends] = useState<DiscoveredBackend[]>([]);
+  const [sessionSourceFilter, setSessionSourceFilter] = useState<"all" | "webui" | "cli">("all");
 
   // Modal states
-  const [showBackendOrderModal, setShowBackendOrderModal] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 
   // Projects state
@@ -598,33 +543,9 @@ export function ControlDeck({
     }
   });
 
-  // Custom ordering of CLI backends
-  const [cliBackendOrder, setCliBackendOrder] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem("ares_cli_backend_order");
-      return stored ? (JSON.parse(stored) as string[]) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Hidden CLI backends
-  const [hiddenBackends, setHiddenBackends] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem("ares_hidden_backends");
-      return stored ? (JSON.parse(stored) as string[]) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Fetch discovered backends & projects from API
+  // Fetch discovered projects from API
   useEffect(() => {
     const controller = new AbortController();
-
-    void apiFetch<{ adapters: DiscoveredBackend[] }>("/api/discover/frameworks", { signal: controller.signal })
-      .then((data) => { if (!controller.signal.aborted) setBackends(data.adapters || []); })
-      .catch(() => {});
 
     void apiFetch<{ projects?: Array<{ id?: string; name?: string; project_id?: string }> }>("/api/projects", { signal: controller.signal })
       .then((data) => {
@@ -679,15 +600,15 @@ export function ControlDeck({
       copyLink: (sessionId) => {
         const url = `${window.location.origin}/chat?session=${encodeURIComponent(sessionId)}`;
         void navigator.clipboard.writeText(url)
-          .then(() => report("Conversation link copied."))
+          .then(() => report("Project link copied."))
           .catch(() => report(url));
       },
       rename: (sessionId, currentTitle) => {
-        const next = window.prompt("Rename conversation", currentTitle)?.trim();
+        const next = window.prompt("Rename project", currentTitle)?.trim();
         if (!next || next === currentTitle) return;
         void aresApi.renameSession(sessionId, next)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not rename conversation"));
+          .catch((err) => fail(err, "Could not rename project"));
       },
       share: (sessionId) => {
         void aresApi.createShare(sessionId)
@@ -703,12 +624,12 @@ export function ControlDeck({
       pin: (sessionId, pinned) => {
         void aresApi.pinSession(sessionId, pinned)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not pin conversation"));
+          .catch((err) => fail(err, "Could not pin project"));
       },
       archive: (sessionId) => {
         void aresApi.archiveSession(sessionId, true)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not archive conversation"));
+          .catch((err) => fail(err, "Could not archive project"));
       },
       exportHtml: (sessionId) => {
         void aresApi.exportSession(sessionId, "html")
@@ -721,7 +642,7 @@ export function ControlDeck({
             a.click();
             URL.revokeObjectURL(url);
           })
-          .catch((err) => fail(err, "Could not export conversation"));
+          .catch((err) => fail(err, "Could not export project"));
       },
       regenerateTitle: (sessionId) => {
         void aresApi.regenerateSessionTitle(sessionId)
@@ -730,55 +651,13 @@ export function ControlDeck({
       },
       remove: (sessionId, title) => {
         // Deletion drops the transcript; the backend has no undo for it.
-        if (!window.confirm(`Delete "${title || "Untitled"}"?\n\nThis permanently removes the conversation and cannot be undone.`)) return;
+        if (!window.confirm(`Delete "${title || "Untitled"}"?\n\nThis permanently removes the project and cannot be undone.`)) return;
         void aresApi.deleteSession(sessionId)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not delete conversation"));
+          .catch((err) => fail(err, "Could not delete project"));
       },
     };
   }, [refresh]);
-
-  // Update session overrides (title, source, backendId)
-  const handleUpdateSessionOverride = useCallback((sessionId: string, updates: Partial<SessionOverride>) => {
-    setSessionOverrides((prev) => {
-      const next = {
-        ...prev,
-        [sessionId]: { ...(prev[sessionId] || {}), ...updates },
-      };
-      try { localStorage.setItem("ares_session_overrides_map", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, []);
-
-  // Move backend up/down in order
-  const handleMoveBackend = useCallback((backendId: string, direction: "up" | "down") => {
-    setCliBackendOrder((prev) => {
-      const allIds = Array.from(new Set([...prev, ...backends.map((b) => b.adapter_id), ...Object.keys(BACKEND_META)]));
-      const idx = allIds.indexOf(backendId);
-      if (idx < 0) return prev;
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= allIds.length) return prev;
-
-      const next = [...allIds];
-      const temp = next[idx];
-      next[idx] = next[targetIdx];
-      next[targetIdx] = temp;
-
-      try { localStorage.setItem("ares_cli_backend_order", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, [backends]);
-
-  // Toggle backend visibility
-  const handleToggleBackendHide = useCallback((backendId: string) => {
-    setHiddenBackends((prev) => {
-      const next = prev.includes(backendId)
-        ? prev.filter((id) => id !== backendId)
-        : [...prev, backendId];
-      try { localStorage.setItem("ares_hidden_backends", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, []);
 
   // Create new project
   const handleCreateProject = useCallback(async (e: React.FormEvent) => {
@@ -820,18 +699,13 @@ export function ControlDeck({
     });
   }, [snapshot.sessions, sessionOverrides]);
 
-  // Total counts for tabs
-  const webuiCount = useMemo(() => enrichedSessions.filter((s) => s.source !== "cli").length, [enrichedSessions]);
-  const cliCount = useMemo(() => enrichedSessions.filter((s) => s.source === "cli").length, [enrichedSessions]);
-
   // Filtered session list
   const filteredSessions = useMemo(() => {
     const q = sessionSearch.toLowerCase();
     return enrichedSessions.filter((s) => {
       // 1. Source filter
-      const isCli = s.source === "cli";
-      if (sourceTab === "webui" && isCli) return false;
-      if (sourceTab === "cli" && !isCli) return false;
+      if (sessionSourceFilter === "webui" && s.source === "cli") return false;
+      if (sessionSourceFilter === "cli" && s.source !== "cli") return false;
 
       // 2. Search query filter
       if (q && !s.title?.toLowerCase().includes(q)) return false;
@@ -850,29 +724,7 @@ export function ControlDeck({
 
       return true;
     });
-  }, [enrichedSessions, sourceTab, sessionSearch, activeProject, sessionProjectMap, projects]);
-
-  // Ordered list of backends
-  const sortedBackendIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const id of cliBackendOrder) ids.add(id);
-    for (const b of backends) ids.add(b.adapter_id);
-    for (const s of enrichedSessions) { if (s.source === "cli" && s.backendId) ids.add(s.backendId); }
-    for (const id of Object.keys(BACKEND_META)) ids.add(id);
-    return Array.from(ids).filter((id) => !hiddenBackends.includes(id));
-  }, [cliBackendOrder, backends, enrichedSessions, hiddenBackends]);
-
-  // Group CLI sessions by backend
-  const cliByBackend = useMemo(() => {
-    if (sourceTab !== "cli") return new Map<string, typeof filteredSessions>();
-    const byBackend = new Map<string, typeof filteredSessions>();
-    for (const s of filteredSessions) {
-      const key = s.backendId || "unknown";
-      if (!byBackend.has(key)) byBackend.set(key, []);
-      byBackend.get(key)!.push(s);
-    }
-    return byBackend;
-  }, [filteredSessions, sourceTab]);
+  }, [enrichedSessions, sessionSearch, activeProject, sessionProjectMap, projects, sessionSourceFilter]);
 
   const handleNewSession = openNewChat;
 
@@ -907,7 +759,7 @@ export function ControlDeck({
               className={cn(
                 "relative grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4] sm:size-9",
                 activeMode === id &&
-                  "bg-[#292b28] text-[#faf9f3] before:absolute before:-left-2.5 before:h-5 before:w-0.5 before:bg-[#d7d6ce]",
+                  "bg-[#292b28] text-[#ef4444] before:absolute before:-left-2.5 before:h-5 before:w-0.5 before:bg-[#ef4444]",
               )}
             >
               <Icon className="size-4" />
@@ -935,12 +787,12 @@ export function ControlDeck({
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center border-b border-[#343631] px-3">
           <p className="min-w-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#a7a79d]">
-            {activeMode === "chat" ? "Conversations" : activeSection?.label ?? "ARES"}
+            {activeMode === "chat" ? "PROJECTS" : activeSection?.label ?? "ARES"}
           </p>
           {activeMode === "chat" && (
             <button
               type="button"
-              title="New WebUI conversation"
+              title="New project"
               onClick={handleNewSession}
               className="ml-auto flex h-6 w-6 items-center justify-center rounded text-[#6f7169] transition-colors hover:bg-[#292b28] hover:text-[#ecebe4]"
             >
@@ -962,7 +814,7 @@ export function ControlDeck({
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-[#6f7169] pointer-events-none" />
                   <input
                     type="search"
-                    placeholder="Filter conversations..."
+                    placeholder="Filter projects..."
                     value={sessionSearch}
                     onChange={(e) => setSessionSearch(e.target.value)}
                     className="w-full rounded border border-[#343631] bg-[#1b1c1a] py-1 pl-7 pr-2 text-[12px] text-[#ecebe4] outline-none placeholder:text-[#6f7169] focus:border-[#4b4d47]"
@@ -970,36 +822,32 @@ export function ControlDeck({
                 </div>
               </div>
 
-              {/* 2. Side-by-side Session Source Tabs (Hermes-style) */}
-              <div className="p-2 border-b border-[#1e1f1d]">
-                <div className="grid grid-cols-2 gap-1 rounded bg-[#111210] p-1 border border-[#252830]">
-                  <button
-                    type="button"
-                    onClick={() => setSourceTab("webui")}
-                    className={cn(
-                      "py-1 px-2 rounded text-[11px] font-semibold transition-all text-center flex items-center justify-center gap-1.5",
-                      sourceTab === "webui"
-                        ? "bg-[#1e2236] text-[#3889fd] border border-[#3889fd]/30 shadow-sm"
-                        : "text-[#8f9188] hover:text-[#ecebe4] hover:bg-[#1a1c24]",
-                    )}
-                  >
-                    <Monitor className="size-3 shrink-0" />
-                    <span className="truncate">WebUI sessions ({webuiCount})</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSourceTab("cli")}
-                    className={cn(
-                      "py-1 px-2 rounded text-[11px] font-semibold transition-all text-center flex items-center justify-center gap-1.5",
-                      sourceTab === "cli"
-                        ? "bg-[#1e2236] text-[#08EBF1] border border-[#08EBF1]/30 shadow-sm"
-                        : "text-[#8f9188] hover:text-[#ecebe4] hover:bg-[#1a1c24]",
-                    )}
-                  >
-                    <Terminal className="size-3 shrink-0" />
-                    <span className="truncate">CLI sessions ({cliCount})</span>
-                  </button>
-                </div>
+              {/* 2. Source Filter Chips Bar (WebUI, CLI) */}
+              <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSessionSourceFilter(sessionSourceFilter === "webui" ? "all" : "webui")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0",
+                    sessionSourceFilter === "webui" || sessionSourceFilter === "all"
+                      ? "bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/50"
+                      : "border border-[#343631] text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
+                  )}
+                >
+                  WebUI ({enrichedSessions.filter(s => s.source !== "cli").length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSessionSourceFilter(sessionSourceFilter === "cli" ? "all" : "cli")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0",
+                    sessionSourceFilter === "cli" || sessionSourceFilter === "all"
+                      ? "border border-[#4b4d47] bg-[#292b28] text-[#ecebe4]"
+                      : "border border-[#343631] text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
+                  )}
+                >
+                  CLI ({enrichedSessions.filter(s => s.source === "cli").length})
+                </button>
               </div>
 
               {/* 3. Project Filter Chips Bar (All, Unassigned, Projects, +) */}
@@ -1087,12 +935,10 @@ export function ControlDeck({
 
               {/* 4. Session List Area */}
               <div className="flex-1 overflow-y-auto py-1">
-                {sourceTab === "webui" ? (
-                  /* WebUI sessions list */
                   <div>
                     {filteredSessions.length === 0 ? (
                       <p className="px-3 py-6 text-center text-[11px] text-[#6f7169]">
-                        {activeProject === "unassigned" ? "No unassigned conversations." : "No conversations found."}
+                        {activeProject === "unassigned" ? "No unassigned projects." : "No projects found."}
                       </p>
                     ) : (
                       DATE_GROUP_ORDER.map((group) => {
@@ -1133,71 +979,6 @@ export function ControlDeck({
                       })
                     )}
                   </div>
-                ) : (
-                  /* CLI sessions list grouped by backend with reordering setting button */
-                  <div>
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1e1f1d]">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6f7169]">
-                        Agent Backend Order
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowBackendOrderModal(true)}
-                        className="flex items-center gap-1 text-[10px] font-medium text-[#3889fd] hover:underline"
-                      >
-                        <SlidersHorizontal className="size-3" />
-                        <span>Reorder / Manage</span>
-                      </button>
-                    </div>
-
-                    {sortedBackendIds.length === 0 ? (
-                      <p className="px-4 py-4 text-center text-[11px] text-[#4b4d47] italic">
-                        No CLI backends enabled
-                      </p>
-                    ) : (
-                      sortedBackendIds.map((backendId) => {
-                        const detectedObj = backends.find((b) => b.adapter_id === backendId);
-                        const isDetected = detectedObj ? detectedObj.detected : true;
-                        const sessions = cliByBackend.get(backendId) ?? [];
-
-                        return (
-                          <BackendGroup
-                            key={backendId}
-                            backendId={backendId}
-                            detected={isDetected}
-                            sessionCount={sessions.length}
-                          >
-                            {sessions.map((s) => {
-                              // Only an explicit assignment names a project. The
-                              // workspace path is not a project — rendering it
-                              // leaked the full filesystem path into the badge.
-                              const projId = sessionProjectMap[s.id];
-                              const projObj = projects.find((p) => p.id === projId || p.name === projId);
-                              return (
-                                <SessionRow
-                                  key={s.id}
-                                  sessionId={s.id}
-                                  title={s.title}
-                                  updatedAt={s.updatedAt}
-                                  projectName={projObj?.name || (projId ? String(projId) : undefined)}
-                                  projects={projects}
-                                  isActive={s.id === currentSession?.id}
-                                  isStreaming={s.isStreaming}
-                                  readOnly={s.readOnly}
-                                  pinned={s.pinned}
-                                  onClick={() => openChatSession(s.id)}
-                                  onAssignProject={handleAssignProject}
-                                  onOpenEdit={(id) => setEditingSessionId(id)}
-                                  actions={sessionActions}
-                                />
-                              );
-                            })}
-                          </BackendGroup>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           ) : (
@@ -1231,15 +1012,6 @@ export function ControlDeck({
           )}
         </div>
 
-        {/* Footer */}
-        <footer className="border-t border-[#343631] px-3 py-2.5">
-          <p className="truncate text-[11px] font-medium text-[#d7d6ce]">
-            {profile.displayName || "Local profile"}
-          </p>
-          <p className="truncate font-mono text-[9px] uppercase tracking-wider text-[#6f7169]">
-            local · private
-          </p>
-        </footer>
       </aside>
 
       {actionNotice && (
@@ -1251,90 +1023,14 @@ export function ControlDeck({
         </div>
       )}
 
-      {/* ── MODAL 1: CLI Backend Order & Visibility Settings ── */}
-      {showBackendOrderModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm rounded-xl border border-[#343631] bg-[#1a1c24] p-4 shadow-2xl text-[#ecebe4]">
-            <div className="flex items-center justify-between border-b border-[#2d303e] pb-2 mb-3">
-              <h3 className="text-sm font-semibold text-[#f0f2ff] flex items-center gap-2">
-                <SlidersHorizontal className="size-4 text-[#08EBF1]" />
-                CLI Agent Order & Settings
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowBackendOrderModal(false)}
-                className="text-[#8f9188] hover:text-[#ecebe4] text-xs"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-[11px] text-[#8f9188] mb-3">
-              Reorder or toggle visibility of CLI agent backends in the sidebar.
-            </p>
-            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-              {Array.from(new Set([...cliBackendOrder, ...backends.map((b) => b.adapter_id), ...Object.keys(BACKEND_META)])).map((backendId, index, array) => {
-                const hidden = hiddenBackends.includes(backendId);
-                const color = backendColor(backendId);
-                const label = backendLabel(backendId);
 
-                return (
-                  <div
-                    key={backendId}
-                    className="flex items-center justify-between p-2 rounded bg-[#111210] border border-[#272a38] text-[12px]"
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="size-2 rounded-full shrink-0" style={{ background: color }} />
-                      <span className={cn("truncate font-medium", hidden && "line-through text-[#6f7169]")}>
-                        {label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        title={hidden ? "Show backend" : "Hide backend"}
-                        onClick={() => handleToggleBackendHide(backendId)}
-                        className="p-1 rounded text-[#8f9188] hover:text-[#ecebe4] hover:bg-[#202330]"
-                      >
-                        {hidden ? <EyeOff className="size-3.5 text-[#e11d48]" /> : <Eye className="size-3.5 text-[#4ade80]" />}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={index === 0}
-                        onClick={() => handleMoveBackend(backendId, "up")}
-                        className="p-1 rounded text-[#8f9188] hover:text-[#ecebe4] hover:bg-[#202330] disabled:opacity-30"
-                      >
-                        <ArrowUp className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={index === array.length - 1}
-                        onClick={() => handleMoveBackend(backendId, "down")}
-                        className="p-1 rounded text-[#8f9188] hover:text-[#ecebe4] hover:bg-[#202330] disabled:opacity-30"
-                      >
-                        <ArrowDown className="size-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowBackendOrderModal(false)}
-              className="mt-4 w-full py-1.5 rounded bg-[#5b7cf6] text-white text-xs font-semibold hover:bg-[#4b6ce6]"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── MODAL 2: Edit Session Properties (Title, Source, Backend) ── */}
       {editingSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <div className="w-full max-w-sm rounded-xl border border-[#343631] bg-[#1a1c24] p-4 shadow-2xl text-[#ecebe4]">
             <div className="flex items-center justify-between border-b border-[#2d303e] pb-2 mb-3">
-              <h3 className="text-sm font-semibold text-[#f0f2ff]">Edit Conversation Details</h3>
+              <h3 className="text-sm font-semibold text-[#f0f2ff]">Edit Project Details</h3>
               <button
                 type="button"
                 onClick={() => setEditingSessionId(null)}

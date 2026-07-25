@@ -61,6 +61,7 @@ export interface SessionSummary {
   archived?: boolean;
   isStreaming: boolean;
   readOnly: boolean;
+  personality?: string;
 }
 
 export type ConversationRole = "user" | "assistant" | "system" | "tool";
@@ -87,6 +88,7 @@ export interface WorkerRanking {
 export interface ConversationSession extends SessionSummary {
   messages: ConversationMessage[];
   pendingStartedAt?: string;
+  personality?: string;
 }
 
 export interface WorkspaceSummary {

@@ -28,7 +28,7 @@ import { useLocalProfile } from "@/shared/local-profile";
 export function CompanionPage() {
   const { profile } = useLocalProfile();
   const { snapshot } = useAres();
-  const companionName = profile.assistantName?.trim() || "Companion";
+  const companionName = profile.assistantName?.trim() || "Jaeger AI";
   const displayName = profile.displayName?.trim() || "operator";
   const connected = snapshot.connection === "available";
   // Only connections that are actually selected or verified-available count.
@@ -40,7 +40,7 @@ export function CompanionPage() {
     {
       to: "/chat",
       label: "Developer Chat",
-      subtitle: "Direct worker console (Hermes, Claude, Ollama)",
+      subtitle: "Direct worker console (Hermes, Claude, Ollama, JROS)",
       icon: MessageCircle,
       badge: "Console",
       color: "border-primary/40 bg-primary/10 text-primary",
@@ -110,7 +110,7 @@ export function CompanionPage() {
       action={
         <Button asChild variant="default">
           <Link to="/chat">
-            Open Chat console
+            Open Projects
             <ArrowRight className="ml-1.5 size-4" />
           </Link>
         </Button>
@@ -211,8 +211,7 @@ export function CompanionPage() {
       </Card>
 
       <SurfaceNote>
-        Developer Chat (`/chat`) gives direct console access to underlying worker backends (Hermes CLI, Claude, Ollama, JROS).
-        The Companion surface (`/companion`) provides high-level intent routing, memory retrieval, and approval management.
+        Projects (`/chat`) group your discussions with the agent by subject. The Companion surface (`/companion`) provides high-level intent routing, memory retrieval, and approval management.
       </SurfaceNote>
     </SurfaceShell>
   );

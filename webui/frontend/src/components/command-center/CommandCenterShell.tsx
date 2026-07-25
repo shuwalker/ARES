@@ -146,7 +146,7 @@ function SessionTitle({
         {display}
       </button>
       <span
-        title="Messages in this conversation"
+        title="Messages in this project"
         className="shrink-0 rounded-sm bg-[#1b1c1a] px-1.5 py-0.5 font-mono text-[9px] text-[#8f9188]"
       >
         {session?.messageCount ?? session?.messages?.length ?? 0}
@@ -182,6 +182,10 @@ function BrainHeader({
   onOpenHands?: () => void;
   handsOpen?: boolean;
 }) {
+  if (!compact && isConversation && !currentSession) {
+    return null;
+  }
+
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[#343631] bg-[#151614]/95 px-3 backdrop-blur-xl sm:gap-3 sm:px-4">
       {compact && onOpenDeck && (
@@ -200,7 +204,7 @@ function BrainHeader({
           <SessionTitle session={currentSession} onRenamed={onRenamed} />
         ) : (
           <div className="min-w-0">
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#6f7169]">Companion</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#6f7169]">Agent</p>
             <p className="truncate text-xs font-medium text-[#ecebe4]">{companionName}</p>
           </div>
         )}
@@ -233,10 +237,18 @@ export function CommandCenterShell() {
   const isCompact = useIsCompactViewport();
   const isConversation =
     location.pathname.startsWith("/conversation") || location.pathname.startsWith("/chat");
-  const companionName = profile.assistantName?.trim() || "Companion";
+  const companionName = profile.assistantName?.trim() || "Jaeger AI";
 
   const workbenchRef = usePanelRef();
-  const [workbenchCollapsed, setWorkbenchCollapsed] = useState(false);
+  const [workbenchCollapsed, setWorkbenchCollapsed] = useState(() => {
+    // Initialize from localStorage preference - default to collapsed (closed) for new sessions
+    try {
+      const pref = window.localStorage.getItem("hermes-webui-workspace-panel-pref");
+      return pref !== "open";
+    } catch {
+      return true; // default closed
+    }
+  });
 
   // Compact drawers (Hermes: sidebar + rightpanel slide-ins under 900/640).
   const [deckOpen, setDeckOpen] = useState(false);
@@ -276,6 +288,15 @@ export function CommandCenterShell() {
     setDeckOpen(false);
     setHandsOpen(false);
   }, [location.pathname]);
+
+  // Listen for new-session signal to close workbench panel
+  useEffect(() => {
+    const handleCloseWorkbench = () => {
+      collapseWorkbench();
+    };
+    window.addEventListener("ares:close-workbench", handleCloseWorkbench);
+    return () => window.removeEventListener("ares:close-workbench", handleCloseWorkbench);
+  }, [collapseWorkbench]);
 
   // Escape closes the topmost drawer.
   useEffect(() => {
@@ -385,15 +406,18 @@ export function CommandCenterShell() {
           </div>
         ) : (
           <>
-            <Group
-              id="ares-command-center"
-              orientation="horizontal"
-              defaultLayout={readLayout()}
-              onLayoutChanged={saveLayout}
-              className="h-full"
-            >
+            <div className="relative flex h-full w-full overflow-hidden">
+              <Group
+                id="ares-command-center"
+                orientation="horizontal"
+                defaultLayout={readLayout()}
+                onLayoutChanged={saveLayout}
+                className="h-full w-full"
+              >
               <Panel id="deck" defaultSize="22%" minSize="220px" maxSize="34%" collapsible collapsedSize="56px">
-                <ControlDeck />
+                <div className="relative h-full w-full overflow-hidden z-10">
+                  <ControlDeck />
+                </div>
               </Panel>
               <ResizeHandle id="deck-brain-handle" />
               <Panel id="brain" defaultSize="48%" minSize="280px">
@@ -429,6 +453,7 @@ export function CommandCenterShell() {
                 <WorkbenchPane onCollapse={collapseWorkbench} />
               </Panel>
             </Group>
+            </div>
 
             {workbenchCollapsed && (
               <button

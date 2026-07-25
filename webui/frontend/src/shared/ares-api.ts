@@ -274,7 +274,7 @@ export const aresApi = {
     });
     return translateConversation(payload.session);
   },
-  async startChat(sessionId: string, message: string, session: { model?: string; provider?: string; workspace?: string; profile?: string; backendId?: string }, backendId?: string, attachments?: Array<{ name: string; path: string; mime: string; size?: number; is_image?: boolean }>) {
+  async startChat(sessionId: string, message: string, session: { model?: string; provider?: string; workspace?: string; profile?: string; backendId?: string; personality?: string }, backendId?: string, attachments?: Array<{ name: string; path: string; mime: string; size?: number; is_image?: boolean }>) {
     return apiFetch<{ stream_id: string; session_id: string; title?: string }>("/api/chat/start", {
       method: "POST",
       body: JSON.stringify({
@@ -285,6 +285,7 @@ export const aresApi = {
         connection_id: backendId || session.backendId || undefined,
         workspace: session.workspace || undefined,
         profile: session.profile || "default",
+        personality: session.personality || undefined,
         attachments: attachments && attachments.length > 0 ? attachments : undefined,
       }),
     });

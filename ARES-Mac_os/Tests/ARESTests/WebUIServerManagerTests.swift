@@ -128,7 +128,8 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertTrue(WebUIServerManager.isManagedWebUICommand(
             "python -m uvicorn fastapi_app.main:app --port 8787"
         ))
-        XCTAssertTrue(WebUIServerManager.isManagedWebUICommand("python server.py"))
+        // Do NOT match generic server.py — that kills unrelated servers (e.g. Hermes WebUI).
+        XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("python server.py"))
         XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("python -m http.server 8787"))
         XCTAssertFalse(WebUIServerManager.isManagedWebUICommand("uvicorn another_app:app"))
     }

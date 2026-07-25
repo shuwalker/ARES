@@ -381,7 +381,8 @@ public final class WebUIServerManager: ObservableObject {
     }
 
     nonisolated static func isManagedWebUICommand(_ command: String) -> Bool {
-        command.contains("server.py") ||
-            (command.contains("uvicorn") && command.contains("fastapi_app.main:app"))
+        // Only kill ARES-owned WebUI processes (uvicorn running fastapi_app.main:app).
+        // Do NOT match generic "server.py" — that kills unrelated servers like Hermes WebUI.
+        command.contains("uvicorn") && command.contains("fastapi_app.main:app")
     }
 }

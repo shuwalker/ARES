@@ -33,6 +33,7 @@ final class ARESWindowCoordinator {
 
 private struct ARESMainScene: View {
     @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var onboardingManager = OnboardingManager.shared
 
     var body: some View {
         ARESMainView()
@@ -41,6 +42,14 @@ private struct ARESMainScene: View {
             .onAppear {
                 ARESWindowCoordinator.shared.register {
                     openWindow(id: "main")
+                }
+                if onboardingManager.needsOnboarding {
+                    openWindow(id: "onboarding")
+                }
+            }
+            .onChange(of: onboardingManager.needsOnboarding) { _, needs in
+                if needs {
+                    openWindow(id: "onboarding")
                 }
             }
     }
@@ -58,17 +67,19 @@ struct ARESApp: App {
         }
         .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)
+        
+        // Onboarding window - always registered but shown conditionally
+        WindowGroup(id: "onboarding") {
+            OnboardingView()
+                .frame(minWidth: 800, minHeight: 600)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.center)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About ARES") {
                     NSApp.orderFrontStandardAboutPanel(nil)
                 }
-            }
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    openSettings()
-                }
-                .keyboardShortcut(",", modifiers: .command)
             }
         }
         
@@ -459,12 +470,13 @@ final class ARESMenuBarController: NSObject {
 struct MenuBarPopoverView: View {
     @ObservedObject var serverManager = WebUIServerManager.shared
     @ObservedObject var config = ARESConfiguration.shared
-
+    
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: "shield")
-                .font(.largeTitle)
-                .foregroundColor(Color(red: 0.85, green: 0.70, blue: 0.35))
+            Image("ares-app-icon")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 64, height: 64)
             
             Text("ARES WebUI Server")
                 .font(.headline)
