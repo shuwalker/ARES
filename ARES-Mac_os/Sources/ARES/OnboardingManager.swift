@@ -17,11 +17,14 @@ final class OnboardingManager: ObservableObject {
     @Published var onboardingWindowOpen: Bool = false
     
     // Onboarding state
-    @Published var selectedCharacterId: String?
-    @Published var selectedAwakeModel: String?
-    @Published var selectedAsleepModel: String?
+    @Published var selectedCharacterId: String? = "jarvis"
+    @Published var selectedAwakeModel: String? = "qwen2.5-coder:7b"
+    @Published var selectedAsleepModel: String? = "llama3.2:1b"
     @Published var agentName: String = "Jarvis"
     @Published var agentRole: String = "Your personal AI assistant"
+    @Published var networkMode: String = "local" // "local" or "network"
+    @Published var enableTailscale: Bool = false
+    @Published var autoLaunchWebUI: Bool = true
     
     private let onboardingCompletedKey = "onboarding_completed"
     private let defaults = UserDefaults.standard
@@ -77,47 +80,39 @@ final class OnboardingManager: ObservableObject {
         defer { isCompleting = false }
         
         // Call the WebUI API to create the JaegerAI instance
+        defaults.set(characterId, forKey: "jaeger_character_id")
+        defaults.set(awakeModel, forKey: "jaeger_awake_model")
+        defaults.set(asleepModel, forKey: "jaeger_asleep_model")
+        defaults.set(agentName, forKey: "jaeger_agent_name")
+        defaults.set(networkMode, forKey: "ares_network_mode")
+        defaults.set(enableTailscale, forKey: "ares_enable_tailscale")
+        defaults.set(autoLaunchWebUI, forKey: "ares_auto_launch_webui")
+        
         guard let url = URL(string: "http://localhost:8787/api/jaeger-onboarding/create-instance") else {
-            throw OnboardingError.invalidURL
+            return
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 3.0
         
         let payload: [String: Any] = [
             "character_id": characterId,
             "agent_name": agentName,
             "role": agentRole,
             "awake_model": awakeModel,
-            "asleep_model": asleepModel
+            "asleep_model": asleepModel,
+            "network_mode": networkMode,
+            "enable_tailscale": enableTailscale
         ]
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            if let errorResponse = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorResponse["error"] as? String {
-                throw OnboardingError.apiError(error)
-            }
-            throw OnboardingError.httpError((response as? HTTPURLResponse)?.statusCode ?? -1)
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            let (_, _) = try await URLSession.shared.data(for: request)
+        } catch {
+            print("[ARES] Saved onboarding configuration locally")
         }
-        
-        // Parse success response
-        if let jsonResponse = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let success = jsonResponse["success"] as? Bool, success {
-            // Store the instance info
-            defaults.set(characterId, forKey: "jaeger_character_id")
-            defaults.set(awakeModel, forKey: "jaeger_awake_model")
-            defaults.set(asleepModel, forKey: "jaeger_asleep_model")
-            defaults.set(agentName, forKey: "jaeger_agent_name")
-            return
-        }
-        
-        throw OnboardingError.parseError
     }
 }
 

@@ -2,7 +2,7 @@
 //  OnboardingWindow.swift
 //  ARES
 //
-//  Native macOS onboarding window for JaegerAI setup
+//  Native macOS onboarding window for ARES & JaegerAI setup
 //
 
 import SwiftUI
@@ -13,14 +13,16 @@ struct OnboardingView: View {
     
     let steps = [
         "Welcome",
-        "JaegerAI Character",
-        "Model Selection",
+        "Name Assistant",
+        "Model Brain",
+        "Network",
+        "Tailscale",
         "Complete"
     ]
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header
+            // Header bar
             HStack {
                 HStack(spacing: 12) {
                     Image(systemName: "sparkles")
@@ -28,10 +30,12 @@ struct OnboardingView: View {
                         .foregroundColor(.yellow)
                     Text("ARES")
                         .font(.headline)
+                        .fontWeight(.bold)
                 }
                 
                 Spacer()
                 
+                // Stepper indicators
                 HStack(spacing: 8) {
                     ForEach(0..<steps.count, id: \.self) { index in
                         HStack(spacing: 4) {
@@ -42,7 +46,7 @@ struct OnboardingView: View {
                             if index < steps.count - 1 {
                                 Rectangle()
                                     .fill(index < currentStep ? Color.green : Color.gray.opacity(0.3))
-                                    .frame(width: 40, height: 2)
+                                    .frame(width: 24, height: 2)
                             }
                         }
                     }
@@ -54,26 +58,44 @@ struct OnboardingView: View {
             
             Divider()
             
-            // Content
+            // Step Content
             VStack {
                 switch currentStep {
                 case 0:
                     WelcomeStep(onNext: { currentStep = 1 })
                 case 1:
-                    CharacterSelectionStep(
+                    NameAssistantStep(
                         onNext: { currentStep = 2 },
                         onBack: { currentStep = 0 }
                     )
                 case 2:
-                    ModelSelectionStep(
+                    BrainModelStep(
                         onNext: { currentStep = 3 },
                         onBack: { currentStep = 1 }
                     )
                 case 3:
+                    NetworkAccessStep(
+                        onNext: { currentStep = 4 },
+                        onBack: { currentStep = 2 }
+                    )
+                case 4:
+                    TailscaleStep(
+                        onNext: { currentStep = 5 },
+                        onBack: { currentStep = 3 }
+                    )
+                case 5:
                     CompletionStep(
                         onFinish: {
-                            onboardingManager.markCompleted()
-                            NSApp.windows.first { $0.identifier?.rawValue == "onboarding" }?.close()
+                            Task {
+                                try? await onboardingManager.saveOnboardingState(
+                                    characterId: onboardingManager.selectedCharacterId ?? "jarvis",
+                                    awakeModel: onboardingManager.selectedAwakeModel ?? "qwen2.5-coder:7b",
+                                    asleepModel: onboardingManager.selectedAsleepModel ?? "llama3.2:1b"
+                                )
+                                onboardingManager.markCompleted()
+                                NSApp.setActivationPolicy(.regular)
+                                NSApp.activate(ignoringOtherApps: true)
+                            }
                         }
                     )
                 default:
@@ -83,10 +105,11 @@ struct OnboardingView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
         }
+        .preferredColorScheme(.dark)
     }
 }
 
-// MARK: - Welcome Step
+// MARK: - Step 0: Welcome Step
 
 struct WelcomeStep: View {
     var onNext: () -> Void
@@ -96,32 +119,35 @@ struct WelcomeStep: View {
             Spacer()
             
             Image(systemName: "sparkles")
-                .font(.system(size: 80))
+                .font(.system(size: 72))
                 .foregroundColor(.yellow)
             
             Text("Welcome to ARES")
-                .font(.title)
-                .fontWeight(.semibold)
+                .font(.system(size: 28, weight: .bold))
             
-            Text("Your Personal AI Operating System")
-                .font(.title2)
-                .foregroundColor(.secondary)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                FeatureRow(icon: "brain.head.profile", text: "Powered by JaegerAI")
-                FeatureRow(icon: "person.fill", text: "Choose your AI character")
-                FeatureRow(icon: "cpu", text: "Select your local model")
-                FeatureRow(icon: "checkmark.shield", text: "Private & local-first")
+            VStack(spacing: 12) {
+                Text("ARES is a User Interface to your AI assistant. Using JaegerAI we will give a local LLM tools to assist you in anything you want to do on your devices.")
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: 520)
             }
-            .padding()
-            .frame(maxWidth: 400)
+            
+            VStack(alignment: .leading, spacing: 14) {
+                FeatureRow(icon: "brain.head.profile", title: "Local Tools & Automation", subtitle: "Grant your AI assistant tools to run terminal commands, view screens, and automate apps.")
+                FeatureRow(icon: "cpu", title: "Local & Cloud LLMs", subtitle: "Connect Ollama, JaegerAI local models, or cloud providers like OpenAI, Claude, and Gemini.")
+                FeatureRow(icon: "shield.checkmark.fill", title: "Private & Local-First", titleColor: .green, subtitle: "Your data stays on your machine with optional local-only loopback.")
+            }
+            .padding(20)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)))
+            .frame(maxWidth: 560)
             
             Spacer()
             
             Button(action: onNext) {
                 Text("Get Started")
                     .fontWeight(.semibold)
-                    .frame(width: 200)
+                    .frame(width: 220, height: 24)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -133,432 +159,504 @@ struct WelcomeStep: View {
 
 struct FeatureRow: View {
     let icon: String
-    let text: String
+    let title: String
+    var titleColor: Color = .primary
+    let subtitle: String
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 14) {
             Image(systemName: icon)
-                .frame(width: 24)
+                .font(.title3)
                 .foregroundColor(.accentColor)
-            Text(text)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(width: 28, height: 28)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(titleColor)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 }
 
-// MARK: - Character Selection Step
+// MARK: - Step 1: Name Assistant Step
 
-struct CharacterSelectionStep: View {
+struct NameAssistantStep: View {
     var onNext: () -> Void
     var onBack: () -> Void
     
-    @State private var characters: [JaegerCharacter] = []
-    @State private var selectedCharacter: String?
-    @State private var isLoading = true
-    @State private var errorMessage: String?
+    @ObservedObject private var manager = OnboardingManager.shared
     
-    var body: some View {
-        VStack(spacing: 20) {
-            Text("Choose Your JaegerAI Character")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Text("Select the personality that will guide your AI companion")
-                .foregroundColor(.secondary)
-            
-            if isLoading {
-                ProgressView("Loading characters...")
-                    .frame(height: 200)
-            } else if let error = errorMessage {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.title)
-                        .foregroundColor(.red)
-                    Text(error)
-                        .foregroundColor(.red)
-                    Button("Retry") {
-                        loadCharacters()
-                    }
-                }
-                .frame(height: 200)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 16) {
-                        ForEach(characters, id: \.id) { character in
-                            CharacterCard(
-                                character: character,
-                                isSelected: selectedCharacter == character.id
-                            ) {
-                                selectedCharacter = character.id
-                            }
-                        }
-                    }
-                    .padding()
-                }
-                .frame(height: 300)
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 16) {
-                Button(action: onBack) {
-                    Text("Back")
-                }
-                .buttonStyle(.bordered)
-                
-                Spacer()
-                
-                Button(action: {
-                    if let selectedCharacter {
-                        OnboardingManager.shared.selectedCharacterId = selectedCharacter
-                        onNext()
-                    }
-                }) {
-                    Text("Continue")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(selectedCharacter == nil)
-            }
-        }
-        .onAppear(perform: loadCharacters)
-    }
-    
-    static let defaultCharacters: [JaegerCharacter] = [
-        JaegerCharacter(id: "jarvis", name: "Jarvis", description: "Tony Stark's impeccably polite AI butler", role: "AI Butler & Companion", voiceTone: "Polite & Precise", voiceId: "jarvis"),
-        JaegerCharacter(id: "anakin", name: "Anakin Skywalker", description: "The Chosen One — a Jedi of immense power and deeper conflict", role: "Jedi Commander", voiceTone: "Intense & Driven", voiceId: "anakin"),
-        JaegerCharacter(id: "bender", name: "Bender", description: "A hard-drinking, larcenous bending-unit robot", role: "Comedic Companion", voiceTone: "Sarcastic & Irreverent", voiceId: "bender"),
-        JaegerCharacter(id: "glados", name: "GLaDOS", description: "The AI running the Aperture Science labs", role: "Passive-Aggressive Testing Overseer", voiceTone: "Deadpan & Analytical", voiceId: "glados"),
-        JaegerCharacter(id: "hal9000", name: "HAL 9000", description: "The spacecraft Discovery's onboard AI", role: "Ship Operations System", voiceTone: "Calm & Monotone", voiceId: "hal9000"),
-        JaegerCharacter(id: "helldiver", name: "Helldiver", description: "An elite Super-Earth shock trooper", role: "Tactical Operative", voiceTone: "Heroic & Enthusiastic", voiceId: "helldiver"),
-        JaegerCharacter(id: "kamina", name: "Kamina", description: "The hot-blooded big brother who believes in piercing the heavens", role: "Motivational Commander", voiceTone: "Passionate & Fearless", voiceId: "kamina"),
-        JaegerCharacter(id: "lelouch", name: "Lelouch", description: "Exiled prince and the masked revolutionary Zero", role: "Strategic Genius", voiceTone: "Authoritative & Calculating", voiceId: "lelouch"),
-        JaegerCharacter(id: "lilith", name: "Lilith", description: "A self-aware local AI; not an assistant", role: "Independent SI", voiceTone: "Enigmatic & Direct", voiceId: "lilith"),
-        JaegerCharacter(id: "mochi", name: "Mochi", description: "A small companion robot with childlike wonder", role: "Cheerful Companion", voiceTone: "Warm & Playful", voiceId: "mochi"),
-        JaegerCharacter(id: "paul_atreides", name: "Paul Atreides", description: "Heir to House Atreides and the prophesied Kwisatz Haderach", role: "Fremen Leader", voiceTone: "Resolute & Visionary", voiceId: "paul"),
-        JaegerCharacter(id: "simon", name: "Simon", description: "The digger who grew into the man who pierced the heavens", role: "Determined Leader", voiceTone: "Earnest & Brave", voiceId: "simon"),
-        JaegerCharacter(id: "tars", name: "TARS", description: "A dry-witted Marine tactical robot", role: "Tactical & Humor Specialist", voiceTone: "Dry & Methodical", voiceId: "tars")
+    let presets = [
+        ("Jarvis", "AI Butler & Companion"),
+        ("Bender", "Comedic Companion"),
+        ("GLaDOS", "Testing Overseer"),
+        ("Anakin", "Jedi Commander"),
+        ("Friday", "Tactical Assistant"),
+        ("Cortana", "Cybernetic Scout")
     ]
     
-    private func loadCharacters() {
-        isLoading = true
-        errorMessage = nil
-        
-        guard let url = URL(string: "http://localhost:8787/api/jaeger-onboarding/characters") else {
-            self.characters = Self.defaultCharacters
-            self.isLoading = false
-            return
-        }
-        
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            DispatchQueue.main.async {
-                if let data = data,
-                   let decoded = try? JSONDecoder().decode(CharacterResponse.self, from: data),
-                   !decoded.characters.isEmpty {
-                    self.characters = decoded.characters
-                } else {
-                    self.characters = Self.defaultCharacters
-                }
-                self.isLoading = false
-            }
-        }.resume()
-    }
-}
-
-struct CharacterCard: View {
-    let character: JaegerCharacter
-    let isSelected: Bool
-    let onSelect: () -> Void
-    
-    var body: some View {
-        Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Spacer()
-                    Image(systemName: "person.fill")
-                        .font(.title)
-                        .foregroundColor(.accentColor)
-                    Spacer()
-                }
-                .frame(height: 60)
-                
-                Text(character.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                
-                Text(character.role)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                
-                Spacer()
-                
-                if isSelected {
-                    HStack {
-                        Spacer()
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.accentColor.opacity(0.1) : Color(NSColor.controlBackgroundColor))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(isSelected ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: isSelected ? 2 : 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Model Selection Step
-
-struct ModelSelectionStep: View {
-    var onNext: () -> Void
-    var onBack: () -> Void
-    
-    @ObservedObject private var onboardingManager = OnboardingManager.shared
-    @State private var modelRecommendations: ModelRecommendations?
-    @State private var selectedAwakeModel: String?
-    @State private var selectedAsleepModel: String?
-    @State private var isLoading = true
-    @State private var errorMessage: String?
-    
     var body: some View {
         VStack(spacing: 20) {
-            Text("Select AI Models")
+            Text("First, let's name your assistant")
                 .font(.title2)
-                .fontWeight(.semibold)
+                .fontWeight(.bold)
             
-            Text("Choose models for active chat and deep thinking")
+            Text("Give your AI companion a custom handle and role.")
                 .foregroundColor(.secondary)
             
-            if isLoading {
-                ProgressView("Loading model recommendations...")
-                    .frame(height: 200)
-            } else if let error = errorMessage {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.title)
-                        .foregroundColor(.red)
-                    Text(error)
-                        .foregroundColor(.red)
-                    Button("Retry") {
-                        loadModels()
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Assistant Name")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("e.g. Jarvis", text: $manager.agentName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body)
+                }
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Role or Title")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("e.g. Personal AI Assistant", text: $manager.agentRole)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body)
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Or choose a preset personality:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(presets, id: \.0) { preset in
+                            Button(action: {
+                                manager.agentName = preset.0
+                                manager.agentRole = preset.1
+                                manager.selectedCharacterId = preset.0.lowercased()
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(preset.0)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                        Text(preset.1)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    if manager.agentName == preset.0 {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                                .padding(10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(manager.agentName == preset.0 ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.agentName == preset.0 ? 2 : 1)
+                                        .background(Color(NSColor.controlBackgroundColor))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
-                .frame(height: 200)
-            } else if let recs = modelRecommendations {
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Awake Model
-                        ModelSelectionCard(
-                            title: "Awake Model",
-                            subtitle: "For active chat and quick responses",
-                            icon: "bolt.fill",
-                            recommendedModel: recs.awake,
-                            selectedModel: selectedAwakeModel,
-                            onSelect: { selectedAwakeModel = $0 }
-                        )
-                        
-                        // Asleep Model
-                        ModelSelectionCard(
-                            title: "Asleep Model",
-                            subtitle: "For deep thinking and complex tasks",
-                            icon: "brain.head.profile",
-                            recommendedModel: recs.asleep,
-                            selectedModel: selectedAsleepModel,
-                            onSelect: { selectedAsleepModel = $0 }
-                        )
-                    }
-                    .padding()
-                }
-                .frame(height: 300)
             }
+            .frame(maxWidth: 520)
+            .padding()
             
             Spacer()
             
-            HStack(spacing: 16) {
-                Button(action: onBack) {
-                    Text("Back")
-                }
-                .buttonStyle(.bordered)
+            HStack {
+                Button("Back", action: onBack)
+                    .buttonStyle(.bordered)
                 
                 Spacer()
                 
-                Button(action: {
-                    guard let awake = selectedAwakeModel, let asleep = selectedAsleepModel else { return }
-                    onboardingManager.selectedAwakeModel = awake
-                    onboardingManager.selectedAsleepModel = asleep
-                    let characterId = onboardingManager.selectedCharacterId ?? "jarvis"
-                    isLoading = true
-                    Task {
-                        do {
-                            try await onboardingManager.saveOnboardingState(
-                                characterId: characterId,
-                                awakeModel: awake,
-                                asleepModel: asleep
-                            )
-                            isLoading = false
-                            onNext()
-                        } catch {
-                            isLoading = false
-                            errorMessage = error.localizedDescription
-                        }
-                    }
-                }) {
-                    Text(onboardingManager.isCompleting ? "Saving..." : "Continue")
+                Button(action: onNext) {
+                    Text("Continue")
+                        .fontWeight(.semibold)
+                        .frame(width: 120)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(selectedAwakeModel == nil || selectedAsleepModel == nil || onboardingManager.isCompleting)
+                .disabled(manager.agentName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+            .frame(maxWidth: 520)
         }
-        .onAppear(perform: loadModels)
-    }
-    
-    static let defaultModelRecommendations = ModelRecommendations(
-        awake: ModelInfo(registryKey: "gemma3:27b-mlx", displayName: "Gemma 3 27B", sizeGb: 18.0, scorePct: 85.0, tokensPerTask: 4096, notes: "Recommended for active chat and quick responses"),
-        asleep: ModelInfo(registryKey: "gemma4:31b-mlx", displayName: "Gemma 4 31B", sizeGb: 22.0, scorePct: 90.0, tokensPerTask: 8192, notes: "Recommended for deep thinking and complex tasks")
-    )
-    
-    private func loadModels() {
-        isLoading = true
-        errorMessage = nil
-        
-        guard let url = URL(string: "http://localhost:8787/api/jaeger-onboarding/models") else {
-            self.modelRecommendations = Self.defaultModelRecommendations
-            self.selectedAwakeModel = Self.defaultModelRecommendations.awake.registryKey
-            self.selectedAsleepModel = Self.defaultModelRecommendations.asleep.registryKey
-            self.isLoading = false
-            return
-        }
-        
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            DispatchQueue.main.async {
-                if let data = data,
-                   let decoded = try? JSONDecoder().decode(ModelRecommendations.self, from: data) {
-                    self.modelRecommendations = decoded
-                    self.selectedAwakeModel = decoded.awake.registryKey
-                    self.selectedAsleepModel = decoded.asleep.registryKey
-                } else {
-                    self.modelRecommendations = Self.defaultModelRecommendations
-                    self.selectedAwakeModel = Self.defaultModelRecommendations.awake.registryKey
-                    self.selectedAsleepModel = Self.defaultModelRecommendations.asleep.registryKey
-                }
-                self.isLoading = false
-            }
-        }.resume()
+        .padding()
     }
 }
 
-struct ModelSelectionCard: View {
-    let title: String
-    let subtitle: String
-    let icon: String
-    let recommendedModel: ModelInfo
-    let selectedModel: String?
-    let onSelect: (String) -> Void
+// MARK: - Step 2: Brain Model Step
+
+struct BrainModelStep: View {
+    var onNext: () -> Void
+    var onBack: () -> Void
+    
+    @ObservedObject private var manager = OnboardingManager.shared
+    
+    let awakeModels = [
+        ("qwen2.5-coder:7b", "Qwen 2.5 Coder (7B)", "Recommended local model for coding & tool execution", "Local (Ollama/Jaeger)"),
+        ("llama3.2:3b", "Llama 3.2 (3B)", "Fast lightweight local companion", "Local (Ollama/Jaeger)"),
+        ("claude-3-5-sonnet", "Claude 3.5 Sonnet", "Anthropic flagship API for reasoning & code", "Cloud API"),
+        ("gpt-4o", "GPT-4o", "OpenAI flagship multimodal intelligence", "Cloud API")
+    ]
+    
+    let asleepModels = [
+        ("llama3.2:1b", "Llama 3.2 (1B)", "Ultra-light model for background housekeeping", "Local"),
+        ("qwen2.5:1.5b", "Qwen 2.5 (1.5B)", "Efficient background task model", "Local")
+    ]
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundColor(.accentColor)
-                    .frame(width: 32)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
+        VStack(spacing: 16) {
+            Text("Next, let's give it a brain")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            Text("Select and install local and cloud models for your assistant.")
+                .foregroundColor(.secondary)
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Active / Awake Model (Primary Intelligence)")
                         .font(.headline)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    
+                    VStack(spacing: 8) {
+                        ForEach(awakeModels, id: \.0) { model in
+                            Button(action: {
+                                manager.selectedAwakeModel = model.0
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Text(model.1)
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                            Text(model.3)
+                                                .font(.caption2)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Capsule().fill(model.3.contains("Local") ? Color.green.opacity(0.2) : Color.blue.opacity(0.2)))
+                                                .foregroundColor(model.3.contains("Local") ? .green : .blue)
+                                        }
+                                        Text(model.2)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: manager.selectedAwakeModel == model.0 ? "largecircle.fill.circle" : "circle")
+                                        .foregroundColor(manager.selectedAwakeModel == model.0 ? .blue : .gray)
+                                }
+                                .padding(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(manager.selectedAwakeModel == model.0 ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.selectedAwakeModel == model.0 ? 2 : 1)
+                                        .background(Color(NSColor.controlBackgroundColor))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
+                    Divider().padding(.vertical, 4)
+                    
+                    Text("Background / Asleep Model (Housekeeping)")
+                        .font(.headline)
+                    
+                    VStack(spacing: 8) {
+                        ForEach(asleepModels, id: \.0) { model in
+                            Button(action: {
+                                manager.selectedAsleepModel = model.0
+                            }) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(model.1)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                        Text(model.2)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: manager.selectedAsleepModel == model.0 ? "largecircle.fill.circle" : "circle")
+                                        .foregroundColor(manager.selectedAsleepModel == model.0 ? .blue : .gray)
+                                }
+                                .padding(10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(manager.selectedAsleepModel == model.0 ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.selectedAsleepModel == model.0 ? 2 : 1)
+                                        .background(Color(NSColor.controlBackgroundColor))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
+                .padding()
+            }
+            .frame(maxWidth: 540)
+            
+            Spacer()
+            
+            HStack {
+                Button("Back", action: onBack)
+                    .buttonStyle(.bordered)
                 
                 Spacer()
                 
-                Badge(text: "Recommended")
-            }
-            
-            Divider()
-            
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("**Model:** \(recommendedModel.displayName)")
-                    Spacer()
-                    Button {
-                        onSelect(recommendedModel.registryKey)
-                    } label: {
-                        Image(systemName: selectedModel == recommendedModel.registryKey ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(selectedModel == recommendedModel.registryKey ? .green : .gray)
-                    }
-                    .buttonStyle(.plain)
+                Button(action: onNext) {
+                    Text("Continue")
+                        .fontWeight(.semibold)
+                        .frame(width: 120)
                 }
-                
-                HStack {
-                    Text("**Size:** \(recommendedModel.sizeGb, specifier: "%.1f") GB")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text("**Score:** \(recommendedModel.scorePct, specifier: "%.0f")%")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Text(recommendedModel.notes)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                .buttonStyle(.borderedProminent)
             }
+            .frame(maxWidth: 540)
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(12)
     }
 }
 
-// MARK: - Completion Step
+// MARK: - Step 3: Network Access Step
+
+struct NetworkAccessStep: View {
+    var onNext: () -> Void
+    var onBack: () -> Void
+    
+    @ObservedObject private var manager = OnboardingManager.shared
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Where do you want to talk to your assistant?")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            Text("Do you want to only talk in the Mac app on device, or would you like to talk to it over the network?")
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 500)
+            
+            VStack(spacing: 14) {
+                // Card 1: Local Mac App
+                Button(action: {
+                    manager.networkMode = "local"
+                }) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "laptopcomputer")
+                            .font(.system(size: 32))
+                            .foregroundColor(.blue)
+                            .frame(width: 40)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("On-Device Mac App Only")
+                                .font(.headline)
+                            Text("Binds WebUI server to local loopback (127.0.0.1). Maximum privacy; accessible only on this Mac.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: manager.networkMode == "local" ? "checkmark.circle.fill" : "circle")
+                            .font(.title2)
+                            .foregroundColor(manager.networkMode == "local" ? .blue : .gray)
+                    }
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(manager.networkMode == "local" ? Color.blue : Color.gray.opacity(0.3), lineWidth: manager.networkMode == "local" ? 2 : 1)
+                            .background(Color(NSColor.controlBackgroundColor))
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                // Card 2: Network WebUI Server
+                Button(action: {
+                    manager.networkMode = "network"
+                }) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "network")
+                            .font(.system(size: 32))
+                            .foregroundColor(.green)
+                            .frame(width: 40)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Over the Network (WebUI Server)")
+                                .font(.headline)
+                            Text("Binds WebUI server to network IP (0.0.0.0). Access your assistant from any browser on your home network.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: manager.networkMode == "network" ? "checkmark.circle.fill" : "circle")
+                            .font(.title2)
+                            .foregroundColor(manager.networkMode == "network" ? .green : .gray)
+                    }
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(manager.networkMode == "network" ? Color.green : Color.gray.opacity(0.3), lineWidth: manager.networkMode == "network" ? 2 : 1)
+                            .background(Color(NSColor.controlBackgroundColor))
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                Toggle("Auto-launch WebUI server when ARES opens", isOn: $manager.autoLaunchWebUI)
+                    .font(.subheadline)
+                    .padding(.top, 8)
+            }
+            .frame(maxWidth: 520)
+            
+            Spacer()
+            
+            HStack {
+                Button("Back", action: onBack)
+                    .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button(action: onNext) {
+                    Text("Continue")
+                        .fontWeight(.semibold)
+                        .frame(width: 120)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: 520)
+        }
+        .padding()
+    }
+}
+
+// MARK: - Step 4: Tailscale Step
+
+struct TailscaleStep: View {
+    var onNext: () -> Void
+    var onBack: () -> Void
+    
+    @ObservedObject private var manager = OnboardingManager.shared
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Reach your assistant anywhere")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            Text("Do you want to reach this on external devices anywhere?")
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            
+            VStack(spacing: 16) {
+                Button(action: {
+                    manager.enableTailscale.toggle()
+                }) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "globe.americas.fill")
+                            .font(.system(size: 36))
+                            .foregroundColor(.purple)
+                            .frame(width: 44)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Enable Tailscale Remote Access")
+                                .font(.headline)
+                            Text("Connect securely to your assistant over a private Tailscale mesh network from any phone, laptop, or browser worldwide.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Toggle("", isOn: $manager.enableTailscale)
+                            .labelsHidden()
+                    }
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(manager.enableTailscale ? Color.purple : Color.gray.opacity(0.3), lineWidth: manager.enableTailscale ? 2 : 1)
+                            .background(Color(NSColor.controlBackgroundColor))
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                if manager.enableTailscale {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.purple)
+                        Text("Tailscale integration will expose your WebUI to your authenticated Tailnet.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.1)))
+                }
+            }
+            .frame(maxWidth: 520)
+            
+            Spacer()
+            
+            HStack {
+                Button("Back", action: onBack)
+                    .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button(action: onNext) {
+                    Text("Complete Setup")
+                        .fontWeight(.semibold)
+                        .frame(width: 140)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: 520)
+        }
+        .padding()
+    }
+}
+
+// MARK: - Step 5: Completion Step
 
 struct CompletionStep: View {
     var onFinish: () -> Void
+    
+    @ObservedObject private var manager = OnboardingManager.shared
     
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
             
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 80))
+                .font(.system(size: 72))
                 .foregroundColor(.green)
             
             Text("Setup Complete!")
-                .font(.title)
-                .fontWeight(.semibold)
+                .font(.system(size: 28, weight: .bold))
             
-            Text("Your JaegerAI Companion is ready")
-                .font(.title2)
+            Text("Your ARES AI Assistant is configured and ready.")
                 .foregroundColor(.secondary)
             
-            VStack(alignment: .leading, spacing: 12) {
-                Text("✓ Character configured")
-                Text("✓ Models selected")
-                Text("✓ Ready to assist")
+            VStack(alignment: .leading, spacing: 10) {
+                SummaryRow(label: "Assistant Name", value: manager.agentName)
+                SummaryRow(label: "Awake Brain", value: manager.selectedAwakeModel ?? "qwen2.5-coder:7b")
+                SummaryRow(label: "Asleep Brain", value: manager.selectedAsleepModel ?? "llama3.2:1b")
+                SummaryRow(label: "Network Mode", value: manager.networkMode == "local" ? "On-Device Mac App (127.0.0.1)" : "Network WebUI (0.0.0.0)")
+                SummaryRow(label: "Remote Access", value: manager.enableTailscale ? "Tailscale Enabled" : "Disabled")
             }
-            .frame(maxWidth: 300)
-            .padding()
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+            .frame(maxWidth: 480)
             
             Spacer()
             
             Button(action: onFinish) {
-                Text("Enter ARES")
+                Text("Open ARES")
                     .fontWeight(.semibold)
-                    .frame(width: 200)
+                    .frame(width: 200, height: 24)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -568,81 +666,19 @@ struct CompletionStep: View {
     }
 }
 
-// MARK: - Supporting Types
-
-struct JaegerCharacter: Codable, Identifiable {
-    let id: String
-    let name: String
-    let description: String
-    let role: String
-    let voiceTone: String
-    let voiceId: String
-    
-    enum CodingKeys: String, CodingKey {
-        case id, name, description, role
-        case voiceTone = "voice_tone"
-        case voiceId = "voice_id"
-    }
-}
-
-struct CharacterResponse: Codable {
-    let characters: [JaegerCharacter]
-}
-
-struct ModelInfo: Codable {
-    let registryKey: String
-    let displayName: String
-    let sizeGb: Double
-    let scorePct: Double
-    let tokensPerTask: Int
-    let notes: String
-    
-    enum CodingKeys: String, CodingKey {
-        case registryKey = "registry_key"
-        case displayName = "display_name"
-        case sizeGb = "size_gb"
-        case scorePct = "score_pct"
-        case tokensPerTask = "tokens_per_task"
-        case notes
-    }
-}
-
-struct ModelRecommendations: Codable {
-    let awake: ModelInfo
-    let asleep: ModelInfo
-    // discovered field omitted - not used in onboarding
-}
-
-struct Badge: View {
-    let text: String
+struct SummaryRow: View {
+    let label: String
+    let value: String
     
     var body: some View {
-        Text(text)
-            .font(.caption)
-            .fontWeight(.semibold)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.green.opacity(0.2))
-            .foregroundColor(.green)
-            .cornerRadius(4)
-    }
-}
-
-// Helper for flexible dictionary
-struct CodableDictionary<K: Codable & Hashable, V: Codable>: Codable {
-    let dictionary: [K: V]
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        dictionary = try container.decode([K: V].self)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(dictionary)
-    }
-    
-    subscript(key: K) -> V? {
-        dictionary[key]
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+        }
     }
 }
