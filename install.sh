@@ -456,6 +456,10 @@ case "\$CMD" in
         echo "Resetting onboarding state... Opening ARES onboarding wizard."
         exec open "$ARES_APP"
         ;;
+    uninstall)
+        shift
+        exec bash "\$ARES_SRC/scripts/uninstall.sh" "\$@"
+        ;;
     start|"")
         shift
         if [ "\${1:-}" = "--cli" ] || [ "\${1:-}" = "--server" ]; then
@@ -471,7 +475,7 @@ case "\$CMD" in
         ;;
     *)
         echo "Unknown ARES command: \$CMD"
-        echo "Available commands: start, setup, update, doctor"
+        echo "Available commands: start, setup, update, doctor, uninstall"
         exit 1
         ;;
 esac
