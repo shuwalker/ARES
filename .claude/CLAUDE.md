@@ -45,11 +45,11 @@ Use placeholders, detected values, or user-selected paths. In source code, prefe
 Keep the merged layout intentional:
 
 - `Package.swift` — Swift package manifest for the native app targets.
-- `ARES-Desktop/Sources/ARESCore/` — protocol contracts, shared models, utilities.
-- `ARES-Desktop/Sources/ARES/` — native macOS app target (WKWebView shell over the web app).
-- `ARES-Desktop/Tests/ARESTests/` — native app tests.
+- `ARES-Mac_os/Sources/ARESCore/` — protocol contracts, shared models, utilities.
+- `ARES-Mac_os/Sources/ARES/` — native macOS app target (WKWebView shell over the web app).
+- `ARES-Mac_os/Tests/ARESTests/` — native app tests.
 - `webui/` — the ARES web app: Python controller/API plus the React/Vite application in `frontend/`. This is the only web app tree. Never recreate `api/`, `frontend/`, `server.py`, or `tests/` at the repo root.
-- `src-tauri/` — Windows/Tauri wrapper surface.
+- `ARES-Windows/src-tauri/` — Windows/Tauri wrapper surface.
 - `tools/` — standalone utilities.
 - `docs/` — public documentation and assets.
 
@@ -86,7 +86,7 @@ See `docs/product-vision.md` for the locked product decisions.
 
 - Write production-quality, tested code.
 - No stubs or placeholder implementations for user-facing setup paths.
-- Follow existing patterns in `webui/api/`, `webui/frontend/src/`, and `ARES-Desktop/Sources/`.
+- Follow existing patterns in `webui/api/`, `webui/frontend/src/`, and `ARES-Mac_os/Sources/`.
 - New WebUI API endpoints must include proper authentication/owner-scope checks.
 - Preserve hot-reload behavior (`ARES_WEBUI_RELOAD=1`).
 - System-category or approval-required native tools must go through the approval broker/consent path.

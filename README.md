@@ -166,14 +166,14 @@ interface.
 ```
 ARES/
 ├── Package.swift          # Swift Package Manager manifest
-├── ARES-Desktop/          # Native macOS app + ARESCore contracts
+├── ARES-Mac_os/           # Native macOS app + ARESCore contracts
 │   ├── Sources/ARES/      # SwiftUI/WKWebView shell and native app surface
 │   ├── Sources/ARESCore/  # Shared models, contracts, discovery, utilities
 │   └── Tests/             # Native app tests
 ├── webui/                 # ARES Web UI (Python web server)
 │   ├── api/               # Backend — server, streaming, auth, hot-reload
 │   ├── frontend/          # React/Vite frontend, public assets, and API adapters
-│   ├── server.py          # Entry point
+│   ├── fastapi_app/       # FastAPI application and HTTP/WebSocket routers
 │   ├── requirements.txt   # Python dependencies
 │   └── tests/             # Test suite
 ├── tools/                 # Standalone tools
