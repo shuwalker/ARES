@@ -74,7 +74,7 @@ def test_openrouter_cost_history_happy_path(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     call_count = {"n": 0}
 
@@ -137,7 +137,7 @@ def test_openrouter_cost_history_deltas_from_cumulative(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     # Pre-seed two historical snapshots
     snap_dir = tmp_path / "cost-snapshots"
@@ -196,7 +196,7 @@ def test_openrouter_cost_history_reset_uses_fresh_series_delta(monkeypatch, tmp_
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     snap_dir = tmp_path / "cost-snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)
@@ -236,7 +236,7 @@ def test_cost_snapshot_append_uses_lock(monkeypatch, tmp_path):
     """Snapshot append serializes the read-modify-write critical section."""
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     entered = {"count": 0}
 
@@ -264,7 +264,7 @@ def test_cost_snapshot_append_uses_file_lock(monkeypatch, tmp_path):
     """Snapshot append takes a provider-specific file lock for multi-process workers."""
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     calls = []
 
@@ -297,7 +297,7 @@ def test_openrouter_cost_history_no_key(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     def explode(*_a, **_kw):
         raise AssertionError("should not call network without a key")
@@ -324,7 +324,7 @@ def test_cost_history_unsupported_provider(monkeypatch, tmp_path):
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
     old_cfg, old_mtime = _with_config(model={"provider": "anthropic"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     try:
         result = providers.get_provider_cost_history("anthropic", days=7)
@@ -342,7 +342,7 @@ def test_cost_history_missing_provider_param(monkeypatch, tmp_path):
     """Empty provider parameter returns a clear error."""
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     result = providers.get_provider_cost_history("", days=7)
     assert result["ok"] is False
@@ -363,7 +363,7 @@ def test_openrouter_cost_history_upstream_failure_degrades_gracefully(monkeypatc
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     # Pre-seed a snapshot
     snap_dir = tmp_path / "cost-snapshots"
@@ -402,7 +402,7 @@ def test_openrouter_cost_history_timeout_is_safe(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     def fake_urlopen(_req, timeout=None):
         raise TimeoutError("slow secret")
@@ -430,7 +430,7 @@ def test_openrouter_cost_history_corrupt_snapshot_file(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     # Write a corrupt file
     snap_dir = tmp_path / "cost-snapshots"
@@ -470,7 +470,7 @@ def test_openrouter_cost_history_same_day_idempotent(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     call_count = {"n": 0}
 
@@ -517,7 +517,7 @@ def test_openrouter_cost_history_window_days_truncation(monkeypatch, tmp_path):
     (tmp_path / ".env").write_text("OPENROUTER_API_KEY=test-or-key\n", encoding="utf-8")
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     # Pre-seed 5 historical snapshots
     snap_dir = tmp_path / "cost-snapshots"
@@ -567,7 +567,7 @@ def test_cost_history_uses_no_real_network(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     old_cfg, old_mtime = _with_config(model={"provider": "openrouter"})
 
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     # Without a key, no network call is made at all
     def explode(*_a, **_kw):

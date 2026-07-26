@@ -8,7 +8,7 @@ from api.backends.catalog import (
     infer_model_location,
     model_entry,
 )
-from api.backends.hermes import HermesBackend
+from api.providers.hermes.backend import HermesBackend
 from api.backends.jros import JROSBackend
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import builtins
 
 import api.config as config
-import api.providers as providers
+import api.provider_credentials as providers
 
 
 def _force_env_fallback(monkeypatch):

@@ -18,7 +18,7 @@ from unittest import mock
 import pytest
 
 import api.config as config
-import api.providers as providers_mod
+import api.provider_credentials as providers_mod
 
 
 # ---------------------------------------------------------------------------

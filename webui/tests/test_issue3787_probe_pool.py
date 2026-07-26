@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from api.providers import (
+from api.provider_credentials import (
     _ACCOUNT_USAGE_WORKERS_PER_HOME,
     _account_usage_worker_pool,
     _account_usage_worker_pool_lock,
@@ -149,7 +149,7 @@ class TestProbeWorkerPoolPerHome(unittest.TestCase):
             initial_count = len(_account_usage_worker_pool)
             self.assertEqual(initial_count, 2)
 
-        with mock.patch("api.providers._get_ares_home", return_value=home1):
+        with mock.patch("api.provider_credentials._get_ares_home", return_value=home1):
             invalidate_account_usage_status_cache(provider_id="anthropic")
             time.sleep(0.2)
 
@@ -384,7 +384,7 @@ class TestProbeWorkerPoolPerHome(unittest.TestCase):
                 result["worker"]._lock.release()
 
         def run_invalidation():
-            with mock.patch("api.providers._get_ares_home", return_value=home):
+            with mock.patch("api.provider_credentials._get_ares_home", return_value=home):
                 invalidate_account_usage_status_cache(provider_id="anthropic")
             invalidation_done.set()
 

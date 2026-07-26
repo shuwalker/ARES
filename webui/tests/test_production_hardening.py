@@ -176,7 +176,7 @@ def test_gemini_probe_uses_header_not_query_string(monkeypatch):
 
 
 def test_cli_and_cloud_backends_use_their_selected_runtime_worker():
-    from api.backends.base import run_agentic_backend_streaming
+    from api.providers.agentic_backend import run_agentic_backend_streaming
     from api.backends.cli_backends import ClaudeLocalBackend, OpenAICloudBackend
 
     assert ClaudeLocalBackend().get_worker_target()[0] is run_agentic_backend_streaming

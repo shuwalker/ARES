@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from api.providers import _local_pool_snapshot, get_provider_quota
+from api.provider_credentials import _local_pool_snapshot, get_provider_quota
 
 
 def _is_ambient_gh_cli_entry_real(source, label, key_source):
@@ -311,7 +311,7 @@ class TestGetProviderQuotaLocalPool(unittest.TestCase):
         pool.entries.return_value = [entry]
 
         with _fake_credential_pool( return_value=pool):
-            with patch("api.providers._active_provider_id", return_value="google"):
+            with patch("api.provider_credentials._active_provider_id", return_value="google"):
                 result = get_provider_quota("google")
                 assert result["ok"] is True
                 assert result["provider"] == "google"
@@ -336,7 +336,7 @@ class TestGetProviderQuotaLocalPool(unittest.TestCase):
         pool.entries.return_value = [entry]
 
         with _fake_credential_pool( return_value=pool):
-            with patch("api.providers._active_provider_id", return_value="openai"):
+            with patch("api.provider_credentials._active_provider_id", return_value="openai"):
                 result = get_provider_quota("openai")
                 assert result["ok"] is False
                 assert result["provider"] == "openai"
@@ -348,7 +348,7 @@ class TestGetProviderQuotaLocalPool(unittest.TestCase):
     def test_get_provider_quota_falls_through_to_unsupported_when_no_pool(self):
         """get_provider_quota returns unsupported when no pool exists for provider."""
         with _fake_credential_pool( return_value=None):
-            with patch("api.providers._active_provider_id", return_value="some-other-provider"):
+            with patch("api.provider_credentials._active_provider_id", return_value="some-other-provider"):
                 result = get_provider_quota("some-other-provider")
                 assert result["ok"] is False
                 assert result["status"] == "unsupported"
@@ -359,14 +359,14 @@ class TestGetProviderQuotaLocalPool(unittest.TestCase):
         pool = MagicMock()
         pool.entries.return_value = []
         with _fake_credential_pool( return_value=pool):
-            with patch("api.providers._active_provider_id", return_value="custom-provider"):
+            with patch("api.provider_credentials._active_provider_id", return_value="custom-provider"):
                 result = get_provider_quota("custom-provider")
                 assert result["ok"] is False
                 assert result["status"] == "unsupported"
 
     def test_allowlist_providers_bypass_local_pool(self):
         """get_provider_quota uses probe path for allowlist providers, not local pool."""
-        with patch("api.providers._provider_account_usage_status") as mock_probe:
+        with patch("api.provider_credentials._provider_account_usage_status") as mock_probe:
             with _fake_credential_pool(return_value=None) as mock_load_pool:
                 mock_probe.return_value = {
                     "ok": True,
@@ -379,7 +379,7 @@ class TestGetProviderQuotaLocalPool(unittest.TestCase):
 
     def test_allowlist_anthropic_uses_probe_path(self):
         """get_provider_quota uses probe path for anthropic, not local pool."""
-        with patch("api.providers._provider_account_usage_status") as mock_probe:
+        with patch("api.provider_credentials._provider_account_usage_status") as mock_probe:
             with _fake_credential_pool(return_value=None) as mock_load_pool:
                 mock_probe.return_value = {
                     "ok": True,
@@ -393,7 +393,7 @@ class TestGetProviderQuotaLocalPool(unittest.TestCase):
     def test_openrouter_uses_api_key_path_not_local_pool(self):
         """get_provider_quota uses openrouter API-key path, not local pool."""
         with _fake_credential_pool(return_value=None) as mock_load_pool:
-            with patch("api.providers._get_provider_api_key", return_value=None):
+            with patch("api.provider_credentials._get_provider_api_key", return_value=None):
                 result = get_provider_quota("openrouter")
                 assert result["status"] == "no_key"
                 mock_load_pool.assert_not_called()

@@ -618,7 +618,7 @@ def test_ambient_gh_cli_not_detectable_by_provider_has_key(monkeypatch, tmp_path
     })
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    from api.providers import _provider_has_key
+    from api.provider_credentials import _provider_has_key
 
     assert _provider_has_key("copilot") is False, (
         "copilot must NOT be marked as configured when only ambient gh_cli token exists"
@@ -635,7 +635,7 @@ def test_ambient_gh_env_not_detectable_by_provider_has_key(monkeypatch, tmp_path
     })
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    from api.providers import _provider_has_key
+    from api.provider_credentials import _provider_has_key
 
     assert _provider_has_key("copilot") is False, (
         "copilot must NOT be marked as configured when only GITHUB_TOKEN env entry exists"
@@ -656,7 +656,7 @@ def test_ambient_key_source_not_detectable_by_provider_has_key(monkeypatch, tmp_
     })
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    from api.providers import _provider_has_key
+    from api.provider_credentials import _provider_has_key
 
     assert _provider_has_key("copilot") is False, (
         "copilot must NOT be marked as configured when only key_source=gh auth token entry exists"
@@ -682,7 +682,7 @@ def test_custom_provider_explicit_credential_detected_by_provider_has_key(monkey
     })
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    from api.providers import _provider_has_key
+    from api.provider_credentials import _provider_has_key
 
     assert _provider_has_key("custom:bothub") is True, (
         "custom:bothub with explicit pool entry must be detected as configured"
@@ -727,7 +727,7 @@ def test_custom_provider_detected_by_get_providers(monkeypatch, tmp_path):
     config.invalidate_models_cache()
 
     try:
-        from api.providers import get_providers
+        from api.provider_credentials import get_providers
 
         providers = get_providers()
         bothub = None
@@ -827,7 +827,7 @@ def test_get_provider_api_key_prefers_runtime_api_key_over_access_token(monkeypa
     })
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    from api.providers import _get_provider_api_key
+    from api.provider_credentials import _get_provider_api_key
 
     key = _get_provider_api_key("custom:bothub")
     assert key == "sk-preferred-runtime-key", (
@@ -851,7 +851,7 @@ def test_get_provider_api_key_falls_back_to_access_token(monkeypatch, tmp_path):
     })
     monkeypatch.setattr(profiles, "get_active_ares_home", lambda: tmp_path)
 
-    from api.providers import _get_provider_api_key
+    from api.provider_credentials import _get_provider_api_key
 
     key = _get_provider_api_key("custom:bothub")
     assert key == "sk-fallback-access-token", (

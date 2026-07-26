@@ -74,6 +74,16 @@ class AdapterRegistry:
 
     def execution_adapter(self, adapter_id: str) -> BaseLLMAdapter:
         normalized = self.normalize_id(adapter_id)
+        if not normalized:
+            # ARES elects no worker by default, so this is the expected state on
+            # a fresh install rather than a fault. Say so in terms the user can
+            # act on instead of reporting an empty connection id.
+            raise AdapterError(
+                409,
+                "No AI provider is selected yet. Choose one on the Connections "
+                "page to start chatting.",
+                code="no_runtime_selected",
+            )
         adapter = self._execution.get(normalized)
         if adapter is None:
             raise AdapterError(

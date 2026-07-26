@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from api.backend_selector import VALID_BACKENDS, normalize_backend
-from api.backends.base import AgenticBackend
+from api.providers.agentic_backend import AgenticBackend
 from api.backends.jros import JROSBackend
 from api.backends.router import get_default_router, BackendRouter
 from api.backends.cli_backends import BackendRegistry
@@ -69,7 +69,7 @@ def test_app_automation_requires_target_application(monkeypatch):
 
 
 def test_hermes_probe_reports_hermes_version_line(monkeypatch):
-    from api.backends import hermes
+    from api.providers.hermes import backend as hermes
 
     monkeypatch.setattr(hermes, "_hermes_cli", lambda: "/tmp/hermes")
     monkeypatch.setattr(

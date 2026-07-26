@@ -27,22 +27,11 @@ import {
 } from "@/components/ui/card";
 import { aresApi } from "@/shared/ares-api";
 import { readableError } from "@/shared/api-client";
+import { ConnectionStatusBadge, isBlockingState } from "@/components/ConnectionStatusBadge";
 import { useAres } from "@/shared/ares-context";
 import type { BackendInfo, RuntimeConnection, WorkerRanking } from "@/shared/contracts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-function statusDot(state: "connected" | "needs_attention" | "offline" | boolean): string {
-  if (state === "connected" || state === true) return "bg-emerald-500";
-  if (state === "needs_attention") return "bg-amber-500";
-  return "bg-muted-foreground/50";
-}
-
-function connectionLabel(state: "connected" | "needs_attention" | "offline"): string {
-  if (state === "connected") return "Connected";
-  if (state === "needs_attention") return "Needs Attention";
-  return "Offline";
-}
 
 function backendStatusLabel(available: boolean): string {
   return available ? "Available" : "Unavailable";
@@ -81,10 +70,18 @@ function BackendCard({ backend }: { backend: BackendInfo }) {
               variant={backend.available ? "outline" : "secondary"}
               className="text-[10px]"
             >
-              <span
-                className={`mr-1.5 inline-block size-1.5 rounded-full ${statusDot(backend.available)}`}
-              />
-              {backendStatusLabel(backend.available)}
+              {backend.state ? (
+                <ConnectionStatusBadge state={backend.state} className="mr-0.5" />
+              ) : (
+                <>
+                  <ConnectionStatusBadge
+                    state={backend.available ? "connected" : "offline"}
+                    showLabel={false}
+                    className="mr-1.5"
+                  />
+                  {backendStatusLabel(backend.available)}
+                </>
+              )}
             </Badge>
             {modelCount > 0 && (
               <Badge variant="secondary" className="text-[10px]">
@@ -184,15 +181,10 @@ function ConnectionCard({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Badge
-              variant={
-                isConnected ? "outline" : connection.state === "needs_attention" ? "outline" : "secondary"
-              }
-              className={`text-[10px] ${isConnected ? "text-status-available" : connection.state === "needs_attention" ? "text-status-limited" : "text-status-unavailable"}`}
+              variant={isBlockingState(connection.state) ? "secondary" : "outline"}
+              className="text-[10px]"
             >
-              <span
-                className={`mr-1.5 inline-block size-1.5 rounded-full ${statusDot(connection.state)}`}
-              />
-              {connectionLabel(connection.state)}
+              <ConnectionStatusBadge state={connection.state} />
             </Badge>
             {connection.selected && (
               <Badge variant="secondary" className="text-[10px]">

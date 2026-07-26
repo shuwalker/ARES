@@ -325,7 +325,7 @@ def _clear_anthropic_env_values(ares_home: Path) -> None:
     cannot leave or partially clear stale Anthropic fallbacks.
     """
     try:
-        from api.providers import _write_env_file
+        from api.provider_credentials import _write_env_file
 
         _write_env_file(
             Path(ares_home) / ".env",

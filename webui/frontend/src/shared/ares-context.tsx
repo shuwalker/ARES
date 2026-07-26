@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { readableError } from "@/shared/api-client";
+import { providerErrorContext, readableError, type ProviderErrorContext } from "@/shared/api-client";
 import { uploadFile } from "@/shared/api-client";
 import { aresApi } from "@/shared/ares-api";
 import {
@@ -43,6 +43,8 @@ interface AresContextValue {
   streamTools: string[];
   streamState: "idle" | "starting" | "streaming";
   chatNotice: string;
+  /** Provider context when the last send failed for a provider reason, else null. */
+  chatNoticeProvider: ProviderErrorContext | null;
   refresh: () => Promise<void>;
   selectSession: (id: string) => void;
   createSession: (workspace?: string) => Promise<ConversationSession>;
@@ -72,6 +74,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
   const [streamTools, setStreamTools] = useState<string[]>([]);
   const [streamState, setStreamState] = useState<"idle" | "starting" | "streaming">("idle");
   const [chatNotice, setChatNotice] = useState("");
+  const [chatNoticeProvider, setChatNoticeProvider] = useState<ProviderErrorContext | null>(null);
   const activeStream = useRef("");
   const closeStream = useRef<null | (() => void)>(null);
   const sendInFlight = useRef(false);
@@ -325,6 +328,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
     sendInFlight.current = true;
     const generation = ++streamGeneration.current;
     setChatNotice("");
+    setChatNoticeProvider(null);
     setStreamText("");
     setStreamReasoning("");
     setStreamTools([]);
@@ -365,6 +369,7 @@ export function AresProvider({ children }: { children: ReactNode }) {
       if (generation === streamGeneration.current) {
         sendInFlight.current = false;
         setStreamState("idle");
+        setChatNoticeProvider(providerErrorContext(error));
         setChatNotice(readableError(error, "No worker is available. Your Companion interface is still operational."));
       }
     }
@@ -382,8 +387,8 @@ export function AresProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({
     snapshot, currentSession, selectedSessionId, streamText, streamReasoning, streamTools,
-    streamState, chatNotice, refresh, selectSession, createSession, sendMessage, cancelResponse, saveAssistantName,
-  }), [snapshot, currentSession, selectedSessionId, streamText, streamReasoning, streamTools, streamState, chatNotice, refresh, selectSession, createSession, sendMessage, cancelResponse, saveAssistantName]);
+    streamState, chatNotice, chatNoticeProvider, refresh, selectSession, createSession, sendMessage, cancelResponse, saveAssistantName,
+  }), [snapshot, currentSession, selectedSessionId, streamText, streamReasoning, streamTools, streamState, chatNotice, chatNoticeProvider, refresh, selectSession, createSession, sendMessage, cancelResponse, saveAssistantName]);
 
   return <AresContext.Provider value={value}>{children}</AresContext.Provider>;
 }

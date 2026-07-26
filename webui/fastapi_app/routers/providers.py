@@ -21,7 +21,7 @@ router = APIRouter(tags=["providers"])
 @router.get("/api/providers")
 def providers(identity: Annotated[RequestIdentity, Depends(require_identity)]):
     from api.profiles import profile_env_for_active_request_readonly
-    from api.providers import get_providers
+    from api.provider_credentials import get_providers
 
     with profile_scope(identity.profile):
         with profile_env_for_active_request_readonly("/api/providers"):
@@ -33,7 +33,7 @@ def set_provider(
     payload: dict[str, Any],
     identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
 ):
-    from api.providers import set_provider_key
+    from api.provider_credentials import set_provider_key
 
     provider = str(payload.get("provider") or "").strip().lower()
     if not provider:
@@ -52,7 +52,7 @@ def delete_provider(
     payload: dict[str, Any],
     identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
 ):
-    from api.providers import remove_provider_key
+    from api.provider_credentials import remove_provider_key
 
     provider = str(payload.get("provider") or "").strip().lower()
     if not provider:
@@ -85,7 +85,7 @@ def provider_quota(
     refresh: bool = False,
 ):
     from api.profiles import profile_env_for_active_request_readonly
-    from api.providers import get_provider_quota
+    from api.provider_credentials import get_provider_quota
 
     with profile_scope(identity.profile):
         with profile_env_for_active_request_readonly("/api/provider/quota"):
@@ -98,7 +98,7 @@ def provider_cost_history(
     provider: str | None = None,
     days: int = Query(default=7, ge=1, le=365),
 ):
-    from api.providers import get_provider_cost_history
+    from api.provider_credentials import get_provider_cost_history
 
     with profile_scope(identity.profile):
         return get_provider_cost_history(provider, days)

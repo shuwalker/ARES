@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, cast
 
-from .base import AgenticBackend
+from api.providers.agentic_backend import AgenticBackend
 
 
 class JROSBackend(AgenticBackend):

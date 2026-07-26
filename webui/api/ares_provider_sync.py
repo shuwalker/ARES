@@ -101,7 +101,7 @@ def provider_runtime_status(provider: str, base_url: str | None = None) -> dict[
             }
     if normalized == "ollama-cloud":
         try:
-            from api.providers import provider_has_usable_credential
+            from api.provider_credentials import provider_has_usable_credential
 
             configured = bool(provider_has_usable_credential("ollama-cloud"))
         except Exception:

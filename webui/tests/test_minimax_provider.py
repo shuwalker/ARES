@@ -242,7 +242,7 @@ def test_minimax_cn_empty_config_provider_gets_static_models(monkeypatch, tmp_pa
 
 def test_minimax_cn_key_can_be_managed_from_provider_settings():
     """Provider settings should use the Ares Agent env var for minimax-cn."""
-    from api.providers import _PROVIDER_ENV_VAR
+    from api.provider_credentials import _PROVIDER_ENV_VAR
 
     assert _PROVIDER_ENV_VAR.get('minimax-cn') == 'MINIMAX_CN_API_KEY'
 
