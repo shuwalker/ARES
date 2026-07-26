@@ -386,7 +386,11 @@ _pid_listens_on_port() {
   local pid="$1" port="$2"
   [[ "${pid}" =~ ^[0-9]+$ && "${port}" =~ ^[0-9]+$ ]] || return 2
   if command -v lsof >/dev/null 2>&1; then
-    if lsof -nP -p "${pid}" -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+    # -a is required: lsof ORs its selectors by default, so without it
+    # `-p PID -iTCP:PORT` matches "files of PID **or** anyone on PORT" and
+    # reports a match whenever *any* process holds the port — which made this
+    # answer "yes, that PID owns it" for a PID that had already exited.
+    if lsof -nP -a -p "${pid}" -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
       return 0   # PID is listening on that port → real conflict
     fi
     return 1     # PID is alive but NOT listening on that port → no conflict
@@ -449,8 +453,14 @@ start_cmd() {
   fi
   _clear_stale_pid >/dev/null 2>&1 || true
 
-  local python_exe pid
+  local python_exe pid prior_owner=""
   python_exe="$(_find_python)"
+  # Who holds the port *before* we spawn. Sampled once rather than polled: it
+  # decides how patient the readiness wait below should be, and repeating an
+  # lsof every 100ms made startup slower than the thing it was checking.
+  if command -v lsof >/dev/null 2>&1; then
+    prior_owner="$(lsof -ti tcp:"${CTL_PORT}" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+  fi
   : >> "${LOG_FILE}"
   (
     cd "${REPO_ROOT}"
@@ -462,15 +472,61 @@ start_cmd() {
 
   printf '%s\n' "${pid}" > "${PID_FILE}"
   _write_state "${pid}" "${CTL_HOST}" "${CTL_PORT}" "${python_exe}"
-  sleep 0.15
-  if ! _is_alive "${pid}"; then
-    echo "[ctl] Ares WebUI failed to stay running. Log: ${LOG_FILE}" >&2
-    rm -f "${PID_FILE}" "${STATE_FILE}"
-    return 1
+
+  # Wait for the server to actually own the port, not merely to still exist.
+  #
+  # This used to sleep 0.15s and check liveness only. Uvicorn needs longer than
+  # that to attempt its bind, so a start that was about to die of "address
+  # already in use" was still alive at the check and got reported as success —
+  # the caller saw "Started (PID …)" for a process that was gone a second later,
+  # while an older server kept serving the port. Probing /health is not enough
+  # either: that older server answers it happily.
+  # Patience depends on whether the port was already taken. A free port means
+  # the only thing worth waiting for is "did it die immediately"; a taken one
+  # means we must see our process actually win the socket before believing it.
+  local waited=0 listens grace=10 limit=30
+  if [[ -n "${prior_owner}" ]]; then
+    grace="${limit}"
   fi
-  echo "[ctl] Started Ares WebUI (PID ${pid})"
-  echo "[ctl] Bound: ${CTL_HOST}:${CTL_PORT}"
-  echo "[ctl] Log: ${LOG_FILE}"
+  while (( waited < limit )); do
+    if ! _is_alive "${pid}"; then
+      echo "[ctl] Ares WebUI exited during startup. Log: ${LOG_FILE}" >&2
+      tail -n 5 "${LOG_FILE}" 2>/dev/null | sed 's/^/[ctl]   /' >&2
+      rm -f "${PID_FILE}" "${STATE_FILE}"
+      return 1
+    fi
+    # `|| listens=$?` is required: this script runs under `set -e`, so calling
+    # a function that returns non-zero as a bare command aborts before the
+    # status can be captured.
+    listens=0
+    _pid_listens_on_port "${pid}" "${CTL_PORT}" || listens=$?
+    # 0 = ours, 1 = alive but not bound yet, 2 = cannot determine (no lsof).
+    if (( listens == 0 )) || (( listens == 2 )); then
+      echo "[ctl] Started Ares WebUI (PID ${pid})"
+      echo "[ctl] Bound: ${CTL_HOST}:${CTL_PORT}"
+      echo "[ctl] Log: ${LOG_FILE}"
+      return 0
+    fi
+    if (( waited >= grace )); then
+      break
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+
+  if [[ -z "${prior_owner}" ]]; then
+    # Nothing else held the port and the process is still alive: a server still
+    # warming up. Report success rather than inventing a failure.
+    echo "[ctl] Started Ares WebUI (PID ${pid})"
+    echo "[ctl] Bound: ${CTL_HOST}:${CTL_PORT}"
+    echo "[ctl] Log: ${LOG_FILE}"
+    return 0
+  fi
+
+  echo "[ctl] Ares WebUI (PID ${pid}) never bound ${CTL_HOST}:${CTL_PORT}." >&2
+  echo "[ctl] PID ${prior_owner} already holds that port. Log: ${LOG_FILE}" >&2
+  tail -n 5 "${LOG_FILE}" 2>/dev/null | sed 's/^/[ctl]   /' >&2
+  return 1
 }
 
 stop_cmd() {
