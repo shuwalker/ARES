@@ -1,7 +1,7 @@
 """JROS Backend Adapter for ARES.
 
 This adapter wraps the ARES-side JROS gateway bridge
-(``api.jros_gateway_chat``). JROS itself is never modified.
+(``api.providers.jaeger.gateway_streaming``). JROS itself is never modified.
 """
 
 from __future__ import annotations
@@ -17,13 +17,15 @@ class JROSBackend(AgenticBackend):
     supports_persona = True
 
     def is_available(self) -> bool:
-        from api.backend_selector import is_jros_available
+        # Same readiness check the adapter registry uses, so the two registries
+        # cannot disagree about JaegerAI.
+        from api.providers.jaeger.status import check_status
 
-        return is_jros_available()
+        return check_status().available
 
     def get_worker_target(self) -> tuple:
         """Return the JROS streaming worker target."""
-        from api.jros_gateway_chat import run_jros_streaming
+        from api.providers.jaeger.gateway_streaming import run_jros_streaming
 
         return run_jros_streaming, False, True
 
@@ -31,7 +33,7 @@ class JROSBackend(AgenticBackend):
         return "JROS"
 
     def health(self) -> Dict[str, Any]:
-        from api.jros_gateway_chat import jros_gateway_health
+        from api.providers.jaeger.gateway_streaming import jros_gateway_health
         health_payload = jros_gateway_health(timeout=1.0)
         if health_payload is not None:
             return {
@@ -42,7 +44,7 @@ class JROSBackend(AgenticBackend):
             }
         
         # Check local path fallback
-        from api.jros_gateway_chat import local_jros_root
+        from api.providers.jaeger.gateway_streaming import local_jros_root
         if local_jros_root() is not None:
             return {
                 "status": "degraded",
@@ -57,7 +59,7 @@ class JROSBackend(AgenticBackend):
         }
 
     def identity_projection(self) -> Dict[str, Any]:
-        from api.jros_paths import jros_instance_name
+        from api.providers.jaeger.paths import jros_instance_name
         instance = jros_instance_name()
         
         if instance:
@@ -125,7 +127,7 @@ class JROSBackend(AgenticBackend):
     def run_turn(self, message: str, session_id: str, **kwargs) -> Dict[str, Any]:
         import threading
 
-        from api.jros_gateway_chat import _run_local_jros_turn
+        from api.providers.jaeger.gateway_streaming import _run_local_jros_turn
 
         cancel_event = kwargs.get("cancel_event")
         event = cancel_event if hasattr(cancel_event, "is_set") else threading.Event()
@@ -164,7 +166,7 @@ class JROSBackend(AgenticBackend):
 
         health: dict[str, Any] = {}
         try:
-            from api.jros_gateway_chat import jros_gateway_health
+            from api.providers.jaeger.gateway_streaming import jros_gateway_health
 
             health = jros_gateway_health(timeout=1.0) or {}
         except Exception:
@@ -185,7 +187,7 @@ class JROSBackend(AgenticBackend):
         # configured on another host was silently ignored and probes went to
         # localhost.
         try:
-            from api.jros_gateway_chat import jros_gateway_base_url
+            from api.providers.jaeger.gateway_streaming import jros_gateway_base_url
 
             gateway_url = jros_gateway_base_url()
         except Exception:
@@ -277,6 +279,6 @@ class JROSBackend(AgenticBackend):
 
 
 # Register with the dynamic backend registry
-from .cli_backends import BackendRegistry  # noqa: E402
+from api.backends.cli_backends import BackendRegistry  # noqa: E402
 
 BackendRegistry.register(JROSBackend)

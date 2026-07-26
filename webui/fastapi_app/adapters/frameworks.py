@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from typing import Any
-import urllib.error
-import urllib.request
 
 from .base import AdapterError, AdapterHealth, BaseLLMAdapter, ModelDescriptor, StreamSubscription
 
@@ -14,47 +12,24 @@ from .base import AdapterError, AdapterHealth, BaseLLMAdapter, ModelDescriptor, 
 TurnStarter = Callable[..., dict[str, Any]]
 
 
-def _credential(name: str) -> str | None:
-    """Resolve a credential through the active profile's isolated env view."""
-
-    from api.config import _thread_local_env_value
-
-    return _thread_local_env_value(name).strip() or None
-
-
 def _provider_probe_health(
     *,
     provider: str,
     display_name: str,
     base_url: str,
-    api_key: str | None,
+    env_vars: tuple[str, ...],
 ) -> AdapterHealth:
-    """Probe an OpenAI-compatible provider without returning credential-adjacent details."""
+    """Adapt the shared cloud-provider readiness check to the adapter contract."""
 
-    if not api_key:
-        # A missing key is a setup step, not an outage. Reporting it as
-        # "offline" told users to go restart something that was never running.
-        return AdapterHealth(
-            "not_configured",
-            False,
-            f"{display_name} API key not set. Add it in Secrets to use this provider.",
+    from api.providers.cloud.status import check_status
+
+    return AdapterHealth.from_provider_status(
+        check_status(
+            provider=provider,
+            display_name=display_name,
+            base_url=base_url,
+            env_vars=env_vars,
         )
-
-    from api.onboarding import probe_provider_endpoint
-
-    result = probe_provider_endpoint(provider, base_url, api_key, timeout=5.0)
-    if result.get("ok"):
-        return AdapterHealth("connected", True, f"{display_name} credentials verified.")
-    error_code = str(result.get("error") or "unreachable")
-    status = result.get("status")
-    details = {"error": error_code}
-    if isinstance(status, int):
-        details["status"] = status
-    return AdapterHealth(
-        "needs_attention",
-        False,
-        f"{display_name} credential validation failed ({error_code}).",
-        details,
     )
 
 
@@ -234,38 +209,37 @@ class JaegerAdapter(JournaledFrameworkAdapter):
     display_name = "JaegerAI"
 
     def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
-        from api.backends.jros import JROSBackend
+        from api.providers.jaeger.backend import JROSBackend
 
         super().__init__(backend=JROSBackend(), turn_starter=turn_starter)
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        # Hot path: do NOT call backend_status() here — it probes every adapter
-        # CLI (multi-second) and made every Jaeger chat start feel laggy.
-        from api.backend_selector import is_jros_available, jros_gateway_details
+        # Transport readiness (gateway vs local bridge) is the provider's own
+        # concern; this only layers on the Companion requirement, which is an
+        # ARES-side prerequisite rather than a JaegerAI one. check_status() is
+        # cached, so this stays cheap on the chat-start hot path.
+        from api.providers.jaeger.status import check_status
+
+        status = check_status()
+        if not status.available:
+            return AdapterHealth.from_provider_status(status)
 
         try:
-            from api.jros_companion import companion_available
+            from api.providers.jaeger.companion import companion_available
 
             companion_ready = bool(companion_available())
         except Exception:
             companion_ready = False
-        runtime_available = bool(is_jros_available())
-        available = runtime_available and companion_ready
-        if available:
-            message = "JaegerAI Companion is available."
-            state = "connected"
-        elif runtime_available:
-            message = (
-                "Cannot chat: JaegerAI backend is selected but no Companion has been "
-                "created. Please complete onboarding or change the backend in settings."
+        if not companion_ready:
+            return AdapterHealth(
+                "needs_attention",
+                False,
+                "Cannot chat: JaegerAI is reachable but no Companion has been "
+                "created. Complete onboarding, or choose another provider.",
+                dict(status.details),
             )
-            state = "needs_attention"
-        else:
-            message = "JaegerAI is not installed or reachable."
-            state = "offline"
-        details = jros_gateway_details()
-        return AdapterHealth(state, available, message, details)
+        return AdapterHealth.from_provider_status(status)
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         del profile
@@ -390,7 +364,7 @@ class OpenAICloudAdapter(JournaledFrameworkAdapter):
             provider="openai",
             display_name=self.display_name,
             base_url="https://api.openai.com/v1",
-            api_key=_credential("OPENAI_API_KEY"),
+            env_vars=("OPENAI_API_KEY",),
         )
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
@@ -411,7 +385,7 @@ class XAICloudAdapter(JournaledFrameworkAdapter):
             provider="xai",
             display_name=self.display_name,
             base_url="https://api.x.ai/v1",
-            api_key=_credential("XAI_API_KEY"),
+            env_vars=("XAI_API_KEY",),
         )
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
@@ -428,42 +402,9 @@ class GeminiCloudAdapter(JournaledFrameworkAdapter):
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        api_key = _credential("GEMINI_API_KEY") or _credential("GOOGLE_API_KEY")
-        if not api_key:
-            return AdapterHealth(
-                "not_configured",
-                False,
-                "GEMINI_API_KEY not set. Add it in Secrets to use this provider.",
-            )
+        from api.providers.cloud.status import check_gemini_status
 
-        try:
-            req = urllib.request.Request(
-                "https://generativelanguage.googleapis.com/v1beta/models",
-                headers={"Accept": "application/json", "x-goog-api-key": api_key},
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                if resp.status == 200:
-                    return AdapterHealth("connected", True, "Gemini credentials verified.")
-                return AdapterHealth(
-                    "needs_attention",
-                    False,
-                    "Gemini credential validation failed.",
-                    {"status": int(resp.status)},
-                )
-        except urllib.error.HTTPError as exc:
-            return AdapterHealth(
-                "needs_attention",
-                False,
-                "Gemini credential validation failed.",
-                {"status": int(exc.code)},
-            )
-        except (urllib.error.URLError, TimeoutError):
-            return AdapterHealth(
-                "needs_attention",
-                False,
-                "Gemini could not be reached for credential validation.",
-                {"error": "unreachable"},
-            )
+        return AdapterHealth.from_provider_status(check_gemini_status())
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         return [
@@ -505,10 +446,20 @@ class OllamaLocalAdapter(JournaledFrameworkAdapter):
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        available = self.backend.is_available()
-        if available:
-            return AdapterHealth("connected", True, "Ollama is running.")
-        return AdapterHealth("offline", False, "Ollama not reachable on localhost:11434.")
+        from api.providers.ollama.status import check_status
+
+        return AdapterHealth.from_provider_status(check_status())
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
-        return [ModelDescriptor("llama3.2", "Llama 3.2", "ollama", self.adapter_id)]
+        del profile
+        # Ask Ollama what it actually has. This previously returned a hardcoded
+        # "llama3.2" whether or not it was installed, so the picker advertised a
+        # model the daemon could not serve and hid every model it could.
+        from api.providers.ollama.status import installed_models
+
+        descriptors: list[ModelDescriptor] = []
+        for entry in installed_models():
+            name = str((entry or {}).get("name") or "").strip()
+            if name:
+                descriptors.append(ModelDescriptor(name, name, "ollama", self.adapter_id))
+        return descriptors

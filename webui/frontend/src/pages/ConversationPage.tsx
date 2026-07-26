@@ -39,6 +39,7 @@ import {
 import { Link } from "react-router-dom";
 
 import { APP_ICON_URL } from "@/assets";
+import { isBlockingState } from "@/components/ConnectionStatusBadge";
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
 import { aresApi } from "@/shared/ares-api";
@@ -287,6 +288,20 @@ export function ConversationPage() {
   const hasConversation = Boolean(currentSession?.messages.length || streamText || isBusy);
   const isReadOnlyCli = Boolean(currentSession?.readOnly || currentSession?.source === "cli");
 
+  // Whether the chosen provider can actually take a turn. The server refuses
+  // one it cannot serve, but letting someone type a message and press send only
+  // to be told no is a poor way to learn the provider is down — so the composer
+  // says it up front and stays out of the way.
+  const activeConnection = snapshot.connections.find((c) => c.id === selectedBackend);
+  const noProviderSelected = !selectedBackend && !snapshot.connections.some((c) => c.selected);
+  const providerBlocked = Boolean(activeConnection && isBlockingState(activeConnection.state));
+  const cannotSend = noProviderSelected || providerBlocked;
+  const providerNotice = noProviderSelected
+    ? "No AI provider is selected yet."
+    : providerBlocked
+      ? activeConnection?.detail || `${activeConnection?.name || "This provider"} is unavailable.`
+      : "";
+
   useEffect(() => {
     if (currentSession?.backendId) {
       setSelectedBackend(currentSession.backendId);
@@ -363,7 +378,7 @@ export function ConversationPage() {
     event.preventDefault();
     const message = draft.trim();
     if (!message && attachedFiles.length === 0) return;
-    if (isBusy || isReadOnlyCli) return;
+    if (isBusy || isReadOnlyCli || cannotSend) return;
 
     const files = attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
@@ -384,7 +399,7 @@ export function ConversationPage() {
       personality: selectedPersonality || undefined,
     });
   }, [
-    draft, attachedFiles, isBusy, isReadOnlyCli, sendMessage, selectedBackend,
+    draft, attachedFiles, isBusy, isReadOnlyCli, cannotSend, sendMessage, selectedBackend,
     selectedModel, selectedModelProvider, workspaceOverride, currentSession, snapshot.workspaces,
   ]);
 
@@ -686,6 +701,19 @@ export function ConversationPage() {
           </div>
         )}
 
+        {!isReadOnlyCli && cannotSend && (
+          <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{providerNotice}</span>
+            <Link
+              to="/connections"
+              style={{ flexShrink: 0, color: "#fbbf24", fontWeight: 600, textDecoration: "underline" }}
+            >
+              {noProviderSelected ? "Choose a provider" : "Open Connections"}
+            </Link>
+          </div>
+        )}
+
         {chatNotice && (
           <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <AlertTriangle size={13} style={{ flexShrink: 0 }} />
@@ -766,9 +794,13 @@ export function ConversationPage() {
               placeholder={
                 isReadOnlyCli
                   ? "CLI session is read-only — open a project to chat"
-                  : "Message Jaeger AI…"
+                  : noProviderSelected
+                    ? "Choose an AI provider to start chatting"
+                    : providerBlocked
+                      ? `${activeConnection?.name || "This provider"} is unavailable`
+                      : "Message Jaeger AI…"
               }
-              disabled={isBusy || isReadOnlyCli}
+              disabled={isBusy || isReadOnlyCli || cannotSend}
               style={{ width: "100%", padding: "0.8125rem 1rem 0.5rem", background: "transparent", border: "none", outline: "none", color: H.text, fontSize: "0.9062rem", lineHeight: 1.5, resize: "none", fontFamily: "inherit", boxSizing: "border-box", maxHeight: "11.25rem", overflowY: "auto" }}
               onInput={(e) => { const el = e.currentTarget; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 180) + "px"; }}
             />

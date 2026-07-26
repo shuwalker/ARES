@@ -98,7 +98,7 @@ cargo tauri dev
 ```
 
 The Windows app currently loads the running Web UI from
-`http://127.0.0.1:8787`. Its goal is to become the Windows version of the ARES
+`http://127.0.0.1:8788`. Its goal is to become the Windows version of the ARES
 native shell, including native start/stop control for the Web UI and Windows
 tray/menu integrations.
 

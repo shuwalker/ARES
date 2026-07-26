@@ -9,7 +9,7 @@ from api.backends.catalog import (
     model_entry,
 )
 from api.providers.hermes.backend import HermesBackend
-from api.backends.jros import JROSBackend
+from api.providers.jaeger.backend import JROSBackend
 
 
 def test_infer_model_location_local_and_cloud():

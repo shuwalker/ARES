@@ -28,9 +28,9 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
-from api.jros_paths import jaeger_home as resolve_jaeger_home
-from api.jros_paths import jaeger_launcher as resolve_jaeger_launcher
-from api.jros_paths import jros_instance_name as resolve_jros_instance_name
+from api.providers.jaeger.paths import jaeger_home as resolve_jaeger_home
+from api.providers.jaeger.paths import jaeger_launcher as resolve_jaeger_launcher
+from api.providers.jaeger.paths import jros_instance_name as resolve_jros_instance_name
 
 PROTOCOL_VERSION = "1"
 

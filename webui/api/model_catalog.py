@@ -41,7 +41,7 @@ def sync_main_model_to_jros(result: dict) -> None:
             targets=["jros"],
             ares_config_path=active_profile_config_path(),
         )
-        from api.jros_gateway_chat import reset_jros_boot
+        from api.providers.jaeger.gateway_streaming import reset_jros_boot
 
         reset_jros_boot()
     except Exception:

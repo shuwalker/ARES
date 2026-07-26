@@ -16,7 +16,7 @@ from typing import Any, Iterable
 
 import yaml
 
-from api.jros_paths import expand_path, jros_config_path
+from api.providers.jaeger.paths import expand_path, jros_config_path
 
 
 PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
@@ -125,7 +125,7 @@ def provider_runtime_status(provider: str, base_url: str | None = None) -> dict[
 
 
 def resolve_jros_config_path() -> Path:
-    """Compatibility wrapper for callers/tests; use api.jros_paths.jros_config_path."""
+    """Compatibility wrapper for callers/tests; use api.providers.jaeger.paths.jros_config_path."""
     return jros_config_path()
 
 

@@ -19,7 +19,7 @@ from typing import Any, Optional
 
 import yaml
 
-from api.jros_paths import character_dir, legacy_persona_dir
+from api.providers.jaeger.paths import character_dir, legacy_persona_dir
 
 logger = logging.getLogger(__name__)
 

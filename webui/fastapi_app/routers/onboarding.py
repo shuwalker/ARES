@@ -124,7 +124,7 @@ def companion_tools_update(
 def companion_defaults(
     _identity: Annotated[RequestIdentity, Depends(require_identity)],
 ):
-    from api.jros_companion import companion_available, companion_setup_defaults, list_characters
+    from api.providers.jaeger.companion import companion_available, companion_setup_defaults, list_characters
 
     if not companion_available():
         return {"available": False}
@@ -143,7 +143,7 @@ def companion_create(
     payload: dict[str, Any],
     _identity: Annotated[RequestIdentity, Depends(require_onboarding_mutation)],
 ):
-    from api.jros_companion import create_companion
+    from api.providers.jaeger.companion import create_companion
 
     display_name = str(payload.get("display_name") or "").strip() or None
     try:
@@ -175,7 +175,7 @@ def jros_install(
     payload: dict[str, Any],
     _identity: Annotated[RequestIdentity, Depends(require_onboarding_mutation)],
 ):
-    from api.jros_companion import install_jros_if_missing
+    from api.providers.jaeger.companion import install_jros_if_missing
 
     try:
         return install_jros_if_missing(

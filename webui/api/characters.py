@@ -4,7 +4,7 @@ Reads character YAMLs from <JROS repo>/jaeger_os/personality/characters/<id>/cha
 (schema: character/v1).  Designed as a companion to api.persona — persona handles
 prompt rendering, this module exposes the raw data for the WebUI character browser.
 
-The JROS repo location is resolved through ``api.jros_paths``. ``ARES_JROS_DIR``
+The JROS repo location is resolved through ``api.providers.jaeger.paths``. ``ARES_JROS_DIR``
 and ``ARES_CHARACTER_DIR`` still win, but common local checkouts such as
 ``~/GitHub/JROS`` are discovered automatically for developer installs.
 """
@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 import yaml
 
-from api.jros_paths import character_dir
+from api.providers.jaeger.paths import character_dir
 
 logger = logging.getLogger(__name__)
 

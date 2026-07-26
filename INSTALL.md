@@ -15,7 +15,7 @@ cd /path/to/ARES
 Then open:
 
 ```text
-http://localhost:8787
+http://localhost:8788
 ```
 
 The root `start.sh` is a convenience wrapper around `webui/start.sh`.
@@ -56,7 +56,7 @@ cargo tauri dev
 ```
 
 The current Windows wrapper expects the Web UI to already be running on
-`http://127.0.0.1:8787`. The intended next step is to make the Windows wrapper
+`http://127.0.0.1:8788`. The intended next step is to make the Windows wrapper
 start/stop the Web UI itself, similar to the Mac developer app.
 
 ## First Local Setup

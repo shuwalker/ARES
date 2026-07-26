@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -12,6 +13,8 @@ from ..errors import CoreApiError
 from ..request_context import RequestIdentity, profile_scope, require_identity, require_mutation_identity
 from .onboarding import require_onboarding_mutation
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["ares"])
 
@@ -240,19 +243,35 @@ def set_backend(
                 "capabilities": capabilities_for_backend(backend_name),
             }
         _save_config_values({"ares_backend": backend_name})
-    from api.provider_registry import load_provider_registry, save_provider
+    from api.provider_registry import (
+        ProviderRegistryCorrupt,
+        load_provider_registry,
+        save_provider,
+    )
 
     existing = load_provider_registry().get("providers", {}).get(backend_name, {})
-    save_provider(backend_name, {
-        **existing,
-        "enabled": True,
-        "kind": "runtime",
-        "capabilities": capabilities_for_backend(backend_name),
-        "metadata": {
-            **(existing.get("metadata", {}) if isinstance(existing, dict) else {}),
-            "selected_by": "operator",
-        },
-    })
+    try:
+        save_provider(backend_name, {
+            **existing,
+            "enabled": True,
+            "kind": "runtime",
+            "capabilities": capabilities_for_backend(backend_name),
+            "metadata": {
+                **(existing.get("metadata", {}) if isinstance(existing, dict) else {}),
+                "selected_by": "operator",
+            },
+        })
+    except ProviderRegistryCorrupt:
+        # The selection itself already succeeded above (ares_backend is saved to
+        # config); this registry entry is bookkeeping. Failing the request here
+        # would report an error for a change that did take effect, so log and
+        # carry on rather than block the user from choosing a provider.
+        logger.warning(
+            "Provider registry could not be read; %s was selected but its "
+            "registry entry was not updated.",
+            backend_name,
+            exc_info=True,
+        )
     return {
         "ok": True,
         "backend": backend_name,
@@ -275,10 +294,19 @@ def put_provider(
     payload: dict[str, Any],
     _identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
 ):
-    from api.provider_registry import save_provider
+    from api.provider_registry import ProviderRegistryCorrupt, save_provider
 
     try:
         provider = save_provider(provider_id, payload)
+    except ProviderRegistryCorrupt as exc:
+        # Refusing the write is the point: the file could not be read, so
+        # saving would replace every other configured provider with nothing.
+        raise CoreApiError(
+            409,
+            "The provider registry file could not be read, so it was not "
+            f"overwritten. Repair or remove {exc.path} and try again.",
+            code="provider_registry_corrupt",
+        ) from exc
     except ValueError as exc:
         raise CoreApiError(400, str(exc), code="invalid_provider_connection") from exc
     return {"ok": True, "provider": provider}
@@ -289,9 +317,18 @@ def delete_provider(
     provider_id: str,
     _identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
 ):
-    from api.provider_registry import remove_provider
+    from api.provider_registry import ProviderRegistryCorrupt, remove_provider
 
-    return {"ok": True, "removed": remove_provider(provider_id)}
+    try:
+        removed = remove_provider(provider_id)
+    except ProviderRegistryCorrupt as exc:
+        raise CoreApiError(
+            409,
+            "The provider registry file could not be read, so it was not "
+            f"overwritten. Repair or remove {exc.path} and try again.",
+            code="provider_registry_corrupt",
+        ) from exc
+    return {"ok": True, "removed": removed}
 
 
 @router.get("/api/ares/self-persistence")

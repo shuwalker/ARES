@@ -202,12 +202,12 @@ jobs:
           echo "::endgroup::"
 
           # ----- WebUI /health probe -----
-          # Single-container: WebUI is on the host on 127.0.0.1:8787.
-          # Two/three-container: same — both compose files publish 127.0.0.1:8787.
+          # Single-container: WebUI is on the host on 127.0.0.1:8788.
+          # Two/three-container: same — both compose files publish 127.0.0.1:8788.
           echo "::group::Probe /health"
           attempts=0
           max_attempts=30
-          until curl --fail --silent --max-time 5 http://127.0.0.1:8787/health > /dev/null; do
+          until curl --fail --silent --max-time 5 http://127.0.0.1:8788/health > /dev/null; do
             attempts=$((attempts + 1))
             if [ "$attempts" -ge "$max_attempts" ]; then
               echo "❌ WebUI /health never returned 200 after $max_attempts attempts (~60s)"

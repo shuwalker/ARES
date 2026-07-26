@@ -82,7 +82,7 @@ launchctl list | grep ares
 tail -f ~/.ares/observer/observer.log
 
 # Check Kanban board
-curl http://localhost:8787/api/kanban/tasks | python3 -m json.tool
+curl http://localhost:8788/api/kanban/tasks | python3 -m json.tool
 ```
 
 ## Configuration
@@ -182,7 +182,7 @@ Tasks are created via `POST /api/kanban/tasks`:
 ### Observer not creating tasks
 
 1. Check logs: `tail -f ~/.ares/observer/observer.log`
-2. Verify Kanban API is running: `curl http://localhost:8787/api/kanban`
+2. Verify Kanban API is running: `curl http://localhost:8788/api/kanban`
 3. Check confidence thresholds in config.yaml
 
 ### Ollama not available

@@ -2,7 +2,7 @@
 #
 # QUICK START:
 #   docker compose -f docker-compose.two-container.yml up -d
-#   Open http://localhost:8787
+#   Open http://localhost:8788
 #
 # This runs the agent and web UI in separate containers connected via shared
 # Docker volumes. The WebUI installs the agent's Python dependencies from the
@@ -86,7 +86,7 @@ services:
     depends_on:
       - ares-agent
     ports:
-      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:8788:8787"
     volumes:
       # Same ares home as the agent — shares config, sessions, state
       - ares-home:/home/areswebui/.ares

@@ -276,7 +276,7 @@ def test_start_can_ignore_repo_dotenv_for_authoritative_test_env(tmp_path):
     assert result.returncode == 0, result.stderr + result.stdout
     pid = wait_for_pid_file(tmp_path / ".ares" / "webui.pid")
     try:
-        fake_output = wait_for_file_text(fake_log, contains="host=127.0.0.1 port=8787")
+        fake_output = wait_for_file_text(fake_log, contains="host=127.0.0.1 port=8788")
         assert_path_in_text(tmp_path / ".ares" / "webui", fake_output)
         assert "host-specific-webui" not in fake_output
     finally:

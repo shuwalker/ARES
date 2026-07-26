@@ -86,3 +86,60 @@ def test_provider_can_be_saved_and_removed_without_secret_values(tmp_path):
     )
     assert remove_provider("openclaw_local", path=path) is True
     assert load_provider_registry(path)["providers"] == {}
+
+
+def test_capabilities_string_is_rejected_rather_than_split_into_characters(tmp_path):
+    """A hand-edited scalar must not become one capability per letter.
+
+    ``"conversation"`` is iterable, so the previous set-comprehension turned it
+    into ten single-character capabilities that then passed validation.
+    """
+    path = tmp_path / "providers.json"
+    saved = save_provider(
+        "scalar_caps",
+        {"enabled": True, "capabilities": "conversation"},
+        path=path,
+    )
+    assert saved["capabilities"] == []
+
+    listed = save_provider(
+        "list_caps",
+        {"enabled": True, "capabilities": ["conversation", "tools", "conversation"]},
+        path=path,
+    )
+    assert listed["capabilities"] == ["conversation", "tools"]
+
+
+def test_unreadable_registry_is_never_overwritten(tmp_path):
+    """A parse failure must not be laundered into an empty registry.
+
+    Reading a corrupt file as ``{}`` and then saving over it destroyed every
+    configured provider with no error, so writes now refuse rather than erase.
+    """
+    from api.provider_registry import ProviderRegistryCorrupt
+
+    path = tmp_path / "providers.json"
+    save_provider("keep_me", {"enabled": True, "endpoint": "https://keep.example"}, path=path)
+    intact = path.read_text(encoding="utf-8")
+
+    path.write_text(intact[:-5], encoding="utf-8")  # truncated mid-object
+
+    for attempt in (
+        lambda: save_provider("new_one", {"enabled": True}, path=path),
+        lambda: remove_provider("keep_me", path=path),
+    ):
+        try:
+            attempt()
+        except ProviderRegistryCorrupt:
+            pass
+        else:  # pragma: no cover - only reached if the guard regresses
+            raise AssertionError("a corrupt registry was overwritten")
+
+    assert path.read_text(encoding="utf-8") == intact[:-5]
+
+
+def test_missing_registry_still_saves_cleanly(tmp_path):
+    """The strict read must not turn "no file yet" into a failure."""
+    path = tmp_path / "nested" / "providers.json"
+    save_provider("first", {"enabled": True, "endpoint": "https://first.example"}, path=path)
+    assert sorted(load_provider_registry(path)["providers"]) == ["first"]
