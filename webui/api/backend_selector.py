@@ -6,8 +6,6 @@ Paperclip pattern: flat registry, agnostic naming. Each backend is
 from __future__ import annotations
 
 import logging
-import time
-from typing import Optional
 
 from .backends.router import get_router
 
@@ -29,12 +27,6 @@ _BACKEND_ALIASES = {
     "jros": "jros_local",
 }
 
-_jros_available_cache: Optional[bool] = None
-_jros_available_ts = 0.0
-_jros_gateway_info: dict = {}
-_JROS_CACHE_TTL = 5.0
-
-
 def normalize_backend(value: object, *, fallback: str = "") -> str:
     raw_value = str(value or "").strip().lower()
     raw = _BACKEND_ALIASES.get(raw_value, raw_value)
@@ -54,48 +46,30 @@ def get_session_backend(session: object, config: dict) -> str:
 
 
 def is_jros_available() -> bool:
-    """Bounded, cached JaegerAI *execution* probe shared by every adapter surface.
+    """Whether JaegerAI can run a turn right now, by any of its transports.
 
-    A local checkout alone is install-detected, not available. Availability
-    requires a live gateway health response so readiness cannot claim
-    execution is ready from disk presence alone.
+    Thin wrapper over :func:`api.providers.jaeger.status.check_status` so legacy
+    boolean callers keep working. It used to probe only the HTTP gateway and
+    treat a local install as "detected, not available" — but the local bridge is
+    the path ``gateway_streaming`` actually executes through when no gateway URL
+    is set, so a working bridge-only install was reported as not installed.
     """
 
-    global _jros_available_cache, _jros_available_ts, _jros_gateway_info
-    now = time.monotonic()
-    if _jros_available_cache is not None and now - _jros_available_ts < _JROS_CACHE_TTL:
-        return _jros_available_cache
+    from api.providers.jaeger.status import check_status
 
-    available = False
-    details: dict = {}
-    try:
-        from api.jros_gateway_chat import jros_gateway_health
-
-        reply = jros_gateway_health(timeout=1.0)
-        if reply is not None:
-            available = True
-            details = {
-                "mode": "gateway",
-                "model": reply.get("model"),
-                "provider": reply.get("provider"),
-                "booted": bool(reply.get("booted")),
-                "instance": reply.get("instance"),
-            }
-    except Exception:
-        logger.debug("JaegerAI availability probe failed", exc_info=True)
-
-    _jros_available_cache = available
-    _jros_available_ts = now
-    _jros_gateway_info = details
-    return available
+    return check_status().available
 
 
 def jros_gateway_details() -> dict:
-    """Cached gateway details from the last successful :func:`is_jros_available` probe."""
+    """Non-secret details from the last JaegerAI status probe.
 
-    # Refresh cache if empty/stale so health surfaces stay current.
-    is_jros_available()
-    return dict(_jros_gateway_info or {})
+    Includes ``mode`` (``gateway`` or ``bridge``) so callers can tell which
+    transport answered.
+    """
+
+    from api.providers.jaeger.status import check_status
+
+    return dict(check_status().details or {})
 
 
 def backend_status() -> dict:
@@ -113,8 +87,8 @@ def backend_status() -> dict:
     }
     jros_available = is_jros_available()
     status["jros_local"] = jros_available
-    if jros_available and _jros_gateway_info:
-        for key, value in _jros_gateway_info.items():
+    if jros_available:
+        for key, value in jros_gateway_details().items():
             status[f"jros_{key}"] = value
     return status
 

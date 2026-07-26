@@ -9,7 +9,7 @@ from typing import Dict
 
 from api.providers.agentic_backend import AgenticBackend
 from api.providers.hermes.backend import HermesBackend
-from .jros import JROSBackend
+from api.providers.jaeger.backend import JROSBackend
 from .cli_backends import (
     AntigravityGeminiBackend,
     ClaudeLocalBackend,

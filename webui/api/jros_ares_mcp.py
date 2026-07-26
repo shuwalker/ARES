@@ -26,7 +26,7 @@ ARES_TOOLS_SERVER_NAME = "ares-tools"
 
 
 def _jros_mcp_config_path() -> Path | None:
-    from api.jros_gateway_chat import local_jros_root
+    from api.providers.jaeger.gateway_streaming import local_jros_root
 
     root = local_jros_root()
     if root is None:
@@ -79,7 +79,7 @@ def sync_ares_mcp_server(*, enabled: bool = True) -> dict[str, Any]:
 def set_ares_tools_enabled(enabled: bool) -> dict[str, Any]:
     """Flip the addition on/off: sync JROS's mcp_config.json entry AND
     persist jros_ares_tools_enabled so the next Companion boot picks it
-    up (see api.jros_gateway_chat._jros_ares_tools_enabled)."""
+    up (see api.providers.jaeger.gateway_streaming._jros_ares_tools_enabled)."""
     from api.config import _get_config_path, _load_yaml_config_file, _save_yaml_config_file, reload_config
 
     sync_result = sync_ares_mcp_server(enabled=enabled)
@@ -90,7 +90,7 @@ def set_ares_tools_enabled(enabled: bool) -> dict[str, Any]:
     _save_yaml_config_file(config_path, cfg)
     reload_config()
 
-    from api.jros_gateway_chat import reset_jros_boot
+    from api.providers.jaeger.gateway_streaming import reset_jros_boot
 
     reset_jros_boot()
 

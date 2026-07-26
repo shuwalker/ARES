@@ -56,10 +56,10 @@ from api.config import (
     update_active_run,
 )
 from api.helpers import _redact_text, redact_session_data
-from api.jros_client import JrosClient, JrosError
+from api.providers.jaeger.bridge_client import JrosClient, JrosError
 from api.models import get_session, merge_session_messages_append_only
 from api.run_journal import RunJournalWriter
-from api.jros_paths import discover_jros_source_root, jaeger_home, jros_instance_name
+from api.providers.jaeger.paths import discover_jros_source_root, jaeger_home, jros_instance_name
 
 logger = logging.getLogger(__name__)
 

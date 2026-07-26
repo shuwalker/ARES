@@ -234,38 +234,37 @@ class JaegerAdapter(JournaledFrameworkAdapter):
     display_name = "JaegerAI"
 
     def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
-        from api.backends.jros import JROSBackend
+        from api.providers.jaeger.backend import JROSBackend
 
         super().__init__(backend=JROSBackend(), turn_starter=turn_starter)
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile
-        # Hot path: do NOT call backend_status() here — it probes every adapter
-        # CLI (multi-second) and made every Jaeger chat start feel laggy.
-        from api.backend_selector import is_jros_available, jros_gateway_details
+        # Transport readiness (gateway vs local bridge) is the provider's own
+        # concern; this only layers on the Companion requirement, which is an
+        # ARES-side prerequisite rather than a JaegerAI one. check_status() is
+        # cached, so this stays cheap on the chat-start hot path.
+        from api.providers.jaeger.status import check_status
+
+        status = check_status()
+        if not status.available:
+            return AdapterHealth.from_provider_status(status)
 
         try:
-            from api.jros_companion import companion_available
+            from api.providers.jaeger.companion import companion_available
 
             companion_ready = bool(companion_available())
         except Exception:
             companion_ready = False
-        runtime_available = bool(is_jros_available())
-        available = runtime_available and companion_ready
-        if available:
-            message = "JaegerAI Companion is available."
-            state = "connected"
-        elif runtime_available:
-            message = (
-                "Cannot chat: JaegerAI backend is selected but no Companion has been "
-                "created. Please complete onboarding or change the backend in settings."
+        if not companion_ready:
+            return AdapterHealth(
+                "needs_attention",
+                False,
+                "Cannot chat: JaegerAI is reachable but no Companion has been "
+                "created. Complete onboarding, or choose another provider.",
+                dict(status.details),
             )
-            state = "needs_attention"
-        else:
-            message = "JaegerAI is not installed or reachable."
-            state = "offline"
-        details = jros_gateway_details()
-        return AdapterHealth(state, available, message, details)
+        return AdapterHealth.from_provider_status(status)
 
     def get_models(self, *, profile: str | None) -> list[ModelDescriptor]:
         del profile

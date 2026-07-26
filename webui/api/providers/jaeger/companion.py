@@ -31,8 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from api.jros_gateway_chat import local_jros_root
-from api.jros_paths import jros_instance_name
+from api.providers.jaeger.gateway_streaming import local_jros_root
+from api.providers.jaeger.paths import jros_instance_name
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +183,7 @@ def install_jros_if_missing(jaeger_home: str | None = None) -> dict[str, Any]:
     import urllib.request
 
     # Re-use the same detection logic as the bash installer.
-    from api.jros_paths import jaeger_home as resolve_jaeger_home, jaeger_launcher
+    from api.providers.jaeger.paths import jaeger_home as resolve_jaeger_home, jaeger_launcher
 
     resolved_home = Path(jaeger_home) if jaeger_home else resolve_jaeger_home()
     launcher = resolved_home / "jaeger"
@@ -229,7 +229,7 @@ def install_jros_if_missing(jaeger_home: str | None = None) -> dict[str, Any]:
     if launcher.exists() and os.access(str(launcher), os.X_OK):
         return {"installed": True, "already_present": False, "jaeger_home": str(resolved_home)}
     # The installer might have used a different JAEGER_HOME; re-probe.
-    from api.jros_paths import discover_jros_source_root
+    from api.providers.jaeger.paths import discover_jros_source_root
     found = discover_jros_source_root()
     if found is not None:
         return {"installed": True, "already_present": False, "jaeger_home": str(found)}

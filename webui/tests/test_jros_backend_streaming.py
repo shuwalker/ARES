@@ -25,20 +25,38 @@ import threading
 import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_jaeger_status_cache():
+    """Clear the JaegerAI status cache around every test in this module.
+
+    ``api.providers.jaeger.status`` caches readiness for a few seconds so health
+    polling stays cheap. These tests flip ARES_JROS_* env vars between
+    assertions, so without a reset a later assertion can read the previous
+    test's answer.
+    """
+    from api.providers.jaeger.status import reset_cache
+
+    reset_cache()
+    yield
+    reset_cache()
+
 
 def test_jros_backend_selects_gateway_worker_without_health_ping(monkeypatch):
-    from api.backends.jros import JROSBackend
+    from api.providers.jaeger.backend import JROSBackend
 
     def fake_get_config():
         return {"ares_backend": "jros"}
 
-    fake_bridge = types.ModuleType("api.jros_gateway_chat")
+    fake_bridge = types.ModuleType("api.providers.jaeger.gateway_streaming")
 
     def fake_run_jros_streaming(*args, **kwargs):  # pragma: no cover - identity only
         return None
 
     fake_bridge.run_jros_streaming = fake_run_jros_streaming
-    monkeypatch.setitem(sys.modules, "api.jros_gateway_chat", fake_bridge)
+    monkeypatch.setitem(sys.modules, "api.providers.jaeger.gateway_streaming", fake_bridge)
     worker, is_gateway, is_jros = JROSBackend().get_worker_target()
 
     assert worker is fake_run_jros_streaming
@@ -47,7 +65,7 @@ def test_jros_backend_selects_gateway_worker_without_health_ping(monkeypatch):
 
 
 def test_gateway_url_resolution_env_config_default(monkeypatch):
-    from api import jros_gateway_chat as jgc
+    from api.providers.jaeger import gateway_streaming as jgc
 
     monkeypatch.delenv("ARES_JROS_GATEWAY_URL", raising=False)
     assert jgc.jros_gateway_base_url() == jgc.DEFAULT_JROS_GATEWAY_URL
@@ -57,10 +75,10 @@ def test_gateway_url_resolution_env_config_default(monkeypatch):
 
 
 def test_jros_repo_root_still_honors_ares_jros_dir_for_characters(monkeypatch, tmp_path):
-    # api.characters now resolves through api.jros_paths.character_dir()
+    # api.characters now resolves through api.providers.jaeger.paths.character_dir()
     # instead of its own private _jros_repo_root() helper — this pins the
     # same ARES_JROS_DIR-wins contract at the shared resolver instead.
-    from api import jros_paths
+    from api.providers.jaeger import paths as jros_paths
 
     override = tmp_path / "custom-jros"
     (override / "jaeger_os").mkdir(parents=True)
@@ -70,7 +88,7 @@ def test_jros_repo_root_still_honors_ares_jros_dir_for_characters(monkeypatch, t
 
 
 def test_local_jros_root_uses_standard_jaeger_home(monkeypatch, tmp_path):
-    from api import jros_gateway_chat as jgc
+    from api.providers.jaeger import gateway_streaming as jgc
 
     jaeger_home = tmp_path / "jaeger"
     (jaeger_home / "jaeger_os").mkdir(parents=True)
@@ -191,7 +209,7 @@ def test_jros_gateway_turn_streams_and_persists_session(monkeypatch):
     from api import config
     from api.config import create_stream_channel, register_stream_owner
     from api.models import Session
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     server, base = _start_fake_gateway()
     _FakeJrosGateway.seen = []
@@ -270,7 +288,7 @@ def test_jros_gateway_usage_accumulates_across_turns(monkeypatch):
     from api import config
     from api.config import create_stream_channel, register_stream_owner
     from api.models import Session, get_session
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     server1, base1 = _start_fake_gateway(_FakeJrosGateway)
     _FakeJrosGateway.seen = []
@@ -323,14 +341,14 @@ def test_offline_gateway_surfaces_actionable_apperror(monkeypatch, tmp_path):
     from api import config
     from api.config import create_stream_channel, register_stream_owner
     from api.models import Session
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     # A port nothing listens on — connection refused, fast. No local
     # checkout either, so the local bridge fallback must not trigger.
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
     monkeypatch.delenv("ARES_JROS_DIR", raising=False)
     monkeypatch.setenv("ARES_JAEGER_HOME", str(tmp_path / "missing-jaeger"))
-    # jros_gateway_chat does `from api.jros_paths import discover_jros_source_root`,
+    # jros_gateway_chat does `from api.providers.jaeger.paths import discover_jros_source_root`,
     # which auto-discovers sibling checkouts (../JROS, ~/GitHub/JROS, ~/JROS)
     # independent of the env vars above — patch it out so this test's "no
     # local checkout anywhere" premise holds on a dev machine that actually
@@ -365,8 +383,6 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     server, base = _start_fake_gateway()
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", base)
     try:
-        monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
-        monkeypatch.setattr(backend_selector, "_jros_gateway_info", {})
         assert backend_selector.is_jros_available() is True
         status = backend_selector.backend_status()
         assert status["jros_local"] is True
@@ -382,16 +398,20 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     # See the matching comment in test_offline_gateway_surfaces_actionable_apperror:
     # sibling auto-discovery ignores these env vars, so patch it out to test
     # "no local checkout anywhere" deterministically.
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     monkeypatch.setattr(jros_gateway_chat, "discover_jros_source_root", lambda: None)
-    monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
+    # The healthy-gateway assertion above populated the status cache; drop it so
+    # this half measures the now-unreachable gateway rather than that result.
+    from api.providers.jaeger.status import reset_cache
+
+    reset_cache()
     assert backend_selector.is_jros_available() is False
     assert backend_selector.backend_status()["jros_local"] is False
 
 
 def test_reset_jros_boot_posts_reset_and_swallows_offline(monkeypatch):
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     server, base = _start_fake_gateway()
     _FakeJrosGateway.seen = []
@@ -434,7 +454,7 @@ def _local_checkout(monkeypatch, tmp_path):
 
 
 def test_local_fallback_runs_turn_when_no_gateway(monkeypatch, tmp_path):
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
     from api.models import Session
 
     _local_checkout(monkeypatch, tmp_path)
@@ -481,7 +501,7 @@ def test_local_fallback_runs_turn_when_no_gateway(monkeypatch, tmp_path):
 
 
 def test_local_fallback_lock_error_is_actionable(monkeypatch, tmp_path):
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     _local_checkout(monkeypatch, tmp_path)
     jros_gateway_chat._reset_local_bridge_clients()
@@ -510,7 +530,7 @@ def test_local_fallback_lock_error_is_actionable(monkeypatch, tmp_path):
 
 
 def test_local_fallback_missing_instance_says_run_setup(monkeypatch, tmp_path):
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     _local_checkout(monkeypatch, tmp_path)
     jros_gateway_chat._reset_local_bridge_clients()
@@ -537,7 +557,7 @@ def test_local_fallback_missing_instance_says_run_setup(monkeypatch, tmp_path):
 
 
 def test_gateway_wins_over_local_fallback(monkeypatch, tmp_path):
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
     from api.models import Session
 
     server, base = _start_fake_gateway()
@@ -567,8 +587,6 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     (tmp_path / "jaeger_os").mkdir()
     monkeypatch.setenv("ARES_JROS_DIR", str(tmp_path))
     monkeypatch.setenv("ARES_JROS_GATEWAY_URL", "http://127.0.0.1:1")
-    monkeypatch.setattr(backend_selector, "_jros_available_cache", None)
-    monkeypatch.setattr(backend_selector, "_jros_gateway_info", {})
     # Checkout alone is install-detected, not execution-available.
     assert backend_selector.is_jros_available() is False
     status = backend_selector.backend_status()

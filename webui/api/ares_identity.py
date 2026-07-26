@@ -66,7 +66,7 @@ def _persona_display_name(persona_id: str | None) -> str | None:
 def _jros_identity_path_candidates() -> list[Path]:
     candidates: list[Path] = []
     try:
-        from api.jros_paths import jaeger_home, jros_config_path, jros_instance_name
+        from api.providers.jaeger.paths import jaeger_home, jros_config_path, jros_instance_name
 
         config_path = jros_config_path()
         candidates.append(config_path.with_name("identity.yaml"))

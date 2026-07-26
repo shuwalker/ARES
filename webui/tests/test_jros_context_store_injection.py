@@ -62,7 +62,7 @@ def _run_turn(monkeypatch, sid: str) -> dict:
     from api import config
     from api.config import create_stream_channel, register_stream_owner
     from api.models import Session
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     server, base = _start_fake_gateway()
     _FakeJrosGateway.seen = []
@@ -132,7 +132,7 @@ def test_local_bridge_path_never_calls_context_store_retrieve(monkeypatch, tmp_p
     from api import config
     from api.config import create_stream_channel, register_stream_owner
     from api.models import Session
-    from api import jros_gateway_chat
+    from api.providers.jaeger import gateway_streaming as jros_gateway_chat
 
     called = {"count": 0}
 

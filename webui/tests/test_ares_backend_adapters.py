@@ -7,7 +7,7 @@ import pytest
 
 from api.backend_selector import VALID_BACKENDS, normalize_backend
 from api.providers.agentic_backend import AgenticBackend
-from api.backends.jros import JROSBackend
+from api.providers.jaeger.backend import JROSBackend
 from api.backends.router import get_default_router, BackendRouter
 from api.backends.cli_backends import BackendRegistry
 

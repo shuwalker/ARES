@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 
 from api.gateway_restart import restart_active_profile_gateway
 from api.config import REPO_ROOT as WEBUI_SOURCE_ROOT, STREAMS, STREAMS_LOCK
-from api.jros_paths import jros_update_repo
+from api.providers.jaeger.paths import jros_update_repo
 
 
 def _find_owning_git_repo(path: Path) -> Path:
