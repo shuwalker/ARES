@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 
 import App from "@/App";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { applySettings, readSettings } from "@/island-backdrop";
 import { AresProvider } from "@/shared/ares-context";
 import { LocalProfileProvider } from "@/shared/local-profile";
 import "@/index.css";
@@ -11,6 +12,10 @@ import "@/index.css";
 const root = document.getElementById("root");
 
 if (!root) throw new Error("ARES root element was not found");
+
+// Applied before the first paint so an enabled backdrop never flashes the opaque
+// shell first. Mirrors how the `dark` class is already on <html> from index.html.
+applySettings(readSettings());
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {

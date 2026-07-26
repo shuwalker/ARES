@@ -36,6 +36,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import { APP_ICON_URL } from "@/assets";
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
 import { aresApi } from "@/shared/ares-api";
@@ -45,8 +46,8 @@ import { apiFetch, readableError } from "@/shared/api-client";
 
 // Hermes-matching dark blue palette
 const H = {
-  bg: "#0f1117",
-  surface: "#1a1d28",
+  bg: "var(--chat-bg)",
+  surface: "var(--chat-surface)",
   surfaceHover: "#1f2236",
   surfaceActive: "#252840",
   border: "#1e2130",
@@ -68,7 +69,7 @@ const H = {
 
 // ARES Spartan Helmet - uses the actual icon from assets
 const SpartanHelmetSVG = () => (
-  <img src="/assets/ares-app-icon.png" alt="ARES Spartan Helmet" style={{ width: "72px", height: "72px", objectFit: "contain" }} />
+  <img src={APP_ICON_URL} alt="ARES Spartan Helmet" style={{ width: "72px", height: "72px", objectFit: "contain" }} />
 );
 
 function IconBtn({ children, title, onClick }: { children: React.ReactNode; title: string; onClick?: () => void }) {

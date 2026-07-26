@@ -300,7 +300,7 @@ function SessionRow({
         <div
           role="menu"
           style={{ left: menuAt.x, top: menuAt.y }}
-          className="fixed z-50 w-50 rounded-md border border-[#343631] bg-[#1a1c24] p-1 shadow-2xl text-[11px]"
+          className="fixed z-50 w-50 rounded-md border border-edge bg-overlay p-1 shadow-2xl text-[11px]"
           onPointerDown={(e) => e.stopPropagation()}
         >
           <MenuItem icon={Link2} label="Copy project link" onClick={() => run(() => actions.copyLink(sessionId))} />
@@ -333,7 +333,7 @@ function SessionRow({
               <button
                 type="button"
                 onClick={() => run(() => onAssignProject(sessionId, null))}
-                className="w-full text-left px-2 py-1 rounded text-[#8f9188] hover:bg-[#252836] hover:text-[#ecebe4]"
+                className="w-full text-left px-2 py-1 rounded text-[#8f9188] hover:bg-overlay-hover hover:text-[#ecebe4]"
               >
                 — Unassigned —
               </button>
@@ -346,7 +346,7 @@ function SessionRow({
                     "w-full text-left px-2 py-1 rounded flex items-center gap-1.5 transition-colors",
                     projectName === p.name
                       ? "bg-[#5b7cf6]/20 text-[#5b7cf6] font-medium"
-                      : "text-[#8f9188] hover:bg-[#252836] hover:text-[#ecebe4]",
+                      : "text-[#8f9188] hover:bg-overlay-hover hover:text-[#ecebe4]",
                   )}
                 >
                   <Folder className="size-3 shrink-0" />
@@ -423,7 +423,7 @@ function MenuItem({
           ? "cursor-not-allowed text-[#4b4d47]"
           : danger
             ? "text-[#e06c6c] hover:bg-[#3a2226]"
-            : "text-[#c9cbd4] hover:bg-[#252836] hover:text-[#ecebe4]",
+            : "text-[#c9cbd4] hover:bg-overlay-hover hover:text-[#ecebe4]",
       )}
     >
       <Icon className="size-3 shrink-0" />
@@ -734,10 +734,10 @@ export function ControlDeck({
   );
 
   return (
-    <div className="relative flex h-full min-h-0 bg-[#111210] text-[#ecebe4]">
+    <div className="relative flex h-full min-h-0 bg-shell-root text-[#ecebe4]">
       {/* ── Icon rail ── */}
       <nav
-        className="flex w-14 shrink-0 flex-col items-center border-r border-[#343631] py-3"
+        className="flex w-14 shrink-0 flex-col items-center border-r border-edge py-3"
         aria-label="Command center modes"
       >
         <NavLink
@@ -757,9 +757,9 @@ export function ControlDeck({
               aria-label={label}
               title={label}
               className={cn(
-                "relative grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4] sm:size-9",
+                "relative grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-shell-elevated hover:text-[#ecebe4] sm:size-9",
                 activeMode === id &&
-                  "bg-[#292b28] text-[#ef4444] before:absolute before:-left-2.5 before:h-5 before:w-0.5 before:bg-[#ef4444]",
+                  "bg-shell-hover text-[#ef4444] before:absolute before:-left-2.5 before:h-5 before:w-0.5 before:bg-[#ef4444]",
               )}
             >
               <Icon className="size-4" />
@@ -773,8 +773,8 @@ export function ControlDeck({
           title="App settings — profile, theme, WebUI & Mac"
           className={({ isActive }) =>
             cn(
-              "mt-auto grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4] sm:size-9",
-              isActive && "bg-[#292b28] text-[#faf9f3]",
+              "mt-auto grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-shell-elevated hover:text-[#ecebe4] sm:size-9",
+              isActive && "bg-shell-hover text-[#faf9f3]",
             )
           }
         >
@@ -783,9 +783,9 @@ export function ControlDeck({
       </nav>
 
       {/* ── Sidebar content ── */}
-      <aside className="flex min-w-0 flex-1 flex-col bg-[#151614]">
+      <aside className="flex min-w-0 flex-1 flex-col bg-shell">
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center border-b border-[#343631] px-3">
+        <div className="flex h-12 shrink-0 items-center border-b border-edge px-3">
           <p className="min-w-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#a7a79d]">
             {activeMode === "chat" ? "PROJECTS" : activeSection?.label ?? "ARES"}
           </p>
@@ -794,7 +794,7 @@ export function ControlDeck({
               type="button"
               title="New project"
               onClick={handleNewSession}
-              className="ml-auto flex h-6 w-6 items-center justify-center rounded text-[#6f7169] transition-colors hover:bg-[#292b28] hover:text-[#ecebe4]"
+              className="ml-auto flex h-6 w-6 items-center justify-center rounded text-[#6f7169] transition-colors hover:bg-shell-hover hover:text-[#ecebe4]"
             >
               <Plus className="size-3.5" />
             </button>
@@ -817,7 +817,7 @@ export function ControlDeck({
                     placeholder="Filter projects..."
                     value={sessionSearch}
                     onChange={(e) => setSessionSearch(e.target.value)}
-                    className="w-full rounded border border-[#343631] bg-[#1b1c1a] py-1 pl-7 pr-2 text-[12px] text-[#ecebe4] outline-none placeholder:text-[#6f7169] focus:border-[#4b4d47]"
+                    className="w-full rounded border border-edge bg-shell-raised py-1 pl-7 pr-2 text-[12px] text-[#ecebe4] outline-none placeholder:text-[#6f7169] focus:border-[#4b4d47]"
                   />
                 </div>
               </div>
@@ -831,7 +831,7 @@ export function ControlDeck({
                     "px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0",
                     sessionSourceFilter === "webui" || sessionSourceFilter === "all"
                       ? "bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/50"
-                      : "border border-[#343631] text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
+                      : "border border-edge text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
                   )}
                 >
                   WebUI ({enrichedSessions.filter(s => s.source !== "cli").length})
@@ -842,8 +842,8 @@ export function ControlDeck({
                   className={cn(
                     "px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors shrink-0",
                     sessionSourceFilter === "cli" || sessionSourceFilter === "all"
-                      ? "border border-[#4b4d47] bg-[#292b28] text-[#ecebe4]"
-                      : "border border-[#343631] text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
+                      ? "border border-[#4b4d47] bg-shell-hover text-[#ecebe4]"
+                      : "border border-edge text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
                   )}
                 >
                   CLI ({enrichedSessions.filter(s => s.source === "cli").length})
@@ -859,7 +859,7 @@ export function ControlDeck({
                     "px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors shrink-0",
                     activeProject === null
                       ? "bg-[#3889fd]/20 border-[#3889fd] text-[#3889fd]"
-                      : "border-[#343631] text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
+                      : "border-edge text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
                   )}
                 >
                   All
@@ -871,7 +871,7 @@ export function ControlDeck({
                     "px-2.5 py-0.5 rounded-full text-[11px] font-medium border border-dashed transition-colors shrink-0",
                     activeProject === "unassigned"
                       ? "bg-[#f5c542]/20 border-[#f5c542] text-[#f5c542]"
-                      : "border-[#343631] text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
+                      : "border-edge text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
                   )}
                 >
                   Unassigned
@@ -885,7 +885,7 @@ export function ControlDeck({
                       "px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors shrink-0 flex items-center gap-1.5",
                       activeProject === p.id
                         ? "bg-[#5b7cf6]/20 border-[#5b7cf6] text-[#faf9f3]"
-                        : "border-[#343631] text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
+                        : "border-edge text-[#8f9188] hover:border-[#4b4d47] hover:text-[#ecebe4]",
                     )}
                   >
                     <span className="size-1.5 rounded-full bg-[#5b7cf6]" />
@@ -896,7 +896,7 @@ export function ControlDeck({
                   type="button"
                   onClick={() => setShowAddProject(true)}
                   title="Create new project"
-                  className="size-5 rounded-full border border-[#343631] flex items-center justify-center text-[#8f9188] hover:text-[#ecebe4] hover:border-[#5b7cf6] transition-colors shrink-0"
+                  className="size-5 rounded-full border border-edge flex items-center justify-center text-[#8f9188] hover:text-[#ecebe4] hover:border-[#5b7cf6] transition-colors shrink-0"
                 >
                   <Plus className="size-3" />
                 </button>
@@ -904,7 +904,7 @@ export function ControlDeck({
 
               {/* Inline Create Project Form */}
               {showAddProject && (
-                <form onSubmit={(e) => void handleCreateProject(e)} className="m-2 p-2 rounded border border-[#3889fd]/40 bg-[#161824]">
+                <form onSubmit={(e) => void handleCreateProject(e)} className="m-2 p-2 rounded border border-[#3889fd]/40 bg-overlay-inset">
                   <div className="text-[11px] font-semibold text-[#a7a79d] mb-1">Create New Project</div>
                   <div className="flex gap-1.5">
                     <input
@@ -913,7 +913,7 @@ export function ControlDeck({
                       value={newProjectName}
                       onChange={(e) => setNewProjectName(e.target.value)}
                       placeholder="Project name..."
-                      className="flex-1 rounded border border-[#343631] bg-[#111210] px-2 py-1 text-[11px] text-[#ecebe4] outline-none focus:border-[#5b7cf6]"
+                      className="flex-1 rounded border border-edge bg-shell-deep px-2 py-1 text-[11px] text-[#ecebe4] outline-none focus:border-[#5b7cf6]"
                     />
                     <button
                       type="submit"
@@ -925,7 +925,7 @@ export function ControlDeck({
                     <button
                       type="button"
                       onClick={() => { setShowAddProject(false); setNewProjectName(""); }}
-                      className="px-1.5 py-1 rounded border border-[#343631] text-[#8f9188] text-[11px] hover:text-[#ecebe4]"
+                      className="px-1.5 py-1 rounded border border-edge text-[#8f9188] text-[11px] hover:text-[#ecebe4]"
                     >
                       Cancel
                     </button>
@@ -997,8 +997,8 @@ export function ControlDeck({
                       onClick={() => onNavigate?.()}
                       className={({ isActive }) =>
                         cn(
-                          "flex min-h-11 items-center gap-2.5 rounded-sm px-2.5 py-2 text-xs text-[#92948b] transition-colors hover:bg-[#20211f] hover:text-[#ecebe4]",
-                          isActive && "bg-[#292b28] text-[#faf9f3]",
+                          "flex min-h-11 items-center gap-2.5 rounded-sm px-2.5 py-2 text-xs text-[#92948b] transition-colors hover:bg-shell-elevated hover:text-[#ecebe4]",
+                          isActive && "bg-shell-hover text-[#faf9f3]",
                         )
                       }
                     >
@@ -1017,7 +1017,7 @@ export function ControlDeck({
       {actionNotice && (
         <div
           role="status"
-          className="fixed bottom-4 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-md border border-[#343631] bg-[#1a1c24] px-3 py-2 text-[11px] text-[#ecebe4] shadow-2xl"
+          className="fixed bottom-4 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-md border border-edge bg-overlay px-3 py-2 text-[11px] text-[#ecebe4] shadow-2xl"
         >
           {actionNotice}
         </div>
@@ -1028,7 +1028,7 @@ export function ControlDeck({
       {/* ── MODAL 2: Edit Session Properties (Title, Source, Backend) ── */}
       {editingSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm rounded-xl border border-[#343631] bg-[#1a1c24] p-4 shadow-2xl text-[#ecebe4]">
+          <div className="w-full max-w-sm rounded-xl border border-edge bg-overlay p-4 shadow-2xl text-[#ecebe4]">
             <div className="flex items-center justify-between border-b border-[#2d303e] pb-2 mb-3">
               <h3 className="text-sm font-semibold text-[#f0f2ff]">Edit Project Details</h3>
               <button
@@ -1056,7 +1056,7 @@ export function ControlDeck({
                       e.preventDefault();
                       (e.currentTarget.nextElementSibling as HTMLButtonElement | null)?.click();
                     }}
-                    className="w-full rounded border border-[#343631] bg-[#111210] px-2.5 py-1.5 text-[12px] text-[#ecebe4] outline-none focus:border-[#5b7cf6] disabled:text-[#6f7169]"
+                    className="w-full rounded border border-edge bg-shell-deep px-2.5 py-1.5 text-[12px] text-[#ecebe4] outline-none focus:border-[#5b7cf6] disabled:text-[#6f7169]"
                   />
                   <button
                     type="button"
@@ -1085,7 +1085,7 @@ export function ControlDeck({
                   Deliberately not editable: it is a record of what happened, and
                   the previous editable version only wrote to localStorage, so it
                   silently disagreed with the backend. */}
-              <div className="rounded border border-[#2d303e] bg-[#111210] p-2.5">
+              <div className="rounded border border-[#2d303e] bg-shell-deep p-2.5">
                 <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6f7169]">
                   Provenance
                 </p>

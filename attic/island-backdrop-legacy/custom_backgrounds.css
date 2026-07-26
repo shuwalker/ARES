@@ -1,0 +1,261 @@
+/* ARES Clean Glassmorphism Island Backdrop Engine
+ *
+ * Eliminates nested backdrop-filter blur glitches, double-blur box outlines,
+ * and harsh dividing seams across all themes (Light, Dark, System).
+ */
+
+:root {
+  --island-surface-opacity: 45%;
+  --island-bg-position: center top;
+  --island-bg-size: cover;
+}
+
+/* Base Body Canvas */
+html body.island-backdrop-enabled {
+  background-color: #0d0d1a !important;
+  background-image: none !important;
+  position: relative;
+  min-height: 100%;
+}
+
+:root:not(.dark) body.island-backdrop-enabled {
+  background-color: #f4f4f8 !important;
+}
+
+/* Fixed Full-Viewport Wallpaper Canvas */
+html body.island-backdrop-enabled::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("assets/ares-island-wide.png") !important;
+  background-position: var(--island-bg-position) !important;
+  background-size: var(--island-bg-size) !important;
+  background-repeat: no-repeat !important;
+  opacity: 1 !important;
+}
+
+/* Position Modes */
+html body.island-backdrop-enabled.island-pos-top::before {
+  background-position: center top !important;
+}
+html body.island-backdrop-enabled.island-pos-center::before {
+  background-position: center center !important;
+}
+html body.island-backdrop-enabled.island-pos-bottom::before {
+  background-position: center bottom !important;
+}
+
+/* Elevate UI layout above fixed background */
+html body.island-backdrop-enabled > *,
+html body.island-backdrop-enabled .layout {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   1. STRUCTURAL WRAPPERS - 100% TRANSPARENT (NO BLUR, NO BORDERS)
+   Prevents compound opacity and nested blur GPU artifacts
+   ───────────────────────────────────────────────────────────── */
+html body.island-backdrop-enabled .layout,
+html body.island-backdrop-enabled .main,
+html body.island-backdrop-enabled .main-view,
+html body.island-backdrop-enabled #mainChat,
+html body.island-backdrop-enabled #mainSkills,
+html body.island-backdrop-enabled #mainMemory,
+html body.island-backdrop-enabled #mainTasks,
+html body.island-backdrop-enabled #mainMissions,
+html body.island-backdrop-enabled #mainKanban,
+html body.island-backdrop-enabled #mainWorkspaces,
+html body.island-backdrop-enabled #mainProfiles,
+html body.island-backdrop-enabled #mainInsights,
+html body.island-backdrop-enabled #mainFinance,
+html body.island-backdrop-enabled #mainLogs,
+html body.island-backdrop-enabled #mainCharacters,
+html body.island-backdrop-enabled #mainPlugin,
+html body.island-backdrop-enabled #mainSettings,
+html body.island-backdrop-enabled .settings-view,
+html body.island-backdrop-enabled .settings-shell,
+html body.island-backdrop-enabled .profiles-shell,
+html body.island-backdrop-enabled .kanban-board-wrap,
+html body.island-backdrop-enabled .finance-container,
+html body.island-backdrop-enabled .missions-container,
+html body.island-backdrop-enabled .characters-container,
+html body.island-backdrop-enabled .workspace-browser,
+html body.island-backdrop-enabled .logs-view,
+html body.island-backdrop-enabled .messages-shell,
+html body.island-backdrop-enabled .messages,
+html body.island-backdrop-enabled .messages-inner,
+html body.island-backdrop-enabled .main-view-body,
+html body.island-backdrop-enabled .welcome-card,
+html body.island-backdrop-enabled .empty-state,
+html body.island-backdrop-enabled .composer-wrap {
+  background-color: transparent !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   2. PRIMARY GLASS PANES (Top-level surface blur applied ONCE)
+   ───────────────────────────────────────────────────────────── */
+
+/* DARK MODE PRIMARY GLASS */
+:root.dark body.island-backdrop-enabled .sidebar,
+:root.dark body.island-backdrop-enabled .rail,
+:root.dark body.island-backdrop-enabled .panel-view,
+:root.dark body.island-backdrop-enabled .rightpanel,
+:root.dark body.island-backdrop-enabled .app-titlebar,
+:root.dark body.island-backdrop-enabled .settings-sidebar,
+:root.dark body.island-backdrop-enabled .settings-main,
+:root.dark body.island-backdrop-enabled .profiles-sidebar,
+:root.dark body.island-backdrop-enabled .profiles-main,
+:root.dark body.island-backdrop-enabled .character-editor,
+:root.dark body.island-backdrop-enabled .workspace-tree,
+:root.dark body.island-backdrop-enabled .workspace-preview,
+:root.dark body.island-backdrop-enabled .logs-container {
+  background-color: color-mix(in srgb, #0d0d1a var(--island-surface-opacity), transparent) !important;
+  backdrop-filter: blur(18px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.2) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* LIGHT MODE PRIMARY GLASS */
+:root:not(.dark) body.island-backdrop-enabled .sidebar,
+:root:not(.dark) body.island-backdrop-enabled .rail,
+:root:not(.dark) body.island-backdrop-enabled .panel-view,
+:root:not(.dark) body.island-backdrop-enabled .rightpanel,
+:root:not(.dark) body.island-backdrop-enabled .app-titlebar,
+:root:not(.dark) body.island-backdrop-enabled .settings-sidebar,
+:root:not(.dark) body.island-backdrop-enabled .settings-main,
+:root:not(.dark) body.island-backdrop-enabled .profiles-sidebar,
+:root:not(.dark) body.island-backdrop-enabled .profiles-main,
+:root:not(.dark) body.island-backdrop-enabled .character-editor,
+:root:not(.dark) body.island-backdrop-enabled .workspace-tree,
+:root:not(.dark) body.island-backdrop-enabled .workspace-preview,
+:root:not(.dark) body.island-backdrop-enabled .logs-container {
+  background-color: color-mix(in srgb, #ffffff var(--island-surface-opacity), transparent) !important;
+  backdrop-filter: blur(18px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.2) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   3. INNER FLOATING CARDS & BUTTONS (NO NESTED BLUR to prevent glitches)
+   Uses background tint fill only
+   ───────────────────────────────────────────────────────────── */
+
+/* DARK MODE CARDS & BUTTONS */
+:root.dark body.island-backdrop-enabled .suggestion,
+:root.dark body.island-backdrop-enabled .composer-box,
+:root.dark body.island-backdrop-enabled .settings-card,
+:root.dark body.island-backdrop-enabled #mainSettings .settings-field,
+:root.dark body.island-backdrop-enabled .settings-section,
+:root.dark body.island-backdrop-enabled .profile-card,
+:root.dark body.island-backdrop-enabled .character-card,
+:root.dark body.island-backdrop-enabled .kanban-col,
+:root.dark body.island-backdrop-enabled .kanban-card,
+:root.dark body.island-backdrop-enabled .finance-card,
+:root.dark body.island-backdrop-enabled .finance-panel,
+:root.dark body.island-backdrop-enabled .mission-detail {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+:root.dark body.island-backdrop-enabled .suggestion:hover,
+:root.dark body.island-backdrop-enabled .composer-box:focus-within {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* LIGHT MODE CARDS & BUTTONS */
+:root:not(.dark) body.island-backdrop-enabled .suggestion,
+:root:not(.dark) body.island-backdrop-enabled .composer-box,
+:root:not(.dark) body.island-backdrop-enabled .settings-card,
+:root:not(.dark) body.island-backdrop-enabled #mainSettings .settings-field,
+:root:not(.dark) body.island-backdrop-enabled .settings-section,
+:root:not(.dark) body.island-backdrop-enabled .profile-card,
+:root:not(.dark) body.island-backdrop-enabled .character-card,
+:root:not(.dark) body.island-backdrop-enabled .kanban-col,
+:root:not(.dark) body.island-backdrop-enabled .kanban-card,
+:root:not(.dark) body.island-backdrop-enabled .finance-card,
+:root:not(.dark) body.island-backdrop-enabled .finance-panel,
+:root:not(.dark) body.island-backdrop-enabled .mission-detail {
+  background-color: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+:root:not(.dark) body.island-backdrop-enabled .suggestion:hover,
+:root:not(.dark) body.island-backdrop-enabled .composer-box:focus-within {
+  background-color: rgba(255, 255, 255, 0.65) !important;
+  border-color: rgba(0, 0, 0, 0.18) !important;
+}
+
+/* Floating Composer Pill styling */
+html body.island-backdrop-enabled .composer-box {
+  border-radius: 16px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18) !important;
+}
+
+/* Remove hard horizontal dividing lines */
+html body.island-backdrop-enabled .app-titlebar,
+html body.island-backdrop-enabled .panel-head,
+html body.island-backdrop-enabled .topbar {
+  border-bottom: none !important;
+}
+
+/* Hide legacy chat watermark */
+html body.island-backdrop-enabled #mainChat::before {
+  display: none !important;
+}
+
+/* Settings Controls Styling */
+.island-backdrop-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+.island-backdrop-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+.island-opacity-control {
+  margin-top: 14px;
+}
+.island-opacity-control.disabled {
+  opacity: 0.5;
+}
+.island-opacity-control > label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.island-opacity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.island-opacity-row input {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.island-opacity-row output {
+  width: 36px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

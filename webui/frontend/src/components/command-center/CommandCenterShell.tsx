@@ -127,7 +127,7 @@ function SessionTitle({
               setError("");
             }
           }}
-          className="min-w-0 flex-1 rounded-sm border border-[#4a4d45] bg-[#1b1c1a] px-2 py-1 text-xs font-medium text-[#ecebe4] outline-none focus:border-[#71736b]"
+          className="min-w-0 flex-1 rounded-sm border border-edge-strong bg-shell-raised px-2 py-1 text-xs font-medium text-[#ecebe4] outline-none focus:border-edge-emphasis"
         />
         {error && <span className="shrink-0 text-[10px] text-[#e06c6c]">{error}</span>}
       </div>
@@ -141,13 +141,13 @@ function SessionTitle({
         onClick={beginEdit}
         disabled={!sessionId || session?.readOnly}
         title={session?.readOnly ? "This session is read-only" : "Rename session"}
-        className="min-w-0 truncate rounded-sm px-1 py-0.5 text-left text-xs font-medium text-[#ecebe4] transition-colors hover:bg-[#1b1c1a] disabled:cursor-default disabled:hover:bg-transparent"
+        className="min-w-0 truncate rounded-sm px-1 py-0.5 text-left text-xs font-medium text-[#ecebe4] transition-colors hover:bg-shell-raised disabled:cursor-default disabled:hover:bg-transparent"
       >
         {display}
       </button>
       <span
         title="Messages in this project"
-        className="shrink-0 rounded-sm bg-[#1b1c1a] px-1.5 py-0.5 font-mono text-[9px] text-[#8f9188]"
+        className="shrink-0 rounded-sm bg-shell-raised px-1.5 py-0.5 font-mono text-[9px] text-[#8f9188]"
       >
         {session?.messageCount ?? session?.messages?.length ?? 0}
       </span>
@@ -157,7 +157,7 @@ function SessionTitle({
 
 function SurfaceLoading() {
   return (
-    <div className="grid h-full place-items-center bg-[#151614] text-xs text-[#8f9188]" role="status">
+    <div className="grid h-full place-items-center bg-shell text-xs text-[#8f9188]" role="status">
       Loading Companion surface…
     </div>
   );
@@ -187,14 +187,14 @@ function BrainHeader({
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[#343631] bg-[#151614]/95 px-3 backdrop-blur-xl sm:gap-3 sm:px-4">
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge bg-shell/95 px-3 backdrop-blur-xl sm:gap-3 sm:px-4">
       {compact && onOpenDeck && (
         <button
           type="button"
           onClick={onOpenDeck}
           title="Open menu"
           aria-label="Open menu"
-          className="grid size-11 shrink-0 place-items-center rounded-md text-[#a7a79d] transition-colors hover:bg-[#1b1c1a] hover:text-[#ecebe4]"
+          className="grid size-11 shrink-0 place-items-center rounded-md text-[#a7a79d] transition-colors hover:bg-shell-raised hover:text-[#ecebe4]"
         >
           <Menu className="size-5" aria-hidden="true" />
         </button>
@@ -216,7 +216,7 @@ function BrainHeader({
           title={handsOpen ? "Close workspace" : "Open workspace"}
           aria-label={handsOpen ? "Close workspace" : "Open workspace"}
           aria-pressed={handsOpen}
-          className="grid size-11 shrink-0 place-items-center rounded-md text-[#a7a79d] transition-colors hover:bg-[#1b1c1a] hover:text-[#ecebe4]"
+          className="grid size-11 shrink-0 place-items-center rounded-md text-[#a7a79d] transition-colors hover:bg-shell-raised hover:text-[#ecebe4]"
         >
           <Folder className="size-5" aria-hidden="true" />
         </button>
@@ -331,13 +331,13 @@ export function CommandCenterShell() {
       expand={expandWorkbench}
     >
       <div
-        className="h-dvh w-screen overflow-hidden bg-[#111210] text-[#ecebe4]"
+        className="h-dvh w-screen overflow-hidden bg-shell-root text-[#ecebe4]"
         data-compact={isCompact ? "1" : "0"}
       >
         {isCompact ? (
           <div className="relative flex h-full min-h-0 flex-col">
             <main
-              className="flex h-full min-h-0 flex-1 flex-col bg-[#151614]"
+              className="flex h-full min-h-0 flex-1 flex-col bg-shell"
               data-active-surface={location.pathname}
             >
               <BrainHeader
@@ -376,7 +376,7 @@ export function CommandCenterShell() {
               className={`cc-mobile-drawer cc-mobile-drawer--deck${deckOpen ? " is-open" : ""}`}
               aria-hidden={!deckOpen}
             >
-              <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#343631] bg-[#151614] px-3">
+              <div className="flex h-12 shrink-0 items-center justify-between border-b border-edge bg-shell px-3">
                 <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#a7a79d]">
                   Menu
                 </p>
@@ -385,7 +385,7 @@ export function CommandCenterShell() {
                   onClick={closeDeck}
                   title="Close menu"
                   aria-label="Close menu"
-                  className="grid size-11 place-items-center rounded-md text-[#a7a79d] transition-colors hover:bg-[#1b1c1a] hover:text-[#ecebe4]"
+                  className="grid size-11 place-items-center rounded-md text-[#a7a79d] transition-colors hover:bg-shell-raised hover:text-[#ecebe4]"
                 >
                   <X className="size-4" aria-hidden="true" />
                 </button>
@@ -422,7 +422,7 @@ export function CommandCenterShell() {
               <ResizeHandle id="deck-brain-handle" />
               <Panel id="brain" defaultSize="48%" minSize="280px">
                 <main
-                  className="flex h-full min-h-0 flex-col bg-[#151614]"
+                  className="flex h-full min-h-0 flex-col bg-shell"
                   data-active-surface={location.pathname}
                 >
                   <BrainHeader
@@ -461,7 +461,7 @@ export function CommandCenterShell() {
                 onClick={expandWorkbench}
                 title="Open workspace"
                 aria-label="Open workspace"
-                className="fixed right-0 top-1/2 z-30 grid h-12 w-6 -translate-y-1/2 place-items-center rounded-l-lg border border-r-0 border-[#343631] bg-[#1b1c1a]/95 text-[#a7a79d] shadow-lg backdrop-blur-sm transition-colors hover:border-[#71736b] hover:text-[#ecebe4]"
+                className="fixed right-0 top-1/2 z-30 grid h-12 w-6 -translate-y-1/2 place-items-center rounded-l-lg border border-r-0 border-edge bg-shell-raised/95 text-[#a7a79d] shadow-lg backdrop-blur-sm transition-colors hover:border-edge-emphasis hover:text-[#ecebe4]"
               >
                 <ChevronLeft className="size-4" aria-hidden="true" />
               </button>
