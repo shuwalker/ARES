@@ -145,7 +145,12 @@ def test_cli_environment_does_not_forward_unrelated_secrets(monkeypatch):
 
 
 def test_gemini_probe_uses_header_not_query_string(monkeypatch):
-    import fastapi_app.adapters.frameworks as frameworks
+    # The probe moved from the adapter into api/providers/cloud/status.py when
+    # providers were split into packages; the property it guards — the key
+    # travels in a header, never in a URL that could reach a log — is unchanged.
+    import urllib.request
+
+    import api.providers.cloud.status as cloud_status
 
     captured = {}
 
@@ -164,8 +169,8 @@ def test_gemini_probe_uses_header_not_query_string(monkeypatch):
         captured["timeout"] = timeout
         return Response()
 
-    monkeypatch.setattr(frameworks, "_credential", lambda _name: "top-secret-key")
-    monkeypatch.setattr(frameworks.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(cloud_status, "credential", lambda _name: "top-secret-key")
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
 
     health = GeminiCloudAdapter().check_health(profile="default")
 
