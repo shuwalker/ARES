@@ -123,7 +123,7 @@ class TestBug1094HasKeyFalsePositive:
         old_cfg, old_mtime = _setup_clean_config(monkeypatch, tmp_path)
 
         try:
-            from api.providers import _provider_has_key
+            from api.provider_credentials import _provider_has_key
 
             # Set up config with anthropic as active provider and a top-level api_key
             config.cfg["model"] = {
@@ -148,7 +148,7 @@ class TestBug1094HasKeyFalsePositive:
         old_cfg, old_mtime = _setup_clean_config(monkeypatch, tmp_path)
 
         try:
-            from api.providers import _provider_has_key
+            from api.provider_credentials import _provider_has_key
 
             config.cfg["model"] = {
                 "provider": "openai",
@@ -167,7 +167,7 @@ class TestBug1094HasKeyFalsePositive:
         old_cfg, old_mtime = _setup_clean_config(monkeypatch, tmp_path)
 
         try:
-            from api.providers import _provider_has_key
+            from api.provider_credentials import _provider_has_key
 
             config.cfg["model"] = {
                 "provider": "anthropic",
@@ -184,7 +184,7 @@ class TestBug1094HasKeyFalsePositive:
         old_cfg, old_mtime = _setup_clean_config(monkeypatch, tmp_path)
 
         try:
-            from api.providers import _provider_has_key
+            from api.provider_credentials import _provider_has_key
 
             config.cfg["model"] = {"provider": "anthropic"}
             config.cfg["providers"] = {
@@ -222,7 +222,7 @@ class TestBug1094RemoveProviderKey:
         config.cfg.update(config_data)
 
         try:
-            from api.providers import _provider_has_key, remove_provider_key
+            from api.provider_credentials import _provider_has_key, remove_provider_key
 
             # Verify key is detected before removal
             assert _provider_has_key("deepseek") is True
@@ -265,7 +265,7 @@ class TestBug1094RemoveProviderKey:
         config.cfg.update(config_data)
 
         try:
-            from api.providers import _provider_has_key, remove_provider_key
+            from api.provider_credentials import _provider_has_key, remove_provider_key
 
             assert _provider_has_key("anthropic") is True
 
@@ -307,7 +307,7 @@ class TestBug1094RemoveProviderKey:
         config.cfg.update(config_data)
 
         try:
-            from api.providers import remove_provider_key
+            from api.provider_credentials import remove_provider_key
 
             result = remove_provider_key("deepseek")
             assert result["ok"] is True
@@ -331,7 +331,7 @@ class TestBug1094RemoveProviderKey:
         monkeypatch.setattr(config, "_get_config_path", lambda: config_path)
 
         try:
-            from api.providers import remove_provider_key
+            from api.provider_credentials import remove_provider_key
 
             result = remove_provider_key("anthropic")
             assert result["ok"] is True

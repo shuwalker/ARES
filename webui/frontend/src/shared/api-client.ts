@@ -45,7 +45,13 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     : await response.text().catch(() => "");
   if (!response.ok) {
     const body = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
-    const message = String(body.error || body.message || payload || `Request failed (${response.status})`);
+    // Only fall back to the raw payload when it is a string. Stringifying an
+    // object here rendered a literal "[object Object]" to users whenever an
+    // error body carried structured fields but no top-level message.
+    const rawFallback = typeof payload === "string" && payload.trim() ? payload : "";
+    const message = String(
+      body.error || body.message || rawFallback || `Request failed (${response.status})`,
+    );
     throw new ApiError(message, response.status, payload, typeof body.code === "string" ? body.code : undefined);
   }
   return payload as T;
@@ -74,6 +80,40 @@ export function readableError(error: unknown, fallback = "ARES could not complet
   if (error instanceof Error && error.message) return error.message;
   return fallback;
 }
+
+/**
+ * The provider context behind a failed request, when the server sent one.
+ *
+ * Adapter errors carry `code`, and often `connection_id` and `state`, which the
+ * UI needs in order to say which provider failed and link to where it is fixed.
+ * `readableError` deliberately keeps returning only the message; this is the
+ * separate accessor for callers that can act on the structure.
+ */
+export interface ProviderErrorContext {
+  code?: string;
+  connectionId?: string;
+  state?: string;
+}
+
+export function providerErrorContext(error: unknown): ProviderErrorContext | null {
+  if (!(error instanceof ApiError)) return null;
+  const details =
+    error.details && typeof error.details === "object"
+      ? (error.details as Record<string, unknown>)
+      : {};
+  const connectionId = typeof details.connection_id === "string" ? details.connection_id : undefined;
+  const state = typeof details.state === "string" ? details.state : undefined;
+  if (!error.code && !connectionId && !state) return null;
+  return { code: error.code, connectionId, state };
+}
+
+/** Error codes that mean "no usable provider", as opposed to a transient failure. */
+export const PROVIDER_UNAVAILABLE_CODES = new Set([
+  "no_runtime_selected",
+  "runtime_unavailable",
+  "runtime_health_unavailable",
+  "unknown_runtime_connection",
+]);
 
 export interface UploadResult {
   filename: string;

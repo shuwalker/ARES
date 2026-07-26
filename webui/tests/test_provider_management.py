@@ -87,7 +87,7 @@ class TestGetProviders:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import get_providers
+        from api.provider_credentials import get_providers
         try:
             result = get_providers()
             assert "providers" in result
@@ -117,7 +117,7 @@ class TestGetProviders:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import get_providers
+        from api.provider_credentials import get_providers
         try:
             result = get_providers()
             for p in result["providers"]:
@@ -147,7 +147,7 @@ class TestGetProviders:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import get_providers
+        from api.provider_credentials import get_providers
         try:
             result = get_providers()
             for p in result["providers"]:
@@ -192,7 +192,7 @@ class TestGetProviders:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import get_providers
+        from api.provider_credentials import get_providers
         try:
             result = get_providers()
             codex = next(p for p in result["providers"] if p["id"] == "openai-codex")
@@ -232,7 +232,7 @@ class TestSetProviderKey:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import set_provider_key
+        from api.provider_credentials import set_provider_key
         try:
             result = set_provider_key("anthropic", "sk-ant-test-key-12345678")
             assert result["ok"] is True
@@ -263,7 +263,7 @@ class TestSetProviderKey:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import set_provider_key
+        from api.provider_credentials import set_provider_key
         try:
             # First set a key
             set_provider_key("anthropic", "sk-ant-test-key-12345678")
@@ -295,7 +295,7 @@ class TestSetProviderKey:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import set_provider_key
+        from api.provider_credentials import set_provider_key
         try:
             result = set_provider_key("copilot", "some-key")
             assert result["ok"] is False
@@ -319,7 +319,7 @@ class TestSetProviderKey:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import set_provider_key
+        from api.provider_credentials import set_provider_key
         try:
             result = set_provider_key("anthropic", "short")
             assert result["ok"] is False
@@ -331,14 +331,14 @@ class TestSetProviderKey:
 
     def test_empty_provider_id_rejected(self, monkeypatch, tmp_path):
         """Empty provider ID should be rejected."""
-        from api.providers import set_provider_key
+        from api.provider_credentials import set_provider_key
         result = set_provider_key("", "some-key")
         assert result["ok"] is False
         assert "required" in result["error"]
 
     def test_newline_in_key_rejected(self, monkeypatch, tmp_path):
         """API keys with newlines should be rejected."""
-        from api.providers import set_provider_key
+        from api.provider_credentials import set_provider_key
         result = set_provider_key("anthropic", "sk-ant-key\nINJECTED=evil")
         assert result["ok"] is False
         assert "newline" in result["error"]
@@ -358,7 +358,7 @@ class TestRemoveProviderKey:
         import yaml
 
         import api.config as cfg_mod
-        import api.providers as providers
+        import api.provider_credentials as providers
 
         stale_config = tmp_path / "stale-config.yaml"
         active_config = tmp_path / "active-config.yaml"
@@ -388,7 +388,7 @@ class TestRemoveProviderKey:
         import yaml
 
         import api.config as cfg_mod
-        import api.providers as providers
+        import api.provider_credentials as providers
 
         config_path = tmp_path / "config.yaml"
         config_path.write_text(
@@ -427,7 +427,7 @@ class TestRemoveProviderKey:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import remove_provider_key
+        from api.provider_credentials import remove_provider_key
         try:
             result = remove_provider_key("anthropic")
             assert result["ok"] is True
@@ -521,7 +521,7 @@ class TestIssue1410OllamaEnvVarBleed:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import get_providers
+        from api.provider_credentials import get_providers
         try:
             result = get_providers()
             by_id = {p["id"]: p for p in result["providers"]}
@@ -563,7 +563,7 @@ class TestIssue1410OllamaEnvVarBleed:
         except Exception:
             config._cfg_mtime = 0.0
 
-        from api.providers import get_providers
+        from api.provider_credentials import get_providers
         try:
             result = get_providers()
             by_id = {p["id"]: p for p in result["providers"]}

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Dict
 
-from .base import AgenticBackend
-from .hermes import HermesBackend
+from api.providers.agentic_backend import AgenticBackend
+from api.providers.hermes.backend import HermesBackend
 from .jros import JROSBackend
 from .cli_backends import (
     AntigravityGeminiBackend,

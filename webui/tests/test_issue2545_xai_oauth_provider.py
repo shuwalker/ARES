@@ -23,7 +23,7 @@ def _with_config(monkeypatch, tmp_path, cfg):
 
 
 def test_xai_oauth_is_known_oauth_provider():
-    from api.providers import _OAUTH_PROVIDERS
+    from api.provider_credentials import _OAUTH_PROVIDERS
     from api.config import _PROVIDER_DISPLAY
 
     assert "xai-oauth" in _OAUTH_PROVIDERS
@@ -41,8 +41,8 @@ def test_xai_oauth_provider_card_uses_oauth_status_and_models(monkeypatch, tmp_p
     )
     monkeypatch.setattr(config, "_read_live_provider_model_ids", lambda pid: ["grok-4.20"] if pid == "xai-oauth" else [])
     try:
-        from api.providers import get_providers
-        import api.providers as providers
+        from api.provider_credentials import get_providers
+        import api.provider_credentials as providers
 
         monkeypatch.setattr(providers, "_read_live_provider_model_ids", lambda pid: ["grok-4.20"] if pid == "xai-oauth" else [])
 

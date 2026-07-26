@@ -18,7 +18,7 @@ import subprocess
 import time
 from typing import Any, Dict, List
 
-from .base import AgenticBackend
+from api.providers.agentic_backend import AgenticBackend
 
 logger = logging.getLogger(__name__)
 
@@ -154,25 +154,24 @@ class HermesBackend(AgenticBackend):
     supports_persona = False
 
     def is_available(self) -> bool:
-        available, _ = _probe_hermes()
-        return available
+        # Delegates to the same readiness check the adapter registry uses, so
+        # the two registries cannot report different things about Hermes.
+        from api.providers.hermes.status import check_status
+
+        return check_status().available
 
     def get_backend_name(self) -> str:
         return "Hermes"
 
     def health(self) -> Dict[str, Any]:
-        available, version = _probe_hermes()
-        if available:
-            return {
-                "status": "ok",
-                "latency_ms": 0.0,
-                "message": _available_message(version),
-                "version": version,
-            }
+        from api.providers.hermes.status import check_status
+
+        status = check_status()
         return {
-            "status": "error",
+            "status": "ok" if status.available else "error",
             "latency_ms": 0.0,
-            "message": "Hermes Agent CLI not found on $PATH.",
+            "message": status.message,
+            **({"version": status.details["version"]} if "version" in status.details else {}),
         }
 
     def identity_projection(self) -> Dict[str, Any]:
@@ -227,7 +226,7 @@ class HermesBackend(AgenticBackend):
         Chat is a developer console to Hermes itself (its models/tools/config).
         Companion-owned SI briefing is a separate product surface.
         """
-        from api.backends.hermes_streaming import run_hermes_streaming
+        from api.providers.hermes.streaming import run_hermes_streaming
 
         return run_hermes_streaming, False, False
 
@@ -631,7 +630,7 @@ class HermesProxyBackend(AgenticBackend):
 
 
 # Register with the dynamic backend registry
-from .cli_backends import BackendRegistry  # noqa: E402
+from api.backends.cli_backends import BackendRegistry  # noqa: E402
 
 BackendRegistry.register(HermesBackend)
 BackendRegistry.register(HermesProxyBackend)

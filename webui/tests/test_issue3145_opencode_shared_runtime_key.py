@@ -6,7 +6,7 @@ import pytest
 @pytest.mark.parametrize("provider_id", ["opencode-zen", "opencode-go"])
 def test_shared_opencode_api_key_resolves_for_runtime(monkeypatch, tmp_path, provider_id):
     """Runtime-facing key lookup should honor OPENCODE_API_KEY for both groups."""
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     ares_home = tmp_path / "ares-home"
     ares_home.mkdir()
@@ -24,7 +24,7 @@ def test_shared_opencode_api_key_resolves_for_runtime(monkeypatch, tmp_path, pro
 @pytest.mark.parametrize("provider_id", ["opencode-zen", "opencode-go"])
 def test_shared_opencode_api_key_resolves_from_process_env(monkeypatch, tmp_path, provider_id):
     """The shared env var should work even when no .env file exists."""
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     monkeypatch.setattr(providers, "_get_ares_home", lambda: tmp_path / "missing-home")
     monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
@@ -37,7 +37,7 @@ def test_shared_opencode_api_key_resolves_from_process_env(monkeypatch, tmp_path
 
 def test_provider_specific_opencode_key_still_wins_over_shared(monkeypatch, tmp_path):
     """Provider-specific env vars keep precedence over the shared fallback."""
-    import api.providers as providers
+    import api.provider_credentials as providers
 
     ares_home = tmp_path / "ares-home"
     ares_home.mkdir()

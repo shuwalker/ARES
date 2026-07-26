@@ -6,7 +6,7 @@ import builtins
 
 import api.config as config
 import api.onboarding as onboarding
-import api.providers as providers
+import api.provider_credentials as providers
 
 
 def _force_env_fallback(monkeypatch):

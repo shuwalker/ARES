@@ -966,7 +966,7 @@ def _agent_registry_credential_env_names() -> set[str]:
 def _profile_secret_env_names(profile_home_path: Path) -> set[str]:
     names: set[str] = set()
     try:
-        from api.providers import _provider_credential_env_vars
+        from api.provider_credentials import _provider_credential_env_vars
 
         names.update(_provider_credential_env_vars())
     except Exception:

@@ -110,7 +110,7 @@ class TestIssue1420LMStudioProviderEnvVar:
         and `LMSTUDIO_API_KEY` is preserved as a read-only legacy alias in
         `_PROVIDER_ENV_VAR_ALIASES` so existing users don't lose detection.
         """
-        from api.providers import _PROVIDER_ENV_VAR, _PROVIDER_ENV_VAR_ALIASES
+        from api.provider_credentials import _PROVIDER_ENV_VAR, _PROVIDER_ENV_VAR_ALIASES
         assert "lmstudio" in _PROVIDER_ENV_VAR, (
             "_PROVIDER_ENV_VAR is missing the 'lmstudio' entry — Settings → "
             "Providers will render LM Studio as has_key=False / "
@@ -143,7 +143,7 @@ class TestIssue1420LMStudioProviderEnvVar:
 
         restore = _swap_in_test_config({"model": {"provider": "lmstudio"}})
         try:
-            from api.providers import get_providers
+            from api.provider_credentials import get_providers
             result = get_providers()
             by_id = {p["id"]: p for p in result["providers"]}
             assert "lmstudio" in by_id, (
@@ -187,7 +187,7 @@ class TestIssue1420LMStudioProviderEnvVar:
             "providers": {"lmstudio": {"api_key": "lm-studio"}},
         })
         try:
-            from api.providers import get_providers
+            from api.provider_credentials import get_providers
             result = get_providers()
             by_id = {p["id"]: p for p in result["providers"]}
             assert by_id["lmstudio"]["has_key"] is True, (
@@ -216,7 +216,7 @@ class TestIssue1420LMStudioProviderEnvVar:
 
         restore = _swap_in_test_config({"model": {"provider": "lmstudio"}})
         try:
-            from api.providers import get_providers
+            from api.provider_credentials import get_providers
             result = get_providers()
             by_id = {p["id"]: p for p in result["providers"]}
             assert by_id["lmstudio"]["has_key"] is False
@@ -257,7 +257,7 @@ class TestIssue1420LMStudioProviderEnvVar:
 
         restore = _swap_in_test_config({"model": {"provider": "lmstudio"}})
         try:
-            from api.providers import get_providers
+            from api.provider_credentials import get_providers
             result = get_providers()
             by_id = {p["id"]: p for p in result["providers"]}
 

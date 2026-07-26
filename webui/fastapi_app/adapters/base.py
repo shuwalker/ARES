@@ -15,7 +15,20 @@ if TYPE_CHECKING:
     from ..schemas import ChatStart
 
 
-ConnectionState = Literal["connected", "needs_attention", "offline"]
+#: Kept in sync with ``api.providers.base.ProviderStatusState`` and with
+#: ``RuntimeConnectionState`` in ``frontend/src/shared/contracts.ts``.
+#: ``not_configured`` and ``not_installed`` exist so the UI can distinguish
+#: "you never set this up" from "this is set up but down" — collapsing both into
+#: ``offline`` left users with no idea which action to take. ``available`` is
+#: legacy, still emitted by the MCP and Antigravity adapters.
+ConnectionState = Literal[
+    "connected",
+    "needs_attention",
+    "offline",
+    "not_configured",
+    "not_installed",
+    "available",
+]
 
 
 class AdapterError(RuntimeError):
@@ -42,6 +55,20 @@ class AdapterHealth:
     available: bool
     message: str
     details: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_provider_status(cls, status: Any) -> "AdapterHealth":
+        """Adapt an ``api.providers.base.ProviderStatus`` to the REST shape.
+
+        Lets a provider package own its readiness logic once while both
+        registries keep their existing contracts.
+        """
+        return cls(
+            status.state.value,
+            status.available,
+            status.message,
+            dict(status.details),
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return {

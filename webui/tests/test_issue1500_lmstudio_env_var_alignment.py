@@ -135,7 +135,7 @@ class TestIssue1500EnvVarAlignment:
 
         restore = _swap_in_test_config({"model": {"provider": "lmstudio"}})
         try:
-            from api.providers import get_providers
+            from api.provider_credentials import get_providers
             result = get_providers()
             by_id = {p["id"]: p for p in result["providers"]}
             assert by_id["lmstudio"]["has_key"] is True, (
@@ -161,7 +161,7 @@ class TestIssue1500EnvVarAlignment:
 
         restore = _swap_in_test_config({"model": {"provider": "lmstudio"}})
         try:
-            from api.providers import get_providers, _provider_has_key
+            from api.provider_credentials import get_providers, _provider_has_key
             assert _provider_has_key("lmstudio") is True
             # Both lead to has_key=True; the contract is that canonical is
             # checked first (so it's definitely returning True and not just

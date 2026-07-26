@@ -36,13 +36,15 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import { Link } from "react-router-dom";
+
 import { APP_ICON_URL } from "@/assets";
 import { Markdown } from "@/components/Markdown";
 import { useAres } from "@/shared/ares-context";
 import { aresApi } from "@/shared/ares-api";
 import { useLocalProfile } from "@/shared/local-profile";
 import { useWorkbenchPanel } from "@/shared/workbench-panel";
-import { apiFetch, readableError } from "@/shared/api-client";
+import { apiFetch, readableError, PROVIDER_UNAVAILABLE_CODES } from "@/shared/api-client";
 
 // Hermes-matching dark blue palette
 const H = {
@@ -159,6 +161,7 @@ export function ConversationPage() {
     streamTools,
     streamState,
     chatNotice,
+    chatNoticeProvider,
     cancelResponse,
   } = useAres();
 
@@ -685,7 +688,18 @@ export function ConversationPage() {
 
         {chatNotice && (
           <div style={{ marginBottom: "0.5rem", maxWidth: "46.25rem", margin: "0 auto 0.5rem", padding: "0.5625rem 0.875rem", borderRadius: "0.5rem", border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: "0.8125rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <AlertTriangle size={13} />{chatNotice}
+            <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{chatNotice}</span>
+            {/* A provider problem is fixed on the Connections page, so link there
+                rather than leaving the user to find it. */}
+            {chatNoticeProvider && PROVIDER_UNAVAILABLE_CODES.has(chatNoticeProvider.code || "") && (
+              <Link
+                to="/connections"
+                style={{ flexShrink: 0, color: "#fbbf24", fontWeight: 600, textDecoration: "underline" }}
+              >
+                Open Connections
+              </Link>
+            )}
           </div>
         )}
 

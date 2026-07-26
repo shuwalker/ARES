@@ -29,7 +29,7 @@ class TestEnvFileCommentPreservation(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
         self.env_path = Path(self.tmpdir) / ".env"
         # Must import AFTER setting up, as the module has top-level code
-        from api.providers import _write_env_file
+        from api.provider_credentials import _write_env_file
         self._write_env_file = _write_env_file
 
     def tearDown(self):
@@ -135,18 +135,18 @@ class TestOnboardingUsesProviderWriteEnv(unittest.TestCase):
 
     def test_onboarding_imports_write_env_from_providers(self):
         """api.onboarding._write_env_file must be the same object as
-        api.providers._write_env_file (shared implementation with lock)."""
-        from api import onboarding, providers
+        api.provider_credentials._write_env_file (shared impl with lock)."""
+        from api import onboarding, provider_credentials
         self.assertIs(
             onboarding._write_env_file,
-            providers._write_env_file,
-            "onboarding must use providers._write_env_file for thread safety (#1164)"
+            provider_credentials._write_env_file,
+            "onboarding must use provider_credentials._write_env_file for thread safety (#1164)"
         )
 
     def test_providers_write_env_holds_env_lock(self):
         """providers._write_env_file must acquire _ENV_LOCK from api.streaming."""
         import inspect
-        from api.providers import _write_env_file
+        from api.provider_credentials import _write_env_file
         source = inspect.getsource(_write_env_file)
         self.assertIn("_ENV_LOCK", source,
                       "_write_env_file must use _ENV_LOCK for concurrency safety")
@@ -158,7 +158,7 @@ class TestOnboardingUsesProviderWriteEnv(unittest.TestCase):
         os.replace so cross-process readers (Telegram, CLI) never observe
         a truncated half-written file (#1164 cross-process leg)."""
         import inspect
-        from api.providers import _write_env_file
+        from api.provider_credentials import _write_env_file
         source = inspect.getsource(_write_env_file)
         self.assertIn("tempfile", source,
                       "_write_env_file must stage writes through a tempfile")

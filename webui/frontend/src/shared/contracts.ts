@@ -163,7 +163,24 @@ export interface ToolInventory {
   unavailableServers: string[];
 }
 
-export type RuntimeConnectionState = "connected" | "needs_attention" | "offline";
+/**
+ * Why a provider can or cannot run a turn.
+ *
+ * Mirrors `ProviderStatusState` in `api/providers/status_contract.py`.
+ * `not_configured` and `not_installed` are split out from `offline` so the UI
+ * can tell a user which action to take — "add an API key" and "install the CLI"
+ * are different problems, and a single `offline` answered neither.
+ *
+ * `available` is a legacy value still emitted by the MCP and Antigravity
+ * adapters; treated as connected.
+ */
+export type RuntimeConnectionState =
+  | "connected"
+  | "needs_attention"
+  | "offline"
+  | "not_configured"
+  | "not_installed"
+  | "available";
 
 export interface RuntimeConnection {
   id: string;
@@ -291,6 +308,10 @@ export interface BackendInfo {
   name: string;
   deployment: string;
   available: boolean;
+  /** Present once this backend's provider reports through the status contract. */
+  state?: RuntimeConnectionState;
+  /** Why the backend is in this state, safe to show to a user. */
+  message?: string;
   adapter?: string;
   description?: string;
   kind?: string;

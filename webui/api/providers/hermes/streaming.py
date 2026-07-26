@@ -197,7 +197,7 @@ def run_hermes_streaming(
     Spawns ``hermes chat -q`` as a subprocess, streams output to the SSE
     channel registered in ``STREAMS[stream_id]``, and updates session state.
     """
-    from api.backends.hermes import _hermes_cli
+    from api.providers.hermes.backend import _hermes_cli
 
     q = STREAMS.get(stream_id)
     if q is None:
@@ -258,7 +258,7 @@ def run_hermes_streaming(
         _finish_hermes_stream(stream_id, session_id, q, run_journal, cancel_event, accumulated_text="", user_message=msg_text)
         return
 
-    from api.backends.hermes import resolve_hermes_defaults
+    from api.providers.hermes.backend import resolve_hermes_defaults
 
     default_model, default_provider = resolve_hermes_defaults()
     effective_model = (model or "").strip() or default_model

@@ -5019,7 +5019,7 @@ def _minimal_static_models_catalog() -> dict:
 def _static_models_catalog_without_live_probes() -> dict:
     """Return a network-free /api/models catalog from local config/auth only."""
     try:
-        from api.providers import _provider_has_key
+        from api.provider_credentials import _provider_has_key
 
         active_provider = None
         cfg_base_url = ""
@@ -6158,7 +6158,7 @@ def invalidate_credential_pool_cache(provider_id: str):
     try:
         # api.providers imports from api.config; keep this lazy to avoid
         # import-cycle/module-initialization issues.
-        from api.providers import invalidate_account_usage_status_cache
+        from api.provider_credentials import invalidate_account_usage_status_cache
 
         invalidate_account_usage_status_cache(provider_id)
         invalidate_account_usage_status_cache(_resolve_provider_alias(provider_id))

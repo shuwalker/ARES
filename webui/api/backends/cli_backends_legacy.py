@@ -18,7 +18,7 @@ import subprocess
 import time
 from typing import Any, Dict
 
-from .base import AgenticBackend
+from api.providers.agentic_backend import AgenticBackend
 
 logger = logging.getLogger(__name__)
 

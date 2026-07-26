@@ -17,7 +17,7 @@ import api.config as config
 import api.gateway_chat as gateway_chat
 import api.models as models
 import api.profiles as profiles
-import api.providers as providers
+import api.provider_credentials as providers
 import api.process_wakeup as routes
 import api.streaming as streaming
 from api.models import PROCESS_WAKEUP_PAUSE_ERROR, Session

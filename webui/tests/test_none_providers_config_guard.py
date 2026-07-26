@@ -43,7 +43,7 @@ import pytest
 
 import api.config as config
 import api.onboarding as onboarding
-import api.providers as providers
+import api.provider_credentials as providers
 import api.model_context as routes
 
 _REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -59,7 +59,7 @@ def _src(name: str) -> str:
 # --- source-form pins (fail on master / on any per-file revert) -----------
 
 
-@pytest.mark.parametrize("filename", ["onboarding.py", "providers.py", "model_context.py"])
+@pytest.mark.parametrize("filename", ["onboarding.py", "provider_credentials.py", "model_context.py"])
 def test_file_hardens_providers_key_read_against_none(filename):
     """Each target file must read the providers key as ``... or {}``.
 
@@ -92,7 +92,7 @@ def test_file_hardens_providers_key_read_against_none(filename):
     )
 
 
-@pytest.mark.parametrize("filename", ["onboarding.py", "providers.py", "model_context.py"])
+@pytest.mark.parametrize("filename", ["onboarding.py", "provider_credentials.py", "model_context.py"])
 def test_target_files_parse(filename):
     """Sanity: the hardened files are valid Python (guards real edits)."""
     ast.parse(_src(filename), filename=filename)

@@ -28,7 +28,7 @@ from api.config import (
     save_settings,
     verify_ares_imports,
 )
-from api.providers import _write_env_file  # shared impl with _ENV_LOCK (#1164)
+from api.provider_credentials import _write_env_file  # shared impl with _ENV_LOCK (#1164)
 from api.workspace import get_last_workspace, load_workspaces
 
 logger = logging.getLogger(__name__)

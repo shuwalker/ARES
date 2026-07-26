@@ -46,7 +46,7 @@ def _configure_codex(monkeypatch, tmp_path):
 
 
 def _codex_provider():
-    from api.providers import get_providers
+    from api.provider_credentials import get_providers
 
     providers = get_providers()["providers"]
     return next(p for p in providers if p["id"] == "openai-codex")

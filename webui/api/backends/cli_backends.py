@@ -23,7 +23,7 @@ import threading
 import time
 from typing import Any, Dict, List
 
-from .base import AgenticBackend
+from api.providers.agentic_backend import AgenticBackend
 
 logger = logging.getLogger(__name__)
 

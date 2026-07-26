@@ -16,7 +16,7 @@ from api.models import (
     process_wakeup_pause_matches,
     suppress_process_wakeup_for_provider_pause,
 )
-from api.providers import provider_has_process_wakeup_recovery_credential
+from api.provider_credentials import provider_has_process_wakeup_recovery_credential
 from api.chat_runtime import resolve_chat_workspace_with_recovery as _resolve_chat_workspace_with_recovery
 
 

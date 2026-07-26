@@ -119,7 +119,7 @@ def verify_all_backends(
         GrokLocalBackend, OpenCodeLocalBackend, CursorLocalBackend,
         PiLocalBackend, OllamaLocalBackend,
     )
-    from api.backends.hermes import HermesBackend
+    from api.providers.hermes.backend import HermesBackend
 
     backends = {
         "hermes_local": HermesBackend(),

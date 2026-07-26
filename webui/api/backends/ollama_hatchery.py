@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from api.backends.base import AgenticBackend
+from api.providers.agentic_backend import AgenticBackend
 from api.backends.router import get_router
 
 logger = logging.getLogger(__name__)

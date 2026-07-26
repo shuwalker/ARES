@@ -3,7 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 
-from api.backends.hermes_streaming import _finish_hermes_stream
+from api.providers.hermes.streaming import _finish_hermes_stream
 from api.streaming import STREAMS, STREAMS_LOCK
 
 

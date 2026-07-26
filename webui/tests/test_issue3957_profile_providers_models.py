@@ -307,7 +307,7 @@ def test_active_request_legacy_scope_still_mirrors_process_env(monkeypatch, tmp_
 
 def test_active_request_readonly_scope_blocks_process_env_fallback(monkeypatch, tmp_path):
     """Named profiles without a key should not inherit the process-default key."""
-    from api.providers import _provider_has_key
+    from api.provider_credentials import _provider_has_key
 
     base = tmp_path / ".ares"
     (base / "profiles" / "work").mkdir(parents=True)
@@ -325,7 +325,7 @@ def test_active_request_readonly_scope_blocks_process_env_fallback(monkeypatch, 
 
 def test_active_request_readonly_scope_blocks_pool_env_seed(monkeypatch, tmp_path):
     """Readonly profile reads must not let load_pool seed process-default keys."""
-    from api.providers import _get_provider_api_key, _provider_has_key
+    from api.provider_credentials import _get_provider_api_key, _provider_has_key
 
     base = tmp_path / ".ares"
     work_home = base / "profiles" / "work"
@@ -569,7 +569,7 @@ def test_detached_worker_scope_scrubs_absent_custom_provider_key_env(monkeypatch
 
 def test_account_usage_subprocess_env_blocks_process_default_key(monkeypatch, tmp_path):
     """Readonly quota probes must not inherit process-default provider keys."""
-    from api.providers import _account_usage_subprocess_env
+    from api.provider_credentials import _account_usage_subprocess_env
 
     base = tmp_path / ".ares"
     work_home = base / "profiles" / "work"
@@ -704,7 +704,7 @@ def test_detached_worker_scope_installs_secret_scope(monkeypatch, tmp_path):
 
 def test_account_usage_subprocess_env_strips_bedrock_keys(monkeypatch, tmp_path):
     """Quota probes must not inherit AWS/Bedrock keys when block_process_env_fallback is set."""
-    from api.providers import _account_usage_subprocess_env
+    from api.provider_credentials import _account_usage_subprocess_env
 
     base = tmp_path / ".ares"
     work_home = base / "profiles" / "work"
@@ -727,7 +727,7 @@ def test_account_usage_subprocess_env_strips_bedrock_keys(monkeypatch, tmp_path)
 
 def test_account_usage_subprocess_env_strips_custom_key_env(monkeypatch, tmp_path):
     """Quota probes must strip custom provider key_env when block_process_env_fallback is set."""
-    from api.providers import _account_usage_subprocess_env
+    from api.provider_credentials import _account_usage_subprocess_env
 
     base = tmp_path / ".ares"
     work_home = base / "profiles" / "work"
@@ -764,7 +764,7 @@ def test_account_usage_subprocess_env_strips_anthropic_token_aliases(monkeypatch
     _PROVIDER_ENV_VAR map, so the strip set must derive them from the agent
     registry — otherwise the anthropic quota subprocess resolves them via
     resolve_anthropic_token() and leaks the server-process credential (#3961)."""
-    from api.providers import _account_usage_subprocess_env
+    from api.provider_credentials import _account_usage_subprocess_env
 
     base = tmp_path / ".ares"
     work_home = base / "profiles" / "work"
@@ -813,7 +813,7 @@ def test_account_usage_subprocess_env_strips_non_registry_agent_creds(monkeypatc
     generic CUSTOM_API_KEY and the AWS/Bedrock credential family. Otherwise a
     custom/AWS-backed provider quota probe leaks the server-process credential
     to an empty named profile (#3961 residual leak class)."""
-    from api.providers import _account_usage_subprocess_env
+    from api.provider_credentials import _account_usage_subprocess_env
 
     base = tmp_path / ".ares"
     work_home = base / "profiles" / "work"
