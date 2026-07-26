@@ -142,7 +142,7 @@ function Block({
   switch (block.type) {
     case "code":
       return (
-        <pre className="rounded-md border border-[#343631] bg-[#111210] px-3 py-2.5 text-xs font-mono leading-relaxed overflow-x-auto">
+        <pre className="rounded-md border border-edge bg-shell-deep px-3 py-2.5 text-xs font-mono leading-relaxed overflow-x-auto">
           <code className="text-[#ECEBE4]">
             {block.content}
             {caret}
@@ -169,7 +169,7 @@ function Block({
     case "hr":
       return (
         <>
-          <hr className="border-[#343631]" />
+          <hr className="border-edge" />
           {caret}
         </>
       );
@@ -254,7 +254,7 @@ function InlineContent({ text, highlightTerms }: { text: string; highlightTerms?
             return <HighlightedText key={i} text={node.content} terms={highlightTerms} />;
           case "code":
             return (
-              <code key={i} className="rounded bg-[#20211F] px-1.5 py-0.5 text-xs font-mono text-[#D7D6CE]">
+              <code key={i} className="rounded bg-shell-elevated px-1.5 py-0.5 text-xs font-mono text-[#D7D6CE]">
                 {node.content}
               </code>
             );

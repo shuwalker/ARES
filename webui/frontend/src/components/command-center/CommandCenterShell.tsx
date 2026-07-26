@@ -331,7 +331,7 @@ export function CommandCenterShell() {
       expand={expandWorkbench}
     >
       <div
-        className="h-dvh w-screen overflow-hidden bg-shell-deep text-[#ecebe4]"
+        className="h-dvh w-screen overflow-hidden bg-shell-root text-[#ecebe4]"
         data-compact={isCompact ? "1" : "0"}
       >
         {isCompact ? (

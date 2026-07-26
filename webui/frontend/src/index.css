@@ -43,11 +43,17 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-shell: var(--shell);
+  --color-shell-root: var(--shell-root);
   --color-shell-deep: var(--shell-deep);
   --color-shell-raised: var(--shell-raised);
+  --color-shell-elevated: var(--shell-elevated);
+  --color-shell-hover: var(--shell-hover);
   --color-edge: var(--edge);
   --color-edge-strong: var(--edge-strong);
   --color-edge-emphasis: var(--edge-emphasis);
+  --color-overlay: var(--overlay);
+  --color-overlay-hover: var(--overlay-hover);
+  --color-overlay-inset: var(--overlay-inset);
   --color-status-available: var(--status-available);
   --color-status-limited: var(--status-limited);
   --color-status-unavailable: var(--status-unavailable);
@@ -93,12 +99,41 @@
    * shell palette is warm-neutral and deliberately distinct from the cool
    * `--card` / `--background` scale — do not "unify" them without a design call,
    * as that visibly recolors the whole workbench. */
+  /* The full-viewport canvas everything else sits on. Identical to --shell-deep
+   * today, but kept separate because it is the one surface that must drop out
+   * entirely under the island backdrop: tinting both it and the panes above it
+   * compounds the alpha and buries the wallpaper. --shell-deep stays tinted, as
+   * it also paints inputs and inset panels. */
+  --shell-root: #111210;
   --shell-deep: #111210;
   --shell: #151614;
   --shell-raised: #1b1c1a;
+  --shell-elevated: #20211f;
+  --shell-hover: #292b28;
   --edge: #343631;
   --edge-strong: #4a4d45;
   --edge-emphasis: #71736b;
+
+  /* Floating overlays — dropdown menus, toasts, and modal dialogs.
+   *
+   * Separate from the shell scale because these deliberately stay OPAQUE under
+   * the island backdrop. They float over arbitrary content, so translucency
+   * makes them unreadable rather than pretty — the same reason --popover is
+   * excluded. Do not add these to the color-mix block in island-backdrop.css. */
+  --overlay: #1a1c24;
+  --overlay-hover: #252836;
+  --overlay-inset: #161824;
+
+  /* Chat and workbench panes.
+   *
+   * These were literal hex inside JS palette objects applied as inline styles,
+   * which no stylesheet can override — inline style beats every selector. As
+   * tokens they participate in theming like everything else. Values are
+   * unchanged; both palettes are cooler than the shell scale by design. */
+  --chat-bg: #0f1117;
+  --chat-surface: #1a1d28;
+  --workbench-bg: #11131c;
+  --workbench-surface: #181b26;
   --rad-2: 2px;
   --rad-3: 3px;
   --rad-4: 4px;

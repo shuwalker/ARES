@@ -23,16 +23,22 @@ import { useAres } from "@/shared/ares-context";
 import type { WorkspaceEntry } from "@/shared/contracts";
 
 // ── Graphite dark palette ──
+// DOM-facing colors reference the shell tokens (index.css) so this pane goes
+// translucent along with the rest of the shell under the island backdrop —
+// same values, just no longer hardcoded here. codeBgLiteral stays a real hex
+// string because Monaco's defineTheme reads colors at theme-registration time
+// and cannot resolve CSS custom properties.
 const G = {
   bg: "#151614",
-  surface: "#1B1C1A",
-  border: "#343631",
+  surface: "var(--shell-raised)",
+  border: "var(--edge)",
   text: "#ECEBE4",
   muted: "#A7A79D",
   accent: "#D7D6CE",
   accentBg: "rgba(255,255,255,0.08)",
-  codeBg: "#111210",
+  codeBg: "var(--shell-deep)",
 };
+const codeBgLiteral = "#111210";
 
 interface TreeNode extends WorkspaceEntry {
   expanded: boolean;
@@ -61,7 +67,7 @@ const defineAresTheme = (monaco: Parameters<NonNullable<ComponentProps<typeof Ed
     inherit: true,
     rules: [],
     colors: {
-      "editor.background": G.codeBg,
+      "editor.background": codeBgLiteral,
       "editor.lineHighlightBackground": "#1B1C1A",
       "editorLineNumber.foreground": "#6B6D65",
       "editorCursor.foreground": "#D7D6CE",

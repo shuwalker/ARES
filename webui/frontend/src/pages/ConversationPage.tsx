@@ -46,8 +46,8 @@ import { apiFetch, readableError } from "@/shared/api-client";
 
 // Hermes-matching dark blue palette
 const H = {
-  bg: "#0f1117",
-  surface: "#1a1d28",
+  bg: "var(--chat-bg)",
+  surface: "var(--chat-surface)",
   surfaceHover: "#1f2236",
   surfaceActive: "#252840",
   border: "#1e2130",

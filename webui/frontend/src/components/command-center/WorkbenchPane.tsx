@@ -25,8 +25,8 @@ const STORAGE_KEY = "ares.command-center.workbench-tab";
 
 // Theme constants matching Hermes dark UI
 const H = {
-  bg: "#11131c",
-  surface: "#181b26",
+  bg: "var(--workbench-bg)",
+  surface: "var(--workbench-surface)",
   surfaceHover: "#202434",
   border: "rgba(255, 255, 255, 0.08)",
   border2: "rgba(255, 255, 255, 0.12)",

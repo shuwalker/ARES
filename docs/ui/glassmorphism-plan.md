@@ -49,39 +49,54 @@ Ships the effect behind an opt-in switch, with zero change to the default UI.
 absent the file contributes no matching rules. `island-backdrop.test.ts` asserts
 that default and fails if phase 2 flips it prematurely.
 
-### Phase 2 — convert hardcoded surfaces (next)
+### Phase 2 — convert hardcoded surfaces ✅ done
 
-The blocker for making this default-on. 62 surfaces use arbitrary Tailwind values
-(`bg-[#151614]`, `bg-[#1b1c1a]`, `bg-[#111210]`, `border-[#343631]`) instead of
-tokens, so they stay opaque while everything around them turns to glass. Worst
-concentrations:
+Every surface the shell paints now reads from a token. Converted
+`CommandCenterShell.tsx`, `ControlDeck.tsx`, `Markdown.tsx`, and
+`ResizeHandle.tsx`; accent, status, and text colours stay literal, since only
+surfaces need translucency and converting text would have touched 300+ usages
+for no benefit.
 
-| File | Hardcoded backgrounds |
-|---|---|
-| `components/command-center/ControlDeck.tsx` | ~24 |
-| `components/command-center/CommandCenterShell.tsx` | ~14 |
+Values are byte-identical to what was inline. Mapping them onto the existing
+`--card` / `--background` scale was rejected: that scale is cool (oklch hue 255,
+`--card` = `#13181e`) while the shell is warm-neutral (`#151614`), so unifying
+them recolours the entire workbench. `shell-tokens.test.ts` pins the values.
 
-Work: map each hex to its nearest existing token, replace, confirm no visual
-change with the backdrop **off** (this is a pure refactor in the default theme),
-then confirm glass appears with it on. Do the shell before the deck — the shell
-is the large-area surface that sells the effect.
+Two structural fixes were needed beyond the mechanical swap:
 
-### Phase 3 — depth pass
+- **Inline styles.** `ConversationPage.tsx` and `WorkbenchPane.tsx` held their
+  palettes in JS objects applied via `style={{...}}`, which no stylesheet can
+  override. Their `bg`/`surface` entries now read `var(--chat-bg)` and friends.
+- **Compound opacity.** Nested translucent wrappers multiply — 42% over 42%
+  reads as 66%, a third layer as 80%, which buried the wallpaper. Each region
+  now tints exactly once: `--shell-root` and `--chat-bg` drop to `transparent`
+  under the backdrop because a tinted pane already covers them. Verified by
+  walking the ancestor chain at three points; all three report a single layer.
 
-Once surfaces are translucent, tune what the legacy engine spent most of its
-lines on: the floating composer pill (`border-radius: 16px`, lifted shadow),
-removal of hard horizontal dividers under the titlebar and panel heads, and card
-hover/focus states that brighten fill rather than adding a second blur.
+### Phase 3 — depth pass ✅ mostly done
 
-### Phase 4 — parity and defaults
+- Blur moved off `backdrop-filter` entirely. It was silently dead: esbuild
+  lowered it to the `-webkit-` alias, which computed to nothing, so the
+  wallpaper rendered razor sharp. It is now a plain `filter` on the wallpaper
+  layer — visually identical (that layer is the only thing behind the shell),
+  cheaper to composite, and immune to stacking-context surprises.
+- A scrim over the wallpaper keeps text legible regardless of which image is
+  set. Without it the bright sunset sky washed out body copy completely.
+- Still open from the legacy engine: the floating composer pill (`border-radius:
+  16px`, lifted shadow) and removal of hard dividers under panel heads.
 
-- Light theme: `:root` and `.dark` are currently identical, so the shell is
+### Phase 4 — parity and remaining work
+
+- **Light theme.** `:root` and `.dark` are identical today, so the shell is
   effectively dark-only. Light-mode glass needs its own fill values — the legacy
   engine used `rgba(255,255,255,0.45)` on cards, worth reusing.
-- Native macOS shell (`ARES-Mac_os`): the WKWebView host should agree with the
-  web shell so the wallpaper is not clipped by native chrome.
-- Flip the default to on, update `island-backdrop.test.ts`, and capture a
-  proof screenshot to sit alongside the legacy one.
+- **Native macOS shell.** The WKWebView host should agree with the web shell so
+  the wallpaper is not clipped by native chrome.
+- **The Hermes palettes.** `ConversationPage.tsx` and `WorkbenchPane.tsx` are
+  commented "Hermes-matching dark blue palette" and are genuinely cooler than
+  the rest of the shell. Now that they are tokens, reconciling them with the
+  ARES scale is a contained change — but it is a design decision, not a
+  refactor.
 
 ## Constraints
 

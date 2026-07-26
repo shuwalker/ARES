@@ -862,7 +862,6 @@ export function SettingsPage() {
             <ToggleField
               id="island-backdrop-enabled"
               label="Enable island backdrop"
-              description="In progress: some panels are still opaque and will not turn to glass yet."
               checked={island.enabled}
               onChange={(enabled) => updateIsland({ enabled })}
             />

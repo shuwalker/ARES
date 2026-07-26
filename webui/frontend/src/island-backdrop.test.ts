@@ -9,11 +9,13 @@ import {
 } from "./island-backdrop";
 
 describe("island backdrop preference", () => {
-  it("stays opt-in until the hardcoded-color surfaces are converted", () => {
-    // Phase 2 of docs/ui/glassmorphism-plan.md flips this. Until then a fresh
-    // profile must render the shell exactly as it does today.
-    expect(ISLAND_DEFAULTS.enabled).toBe(false);
-    expect(rootClassesFor(ISLAND_DEFAULTS)).toEqual([]);
+  it("is on by default now that every shell surface reads from a token", () => {
+    expect(ISLAND_DEFAULTS.enabled).toBe(true);
+    expect(rootClassesFor(ISLAND_DEFAULTS)).toEqual([ISLAND_ROOT_CLASS, "island-pos-top"]);
+  });
+
+  it("emits no classes when switched off, leaving the default shell untouched", () => {
+    expect(rootClassesFor({ ...ISLAND_DEFAULTS, enabled: false })).toEqual([]);
   });
 
   it("emits both the gate class and a position class when enabled", () => {
@@ -40,8 +42,10 @@ describe("island backdrop preference", () => {
     expect(normalizeSettings(null)).toEqual(ISLAND_DEFAULTS);
     expect(normalizeSettings("garbage")).toEqual(ISLAND_DEFAULTS);
     expect(normalizeSettings({ position: "sideways" }).position).toBe(ISLAND_DEFAULTS.position);
-    // `enabled` is strict-true only: a truthy string must not switch the shell on.
-    expect(normalizeSettings({ enabled: "yes" }).enabled).toBe(false);
+    // A stored non-boolean is treated as absent, not as truthy.
+    expect(normalizeSettings({ enabled: "no" }).enabled).toBe(ISLAND_DEFAULTS.enabled);
+    // An explicit opt-out must survive normalization.
+    expect(normalizeSettings({ enabled: false }).enabled).toBe(false);
     expect(normalizeSettings({ enabled: true, surfaceOpacity: 999 })).toEqual({
       enabled: true,
       surfaceOpacity: 100,

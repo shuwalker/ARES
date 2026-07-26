@@ -6,11 +6,9 @@
  * the class it toggles, mirroring how ThemeContext drives `html.dark`.
  *
  * Storage key and settings shape are carried over from the legacy engine in
- * attic/island-backdrop-legacy/background_manager.js so an existing preference
- * keeps working, with one deliberate change: `enabled` now defaults to **false**.
- * The port is not visually complete while 62 shell surfaces still use hardcoded
- * `bg-[#rrggbb]` values (see docs/ui/glassmorphism-plan.md), so it stays opt-in
- * until phase 2 converts them.
+ * attic/island-backdrop-legacy/background_manager.js, including its
+ * `enabled: true` default — every shell surface now reads from a token, so the
+ * effect is complete rather than patchy. See docs/ui/glassmorphism-plan.md.
  */
 
 export const ISLAND_STORAGE_KEY = "ares-island-backdrop";
@@ -27,7 +25,7 @@ export interface IslandBackdropSettings {
 }
 
 export const ISLAND_DEFAULTS: IslandBackdropSettings = {
-  enabled: false,
+  enabled: true,
   surfaceOpacity: 42,
   position: "top",
 };
@@ -44,7 +42,10 @@ export function normalizeSettings(raw: unknown): IslandBackdropSettings {
   const record = raw as Record<string, unknown>;
   const position = record.position;
   return {
-    enabled: record.enabled === true,
+    // Type-strict rather than truthy: a stored non-boolean is treated as absent
+    // and falls back to the default, so junk in storage can neither force the
+    // backdrop on nor silently switch it off.
+    enabled: typeof record.enabled === "boolean" ? record.enabled : ISLAND_DEFAULTS.enabled,
     surfaceOpacity: clampOpacity(record.surfaceOpacity),
     position: ISLAND_POSITIONS.includes(position as IslandPosition)
       ? (position as IslandPosition)
