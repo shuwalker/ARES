@@ -2,7 +2,7 @@
 #
 # QUICK START:
 #   docker compose -f docker-compose.three-container.yml up -d
-#   Open http://localhost:8787 (chat) and http://localhost:9119 (dashboard)
+#   Open http://localhost:8788 (chat) and http://localhost:9119 (dashboard)
 #
 # This extends the two-container setup with the Ares Dashboard for
 # monitoring agent activity, sessions, and resource usage.
@@ -104,7 +104,7 @@ services:
     ports:
       # Expose on localhost only. Remove 127.0.0.1: to expose on all interfaces
       # (set ARES_WEBUI_PASSWORD if doing so).
-      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:8788:8787"
     volumes:
       # Same ares home as the agent — shares config, sessions, state
       - ares-home:/home/areswebui/.ares

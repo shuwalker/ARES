@@ -30,7 +30,7 @@ model:
 
 # Kanban integration
 kanban:
-  api_url: http://localhost:8787/api/kanban
+  api_url: http://localhost:8788/api/kanban
   auto_create: true       # Create tasks automatically
   default_priority: medium
 

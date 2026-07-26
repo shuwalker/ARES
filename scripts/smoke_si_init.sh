@@ -9,7 +9,7 @@
 #
 # Usage:
 #   ./scripts/smoke_si_init.sh
-#   BASE_URL=http://127.0.0.1:8787 WORKER=hermes_local ./scripts/smoke_si_init.sh
+#   BASE_URL=http://127.0.0.1:8788 WORKER=hermes_local ./scripts/smoke_si_init.sh
 #
 # Exit 0 = initiation success. Exit 1 = failure.
 
@@ -17,7 +17,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WEBUI="${ROOT}/webui"
-BASE_URL="${BASE_URL:-http://127.0.0.1:8787}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:8788}"
 WORKER="${WORKER:-hermes_local}"
 PROMPT="${PROMPT:-Reply with exactly: SI-OK}"
 EXPECT="${EXPECT:-SI-OK}"

@@ -99,7 +99,7 @@ print('Health:', backend.health())
 ### Test Chat Turn
 
 ```bash
-curl -X POST http://127.0.0.1:8787/api/chat \
+curl -X POST http://127.0.0.1:8788/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello", "session_id": "test"}'
 ```

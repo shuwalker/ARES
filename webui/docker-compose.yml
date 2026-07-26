@@ -3,7 +3,7 @@
 # QUICK START (most users):
 #   1. (Optional) Copy .env.docker.example to .env and edit values
 #   2. docker compose up -d
-#   3. Open http://localhost:8787
+#   3. Open http://localhost:8788
 #
 # This is the simplest setup: one WebUI container that runs the agent in-process.
 # The WebUI auto-detects host UID/GID from the mounted .ares volume.
@@ -16,8 +16,8 @@ services:
     build: .
     ports:
     # select only one; use 127.0.0.1 version to expose to localhost only
-      - "127.0.0.1:8787:8787"
-#      - "8787:8787"
+      - "127.0.0.1:8788:8787"
+#      - "8788:8787"
     volumes:
       # Mount your Ares home directory into the container.
       # The default (${HOME}/.ares) works on both macOS (/Users/<you>/.ares)
