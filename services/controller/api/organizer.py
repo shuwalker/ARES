@@ -96,6 +96,7 @@ def _save_tasks(tasks: list[Task]) -> None:
     """Save all tasks to disk."""
     path = _tasks_file()
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps({'tasks': [t.to_dict() for t in tasks]}, indent=2, default=str),
             encoding='utf-8'
@@ -276,8 +277,9 @@ def generate_daily_plan() -> dict[str, Any]:
     """
     today_tasks = get_today_tasks()
     all_tasks = [
-        t for task_dict in today_tasks.values()
-        for t in [Task.from_dict(task_dict)]
+        Task.from_dict(task_dict)
+        for task_list in today_tasks.values()
+        for task_dict in task_list
     ]
 
     # Simple time-blocking: allocate tasks across the day (9am-5pm = 480 minutes)

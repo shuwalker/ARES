@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
-import { aresApi } from "@/shared/ares-api";
+import { apiFetch, readableError } from "@/shared/api-client";
 
 interface Task {
   id: string;
@@ -34,13 +34,16 @@ export function TaskCaptureButton() {
     setError("");
 
     try {
-      await aresApi.POST("/api/organizer/tasks", {
-        title: title.trim(),
-        priority,
-        due_date: dueDate || null,
-        estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : null,
-        project,
-        notes,
+      await apiFetch("/api/organizer/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          title: title.trim(),
+          priority,
+          due_date: dueDate || null,
+          estimated_minutes: estimatedMinutes ? parseInt(estimatedMinutes) : null,
+          project,
+          notes,
+        }),
       });
 
       // Reset form and close
@@ -52,7 +55,7 @@ export function TaskCaptureButton() {
       setNotes("");
       setShowModal(false);
     } catch (err) {
-      setError(`Failed to create task: ${err}`);
+      setError(readableError(err, "Failed to create task"));
     } finally {
       setLoading(false);
     }
