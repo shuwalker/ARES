@@ -164,6 +164,7 @@ export function ConversationPage() {
     chatNotice,
     chatNoticeProvider,
     cancelResponse,
+    refresh,
   } = useAres();
 
   const sessionLoading = Boolean(selectedSessionId && !currentSession && !chatNotice);
@@ -510,6 +511,21 @@ export function ConversationPage() {
       setSelectedModelProvider("");
     }
   }, [selectedBackend, modelsForBackend, selectedModel]);
+
+  // Poll provider status every 10 seconds while chatting to detect outages
+  useEffect(() => {
+    if (streamState !== "streaming" && streamState !== "starting") {
+      return; // Only poll while actively chatting
+    }
+
+    const pollInterval = setInterval(() => {
+      refresh().catch(() => {
+        // Silent catch — refresh errors are logged server-side
+      });
+    }, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [streamState, refresh]);
 
   const activeModelLabel = (() => {
     if (!selectedModel) return modelsForBackend.length ? "Pick model" : "No models";
