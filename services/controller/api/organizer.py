@@ -75,10 +75,8 @@ class Task:
 
 def _tasks_file() -> Path:
     """Return the tasks.json path for the active profile."""
-    from api.config import _get_active_ares_home
-    state_dir = _get_active_ares_home() / 'webui_state'
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / 'tasks.json'
+    from api.config import STATE_DIR
+    return STATE_DIR / 'tasks.json'
 
 
 def _load_tasks() -> list[Task]:
