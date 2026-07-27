@@ -1,20 +1,25 @@
-# Glassmorphism shell — restoration plan
+# Glassmorphism shell — design notes
 
-Branch: `feat/glassmorphism-gui`
+**Status:** Live UI design notes for the island backdrop / glass shell in
+`apps/web`. Not a product roadmap and not a claim that the product is unfinished.
+Referenced by `apps/web` source comments and token tests.
 
-Restores the "island backdrop" design — a full-viewport island wallpaper with the
-shell rendered as translucent glass over it — to the React frontend.
+Branch (historical): `feat/glassmorphism-gui`
+
+Describes the "island backdrop" design — a full-viewport island wallpaper with the
+shell rendered as translucent glass over it — for the React frontend.
 
 ## Where the original went
 
 The design was built against `webui/static/`, the vanilla-JS UI deleted from
 `main` in `bf319ddd` (2026-07-17) when the React frontend became the only web app.
 Its source was never committed on any branch; it survived only in `stash@{0}`
-(`8334be36`). It is now preserved at [attic/island-backdrop-legacy/](../../attic/island-backdrop-legacy/),
+(`8334be36`). It is now preserved at
+[TBR/20260726-existing-attic/attic/island-backdrop-legacy/](../../TBR/20260726-existing-attic/attic/island-backdrop-legacy/),
 including the author's reference screenshot.
 
-The wallpaper itself was never lost: `webui/frontend/public/assets/ares-island-wide.png`
-is tracked on `main` and is byte-identical to the source Gemini render.
+The wallpaper itself was never lost: `apps/web/public/assets/ares-island-wide.png`
+is tracked and is byte-identical to the source Gemini render.
 
 ## Why this is a port, not a restore
 

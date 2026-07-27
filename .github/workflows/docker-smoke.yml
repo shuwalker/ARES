@@ -29,20 +29,20 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'webui/Dockerfile'
-      - 'webui/docker_init.bash'
-      - 'webui/docker-compose*.yml'
-      - 'webui/.dockerignore'
-      - 'webui/.env.docker.example'
+      - 'services/controller/Dockerfile'
+      - 'services/controller/docker_init.bash'
+      - 'services/controller/docker-compose*.yml'
+      - 'services/controller/.dockerignore'
+      - 'services/controller/.env.docker.example'
       - '.github/workflows/docker-smoke.yml'
   push:
     branches: [main]
     paths:
-      - 'webui/Dockerfile'
-      - 'webui/docker_init.bash'
-      - 'webui/docker-compose*.yml'
-      - 'webui/.dockerignore'
-      - 'webui/.env.docker.example'
+      - 'services/controller/Dockerfile'
+      - 'services/controller/docker_init.bash'
+      - 'services/controller/docker-compose*.yml'
+      - 'services/controller/.dockerignore'
+      - 'services/controller/.env.docker.example'
       - '.github/workflows/docker-smoke.yml'
   workflow_dispatch:
 
@@ -50,10 +50,10 @@ on:
 permissions:
   contents: read
 
-# The ARES web app (and its Docker packaging) lives entirely under webui/.
+# The ARES web app (and its Docker packaging) lives entirely under services/controller/.
 defaults:
   run:
-    working-directory: webui
+    working-directory: services/controller
 
 jobs:
   compose-config:
@@ -86,7 +86,7 @@ jobs:
       - name: Build and cache Docker image
         uses: docker/build-push-action@v6
         with:
-          context: webui
+          context: services/controller
           load: true
           tags: ghcr.io/nesquena/ares-webui:latest
           cache-from: type=gha
@@ -115,7 +115,7 @@ jobs:
       - name: Restore Docker image from cache
         uses: docker/build-push-action@v6
         with:
-          context: webui
+          context: services/controller
           load: true
           tags: ghcr.io/nesquena/ares-webui:latest
           cache-from: type=gha

@@ -157,13 +157,13 @@ cat <<'EOF' > "$LAUNCHER"
 # ARES CLI Dispatcher
 
 ARES_HOME="ARES_HOME_PLACEHOLDER"
-export ARES_WEBUI_DIR="$ARES_HOME/webui"
+export ARES_WEBUI_DIR="$ARES_HOME/services/controller"
 export ARES_WEBUI_HOST="${ARES_WEBUI_HOST:-127.0.0.1}"
 export ARES_WEBUI_PORT="${ARES_WEBUI_PORT:-8788}"
-ARES_APP="$ARES_HOME/ARES-Mac_os/ARES.app"
+ARES_APP="$ARES_HOME/apps/macos/ARES.app"
 
 _webui_python() {
-    for p in "$ARES_HOME/webui/.venv/bin/python" "$ARES_HOME/webui/venv/bin/python"; do
+    for p in "$ARES_HOME/services/controller/.venv/bin/python" "$ARES_HOME/services/controller/venv/bin/python"; do
         [ -x "$p" ] && { echo "$p"; return 0; }
     done
     return 1
@@ -203,9 +203,9 @@ case "$CMD" in
         shift
         PY="$(_webui_python || true)"
         if [ -n "$PY" ]; then
-            exec "$PY" "$ARES_HOME/webui/cli/doctor.py" "$@"
+            exec "$PY" "$ARES_HOME/services/controller/cli/doctor.py" "$@"
         else
-            exec python3 "$ARES_HOME/webui/cli/doctor.py" "$@"
+            exec python3 "$ARES_HOME/services/controller/cli/doctor.py" "$@"
         fi
         ;;
     update)
@@ -216,7 +216,7 @@ case "$CMD" in
         shift
         defaults delete ARES onboarding_completed 2>/dev/null || true
         defaults write ARES ARESForceOnboarding -bool true
-        rm -rf "$HOME/jaeger/.jaeger_os/instances" "$HOME/.jaeger/.jaeger_os/instances" "$HOME/.jaeger/instances" "$HOME/.ares/instances" "$ARES_HOME/webui/.ares_state" 2>/dev/null || true
+        rm -rf "$HOME/jaeger/.jaeger_os/instances" "$HOME/.jaeger/.jaeger_os/instances" "$HOME/.jaeger/instances" "$HOME/.ares/instances" "$ARES_HOME/services/controller/.ares_state" 2>/dev/null || true
         echo "Resetting onboarding state... Opening ARES onboarding wizard."
         exec open "$ARES_APP"
         ;;
@@ -227,10 +227,10 @@ case "$CMD" in
                 echo "ARES WebUI is already healthy at http://$(_webui_probe_host):${ARES_WEBUI_PORT}"
                 exit 0
             fi
-            cd "$ARES_HOME/webui"
+            cd "$ARES_HOME/services/controller"
             PY="$(_webui_python || true)"
             if [ -z "$PY" ] || [ ! -f "fastapi_app/main.py" ]; then
-                echo "ARES WebUI entrypoint / Python environment not found under $ARES_HOME/webui" >&2
+                echo "ARES WebUI entrypoint / Python environment not found under $ARES_HOME/services/controller" >&2
                 exit 1
             fi
             exec "$PY" -m uvicorn fastapi_app.main:app \

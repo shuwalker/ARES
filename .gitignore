@@ -40,6 +40,35 @@ webui/node_modules/
 webui/api/_version.py
 webui/uv.lock
 
+# ARES controller / web runtime state (never commit)
+# Layout after reorg: services/controller + apps/web
+# Legacy webui/ paths kept so old checkouts stay safe.
+services/controller/.venv/
+services/controller/.env
+services/controller/.env.*
+!services/controller/.env.example
+!services/controller/.env.docker.example
+services/controller/.pbkdf2_key
+services/controller/.signing_key
+services/controller/.login_attempts.json
+services/controller/.ares_state/
+services/controller/.webui_state/
+services/controller/.pytest_cache/
+services/controller/__pycache__/
+services/controller/**/__pycache__/
+services/controller/node_modules/
+services/controller/api/_version.py
+services/controller/uv.lock
+services/controller/venv/
+apps/web/node_modules/
+apps/web/dist/
+apps/web/tsconfig.tsbuildinfo
+
+# Credential filenames anywhere (belt and suspenders)
+**/.pbkdf2_key
+**/.signing_key
+**/.login_attempts.json
+
 # Python artifacts
 __pycache__/
 *.pyc

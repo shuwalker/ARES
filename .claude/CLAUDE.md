@@ -10,7 +10,7 @@ repository and implementation rules.
 ## Licensing
 
 - ARES is licensed under AGPL-3.0 with a commercial dual-license option. See `LICENSE` and `COMMERCIAL-LICENSE.md`.
-- Upstream Hermes WebUI code in `webui/` preserves its MIT notice in `webui/LICENSE`.
+- Upstream Hermes WebUI code in `services/controller/` + `apps/web/` preserves its MIT notice in `services/controller/LICENSE`.
 - Do not remove upstream copyright or license notices.
 - Do not introduce code with terms incompatible with AGPL distribution.
 - Do not change the license model without explicit maintainer approval.
@@ -24,7 +24,9 @@ System as a product package). It is not a character and not who the user talks t
 (identity, journal, context, routing, scoring, permissions, workspace).
 **Workers** = Ollama, jros, Hermes, cloud models, MCP, devices — execution only.
 
-Read [FOUNDATION.md](FOUNDATION.md) and [docs/product-vision.md](../docs/product-vision.md).
+Read [FOUNDATION.md](FOUNDATION.md),
+[docs/product/product-vision.md](../docs/product/product-vision.md),
+and the docs authority map [docs/README.md](../docs/README.md).
 
 Summary:
 
@@ -45,21 +47,21 @@ Use placeholders, detected values, or user-selected paths. In source code, prefe
 Keep the merged layout intentional:
 
 - `Package.swift` — Swift package manifest for the native app targets.
-- `ARES-Mac_os/Sources/ARESCore/` — protocol contracts, shared models, utilities.
-- `ARES-Mac_os/Sources/ARES/` — native macOS app target (WKWebView shell over the web app).
-- `ARES-Mac_os/Tests/ARESTests/` — native app tests.
-- `webui/` — the ARES web app: Python controller/API plus the React/Vite application in `frontend/`. This is the only web app tree. Never recreate `api/`, `frontend/`, `server.py`, or `tests/` at the repo root.
+- `apps/macos/Sources/ARESCore/` — protocol contracts, shared models, utilities.
+- `apps/macos/Sources/ARES/` — native macOS app target (WKWebView shell over the web app).
+- `apps/macos/Tests/ARESTests/` — native app tests.
+- `services/controller/` — Python controller/API and tests. `apps/web/` — React/Vite UI. Never recreate parallel web apps at the repo root.
 - `ARES-Windows/src-tauri/` — Windows/Tauri wrapper surface.
 - `tools/` — standalone utilities.
 - `docs/` — public documentation and assets.
 
-Thin wrappers at the repo root (`install.sh`, `start.sh`, `ctl.sh`) delegate into `webui/`; keep them as delegators, not implementations.
+Thin wrappers at the repo root (`install.sh`, `start.sh`, `ctl.sh`) delegate into `services/controller/`; keep them as delegators, not implementations.
 
 Do not create new top-level directories without explicit approval. Do not modify Hermes Agent source code under a user runtime directory; build ARES adapters/config/templates instead.
 
 ## Native app architecture
 
-Two Swift layers under `ARES-Mac_os/Sources/`:
+Two Swift layers under `apps/macos/Sources/`:
 
 - **ARESCore**
   - `Contracts/` — protocol contracts for providers, tools, memory, voice, etc.
@@ -80,13 +82,13 @@ Two Swift layers under `ARES-Mac_os/Sources/`:
 `ExecutionBackendRouter` (ARESCore) owns product-level backend planning by capability.
 Prefer configured providers first, native fallbacks second, dummies only when explicit.
 
-See `docs/product-vision.md` for the locked product decisions.
+See `docs/product/product-vision.md` for the locked product decisions.
 
 ## Runtime architecture
 
 Before changing session storage, streaming, worker invocation, or session
 provenance, read [docs/architecture/RUNTIME.md](../docs/architecture/RUNTIME.md)
-and the ADRs in [docs/architecture/decisions/](../docs/architecture/decisions/).
+and the ADRs in [docs/decisions/](../docs/decisions/).
 
 Non-negotiable runtime rules:
 
@@ -105,7 +107,7 @@ Non-negotiable runtime rules:
 
 - Write production-quality, tested code.
 - No stubs or placeholder implementations for user-facing setup paths.
-- Follow existing patterns in `webui/api/`, `webui/frontend/src/`, and `ARES-Mac_os/Sources/`.
+- Follow existing patterns in `services/controller/api/`, `apps/web/src/`, and `apps/macos/Sources/`.
 - New WebUI API endpoints must include proper authentication/owner-scope checks.
 - Preserve hot-reload behavior (`ARES_WEBUI_RELOAD=1`).
 - System-category or approval-required native tools must go through the approval broker/consent path.
@@ -119,7 +121,7 @@ swift build
 swift test
 
 # Focused WebUI tests
-cd webui/frontend && npm run typecheck && npm test && npm run build
+cd apps/web && npm run typecheck && npm test && npm run build
 cd .. && .venv/bin/python -m pytest tests/test_react_frontend_serving.py tests/test_jros_backend_streaming.py
 ```
 
@@ -129,7 +131,7 @@ Before proposing any commit:
 git diff --check
 swift build
 swift test
-cd webui/frontend && npm run typecheck && npm test && npm run build
+cd apps/web && npm run typecheck && npm test && npm run build
 cd .. && .venv/bin/python -m pytest tests/test_react_frontend_serving.py tests/test_jros_backend_streaming.py
 ```
 

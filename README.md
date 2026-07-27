@@ -14,7 +14,7 @@
   <a href="#features">Features</a> ·
   <a href="#character-avatar-browser">Characters</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="webui/FORK_CHANGES.md">Changelog</a> ·
+  <a href="services/controller/FORK_CHANGES.md">Changelog</a> ·
   <a href="#credits">Credits</a>
 </p>
 
@@ -42,7 +42,7 @@ paths:
   from `ARES-Windows/`. This is the Windows native shell path for wrapping the
   Web UI and adding Windows desktop integrations.
 - **Future standalone modes:** package `ARES.app` on macOS and a Windows
-  installer from `ARES-Windows/`, each with `webui/`, a Python
+  installer from `ARES-Windows/`, each with `services/controller/`, a Python
   runtime/environment, dependencies, and first-run setup. This is not complete
   yet, so current native builds are for local/developer use.
 
@@ -85,7 +85,7 @@ swift run ARES
 
 ```powershell
 cd ARES
-cd webui
+cd services/controller
 .\.venv\Scripts\python.exe server.py
 ```
 
@@ -124,7 +124,7 @@ tray/menu integrations.
 ARES treats characters as presentation data for the assistant interface. The character tab loads JaegerAI `character/v1` YAML data, displays avatar card art, shows role/voice/trait/lore detail, and lets the user select the character projection ARES presents.
 
 - **Visual roster:** Character metadata comes from connected JaegerAI data; the current React interface uses the ARES app icon until a normalized avatar renderer is connected.
-- **Schema-backed:** The browser reads JaegerAI character data through `webui/api/characters.py` and `/api/ares/characters`.
+- **Schema-backed:** The browser reads JaegerAI character data through `services/controller/api/characters.py` and `/api/ares/characters`.
 - **Runtime control:** Selecting a character updates the presentation/adapter surface; JaegerAI remains the canonical owner of character behavior in JaegerAI-backed mode.
 
 <p align="center">
@@ -166,11 +166,12 @@ interface.
 ```
 ARES/
 ├── Package.swift          # Swift Package Manager manifest
-├── ARES-Mac_os/           # Native macOS app + ARESCore contracts
+├── apps/macos/            # Native macOS app + ARESCore contracts
 │   ├── Sources/ARES/      # SwiftUI/WKWebView shell and native app surface
 │   ├── Sources/ARESCore/  # Shared models, contracts, discovery, utilities
 │   └── Tests/             # Native app tests
-├── webui/                 # ARES Web UI (Python web server)
+├── apps/web/              # React UI
+├── services/controller/   # FastAPI controller + API + tests
 │   ├── api/               # Backend — server, streaming, auth, hot-reload
 │   ├── frontend/          # React/Vite frontend, public assets, and API adapters
 │   ├── fastapi_app/       # FastAPI application and HTTP/WebSocket routers
@@ -186,7 +187,7 @@ ARES/
 ## Key Decisions
 
 1. **ARES composes an assistant interface.** The goal is one coherent user-facing AI experience assembled from runtimes, tools, models, memory providers, avatar renderers, and device integrations.
-2. **Web UI lives in `webui/`** — self-contained: own venv, own auth, own deps. One repo with the Swift app.
+2. **Controller lives in `services/controller/`; UI in `apps/web/`** — self-contained: own venv, own auth, own deps. One repo with the Swift app.
 3. **Mac app first, web access everywhere.** The SwiftUI app is the native Mac home with menus/system integration and launches the Web UI; the same Web UI remains reachable from other devices over Tailscale/LAN.
 4. **JaegerAI is the primary embodied path.** ARES talks to JaegerAI through the bridge/client protocol and displays JaegerAI characters, voice, tools, and body capabilities without replacing JaegerAI's own UI or runtime.
 5. **Ares and OpenAI-compatible services stay capability providers.** They provide coding, automation, model access, cloud reasoning, tools, and Mac/system integrations where configured.
@@ -201,7 +202,7 @@ The Web UI checks for updates on three repos:
 
 ## Credits
 
-The ARES Web UI (`webui/`) is forked from [ares-webui](https://github.com/nesquena/ares-webui) by the Ares Web UI Contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `webui/LICENSE` for the preserved upstream MIT notice.
+The ARES controller/Web UI stack (`services/controller/`, `apps/web/`) is forked from [ares-webui](https://github.com/nesquena/ares-webui) by the Ares Web UI Contributors, originally licensed under MIT. See `LICENSE` for ARES, `COMMERCIAL-LICENSE.md` for commercial licensing, and `services/controller/LICENSE` for the preserved upstream MIT notice.
 
 ## Owner
 

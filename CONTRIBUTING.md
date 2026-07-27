@@ -26,7 +26,7 @@ By contributing to ARES, you agree that your contribution is compatible with the
 1. Read `CLAUDE.md`.
 2. Read `.claude/CLAUDE.md`.
 3. Read `README.md`.
-4. If working in WebUI, read the relevant files under `webui/` and run focused tests through `webui/scripts/test.sh`.
+4. If working on the controller/WebUI, read under `services/controller/` and `apps/web/`, and run focused tests through `services/controller/scripts/test.sh`.
 
 ## Contribution process
 
@@ -56,7 +56,7 @@ Before proposing a commit, run the relevant checks and report exact output:
 ```bash
 git diff --check
 swift build
-cd webui && ./scripts/test.sh tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py
+cd services/controller && ./scripts/test.sh tests/test_onboarding_static.py tests/test_ares_onboarding_public_portability.py tests/test_ares_provider_sync.py tests/test_jros_backend_streaming.py
 ```
 
 ## Upstream / Contract Routing

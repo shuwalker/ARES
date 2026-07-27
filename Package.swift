@@ -23,14 +23,14 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "SQLite", package: "SQLite.swift"),
             ],
-            path: "ARES-Mac_os/Sources/ARESCore"
+            path: "apps/macos/Sources/ARESCore"
         ),
         .executableTarget(
             name: "ARES",
             dependencies: [
                 "ARESCore",
             ],
-            path: "ARES-Mac_os/Sources/ARES",
+            path: "apps/macos/Sources/ARES",
             resources: [
                 .process("Resources")
             ]
@@ -38,12 +38,12 @@ let package = Package(
         .executableTarget(
             name: "ARESNativeMCP",
             dependencies: ["ARESCore"],
-            path: "ARES-Mac_os/Sources/ARESNativeMCP"
+            path: "apps/macos/Sources/ARESNativeMCP"
         ),
         .testTarget(
             name: "ARESTests",
             dependencies: ["ARESCore", "ARES"],
-            path: "ARES-Mac_os/Tests/ARESTests"
+            path: "apps/macos/Tests/ARESTests"
         ),
     ]
 )

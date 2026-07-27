@@ -10,29 +10,26 @@ workflow notes here.
 Before making changes, read:
 
 1. `../FOUNDATION.md` — canonical ARES product and architecture definition
-2. `README.md`
-3. `CONTRIBUTING.md`
-4. `docs/CONTRACTS.md`
-5. `CHANGELOG.md`
+2. `../../docs/README.md` — documentation authority map
+3. `../../docs/architecture/RUNTIME.md` — how the running system works
+4. `../../services/controller/README.md` (if present) and `CONTRIBUTING.md` under `services/controller/`
+5. `ARCHITECTURE.md` (this folder) for WebUI module layout
+6. `../../.claude/TESTING.md` for verification commands
 
-For architecture, testing, or setup work, also read the matching reference:
+Controller contracts and operator docs live under `services/controller/docs/`
+(e.g. `CONTRACTS.md`, `onboarding.md`, `troubleshooting.md`, `rfcs/`).
 
-- `ARCHITECTURE.md` for design constraints and current module layout
-- `TESTING.md` for local verification commands and manual test guidance
-- `docs/onboarding.md` for first-run onboarding behavior
-- `docs/troubleshooting.md` for diagnostic flows
-- `docs/rfcs/README.md` for larger RFCs and state/durability contracts
-
-For UI or UX work, read `docs/UIUX-GUIDE.md` and `DESIGN.md` before
-changing layout, interaction flow, themes, chat rendering, or composer chrome.
-Do not introduce metaphorical architecture terminology that conflicts with the
-plain engineering vocabulary in `../FOUNDATION.md`.
+For UI or UX work, read `services/controller/docs/UIUX-GUIDE.md` and `DESIGN.md`
+(this folder) before changing layout, interaction flow, themes, chat rendering,
+or composer chrome. Do not introduce metaphorical architecture terminology that
+conflicts with the plain engineering vocabulary in `../FOUNDATION.md`.
 
 ## Onboarding and reinstall support
 
 If the task involves install, reinstall, bootstrap, first-run onboarding,
 provider setup, local model server setup, Docker onboarding, WSL onboarding, or
-support for a failed first run, read `docs/onboarding-agent-checklist.md`
+support for a failed first run, read
+`../../services/controller/docs/onboarding-agent-checklist.md`
 before running commands or inspecting logs.
 
 Follow that checklist's safety rules:

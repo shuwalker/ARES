@@ -4,13 +4,13 @@
 **Audience:** maintainers and coding agents
 **Companion documents:** [FOUNDATION.md](../../.claude/FOUNDATION.md) (product),
 [PRODUCT_SURFACES.md](./PRODUCT_SURFACES.md) (information architecture),
-[decisions/](./decisions/) (ADRs — *why* the runtime is shaped this way)
+[decisions/](../decisions/) (ADRs — *why* the runtime is shaped this way)
 
 This document describes **how the running system actually works**: what happens
 when a message is sent, where conversation data lives, and which assumptions the
 code makes. FOUNDATION defines the product; this defines the machine.
 
-ARES's WebUI is a fork of Hermes WebUI (MIT, preserved in `webui/LICENSE`). Several
+ARES's WebUI is a fork of Hermes WebUI (MIT, preserved in `services/controller/LICENSE`). Several
 runtime bugs have come from inherited code that assumed upstream's storage model.
 Section 6 lists the ones still outstanding.
 
@@ -22,10 +22,10 @@ Section 6 lists the ones still outstanding.
 Browser (React SPA, Vite build)
    │  HTTP + SSE, same origin
    ▼
-FastAPI controller  (fastapi_app/, uvicorn)
+FastAPI controller  (services/controller/fastapi_app/, uvicorn)
    │  routers → services → api/ business logic
    ▼
-Worker adapters (api/backends/*)
+Worker adapters (integrations/workers via api.backends shim)
    │  subprocess per turn
    ▼
 Worker processes: Hermes Agent · jros · Claude Code · Codex · Ollama · cloud
@@ -35,12 +35,12 @@ Three trees, one product:
 
 | Tree | Owns |
 |---|---|
-| `webui/frontend/` | React + TypeScript SPA. The only web frontend (FOUNDATION forbids a second vanilla/`static/` frontend). |
-| `webui/fastapi_app/` | HTTP surface: 50 routers, ~409 endpoints, Pydantic schemas, auth/identity. |
-| `webui/api/` | Business logic: sessions, streaming, adapters, storage, config. |
+| `apps/web/` | React + TypeScript SPA. The only web frontend (FOUNDATION forbids a second vanilla/`static/` frontend). |
+| `services/controller/fastapi_app/` | HTTP surface: routers, endpoints, Pydantic schemas, auth/identity. |
+| `services/controller/api/` + `core/` + `integrations/` | Business logic: sessions, streaming; Companion core and worker integrations. |
 
-The frontend never consumes framework-native shapes. `frontend/src/shared/translators.ts`
-normalizes backend payloads into ARES-owned contracts (`shared/contracts.ts`). That
+The frontend never consumes framework-native shapes. `apps/web/src/shared/translators.ts`
+normalizes backend payloads into ARES-owned contracts (`apps/web/src/shared/contracts.ts`). That
 seam is load-bearing — it is what lets a Claude Code row and a Hermes row render
 through one component.
 
@@ -51,7 +51,7 @@ through one component.
 This is the most important thing to understand, and the source of most historical bugs.
 
 ```text
-ARES_HOME/webui/sessions/*.json     ARES-owned sessions      read + WRITE
+ARES_HOME/webui/sessions/*.json     ARES-owned sessions (state dir name; not source tree)  read + WRITE
 $HERMES_HOME/state.db               Hermes Agent's store     read ONLY
 ~/.claude/projects/**/*.jsonl       Claude Code transcripts  read ONLY
 <jaeger>/instances/*/memory/*.db    JaegerAI store           read ONLY (not parsed yet)

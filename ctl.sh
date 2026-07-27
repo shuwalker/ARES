@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# ARES Web UI control — thin wrapper that delegates to webui/ctl.sh.
-# The web app lives entirely under webui/; this keeps `./ctl.sh` from the
-# repo root working the way it always has.
+# ARES controller control — thin wrapper that delegates to services/controller/ctl.sh.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="$SCRIPT_DIR/webui/ctl.sh"
+TARGET="$SCRIPT_DIR/services/controller/ctl.sh"
 
 if [ ! -f "$TARGET" ]; then
-    echo "ERROR: webui control script not found at $TARGET"
+    echo "ERROR: controller control script not found at $TARGET"
     echo "Make sure this script is run from the root of the ARES repository."
     exit 1
 fi

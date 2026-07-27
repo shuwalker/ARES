@@ -9,7 +9,7 @@ if [ -L "${BASH_SOURCE[0]}" ]; then
 fi
 ARES_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CTL_SCRIPT="${ARES_ROOT}/ctl.sh"
-export ARES_WEBUI_DIR="${ARES_ROOT}/webui"
+export ARES_WEBUI_DIR="${ARES_ROOT}/services/controller"
 export ARES_WEBUI_HOST="${ARES_WEBUI_HOST:-127.0.0.1}"
 export ARES_WEBUI_PORT="${ARES_WEBUI_PORT:-8788}"
 
@@ -39,12 +39,12 @@ EOF
 _launch_ares_app() {
   local APP_PATH="${HOME}/Applications/ARES.app"
   if [[ ! -d "$APP_PATH" ]]; then
-    APP_PATH="${ARES_ROOT}/ARES-Mac_os/ARES.app"
+    APP_PATH="${ARES_ROOT}/apps/macos/ARES.app"
   fi
 
   if [[ ! -d "$APP_PATH" ]]; then
     echo "ARES.app not found at ${APP_PATH}" >&2
-    echo "Build it once with: cd ARES-Mac_os && bash build-app.sh" >&2
+    echo "Build it once with: cd apps/macos && bash build-app.sh" >&2
     exit 1
   fi
 
@@ -96,12 +96,12 @@ cmd_doctor() {
   echo ""
 
   # 1. Check Python venv
-  if [ -f "${ARES_ROOT}/webui/.venv/bin/python" ]; then
-    echo "  ✅ Python venv: ${ARES_ROOT}/webui/.venv"
+  if [ -f "${ARES_ROOT}/services/controller/.venv/bin/python" ]; then
+    echo "  ✅ Python venv: ${ARES_ROOT}/services/controller/.venv"
   else
-    echo "  ❌ Python venv missing at webui/.venv"
+    echo "  ❌ Python venv missing at services/controller/.venv"
     echo "     Creating…"
-    cd "${ARES_ROOT}/webui"
+    cd "${ARES_ROOT}/services/controller"
     python3 -m venv .venv
     .venv/bin/pip install -e . 2>/dev/null || true
     needs_fix=1
@@ -109,38 +109,38 @@ cmd_doctor() {
   fi
 
   # 2. Check Python deps installed
-  if [ -f "${ARES_ROOT}/webui/.venv/bin/python" ]; then
-    if "${ARES_ROOT}/webui/.venv/bin/python" -c "import fastapi" 2>/dev/null; then
+  if [ -f "${ARES_ROOT}/services/controller/.venv/bin/python" ]; then
+    if "${ARES_ROOT}/services/controller/.venv/bin/python" -c "import fastapi" 2>/dev/null; then
       echo "  ✅ Python dependencies installed"
     else
       echo "  ❌ Python dependencies missing"
       echo "     Installing…"
-      "${ARES_ROOT}/webui/.venv/bin/pip" install -e "${ARES_ROOT}/webui" 2>/dev/null || true
+      "${ARES_ROOT}/services/controller/.venv/bin/pip" install -e "${ARES_ROOT}/services/controller" 2>/dev/null || true
       needs_fix=1
       fixed=1
     fi
   fi
 
   # 3. Check macOS app bundle
-  if [ -d "${ARES_ROOT}/ARES-Mac_os/ARES.app" ]; then
-    echo "  ✅ macOS app bundle: ARES-Mac_os/ARES.app"
+  if [ -d "${ARES_ROOT}/apps/macos/ARES.app" ]; then
+    echo "  ✅ macOS app bundle: apps/macos/ARES.app"
   else
     echo "  ❌ macOS app bundle missing"
     echo "     Building…"
-    cd "${ARES_ROOT}/ARES-Mac_os"
-    swift build 2>/dev/null && echo "  ✅ Built successfully" || echo "  ⚠️  Build failed — run 'cd ARES-Mac_os && swift build' manually"
+    cd "${ARES_ROOT}/apps/macos"
+    swift build 2>/dev/null && echo "  ✅ Built successfully" || echo "  ⚠️  Build failed — run 'cd apps/macos && swift build' manually"
     needs_fix=1
   fi
 
   # 4. Check frontend build
-  if [ -d "${ARES_ROOT}/webui/frontend/dist" ]; then
-    echo "  ✅ Frontend build: webui/frontend/dist"
+  if [ -d "${ARES_ROOT}/apps/web/dist" ]; then
+    echo "  ✅ Frontend build: apps/web/dist"
   else
     echo "  ❌ Frontend build missing"
     echo "     Building…"
-    cd "${ARES_ROOT}/webui/frontend"
+    cd "${ARES_ROOT}/apps/web"
     if command -v npm >/dev/null 2>&1; then
-      npm run build 2>/dev/null && echo "  ✅ Built successfully" || echo "  ⚠️  Build failed — run 'cd webui/frontend && npm run build' manually"
+      npm run build 2>/dev/null && echo "  ✅ Built successfully" || echo "  ⚠️  Build failed — run 'cd apps/web && npm run build' manually"
     else
       echo "  ⚠️  npm not found — install Node.js to build the frontend"
     fi
@@ -195,20 +195,20 @@ cmd_update() {
   git pull origin main 2>/dev/null || echo "  ⚠️  Git pull failed (check network or branch name)"
 
   echo "2. Installing Python dependencies…"
-  if [ -f "${ARES_ROOT}/webui/.venv/bin/python" ]; then
-    "${ARES_ROOT}/webui/.venv/bin/pip" install -e "${ARES_ROOT}/webui" 2>/dev/null || true
+  if [ -f "${ARES_ROOT}/services/controller/.venv/bin/python" ]; then
+    "${ARES_ROOT}/services/controller/.venv/bin/pip" install -e "${ARES_ROOT}/services/controller" 2>/dev/null || true
     echo "  ✅ Python deps updated"
   fi
 
   echo "3. Building macOS app…"
-  if [ -d "${ARES_ROOT}/ARES-Mac_os" ]; then
-    cd "${ARES_ROOT}/ARES-Mac_os"
+  if [ -d "${ARES_ROOT}/apps/macos" ]; then
+    cd "${ARES_ROOT}/apps/macos"
     swift build 2>/dev/null && echo "  ✅ macOS app built" || echo "  ⚠️  Build failed"
   fi
 
   echo "4. Building frontend…"
-  if [ -d "${ARES_ROOT}/webui/frontend" ]; then
-    cd "${ARES_ROOT}/webui/frontend"
+  if [ -d "${ARES_ROOT}/apps/web" ]; then
+    cd "${ARES_ROOT}/apps/web"
     if command -v npm >/dev/null 2>&1; then
       npm run build 2>/dev/null && echo "  ✅ Frontend built" || echo "  ⚠️  Build failed"
     fi

@@ -18,7 +18,7 @@ Then open:
 http://localhost:8788
 ```
 
-The root `start.sh` is a convenience wrapper around `webui/start.sh`.
+The root `start.sh` is a convenience wrapper around `services/controller/start.sh`.
 
 ## Developer Mac App Mode
 
@@ -43,11 +43,13 @@ UI in a desktop window and can grow native Windows integrations around it.
 
 ```powershell
 cd /path/to/ARES
-cd webui
-.\.venv\Scripts\python.exe server.py
+.\start.sh
+# or, from the controller tree:
+# cd services\controller
+# .\.venv\Scripts\python.exe -m uvicorn fastapi_app.main:app --host 127.0.0.1 --port 8788
 ```
 
-In a second PowerShell window, build/run the Tauri wrapper from:
+In a second PowerShell window, build/run the Tauri wrapper if present in your checkout (path may be `ARES-Windows/` when that tree is available):
 
 ```powershell
 cd /path/to/ARES
@@ -75,7 +77,7 @@ revision. The installer also registers `ares`, `hermes`, and `jaeger` in
 
 The installer:
 - Detects or installs JaegerAI when available (optional for saving a Local Profile)
-- Creates a Python virtual environment in `webui/.venv`
+- Creates a Python virtual environment in `services/controller/.venv`
 - Installs Python dependencies
 - Configures a live adapter when one is detected (defaults to `jros_local`)
 
@@ -91,13 +93,13 @@ After install, use any of the run modes above (Web, Mac app, or Windows).
 The planned standalone macOS package will bundle:
 
 - `ARES.app`
-- `webui/`
+- `services/controller/` and `apps/web/`
 - Python runtime/environment
 - Python dependencies
 - first-run setup/onboarding
 
 The planned standalone Windows package will do the same job through the Tauri
-wrapper in `ARES-Windows/`, producing a Windows installer/desktop app around
+wrapper when available, producing a Windows installer/desktop app around
 the Web UI.
 
 That packaging is not complete yet. Current native builds are for

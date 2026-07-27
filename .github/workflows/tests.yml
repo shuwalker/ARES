@@ -6,11 +6,11 @@ on:
   push:
     branches: [main]
 
-# The ARES web app lives entirely under webui/ (the repo root hosts the
-# native Swift app + packaging). Every run step executes from webui/.
+# The ARES web app lives entirely under services/controller/ (the repo root hosts the
+# native Swift app + packaging). Every run step executes from services/controller/.
 defaults:
   run:
-    working-directory: webui
+    working-directory: services/controller
 
 jobs:
   # Forward-looking Python lint gate. Runs the curated [tool.ruff] ruleset (E9 + F + B) but only on lines this
@@ -58,10 +58,10 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: webui/frontend/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: React typecheck, tests, and production build
-        working-directory: webui/frontend
+        working-directory: apps/web
         run: |
           npm ci
           npm run typecheck
@@ -120,10 +120,10 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: webui/frontend/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Build the React frontend
-        working-directory: webui/frontend
+        working-directory: apps/web
         run: npm ci && npm run build
 
       - name: Get Playwright version
@@ -146,4 +146,4 @@ jobs:
 
       - name: SI subsystem health check
         if: matrix.shard == 0 && matrix.python-version == '3.12'
-        run: python ../scripts/si_doctor.py
+        run: python scripts/si_doctor.py

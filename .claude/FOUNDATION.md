@@ -39,7 +39,7 @@ Mac-first, not Mac-only. Surfaces must not become incompatible products.
 How the running system works — process topology, the two-store model, the chat
 round trip, and inherited assumptions still outstanding — is documented in
 [docs/architecture/RUNTIME.md](../docs/architecture/RUNTIME.md). Decisions with
-their reasoning live in [docs/architecture/decisions/](../docs/architecture/decisions/).
+their reasoning live in [docs/decisions/](../docs/decisions/).
 
 Two load-bearing rules from those documents: ARES invokes workers as
 **subprocesses** and never absorbs their execution loop, and ARES **never writes
@@ -201,16 +201,16 @@ is an additional real-time view, not the only control surface.
 ## WebUI implementation boundary
 
 The WebUI has one frontend implementation: the React and TypeScript application
-under `webui/frontend/`, built with Vite and served from `webui/frontend/dist`.
+under `apps/web/`, built with Vite and served from `apps/web/dist`.
 The Python server owns authentication, persistence, local system access, and
 the `/api/` contracts. React components do not consume framework-native shapes
 directly; `frontend/src/shared/` adapters and translators normalize them into
 ARES-owned contracts. A missing model or agent runtime degrades a capability,
 not the application shell.
 
-Do not recreate a second Vanilla JavaScript frontend or a `webui/static/`
+Do not recreate a second Vanilla JavaScript frontend or a `static/`
 fallback. Public assets, login support, public-share presentation, and cache
-retirement files belong to `webui/frontend/public/`. A missing production build
+retirement files belong to `apps/web/public/`. A missing production build
 must fail explicitly while leaving API routing intact.
 
 ## Animated 2D activity environment

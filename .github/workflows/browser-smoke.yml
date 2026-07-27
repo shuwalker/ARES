@@ -15,10 +15,10 @@ on:
   push:
     branches: [main]
 
-# The ARES web app lives entirely under webui/ — the smoke boots Uvicorn.
+# The ARES web app lives entirely under services/controller/ — the smoke boots Uvicorn.
 defaults:
   run:
-    working-directory: webui
+    working-directory: services/controller
 
 jobs:
   browser-smoke:

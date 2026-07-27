@@ -44,11 +44,11 @@ jobs:
             type=raw,value=latest
 
       # Build and push multi-arch image (amd64 + arm64).
-      # The web app + its Docker packaging live under webui/.
+      # The web app + its Docker packaging live under services/controller/.
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: webui
+          context: services/controller
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
