@@ -948,6 +948,45 @@ def get_onboarding_status() -> dict:
     }
 
 
+def verify_provider_health(
+    provider: str, api_key: str | None, base_url: str = ""
+) -> tuple[bool, str]:
+    """Verify that a provider is reachable before marking onboarding complete.
+
+    Returns (is_available, error_message) where is_available is True if the
+    provider can likely run, False otherwise.
+
+    For self-hosted providers (Ollama, LM Studio), this probes /v1/models to
+    ensure the endpoint is reachable. For cloud providers (OpenRouter, Anthropic,
+    OpenAI), we skip the probe since we cannot safely verify credentials without
+    consuming quota or making live API calls. For pre-configured providers (set
+    up via CLI), we assume they're available.
+    """
+    provider = str(provider or "").strip().lower()
+    if not provider:
+        return False, "No provider specified"
+
+    # Self-hosted providers: probe the endpoint to ensure it's reachable
+    if provider in {"ollama", "lmstudio"}:
+        if not base_url:
+            # Self-hosted without explicit base_url uses defaults from setup
+            meta = _SUPPORTED_PROVIDER_SETUPS.get(provider, {})
+            base_url = meta.get("default_base_url", "")
+        if not base_url:
+            return False, f"{provider} requires a base_url"
+        # Probe the endpoint to ensure it's reachable
+        probe_result = probe_provider_endpoint(provider, base_url, api_key, timeout=5.0)
+        if probe_result.get("ok"):
+            return True, ""
+        error = probe_result.get("error", "unknown_error")
+        detail = probe_result.get("detail", "Provider health check failed")
+        return False, f"{provider} at {base_url} is {error}: {detail}"
+
+    # Cloud providers and pre-configured: trust that they'll work
+    # (we can't safely verify API keys, and CLI-configured users know what they're doing)
+    return True, ""
+
+
 def apply_onboarding_setup(body: dict) -> dict:
     # Hard guard: if the operator set SKIP_ONBOARDING, the wizard should never
     # have appeared.  Even if the frontend somehow calls this endpoint anyway
@@ -1053,6 +1092,23 @@ def apply_onboarding_setup(body: dict) -> dict:
         logger.debug("Failed to reload ares_cli config")
 
     reload_config()
+
+    # Verify provider health before marking onboarding complete.
+    # This ensures the user discovers connectivity issues now, not when
+    # they try to chat.
+    is_healthy, health_error = verify_provider_health(provider, api_key, base_url)
+    if not is_healthy:
+        logger.warning(f"Provider health check failed during onboarding: {health_error}")
+        return {
+            "error": "provider_unreachable",
+            "message": (
+                f"Setup saved, but provider verification failed: {health_error}. "
+                "Check that your provider is running and your credentials are correct."
+            ),
+            "provider": provider,
+            "completed": False,
+        }
+
     return get_onboarding_status()
 
 
