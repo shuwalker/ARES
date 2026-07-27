@@ -40,8 +40,8 @@ def create_task(
 
 @router.get("/tasks")
 def list_tasks(
+    _identity: Annotated[RequestIdentity, Depends(require_identity)],
     status: str = Query(None),
-    _identity: Annotated[RequestIdentity, Depends(require_identity)] = None,
 ):
     """List all tasks, optionally filtered by status."""
     from api.organizer import list_tasks as _list_tasks
@@ -55,7 +55,7 @@ def list_tasks(
 @router.get("/tasks/{task_id}")
 def get_task(
     task_id: str,
-    _identity: Annotated[RequestIdentity, Depends(require_identity)] = None,
+    _identity: Annotated[RequestIdentity, Depends(require_identity)],
 ):
     """Get a single task by ID."""
     from api.organizer import get_task as _get_task
@@ -133,7 +133,7 @@ def capture_from_chat(
 
 @router.get("/today")
 def get_today_tasks(
-    _identity: Annotated[RequestIdentity, Depends(require_identity)] = None,
+    _identity: Annotated[RequestIdentity, Depends(require_identity)],
 ):
     """Get tasks organized for today's view."""
     from api.organizer import get_today_tasks as _get_today_tasks
@@ -146,7 +146,7 @@ def get_today_tasks(
 
 @router.get("/plan")
 def generate_plan(
-    _identity: Annotated[RequestIdentity, Depends(require_identity)] = None,
+    _identity: Annotated[RequestIdentity, Depends(require_identity)],
 ):
     """Generate a daily plan from today's tasks."""
     from api.organizer import generate_daily_plan
