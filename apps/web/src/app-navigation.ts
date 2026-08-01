@@ -18,8 +18,11 @@ import {
   Layers,
   ListTodo,
   MessageCircle,
+  Palette,
   Search,
   Server,
+  Shield,
+  ShieldAlert,
   Sliders,
   Smartphone,
   Sparkles,
@@ -48,28 +51,66 @@ export type AppRoute = {
 };
 
 /**
- * Six product surfaces from docs/architecture/PRODUCT_SURFACES.md
+ * Product environments and the supporting Control Center.
  *
- * Chat | Companion | Self | Workshop | Library | System
+ * Agent | Engineering | Studio | Life | Library | Control Center
+ *
+ * Settings is intentionally NOT a seventh environment — it is a utility
+ * opened from the bottom-left gear and uses its own sidebar ownership.
  */
 export type NavigationSection = {
-  id: "chat" | "companion" | "self" | "workshop" | "library" | "system";
+  id: "chat" | "companion" | "workshop" | "studio" | "library" | "system";
   label: string;
   /** Default deep-link when the rail icon is clicked */
   home: string;
   routes: AppRoute[];
 };
 
+/** Deck mode including the non-environment Settings utility. */
+export type DeckSurface = NavigationSection["id"] | "settings";
+
+/**
+ * Resolve which left-deck surface owns a pathname.
+ * `/settings` is never Life/companion — it is a standalone utility.
+ */
+export function sectionForPath(pathname: string): DeckSurface {
+  // Strip query/hash so accidental full URLs still resolve correctly.
+  const path = pathname.split(/[?#]/, 1)[0] || pathname;
+
+  if (path === "/settings" || path.startsWith("/settings/")) {
+    return "settings";
+  }
+  if (path.startsWith("/chat") || path.startsWith("/conversation")) {
+    return "chat";
+  }
+  if (path.startsWith("/self/")) {
+    return "companion";
+  }
+  // Prefer longest matching route prefix so /system wins over accidental shorts.
+  let best: { id: NavigationSection["id"]; len: number } | null = null;
+  for (const section of navigationSections) {
+    for (const route of section.routes) {
+      if (path === route.to || path.startsWith(`${route.to}/`)) {
+        if (!best || route.to.length > best.len) best = { id: section.id, len: route.to.length };
+      }
+    }
+    if (path === section.home || path.startsWith(`${section.home}/`)) {
+      if (!best || section.home.length > best.len) best = { id: section.id, len: section.home.length };
+    }
+  }
+  return best?.id ?? "companion";
+}
+
 export const navigationSections: NavigationSection[] = [
   {
     id: "chat",
-    label: "Chat",
+    label: "Agent",
     home: "/chat",
     routes: [
       {
         path: "chat",
         to: "/chat",
-        label: "Projects",
+        label: "Sessions",
         icon: MessageCircle,
         component: named(() => import("@/features/advanced-chat/ConversationPage"), "ConversationPage"),
       },
@@ -85,23 +126,55 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     id: "companion",
-    label: "Companion",
+    label: "Life",
     home: "/companion",
     routes: [
       {
         path: "companion",
         to: "/companion",
-        label: "SI home",
+        label: "Overview",
         icon: Sparkles,
         component: named(() => import("@/features/companion/CompanionPage"), "CompanionPage"),
       },
       {
         path: "today",
         to: "/today",
-        label: "Today",
+        label: "Now",
         icon: House,
         component: named(() => import("@/features/companion/TodayPage"), "TodayPage"),
-        group: "Guidance",
+        group: "Today",
+      },
+      {
+        path: "self",
+        to: "/self",
+        label: "Journal & Areas",
+        icon: Heart,
+        component: named(() => import("@/features/self/SelfPage"), "SelfPage"),
+        group: "Personal",
+      },
+      {
+        path: "goals",
+        to: "/goals",
+        label: "Goals",
+        icon: Target,
+        component: named(() => import("@/features/self/GoalsPage"), "GoalsPage"),
+        group: "Personal",
+      },
+      {
+        path: "cases",
+        to: "/cases",
+        label: "Life Admin",
+        icon: ClipboardList,
+        component: named(() => import("@/features/self/CasesPage"), "CasesPage"),
+        group: "Personal",
+      },
+      {
+        path: "timeline",
+        to: "/timeline",
+        label: "Timeline",
+        icon: CalendarClock,
+        component: named(() => import("@/features/self/TimelinePage"), "TimelinePage"),
+        group: "History",
       },
       // Approvals are a Companion responsibility (PRODUCT_SURFACES "identity,
       // intent, routing, continuity, approvals"), not Library knowledge. The
@@ -114,7 +187,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Approvals",
         icon: Inbox,
         component: lazy(() => import("@/features/companion/InboxPage")),
-        group: "Guidance",
+        group: "Attention",
       },
       // "Scheduled and automated tasks that run on your behalf" is delegation,
       // which Companion owns. System keeps the machinery, not the intent.
@@ -122,60 +195,22 @@ export const navigationSections: NavigationSection[] = [
       {
         path: "schedules",
         to: "/schedules",
-        label: "Schedules",
+        label: "Automations",
         icon: CalendarClock,
         component: lazy(() => import("@/features/companion/RoutinesPage")),
-        group: "Delegation",
-      },
-    ],
-  },
-  {
-    id: "self",
-    label: "Self",
-    home: "/self",
-    routes: [
-      {
-        path: "self",
-        to: "/self",
-        label: "Journal & areas",
-        icon: Heart,
-        component: named(() => import("@/features/self/SelfPage"), "SelfPage"),
-      },
-      {
-        path: "goals",
-        to: "/goals",
-        label: "Goals",
-        icon: Target,
-        component: named(() => import("@/features/self/GoalsPage"), "GoalsPage"),
-        group: "Life",
-      },
-      {
-        path: "timeline",
-        to: "/timeline",
-        label: "Timeline",
-        icon: CalendarClock,
-        component: named(() => import("@/features/self/TimelinePage"), "TimelinePage"),
-        group: "Life",
-      },
-      {
-        path: "cases",
-        to: "/cases",
-        label: "Life Admin",
-        icon: ClipboardList,
-        component: named(() => import("@/features/self/CasesPage"), "CasesPage"),
-        group: "Life",
+        group: "Automation",
       },
     ],
   },
   {
     id: "workshop",
-    label: "Workshop",
+    label: "Engineering",
     home: "/workshop",
     routes: [
       {
         path: "workshop",
         to: "/workshop",
-        label: "Workshop home",
+        label: "Overview",
         icon: Wrench,
         component: named(() => import("@/features/workshop/WorkshopPage"), "WorkshopPage"),
       },
@@ -185,7 +220,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Files",
         icon: FolderKanban,
         component: named(() => import("@/features/workshop/WorkspacePage"), "WorkspacePage"),
-        group: "Make",
+        group: "Build",
       },
       {
         path: "terminal",
@@ -193,7 +228,45 @@ export const navigationSections: NavigationSection[] = [
         label: "Terminal",
         icon: SquareTerminal,
         component: named(() => import("@/features/workshop/TerminalPage"), "TerminalPage"),
-        group: "Make",
+        group: "Build",
+      },
+      {
+        path: "projects",
+        to: "/projects",
+        label: "Projects",
+        icon: Briefcase,
+        component: named(() => import("@/features/workshop/ProjectsPage"), "ProjectsPage"),
+        group: "Manage",
+      },
+      {
+        path: "board",
+        to: "/board",
+        label: "Board",
+        icon: Kanban,
+        component: named(() => import("@/features/workshop/BoardChatPage"), "BoardChatPage"),
+        group: "Manage",
+      },
+      {
+        path: "issues",
+        to: "/issues",
+        label: "Issues",
+        icon: ListTodo,
+        component: lazy(() => import("@/features/workshop/IssuesPage")),
+        group: "Manage",
+      },
+    ],
+  },
+  {
+    id: "studio",
+    label: "Studio",
+    home: "/studio",
+    routes: [
+      {
+        path: "studio",
+        to: "/studio",
+        label: "Create",
+        icon: Palette,
+        component: named(() => import("@/features/studio/StudioPage"), "StudioPage"),
       },
       {
         path: "canvas",
@@ -204,28 +277,20 @@ export const navigationSections: NavigationSection[] = [
         group: "Make",
       },
       {
-        path: "projects",
-        to: "/projects",
-        label: "Projects",
+        path: "studio-assets",
+        to: "/studio-assets",
+        label: "Assets",
+        icon: FolderKanban,
+        component: named(() => import("@/features/studio/StudioAssetsPage"), "StudioAssetsPage"),
+        group: "Make",
+      },
+      {
+        path: "studio-projects",
+        to: "/studio-projects",
+        label: "Creative Projects",
         icon: Briefcase,
-        component: named(() => import("@/features/workshop/ProjectsPage"), "ProjectsPage"),
-        group: "Track",
-      },
-      {
-        path: "board",
-        to: "/board",
-        label: "Board",
-        icon: Kanban,
-        component: named(() => import("@/features/workshop/BoardChatPage"), "BoardChatPage"),
-        group: "Track",
-      },
-      {
-        path: "issues",
-        to: "/issues",
-        label: "Issues",
-        icon: ListTodo,
-        component: lazy(() => import("@/features/workshop/IssuesPage")),
-        group: "Track",
+        component: named(() => import("@/features/studio/StudioProjectsPage"), "StudioProjectsPage"),
+        group: "Organize",
       },
     ],
   },
@@ -264,13 +329,13 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     id: "system",
-    label: "System",
+    label: "Control Center",
     home: "/system",
     routes: [
       {
         path: "system",
         to: "/system",
-        label: "System home",
+        label: "Overview",
         icon: Server,
         component: named(() => import("@/features/system/SystemPage"), "SystemPage"),
       },
@@ -280,7 +345,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Workers",
         icon: Cpu,
         component: lazy(() => import("@/features/system/AgentsPage")),
-        group: "Workers",
+        group: "Intelligence",
       },
       {
         path: "connections",
@@ -288,7 +353,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Connections",
         icon: Cable,
         component: named(() => import("@/features/system/ConnectionsPage"), "ConnectionsPage"),
-        group: "Workers",
+        group: "Intelligence",
       },
       {
         path: "mcp",
@@ -296,7 +361,7 @@ export const navigationSections: NavigationSection[] = [
         label: "MCP Servers",
         icon: Server,
         component: lazy(() => import("@/features/system/McpPage")),
-        group: "Workers",
+        group: "Intelligence",
       },
       // Skills are worker capabilities, not owned knowledge — Library is books
       // and study material, so these moved to the surface that configures what
@@ -307,7 +372,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Skills",
         icon: GraduationCap,
         component: lazy(() => import("@/features/system/SkillsPage")),
-        group: "Workers",
+        group: "Intelligence",
       },
       // Was built but never routed — reachable now instead of dead code.
       {
@@ -316,7 +381,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Skill Studio",
         icon: GraduationCap,
         component: lazy(() => import("@/features/system/SkillStudioPage")),
-        group: "Workers",
+        group: "Intelligence",
       },
       // "Local model companion workshop" — local model management is
       // infrastructure (PRODUCT_SURFACES System: "local models"), not a user
@@ -327,7 +392,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Local Models",
         icon: Sparkles,
         component: lazy(() => import("@/features/system/HatcheryPage")),
-        group: "Workers",
+        group: "Intelligence",
       },
       {
         path: "activity",
@@ -335,7 +400,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Activity",
         icon: Activity,
         component: named(() => import("@/features/system/ActivityPage"), "ActivityPage"),
-        group: "Health",
+        group: "Observe",
       },
       {
         path: "analytics",
@@ -343,7 +408,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Analytics",
         icon: Gauge,
         component: named(() => import("@/features/system/AnalyticsPage"), "AnalyticsPage"),
-        group: "Health",
+        group: "Observe",
       },
       {
         path: "usage",
@@ -351,7 +416,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Usage & cost",
         icon: Gauge,
         component: named(() => import("@/features/system/UsageCostPage"), "UsageCostPage"),
-        group: "Health",
+        group: "Observe",
       },
       {
         path: "pairing",
@@ -359,7 +424,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Pairing",
         icon: Smartphone,
         component: lazy(() => import("@/features/system/PairingPage")),
-        group: "Box",
+        group: "Access & automation",
       },
       {
         path: "webhooks",
@@ -367,7 +432,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Webhooks",
         icon: Webhook,
         component: lazy(() => import("@/features/system/WebhooksPage")),
-        group: "Box",
+        group: "Access & automation",
       },
       {
         path: "secrets",
@@ -375,7 +440,26 @@ export const navigationSections: NavigationSection[] = [
         label: "Secrets",
         icon: Key,
         component: lazy(() => import("@/features/system/SecretsPage")),
-        group: "Box",
+        group: "Access & automation",
+      },
+      {
+        path: "memory-privacy",
+        to: "/memory-privacy",
+        label: "Memory & Privacy",
+        icon: Shield,
+        component: named(() => import("@/features/system/MemoryPrivacyPage"), "MemoryPrivacyPage"),
+        group: "Access & automation",
+      },
+      {
+        path: "permissions-autonomy",
+        to: "/permissions-autonomy",
+        label: "Permissions & Autonomy",
+        icon: ShieldAlert,
+        component: named(
+          () => import("@/features/system/PermissionsAutonomyPage"),
+          "PermissionsAutonomyPage",
+        ),
+        group: "Access & automation",
       },
       {
         path: "config",
@@ -383,7 +467,7 @@ export const navigationSections: NavigationSection[] = [
         label: "Advanced settings",
         icon: Sliders,
         component: lazy(() => import("@/features/system/ConfigPage")),
-        group: "Box",
+        group: "Access & automation",
       },
     ],
   },

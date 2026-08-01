@@ -240,15 +240,9 @@ export function CommandCenterShell() {
   const companionName = profile.assistantName?.trim() || "Jaeger AI";
 
   const workbenchRef = usePanelRef();
-  const [workbenchCollapsed, setWorkbenchCollapsed] = useState(() => {
-    // Initialize from localStorage preference - default to collapsed (closed) for new sessions
-    try {
-      const pref = window.localStorage.getItem("hermes-webui-workspace-panel-pref");
-      return pref !== "open";
-    } catch {
-      return true; // default closed
-    }
-  });
+  // Every environment opens with its main surface unobstructed. The workspace
+  // remains available on demand, but does not carry an open state between tabs.
+  const [workbenchCollapsed, setWorkbenchCollapsed] = useState(true);
 
   // Compact drawers (Hermes: sidebar + rightpanel slide-ins under 900/640).
   const [deckOpen, setDeckOpen] = useState(false);
@@ -283,11 +277,12 @@ export function CommandCenterShell() {
     });
   }, []);
 
-  // Close drawers when route changes (nav link inside deck).
+  // Close auxiliary UI when entering a different environment/surface.
   useEffect(() => {
     setDeckOpen(false);
     setHandsOpen(false);
-  }, [location.pathname]);
+    if (!isCompact) workbenchRef.current?.collapse();
+  }, [isCompact, location.pathname, workbenchRef]);
 
   // Listen for new-session signal to close workbench panel
   useEffect(() => {
@@ -442,7 +437,7 @@ export function CommandCenterShell() {
               <ResizeHandle id="brain-hands-handle" />
               <Panel
                 id="hands"
-                defaultSize="30%"
+                defaultSize="0px"
                 minSize="240px"
                 maxSize="55%"
                 collapsible

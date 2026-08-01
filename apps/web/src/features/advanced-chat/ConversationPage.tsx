@@ -36,7 +36,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { APP_ICON_URL } from "@/assets";
 import { isBlockingState } from "@/components/ConnectionStatusBadge";
@@ -86,17 +86,56 @@ function IconBtn({ children, title, onClick }: { children: React.ReactNode; titl
   );
 }
 
-function ComposerChip({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
+function formatShortModelLabel(label: string): string {
+  if (!label || label === "auto") return "Auto";
+  const primary = label.split("·")[0].trim();
+  return primary
+    .replace(/-\d{8}$/, "")
+    .replace(/^gpt-4o/, "GPT-4o")
+    .replace(/^claude-3-5-sonnet/, "Claude 3.5")
+    .replace(/^grok-/, "Grok ");
+}
+
+function SwitchboardLED({ active = true, color = "emerald", pulse = false, title }: { active?: boolean; color?: "emerald" | "purple" | "cyan" | "amber" | "red"; pulse?: boolean; title?: string }) {
+  const colorMap = {
+    emerald: "#10b981",
+    purple: "#a855f7",
+    cyan: "#08ebf1",
+    amber: "#f59e0b",
+    red: "#ef4444",
+  };
+  const activeColor = colorMap[color] || colorMap.emerald;
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-block",
+        width: "5px",
+        height: "5px",
+        borderRadius: "50%",
+        background: active ? activeColor : "rgba(255,255,255,0.2)",
+        boxShadow: active ? `0 0 6px ${activeColor}` : "none",
+        flexShrink: 0,
+        animation: pulse && active ? "aresLedPulse 1.5s ease-in-out infinite" : "none",
+      }}
+    />
+  );
+}
+
+function ComposerChip({ icon, label, onClick, title, maxWidth, ledColor, ledPulse }: { icon: React.ReactNode; label: string; onClick?: () => void; title?: string; maxWidth?: string; ledColor?: "emerald" | "purple" | "cyan" | "amber" | "red"; ledPulse?: boolean }) {
   const [hover, setHover] = useState(false);
   return (
-    <button type="button" onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ display: "inline-flex", alignItems: "center", gap: "0.3125rem", height: "1.625rem", padding: "0 0.5rem", borderRadius: "0.375rem", border: `1px solid ${hover ? H.border2 : H.chipBorder}`, background: hover ? H.surfaceHover : H.chipBg, color: hover ? H.text : H.chipText, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0, maxWidth: "8.125rem" }}>
+    <button type="button" title={title || label} onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", height: "1.5rem", padding: "0 0.375rem", borderRadius: "0.375rem", border: `1px solid ${hover ? H.border2 : H.chipBorder}`, background: hover ? H.surfaceHover : H.chipBg, color: hover ? H.text : H.chipText, fontSize: "0.6875rem", fontWeight: 500, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0, maxWidth: maxWidth || "7.5rem" }}>
+      {ledColor && <SwitchboardLED active={true} color={ledColor} pulse={ledPulse} />}
       <span style={{ opacity: 0.7, flexShrink: 0 }}>{icon}</span>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>{label}</span>
       <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
     </button>
   );
 }
+
+
 
 interface DiscoveredBackend {
   adapter_id: string;
@@ -115,7 +154,7 @@ const SAVED_PROMPT_TEMPLATES = [
   { label: "System Architecture", prompt: "Outline a high-level technical architecture and implementation plan for the following feature requirement:" },
 ];
 
-/** Available JaegerAI character/personality presets — mirrors backend config.yaml agent.personalities */
+/** Available Jaeger AI character/personality presets — mirrors backend config.yaml agent.personalities */
 const PERSONALITY_OPTIONS: Array<{ id: string; label: string; detail: string }> = [
   { id: "grounded", label: "Grounded", detail: "Practical, direct, no fluff — matches your onboarding character" },
   { id: "helpful", label: "Helpful", detail: "Friendly and thorough, assists accurately and completely" },
@@ -149,6 +188,7 @@ const REASONING_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 export function ConversationPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const workbenchPanel = useWorkbenchPanel();
   const { profile } = useLocalProfile();
   const {
@@ -193,6 +233,16 @@ export function ConversationPage() {
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [selectedModelProvider, setSelectedModelProvider] = useState<string>("");
   const [workspaceOverride, setWorkspaceOverride] = useState<string>("");
+
+  useEffect(() => {
+    const handoff = searchParams.get("prompt")?.trim();
+    if (!handoff) return;
+    setDraft((current) => current || handoff);
+    const next = new URLSearchParams(searchParams);
+    next.delete("prompt");
+    next.delete("source");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [backendCatalog, setBackendCatalog] = useState<
     Array<{
       id: string;
@@ -588,7 +638,7 @@ export function ConversationPage() {
             <div style={{ marginBottom: "1.25rem" }}><SpartanHelmetSVG /></div>
             <h2 style={{ fontSize: "1.375rem", fontWeight: 700, color: H.strong, margin: "0rem" }}>What are we working on?</h2>
             <p style={{ fontSize: "0.875rem", color: H.muted, margin: "0.5rem 0 1.75rem", lineHeight: 1.6, maxWidth: "23.75rem" }}>
-              Start a project, delegate tasks, or ask anything. Your agent remembers.
+              Start a session, delegate work, or ask anything. Your agent remembers.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", width: "100%", maxWidth: "32.5rem" }}>
               {!hideSuggestions && [
@@ -809,7 +859,7 @@ export function ConversationPage() {
               aria-label="Message"
               placeholder={
                 isReadOnlyCli
-                  ? "CLI session is read-only — open a project to chat"
+                  ? "CLI session is read-only — start a new session to chat"
                   : noProviderSelected
                     ? "Choose an AI provider to start chatting"
                     : providerBlocked
@@ -821,8 +871,8 @@ export function ConversationPage() {
               onInput={(e) => { const el = e.currentTarget; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 180) + "px"; }}
             />
 
-            {/* Toolbar — scrolls horizontally on narrow viewports (Hermes cf-burger pattern) */}
-            <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "0.25rem 0.5rem 0.5rem", gap: "0.25rem", overflowX: "auto", whiteSpace: "nowrap", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", maxWidth: "100%" }}>
+            {/* Toolbar — responsive flex container bounded within chat box */}
+            <div className="conversation-toolbar" style={{ display: "flex", alignItems: "center", padding: "0.25rem 0.5rem 0.5rem", gap: "0.25rem", overflowX: "auto", overflowY: "hidden", whiteSpace: "nowrap", scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch", maxWidth: "100%", boxSizing: "border-box" }}>
               <IconBtn title="Attach files" onClick={() => fileInputRef.current?.click()}><Paperclip size={15} /></IconBtn>
               <IconBtn title="Saved prompts" onClick={() => setShowSavedPrompts(!showSavedPrompts)}><Bookmark size={15} /></IconBtn>
               <IconBtn title="Dictate" onClick={toggleDictation}>
@@ -831,15 +881,18 @@ export function ConversationPage() {
 
               <div style={{ width: "0.0625rem", height: "1rem", background: H.border2, margin: "0 0.1875rem", flexShrink: 0 }} />
 
-              {/* JaegerAI Character Chip — default is onboarding character, list shows all personalities */}
-              <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              {/* Jaeger AI Character Chip — default is onboarding character, list shows all personalities */}
+
+              <div data-menu-wrapper style={{ position: "relative", flexShrink: 1, minWidth: 0, maxWidth: "6.5rem" }} onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.3125rem", height: "1.625rem", padding: "0 0.5rem", borderRadius: "0.375rem", border: "1px solid rgba(8,235,241,0.2)", background: "rgba(8,235,241,0.05)", color: H.accentGlow, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer" }}
+                  title={`Character: ${selectedPersonality || profile.assistantName || "Jaeger AI"}`}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", height: "1.5rem", width: "100%", padding: "0 0.375rem", borderRadius: "0.375rem", border: "1px solid rgba(8,235,241,0.2)", background: "rgba(8,235,241,0.05)", color: H.accentGlow, fontSize: "0.6875rem", fontWeight: 500, cursor: "pointer", boxSizing: "border-box" }}
                   onClick={() => setShowSiModeMenu(!showSiModeMenu)}
                 >
-                  <Boxes size={12} />
-                  <span>{selectedPersonality || profile.assistantName || "Jaeger AI"}</span>
+                  <SwitchboardLED active={true} color="emerald" title="Persona active" />
+                  <Boxes size={11} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>{selectedPersonality || profile.assistantName || "Jaeger AI"}</span>
                   <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </button>
                 {showSiModeMenu && (
@@ -914,14 +967,14 @@ export function ConversationPage() {
               </div>
 
               {/* Working folder — agent cwd / project context */}
-              <div data-menu-wrapper style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: "0.375rem", border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: "1.625rem", overflow: "visible", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              <div data-menu-wrapper style={{ position: "relative", display: "inline-flex", alignItems: "center", borderRadius: "0.375rem", border: `1px solid ${H.chipBorder}`, background: H.chipBg, height: "1.5rem", overflow: "visible", flexShrink: 1, minWidth: 0, maxWidth: "7.5rem" }} onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
-                  title="Browse files in working folder"
+                  title="Browse files in working folder (Toggles Right Workspace Panel)"
                   onClick={workbenchPanel.toggle}
-                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 0.375rem", height: "100%", border: "none", borderRight: `1px solid ${H.chipBorder}`, background: "transparent", color: H.chipText, cursor: "pointer" }}
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 0.25rem", height: "100%", border: "none", borderRight: `1px solid ${H.chipBorder}`, background: "transparent", color: H.chipText, cursor: "pointer", flexShrink: 0 }}
                 >
-                  <Folder size={12} />
+                  <Folder size={11} />
                 </button>
 
                 <button
@@ -932,9 +985,10 @@ export function ConversationPage() {
                     setShowBackendMenu(false);
                     setShowModelMenu(false);
                   }}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.3125rem", height: "100%", padding: "0 0.5rem", border: "none", background: "transparent", color: H.chipText, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer", maxWidth: "8.125rem" }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", height: "100%", padding: "0 0.375rem", border: "none", background: "transparent", color: H.chipText, fontSize: "0.6875rem", fontWeight: 500, cursor: "pointer", flexShrink: 1, minWidth: 0, overflow: "hidden" }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeWorkspaceLabel}</span>
+                  <SwitchboardLED active={true} color="purple" title="Workspace context active" />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>{activeWorkspaceLabel}</span>
                   <ChevronDown size={9} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </button>
 
@@ -1026,7 +1080,7 @@ export function ConversationPage() {
                         <Settings size={16} style={{ color: H.muted, marginTop: "0.125rem", flexShrink: 0 }} />
                         <div>
                           <div style={{ fontWeight: 600, fontSize: "0.7812rem", color: H.strong }}>Browse files</div>
-                          <div style={{ fontSize: "0.6875rem", color: H.muted, marginTop: "0.125rem" }}>Open workspace panel</div>
+                          <div style={{ fontSize: "0.6875rem", color: H.muted, marginTop: "0.125rem" }}>Open Right Workspace Panel</div>
                         </div>
                       </button>
                     </div>
@@ -1035,10 +1089,13 @@ export function ConversationPage() {
               </div>
 
               {/* Model chip — Auto (Jaeger AI picks) + manual LLM selection */}
-              <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              <div data-menu-wrapper style={{ position: "relative", flexShrink: 1, minWidth: 0, maxWidth: "7.5rem" }} onClick={(e) => e.stopPropagation()}>
                 <ComposerChip
-                  icon={<Package size={12} />}
-                  label={selectedModel === "auto" ? "Auto" : activeModelLabel}
+                  icon={<Package size={11} />}
+                  label={formatShortModelLabel(selectedModel === "auto" ? "Auto" : activeModelLabel)}
+                  title={selectedModel === "auto" ? "Model: Auto (Jaeger AI chooses)" : `Model: ${activeModelLabel}`}
+                  maxWidth="7.5rem"
+                  ledColor="cyan"
                   onClick={() => {
                     if (isReadOnlyCli) return;
                     setShowModelMenu(!showModelMenu);
@@ -1049,7 +1106,7 @@ export function ConversationPage() {
                 {showModelMenu && !isReadOnlyCli && (
                   <div style={{ position: "absolute", left: "0rem", bottom: "2.125rem", zIndex: 40, width: "22rem", maxWidth: "min(22rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
                     <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>
-                      Select Model
+                      Select Model Engine
                     </div>
                     {/* Auto option — Jaeger AI decides */}
                     <div style={{ padding: "0.5rem 0.625rem", borderBottom: `1px solid ${H.border}` }}>
@@ -1116,13 +1173,17 @@ export function ConversationPage() {
                 )}
               </div>
 
-              <div style={{ flex: 1 }} />
+              <div style={{ flex: 1, minWidth: "0.25rem" }} />
 
-              {/* Reasoning Effort Chip */}
-              <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              {/* Reasoning Effort Chip — Pulses LED when AI is reasoning */}
+              <div data-menu-wrapper style={{ position: "relative", flexShrink: 1, minWidth: 0, maxWidth: "5.5rem" }} onClick={(e) => e.stopPropagation()}>
                 <ComposerChip
-                  icon={<Brain size={12} />}
+                  icon={<Brain size={11} />}
                   label={REASONING_OPTIONS.find(o => o.value === selectedReasoning)?.label || "Medium"}
+                  title={`Reasoning Effort: ${REASONING_OPTIONS.find(o => o.value === selectedReasoning)?.label || "Medium"}${Boolean(streamReasoning) ? " (AI is deep thinking...)" : ""}`}
+                  maxWidth="5.5rem"
+                  ledColor="purple"
+                  ledPulse={Boolean(streamReasoning || (isBusy && selectedReasoning !== "none"))}
                   onClick={() => {
                     if (isReadOnlyCli) return;
                     setShowReasoningMenu(!showReasoningMenu);
@@ -1160,28 +1221,32 @@ export function ConversationPage() {
                 )}
               </div>
 
-              {/* YOLO / Auto-Approve Toggle */}
+              {/* YOLO / Auto-Approve Toggle — Bright Crimson LED when active */}
               <button
                 type="button"
                 title={yoloMode ? "YOLO mode: auto-approve all tool calls" : "Manual approval: confirm each tool call"}
                 onClick={() => setYoloMode(!yoloMode)}
                 style={{
-                  display: "inline-flex", alignItems: "center", gap: "0.25rem", height: "1.625rem", padding: "0 0.5rem",
+                  display: "inline-flex", alignItems: "center", gap: "0.25rem", height: "1.5rem", padding: "0 0.375rem",
                   borderRadius: "0.375rem", border: `1px solid ${yoloMode ? "#ef4444" : H.chipBorder}`,
                   background: yoloMode ? "rgba(239,68,68,0.12)" : H.chipBg,
-                  color: yoloMode ? "#ef4444" : H.chipText, fontSize: "0.75rem", fontWeight: 500, cursor: "pointer",
+                  color: yoloMode ? "#ef4444" : H.chipText, fontSize: "0.6875rem", fontWeight: 500, cursor: "pointer",
                   transition: "all 0.15s", flexShrink: 0,
                 }}
               >
-                <Zap size={12} style={{ opacity: 0.8 }} />
-                <span style={{ fontSize: "0.6875rem" }}>YOLO</span>
+                <SwitchboardLED active={true} color={yoloMode ? "red" : "emerald"} title={yoloMode ? "YOLO active: Auto-approve" : "Manual confirmation"} />
+                <Zap size={11} style={{ opacity: 0.8 }} />
+                <span style={{ fontSize: "0.625rem" }}>YOLO</span>
               </button>
 
-              {/* Toolsets Chip */}
+              {/* Toolsets Chip — Glowing Emerald LED when tools are actively executing */}
               <div data-menu-wrapper style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <ComposerChip
                   icon={<WrenchIcon size={12} />}
                   label="Global"
+                  title={streamTools.length > 0 ? "Tools executing..." : "Toolsets: Global (all enabled)"}
+                  ledColor={streamTools.length > 0 ? "emerald" : "amber"}
+                  ledPulse={streamTools.length > 0}
                   onClick={() => {
                     if (isReadOnlyCli) return;
                     setShowToolsetMenu(!showToolsetMenu);
@@ -1192,6 +1257,7 @@ export function ConversationPage() {
                     setShowReasoningMenu(false);
                   }}
                 />
+
                 {showToolsetMenu && !isReadOnlyCli && (
                   <div style={{ position: "absolute", right: 0, bottom: "2.125rem", zIndex: 40, width: "16rem", maxWidth: "min(16rem, 88vw)", borderRadius: "0.75rem", border: `1px solid ${H.border2}`, background: "#131622", boxShadow: "0 1rem 3rem rgba(0,0,0,0.7)", fontSize: "0.75rem", overflow: "hidden" }}>
                     <div style={{ padding: "0.625rem 0.875rem 0.375rem", fontSize: "0.6875rem", fontWeight: 600, color: H.muted, borderBottom: `1px solid ${H.border}` }}>

@@ -13,6 +13,7 @@ import type {
   WorkspaceEntry,
   WorkspaceSummary,
 } from "@/shared/contracts";
+import { backendLabel, normalizeBackendId } from "@/shared/backend-catalog";
 
 type Raw = Record<string, unknown>;
 
@@ -121,7 +122,7 @@ function sessionSourceBucket(raw: Record<string, unknown>): string {
 /** Map common CLI/agent source tags onto the adapter ids ControlDeck knows. */
 function resolveBackendId(raw: Record<string, unknown>): string {
   const explicit = String(raw.ares_backend || raw.backend_id || raw.backend || raw.model_provider || "").trim();
-  if (explicit) return explicit;
+  if (explicit) return normalizeBackendId(explicit);
 
   const tag = String(raw.source_tag || raw.raw_source || raw.model || "").trim().toLowerCase();
   if (!tag) return "";
@@ -135,8 +136,9 @@ function resolveBackendId(raw: Record<string, unknown>): string {
     cursor: "cursor_local",
     opencode: "opencode_local",
     hermes: "hermes_local",
-    jros: "jros_local",
-    jaeger: "jros_local",
+    jros: "jaeger_local",
+    jaeger: "jaeger_local",
+    jaegerai: "jaeger_local",
     ollama: "ollama_local",
   };
   if (TAG_TO_BACKEND[tag]) return TAG_TO_BACKEND[tag];
@@ -303,14 +305,20 @@ export function translateConnections(value: unknown): RuntimeConnection[] {
     const item = record(value);
     const health = record(item.health);
     const rawState = String(health.state || "offline");
+    const rawId = String(item.id || "");
+    const id = normalizeBackendId(rawId);
+    const rawName = String(item.name || "").trim();
+    const name = id !== rawId.toLowerCase() || /^(jros|jaegerai)$/i.test(rawName)
+      ? backendLabel(id)
+      : rawName || backendLabel(id) || "Connection";
     const state: RuntimeConnection["state"] = rawState === "connected"
       ? "connected"
       : rawState === "needs_attention"
         ? "needs_attention"
         : "offline";
     return {
-      id: String(item.id || ""),
-      name: String(item.name || item.id || "Connection"),
+      id,
+      name,
       kind: String(item.kind || "runtime"),
       selected: Boolean(item.selected),
       state,

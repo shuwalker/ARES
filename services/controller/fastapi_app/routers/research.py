@@ -24,7 +24,7 @@ def _get_handler():
 
 
 @router.post("/start")
-def start_research(
+async def start_research(
     payload: dict[str, Any],
     _identity: Annotated[RequestIdentity, Depends(require_mutation_identity)],
 ):

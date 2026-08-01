@@ -4,7 +4,6 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
-  Command,
   Eye,
   EyeOff,
   Folder,
@@ -13,12 +12,12 @@ import {
   MessageCircle,
   Monitor,
   MoreVertical,
+  Palette,
   Plus,
   Search,
   Server,
   Settings,
   SlidersHorizontal,
-  Sparkles,
   Tag,
   Terminal,
   Wrench,
@@ -36,10 +35,18 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
-import { navigationSections, type NavigationSection } from "@/app-navigation";
+import {
+  navigationSections,
+  sectionForPath,
+  type DeckSurface,
+  type NavigationSection,
+} from "@/app-navigation";
+import { APP_ICON_URL } from "@/assets";
+import { normalizeSettingsSection, SETTINGS_SECTIONS } from "@/features/settings/constants";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/shared/api-client";
 import { aresApi } from "@/shared/ares-api";
+import { backendColor, backendLabel } from "@/shared/backend-catalog";
 import { useAres } from "@/shared/ares-context";
 import { useLocalProfile } from "@/shared/local-profile";
 
@@ -65,58 +72,15 @@ interface SessionOverride {
   title?: string;
 }
 
-/** Rail order: Chat · Companion · Self · Workshop · Library · System */
+/** Rail order: Agent · Engineering · Studio · Life · Library · Control Center */
 const modes: Array<{ id: DeckMode; label: string; icon: LucideIcon; to: string }> = [
-  { id: "chat", label: "Chat", icon: MessageCircle, to: "/chat" },
-  { id: "companion", label: "Companion", icon: Sparkles, to: "/companion" },
-  { id: "self", label: "Self", icon: Heart, to: "/self" },
-  { id: "workshop", label: "Workshop", icon: Wrench, to: "/workshop" },
+  { id: "chat", label: "Agent", icon: MessageCircle, to: "/chat" },
+  { id: "workshop", label: "Engineering", icon: Wrench, to: "/workshop" },
+  { id: "studio", label: "Studio", icon: Palette, to: "/studio" },
+  { id: "companion", label: "Life", icon: Heart, to: "/companion" },
   { id: "library", label: "Library", icon: BookOpen, to: "/library" },
-  { id: "system", label: "System", icon: Server, to: "/system" },
+  { id: "system", label: "Control Center", icon: Server, to: "/system" },
 ];
-
-// Maps backend adapter IDs to friendly display info
-const BACKEND_META: Record<string, { label: string; color: string }> = {
-  hermes_local:   { label: "Hermes",      color: "#08EBF1" },
-  jros_local:     { label: "JROS",        color: "#3889FD" },
-  claude_local:   { label: "Claude Code", color: "#D97706" },
-  codex_local:    { label: "Codex",       color: "#10B981" },
-  gemini_local:   { label: "Gemini",      color: "#6366F1" },
-  grok_local:     { label: "Grok",        color: "#8B5CF6" },
-  opencode_local: { label: "OpenCode",    color: "#EC4899" },
-  cursor_local:   { label: "Cursor",      color: "#06B6D4" },
-  ollama_local:   { label: "Ollama",      color: "#F59E0B" },
-  openai_cloud:   { label: "OpenAI",      color: "#10A37F" },
-  xai_cloud:      { label: "xAI Grok",    color: "#8B5CF6" },
-  pi_local:       { label: "Pi",          color: "#F472B6" },
-};
-
-function backendLabel(id: string): string {
-  return BACKEND_META[id]?.label
-    ?? id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function backendColor(id: string): string {
-  return BACKEND_META[id]?.color ?? "#6b7194";
-}
-
-function sectionForPath(pathname: string): DeckMode {
-  if (pathname.startsWith("/chat") || pathname.startsWith("/conversation")) return "chat";
-  if (pathname.startsWith("/self/")) return "self";
-  // Prefer longest matching route prefix so /system wins over accidental shorts.
-  let best: { id: DeckMode; len: number } | null = null;
-  for (const section of navigationSections) {
-    for (const route of section.routes) {
-      if (pathname === route.to || pathname.startsWith(`${route.to}/`)) {
-        if (!best || route.to.length > best.len) best = { id: section.id, len: route.to.length };
-      }
-    }
-    if (pathname === section.home || pathname.startsWith(`${section.home}/`)) {
-      if (!best || section.home.length > best.len) best = { id: section.id, len: section.home.length };
-    }
-  }
-  return best?.id ?? "companion";
-}
 
 /**
  * CLI sessions are frequently persisted with their working directory as the
@@ -303,10 +267,10 @@ function SessionRow({
           className="fixed z-50 w-50 rounded-md border border-edge bg-overlay p-1 shadow-2xl text-[11px]"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <MenuItem icon={Link2} label="Copy project link" onClick={() => run(() => actions.copyLink(sessionId))} />
+          <MenuItem icon={Link2} label="Copy session link" onClick={() => run(() => actions.copyLink(sessionId))} />
           <MenuItem
             icon={Pencil}
-            label="Rename project"
+            label="Rename session"
             disabled={readOnly}
             hint={readOnly ? "Read-only" : undefined}
             onClick={() => run(() => actions.rename(sessionId, title))}
@@ -314,7 +278,7 @@ function SessionRow({
           <MenuItem icon={Share2} label="Share" onClick={() => run(() => actions.share(sessionId))} />
           <MenuItem
             icon={Pin}
-            label={pinned ? "Unpin project" : "Pin project"}
+            label={pinned ? "Unpin session" : "Pin session"}
             disabled={readOnly}
             hint={readOnly ? "Read-only" : undefined}
             onClick={() => run(() => actions.pin(sessionId, !pinned))}
@@ -358,7 +322,7 @@ function SessionRow({
 
           <MenuItem
             icon={Archive}
-            label="Archive project"
+            label="Archive session"
             disabled={readOnly}
             hint={readOnly ? "Read-only" : undefined}
             onClick={() => run(() => actions.archive(sessionId))}
@@ -381,7 +345,7 @@ function SessionRow({
           />
           <MenuItem
             icon={Trash2}
-            label="Delete project"
+            label="Delete session"
             danger
             disabled={readOnly}
             hint={readOnly ? "Imported history" : undefined}
@@ -449,7 +413,11 @@ export function ControlDeck({
   const navigate = useNavigate();
   const { profile } = useLocalProfile();
   const { snapshot, currentSession, selectSession, createSession, refresh } = useAres();
-  const activeMode = sectionForPath(location.pathname);
+  const activeMode: DeckSurface = sectionForPath(location.pathname);
+  const isSettings = activeMode === "settings";
+  const settingsSection = normalizeSettingsSection(
+    new URLSearchParams(location.search).get("section"),
+  );
 
   const openChatSession = useCallback(
     (sessionId: string) => {
@@ -466,19 +434,13 @@ export function ControlDeck({
     void createSession().then(() => {
       navigate("/chat");
       onSessionOpened?.();
-      // Close workbench panel on new session unless user has "keep open by default" pref
-      try {
-        const pref = localStorage.getItem("hermes-webui-workspace-panel-pref");
-        if (pref !== "open") {
-          // Signal to collapse the workbench panel
-          window.dispatchEvent(new CustomEvent("ares:close-workbench"));
-        }
-      } catch {
-        // ignore storage errors
-      }
+      window.dispatchEvent(new CustomEvent("ares:close-workbench"));
     });
   }, [createSession, navigate, onSessionOpened]);
-  const activeSection = navigationSections.find(({ id }) => id === activeMode);
+  const activeSection =
+    activeMode === "settings"
+      ? undefined
+      : navigationSections.find(({ id }) => id === activeMode);
   const routes = useMemo(
     () =>
       activeSection?.routes.filter(
@@ -600,15 +562,15 @@ export function ControlDeck({
       copyLink: (sessionId) => {
         const url = `${window.location.origin}/chat?session=${encodeURIComponent(sessionId)}`;
         void navigator.clipboard.writeText(url)
-          .then(() => report("Project link copied."))
+          .then(() => report("Session link copied."))
           .catch(() => report(url));
       },
       rename: (sessionId, currentTitle) => {
-        const next = window.prompt("Rename project", currentTitle)?.trim();
+        const next = window.prompt("Rename session", currentTitle)?.trim();
         if (!next || next === currentTitle) return;
         void aresApi.renameSession(sessionId, next)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not rename project"));
+          .catch((err) => fail(err, "Could not rename session"));
       },
       share: (sessionId) => {
         void aresApi.createShare(sessionId)
@@ -624,12 +586,12 @@ export function ControlDeck({
       pin: (sessionId, pinned) => {
         void aresApi.pinSession(sessionId, pinned)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not pin project"));
+          .catch((err) => fail(err, "Could not pin session"));
       },
       archive: (sessionId) => {
         void aresApi.archiveSession(sessionId, true)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not archive project"));
+          .catch((err) => fail(err, "Could not archive session"));
       },
       exportHtml: (sessionId) => {
         void aresApi.exportSession(sessionId, "html")
@@ -642,7 +604,7 @@ export function ControlDeck({
             a.click();
             URL.revokeObjectURL(url);
           })
-          .catch((err) => fail(err, "Could not export project"));
+          .catch((err) => fail(err, "Could not export session"));
       },
       regenerateTitle: (sessionId) => {
         void aresApi.regenerateSessionTitle(sessionId)
@@ -651,10 +613,10 @@ export function ControlDeck({
       },
       remove: (sessionId, title) => {
         // Deletion drops the transcript; the backend has no undo for it.
-        if (!window.confirm(`Delete "${title || "Untitled"}"?\n\nThis permanently removes the project and cannot be undone.`)) return;
+        if (!window.confirm(`Delete "${title || "Untitled"}"?\n\nThis permanently removes the session and cannot be undone.`)) return;
         void aresApi.deleteSession(sessionId)
           .then(() => refresh())
-          .catch((err) => fail(err, "Could not delete project"));
+          .catch((err) => fail(err, "Could not delete session"));
       },
     };
   }, [refresh]);
@@ -743,10 +705,16 @@ export function ControlDeck({
         <NavLink
           to="/companion"
           onClick={() => onNavigate?.()}
-          className="mb-5 grid size-8 place-items-center rounded bg-[#ecebe4] text-[#111210]"
-          aria-label="Companion home"
+          className="mb-5 grid size-9 place-items-center overflow-hidden rounded-md border border-edge bg-shell-raised"
+          aria-label="ARES home"
+          title="ARES"
         >
-          <Command className="size-4" />
+          <img
+            src={APP_ICON_URL}
+            alt=""
+            className="size-full object-cover"
+            aria-hidden="true"
+          />
         </NavLink>
         <div className="flex flex-1 flex-col gap-1">
           {modes.map(({ id, label, icon: Icon, to }) => (
@@ -758,7 +726,9 @@ export function ControlDeck({
               title={label}
               className={cn(
                 "relative grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-shell-elevated hover:text-[#ecebe4] sm:size-9",
-                activeMode === id &&
+                // Settings is not an environment — never highlight a rail icon for it.
+                !isSettings &&
+                  activeMode === id &&
                   "bg-shell-hover text-[#ef4444] before:absolute before:-left-2.5 before:h-5 before:w-0.5 before:bg-[#ef4444]",
               )}
             >
@@ -769,12 +739,12 @@ export function ControlDeck({
         <NavLink
           to="/settings"
           onClick={() => onNavigate?.()}
-          aria-label="App settings"
-          title="App settings — profile, theme, WebUI & Mac"
+          aria-label="Settings"
+          title="Settings — SI, Appearance, Chat, App"
           className={({ isActive }) =>
             cn(
               "mt-auto grid size-11 place-items-center rounded-sm text-[#777970] transition-colors hover:bg-shell-elevated hover:text-[#ecebe4] sm:size-9",
-              isActive && "bg-shell-hover text-[#faf9f3]",
+              (isActive || isSettings) && "bg-shell-hover text-[#faf9f3]",
             )
           }
         >
@@ -787,12 +757,16 @@ export function ControlDeck({
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center border-b border-edge px-3">
           <p className="min-w-0 truncate font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#a7a79d]">
-            {activeMode === "chat" ? "PROJECTS" : activeSection?.label ?? "ARES"}
+            {isSettings
+              ? "SETTINGS"
+              : activeMode === "chat"
+                ? "SESSIONS"
+                : activeSection?.label ?? "ARES"}
           </p>
           {activeMode === "chat" && (
             <button
               type="button"
-              title="New project"
+              title="New session"
               onClick={handleNewSession}
               className="ml-auto flex h-6 w-6 items-center justify-center rounded text-[#6f7169] transition-colors hover:bg-shell-hover hover:text-[#ecebe4]"
             >
@@ -805,7 +779,27 @@ export function ControlDeck({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {activeMode === "chat" ? (
+          {isSettings ? (
+            <div className="space-y-0.5 p-2">
+              <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6f7169]">
+                Preferences
+              </p>
+              {SETTINGS_SECTIONS.map(({ id, label, icon: Icon }) => (
+                <NavLink
+                  key={id}
+                  to={`/settings?section=${id}`}
+                  onClick={() => onNavigate?.()}
+                  className={cn(
+                    "flex min-h-11 items-center gap-2.5 rounded-sm px-2.5 py-2 text-xs text-[#92948b] transition-colors hover:bg-shell-elevated hover:text-[#ecebe4]",
+                    settingsSection === id && "bg-shell-hover text-[#faf9f3]",
+                  )}
+                >
+                  <Icon className="size-3.5 shrink-0" />
+                  <span className="truncate">{label}</span>
+                </NavLink>
+              ))}
+            </div>
+          ) : activeMode === "chat" ? (
             <div className="flex flex-col h-full">
 
               {/* 1. Search */}
@@ -814,7 +808,7 @@ export function ControlDeck({
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-[#6f7169] pointer-events-none" />
                   <input
                     type="search"
-                    placeholder="Filter projects..."
+                    placeholder="Filter sessions..."
                     value={sessionSearch}
                     onChange={(e) => setSessionSearch(e.target.value)}
                     className="w-full rounded border border-edge bg-shell-raised py-1 pl-7 pr-2 text-[12px] text-[#ecebe4] outline-none placeholder:text-[#6f7169] focus:border-[#4b4d47]"
@@ -938,7 +932,7 @@ export function ControlDeck({
                   <div>
                     {filteredSessions.length === 0 ? (
                       <p className="px-3 py-6 text-center text-[11px] text-[#6f7169]">
-                        {activeProject === "unassigned" ? "No unassigned projects." : "No projects found."}
+                        {activeProject === "unassigned" ? "No unassigned sessions." : "No sessions found."}
                       </p>
                     ) : (
                       DATE_GROUP_ORDER.map((group) => {
@@ -1030,7 +1024,7 @@ export function ControlDeck({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <div className="w-full max-w-sm rounded-xl border border-edge bg-overlay p-4 shadow-2xl text-[#ecebe4]">
             <div className="flex items-center justify-between border-b border-[#2d303e] pb-2 mb-3">
-              <h3 className="text-sm font-semibold text-[#f0f2ff]">Edit Project Details</h3>
+              <h3 className="text-sm font-semibold text-[#f0f2ff]">Edit Session Details</h3>
               <button
                 type="button"
                 onClick={() => setEditingSessionId(null)}

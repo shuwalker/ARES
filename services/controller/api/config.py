@@ -975,8 +975,8 @@ def print_startup_config() -> None:
             f"{warn}  Ares Agent was not found.\n"
             "      The ARES Web UI server can still start. Ares-specific coding,\n"
             "      cron, profile, and tool features will not work until Ares is\n"
-            "      installed/configured. JROS mode requires a reachable JROS gateway\n"
-            "      or local JROS install.\n"
+            "      installed/configured. Jaeger AI requires a reachable gateway\n"
+            "      or local Jaeger AI installation.\n"
             "\n"
             "      To enable Ares mode, set one of:\n"
             "        export ARES_WEBUI_AGENT_DIR=/path/to/ares-agent\n"
@@ -8883,6 +8883,13 @@ _SETTINGS_DEFAULTS = {
     "local_profile_character": "grounded",
     "local_profile_autonomy": "confirm",
     "local_profile_life_areas": [],
+    # SI calibration — user-facing collaboration preferences (not hard permissions).
+    # Consumed as policy guidance / context assembly; does not grant tool access.
+    "si_cal_verbosity": "balanced",  # concise | balanced | explanatory
+    "si_cal_tone": "balanced",  # direct | balanced | conversational
+    "si_cal_support": "balanced",  # supportive | balanced | challenging
+    "si_cal_initiative": "balanced",  # reactive | balanced | proactive
+    "si_cal_notes": "",  # free-form calibration notes (max 2000 chars)
     "context_store_enabled": False,
     # Companion SI pipeline owns chat turns (identity/context/route/evaluate).
     # Env ARES_SI_ENABLED overrides this when set. Launchd production enables it.
@@ -9181,6 +9188,10 @@ _SETTINGS_ENUM_VALUES = {
     "local_profile_setup_mode": {"quick", "advanced"},
     "local_profile_character": {"grounded", "warm", "direct", "curious"},
     "local_profile_autonomy": {"observe", "confirm", "delegated"},
+    "si_cal_verbosity": {"concise", "balanced", "explanatory"},
+    "si_cal_tone": {"direct", "balanced", "conversational"},
+    "si_cal_support": {"supportive", "balanced", "challenging"},
+    "si_cal_initiative": {"reactive", "balanced", "proactive"},
 }
 _SETTINGS_INT_RANGES = {
     "pinned_sessions_limit": (1, 99),
@@ -9438,6 +9449,10 @@ def save_settings(settings: dict) -> dict:
             if k == "tts_voice":
                 if not isinstance(v, str) or len(v) > 200 or "\x00" in v:
                     continue
+            if k == "si_cal_notes":
+                if not isinstance(v, str) or len(v) > 2000 or "\x00" in v:
+                    continue
+                v = v.strip()
             # Validate language codes (BCP-47-like: 'en', 'zh', 'fr', 'zh-CN')
             if k == "language" and (
                 not isinstance(v, str) or not _SETTINGS_LANG_RE.match(v)

@@ -238,6 +238,15 @@ export const aresApi = {
     });
   },
 
+  /**
+   * Live Jaeger AI peer status (not recommendations).
+   * Pass refresh=true to bypass the short provider status cache.
+   */
+  async jaegerStatus(refresh = false) {
+    const q = refresh ? "?refresh=true" : "";
+    return apiFetch<Record<string, unknown>>(`/api/jaeger-onboarding/status${q}`);
+  },
+
   async productStateGet<T extends object>(module: string) {
     return apiFetch<{ module: string; revision: number; state: T }>(
       `/api/product-state/${encodeURIComponent(module)}`,
