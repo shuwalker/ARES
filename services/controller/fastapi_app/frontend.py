@@ -122,8 +122,11 @@ def _frontend_file(root: Path, path: str) -> Response:
     target = _resolve_file(root, path)
     if target is None:
         return _json_not_found()
+    is_site_icon = "icon" in Path(path).name or Path(path).name.startswith("favicon")
     cache_control = (
-        "public, max-age=31536000, immutable"
+        "no-store"
+        if is_site_icon
+        else "public, max-age=31536000, immutable"
         if path.startswith("assets/")
         else "public, max-age=300"
     )
