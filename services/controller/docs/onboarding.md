@@ -1,0 +1,213 @@
+# First-run onboarding guide
+
+This guide explains what happens the first time Ares WebUI starts, which
+setup path to choose, and how to recover when the wizard cannot finish.
+
+If an AI assistant is helping with install, reinstall, bootstrap, provider
+setup, or first-run support, read
+[`docs/onboarding-agent-checklist.md`](onboarding-agent-checklist.md) before
+running commands or inspecting logs.
+
+The short version: run the bootstrap, open the WebUI, choose a provider, choose
+a workspace, optionally set a password, then start a chat. If you are using a
+local model server from Docker, pay special attention to the Base URL section
+below.
+
+## Before you start
+
+Ares WebUI is only the browser interface. The actual agent runtime, memory,
+skills, config, cron jobs, and provider credentials belong to Ares Agent.
+
+The bootstrap supports Linux, macOS, and WSL2. Native Windows is not supported
+by the bootstrap yet. A community native Windows setup is being tracked in
+[#1952](https://github.com/nesquena/ares-webui/issues/1952), including:
+
+- [Native Windows guide](https://github.com/markwang2658/ares-windows-native-guide)
+- [Native Windows setup scripts](https://github.com/markwang2658/ares-windows-native)
+
+For Windows users who want the supported path today, use WSL2 and see
+[Windows / WSL auto-start](wsl-autostart.md).
+
+## Install path choices
+
+| Path | Use it when | Notes |
+|---|---|---|
+| Local bootstrap | You run WebUI directly on Linux, macOS, or WSL2 | Best for a personal server, Mac mini, VPS, or homelab host. |
+| Docker single-container | You want the simplest container setup | Recommended first Docker path. WebUI runs the agent in-process. |
+| Docker two-container | You already run the agent gateway separately | More isolated, but tools launched from WebUI run in the WebUI container. |
+| Docker three-container | You want agent gateway plus dashboard plus WebUI | Same caveats as two-container, plus the dashboard service. |
+| Native Windows community path | You are intentionally testing unsupported native Windows | Community-maintained for now, not the official bootstrap path. |
+
+If a Docker install gets confusing, start again with the single-container setup.
+It avoids most UID/GID, source-volume, and tool-location surprises. See
+[Docker setup guide](docker.md) for the full container reference.
+
+## Re-running onboarding safely
+
+Do not delete `~/.ares` just to see the wizard again. That directory can hold
+your real Ares config, credentials, memory, skills, profiles, sessions, and
+cron state.
+
+For a clean local trial, use an isolated Ares home and WebUI state directory:
+
+```bash
+mkdir -p ~/ares-onboarding-test
+ARES_HOME=~/ares-onboarding-test/.ares \
+ARES_WEBUI_STATE_DIR=~/ares-onboarding-test/webui \
+ARES_WEBUI_PORT=8789 \
+python3 bootstrap.py
+```
+
+Then open `http://127.0.0.1:8789`.
+
+For an assistant-led trial run, follow the safety rules, evidence commands, and
+pass/fail criteria in
+[`docs/onboarding-agent-checklist.md`](onboarding-agent-checklist.md).
+
+If your repo has a `.env` file, remember that the bootstrap loads it. Remove or
+adjust any `ARES_HOME`, `ARES_WEBUI_STATE_DIR`, or `ARES_WEBUI_PORT`
+entries there before using the isolated command above.
+
+For managed hosting or fully preconfigured images, set
+`ARES_WEBUI_SKIP_ONBOARDING=1` to bypass the wizard.
+
+## What the wizard checks
+
+The first screen reports the runtime state WebUI can see:
+
+- Ares Agent importability: whether WebUI can import and run `AIAgent`.
+- Provider status: whether `config.yaml` and credential state are enough for a
+  chat request.
+- Password status: whether WebUI password protection is enabled.
+- Config paths: the active `config.yaml` and `.env` locations for this profile.
+
+If the agent check fails, use [Troubleshooting](troubleshooting.md), especially
+the `AIAgent not available` section. If provider setup is incomplete, continue
+through the wizard or run `ares model` in the same machine environment that
+will run WebUI.
+
+## Choosing a provider
+
+The setup step groups providers by how much information they usually need.
+
+| Group | Examples | What you usually enter |
+|---|---|---|
+| Easy start | OpenRouter, Anthropic, OpenAI | API key and model. |
+| Open / self-hosted | Ollama, LM Studio, custom OpenAI-compatible, AIML API | Base URL, model, optional API key. |
+| Specialized | Gemini, DeepSeek, Xiaomi MiMo, Z.AI / GLM, NVIDIA NIM, Mistral, xAI | Provider API key and default model. |
+
+For API-key providers, the wizard writes the key to the active Ares `.env`
+file and writes the default model/provider to `config.yaml`.
+
+For local providers, the API key field can be blank when the server is keyless.
+Most LM Studio, Ollama, vLLM, llama-server, and TabbyAPI installs run this way.
+Use **Test connection** to verify the Base URL and populate the model list
+before continuing.
+
+AIML API uses the existing custom OpenAI-compatible setup path, not a
+first-class built-in Ares provider id. Configure it under the
+custom-provider flow with Base URL `https://api.aimlapi.com/v1`, then use
+either the normal custom-provider API key field or a config entry that points
+at `AIMLAPI_API_KEY` if you want the custom provider to read its key from the
+environment. Create or manage keys at `https://aimlapi.com/app/keys`. Model
+discovery comes from the live `/v1/models` response for that endpoint, not from
+a static WebUI-maintained model list.
+
+Advanced provider flows such as Nous Portal and GitHub Copilot are still
+terminal-first. OpenAI Codex and Anthropic Claude Code OAuth can be started in
+the onboarding flow when your Ares config selects the corresponding provider.
+If the wizard points you back to `ares model`, use that CLI flow first, then
+refresh WebUI.
+
+## Base URL rules for local model servers
+
+For self-hosted providers, the Base URL should point to the OpenAI-compatible
+API root. Common examples:
+
+| Server | Typical Base URL |
+|---|---|
+| LM Studio on the same non-Docker host | `http://127.0.0.1:1234/v1` |
+| Ollama on the same non-Docker host | `http://127.0.0.1:11434/v1` |
+| LM Studio from Docker Desktop | `http://host.docker.internal:1234/v1` |
+| Ollama from Docker Desktop | `http://host.docker.internal:11434/v1` |
+| Local server from Linux Docker Engine | `http://api.local:<port>/v1` with `api.local:host-gateway` in Compose `extra_hosts` |
+| Local server on another LAN machine | `http://<lan-ip>:<port>/v1` |
+
+Inside Docker, `localhost` means the WebUI container itself, not your Mac,
+Windows host, Linux host, or another machine on your LAN. If LM Studio or Ollama
+is running outside the container, use `host.docker.internal` on Docker Desktop,
+use the server's LAN IP address, or add a Linux Docker host alias:
+
+```yaml
+services:
+  ares-webui:
+    extra_hosts:
+      - "api.local:host-gateway"
+```
+
+Then use `http://api.local:<port>/v1` as the Base URL. The alias avoids writing
+`localhost` in WebUI config where it would resolve to the container loopback
+instead of the host service.
+
+The wizard probes `<base-url>/models` before saving. A successful probe fills
+the model dropdown. A failed probe blocks the setup step and shows an inline
+error such as DNS failure, connection refused, timeout, HTTP error, or
+unexpected response shape.
+
+## Workspace step
+
+The workspace is the filesystem location Ares should use for new sessions.
+It can be a source checkout, a project directory, or a general workspace folder.
+
+In Docker, the default browsable path is `/workspace`, which maps to the host
+directory mounted by the compose file. If the workspace appears empty, check the
+Docker UID/GID and mount guidance in [Docker setup guide](docker.md).
+
+## Password step
+
+Password protection is optional for localhost-only installs. Enable it if you
+expose WebUI outside `127.0.0.1`, behind a reverse proxy, or on a LAN.
+
+For installed PWAs, prefer WebUI's built-in password over proxy basic auth. Reverse proxies are supported, but HTTP basic-auth challenges in front of the WebUI origin can interrupt the service-worker and shell-asset fetches the installed app relies on during updates. If you keep proxy auth, scope it so same-origin `sw.js`, manifest, and shell update requests can complete.
+
+The password is stored through the normal WebUI settings path and hashed
+server-side. You can change it later from Settings.
+
+## What gets written
+
+The wizard uses the same files and APIs as the normal app:
+
+- Active Ares `config.yaml`: provider, default model, and Base URL when
+  relevant.
+- Active Ares `.env`: provider API keys when you entered one.
+- WebUI `settings.json`: onboarding completion, workspace, password state, and
+  other WebUI preferences.
+
+State normally lives outside the repository. By default:
+
+- Ares Agent state: Windows `%LOCALAPPDATA%\ares`; POSIX `~/.ares`
+- WebUI state: `$ARES_HOME/webui` (Windows default `%LOCALAPPDATA%\ares\webui`, POSIX default `~/.ares/webui`)
+
+Override these with `ARES_HOME` and `ARES_WEBUI_STATE_DIR` when you need an
+isolated test install.
+
+## When to file an issue
+
+File an issue when the diagnostics point to WebUI rather than local
+configuration. Include:
+
+1. Install path: local bootstrap, Docker single-container, Docker
+   two-container, Docker three-container, WSL2, or community native Windows.
+2. Output from `/health`, or the startup banner if the server never starts.
+3. The provider selected in onboarding and the Base URL shape, with secrets
+   redacted.
+4. For Docker provider problems, the result of probing from inside the
+   container, for example:
+
+```bash
+docker exec ares-webui sh -c 'curl -sS -w "\nHTTP %{http_code}\n" http://host.docker.internal:1234/v1/models | head -50'
+```
+
+5. Any inline wizard error text and relevant logs.
+
+Never paste API keys, OAuth tokens, or full `.env` contents into an issue.

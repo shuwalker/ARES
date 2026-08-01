@@ -14,6 +14,7 @@
   <a href="#features">Features</a> ·
   <a href="#character-avatar-browser">Characters</a> ·
   <a href="#architecture">Architecture</a> ·
+  <a href="docs/PRODUCT_SPEC.md">Product Vision</a> ·
   <a href="docs/README.md">Documentation</a> ·
   <a href="#troubleshooting">Troubleshooting</a>
 </p>

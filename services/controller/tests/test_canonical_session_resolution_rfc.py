@@ -1,24 +1,16 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RFC = ROOT / "docs" / "rfcs" / "canonical-session-resolution.md"
-RFC_INDEX = ROOT / "docs" / "rfcs" / "README.md"
-CONTRACTS = ROOT / "docs" / "CONTRACTS.md"
+ARCHITECTURE = ROOT.parents[1] / "docs" / "ARCHITECTURE.md"
 
 
-def test_canonical_session_resolution_rfc_is_indexed():
-    assert RFC.exists(), "canonical session resolution RFC must exist"
-
-    rel = "docs/rfcs/canonical-session-resolution.md"
-    rfc_index = RFC_INDEX.read_text(encoding="utf-8")
-    contracts = CONTRACTS.read_text(encoding="utf-8")
-
-    assert "canonical-session-resolution.md" in rfc_index
-    assert rel in contracts
+def test_canonical_session_resolution_contract_is_canonicalized():
+    assert ARCHITECTURE.exists(), "canonical architecture document must exist"
+    assert "Canonical Session Resolution" in ARCHITECTURE.read_text(encoding="utf-8")
 
 
 def test_canonical_session_resolution_contract_names_entrypoints_and_outputs():
-    text = RFC.read_text(encoding="utf-8")
+    text = ARCHITECTURE.read_text(encoding="utf-8")
 
     required_terms = [
         "URL route",

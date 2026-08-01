@@ -191,3 +191,30 @@ architecture decision.
 - Every completed turn retains worker and model provenance when available.
 - External stores are opened read-only and never acquire ARES-created journals
   or lock files.
+
+## 7. External Agent Source Boundary
+
+The controller currently has compatibility paths that can discover and import
+parts of an external Ares Agent checkout. The dependency audit in
+`services/controller/scripts/audit_agent_source_dependencies.py` tracks the
+remaining startup installs, runtime imports, state access, provider access, and
+container source mounts for issue #2491.
+
+The target contract is a versioned HTTP/client boundary. Agent-owned sessions,
+credentials, provider routing, and execution stay behind agent APIs; ARES keeps
+presentation, request validation, and its own durable state. Pure schemas and
+constants may move into a small versioned client package. The existing source mounts can be removed only after every audited runtime dependency has an API or
+client replacement and the migration tests prove equivalent behavior.
+
+## 8. Canonical Session Resolution
+
+Every URL route, query parameter, `localStorage` restore value, and sidebar
+selection must resolve to one `canonical_visible_session_id` before a
+conversation is rendered. Compression lineage is metadata, not an alternate
+navigation system: `pre_compression_snapshot`, `continuation_session_id`, and
+`parent_session_id` are resolved through the same helper.
+
+The two required entry points are a direct session open and browser boot restore.
+Both produce the canonical visible session, the continuation target,
+and the parent lineage without allowing stale browser state to override an
+explicit route.

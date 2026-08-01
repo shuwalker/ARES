@@ -199,9 +199,9 @@ def test_markdown_output_is_utf8_safe_on_windows_stdout():
     assert "runtime_agent_execution" in markdown
 
 
-def test_contract_index_links_agent_api_contract():
-    contracts = (REPO / "docs" / "CONTRACTS.md").read_text(encoding="utf-8")
+def test_architecture_keeps_agent_source_boundary_contract():
+    contracts = (REPO.parents[1] / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
 
-    assert "docs/architecture/agent-api-contract.md" in contracts
+    assert "External Agent Source Boundary" in contracts
     assert "issue #2491" in contracts
     assert "source mounts can be removed" in contracts

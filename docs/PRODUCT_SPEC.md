@@ -14,6 +14,16 @@ This document defines the product architecture, core system capabilities, and pe
 
 ARES is a multi-surface platform hosting a persistent Personal Assistant Engine. The platform acts as a local-first control plane between the user and digital tools — maintaining context, enforcing data security rules, managing daily focus schedules, and delegating execution to pluggable AI runtimes without allowing external models to mutate state without authorization.
 
+### Why ARES
+
+An LLM by itself predicts a response but does not own durable identity, memory,
+permissions, tools, or verification. ARES supplies those stable layers around
+replaceable local and cloud models. The result is one continuous Synthetic
+Intelligence that can remember the user, act through explicit capabilities,
+show its work, and verify outcomes without tying the product to one model or
+worker. This separation is what makes ARES a personal assistant rather than a
+framework-branded chat client.
+
 ---
 
 ## 2. Personal Organizer Capability Specification

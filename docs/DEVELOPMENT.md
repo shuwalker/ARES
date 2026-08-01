@@ -150,6 +150,30 @@ WantedBy=default.target
 - **Database Lock Warnings**: Check file permissions on `{ARES_HOME}/webui_state/` and ensure no orphaned instances hold WAL file locks.
 - **Runtime Disconnected**: Inspect network connectivity to the provider endpoint and confirm environment key variables match `credential_env`.
 
+### `AIAgent not available`
+
+This error means the Python process serving ARES cannot import the external
+Ares Agent package. First confirm the checkout and any symlink resolve to a real
+agent module:
+
+```bash
+ls -la /path/to/ares-agent
+readlink /path/to/ares-agent
+ls /path/to/ares-agent/agent/__init__.py
+```
+
+Then confirm `ARES_WEBUI_AGENT_DIR` and the Python interpreter shown in the
+controller diagnostic refer to the intended installation. The usual repair is
+to install the agent into that same interpreter in editable mode:
+
+```bash
+cd /path/to/ares-agent
+pip install -e .
+```
+
+Restart ARES and verify the import directly with that interpreter. Do not copy
+agent sources into the controller or silently fall back to another runtime.
+
 ---
 
 ## 7. Safe Onboarding and Reinstallation
@@ -186,3 +210,13 @@ cd services/controller
 The controller test script owns its supported Python environment. Use isolated
 ports and state, and confirm the process serving the port belongs to ARES—not a
 legacy Hermes Web UI checkout—before interpreting browser results.
+
+## 9. Contract Changes
+
+For a contract-affecting PR, include `Contract Routing` and `Contract Change`
+in the PR body. The contract tests and corresponding docs must move together; tests
+must not silently redefine behavior without changing its public contract.
+
+This static coverage is advisory. It is not an automated policy gate and does not enforce PR-body content or replace review. A future release-time
+check may surface missing declarations, and each release batch should list its
+contract-affecting changes explicitly.

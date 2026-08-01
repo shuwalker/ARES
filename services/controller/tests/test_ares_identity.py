@@ -34,7 +34,7 @@ def test_incomplete_setup_falls_back_to_jarvis(monkeypatch):
 def test_backend_badges_describe_external_runtime_selection(monkeypatch):
     monkeypatch.setattr(identity, "_jros_default_agent_name", lambda: None)
 
-    assert "JROS" in identity.get_backend_badge_html("jros")
+    assert "Jaeger AI" in identity.get_backend_badge_html("jros")
     assert "No runtime selected" in identity.get_backend_badge_html("ares")
 
 
