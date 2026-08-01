@@ -21,28 +21,17 @@ def _backend_label(backend_id: str | None) -> str:
     """Map a backend id to a human-readable label for handoff messages."""
     if not backend_id:
         return "unknown"
-    labels = {
-        "hermes_local": "Hermes Agent",
-        "jros_local": "Jaeger AI (JROS)",
-        "claude_local": "Claude Code",
-        "codex_local": "OpenAI Codex",
-        "gemini_local": "Gemini",
-        "grok_local": "Grok",
-        "opencode_local": "OpenCode",
-        "cursor_local": "Cursor",
-        "pi_local": "Pi",
-        "ollama_local": "Ollama (local)",
-        "ollama_cloud": "Ollama Cloud",
-        "openai_cloud": "OpenAI",
-        "xai_cloud": "xAI",
-        "hatchery": "Hatchery",
-    }
-    return labels.get(backend_id, backend_id)
+    from api.backend_catalog import backend_display_name
+
+    return backend_display_name(backend_id) or backend_id
 
 
 def _get_backend_for_message(msg: dict) -> str | None:
     """Extract the backend id from a message's metadata, if stored."""
-    return str(msg.get("backend_id") or msg.get("worker") or "").strip() or None
+    from api.backend_catalog import normalize_backend_id
+
+    raw = str(msg.get("backend_id") or msg.get("worker") or "").strip()
+    return normalize_backend_id(raw) or raw or None
 
 
 def detect_handoff(
@@ -53,6 +42,9 @@ def detect_handoff(
 
     Returns (handoff_from, handoff_to) or (None, None) if no change.
     """
+    from api.backend_catalog import normalize_backend_id
+
+    current_backend_id = normalize_backend_id(current_backend_id) or current_backend_id
     if not current_backend_id:
         return None, None
     # Walk backwards to find the last assistant message with a backend id

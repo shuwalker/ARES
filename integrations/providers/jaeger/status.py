@@ -106,7 +106,7 @@ def _uncached_status() -> ProviderStatus:
     if root is None:
         return not_installed(
             "JaegerAI is not installed. Install it, or set ARES_JAEGER_HOME / "
-            "ARES_JROS_GATEWAY_URL to point at an existing instance.",
+            "ARES_JAEGER_GATEWAY_URL to point at an existing instance.",
         )
 
     if not _bridge_launcher_ready(root):
@@ -117,7 +117,7 @@ def _uncached_status() -> ProviderStatus:
         return not_installed(
             f"JaegerAI was found at {root} but has no runnable `jaeger` launcher. "
             "Complete the install, or run `jaeger gateway` and set "
-            "ARES_JROS_GATEWAY_URL.",
+            "ARES_JAEGER_GATEWAY_URL.",
             mode="bridge",
             root=str(root),
         )

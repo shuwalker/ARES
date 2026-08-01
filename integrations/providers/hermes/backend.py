@@ -253,7 +253,7 @@ class HermesBackend(AgenticBackend):
         )
         # ARES connection ids are not Hermes providers
         if provider in {
-            "hermes_local", "jros_local", "claude_local", "codex_local",
+            "hermes_local", "jaeger_local", "jros_local", "claude_local", "codex_local",
             "gemini_local", "grok_local", "opencode_local", "cursor_local",
             "pi_local", "openai_cloud", "xai_cloud", "ollama_local",
         }:

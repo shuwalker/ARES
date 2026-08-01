@@ -385,9 +385,9 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
     try:
         assert backend_selector.is_jros_available() is True
         status = backend_selector.backend_status()
-        assert status["jros_local"] is True
-        assert status["jros_model"] == "fake-model"
-        assert status["jros_booted"] is True
+        assert status["jaeger_local"] is True
+        assert status["jaeger_model"] == "fake-model"
+        assert status["jaeger_booted"] is True
     finally:
         server.shutdown()
         server.server_close()
@@ -407,7 +407,7 @@ def test_backend_availability_follows_gateway_health(monkeypatch, tmp_path):
 
     reset_cache()
     assert backend_selector.is_jros_available() is False
-    assert backend_selector.backend_status()["jros_local"] is False
+    assert backend_selector.backend_status()["jaeger_local"] is False
 
 
 def test_reset_jros_boot_posts_reset_and_swallows_offline(monkeypatch):
@@ -524,7 +524,7 @@ def test_local_fallback_lock_error_is_actionable(monkeypatch, tmp_path):
 
     apperrors = [item[1] for item in stream._offline_buffer if item[0] == "apperror"]
     assert len(apperrors) == 1
-    assert apperrors[0]["type"] == "jros_local_error"
+    assert apperrors[0]["type"] == "jaeger_local_error"
     assert "already running" in apperrors[0]["message"]
     assert "JaegerAI" in apperrors[0]["message"]
 
@@ -590,7 +590,7 @@ def test_backend_availability_local_mode_without_gateway(monkeypatch, tmp_path):
     # Checkout alone is install-detected, not execution-available.
     assert backend_selector.is_jros_available() is False
     status = backend_selector.backend_status()
-    assert status["jros_local"] is False
+    assert status["jaeger_local"] is False
 
 
 def test_ares_capabilities_follow_external_runtime_and_shared_tools(monkeypatch):

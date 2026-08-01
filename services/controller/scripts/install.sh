@@ -90,7 +90,7 @@ while [[ $# -gt 0 ]]; do
         --no-start) NO_START=true; shift ;;
         --source) SOURCE_DIR="$2"; shift 2 ;;
         --no-cli) INSTALL_CLI=false; shift ;;
-        --skip-jros) SKIP_JROS=true; shift ;;
+        --skip-jaeger|--skip-jros) SKIP_JROS=true; shift ;;
         --with-ares) WITH_ARES=true; shift ;;
         -h|--help)
             echo "ARES Web UI Installer"
@@ -109,13 +109,13 @@ while [[ $# -gt 0 ]]; do
             echo "  --json          Print a JSON result frame for --stage"
             echo "  --non-interactive  Skip stages that require user input"
             echo "  --backend MODE  Explicit adapter election (default: unassigned)."
-            echo "                  Examples: unassigned, auto, jros,"
-            echo "                  jros_local, hermes, hermes_local, claude_local,"
+            echo "                  Examples: unassigned, auto, jaeger,"
+            echo "                  jaeger_local, hermes, hermes_local, claude_local,"
             echo "                  ollama_local, openai_cloud. Deleted modes ares/hybrid are rejected."
             echo "  --no-start      Skip auto-starting the server after installation"
             echo "  --source PATH   Install the current local source tree instead of cloning"
             echo "  --no-cli        Do not create or replace ~/.local/bin/ares"
-            echo "  --skip-jros     Skip installing JaegerAI (advanced/CI use — profile can still"
+            echo "  --skip-jaeger   Skip installing Jaeger AI (advanced/CI use — profile can still"
             echo "                  be saved without a Companion runtime)"
             echo "  --with-ares     Also install Ares Agent package (optional coding addition;"
             echo "                  does not select a runtime by itself)"
@@ -540,33 +540,33 @@ setup_config() {
             ;;
         auto)
             if [ "${JROS_DETECTED:-false}" = true ]; then
-                selected_backend="jros_local"
+                selected_backend="jaeger_local"
             else
                 # Profile can be saved without an elected runtime.
                 selected_backend=""
                 log_warn "No JaegerAI install detected; leaving ares_backend unset (profile-only)."
-                log_warn "Connect a live adapter later in Connections, or re-run with --backend jros_local."
+                log_warn "Connect a live adapter later in Connections, or re-run with --backend jaeger_local."
             fi
             ;;
-        jros|jros_local) selected_backend="jros_local" ;;
+        jaeger|jaegerai|jaeger_local|jros|jros_local) selected_backend="jaeger_local" ;;
         hermes|hermes_local) selected_backend="hermes_local" ;;
         claude_local|codex_local|gemini_local|grok_local|opencode_local|cursor_local|pi_local|openai_cloud|xai_cloud|gemini_cloud|gemini_antigravity|ollama_local)
             selected_backend="$selected_backend"
             ;;
         ares|ares_local|hybrid)
             log_error "Backend '$selected_backend' is no longer supported."
-            log_error "Use a live adapter ID such as jros_local or hermes_local (see --help)."
+            log_error "Use a live adapter ID such as jaeger_local or hermes_local (see --help)."
             exit 1
             ;;
         *)
             log_error "Invalid backend mode: $selected_backend"
-            log_error "Expected unassigned, auto, or a live adapter ID (jros_local, hermes_local, claude_local, ...)."
+            log_error "Expected unassigned, auto, or a live adapter ID (jaeger_local, hermes_local, claude_local, ...)."
             exit 1
             ;;
     esac
-    if [ "$selected_backend" = "jros_local" ] && [ "${JROS_DETECTED:-false}" != true ]; then
-        log_error "Backend 'jros_local' selected but no JaegerAI install was found at ${JAEGER_HOME_DETECTED:-unknown}."
-        log_error "Re-run without --skip-jros, install JaegerAI manually, or choose another --backend."
+    if [ "$selected_backend" = "jaeger_local" ] && [ "${JROS_DETECTED:-false}" != true ]; then
+        log_error "Backend 'jaeger_local' selected but no Jaeger AI install was found at ${JAEGER_HOME_DETECTED:-unknown}."
+        log_error "Re-run without --skip-jaeger, install Jaeger AI manually, or choose another --backend."
         exit 1
     fi
 

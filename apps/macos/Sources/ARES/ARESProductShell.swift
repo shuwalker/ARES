@@ -134,7 +134,7 @@ struct ARESHomeView: View {
                 GroupBox("Workers (explicit choice — no silent default)") {
                     let runtimes = connections.filter { $0.kind == "runtime" || $0.kind.contains("runtime") }
                     if runtimes.isEmpty {
-                        Text("No workers reported. Open Connections to attach Ollama, jros, Hermes, or cloud.")
+                        Text("No workers reported. Open Connections to attach Jaeger AI, Ollama, Hermes, or a cloud provider.")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(runtimes) { runtime in

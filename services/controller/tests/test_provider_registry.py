@@ -18,6 +18,25 @@ def test_missing_registry_is_empty_and_does_not_assume_provider_ports(tmp_path):
     assert provider_endpoint("jros_local", registry=empty_registry()) == ""
 
 
+def test_legacy_jaeger_provider_id_is_normalized_on_read(tmp_path):
+    path = tmp_path / "providers.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "providers": {
+            "jros_local": {
+                "enabled": True,
+                "kind": "runtime",
+                "endpoint": "http://jaeger.example:8643",
+            },
+        },
+    }), encoding="utf-8")
+
+    registry = load_provider_registry(path)
+    assert set(registry["providers"]) == {"jaeger_local"}
+    assert provider_endpoint("jaeger_local", registry=registry) == "http://jaeger.example:8643"
+    assert provider_endpoint("jros_local", registry=registry) == "http://jaeger.example:8643"
+
+
 def test_registry_keeps_only_normalized_non_secret_connection_metadata(tmp_path):
     path = tmp_path / "providers.json"
     path.write_text(json.dumps({

@@ -2,16 +2,27 @@ import Foundation
 
 /// A backend ARES can use to turn natural human intent into work.
 ///
-/// Hermes and JROS are peer full agentic frameworks. ARES-native services,
+/// Hermes and Jaeger AI are peer full agentic frameworks. ARES-native services,
 /// local model runners, cloud providers, and future runtimes are also valid
 /// backends. ARES owns the product experience; backends provide capability.
 public enum ExecutionBackendKind: String, Codable, CaseIterable, Hashable, Sendable {
     case hermes
-    case jros
+    case jaeger
     case aresNative = "ares_native"
     case localModel = "local_model"
     case cloudProvider = "cloud_provider"
     case future
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        self = value == "jros" ? .jaeger : ExecutionBackendKind(rawValue: value) ?? .future
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 /// Capabilities ARES routes by. These are product-level capabilities, not

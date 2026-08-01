@@ -165,10 +165,14 @@ public final class WebUIServerManager: ObservableObject {
             environment["ARES_WEBUI_GATEWAY_BASE_URL"] = normalizedHermesURL
         }
         let normalizedJROSURL = jrosURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Never forward retired product variables into the controller. The
+        // controller reads them only as compatibility input for older launchers.
+        environment.removeValue(forKey: "ARES_JROS_GATEWAY_URL")
+        environment.removeValue(forKey: "ARES_JROS_GATEWAY_KEY")
         if normalizedJROSURL.isEmpty {
-            environment.removeValue(forKey: "ARES_JROS_GATEWAY_URL")
+            environment.removeValue(forKey: "ARES_JAEGER_GATEWAY_URL")
         } else {
-            environment["ARES_JROS_GATEWAY_URL"] = normalizedJROSURL
+            environment["ARES_JAEGER_GATEWAY_URL"] = normalizedJROSURL
         }
         if hermesAPIKey.isEmpty {
             environment.removeValue(forKey: "ARES_WEBUI_GATEWAY_API_KEY")
@@ -176,9 +180,9 @@ public final class WebUIServerManager: ObservableObject {
             environment["ARES_WEBUI_GATEWAY_API_KEY"] = hermesAPIKey
         }
         if jrosAPIKey.isEmpty {
-            environment.removeValue(forKey: "ARES_JROS_GATEWAY_KEY")
+            environment.removeValue(forKey: "ARES_JAEGER_GATEWAY_KEY")
         } else {
-            environment["ARES_JROS_GATEWAY_KEY"] = jrosAPIKey
+            environment["ARES_JAEGER_GATEWAY_KEY"] = jrosAPIKey
         }
         return environment
     }

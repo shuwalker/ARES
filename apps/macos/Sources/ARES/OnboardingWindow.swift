@@ -126,7 +126,7 @@ struct WelcomeStep: View {
                 .font(.system(size: 28, weight: .bold))
             
             VStack(spacing: 12) {
-                Text("ARES is a User Interface to your AI assistant. Using JaegerAI we will give a local LLM tools to assist you in anything you want to do on your devices.")
+                Text("ARES is the interface to your AI assistant. Jaeger AI can give a local LLM the tools needed to help across your devices.")
                     .font(.body)
                     .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)
@@ -135,7 +135,7 @@ struct WelcomeStep: View {
             
             VStack(alignment: .leading, spacing: 14) {
                 FeatureRow(icon: "brain.head.profile", title: "Local Tools & Automation", subtitle: "Grant your AI assistant tools to run terminal commands, view screens, and automate apps.")
-                FeatureRow(icon: "cpu", title: "Local & Cloud LLMs", subtitle: "Connect Ollama, JaegerAI local models, or cloud providers like OpenAI, Claude, and Gemini.")
+                FeatureRow(icon: "cpu", title: "Local & Cloud LLMs", subtitle: "Connect Jaeger AI, Ollama, or cloud providers like OpenAI, Claude, and Gemini.")
                 FeatureRow(icon: "shield.checkmark.fill", title: "Private & Local-First", titleColor: .green, subtitle: "Your data stays on your machine with optional local-only loopback.")
             }
             .padding(20)

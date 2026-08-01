@@ -349,7 +349,7 @@ final class ARESAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - Menu Bar (JROS-style tray)
+// MARK: - Menu Bar
 
 @MainActor
 final class ARESMenuBarController: NSObject {

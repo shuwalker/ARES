@@ -49,8 +49,10 @@ final class WebUIServerManagerTests: XCTestCase {
         XCTAssertEqual(environment["ARES_API_URL"], "http://gateway.example:8642")
         XCTAssertEqual(environment["ARES_WEBUI_GATEWAY_BASE_URL"], "http://gateway.example:8642")
         XCTAssertEqual(environment["ARES_WEBUI_GATEWAY_API_KEY"], "hermes-secret")
-        XCTAssertEqual(environment["ARES_JROS_GATEWAY_URL"], "http://jros.example:8643")
-        XCTAssertEqual(environment["ARES_JROS_GATEWAY_KEY"], "jros-secret")
+        XCTAssertEqual(environment["ARES_JAEGER_GATEWAY_URL"], "http://jros.example:8643")
+        XCTAssertEqual(environment["ARES_JAEGER_GATEWAY_KEY"], "jros-secret")
+        XCTAssertNil(environment["ARES_JROS_GATEWAY_URL"])
+        XCTAssertNil(environment["ARES_JROS_GATEWAY_KEY"])
         XCTAssertEqual(environment["UNCHANGED"], "yes")
     }
 
@@ -72,8 +74,8 @@ final class WebUIServerManagerTests: XCTestCase {
 
         XCTAssertNil(environment["ARES_API_URL"])
         XCTAssertNil(environment["ARES_WEBUI_GATEWAY_BASE_URL"])
-        // JROS gateway URL is a real local HTTP service — always exported.
-        XCTAssertEqual(environment["ARES_JROS_GATEWAY_URL"], "http://127.0.0.1:8643")
+        // Jaeger AI gateway URL is a real local HTTP service — always exported.
+        XCTAssertEqual(environment["ARES_JAEGER_GATEWAY_URL"], "http://127.0.0.1:8643")
 
         XCTAssertTrue(WebUIServerManager.isLocalGatewayURL("http://127.0.0.1:8642"))
         XCTAssertTrue(WebUIServerManager.isLocalGatewayURL("http://localhost:8642"))
@@ -86,6 +88,7 @@ final class WebUIServerManagerTests: XCTestCase {
             to: [
                 "ARES_WEBUI_GATEWAY_API_KEY": "stale-hermes",
                 "ARES_JROS_GATEWAY_KEY": "stale-jros",
+                "ARES_JAEGER_GATEWAY_KEY": "stale-jaeger",
             ],
             hermesURL: "http://127.0.0.1:8642",
             hermesAPIKey: "",
@@ -95,6 +98,7 @@ final class WebUIServerManagerTests: XCTestCase {
 
         XCTAssertNil(environment["ARES_WEBUI_GATEWAY_API_KEY"])
         XCTAssertNil(environment["ARES_JROS_GATEWAY_KEY"])
+        XCTAssertNil(environment["ARES_JAEGER_GATEWAY_KEY"])
     }
 
     private var temporaryDirectory: URL!

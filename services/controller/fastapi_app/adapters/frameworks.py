@@ -82,7 +82,7 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
             ) from exc
         if not health.available:
             raise AdapterError(
-                400 if self.adapter_id == "jros_local" else 503,
+                400 if self.adapter_id == "jaeger_local" else 503,
                 health.message,
                 code="runtime_unavailable",
                 context={"connection_id": self.adapter_id, "state": health.state},
@@ -205,13 +205,13 @@ class JournaledFrameworkAdapter(BaseLLMAdapter):
 
 
 class JaegerAdapter(JournaledFrameworkAdapter):
-    adapter_id = "jros_local"
-    display_name = "JaegerAI"
+    adapter_id = "jaeger_local"
+    display_name = "Jaeger AI"
 
     def __init__(self, *, turn_starter: TurnStarter | None = None) -> None:
-        from api.providers.jaeger.backend import JROSBackend
+        from api.providers.jaeger.backend import JaegerBackend
 
-        super().__init__(backend=JROSBackend(), turn_starter=turn_starter)
+        super().__init__(backend=JaegerBackend(), turn_starter=turn_starter)
 
     def check_health(self, *, profile: str | None) -> AdapterHealth:
         del profile

@@ -45,6 +45,11 @@ def _valid_endpoint(value: object) -> str:
 
 def normalize_provider(provider_id: str, raw: object) -> dict[str, Any] | None:
     provider_id = str(provider_id or "").strip().lower()
+    # Runtime compatibility aliases are normalized while unrelated provider
+    # and tool IDs pass through unchanged.
+    from api.backend_catalog import BACKEND_ALIASES
+
+    provider_id = BACKEND_ALIASES.get(provider_id, provider_id)
     if not provider_id or not isinstance(raw, dict):
         return None
     # Only real sequences are iterated. A bare string is iterable, so a
@@ -131,7 +136,11 @@ def configured_provider(
 ) -> dict[str, Any] | None:
     data = registry if registry is not None else load_provider_registry(environ=environ)
     providers = data.get("providers") if isinstance(data, dict) else None
-    entry = providers.get(str(provider_id).strip().lower()) if isinstance(providers, dict) else None
+    from api.backend_catalog import BACKEND_ALIASES
+
+    requested = str(provider_id).strip().lower()
+    requested = BACKEND_ALIASES.get(requested, requested)
+    entry = providers.get(requested) if isinstance(providers, dict) else None
     return entry if isinstance(entry, dict) and entry.get("enabled") else None
 
 
@@ -175,7 +184,11 @@ def remove_provider(
 ) -> bool:
     registry_path = path or provider_registry_path(environ)
     registry = load_provider_registry(registry_path, strict=True)
-    removed = registry["providers"].pop(str(provider_id or "").strip().lower(), None) is not None
+    from api.backend_catalog import BACKEND_ALIASES
+
+    requested = str(provider_id or "").strip().lower()
+    requested = BACKEND_ALIASES.get(requested, requested)
+    removed = registry["providers"].pop(requested, None) is not None
     if removed:
         _write_registry(registry_path, registry)
     return removed

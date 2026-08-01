@@ -9,7 +9,7 @@ from typing import Dict
 
 from api.providers.agentic_backend import AgenticBackend
 from api.providers.hermes.backend import HermesBackend
-from api.providers.jaeger.backend import JROSBackend
+from api.providers.jaeger.backend import JaegerBackend
 from .cli_backends import (
     AntigravityGeminiBackend,
     ClaudeLocalBackend,
@@ -28,10 +28,10 @@ from .cli_backends import (
 
 def get_default_router() -> BackendRouter:
     """Factory returning the canonical ARES router with all available backends."""
-    jros = JROSBackend()
+    jaeger = JaegerBackend()
     backends: Dict[str, AgenticBackend] = {
         "hermes_local": HermesBackend(),
-        "jros_local": jros,
+        "jaeger_local": jaeger,
         "claude_local": ClaudeLocalBackend(),
         "codex_local": CodexLocalBackend(),
         "gemini_local": GeminiLocalBackend(),

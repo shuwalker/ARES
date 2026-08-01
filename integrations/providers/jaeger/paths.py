@@ -18,12 +18,15 @@ from pathlib import Path
 
 ARES_JAEGER_HOME_ENV = "ARES_JAEGER_HOME"
 JAEGER_HOME_ENV = "JAEGER_HOME"
-ARES_JROS_DIR_ENV = "ARES_JROS_DIR"
-ARES_JROS_CONFIG_PATH_ENV = "ARES_JROS_CONFIG_PATH"
+ARES_JAEGER_SOURCE_DIR_ENV = "ARES_JAEGER_SOURCE_DIR"
+ARES_JAEGER_CONFIG_PATH_ENV = "ARES_JAEGER_CONFIG_PATH"
+LEGACY_JROS_DIR_ENV = "ARES_JROS_DIR"
+LEGACY_JROS_CONFIG_PATH_ENV = "ARES_JROS_CONFIG_PATH"
 JAEGER_INSTANCE_DIR_ENV = "JAEGER_INSTANCE_DIR"
 ARES_CHARACTER_DIR_ENV = "ARES_CHARACTER_DIR"
 ARES_PERSONA_DIR_ENV = "ARES_PERSONA_DIR"
-ARES_JROS_INSTANCE_ENV = "ARES_JROS_INSTANCE"
+ARES_JAEGER_INSTANCE_ENV = "ARES_JAEGER_INSTANCE"
+LEGACY_JROS_INSTANCE_ENV = "ARES_JROS_INSTANCE"
 
 
 def expand_path(value: str | os.PathLike[str]) -> Path:
@@ -55,7 +58,11 @@ def discover_jros_source_root() -> Path | None:
     under the same GitHub folder, ``~/GitHub/JaegerAI``, ``~/JaegerAI``, and
     the legacy ``~/GitHub/JROS`` / ``~/JROS`` paths.
     """
-    override = os.environ.get(ARES_JROS_DIR_ENV, "").strip()
+    override = (
+        os.environ.get(ARES_JAEGER_SOURCE_DIR_ENV)
+        or os.environ.get(LEGACY_JROS_DIR_ENV)
+        or ""
+    ).strip()
     candidates: list[Path] = []
     if override:
         candidates.append(expand_path(override))
@@ -173,7 +180,11 @@ def jros_instance_name() -> str | None:
     emit a ready frame from the implicit default while the first real turn still
     stalls. The explicit instance argument is the verified working contract.
     """
-    explicit = os.environ.get(ARES_JROS_INSTANCE_ENV, "").strip()
+    explicit = (
+        os.environ.get(ARES_JAEGER_INSTANCE_ENV)
+        or os.environ.get(LEGACY_JROS_INSTANCE_ENV)
+        or ""
+    ).strip()
     if explicit:
         return explicit
     native = os.environ.get("JAEGER_INSTANCE_NAME", "").strip()
@@ -184,7 +195,11 @@ def jros_instance_name() -> str | None:
 
 def jros_config_path() -> Path:
     """Resolve the most likely JROS instance config path without writing it."""
-    explicit = os.getenv(ARES_JROS_CONFIG_PATH_ENV, "").strip()
+    explicit = (
+        os.getenv(ARES_JAEGER_CONFIG_PATH_ENV)
+        or os.getenv(LEGACY_JROS_CONFIG_PATH_ENV)
+        or ""
+    ).strip()
     if explicit:
         return expand_path(explicit)
 

@@ -264,7 +264,7 @@ def run_hermes_streaming(
     effective_model = (model or "").strip() or default_model
     # model_provider is often the ARES backend id (hermes_local, ollama_local); only use it if it looks like a Hermes provider.
     ares_backend_ids = {
-        "hermes_local", "jros_local", "claude_local", "codex_local", "gemini_local",
+        "hermes_local", "jaeger_local", "jros_local", "claude_local", "codex_local", "gemini_local",
         "grok_local", "opencode_local", "cursor_local", "pi_local", "openai_cloud",
         "xai_cloud", "ollama_local",
     }

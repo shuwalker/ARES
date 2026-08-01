@@ -14,7 +14,7 @@ The only swapped piece is execution, which resolves in this order:
        # where JROS is installed
        jaeger gateway --host 0.0.0.0 --port 8643
        # where ARES runs
-       export ARES_JROS_GATEWAY_URL=http://<jros-host>:8643
+       export ARES_JAEGER_GATEWAY_URL=http://<jaeger-host>:8643
 
 2. **Bridge fallback** — when no gateway is reachable but a local
    Jaeger/JROS install is discoverable from ``ARES_JAEGER_HOME``,
@@ -63,8 +63,10 @@ from api.providers.jaeger.paths import discover_jros_source_root, jaeger_home, j
 
 logger = logging.getLogger(__name__)
 
-_JROS_GATEWAY_URL_ENV = "ARES_JROS_GATEWAY_URL"
-_JROS_GATEWAY_KEY_ENV = "ARES_JROS_GATEWAY_KEY"
+_JAEGER_GATEWAY_URL_ENV = "ARES_JAEGER_GATEWAY_URL"
+_JAEGER_GATEWAY_KEY_ENV = "ARES_JAEGER_GATEWAY_KEY"
+_LEGACY_GATEWAY_URL_ENV = "ARES_JROS_GATEWAY_URL"
+_LEGACY_GATEWAY_KEY_ENV = "ARES_JROS_GATEWAY_KEY"
 DEFAULT_JROS_GATEWAY_URL = ""
 
 _START_GATEWAY_HINT = (
@@ -80,8 +82,10 @@ def jros_gateway_base_url(config_data=None, environ: dict[str, str] | None = Non
     from api.provider_registry import provider_endpoint
 
     raw = str(
-        provider_endpoint("jros_local", environ=source)
-        or source.get(_JROS_GATEWAY_URL_ENV)
+        provider_endpoint("jaeger_local", environ=source)
+        or source.get(_JAEGER_GATEWAY_URL_ENV)
+        or source.get(_LEGACY_GATEWAY_URL_ENV)
+        or cfg.get("jaeger_gateway_url")
         or cfg.get("jros_gateway_url")
         or ""
     ).strip()
@@ -90,7 +94,11 @@ def jros_gateway_base_url(config_data=None, environ: dict[str, str] | None = Non
 
 def _jros_gateway_api_key(environ: dict[str, str] | None = None) -> str:
     source = os.environ if environ is None else environ
-    return str(source.get(_JROS_GATEWAY_KEY_ENV) or "").strip()
+    return str(
+        source.get(_JAEGER_GATEWAY_KEY_ENV)
+        or source.get(_LEGACY_GATEWAY_KEY_ENV)
+        or ""
+    ).strip()
 
 
 def _auth_headers() -> dict[str, str]:
@@ -146,8 +154,10 @@ def reset_jros_boot() -> None:
 
 # ── bridge fallback (no gateway, JROS on this machine) ──────────────────
 
-_JROS_DIR_ENV = "ARES_JROS_DIR"
-_JROS_INSTANCE_ENV = "ARES_JROS_INSTANCE"
+_JAEGER_SOURCE_DIR_ENV = "ARES_JAEGER_SOURCE_DIR"
+_JAEGER_INSTANCE_ENV = "ARES_JAEGER_INSTANCE"
+_LEGACY_SOURCE_DIR_ENV = "ARES_JROS_DIR"
+_LEGACY_INSTANCE_ENV = "ARES_JROS_INSTANCE"
 
 _BOOT_LOCK = threading.RLock()
 _BRIDGE_CLIENTS: dict[str, JrosClient] = {}
@@ -162,7 +172,11 @@ def local_jros_root() -> Path | None:
     on a normal user machine, and what ``ARES_JAEGER_HOME`` / ``JAEGER_HOME``
     override for nonstandard installs.
     """
-    raw = os.environ.get(_JROS_DIR_ENV, "").strip()
+    raw = (
+        os.environ.get(_JAEGER_SOURCE_DIR_ENV)
+        or os.environ.get(_LEGACY_SOURCE_DIR_ENV)
+        or ""
+    ).strip()
     if raw:
         root = Path(raw).expanduser().resolve()
         if (root / "jaeger_os").is_dir() or (root / "jaeger_ai").is_dir() or (root / "jaeger").exists():
@@ -179,7 +193,11 @@ def local_jros_root() -> Path | None:
 
 
 def _jros_instance_name() -> str | None:
-    return os.environ.get(_JROS_INSTANCE_ENV, "").strip() or jros_instance_name()
+    return str(
+        os.environ.get(_JAEGER_INSTANCE_ENV)
+        or os.environ.get(_LEGACY_INSTANCE_ENV)
+        or ""
+    ).strip() or jros_instance_name()
 
 
 def _jros_ares_tools_enabled() -> bool:
@@ -534,20 +552,20 @@ def _jros_http_error_event(exc: urllib.error.HTTPError, err_body: str) -> dict:
     if exc.code == 401:
         key_configured = bool(_jros_gateway_api_key())
         return {
-            "label": "JROS gateway authentication failed",
-            "type": "jros_auth_error",
-            "message": "JROS gateway rejected the request (HTTP 401).",
+            "label": "Jaeger AI gateway authentication failed",
+            "type": "jaeger_auth_error",
+            "message": "Jaeger AI gateway rejected the request (HTTP 401).",
             "hint": (
-                "Set ARES_JROS_GATEWAY_KEY to the same value as the gateway's "
+                "Set ARES_JAEGER_GATEWAY_KEY to the same value as the gateway's "
                 "JAEGER_GATEWAY_KEY."
                 if not key_configured
-                else "Check that ARES_JROS_GATEWAY_KEY matches the gateway's JAEGER_GATEWAY_KEY."
+                else "Check that ARES_JAEGER_GATEWAY_KEY matches the gateway's JAEGER_GATEWAY_KEY."
             ),
         }
     return {
-        "label": "JROS gateway request failed",
-        "type": "jros_http_error",
-        "message": f"JROS gateway returned HTTP {exc.code}.",
+        "label": "Jaeger AI gateway request failed",
+        "type": "jaeger_http_error",
+        "message": f"Jaeger AI gateway returned HTTP {exc.code}.",
         "hint": safe or _START_GATEWAY_HINT,
     }
 
@@ -644,7 +662,10 @@ def _run_jros_chat_streaming(
         # actually lives) so the Context Store retrieval right after it can
         # skip work entirely on turns that won't use `body`/`req` at all.
         explicit_gateway = bool(
-            os.environ.get(_JROS_GATEWAY_URL_ENV) or cfg.get("jros_gateway_url")
+            os.environ.get(_JAEGER_GATEWAY_URL_ENV)
+            or os.environ.get(_LEGACY_GATEWAY_URL_ENV)
+            or cfg.get("jaeger_gateway_url")
+            or cfg.get("jros_gateway_url")
         )
         # ARES-owned project context (Local Profile notes, project-context
         # files) the JaegerAI gateway has no other visibility into -- NOT a
@@ -815,7 +836,7 @@ def _run_jros_chat_streaming(
         if turn_error and not assistant_text:
             put_jros_event("apperror", {
                 "label": "JaegerAI request failed",
-                "type": "jros_local_error" if ran_locally else "jros_error",
+                "type": "jaeger_local_error" if ran_locally else "jaeger_error",
                 "message": _redact_text(turn_error)[:500],
                 "hint": (
                     "ARES ran JaegerAI through the local bridge on this machine."

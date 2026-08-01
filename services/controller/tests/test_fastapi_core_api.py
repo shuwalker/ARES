@@ -161,8 +161,8 @@ def test_legacy_adapter_inventory_handles_app_automation_backends(app, monkeypat
     payload = response.json()
     assert payload["gemini_antigravity"]["label"] == "Gemini (Antigravity IDE)"
     assert isinstance(payload["gemini_antigravity"]["available"], bool)
-    assert payload["jros_local"]["available"] is False
-    assert payload["jros_local"]["health"]["status"] == "degraded"
+    assert payload["jaeger_local"]["available"] is False
+    assert payload["jaeger_local"]["health"]["status"] == "degraded"
 
 
 def test_agent_health_preserves_runtime_disconnected_state(app):

@@ -26,11 +26,7 @@ from .mcp import McpToolAdapter
 from ..request_context import profile_scope
 
 
-_ALIASES = {
-    "jaeger": "jros_local",
-    "jaegerai": "jros_local",
-    "hermes-agent": "hermes_local",
-}
+_ALIASES = {"hermes-agent": "hermes_local"}
 
 
 class AdapterRegistry:
@@ -69,8 +65,10 @@ class AdapterRegistry:
 
     @staticmethod
     def normalize_id(adapter_id: str) -> str:
-        normalized = str(adapter_id or "").strip().lower()
-        return _ALIASES.get(normalized, normalized)
+        from api.backend_catalog import normalize_backend_id
+
+        normalized = _ALIASES.get(str(adapter_id or "").strip().lower(), adapter_id)
+        return normalize_backend_id(normalized) or str(normalized or "").strip().lower()
 
     def execution_adapter(self, adapter_id: str) -> BaseLLMAdapter:
         normalized = self.normalize_id(adapter_id)
